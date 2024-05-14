@@ -1,4 +1,4 @@
-import { Entity, EntityRefreshCallback } from "./Contexts";
+import { Entity, EntityRefreshCallback, FlightPlan } from "./Contexts";
 
 const address = "localhost";
 const port = "3000";
@@ -73,13 +73,39 @@ export function nextRound(callBack: EntityRefreshCallback) {
     .catch((error) => console.error("Error adding entity:", error));
 }
 
+export function computeFlightPath(
+  entity_name: string | null,
+  end_pos: [number, number, number],
+  end_vel: [number, number, number],
+  setCurrentPlan: (plan: FlightPlan | null) => void) {
+
+  if (entity_name == null) {
+    setCurrentPlan(null);
+    return;
+  }
+  let payload = {
+    entity_name: entity_name,
+    end_pos: end_pos,
+    end_vel: end_vel,
+  };
+
+  fetch(`http://${address}:${port}/computepath`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    mode: "cors",
+    body: JSON.stringify(payload),
+  })
+  .then((response) => response.json())
+  .then((plan) => setCurrentPlan(plan))
+  .catch((error) => console.error("Error computing flight path:", error))
+}
+
 export function getEntities(callback: EntityRefreshCallback) {
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {
-      console.log(
-        "Response from server with entities: " + JSON.stringify(entities)
-      );
       callback(entities);
     })
     .catch((error) => console.error("Error fetching entities:", error));

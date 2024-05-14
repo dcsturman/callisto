@@ -1,4 +1,4 @@
-use cgmath::{Vector3, Zero};
+use cgmath::Vector3;
 use serde::{Deserialize, Serialize};
 use serde::ser::SerializeStruct;
 
@@ -10,7 +10,7 @@ pub const G: f64 = 9.81;
 
 pub type Vec3 = Vector3<f64>;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Entity {
     name: String,
     position: Vec3,
@@ -19,29 +19,27 @@ pub struct Entity {
 }
 
 impl Entity {
-    // Most common constructor for an Entity.  Give it a name and a position in space.
+    // Constructor for a new entity.
     pub fn new(name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) -> Self {
         Entity {
             name,
             position,
             velocity,
-            acceleration,
-        }
-    }
-
-    // More flexible constructor that also allows an initial velocity to be set.
-    pub fn new_with_pos(name: String, position: Vec3) -> Self {
-        Entity {
-            name,
-            position,
-            velocity: Vec3::zero(),
-            acceleration: Vec3::zero(),
+            acceleration
         }
     }
 
     // Method to set the acceleration of the entity.
     pub fn set_acceleration(&mut self, acceleration: Vec3) {
         self.acceleration = acceleration;
+    }
+
+    pub fn get_position(&self) -> Vec3 {
+        self.position
+    }
+
+    pub fn get_velocity(&self) -> Vec3 {
+        self.velocity
     }
 
     // Method to update the position of the entity based on its velocity and acceleration.
@@ -79,6 +77,10 @@ impl Entities {
 
     pub fn add(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) {
         let entity = Entity::new(name, position, velocity, acceleration);
+        self.add_entity(entity);
+    }
+
+    pub fn add_entity(&mut self, entity: Entity) {
         self.entities.insert(entity.name.clone(), entity);
     }
 
@@ -96,6 +98,8 @@ impl Entities {
         }
     }
 
+    // I expect I'll need this at some point for iterations so allowing for now.
+    #[allow(dead_code)]
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.entities.values()
     }
@@ -115,6 +119,7 @@ impl Entities {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cgmath::Zero;
 
     #[test]
     fn test_add_entity() {

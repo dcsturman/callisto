@@ -1,6 +1,6 @@
+mod computer;
 mod entity;
 mod payloads;
-mod computer;
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -19,9 +19,9 @@ use hyper_util::rt::TokioIo;
 use serde_json::from_slice;
 use tokio::net::TcpListener;
 
+use computer::{compute_flight_path, FlightParams};
 use entity::Entities;
-use payloads::{ AddEntityMsg, RemoveEntityMsg, SetAccelerationMsg, ComputeMsg, FlightPathMsg };
-use computer::{ compute_flight_path, FlightParams };
+use payloads::{AddEntityMsg, ComputePathMsg, FlightPathMsg, RemoveEntityMsg, SetAccelerationMsg};
 
 enum SizeCheckError {
     SizeErr(Response<Full<Bytes>>),
@@ -189,7 +189,7 @@ async fn handle_request(
             Ok(response)
         }
 
-        (&Method::POST, "/compute") => {
+        (&Method::POST, "/computepath") => {
             let body_bytes = match get_body_size_check(req).await {
                 Ok(bytes) => bytes,
                 Err(SizeCheckError::SizeErr(resp)) => return Ok(resp),
@@ -197,7 +197,7 @@ async fn handle_request(
             };
 
             // Deserialize the SetAccelerationMsg from JSON.
-            let msg: ComputeMsg = match from_slice(&body_bytes) {
+            let msg: ComputePathMsg = match from_slice(&body_bytes) {
                 Ok(msg) => msg,
                 Err(_) => {
                     let mut resp: Response<Full<Bytes>> =
@@ -208,30 +208,45 @@ async fn handle_request(
             };
             // Temporary until ships have actual acceleration built in
             const MAX_ACCELERATION: f64 = 6.0;
-            let params = FlightParams::new(msg.start_pos, msg.end_pos, msg.start_vel, msg.end_vel, MAX_ACCELERATION);
 
-            let (flight_path, final_vel) = compute_flight_path(&params);
+            debug!("Computing path for entity: {} End pos: {:?} End vel: {:?}", msg.entity_name, msg.end_pos, msg.end_vel);
+            // Do this in a block to clean up the lock as soon as possible.
+            let (start_pos, start_vel) = {
+                let entities = entities.lock().unwrap();
+                let entity = entities.get(&msg.entity_name).unwrap();
+                (entity.get_position(), entity.get_velocity())
+            };
 
-            let path_msg = FlightPathMsg{path: flight_path, end_vel: final_vel};
-            let json = match serde_json::to_string(&path_msg) {
-                Ok(json) => {
-                    info!("Flight path computed and serialized.");
-                    json
-                }
+            let params = FlightParams::new(
+                start_pos,
+                msg.end_pos,
+                start_vel,
+                msg.end_vel,
+                MAX_ACCELERATION,
+            );
+
+            debug!("Call computer with params: {:?}", params);
+
+            let plan: FlightPathMsg = compute_flight_path(&params);
+
+            let json = match serde_json::to_string(&plan) {
+                Ok(json) => json,
                 Err(_) => {
-                    error!("Unable to serialize flight path for {:?}.", path_msg);
-                    debug!("Flight path msg = {:?}", path_msg);
                     return Ok(Response::new(
-                        "Error serializing calculated flight path to JSON".as_bytes().into()
+                        "Error converting flight path to JSON".as_bytes().into(),
                     ));
                 }
             };
 
+            debug!("Flight path response: {}", json);
+
+            let jb = json.clone();
             let response = Response::builder()
                 .status(StatusCode::OK)
                 .header("Access-Control-Allow-Origin", "*")
-                .body(json.into())
+                .body(jb.into())
                 .unwrap();
+            info!("Response to compute request: {:?}", response);
             Ok(response)
         }
 
@@ -254,6 +269,7 @@ async fn handle_request(
                 .header("Access-Control-Allow-Origin", "*")
                 .body(jb.into())
                 .unwrap();
+            info!("Response to list request: {:?}", response);
             Ok(response)
         }
         _ => {

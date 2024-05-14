@@ -1,14 +1,11 @@
-import * as THREE from "three";
 import { useContext, useRef, useState } from "react";
-import { Tooltip } from "react-tooltip";
 
-import { Mesh, Group } from "three";
-import { useFrame, useThree } from "@react-three/fiber";
+import { Group } from "three";
 import { Bloom } from "@react-three/postprocessing";
 import { Text } from "@react-three/drei";
 import { Line } from "./Util";
 
-import { Entity, EntitiesServerContext } from "./Contexts";
+import { Entity, EntitiesServerContext, FlightPlan } from "./Contexts";
 import { Vector3 } from "@react-three/fiber";
 
 import { scale, timeUnit, G } from "./Contexts";
@@ -42,18 +39,14 @@ export function ShipInfoWindow(args: { ship: Entity}) {
   );
 }
 
-function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity | null) => void}) {
-  const { camera } = useThree();
+function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity | null) => void; setComputerShip: (ship: Entity | null) => void}) {
   const labelRef = useRef<Group>(null);
 
-  useFrame(() => {
-    // Attempt to push the label the right way, but moving everything
-    //labelRef.current?.lookAt(camera.position);
-  });
-
-  {
-    console.log("Ship: " + JSON.stringify(args.ship));
+  function handleShipClick() {
+    args.setComputerShip(args.ship);
   }
+
+  console.log("Ship: " + JSON.stringify(args.ship));
 
   return (
     <>
@@ -67,8 +60,9 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
       }
       <group ref={labelRef} position={scaleVector(args.ship.position, scale) as Vector3}>
         <mesh position={[0, 0, 0]} onPointerOver={()=> args.setShipToShow(args.ship) }
-        onPointerLeave={()=> args.setShipToShow(null) } >
-          <sphereGeometry args={[1.0]} />
+        onPointerLeave={()=> args.setShipToShow(null)
+        } onClick={handleShipClick}>
+          <sphereGeometry args={[0.05]} />
           <meshBasicMaterial color={[3, 3, 8.0]} />
         </mesh>
         <Line
@@ -84,7 +78,7 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
           )}
           color="green"
         />
-        <Text color="grey" fontSize={0.08} position={[0, -0.1, 0]}>
+        <Text color="grey" fontSize={0.2} position={[0, -0.1, 0]} >
           {args.ship.name}
         </Text>
       </group>
@@ -92,14 +86,32 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
   );
 }
 
-export function Ships(args: { setShipToShow: (ship: Entity | null) => void }) {
+export function Ships(args: { setShipToShow: (ship: Entity | null) => void; setComputerShip: (ship: Entity | null) => void}) {
   const serverEntities = useContext(EntitiesServerContext);
 
   return (
     <>
       {serverEntities.map((entity, index) => (
-        <Ship key={entity.name} ship={entity} index={index} setShipToShow={args.setShipToShow}/>
+        <Ship key={entity.name} ship={entity} index={index} setShipToShow={args.setShipToShow} setComputerShip={args.setComputerShip} />
       ))}
     </>
+  );
+}
+
+export function Route(args: { plan: FlightPlan }) {
+  console.log(`(Ships.Route) Display plan: ${JSON.stringify(args.plan)}`);
+  console.log(`(Ships.Route) Display route: ${JSON.stringify(args.plan.path)}`);
+  let start = scaleVector(args.plan.path[0], -1.0*scale);
+  let prev = args.plan.path[0];
+  let path = args.plan.path.slice(1);
+  return (
+    <group position={scaleVector(prev, scale) as Vector3}>
+      {path.map((point, index) => {
+        const oldPoint = prev;
+        prev = point;
+        console.log(`(Ships.Route) Displaying line from ${scaleVector(oldPoint,scale)} to ${scaleVector(point, scale)}`);
+        return <Line key={index} start={addVector(start,scaleVector(oldPoint,scale))} end={addVector(start,scaleVector(point,scale))} color={"orange"} />;
+      })}
+    </group>
   );
 }

@@ -16,7 +16,8 @@ function Sun() {
   const colorG = 0.719;
   const colorB = 0.0742;
   const intensity_factor = 2.5;
-  const sunRadiusMeters = 1.3927e9;
+  // Hacked this to make it smaller for now.
+  const sunRadiusMeters = 1.3927e9 / 1000.0;
   const sunRadiusUnits = sunRadiusMeters * scale;
 
   { console.log("Sun radius: " + sunRadiusUnits) }

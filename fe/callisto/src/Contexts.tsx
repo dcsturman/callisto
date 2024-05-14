@@ -13,6 +13,12 @@ export const EntitiesServerUpdateProvider = EntitiesServerUpdateContext.Provider
 
 export type EntityRefreshCallback = (entities: Entity[]) => void;
 
-export const scale = 1e-8; // 1 unit = 10,000km or 1e8m
+export type FlightPlan = {
+  path: [number, number, number][];
+  end_velocity: [number, number, number];
+  accelerations: [[number, number, number], number][];
+};
+
+export const scale = 1e-6; // 1 unit = 100km or 1e6m
 export const timeUnit = 1e3;
 export const G = 9.81;
