@@ -99,7 +99,7 @@ async fn handle_request(
                 .unwrap();
 
             // Add the entity to the server
-            entities.lock().unwrap().add(
+            entities.lock().unwrap().add_ship(
                 entity.name,
                 entity.position,
                 entity.velocity,

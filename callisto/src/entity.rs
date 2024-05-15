@@ -4,34 +4,63 @@ use serde::ser::SerializeStruct;
 
 use serde_json;
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 pub const DELTA_TIME: i32 = 1000;
 pub const G: f64 = 9.81;
 
 pub type Vec3 = Vector3<f64>;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum EntityKind {
+    Ship,
+    Planet { color: String, primary: Vec3, mass: f64 },
+    Missile { target: String, burns: i32 },
+}
+
+#[derive(Debug, Clone)]
 pub struct Entity {
     name: String,
     position: Vec3,
     velocity: Vec3,
     acceleration: Vec3,
+    pub kind: EntityKind,
 }
 
 impl Entity {
     // Constructor for a new entity.
-    pub fn new(name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) -> Self {
+    pub fn new_ship(name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) -> Self {
         Entity {
             name,
             position,
             velocity,
-            acceleration
+            acceleration,
+            kind: EntityKind::Ship,
         }
+    }
+
+    pub fn new_planet(name: String, position: Vec3, color: String, radius: f64, mass: f64) -> Self {
+        // 
+        Entity {
+            name,
+            position,
+            velocity: Vec3::zero(),
+            acceleration: Vec3::zero(),
+            kind: EntityKind::Planet { color, radius, mass },
+        }
+    }
+    // Method to get the name of the entity.
+    #[allow(dead_code)]
+    pub fn get_name(&self) -> String {
+        self.name.clone()
     }
 
     // Method to set the acceleration of the entity.
     pub fn set_acceleration(&mut self, acceleration: Vec3) {
-        self.acceleration = acceleration;
+        match self.kind {
+            EntityKind::Planet { .. } => panic!("Cannot set acceleration on Planet {:?}", self.name),
+            _ => self.acceleration = acceleration,
+        }
     }
 
     pub fn get_position(&self) -> Vec3 {
@@ -44,9 +73,15 @@ impl Entity {
 
     // Method to update the position of the entity based on its velocity and acceleration.
     pub fn update(&mut self) {
-        let old_velocity = self.velocity;
-        self.velocity += self.acceleration * G * DELTA_TIME as f64;
-        self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
+        match self.kind {
+            EntityKind::Ship => {
+                let old_velocity = self.velocity;
+                self.velocity += self.acceleration * G * DELTA_TIME as f64;
+                self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
+            }
+            EntityKind::Planet { .. } => (),
+            _ => self.update_position(),
+        }
     }
 }
 
@@ -60,10 +95,11 @@ impl Serialize for Entity {
         state.serialize_field("position", &vec![self.position.x, self.position.y, self.position.z])?;
         state.serialize_field("velocity", &vec![self.velocity.x, self.velocity.y, self.velocity.z])?;
         state.serialize_field("acceleration", &vec![self.acceleration.x, self.acceleration.y, self.acceleration.z])?;
+        state.serialize_field("kind", &self.kind)?;
         state.end()
     }
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 pub struct Entities {
     entities: HashMap<String, Entity>,
 }
@@ -75,8 +111,8 @@ impl Entities {
         }
     }
 
-    pub fn add(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) {
-        let entity = Entity::new(name, position, velocity, acceleration);
+    pub fn add_ship(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) {
+        let entity = Entity::new_ship(name, position, velocity, acceleration);
         self.add_entity(entity);
     }
 
@@ -125,9 +161,9 @@ mod tests {
     fn test_add_entity() {
         let mut entities = Entities::new();
 
-        entities.add(String::from("Entity1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), Vec3::zero());
-        entities.add(String::from("Entity2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), Vec3::zero());
-        entities.add(String::from("Entity3"), Vec3::new(7.0, 8.0, 9.0), Vec3::zero(), Vec3::zero());
+        entities.add_ship(String::from("Entity1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), Vec3::zero());
+        entities.add_ship(String::from("Entity2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), Vec3::zero());
+        entities.add_ship(String::from("Entity3"), Vec3::new(7.0, 8.0, 9.0), Vec3::zero(), Vec3::zero());
 
         assert_eq!(entities.get("Entity1").unwrap().name, "Entity1");
         assert_eq!(entities.get("Entity2").unwrap().name, "Entity2");
@@ -139,17 +175,17 @@ mod tests {
         let mut entities = Entities::new();
 
         // Create entities with random positions and names
-        entities.add(String::from("Entity1"),
+        entities.add_ship(String::from("Entity1"),
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero()
         );
-        entities.add(String::from("Entity2"),
+        entities.add_ship(String::from("Entity2"),
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero()
         );
-        entities.add(String::from("Entity3"),
+        entities.add_ship(String::from("Entity3"),
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero()
