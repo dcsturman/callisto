@@ -7,7 +7,7 @@ const port = "3000";
 export function addEntity(entity: Entity, callBack: EntityRefreshCallback) {
   console.log("Adding entity: " + JSON.stringify(entity));
 
-  fetch(`http://${address}:${port}/add`, {
+  fetch(`http://${address}:${port}/add_ship`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

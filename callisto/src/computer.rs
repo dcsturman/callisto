@@ -8,7 +8,7 @@ use na::{Dyn, IsContiguous};
 pub struct FlightPlan {
     pub path: Vec<Vec3>,
     pub end_velocity: Vec3,
-    pub accelerations: Vec<(Vec3, i64)>
+    pub accelerations: Vec<(Vec3, i64)>,
 }
 
 // System of equations is represented by a struct.
@@ -20,7 +20,6 @@ pub struct FlightParams {
     pub end_vel: Vec3,
     pub max_acceleration: f64,
 }
-
 
 impl FlightParams {
     pub fn new(
@@ -166,7 +165,11 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
         }
     }
 
-    return FlightPlan { path, end_velocity: vel, accelerations: vec![(a_1/G, t_1.round()as i64), (a_2/G, t_2.round() as i64)] };
+    return FlightPlan {
+        path,
+        end_velocity: vel,
+        accelerations: vec![(a_1 / G, t_1.round() as i64), (a_2 / G, t_2.round() as i64)],
+    };
 }
 
 #[cfg(test)]

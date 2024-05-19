@@ -21,7 +21,10 @@ use tokio::net::TcpListener;
 
 use computer::{compute_flight_path, FlightParams};
 use entity::Entities;
-use payloads::{AddEntityMsg, ComputePathMsg, FlightPathMsg, RemoveEntityMsg, SetAccelerationMsg};
+use payloads::{
+    AddMissileMsg, AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, RemoveEntityMsg,
+    SetAccelerationMsg,
+};
 
 enum SizeCheckError {
     SizeErr(Response<Full<Bytes>>),
@@ -32,6 +35,17 @@ impl From<hyper::Error> for SizeCheckError {
     fn from(err: hyper::Error) -> Self {
         SizeCheckError::HyperErr(err)
     }
+}
+
+fn build_ok_response(body: &str) -> Response<Full<Bytes>> {
+    let msg = Bytes::copy_from_slice(format!("{{ \"msg\" : \"{body}\" }}").as_bytes());
+    let resp = Response::builder()
+        .status(StatusCode::OK)
+        .header("Access-Control-Allow-Origin", "*")
+        .body(msg.into())
+        .unwrap();
+
+    resp.clone()
 }
 
 // Read a body while also protecting our server from massive bodies.
@@ -46,12 +60,35 @@ async fn get_body_size_check(req: Request<Incoming>) -> Result<Bytes, SizeCheckE
     Ok(body_bytes)
 }
 
+macro_rules! deserialize_body_or_respond {
+    ($req: ident, $msg_type:tt) => {{
+        info!("Received and processing {} request.",stringify!($msg_type));
+        let body_bytes = match get_body_size_check($req).await {
+            Ok(bytes) => bytes,
+            Err(SizeCheckError::SizeErr(resp)) => return Ok(resp),
+            Err(SizeCheckError::HyperErr(err)) => return Err(err),
+        };
+
+        let msg: $msg_type = match from_slice(&body_bytes) {
+            Ok(msg) => msg,
+            Err(e) => {
+                warn!("Invalid JSON ({}): {:?}", e, body_bytes);
+                let mut resp: Response<Full<Bytes>> =
+                    Response::new("Invalid JSON".as_bytes().into());
+                *resp.status_mut() = StatusCode::BAD_REQUEST;
+                return Ok(resp);
+            }
+        };
+        msg
+    }};
+}
+
 async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     info!(
-        "Request: {:?} method: {} uri: {}",
+        "Request: {:?}\n\tmethod: {}\n\turi: {}",
         req,
         req.method(),
         req.uri().path()
@@ -71,99 +108,57 @@ async fn handle_request(
             );
             Ok(resp)
         }
-        (&Method::POST, "/add") => {
-            info!("Processing add request");
-            // Read the body of the request
-            let body_bytes = match get_body_size_check(req).await {
-                Ok(bytes) => bytes,
-                Err(SizeCheckError::SizeErr(resp)) => return Ok(resp),
-                Err(SizeCheckError::HyperErr(err)) => return Err(err),
-            };
+        (&Method::POST, "/add_ship") => {
+            let ship = deserialize_body_or_respond!(req, AddShipMsg);
 
-            // Deserialize the entity from JSON.  AddEntityMsg is just an Entity.
-            let entity: AddEntityMsg = match from_slice(&body_bytes) {
-                Ok(entity) => entity,
-                Err(e) => {
-                    debug!("Invalid JSON ({}): {:?}", e, body_bytes);
-                    let mut resp: Response<Full<Bytes>> =
-                        Response::new("Invalid JSON".as_bytes().into());
-                    *resp.status_mut() = StatusCode::BAD_REQUEST;
-                    return Ok(resp);
-                }
-            };
-
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Access-Control-Allow-Origin", "*")
-                .body("{ \"msg\" : \"Add action executed\" }".as_bytes().into())
-                .unwrap();
-
-            // Add the entity to the server
+            // Add the ship to the server
             entities.lock().unwrap().add_ship(
-                entity.name,
-                entity.position,
-                entity.velocity,
-                entity.acceleration,
+                ship.name,
+                ship.position,
+                ship.velocity,
+                ship.acceleration,
             );
 
-            Ok(response)
+            Ok(build_ok_response("Add ship action executed"))
+        }
+        (&Method::POST, "/add_planet") => {
+            let planet = deserialize_body_or_respond!(req, AddPlanetMsg);
+
+            // Add the planet to the server
+            entities.lock().unwrap().add_planet(
+                planet.name,
+                planet.position,
+                planet.color,
+                planet.primary,
+                planet.mass,
+            );
+
+            Ok(build_ok_response("Add planet action executed"))
+        }
+        (&Method::POST, "/add_missile") => {
+            let missile = deserialize_body_or_respond!(req, AddMissileMsg);
+
+            // Add the missile to the server
+            entities.lock().unwrap().add_missile(
+                missile.name,
+                missile.position,
+                missile.target,
+                missile.burns,
+                Arc::downgrade(&entities),
+            );
+
+            Ok(build_ok_response("Add missile action executed"))
         }
         (&Method::POST, "/remove") => {
-            let body_bytes = match get_body_size_check(req).await {
-                Ok(bytes) => bytes,
-                Err(SizeCheckError::SizeErr(resp)) => return Ok(resp),
-                Err(SizeCheckError::HyperErr(err)) => return Err(err),
-            };
-
-            // Deserialize the name of the entity to remove from JSON.
-            let name: RemoveEntityMsg = match from_slice(&body_bytes) {
-                Ok(name) => name,
-                Err(_) => {
-                    let mut resp: Response<Full<Bytes>> =
-                        Response::new("Invalid JSON".as_bytes().into());
-                    *resp.status_mut() = StatusCode::BAD_REQUEST;
-                    return Ok(resp);
-                }
-            };
-
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Access-Control-Allow-Origin", "*")
-                .body("{ \"msg\" : \"Remove action executed\" }".as_bytes().into())
-                .unwrap();
+            let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
 
             // Remove the entity from the server
             entities.lock().unwrap().remove(&name);
 
-            Ok(response)
+            Ok(build_ok_response("Remove action executed"))
         }
         (&Method::POST, "/setaccel") => {
-            let body_bytes = match get_body_size_check(req).await {
-                Ok(bytes) => bytes,
-                Err(SizeCheckError::SizeErr(resp)) => return Ok(resp),
-                Err(SizeCheckError::HyperErr(err)) => return Err(err),
-            };
-
-            // Deserialize the SetAccelerationMsg from JSON.
-            let accel_msg: SetAccelerationMsg = match from_slice(&body_bytes) {
-                Ok(msg) => msg,
-                Err(_) => {
-                    let mut resp: Response<Full<Bytes>> =
-                        Response::new("Invalid JSON".as_bytes().into());
-                    *resp.status_mut() = StatusCode::BAD_REQUEST;
-                    return Ok(resp);
-                }
-            };
-
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Access-Control-Allow-Origin", "*")
-                .body(
-                    "{ \"msg\" : \"Change acceleration action executed\" }"
-                        .as_bytes()
-                        .into(),
-                )
-                .unwrap();
+            let accel_msg = deserialize_body_or_respond!(req, SetAccelerationMsg);
 
             // Change the acceleration of the entity
             entities
@@ -171,45 +166,24 @@ async fn handle_request(
                 .unwrap()
                 .set_acceleration(&accel_msg.name, accel_msg.acceleration);
 
-            Ok(response)
+            Ok(build_ok_response("Set acceleration action executed"))
         }
         (&Method::POST, "/update") => {
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Access-Control-Allow-Origin", "*")
-                .body(
-                    "{ \"msg\" : \"Time and position updated.\" }"
-                        .as_bytes()
-                        .into(),
-                )
-                .unwrap();
-
+            info!("Received and processing update request.");
             entities.lock().unwrap().update_all();
-
-            Ok(response)
+            Ok(build_ok_response("Update action executed"))
         }
 
         (&Method::POST, "/computepath") => {
-            let body_bytes = match get_body_size_check(req).await {
-                Ok(bytes) => bytes,
-                Err(SizeCheckError::SizeErr(resp)) => return Ok(resp),
-                Err(SizeCheckError::HyperErr(err)) => return Err(err),
-            };
+            let msg = deserialize_body_or_respond!(req, ComputePathMsg);
 
-            // Deserialize the SetAccelerationMsg from JSON.
-            let msg: ComputePathMsg = match from_slice(&body_bytes) {
-                Ok(msg) => msg,
-                Err(_) => {
-                    let mut resp: Response<Full<Bytes>> =
-                        Response::new("Invalid JSON".as_bytes().into());
-                    *resp.status_mut() = StatusCode::BAD_REQUEST;
-                    return Ok(resp);
-                }
-            };
             // Temporary until ships have actual acceleration built in
             const MAX_ACCELERATION: f64 = 6.0;
 
-            debug!("Computing path for entity: {} End pos: {:?} End vel: {:?}", msg.entity_name, msg.end_pos, msg.end_vel);
+            debug!(
+                "Computing path for entity: {} End pos: {:?} End vel: {:?}",
+                msg.entity_name, msg.end_pos, msg.end_vel
+            );
             // Do this in a block to clean up the lock as soon as possible.
             let (start_pos, start_vel) = {
                 let entities = entities.lock().unwrap();
@@ -240,14 +214,7 @@ async fn handle_request(
 
             debug!("Flight path response: {}", json);
 
-            let jb = json.clone();
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Access-Control-Allow-Origin", "*")
-                .body(jb.into())
-                .unwrap();
-            info!("Response to compute request: {:?}", response);
-            Ok(response)
+            Ok(build_ok_response(json.as_str()))
         }
 
         (&Method::GET, "/") => {
@@ -263,14 +230,14 @@ async fn handle_request(
                 }
             };
 
-            let jb = json.clone();
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Access-Control-Allow-Origin", "*")
-                .body(jb.into())
-                .unwrap();
-            info!("Response to list request: {:?}", response);
-            Ok(response)
+            let resp = Response::builder()
+            .status(StatusCode::OK)
+            .header("Access-Control-Allow-Origin", "*")
+            .body(Bytes::copy_from_slice(json.as_bytes()).into())
+            .unwrap();
+    
+    
+            Ok(resp)
         }
         _ => {
             // Return a 404 Not Found response for any other requests

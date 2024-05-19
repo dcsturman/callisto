@@ -1,17 +1,35 @@
-/** All the payloads used from the client to the server.  Some are not terribly meaningful or complex, but putting them all 
+use super::computer::FlightPlan;
+/** All the payloads used from the client to the server.  Some are not terribly meaningful or complex, but putting them all
  * here for completeness.  
  */
 use super::entity::Vec3;
-use super::computer::FlightPlan;
+use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde::ser::{ SerializeStruct, Serializer};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct AddEntityMsg {
+pub struct AddShipMsg {
     pub name: String,
-    pub position: Vec3, 
+    pub position: Vec3,
     pub velocity: Vec3,
     pub acceleration: Vec3,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AddMissileMsg {
+    pub name: String,
+    pub target: String,
+    pub position: Vec3,
+    pub acceleration: Vec3,
+    pub burns: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AddPlanetMsg {
+    pub name: String,
+    pub position: Vec3,
+    pub color: String,
+    pub primary: Vec3,
+    pub mass: f64,
 }
 
 pub type RemoveEntityMsg = String;
@@ -37,9 +55,30 @@ impl Serialize for FlightPathMsg {
         S: Serializer,
     {
         let mut flight_path = serializer.serialize_struct("FlightPathMsg", 2)?;
-        flight_path.serialize_field("path", &self.path.iter().map(|v| vec![v.x, v.y, v.z]).collect::<Vec<_>>())?;
-        flight_path.serialize_field("end_velocity", &vec![self.end_velocity.x, self.end_velocity.y, self.end_velocity.z])?;
-        flight_path.serialize_field("accelerations", &self.accelerations.iter().map(|(v, t)| (vec![v.x, v.y, v.z], *t)).collect::<Vec<_>>())?;
+        flight_path.serialize_field(
+            "path",
+            &self
+                .path
+                .iter()
+                .map(|v| vec![v.x, v.y, v.z])
+                .collect::<Vec<_>>(),
+        )?;
+        flight_path.serialize_field(
+            "end_velocity",
+            &vec![
+                self.end_velocity.x,
+                self.end_velocity.y,
+                self.end_velocity.z,
+            ],
+        )?;
+        flight_path.serialize_field(
+            "accelerations",
+            &self
+                .accelerations
+                .iter()
+                .map(|(v, t)| (vec![v.x, v.y, v.z], *t))
+                .collect::<Vec<_>>(),
+        )?;
         flight_path.end()
     }
 }
