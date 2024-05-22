@@ -42,7 +42,7 @@ export function setAcceleration(
   callBack: EntityRefreshCallback
 ) {
   let payload = { name: target, acceleration: acceleration };
-  fetch(`http://${address}:${port}/setaccel`, {
+  fetch(`http://${address}:${port}/set_accel`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -89,7 +89,7 @@ export function computeFlightPath(
     end_vel: end_vel,
   };
 
-  fetch(`http://${address}:${port}/computepath`, {
+  fetch(`http://${address}:${port}/compute_path`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

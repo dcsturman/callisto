@@ -1,12 +1,12 @@
 use cgmath::{ElementWise, InnerSpace, Vector3, Zero};
-use serde::ser::SerializeStruct;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use serde_json;
+use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Mutex, Weak};
 
+use crate::payloads::Vec3asVec;
 use crate::computer::{compute_flight_path, FlightParams, FlightPlan};
 
 pub const DELTA_TIME: i32 = 1000;
@@ -14,11 +14,13 @@ pub const G: f64 = 9.81;
 
 pub type Vec3 = Vector3<f64>;
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum EntityKind {
     Ship,
     Planet {
         color: String,
+        #[serde_as(as = "Vec3asVec")]
         primary: Vec3,
         mass: f64,
     },
@@ -30,11 +32,48 @@ pub enum EntityKind {
     },
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq for EntityKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (EntityKind::Ship, EntityKind::Ship) => true,
+            (
+                EntityKind::Planet {
+                    color: color1,
+                    primary: primary1,
+                    mass: mass1,
+                },
+                EntityKind::Planet {
+                    color: color2,
+                    primary: primary2,
+                    mass: mass2,
+                },
+            ) => color1 == color2 && primary1 == primary2 && mass1 == mass2,
+            (
+                EntityKind::Missile {
+                    target: target1,
+                    burns: burns1,
+                    entities: _,
+                },
+                EntityKind::Missile {
+                    target: target2,
+                    burns: burns2,
+                    entities: _,
+                },
+            ) => target1 == target2 && burns1 == burns2,
+            _ => false,
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Entity {
     name: String,
+    #[serde_as(as="Vec3asVec")]
     position: Vec3,
+    #[serde_as(as="Vec3asVec")]
     velocity: Vec3,
+    #[serde_as(as="Vec3asVec")]
     acceleration: Vec3,
     pub kind: EntityKind,
 }
@@ -44,9 +83,9 @@ impl Entity {
     pub fn new_ship(name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) -> Self {
         Entity {
             name,
-            position,
-            velocity,
-            acceleration,
+            position: position,
+            velocity: velocity,
+            acceleration: acceleration,
             kind: EntityKind::Ship,
         }
     }
@@ -58,15 +97,14 @@ impl Entity {
         primary: Vec3,
         mass: f64,
     ) -> Self {
-        //
         Entity {
             name,
-            position,
+            position: position,
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
             kind: EntityKind::Planet {
                 color,
-                primary,
+                primary: primary,
                 mass,
             },
         }
@@ -81,7 +119,7 @@ impl Entity {
     ) -> Self {
         Entity {
             name,
-            position,
+            position: position,
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
             kind: EntityKind::Missile {
@@ -120,7 +158,7 @@ impl Entity {
     pub fn update(&mut self) {
         match &self.kind {
             EntityKind::Ship => {
-                let old_velocity = self.velocity;
+                let old_velocity: Vec3 = self.velocity;
                 self.velocity += self.acceleration * G * DELTA_TIME as f64;
                 self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
             }
@@ -193,7 +231,7 @@ impl Entity {
                             let plan: FlightPlan = compute_flight_path(&params);
                             debug!("Computed path: {:?}", plan);
                             self.acceleration = plan.accelerations[0].0;
-                            let old_velocity = self.velocity;
+                            let old_velocity: Vec3 = self.velocity;
                             self.velocity += self.acceleration * G * DELTA_TIME as f64;
                             self.position +=
                                 (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
@@ -208,43 +246,13 @@ impl Entity {
     }
 }
 
-impl Serialize for Entity {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        let mut state = serializer.serialize_struct("Entity", 4)?;
-        state.serialize_field("name", &self.name)?;
-        state.serialize_field(
-            "position",
-            &vec![self.position.x, self.position.y, self.position.z],
-        )?;
-        state.serialize_field(
-            "velocity",
-            &vec![self.velocity.x, self.velocity.y, self.velocity.z],
-        )?;
-        state.serialize_field(
-            "acceleration",
-            &vec![
-                self.acceleration.x,
-                self.acceleration.y,
-                self.acceleration.z,
-            ],
-        )?;
-        state.serialize_field("kind", &self.kind)?;
-        state.end()
-    }
-}
-#[derive(Serialize, Debug)]
-pub struct Entities {
-    entities: HashMap<String, Entity>,
-}
+#[serde_as]
+#[derive(Debug, PartialEq)]
+pub struct Entities(HashMap<String, Entity>);
 
 impl Entities {
     pub fn new() -> Self {
-        Entities {
-            entities: HashMap::new(),
-        }
+        Entities(HashMap::new())
     }
 
     pub fn add_ship(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) {
@@ -277,19 +285,19 @@ impl Entities {
     }
 
     pub fn add_entity(&mut self, entity: Entity) {
-        self.entities.insert(entity.name.clone(), entity);
+        self.0.insert(entity.name.clone(), entity);
     }
 
     pub fn remove(&mut self, name: &str) {
-        self.entities.remove(name);
+        self.0.remove(name);
     }
 
     pub fn get(&self, name: &str) -> Option<&Entity> {
-        self.entities.get(name)
+        self.0.get(name)
     }
 
     pub fn set_acceleration(&mut self, name: &str, acceleration: Vec3) {
-        if let Some(entity) = self.entities.get_mut(name) {
+        if let Some(entity) = self.0.get_mut(name) {
             entity.set_acceleration(acceleration);
         }
     }
@@ -297,18 +305,40 @@ impl Entities {
     // I expect I'll need this at some point for iterations so allowing for now.
     #[allow(dead_code)]
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.entities.values()
+        self.0.values()
     }
 
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        let guts = self.entities.values().collect::<Vec<&Entity>>();
-        serde_json::to_string(&guts)
-    }
-
+    /* pub fn to_json(&self) -> Result<String, serde_json::Error> {
+            let guts = self.0.values().collect::<Vec<&Entity>>();
+            serde_json::to_string(&guts)
+        }
+    */
     pub fn update_all(&mut self) {
-        for entity in self.entities.values_mut() {
+        for entity in self.0.values_mut() {
             entity.update();
         }
+    }
+}
+
+impl Serialize for Entities {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let guts = self.0.values().collect::<Vec<&Entity>>();
+        guts.serialize(serializer) // This is a bit of a hack, but it works.
+    }
+}
+
+impl<'de> Deserialize<'de> for Entities {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let guts = Vec::<Entity>::deserialize(deserializer)?;
+        Ok(Entities(
+            guts.into_iter().map(|e| (e.name.clone(), e)).collect(),
+        ))
     }
 }
 
@@ -419,13 +449,25 @@ mod tests {
     fn test_planet_update() {
         let _ = pretty_env_logger::try_init();
 
-        fn check_radius_and_y(pos: Vec3, primary: Vec3, expected_mag: f64, expected_y: f64) -> (bool, bool) {
+        fn check_radius_and_y(
+            pos: Vec3,
+            primary: Vec3,
+            expected_mag: f64,
+            expected_y: f64,
+        ) -> (bool, bool) {
             const TOLERANCE: f64 = 0.01;
             let radius = pos - primary;
             let radius_2d = Vector2::<f64>::new(radius.x, radius.z);
 
-            debug!("Radius_2d.magnitude(): {:?} vs Expected: {}", radius_2d.magnitude(), expected_mag);
-            return ((radius_2d.magnitude() - expected_mag).abs()/expected_mag < TOLERANCE, radius.y == expected_y);
+            debug!(
+                "Radius_2d.magnitude(): {:?} vs Expected: {}",
+                radius_2d.magnitude(),
+                expected_mag
+            );
+            return (
+                (radius_2d.magnitude() - expected_mag).abs() / expected_mag < TOLERANCE,
+                radius.y == expected_y,
+            );
         }
 
         let mut entities = Entities::new();
@@ -448,7 +490,11 @@ mod tests {
         );
         entities.add_planet(
             String::from("Planet3"),
-            Vec3::new(EARTH_RADIUS/(2.0 as f64).sqrt(), 8000.0, EARTH_RADIUS/(2.0 as f64).sqrt()),
+            Vec3::new(
+                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                8000.0,
+                EARTH_RADIUS / (2.0 as f64).sqrt(),
+            ),
             String::from("green"),
             Vec3::zero(),
             1e26,
@@ -459,8 +505,32 @@ mod tests {
         entities.update_all();
         entities.update_all();
 
-        assert_eq!((true, true), check_radius_and_y(entities.get("Planet1").unwrap().position, Vec3::zero(), EARTH_RADIUS, 2000000.0));
-        assert_eq!((true, true), check_radius_and_y(entities.get("Planet2").unwrap().position, Vec3::zero(), EARTH_RADIUS, 5000000.0));
-        assert_eq!((true, true), check_radius_and_y(entities.get("Planet3").unwrap().position, Vec3::zero(), EARTH_RADIUS, 8000.0));
+        assert_eq!(
+            (true, true),
+            check_radius_and_y(
+                entities.get("Planet1").unwrap().position,
+                Vec3::zero(),
+                EARTH_RADIUS,
+                2000000.0
+            )
+        );
+        assert_eq!(
+            (true, true),
+            check_radius_and_y(
+                entities.get("Planet2").unwrap().position,
+                Vec3::zero(),
+                EARTH_RADIUS,
+                5000000.0
+            )
+        );
+        assert_eq!(
+            (true, true),
+            check_radius_and_y(
+                entities.get("Planet3").unwrap().position,
+                Vec3::zero(),
+                EARTH_RADIUS,
+                8000.0
+            )
+        );
     }
 }

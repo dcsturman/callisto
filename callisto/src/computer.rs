@@ -1,14 +1,31 @@
+use serde::{ Serialize, Deserialize };
 use crate::entity::{Vec3, DELTA_TIME, G};
+use crate::payloads::Vec3asVec;
+use serde_with::serde_as;
 use cgmath::InnerSpace;
 use gomez::nalgebra as na;
 use gomez::{Domain, Problem, SolverDriver, System};
 use na::{Dyn, IsContiguous};
 
-#[derive(Debug)]
+// Had to implement this as serde_as could not handle a tuple 
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AccelPair(#[serde_as(as="Vec3asVec")]pub Vec3, pub i64);
+
+impl From<(Vec3, i64)> for AccelPair {
+    fn from(tuple: (Vec3, i64)) -> Self {
+        AccelPair(tuple.0, tuple.1)
+    }
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FlightPlan {
+    #[serde_as(as="Vec<Vec3asVec>")]
     pub path: Vec<Vec3>,
+    #[serde_as(as="Vec3asVec")]
     pub end_velocity: Vec3,
-    pub accelerations: Vec<(Vec3, i64)>,
+    pub accelerations: Vec<AccelPair>,
 }
 
 // System of equations is represented by a struct.
@@ -118,7 +135,7 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
     let mut solver = SolverDriver::builder(params).with_initial(initial).build();
 
     let (x, _norm) = solver
-        .find(|state| state.norm() <= 1e-6 || state.iter() >= 100)
+        .find(|state| state.norm() <= 1e-8 || state.iter() >= 100)
         .expect("Unable to solve flight path!");
 
     let v_a_1: [f64; 3] = x[0..3]
@@ -168,7 +185,7 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
     return FlightPlan {
         path,
         end_velocity: vel,
-        accelerations: vec![(a_1 / G, t_1.round() as i64), (a_2 / G, t_2.round() as i64)],
+        accelerations: vec![(a_1 / G, t_1.round() as i64).into(), (a_2 / G, t_2.round() as i64).into()],
     };
 }
 
