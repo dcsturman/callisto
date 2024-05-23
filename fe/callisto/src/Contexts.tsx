@@ -1,17 +1,54 @@
-import { create } from 'domain';
-import { createContext, Dispatch, SetStateAction } from 'react';
+import { createContext } from "react";
 
-export type Entity = {name: string, position: [number, number, number], velocity: [number, number, number], acceleration: [number, number, number]};
+export class Ship {}
 
-export const initEntity = {name: "New Entity", position: [0, 0, 0], velocity: [0, 0, 0], acceleration: [0, 0, 0]};
+export class Planet {
+  color: string = "yellow";
+  primary: [number, number, number] = [0, 0, 0];
+  radius: number = 6.371e6;
+  mass: number = 100;
+}
 
-export const EntitiesServerContext = createContext<Entity[]>([]);
-export const EntitiesServerUpdateContext = createContext<Dispatch<SetStateAction<Entity[]>>>(() => {}); // empty function as default value
+export class Missile {
+  target: string = "";
+  burns: number = 1;
+}
+
+export type EntityKind = Ship | Planet | Missile;
+
+export type Entity = {
+  name: string;
+  position: [number, number, number];
+  velocity: [number, number, number];
+  acceleration: [number, number, number];
+  kind: EntityKind;
+};
+
+export const initEntity = {
+  name: "New Entity",
+  position: [0, 0, 0],
+  velocity: [0, 0, 0],
+  acceleration: [0, 0, 0],
+};
+
+export type EntityList = {
+  ships: Entity[];
+  planets: Entity[];
+  missiles: Entity[];
+};
+export type EntityRefreshCallback = (entities: EntityList) => void;
+
+export const EntitiesServerContext = createContext<{
+  entities: EntityList;
+  handler: EntityRefreshCallback;
+}>({ entities: { ships: [], planets: [], missiles: [] }, handler: (e) => {} });
+//export const EntitiesServerUpdateContext = createContext<
+//  Dispatch<SetStateAction<EntityList>>
+//>(() => {}); // empty function as default value
 
 export const EntitiesServerProvider = EntitiesServerContext.Provider;
-export const EntitiesServerUpdateProvider = EntitiesServerUpdateContext.Provider;
-
-export type EntityRefreshCallback = (entities: Entity[]) => void;
+//export const EntitiesServerUpdateProvider =
+//  EntitiesServerUpdateContext.Provider;
 
 export type FlightPlan = {
   path: [number, number, number][];

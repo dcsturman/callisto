@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from "react";
+import { useContext, useRef } from "react";
 
 import { Group } from "three";
 import { Bloom } from "@react-three/postprocessing";
@@ -8,23 +8,8 @@ import { Line } from "./Util";
 import { Entity, EntitiesServerContext, FlightPlan } from "./Contexts";
 import { Vector3 } from "@react-three/fiber";
 
-import { scale, timeUnit, G } from "./Contexts";
-
-/* Entities come in from the server with all units in meters (m). Convert them to the units we can use on screen. */
-function scaleVector(
-  v: [number, number, number],
-  scale: number
-): [number, number, number] {
-  return v.map((x) => x * scale) as [number, number, number];
-}
-
-function addVector(a: [number, number, number], b: [number, number, number]) {
-  return a.map((x, i) => x + b[i]) as [number, number, number];
-}
-
-function vectorToString(v: [number, number, number]) {
-  return `${v[0].toFixed(0)}, ${v[1].toFixed(0)}, ${v[2].toFixed(0)}`;
-}
+import { scale, timeUnit } from "./Contexts";
+import { addVector, scaleVector, vectorToString } from "./Util";
 
 export function ShipInfoWindow(args: { ship: Entity}) {
   return (
@@ -91,8 +76,8 @@ export function Ships(args: { setShipToShow: (ship: Entity | null) => void; setC
 
   return (
     <>
-      {serverEntities.map((entity, index) => (
-        <Ship key={entity.name} ship={entity} index={index} setShipToShow={args.setShipToShow} setComputerShip={args.setComputerShip} />
+      {serverEntities.entities.ships.map((ship, index) => (
+        <Ship key={ship.name} ship={ship} index={index} setShipToShow={args.setShipToShow} setComputerShip={args.setComputerShip} />
       ))}
     </>
   );

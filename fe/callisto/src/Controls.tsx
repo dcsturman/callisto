@@ -9,9 +9,9 @@ import {
 const POS_SCALE = 1000.0;
 
 function AccelerationManager(args: {
-  entities: Entity[];
+  ships: Entity[];
   setAcceleration: (target: string, x: number, y: number, z: number) => void;
-  setComputerShip: (ship: Entity | null) => void;
+  setComputerShip: (entity: Entity) => void;
 }) {
   function handleSubmit(
     ship: Entity
@@ -28,12 +28,12 @@ function AccelerationManager(args: {
   return (
     <>
       <h2 className="control-form">Set Accel</h2>
-      {args.entities.map((entity) => (
+      {args.ships.map((ships) => (
         <form
-          key={entity.name + "-accel-setter"}
+          key={ships.name + "-accel-setter"}
           className="as-form"
-          onSubmit={handleSubmit(entity)}>
-          <label className="as-label" onDoubleClick={() => args.setComputerShip(entity)}>{entity.name}</label>
+          onSubmit={handleSubmit(ships)}>
+          <label className="as-label" onDoubleClick={() => args.setComputerShip(ships)}>{ships.name}</label>
           <div>
             <input className="as-input" name="x" type="text" defaultValue={0} />
             <input className="as-input" name="y" type="text" defaultValue={0} />
@@ -214,6 +214,9 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
         Number(addShip.yacc),
         Number(addShip.zacc),
       ],
+      kind: {
+        Ship: {},
+      },
     };
     console.log("Adding ship: " + JSON.stringify(newShip));
 
@@ -315,12 +318,11 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
 
 function Controls(args: {
   nextRound: (callback: EntityRefreshCallback) => void;
-  getEntities: (entities: Entity[]) => void;
   addEntity: (entity: Entity, callback: EntityRefreshCallback) => void;
   setAcceleration: (
     target: string,
     acceleration: [number, number, number],
-    callBack: (entities: Entity[]) => void
+    callBack: EntityRefreshCallback
   ) => void;
   computerShip: Entity | null;
   setComputerShip: (ship: Entity | null) => void;
@@ -337,12 +339,12 @@ function Controls(args: {
     <div className="controls-pane">
       <h1>Controls</h1>
       <AddShip
-        submitHandler={(entity) => args.addEntity(entity, args.getEntities)}
+        submitHandler={(entity) => args.addEntity(entity, serverEntities.handler)}
       />
       <AccelerationManager
-        entities={serverEntities}
+        ships={serverEntities.entities.ships}
         setAcceleration={(target, x, y, z) => {
-          args.setAcceleration(target, [x, y, z], args.getEntities);
+          args.setAcceleration(target, [x, y, z], serverEntities.handler);
         }}
         setComputerShip={args.setComputerShip}
       />
@@ -361,7 +363,7 @@ function Controls(args: {
         onClick={() => {
           args.setComputerShip(null);
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0]);
-          args.nextRound(args.getEntities);
+          args.nextRound(serverEntities.handler);
         }}>
         Next Round
       </button>

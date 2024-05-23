@@ -1,26 +1,34 @@
+import { useContext } from "react";
 import * as THREE from "three";
-import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { BlurPass, Resizer, KernelSize, Resolution } from "postprocessing";
+import { KernelSize, Resolution } from "postprocessing";
 import { TextureLoader } from "three/src/loaders/TextureLoader";
 import { useLoader } from "@react-three/fiber";
 
-import { Line } from "./Util";
+import Color from "color";
 
-import { scale } from "./Contexts";
+import { Line, scaleVector } from "./Util";
+import { scale, Planet as PlanetType, Entity, EntitiesServerContext } from "./Contexts";
 
-function Sun() {
-  const origColor = 0xfdb813;
-  const colorR = 0.988;
-  const colorG = 0.719;
-  const colorB = 0.0742;
+function Planet(args:{planet: Entity}) {
+  let planet_details;
+
+  if ("Planet" in args.planet.kind) {
+    planet_details = args.planet.kind.Planet as PlanetType;
+  } else {
+    console.error(`(Spaceview.Planet) Planet ${args.planet.name} not a planet. Details ${JSON.stringify(planet_details)}`);
+    return (<></>)
+  }
+
+  const color = Color(planet_details.color);
   const intensity_factor = 2.5;
-  // Hacked this to make it smaller for now.
-  const sunRadiusMeters = 1.3927e9 / 1000.0;
-  const sunRadiusUnits = sunRadiusMeters * scale;
 
-  { console.log("Sun radius: " + sunRadiusUnits) }
+  const radiusMeters = planet_details.radius;
+  const radiusUnits = radiusMeters * scale;
+  const pos = scaleVector(args.planet.position, scale);
+
+  console.log(`(Spaceview.Planet) Planet ${args.planet.name} pos ${pos}`);
 
   return (
     <>
@@ -36,17 +44,26 @@ function Sun() {
           resolutionY={Resolution.AUTO_SIZE} // The vertical resolution.
         />
       </EffectComposer>
-      <mesh position={[0, 0, 0]}>
-        <icosahedronGeometry args={[sunRadiusUnits, 15]} />
-        {/* 0xFDB813 */}
+      <mesh position={pos}>
+        <icosahedronGeometry args={[radiusUnits, 15]} />
         <meshBasicMaterial
           color={[
-            colorR * intensity_factor,
-            colorG * intensity_factor,
-            colorB * intensity_factor,
+            color.red()/255.0 * intensity_factor,
+            color.green()/255.0 * intensity_factor,
+            color.blue()/255.0 * intensity_factor,
           ]}
         />
       </mesh>
+    </>
+  );
+}
+
+function Planets(args:{planets: Entity[]}) {
+  return (
+    <>
+      {args.planets.map((planet, index) => (
+        <Planet key={planet.name} planet={planet} />
+      ))}
     </>
   );
 }
@@ -79,10 +96,13 @@ function Axes() {
 }
 
 function SpaceView() {
+  const serverEntities = useContext(EntitiesServerContext);
+  const planets = serverEntities.entities.planets;
+
   return (
     <>
       <Axes />
-      <Sun />
+      <Planets planets={planets}/>
       <Galaxy />
     </>
   );

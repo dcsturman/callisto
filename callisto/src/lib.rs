@@ -128,6 +128,7 @@ pub async fn handle_request(
                 planet.position,
                 planet.color,
                 planet.primary,
+                planet.radius,
                 planet.mass,
             );
 

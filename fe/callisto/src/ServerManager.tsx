@@ -1,8 +1,15 @@
-import { Entity, EntityRefreshCallback, FlightPlan } from "./Contexts";
+import {
+  Entity,
+  EntityKind,
+  EntityRefreshCallback,
+  FlightPlan,
+  Ship,
+  Planet,
+  Missile,
+} from "./Contexts";
 
 const address = "localhost";
 const port = "3000";
-
 
 export function addEntity(entity: Entity, callBack: EntityRefreshCallback) {
   console.log("Adding entity: " + JSON.stringify(entity));
@@ -77,8 +84,8 @@ export function computeFlightPath(
   entity_name: string | null,
   end_pos: [number, number, number],
   end_vel: [number, number, number],
-  setCurrentPlan: (plan: FlightPlan | null) => void) {
-
+  setCurrentPlan: (plan: FlightPlan | null) => void
+) {
   if (entity_name == null) {
     setCurrentPlan(null);
     return;
@@ -97,16 +104,25 @@ export function computeFlightPath(
     mode: "cors",
     body: JSON.stringify(payload),
   })
-  .then((response) => response.json())
-  .then((plan) => setCurrentPlan(plan))
-  .catch((error) => console.error("Error computing flight path:", error))
+    .then((response) => response.json())
+    .then((plan) => setCurrentPlan(plan))
+    .catch((error) => console.error("Error computing flight path:", error));
 }
 
 export function getEntities(callback: EntityRefreshCallback) {
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {
-      callback(entities);
+      let ships = entities.filter(
+        (entity: Entity) => "Ship" in entity.kind
+      );
+      let missiles = entities.filter(
+        (entity: Entity) => "Missile" in entity.kind 
+      );
+      let planets = entities.filter(
+        (entity: Entity) => "Planet" in entity.kind
+      );
+      callback({ ships: ships, planets: planets, missiles: missiles });
     })
     .catch((error) => console.error("Error fetching entities:", error));
 }

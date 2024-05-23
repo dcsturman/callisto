@@ -41,6 +41,7 @@ pub struct AddPlanetMsg {
     pub color: String,
     #[serde_as(as = "Vec3asVec")]
     pub primary: Vec3,
+    pub radius: f64,
     pub mass: f64,
 }
 
@@ -92,57 +93,3 @@ impl serde_with::SerializeAs<Vec3> for Vec3asVec {
         Serialize::serialize(&v, serializer)
     }
 }
-
-/*
-pub fn serialize_vec<S>(v: &Vec3, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut state = serializer.serialize_seq(Some(4))?;
-    state.serialize_element(&v.x)?;
-    state.serialize_element(&v.y)?;
-    state.serialize_element(&v.z)?;
-    state.end()
-}
-
-pub fn deserialize_vec<'de, D>(deserializer: D) -> Result<Vec3, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    // define a visitor that deserializes
-    struct VecVisitor;
-
-    impl<'de> Visitor<'de> for VecVisitor {
-        type Value = Vec3;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("3 floats in a sequence")
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut v = Vec3::zero();
-            if let Some(x) = seq.next_element()? {
-                v.x = x;
-            } else {
-                return Err(serde::de::Error::custom("expected 3 floats in a sequence"));
-            }
-            if let Some(y) = seq.next_element()? {
-                v.y = y;
-            } else {
-                return Err(serde::de::Error::custom("expected 3 floats in a sequence"));
-            }
-            if let Some(z) = seq.next_element()? {
-                v.z = z;
-            } else {
-                return Err(serde::de::Error::custom("expected 3 floats in a sequence"));
-            }
-            Ok(v)
-        }
-    }
-
-    deserializer.deserialize_seq(VecVisitor)
-}
-*/

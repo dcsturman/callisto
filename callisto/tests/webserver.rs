@@ -153,7 +153,7 @@ async fn test_add_missile_planet_ship() {
         serde_json::from_str(r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
 
     let planet =
-        r#"{"name":"planet1","position":[0,0,0],"color":"red","primary":[0,0,0],"mass":100}"#;
+        r#"{"name":"planet1","position":[0,0,0],"color":"red","primary":[0,0,0],"radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_PLANET_PATH))
         .body(planet)
@@ -175,7 +175,7 @@ async fn test_add_missile_planet_ship() {
         serde_json::from_str(
         r#"[
             {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
-              "kind":{"Planet":{"color":"red","primary":[0.0,0.0,0.0],"mass":100.0}}},
+              "kind":{"Planet":{"color":"red","primary":[0.0,0.0,0.0],"radius":1.5e8,"mass":100.0}}},
             {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
             ]"#).unwrap());
 
@@ -202,7 +202,7 @@ async fn test_add_missile_planet_ship() {
         {"name":"missile1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
             "kind":{"Missile":{"target":"ship1","burns":3}}},
         {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
-            "kind":{"Planet":{"color":"red","primary":[0.0,0.0,0.0],"mass":100.0}}},
+            "kind":{"Planet":{"color":"red","primary":[0.0,0.0,0.0],"radius":1.5e8,"mass":100.0}}},
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
         ]"#).unwrap());
 }

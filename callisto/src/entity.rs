@@ -22,6 +22,7 @@ pub enum EntityKind {
         color: String,
         #[serde_as(as = "Vec3asVec")]
         primary: Vec3,
+        radius: f64,
         mass: f64,
     },
     Missile {
@@ -40,14 +41,16 @@ impl PartialEq for EntityKind {
                 EntityKind::Planet {
                     color: color1,
                     primary: primary1,
+                    radius: radius1,
                     mass: mass1,
                 },
                 EntityKind::Planet {
                     color: color2,
                     primary: primary2,
+                    radius: radius2,
                     mass: mass2,
                 },
-            ) => color1 == color2 && primary1 == primary2 && mass1 == mass2,
+            ) => color1 == color2 && primary1 == primary2 && mass1 == mass2 && radius1 == radius2,
             (
                 EntityKind::Missile {
                     target: target1,
@@ -95,6 +98,7 @@ impl Entity {
         position: Vec3,
         color: String,
         primary: Vec3,
+        radius: f64,
         mass: f64,
     ) -> Self {
         Entity {
@@ -104,7 +108,8 @@ impl Entity {
             acceleration: Vec3::zero(),
             kind: EntityKind::Planet {
                 color,
-                primary: primary,
+                primary,
+                radius,
                 mass,
             },
         }
@@ -165,6 +170,7 @@ impl Entity {
             EntityKind::Planet {
                 color: _,
                 primary,
+                radius: _,
                 mass: _,
             } => {
                 let old_velocity = self.velocity;
@@ -252,7 +258,7 @@ pub struct Entities(HashMap<String, Entity>);
 
 impl Entities {
     pub fn new() -> Self {
-        Entities(HashMap::new())
+        Entities (HashMap::new())
     }
 
     pub fn add_ship(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) {
@@ -266,9 +272,10 @@ impl Entities {
         position: Vec3,
         color: String,
         primary: Vec3,
+        radius: f64,
         mass: f64,
     ) {
-        let entity = Entity::new_planet(name, position, color, primary, mass);
+        let entity = Entity::new_planet(name, position, color, primary, radius, mass);
         self.add_entity(entity);
     }
 
@@ -302,17 +309,6 @@ impl Entities {
         }
     }
 
-    // I expect I'll need this at some point for iterations so allowing for now.
-    #[allow(dead_code)]
-    pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.0.values()
-    }
-
-    /* pub fn to_json(&self) -> Result<String, serde_json::Error> {
-            let guts = self.0.values().collect::<Vec<&Entity>>();
-            serde_json::to_string(&guts)
-        }
-    */
     pub fn update_all(&mut self) {
         for entity in self.0.values_mut() {
             entity.update();
@@ -433,6 +429,7 @@ mod tests {
             Vec3::zero(),
             String::from("blue"),
             Vec3::zero(),
+            15.371e8,
             6e24,
         );
 
@@ -479,6 +476,7 @@ mod tests {
             Vec3::new(EARTH_RADIUS, 2000000.0, 0.0),
             String::from("blue"),
             Vec3::zero(),
+            1.5e8,
             6e24,
         );
         entities.add_planet(
@@ -486,6 +484,7 @@ mod tests {
             Vec3::new(0.0, 5000000.0, EARTH_RADIUS),
             String::from("red"),
             Vec3::zero(),
+            1.5e8,
             3e23,
         );
         entities.add_planet(
@@ -497,6 +496,7 @@ mod tests {
             ),
             String::from("green"),
             Vec3::zero(),
+            1.5e8,
             1e26,
         );
 

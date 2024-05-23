@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, FlyControls } from "@react-three/drei";
+import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
 import { Ships, ShipInfoWindow, Route } from "./Ships";
 
-import { Entity, EntitiesServerProvider, FlightPlan } from "./Contexts";
+import {
+  Entity,
+  EntitiesServerProvider,
+  EntityList,
+  FlightPlan,
+} from "./Contexts";
 
 import Controls from "./Controls";
 import "./index.css";
@@ -17,12 +22,14 @@ import {
 } from "./ServerManager";
 
 function App() {
-  const [entities, setEntities] = useState<Entity[]>([]);
+  const [entities, setEntities] = useState<EntityList>({
+    ships: [],
+    planets: [],
+    missiles: [],
+  });
   const [shipToShow, setShipToShow] = useState<Entity | null>(null);
   const [computerShip, setComputerShip] = useState<Entity | null>(null);
   const [currentPlan, setCurrentPlan] = useState<FlightPlan | null>(null);
-
-  const keys = { LEFT: "keyA", UP: "keyW", RIGHT: "keyD", BOTTOM: "keyS" };
 
   useEffect(() => {
     getEntities(setEntities);
@@ -37,10 +44,10 @@ function App() {
   return (
     <div className="mainscreen-container">
       <>
-        <EntitiesServerProvider value={entities}>
+        <EntitiesServerProvider
+          value={{ entities: entities, handler: setEntities }}>
           <Controls
             nextRound={nextRound}
-            getEntities={(entities) => setEntities(entities)}
             addEntity={addEntity}
             setAcceleration={setAcceleration}
             computerShip={computerShip}
@@ -56,14 +63,14 @@ function App() {
               position: [-400, 0, 0],
             }}>
             {/*<OrbitControls enableZoom={true} keys={keys} <ambientLight color={0xffffff} intensity={0.1} />/>*/}
-            <FlyControls 
+            <FlyControls
               autoForward={false}
               dragToLook={true}
-              movementSpeed={30}
+              movementSpeed={50}
               rollSpeed={0.5}
               makeDefault
             />
-            
+
             <SpaceView />
             <Ships
               setShipToShow={setShipToShow}
