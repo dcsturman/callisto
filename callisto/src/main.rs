@@ -29,13 +29,6 @@ struct Args {
     scenario_file: Option<String>,
 }
 
-fn load_scenario(file_name: &str) -> Result<Entities, Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(file_name)?;
-    let reader = std::io::BufReader::new(file);
-    let entities: Entities = serde_json::from_reader(reader)?;
-    Ok(entities)
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     pretty_env_logger::init();
@@ -49,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         println!("Loading scenario file: {}", file_name);
-        load_scenario(&file_name)
+        Entities::load_from_file(&file_name)
             .expect(format!("Issue loading scenario file: {}", file_name).as_str())
     } else {
         Entities::new()

@@ -39,8 +39,7 @@ pub struct AddPlanetMsg {
     #[serde_as(as = "Vec3asVec")]
     pub position: Vec3,
     pub color: String,
-    #[serde_as(as = "Vec3asVec")]
-    pub primary: Vec3,
+    pub primary: Option<String>,
     pub radius: f64,
     pub mass: f64,
 }

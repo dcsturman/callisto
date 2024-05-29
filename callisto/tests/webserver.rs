@@ -12,9 +12,9 @@ extern crate callisto;
 extern crate log;
 extern crate pretty_env_logger;
 
-use cgmath::{ assert_ulps_eq, Zero};
+use cgmath::{assert_ulps_eq, Zero};
 
-use callisto::entity::{ Entities, Vec3 };
+use callisto::entity::{Entities, Vec3};
 use callisto::payloads::FlightPathMsg;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
@@ -152,8 +152,7 @@ async fn test_add_missile_planet_ship() {
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
 
-    let planet =
-        r#"{"name":"planet1","position":[0,0,0],"color":"red","primary":[0,0,0],"radius":1.5e8,"mass":100}"#;
+    let planet = r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_PLANET_PATH))
         .body(planet)
@@ -175,9 +174,21 @@ async fn test_add_missile_planet_ship() {
         serde_json::from_str(
         r#"[
             {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
-              "kind":{"Planet":{"color":"red","primary":[0.0,0.0,0.0],"radius":1.5e8,"mass":100.0}}},
+              "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
             {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
             ]"#).unwrap());
+
+    let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e8,"mass":100}"#;
+    let response = reqwest::Client::new()
+        .post(path(PORT, ADD_PLANET_PATH))
+        .body(planet)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(response, r#"{ "msg" : "Add planet action executed" }"#);
 
     let missile = r#"{"name":"missile1","position":[0,0,0],"target":"ship1","burns":3,"acceleration":[0,0,0]}"#;
     let response = reqwest::Client::new()
@@ -202,7 +213,9 @@ async fn test_add_missile_planet_ship() {
         {"name":"missile1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
             "kind":{"Missile":{"target":"ship1","burns":3}}},
         {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
-            "kind":{"Planet":{"color":"red","primary":[0.0,0.0,0.0],"radius":1.5e8,"mass":100.0}}},
+            "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
+        {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
+            "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}}},
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
         ]"#).unwrap());
 }
@@ -375,12 +388,40 @@ async fn test_compute_path() {
 
     assert_eq!(plan.path.len(), 3);
     assert_eq!(plan.path[0], Vec3::zero());
-    assert_ulps_eq!(plan.path[1], Vec3 { x: 29430000.0, y: 0.0, z: 0.0 });
-    assert_ulps_eq!(plan.path[2], Vec3 { x: 58860000.0, y: 0.0, z: 0.0 });
+    assert_ulps_eq!(
+        plan.path[1],
+        Vec3 {
+            x: 29430000.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
+    assert_ulps_eq!(
+        plan.path[2],
+        Vec3 {
+            x: 58860000.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
     assert_ulps_eq!(plan.end_velocity, Vec3::zero());
     assert_eq!(plan.accelerations.len(), 2);
-    assert_ulps_eq!(plan.accelerations[0].0, Vec3 { x: 6.0, y: 0.0, z: 0.0 });
+    assert_ulps_eq!(
+        plan.accelerations[0].0,
+        Vec3 {
+            x: 6.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
     assert_eq!(plan.accelerations[0].1, 1000);
-    assert_ulps_eq!(plan.accelerations[1].0, Vec3 { x: -6.0, y: 0.0, z: 0.0 });    
+    assert_ulps_eq!(
+        plan.accelerations[1].0,
+        Vec3 {
+            x: -6.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
     assert_eq!(plan.accelerations[0].1, 1000);
 }

@@ -143,7 +143,6 @@ pub async fn handle_request(
                 missile.position,
                 missile.target,
                 missile.burns,
-                Arc::downgrade(&entities),
             );
 
             Ok(build_ok_response("Add missile action executed"))
@@ -187,7 +186,7 @@ pub async fn handle_request(
             // Do this in a block to clean up the lock as soon as possible.
             let (start_pos, start_vel) = {
                 let entities = entities.lock().unwrap();
-                let entity = entities.get(&msg.entity_name).unwrap();
+                let entity = entities.get(&msg.entity_name).unwrap().read().unwrap();
                 (entity.get_position(), entity.get_velocity())
             };
 

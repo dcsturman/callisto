@@ -28,7 +28,9 @@ function Planet(args:{planet: Entity}) {
   const radiusUnits = radiusMeters * scale;
   const pos = scaleVector(args.planet.position, scale);
 
+  console.log(`(Spaceview.Planet) Planet ${args.planet.name} details ${JSON.stringify(args.planet)}`);
   console.log(`(Spaceview.Planet) Planet ${args.planet.name} pos ${pos}`);
+  console.log(`(Spaceview.Planet) Planet ${args.planet.name} radius ${radiusUnits}`);
 
   return (
     <>

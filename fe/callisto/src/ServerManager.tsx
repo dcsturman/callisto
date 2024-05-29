@@ -1,12 +1,4 @@
-import {
-  Entity,
-  EntityKind,
-  EntityRefreshCallback,
-  FlightPlan,
-  Ship,
-  Planet,
-  Missile,
-} from "./Contexts";
+import { Entity, EntityRefreshCallback, FlightPlan } from "./Contexts";
 
 const address = "localhost";
 const port = "3000";
@@ -113,11 +105,9 @@ export function getEntities(callback: EntityRefreshCallback) {
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {
-      let ships = entities.filter(
-        (entity: Entity) => "Ship" in entity.kind
-      );
+      let ships = entities.filter((entity: Entity) => "Ship" in entity.kind);
       let missiles = entities.filter(
-        (entity: Entity) => "Missile" in entity.kind 
+        (entity: Entity) => "Missile" in entity.kind
       );
       let planets = entities.filter(
         (entity: Entity) => "Planet" in entity.kind
