@@ -101,17 +101,42 @@ export function computeFlightPath(
     .catch((error) => console.error("Error computing flight path:", error));
 }
 
+export function launchMissile(
+  source: string,
+  target: string,
+  callback: EntityRefreshCallback
+) {
+  let payload = {
+    source: source,
+    target: target,
+  }
+
+  fetch(`http://${address}:${port}/launch_missile`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    mode: "cors",
+    body: JSON.stringify(payload)
+  })
+  .then((response) => response.json())
+  .then(() => getEntities(callback))
+  .catch((error) => console.error("Error launching missile", error));
+}
+
 export function getEntities(callback: EntityRefreshCallback) {
+  console.log("WOOOP WOOP WOOP");
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {
-      let ships = entities.filter((entity: Entity) => "Ship" in entity.kind);
+      let ships = entities.filter((entity: Entity) => "Ship" === entity.kind);
       let missiles = entities.filter(
-        (entity: Entity) => "Missile" in entity.kind
+        (entity: Entity) => entity.kind !== "Ship" && "Missile" in entity.kind
       );
       let planets = entities.filter(
-        (entity: Entity) => "Planet" in entity.kind
+        (entity: Entity) => entity.kind !== "Ship" && "Planet" in entity.kind
       );
+      console.log(`Received Entities:\nSHIPS = ${JSON.stringify(ships)}\nMISSILES = ${JSON.stringify(missiles)}\nPLANETS = ${JSON.stringify(planets)}`);
       callback({ ships: ships, planets: planets, missiles: missiles });
     })
     .catch((error) => console.error("Error fetching entities:", error));

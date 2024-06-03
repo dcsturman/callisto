@@ -6,6 +6,8 @@ import {
   FlightPlan
 } from "./Contexts";
 
+import { launchMissile } from "./ServerManager";
+
 const POS_SCALE = 1000.0;
 
 function AccelerationManager(args: {
@@ -56,7 +58,7 @@ function ShipComputer(args: {
     end_vel: [number, number, number]
   ) => void;
 }) {
-  const [target, setTarget] = useState({
+  const [navigationTarget, setNavigationTarget] = useState({
     p_x: "0",
     p_y: "0",
     p_z: "0",
@@ -64,27 +66,30 @@ function ShipComputer(args: {
     v_y: "0",
     v_z: "0",
   });
+  const serverEntities = useContext(EntitiesServerContext);
 
-  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-    setTarget({
-      ...target,
+  const [missileTarget, setMissileTarget] = useState("");
+
+  function handleNavigationChange(event: React.ChangeEvent<HTMLInputElement>) {
+    setNavigationTarget({
+      ...navigationTarget,
       [event.target.name]: event.target.value,
     });
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleNavigationSubmit(event: React.FormEvent<HTMLFormElement>) {
     // Perform computation logic here
     event.preventDefault();
 
     let end_pos: [number, number, number] = [
-      Number(target.p_x) * POS_SCALE,
-      Number(target.p_y) * POS_SCALE,
-      Number(target.p_z) * POS_SCALE,
+      Number(navigationTarget.p_x) * POS_SCALE,
+      Number(navigationTarget.p_y) * POS_SCALE,
+      Number(navigationTarget.p_z) * POS_SCALE,
     ];
     let end_vel: [number, number, number] = [
-      Number(target.v_x),
-      Number(target.v_y),
-      Number(target.v_z),
+      Number(navigationTarget.v_x),
+      Number(navigationTarget.v_y),
+      Number(navigationTarget.v_z),
     ];
     console.log(
       "Computing route for " + args.ship.name + " to " + end_pos + " " + end_vel
@@ -92,34 +97,40 @@ function ShipComputer(args: {
     args.getAndShowPlan(args.ship.name, end_pos, end_vel);
   }
 
+  function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    console.log("Launching missile for " + args.ship.name + " to " + missileTarget);
+    launchMissile(args.ship.name, missileTarget, serverEntities.handler)
+  }
+
   let title = "Computer " + args.ship.name;
 
   return (
     <div>
-      <form className="control-form" onSubmit={handleSubmit}>
-        <h2>{title}</h2>
+      <h2>{title}</h2>
+      <form className="control-form" onSubmit={handleNavigationSubmit}>
         <label className="control-label">Target Position</label>
         <div>
           <input
             className="control-input"
             name="p_x"
             type="text"
-            value={target.p_x}
-            onChange={handleChange}
+            value={navigationTarget.p_x}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="p_y"
             type="text"
-            value={target.p_y}
-            onChange={handleChange}
+            value={navigationTarget.p_y}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="p_z"
             type="text"
-            value={target.p_z}
-            onChange={handleChange}
+            value={navigationTarget.p_z}
+            onChange={handleNavigationChange}
           />
         </div>
         <label className="control-label">Target Velocity</label>
@@ -128,22 +139,22 @@ function ShipComputer(args: {
             className="control-input"
             name="v_x"
             type="text"
-            value={target.v_x}
-            onChange={handleChange}
+            value={navigationTarget.v_x}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="v_y"
             type="text"
-            value={target.v_y}
-            onChange={handleChange}
+            value={navigationTarget.v_y}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="v_z"
             type="text"
-            value={target.v_z}
-            onChange={handleChange}
+            value={navigationTarget.v_z}
+            onChange={handleNavigationChange}
           />
         </div>
         <input
@@ -151,6 +162,23 @@ function ShipComputer(args: {
           type="submit"
           value="Compute"
         />
+      </form>
+      <form className="control-form" onSubmit={handleLaunchSubmit}>
+        <label className="control-label">Launch Missile</label>
+        <div className="control-launch-div">
+          <input
+            className="control-name-input"
+            name="missile_target"
+            type="text"
+            value={missileTarget}
+            onChange={(event) => setMissileTarget(event.target.value)}
+          />
+          <input
+            className="control-launch-button blue-button"
+            type="submit"
+            value="Launch"
+          />
+        </div>
       </form>
       {args.currentPlan && (
         <div>

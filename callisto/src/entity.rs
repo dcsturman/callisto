@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
-use crate::computer::{compute_flight_path, FlightParams, FlightPlan};
+use crate::computer::{compute_target_path, FlightPlan, TargetParams};
 use crate::payloads::Vec3asVec;
 
-pub const DELTA_TIME: i32 = 1000;
+pub const DELTA_TIME: i64 = 1000;
 pub const G: f64 = 9.81;
 
 pub type Vec3 = Vector3<f64>;
@@ -39,6 +39,7 @@ pub enum EntityKind {
     },
 
     Missile {
+        source: String,
         target: String,
         // FIXME: This is dangerous.  Its not clear how to deal with a Missile without a target_ptr.
         #[serde(skip)]
@@ -71,9 +72,9 @@ impl Entity {
     pub fn new_ship(name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) -> Self {
         Entity {
             name,
-            position: position,
-            velocity: velocity,
-            acceleration: acceleration,
+            position,
+            velocity,
+            acceleration,
             kind: EntityKind::Ship,
         }
     }
@@ -90,7 +91,7 @@ impl Entity {
     ) -> Self {
         Entity {
             name,
-            position: position,
+            position,
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
             kind: EntityKind::Planet {
@@ -106,17 +107,20 @@ impl Entity {
 
     pub fn new_missile(
         name: String,
-        position: Vec3,
+        source: String,
         target: String,
         target_ptr: Arc<RwLock<Entity>>,
+        position: Vec3,
+        velocity: Vec3,
         burns: i32,
     ) -> Self {
         Entity {
             name,
-            position: position,
-            velocity: Vec3::zero(),
+            position,
+            velocity,
             acceleration: Vec3::zero(),
             kind: EntityKind::Missile {
+                source,
                 target,
                 target_ptr: Some(target_ptr),
                 burns,
@@ -149,17 +153,15 @@ impl Entity {
     }
 
     // Method to update the position of the entity based on its velocity and acceleration.
-    pub fn update(&mut self) {
+    pub fn update(&mut self) -> Option<UpdateAction> {
         match &mut self.kind {
             EntityKind::Ship => {
                 let old_velocity: Vec3 = self.velocity;
                 self.velocity += self.acceleration * G * DELTA_TIME as f64;
                 self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
+                None
             }
-            EntityKind::Planet {
-                primary_ptr,
-                ..
-            } => {
+            EntityKind::Planet { primary_ptr, .. } => {
                 // This is the Gravitational Constant, not the acceleration due to gravity which is defined as G and used
                 // more widely in this codebase.
                 const G_CONST: f64 = 6.673e-11;
@@ -167,8 +169,7 @@ impl Entity {
                 if let Some(primary) = primary_ptr {
                     let primary = primary.read().unwrap();
                     let primary_mass = if let EntityKind::Planet {
-                        mass: primary_mass,
-                        ..
+                        mass: primary_mass, ..
                     } = primary.kind
                     {
                         primary_mass
@@ -205,24 +206,24 @@ impl Entity {
                     self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64
                         + primary_velocity * DELTA_TIME as f64;
                 }
+                None
             }
             EntityKind::Missile {
-                target: _,
-                target_ptr,
-                burns,
+                target_ptr, burns, ..
             } => {
                 // Using unwrap() below as it is an error condition if for some reason the target_ptr isn't set.
                 let target = target_ptr.as_ref().unwrap().read().unwrap();
                 if *burns > 0 {
                     // Temporary until missiles have actual acceleration built in
-                    const MAX_ACCELERATION: f64 = 6.0;
+                    const MAX_ACCELERATION: f64 = 6.0*G;
+                    const IMPACT_DISTANCE: f64 = 2500000.0;
 
                     debug!(
                         "Computing path for missile {} targeting {}: End pos: {:?} End vel: {:?}",
                         self.name, target.name, target.position, target.velocity
                     );
 
-                    let params = FlightParams::new(
+                    let params = TargetParams::new(
                         self.position,
                         target.position,
                         self.velocity,
@@ -230,47 +231,64 @@ impl Entity {
                         MAX_ACCELERATION,
                     );
 
-                    debug!("Call computer with params: {:?}", params);
+                    debug!("Call targeting computer with params: {:?}", params);
 
-                    let plan: FlightPlan = compute_flight_path(&params);
+                    let plan: FlightPlan = compute_target_path(&params);
                     debug!("Computed path: {:?}", plan);
                     self.acceleration = plan.accelerations[0].0;
+                    let time = plan.accelerations[0].1.min(DELTA_TIME);
+
                     let old_velocity: Vec3 = self.velocity;
-                    self.velocity += self.acceleration * G * DELTA_TIME as f64;
-                    self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
+                    self.velocity += self.acceleration * G * time as f64;
+                    self.position += (old_velocity + self.velocity) / 2.0 * time as f64;
                     *burns -= 1;
+
+                    // See if we impacted.
+                    if (self.position - target.position).magnitude() < IMPACT_DISTANCE {
+                        debug!("Missile {} impacted target {}", self.name, target.name);
+                        Some(UpdateAction::ShipImpact { ship: target.name.clone(), missile: self.name.clone() })
+                    } else { None }
                 } else {
                     debug!("Missile {} out of propellant", self.name);
-                };
-                if *burns <= 0 {
-                    // Maybe someday do something here.
-                    //entities.remove(&self.name);
+                    Some(UpdateAction::ExhaustedMissile{ name: self.name.clone()})
                 }
             }
         }
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum UpdateAction {
+    ShipImpact {
+        ship: String,
+        missile: String,
+    },
+    ExhaustedMissile {
+        name: String
+    }
+}
+
 #[serde_as]
-#[derive(Debug)]
-pub struct Entities(HashMap<String, Arc<RwLock<Entity>>>);
+#[derive(Debug, Default)]
+pub struct Entities {
+    entities: HashMap<String, Arc<RwLock<Entity>>>,
+    missile_cnt: u16,
+}
 
 impl PartialEq for Entities {
     fn eq(&self, other: &Self) -> bool {
-        self.0.len() == other.0.len()
-            && self.0.keys().all(|k| other.0.contains_key(k))
-            && self
-                .0
-                .keys()
-                .all(|k| self.0[k].read().unwrap().eq(&other.0[k].read().unwrap()))
+        self.entities.len() == other.entities.len()
+            && self.entities.keys().all(|k| other.entities.contains_key(k))
+            && self.entities.keys().all(|k| {
+                self.entities[k]
+                    .read()
+                    .unwrap()
+                    .eq(&other.entities[k].read().unwrap())
+            })
     }
 }
 
 impl Entities {
-    pub fn new() -> Self {
-        Entities(HashMap::new())
-    }
-
     pub fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let file = std::fs::File::open(file_name)?;
         let reader = std::io::BufReader::new(file);
@@ -279,13 +297,13 @@ impl Entities {
 
         entities.fixup_pointers();
 
-        for entity in entities.0.values() {
+        for entity in entities.entities.values() {
             debug!("Loaded entity {:?}", entity.read().unwrap());
         }
-        assert!(entities.validate(),"Scenario file failed validation");
+        assert!(entities.validate(), "Scenario file failed validation");
         Ok(entities)
     }
-    
+
     pub fn add_ship(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) {
         let entity = Entity::new_ship(name, position, velocity, acceleration);
         self.add_entity(entity);
@@ -311,20 +329,15 @@ impl Entities {
             // This is the case where this is a primary as noted by the fact primary (String name of primary) is not None
 
             // Look up the primary.  We need a pointer to this entity and then look into its dependency value.
-            let entity = self.get(&primary_name).expect(
-                format!(
+            let entity = self.get(primary_name).unwrap_or_else(|| {
+                panic!(
                     "Primary planet {} not found for planet {}.",
                     primary_name, name
                 )
-                .as_str(),
-            );
+            });
 
             // Go get the dependency value.  At this point if this is a Planet its an error (cannot be a primary).
-            if let EntityKind::Planet {
-                dependency,
-                ..
-            } = &entity.read().unwrap().kind
-            {
+            if let EntityKind::Planet { dependency, .. } = &entity.read().unwrap().kind {
                 (Some(entity.clone()), dependency + 1)
             } else {
                 unreachable!();
@@ -353,30 +366,49 @@ impl Entities {
         self.add_entity(entity);
     }
 
-    pub fn add_missile(&mut self, name: String, position: Vec3, target: String, burns: i32) {
+    pub fn launch_missile(&mut self, source: String, target: String) {
+
+        const DEFAULT_BURN: i32 = 2;
+
+        // Could use a random number generator here for the name but that makes tests flakey (random)
+        // So this counter used to distinguish missiles between the same source and target
+        let id = self.missile_cnt;
+        self.missile_cnt += 1;
+        let name = format!("{}::{}::{:X}", source, target, id);
+        let source_ptr = self
+            .get(&source)
+            .unwrap_or_else(|| panic!("Missile source {} not found for missile {}.", source, name))
+            .clone();
+
+        let source_entity = source_ptr.read().unwrap();
+
+        let position = source_entity.position;
+        let velocity = source_entity.velocity;
+
         let target_ptr = self
             .get(&target)
-            .expect(format!("Target {} not found for missile {}.", target, name).as_str())
+            .unwrap_or_else(|| panic!("Target {} not found for missile {}.", target, name))
             .clone();
-        let entity = Entity::new_missile(name, position, target, target_ptr, burns);
+        let entity =
+            Entity::new_missile(name, source, target, target_ptr, position, velocity, DEFAULT_BURN);
         self.add_entity(entity);
     }
 
     pub fn add_entity(&mut self, entity: Entity) {
-        self.0
+        self.entities
             .insert(entity.name.clone(), Arc::new(RwLock::new(entity)));
     }
 
     pub fn remove(&mut self, name: &str) {
-        self.0.remove(name);
+        self.entities.remove(name);
     }
 
     pub fn get(&self, name: &str) -> Option<&Arc<RwLock<Entity>>> {
-        self.0.get(name)
+        self.entities.get(name)
     }
 
     pub fn set_acceleration(&mut self, name: &str, acceleration: Vec3) {
-        if let Some(entity) = self.0.get_mut(name) {
+        if let Some(entity) = self.entities.get_mut(name) {
             entity.write().unwrap().set_acceleration(acceleration);
         } else {
             warn!(
@@ -386,15 +418,11 @@ impl Entities {
         }
     }
 
-    pub fn update_all(&mut self) {
-        let (mut planets, other): (Vec<_>, Vec<_>) = self.0.values().partition(|e| {
-            let ent = e.read().unwrap();
-            if let EntityKind::Planet { .. } = ent.kind {
-                true
-            } else {
-                false
-            }
-        });
+    pub fn update_all(&mut self) -> Vec<UpdateAction> {
+        let (mut planets, other): (Vec<_>, Vec<_>) = self
+            .entities
+            .values()
+            .partition(|e| matches!(e.read().unwrap().kind, EntityKind::Planet { .. }));
 
         planets.sort_by(|a, b| {
             let a_ent = a.read().unwrap();
@@ -421,13 +449,25 @@ impl Entities {
             planet.write().unwrap().update();
         }
 
-        for entity in other.iter() {
-            entity.write().unwrap().update();
+        let updates: Vec<_> = other.into_iter().filter_map(|entity| entity.write().unwrap().update()).collect();
+        for update in updates.iter() {
+            match update {
+                UpdateAction::ExhaustedMissile { name } => {
+                    debug!("Removing missile {}", name);
+                    self.remove(&name);
+                },
+                UpdateAction::ShipImpact { ship, missile } => {
+                    debug!("Missile impact on {} by missile {}.", ship, missile);
+                    self.remove(&ship);
+                    self.remove(&missile);
+                }
+            }
         }
+        updates
     }
 
     pub fn validate(&self) -> bool {
-        for entity in self.0.values() {
+        for entity in self.entities.values() {
             let ent = entity.read().unwrap();
 
             // Match any pattern that is invalid and return false.
@@ -473,7 +513,7 @@ impl Entities {
     }
 
     pub fn fixup_pointers(&mut self) {
-        for entity in self.0.values() {
+        for entity in self.entities.values() {
             let mut ent = entity.write().unwrap();
             let name = ent.name.clone();
             match &mut ent.kind {
@@ -482,13 +522,12 @@ impl Entities {
                     primary_ptr,
                     ..
                 } => {
-                    let looked_up = self.get(&primary).expect(
-                        format!(
+                    let looked_up = self.get(primary).unwrap_or_else(|| {
+                        panic!(
                             "Unable to find entity named {} as primary for {}",
                             primary, &name
                         )
-                        .as_str(),
-                    );
+                    });
                     primary_ptr.replace(looked_up.clone());
                 }
                 EntityKind::Missile {
@@ -496,13 +535,12 @@ impl Entities {
                     target_ptr,
                     ..
                 } => {
-                    let looked_up = self.get(&target_name).expect(
-                        format!(
+                    let looked_up = self.get(target_name).unwrap_or_else(|| {
+                        panic!(
                             "Unable to find entity named {} as target for {}",
                             target_name, &name
                         )
-                        .as_str(),
-                    );
+                    });
                     target_ptr.replace(looked_up.clone());
                 }
                 _ => {}
@@ -518,11 +556,11 @@ impl Serialize for Entities {
     {
         //TODO: This makes a copy of every entity before serializing.  Not sure if there is a way to avoid it.
         let guts = self
-            .0
+            .entities
             .values()
             .map(|e| e.read().unwrap().clone())
             .collect::<Vec<Entity>>();
-        guts.serialize(serializer) // This is a bit of a hack, but it works.
+        guts.serialize(serializer)
     }
 }
 
@@ -532,11 +570,13 @@ impl<'de> Deserialize<'de> for Entities {
         D: Deserializer<'de>,
     {
         let guts = Vec::<Entity>::deserialize(deserializer)?;
-        Ok(Entities(
-            guts.into_iter()
+        Ok(Entities {
+            entities: guts
+                .into_iter()
                 .map(|e| (e.name.clone(), Arc::new(RwLock::new(e))))
                 .collect(),
-        ))
+            missile_cnt: 0,
+        })
     }
 }
 
@@ -547,7 +587,7 @@ mod tests {
 
     #[test]
     fn test_add_entity() {
-        let mut entities = Entities::new();
+        let mut entities = Entities::default();
 
         entities.add_ship(
             String::from("Ship1"),
@@ -577,7 +617,7 @@ mod tests {
     fn test_update_all() {
         let _ = pretty_env_logger::try_init();
 
-        let mut entities = Entities::new();
+        let mut entities = Entities::default();
 
         // Create entities with random positions and names
         entities.add_ship(
@@ -634,7 +674,7 @@ mod tests {
     fn test_sun_update() {
         let _ = pretty_env_logger::try_init();
 
-        let mut entities = Entities::new();
+        let mut entities = Entities::default();
 
         // Create some planets and see if they move.
         entities.add_planet(
@@ -684,7 +724,7 @@ mod tests {
             );
         }
 
-        let mut entities = Entities::new();
+        let mut entities = Entities::default();
 
         const EARTH_RADIUS: f64 = 151.25e9;
         // Create some planets and see if they move.
@@ -805,5 +845,5 @@ mod tests {
 
         let entities = Entities::load_from_file("./tests/test-scenario.json").unwrap();
         assert!(entities.validate(), "Scenario file failed validation");
-  }
+    }
 }

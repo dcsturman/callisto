@@ -9,7 +9,6 @@ use hyper_util::rt::TokioIo;
 
 use clap::Parser;
 use log::info;
-use pretty_env_logger;
 
 extern crate callisto;
 
@@ -43,9 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         println!("Loading scenario file: {}", file_name);
         Entities::load_from_file(&file_name)
-            .expect(format!("Issue loading scenario file: {}", file_name).as_str())
+            .unwrap_or_else(|e| panic!("Issue loading scenario file {}: {}", file_name, e))
     } else {
-        Entities::new()
+        Entities::default()
     }));
 
     info!(

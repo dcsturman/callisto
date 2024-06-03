@@ -3,6 +3,7 @@
  */
 
 use super::computer::FlightPlan;
+use super::entity::UpdateAction;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::serde_as;
 
@@ -22,14 +23,9 @@ pub struct AddShipMsg {
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct AddMissileMsg {
-    pub name: String,
+pub struct LaunchMissileMsg {
+    pub source: String,
     pub target: String,
-    #[serde_as(as = "Vec3asVec")]
-    pub position: Vec3,
-    #[serde_as(as = "Vec3asVec")]
-    pub acceleration: Vec3,
-    pub burns: i32,
 }
 
 #[serde_as]
@@ -64,12 +60,14 @@ pub struct ComputePathMsg {
 
 pub type FlightPathMsg = FlightPlan;
 
+pub type UpdateActionsMsg = Vec<UpdateAction>;
+
 // We don't currently need this explicit type to document the response to a ListEntities (GET) request
 // So including here as a comment for completeness.
 // pub type ListEntitiesMsg = Entities;
 
 /**
- * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a [f64;3] rather than as a struct
+ * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
  */
 pub struct Vec3asVec;

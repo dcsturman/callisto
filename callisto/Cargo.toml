@@ -18,6 +18,7 @@ log = "0.4.21"
 gomez = "0.5.0"
 serde_with = { version = "3.8.1", features = ["json"] }
 clap = { version = "4.5.4", features = ["derive"] }
+rand = "0.8.5"
 
 [dev-dependencies]
 mockstream = "0.0.3"

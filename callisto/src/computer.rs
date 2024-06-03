@@ -1,16 +1,16 @@
-use serde::{ Serialize, Deserialize };
 use crate::entity::{Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
-use serde_with::serde_as;
-use cgmath::InnerSpace;
+use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;
 use gomez::{Domain, Problem, SolverDriver, System};
 use na::{Dyn, IsContiguous};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
-// Had to implement this as serde_as could not handle a tuple 
+// Had to implement this as serde_as could not handle a tuple
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct AccelPair(#[serde_as(as="Vec3asVec")]pub Vec3, pub i64);
+pub struct AccelPair(#[serde_as(as = "Vec3asVec")] pub Vec3, pub i64);
 
 impl From<(Vec3, i64)> for AccelPair {
     fn from(tuple: (Vec3, i64)) -> Self {
@@ -21,9 +21,9 @@ impl From<(Vec3, i64)> for AccelPair {
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FlightPlan {
-    #[serde_as(as="Vec<Vec3asVec>")]
+    #[serde_as(as = "Vec<Vec3asVec>")]
     pub path: Vec<Vec3>,
-    #[serde_as(as="Vec3asVec")]
+    #[serde_as(as = "Vec3asVec")]
     pub end_velocity: Vec3,
     pub accelerations: Vec<AccelPair>,
 }
@@ -110,6 +110,68 @@ impl System for FlightParams {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct TargetParams {
+    pub start_pos: Vec3,
+    pub end_pos: Vec3,
+    pub start_vel: Vec3,
+    pub target_vel: Vec3,
+    pub max_acceleration: f64,
+}
+
+impl TargetParams {
+    pub fn new(
+        start_pos: Vec3,
+        end_pos: Vec3,
+        start_vel: Vec3,
+        target_vel: Vec3,
+        max_acceleration: f64,
+    ) -> Self {
+        TargetParams {
+            start_pos,
+            end_pos,
+            start_vel,
+            target_vel,
+            max_acceleration,
+        }
+    }
+}
+
+impl Problem for TargetParams {
+    type Field = f64;
+    fn domain(&self) -> Domain<Self::Field> {
+        Domain::unconstrained(4)
+    }
+}
+
+impl System for TargetParams {
+    fn eval<Sx, Srx>(
+        &self,
+        x: &na::Vector<Self::Field, Dyn, Sx>,
+        rx: &mut na::Vector<Self::Field, Dyn, Srx>,
+    ) where
+        Sx: na::storage::Storage<Self::Field, Dyn> + IsContiguous,
+        Srx: na::storage::StorageMut<Self::Field, Dyn>,
+    {
+        let a: Vec3 = Vec3 {
+            x: x[0],
+            y: x[1],
+            z: x[2],
+        };
+        let t = x[3];
+
+        debug!("WOO WOO WOO WOO WOO");
+        let pos_eqs = a * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos
+            - self.end_pos;
+        let a_eq = a.magnitude() - self.max_acceleration;
+
+        rx[0] = pos_eqs[0];
+        rx[1] = pos_eqs[1];
+        rx[2] = pos_eqs[2];
+        rx[3] = a_eq;
+    }
+}
+
 pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
     let delta = params.end_pos - params.start_pos;
     let distance = delta.magnitude();
@@ -182,11 +244,86 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
         }
     }
 
-    return FlightPlan {
+    FlightPlan {
         path,
         end_velocity: vel,
-        accelerations: vec![(a_1 / G, t_1.round() as i64).into(), (a_2 / G, t_2.round() as i64).into()],
+        accelerations: vec![
+            (a_1 / G, t_1.round() as i64).into(),
+            (a_2 / G, t_2.round() as i64).into(),
+        ],
+    }
+}
+
+pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
+    let delta = params.end_pos - params.start_pos;
+    let distance = delta.magnitude();
+
+    let guess_a = delta / distance * params.max_acceleration;
+    let guess_t = (distance / params.max_acceleration).sqrt();
+
+    let array_i: [f64; 3] = guess_a.into();
+    let mut initial = Vec::<f64>::from(array_i);
+    initial.push(guess_t);
+
+    // Our first attempt is if this target can be reached in one round (DELTA_TIME).  In this case,
+    // we ignore target velocity.
+    let mut first_attempt = params.clone();
+    first_attempt.target_vel = Vec3::zero();
+
+    debug!("(compute_target_path) Params is {:?}", first_attempt);
+    debug!("(compute_target_path) Initial is {:?}", initial);
+
+    let mut solver = SolverDriver::builder(&first_attempt)
+        .with_initial(initial)
+        .build();
+
+    debug!("ONE");
+    let (mut x, _norm) = solver
+        .find(|state| state.norm() <= 1e-8 || state.iter() >= 100)
+        .expect("Unable to solve target path!");
+    debug!("TWO");
+    let answer = if x[3] > DELTA_TIME as f64 {
+        let mut initial = Vec::<f64>::from(array_i);
+        initial.push(guess_t);
+        // We need to compute again since we can't reach the target in one round.
+        solver = SolverDriver::builder(params).with_initial(initial).build();
+        (x, _) = solver
+            .find(|state| state.norm() <= 1e-8 || state.iter() >= 100)
+            .expect("Unable to solve target path!");
+        x
+    } else {
+        x
     };
+
+    debug!("THREE");
+    let mut path = Vec::new();
+    let mut vel = params.start_vel;
+    let mut pos = params.start_pos;
+    let a: Vec3 = Vec3::from(
+        (<&[f64] as TryInto<[f64; 3]>>::try_into(&x[0..3]))
+            .expect("Unable to convert to fixed array"),
+    );
+
+    path.push(pos);
+    let mut time = 0.0;
+    let mut delta: f64 = DELTA_TIME as f64;
+    while time < answer[3] {
+        if time + delta > answer[3] {
+            delta = x[3] - time;
+        }
+        let new_pos = pos + vel * delta + guess_a * delta * delta / 2.0;
+        let new_vel = vel + guess_a * delta;
+        path.push(new_pos);
+        pos = new_pos;
+        vel = new_vel;
+        time += delta;
+    }
+
+    FlightPlan {
+        path,
+        end_velocity: vel,
+        accelerations: vec![(a / G, x[3].round() as i64).into()],
+    }
 }
 
 #[cfg(test)]

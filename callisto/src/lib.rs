@@ -18,7 +18,7 @@ use serde_json::from_slice;
 use computer::{compute_flight_path, FlightParams};
 use entity::{ Entities, G };
 use payloads::{
-    AddMissileMsg, AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, RemoveEntityMsg,
+    LaunchMissileMsg, AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, RemoveEntityMsg,
     SetAccelerationMsg,
 };
 
@@ -134,18 +134,16 @@ pub async fn handle_request(
 
             Ok(build_ok_response("Add planet action executed"))
         }
-        (&Method::POST, "/add_missile") => {
-            let missile = deserialize_body_or_respond!(req, AddMissileMsg);
+        (&Method::POST, "/launch_missile") => {
+            let missile = deserialize_body_or_respond!(req, LaunchMissileMsg);
 
             // Add the missile to the server
-            entities.lock().unwrap().add_missile(
-                missile.name,
-                missile.position,
+            entities.lock().unwrap().launch_missile(
+                missile.source,
                 missile.target,
-                missile.burns,
             );
 
-            Ok(build_ok_response("Add missile action executed"))
+            Ok(build_ok_response("Launch missile action executed"))
         }
         (&Method::POST, "/remove") => {
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
@@ -169,8 +167,23 @@ pub async fn handle_request(
         }
         (&Method::POST, "/update") => {
             info!("Received and processing update request.");
-            entities.lock().unwrap().update_all();
-            Ok(build_ok_response("Update action executed"))
+            let updates = entities.lock().unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e)).update_all();
+
+            let json = match serde_json::to_string(&updates) {
+                Ok(json) => json,
+                Err(_) => {
+                    return Ok(Response::new(
+                        "Error converting update actions to JSON".as_bytes().into(),
+                    ));
+                }
+            };
+
+            let resp = Response::builder()
+            .status(StatusCode::OK)
+            .header("Access-Control-Allow-Origin", "*")
+            .body(Bytes::copy_from_slice(json.as_bytes()).into())
+            .unwrap();
+            Ok(resp)
         }
 
         (&Method::POST, "/compute_path") => {

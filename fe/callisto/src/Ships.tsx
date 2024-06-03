@@ -47,7 +47,7 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
         <mesh position={[0, 0, 0]} onPointerOver={()=> args.setShipToShow(args.ship) }
         onPointerLeave={()=> args.setShipToShow(null)
         } onClick={handleShipClick}>
-          <sphereGeometry args={[0.05]} />
+          <sphereGeometry args={[0.1]} />
           <meshBasicMaterial color={[3, 3, 8.0]} />
         </mesh>
         <Line
@@ -81,6 +81,61 @@ export function Ships(args: { setShipToShow: (ship: Entity | null) => void; setC
       ))}
     </>
   );
+}
+
+export function Missile(args: { missile: Entity; index: number, setShipToShow: (ship: Entity | null) => void }) {
+  const labelRef = useRef<Group>(null);
+
+  console.log("Missile: " + JSON.stringify(args.missile));
+  
+  return (
+    <>
+      {
+        <Bloom
+          mipmapBlur
+          luminanceThreshold={1}
+          luminanceSmoothing={1}
+          intensity={5.0}
+        />
+      }
+      <group ref={labelRef} position={scaleVector(args.missile.position, scale) as Vector3}>
+        <mesh position={[0, 0, 0]} onPointerOver={()=> args.setShipToShow(args.missile) }
+        onPointerLeave={()=> args.setShipToShow(null)
+        } >
+          <sphereGeometry args={[0.05]} />
+          <meshBasicMaterial color={[8.0, 0, 0]} />
+        </mesh>
+        <Line
+          start={[0, 0, 0]}
+          end={scaleVector(args.missile.velocity, scale * timeUnit)}
+          color="grey"
+        />
+        <Line
+          start={scaleVector(args.missile.velocity, scale * timeUnit)}
+          end={addVector(
+            scaleVector(args.missile.acceleration, scale * timeUnit * timeUnit),
+            scaleVector(args.missile.velocity, scale * timeUnit)
+          )}
+          color="green"
+        />
+        <Text color="grey" fontSize={0.2} position={[0, -0.1, 0]} >
+          {args.missile.name}
+        </Text>
+      </group>
+    </>
+  );
+}
+
+export function Missiles(args: { setShipToShow: (ship: Entity | null) => void }) {
+  const serverEntities = useContext(EntitiesServerContext);
+
+  return (
+    <>
+      {serverEntities.entities.missiles.map((missile, index) => (
+        <Missile key={missile.name} missile={missile} index={index} setShipToShow={args.setShipToShow} />
+      ))}
+    </>
+  )
 }
 
 export function Route(args: { plan: FlightPlan }) {

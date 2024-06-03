@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
-import { Ships, ShipInfoWindow, Route } from "./Ships";
+import { Ships, ShipInfoWindow, Missiles, Route } from "./Ships";
 
 import {
   Entity,
@@ -76,6 +76,7 @@ function App() {
               setShipToShow={setShipToShow}
               setComputerShip={setComputerShip}
             />
+            <Missiles setShipToShow={setShipToShow}/>
             {currentPlan && <Route plan={currentPlan} />}
           </Canvas>
         </EntitiesServerProvider>

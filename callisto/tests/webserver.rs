@@ -24,7 +24,7 @@ const UPDATE_ENTITIES_PATH: &str = "update";
 const COMPUTE_PATH_PATH: &str = "compute_path";
 const ADD_SHIP_PATH: &str = "add_ship";
 const ADD_PLANET_PATH: &str = "add_planet";
-const ADD_MISSILE_PATH: &str = "add_missile";
+const LAUNCH_MISSILE_PATH: &str = "launch_missile";
 const REMOVE_ENTITY_PATH: &str = "remove";
 const SET_ACCELERATION_PATH: &str = "set_accel";
 const INVALID_PATH: &str = "unknown";
@@ -44,7 +44,7 @@ async fn spawn_test_server(port: u16) -> Child {
 
     let _ = pretty_env_logger::try_init();
 
-    sleep(Duration::from_millis(2000)).await;
+    sleep(Duration::from_millis(500)).await;
 
     handle
 }
@@ -130,7 +130,8 @@ async fn test_add_missile_planet_ship() {
     const PORT: u16 = 3013;
     let _server = spawn_test_server(PORT).await;
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+    let ship =
+        r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -140,8 +141,20 @@ async fn test_add_missile_planet_ship() {
         .text()
         .await
         .unwrap();
-
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+
+    let ship = r#"{"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0], "acceleration":[0,0,0]}"#;
+    let response = reqwest::Client::new()
+        .post(path(PORT, ADD_SHIP_PATH))
+        .body(ship)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
         .unwrap()
@@ -150,7 +163,8 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
 
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
+        serde_json::from_str(r#"[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"},
+        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
 
     let planet = r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -175,8 +189,8 @@ async fn test_add_missile_planet_ship() {
         r#"[
             {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
               "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
-            {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
-            ]"#).unwrap());
+            {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"},
+            {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
 
     let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -190,9 +204,9 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add planet action executed" }"#);
 
-    let missile = r#"{"name":"missile1","position":[0,0,0],"target":"ship1","burns":3,"acceleration":[0,0,0]}"#;
+    let missile = r#"{"source":"ship1","target":"ship2","burns":3}"#;
     let response = reqwest::Client::new()
-        .post(path(PORT, ADD_MISSILE_PATH))
+        .post(path(PORT, LAUNCH_MISSILE_PATH))
         .body(missile)
         .send()
         .await
@@ -200,7 +214,7 @@ async fn test_add_missile_planet_ship() {
         .text()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add missile action executed" }"#);
+    assert_eq!(response, r#"{ "msg" : "Launch missile action executed" }"#);
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -210,14 +224,14 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(r#"[
-        {"name":"missile1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
-            "kind":{"Missile":{"target":"ship1","burns":3}}},
+        {"name":"ship1::ship2::0","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
+            "kind":{"Missile":{"source":"ship1","target":"ship2","burns":3}}},
         {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
             "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
         {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
             "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}}},
-        {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
-        ]"#).unwrap());
+        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"},
+        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
 }
 
 /*
@@ -249,7 +263,7 @@ async fn test_update_ship() {
         .text()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Update action executed" }"#);
+    assert_eq!(response, r#"[]"#);
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -260,6 +274,76 @@ async fn test_update_ship() {
 
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(r#"[{"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
+}
+
+/*
+ * Test to create two ships, launch a missile, and advance the round and see the missile move.
+ *
+ */
+#[tokio::test]
+async fn test_update_missile() {
+    const PORT: u16 = 3018;
+    let _server = spawn_test_server(PORT).await;
+
+    let ship =
+        r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0]}"#;
+    let response = reqwest::Client::new()
+        .post(path(PORT, ADD_SHIP_PATH))
+        .body(ship)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+
+    let ship2 =
+        r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+    let response = reqwest::Client::new()
+        .post(path(PORT, ADD_SHIP_PATH))
+        .body(ship2)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+
+    let missile = r#"{"source":"ship1","target":"ship2"}"#;
+    let response = reqwest::Client::new()
+        .post(path(PORT, LAUNCH_MISSILE_PATH))
+        .body(missile)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(response, r#"{ "msg" : "Launch missile action executed" }"#);
+
+    let response = reqwest::Client::new()
+        .post(path(PORT, UPDATE_ENTITIES_PATH))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(response, r#"[{"ShipImpact":{"ship":"ship2","missile":"ship1::ship2::0"}}]"#);
+
+    let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
+        serde_json::from_str(r#"[
+            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
+            ]"#).unwrap());
 }
 
 /*
