@@ -68,8 +68,6 @@ function ShipComputer(args: {
   });
   const serverEntities = useContext(EntitiesServerContext);
 
-  const [missileTarget, setMissileTarget] = useState("");
-
   function handleNavigationChange(event: React.ChangeEvent<HTMLInputElement>) {
     setNavigationTarget({
       ...navigationTarget,
