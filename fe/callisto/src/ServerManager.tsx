@@ -1,4 +1,5 @@
 import { Entity, EntityRefreshCallback, FlightPlan } from "./Contexts";
+import { Effect } from "./Effects";
 
 const address = "localhost";
 const port = "3000";
@@ -59,7 +60,7 @@ export function setAcceleration(
     );
 }
 
-export function nextRound(callBack: EntityRefreshCallback) {
+export function nextRound(setEvents: (events: Effect[] | null) => void, callBack: EntityRefreshCallback) {
   fetch(`http://${address}:${port}/update`, {
     method: "POST",
     headers: {
@@ -68,6 +69,7 @@ export function nextRound(callBack: EntityRefreshCallback) {
     mode: "cors",
   })
     .then((response) => response.json())
+    .then((events) => setEvents(events))
     .then(() => getEntities(callBack))
     .catch((error) => console.error("Error adding entity:", error));
 }
@@ -125,7 +127,6 @@ export function launchMissile(
 }
 
 export function getEntities(callback: EntityRefreshCallback) {
-  console.log("WOOOP WOOP WOOP");
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {

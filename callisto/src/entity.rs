@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
 use crate::computer::{compute_target_path, FlightPlan, TargetParams};
-use crate::payloads::Vec3asVec;
+use crate::payloads::{ Vec3asVec, EffectMsg, SHIP_IMPACT, EXHAUSTED_MISSILE } ;
 
 pub const DELTA_TIME: i64 = 1000;
 pub const G: f64 = 9.81;
@@ -418,7 +418,7 @@ impl Entities {
         }
     }
 
-    pub fn update_all(&mut self) -> Vec<UpdateAction> {
+    pub fn update_all(&mut self) -> Vec<EffectMsg> {
         let (mut planets, other): (Vec<_>, Vec<_>) = self
             .entities
             .values()
@@ -450,20 +450,29 @@ impl Entities {
         }
 
         let updates: Vec<_> = other.into_iter().filter_map(|entity| entity.write().unwrap().update()).collect();
+        let mut effects = Vec::<EffectMsg>::new();
         for update in updates.iter() {
             match update {
                 UpdateAction::ExhaustedMissile { name } => {
                     debug!("Removing missile {}", name);
+                    effects.push(EffectMsg {
+                        position: self.get(name).unwrap().read().unwrap().get_position(),
+                        kind: EXHAUSTED_MISSILE.to_string(),
+                    });
                     self.remove(&name);
                 },
                 UpdateAction::ShipImpact { ship, missile } => {
                     debug!("Missile impact on {} by missile {}.", ship, missile);
+                    effects.push(EffectMsg {
+                        position: self.get(ship).unwrap().read().unwrap().get_position(),
+                        kind: SHIP_IMPACT.to_string(),
+                    });
                     self.remove(&ship);
                     self.remove(&missile);
                 }
             }
         }
-        updates
+        effects
     }
 
     pub fn validate(&self) -> bool {

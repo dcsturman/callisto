@@ -3,7 +3,6 @@
  */
 
 use super::computer::FlightPlan;
-use super::entity::UpdateAction;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::serde_as;
 
@@ -60,7 +59,17 @@ pub struct ComputePathMsg {
 
 pub type FlightPathMsg = FlightPlan;
 
-pub type UpdateActionsMsg = Vec<UpdateAction>;
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EffectMsg {
+    #[serde_as(as = "Vec3asVec")]
+    pub position: Vec3,
+    pub kind: String,
+}
+
+// Constants for EffectMsg.kind
+pub const SHIP_IMPACT: &str = "ShipImpact";
+pub const EXHAUSTED_MISSILE: &str = "ExhaustedMissile";
 
 // We don't currently need this explicit type to document the response to a ListEntities (GET) request
 // So including here as a comment for completeness.

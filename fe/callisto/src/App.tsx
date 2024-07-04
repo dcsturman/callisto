@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
 import { Ships, ShipInfoWindow, Missiles, Route } from "./Ships";
+import { Effect, Effects } from "./Effects";
 
 import {
   Entity,
@@ -30,6 +31,7 @@ function App() {
   const [shipToShow, setShipToShow] = useState<Entity | null>(null);
   const [computerShip, setComputerShip] = useState<Entity | null>(null);
   const [currentPlan, setCurrentPlan] = useState<FlightPlan | null>(null);
+  const [events, setEvents] = useState<Effect[] | null>(null);
 
   useEffect(() => {
     getEntities(setEntities);
@@ -47,7 +49,7 @@ function App() {
         <EntitiesServerProvider
           value={{ entities: entities, handler: setEntities }}>
           <Controls
-            nextRound={nextRound}
+            nextRound={(callback) => nextRound(setEvents, callback)}
             addEntity={addEntity}
             setAcceleration={setAcceleration}
             computerShip={computerShip}
@@ -60,7 +62,7 @@ function App() {
               fov: 75,
               near: 0.0001,
               far: 6000,
-              position: [-400, 0, 0],
+              position: [-100, 0, 0],
             }}>
             {/*<OrbitControls enableZoom={true} keys={keys} <ambientLight color={0xffffff} intensity={0.1} />/>*/}
             <FlyControls
@@ -70,13 +72,13 @@ function App() {
               rollSpeed={0.5}
               makeDefault
             />
-
             <SpaceView />
             <Ships
               setShipToShow={setShipToShow}
               setComputerShip={setComputerShip}
             />
             <Missiles setShipToShow={setShipToShow}/>
+            { events && events.length > 0&& <Effects effects={events} setEffects={setEvents} /> }
             {currentPlan && <Route plan={currentPlan} />}
           </Canvas>
         </EntitiesServerProvider>

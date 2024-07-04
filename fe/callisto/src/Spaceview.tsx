@@ -9,7 +9,7 @@ import { useLoader } from "@react-three/fiber";
 import Color from "color";
 
 import { Line, scaleVector } from "./Util";
-import { scale, Planet as PlanetType, Entity, EntitiesServerContext } from "./Contexts";
+import { SCALE, Planet as PlanetType, Entity, EntitiesServerContext } from "./Contexts";
 
 function Planet(args:{planet: Entity}) {
   let planet_details;
@@ -25,12 +25,8 @@ function Planet(args:{planet: Entity}) {
   const intensity_factor = 2.5;
 
   const radiusMeters = planet_details.radius;
-  const radiusUnits = radiusMeters * scale;
-  const pos = scaleVector(args.planet.position, scale);
-
-  console.log(`(Spaceview.Planet) Planet ${args.planet.name} details ${JSON.stringify(args.planet)}`);
-  console.log(`(Spaceview.Planet) Planet ${args.planet.name} pos ${pos}`);
-  console.log(`(Spaceview.Planet) Planet ${args.planet.name} radius ${radiusUnits}`);
+  const radiusUnits = radiusMeters * SCALE;
+  const pos = scaleVector(args.planet.position, SCALE);
 
   return (
     <>

@@ -167,9 +167,11 @@ pub async fn handle_request(
         }
         (&Method::POST, "/update") => {
             info!("Received and processing update request.");
-            let updates = entities.lock().unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e)).update_all();
 
-            let json = match serde_json::to_string(&updates) {
+            let effects = entities.lock().unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e)).update_all();
+            debug!("Effects: {:?}", effects);
+
+            let json = match serde_json::to_string(&effects) {
                 Ok(json) => json,
                 Err(_) => {
                     return Ok(Response::new(

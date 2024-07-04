@@ -99,8 +99,12 @@ function ShipComputer(args: {
 
   function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    console.log("Launching missile for " + args.ship.name + " to " + missileTarget);
-    launchMissile(args.ship.name, missileTarget, serverEntities.handler)
+    const form = event.currentTarget;
+    const formElements = form.elements as typeof form.elements & {
+      missile_target: HTMLInputElement
+    }
+    console.log("Launching missile for " + args.ship.name + " to " + formElements.missile_target.value);
+    launchMissile(args.ship.name, formElements.missile_target.value, serverEntities.handler)
   }
 
   let title = "Computer " + args.ship.name;
@@ -164,21 +168,30 @@ function ShipComputer(args: {
         />
       </form>
       <form className="control-form" onSubmit={handleLaunchSubmit}>
-        <label className="control-label">Launch Missile</label>
+        <label className="control-label">Launch Missile
         <div className="control-launch-div">
-          <input
+          { /* <input
             className="control-name-input"
             name="missile_target"
             type="text"
             value={missileTarget}
             onChange={(event) => setMissileTarget(event.target.value)}
-          />
+          /> */}
+          <select
+            className="control-name-input control-input"
+            name="missile_target"
+            id="missile_target">
+            { serverEntities.entities.ships.filter((ship) => ship.name !== args.ship.name).map((ship) => (
+              <option key={ship.name} value={ship.name}>{ship.name}</option>
+            ))}
+          </select>
           <input
             className="control-launch-button blue-button"
             type="submit"
             value="Launch"
           />
         </div>
+        </label>
       </form>
       {args.currentPlan && (
         <div>
@@ -257,7 +270,7 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
       <h2>Add Ship</h2>
       <label className="control-label">Name</label>
       <input
-        className="control-name-input"
+        className="control-name-input control-input"
         name="name"
         type="text"
         onChange={handleChange}

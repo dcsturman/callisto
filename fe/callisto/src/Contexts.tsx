@@ -42,13 +42,8 @@ export const EntitiesServerContext = createContext<{
   entities: EntityList;
   handler: EntityRefreshCallback;
 }>({ entities: { ships: [], planets: [], missiles: [] }, handler: (e) => {} });
-//export const EntitiesServerUpdateContext = createContext<
-//  Dispatch<SetStateAction<EntityList>>
-//>(() => {}); // empty function as default value
 
 export const EntitiesServerProvider = EntitiesServerContext.Provider;
-//export const EntitiesServerUpdateProvider =
-//  EntitiesServerUpdateContext.Provider;
 
 export type FlightPlan = {
   path: [number, number, number][];
@@ -56,6 +51,6 @@ export type FlightPlan = {
   accelerations: [[number, number, number], number][];
 };
 
-export const scale = 1e-6; // 1 unit = 100km or 1e6m
-export const timeUnit = 1e3;
+export const SCALE = 1e-6; // 1 unit = 100km or 1e6m
+export const TIMEUNIT = 1e3;
 export const G = 9.81;

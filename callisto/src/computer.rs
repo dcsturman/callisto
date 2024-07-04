@@ -7,6 +7,7 @@ use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+const SOLVE_TOLERANCE: f64 = 1e-6;
 // Had to implement this as serde_as could not handle a tuple
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -160,7 +161,6 @@ impl System for TargetParams {
         };
         let t = x[3];
 
-        debug!("WOO WOO WOO WOO WOO");
         let pos_eqs = a * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos
             - self.end_pos;
         let a_eq = a.magnitude() - self.max_acceleration;
@@ -197,8 +197,9 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
     let mut solver = SolverDriver::builder(params).with_initial(initial).build();
 
     let (x, _norm) = solver
-        .find(|state| state.norm() <= 1e-8 || state.iter() >= 100)
-        .expect("Unable to solve flight path!");
+        .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
+        .unwrap_or_else(|e| panic!("Unable to solve flight path with params {:?} and error {}.", params, e));
+
 
     let v_a_1: [f64; 3] = x[0..3]
         .try_into()
@@ -277,30 +278,30 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
         .with_initial(initial)
         .build();
 
-    debug!("ONE");
-    let (mut x, _norm) = solver
-        .find(|state| state.norm() <= 1e-8 || state.iter() >= 100)
-        .expect("Unable to solve target path!");
-    debug!("TWO");
-    let answer = if x[3] > DELTA_TIME as f64 {
+    let attempt = solver
+        .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100);
+
+    // We need to compute again if either something went wrong in the first attempt (got an error) OR
+    // it took too long to reach the target.
+    let answer = if !matches!(attempt, Ok((x, _norm)) if x[3] <= DELTA_TIME as f64) {
         let mut initial = Vec::<f64>::from(array_i);
         initial.push(guess_t);
         // We need to compute again since we can't reach the target in one round.
         solver = SolverDriver::builder(params).with_initial(initial).build();
-        (x, _) = solver
-            .find(|state| state.norm() <= 1e-8 || state.iter() >= 100)
-            .expect("Unable to solve target path!");
+        let (x, _) = solver
+            .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
+            .unwrap_or_else(|e| panic!("Unable to solve target path with params {:?} and error {}", params, e));
         x
     } else {
+        let (x, _) = attempt.unwrap();
         x
     };
 
-    debug!("THREE");
     let mut path = Vec::new();
     let mut vel = params.start_vel;
     let mut pos = params.start_pos;
     let a: Vec3 = Vec3::from(
-        (<&[f64] as TryInto<[f64; 3]>>::try_into(&x[0..3]))
+        (<&[f64] as TryInto<[f64; 3]>>::try_into(&answer[0..3]))
             .expect("Unable to convert to fixed array"),
     );
 
@@ -309,7 +310,7 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
     let mut delta: f64 = DELTA_TIME as f64;
     while time < answer[3] {
         if time + delta > answer[3] {
-            delta = x[3] - time;
+            delta = answer[3] - time;
         }
         let new_pos = pos + vel * delta + guess_a * delta * delta / 2.0;
         let new_vel = vel + guess_a * delta;
@@ -322,7 +323,7 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
     FlightPlan {
         path,
         end_velocity: vel,
-        accelerations: vec![(a / G, x[3].round() as i64).into()],
+        accelerations: vec![(a / G, answer[3].round() as i64).into()],
     }
 }
 

@@ -8,7 +8,7 @@ import { Line } from "./Util";
 import { Entity, EntitiesServerContext, FlightPlan } from "./Contexts";
 import { Vector3 } from "@react-three/fiber";
 
-import { scale, timeUnit } from "./Contexts";
+import { SCALE, TIMEUNIT } from "./Contexts";
 import { addVector, scaleVector, vectorToString } from "./Util";
 
 export function ShipInfoWindow(args: { ship: Entity}) {
@@ -31,8 +31,6 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
     args.setComputerShip(args.ship);
   }
 
-  console.log("Ship: " + JSON.stringify(args.ship));
-
   return (
     <>
       {
@@ -43,7 +41,7 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
           intensity={5.0}
         />
       }
-      <group ref={labelRef} position={scaleVector(args.ship.position, scale) as Vector3}>
+      <group ref={labelRef} position={scaleVector(args.ship.position, SCALE) as Vector3}>
         <mesh position={[0, 0, 0]} onPointerOver={()=> args.setShipToShow(args.ship) }
         onPointerLeave={()=> args.setShipToShow(null)
         } onClick={handleShipClick}>
@@ -52,14 +50,14 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
         </mesh>
         <Line
           start={[0, 0, 0]}
-          end={scaleVector(args.ship.velocity, scale * timeUnit)}
+          end={scaleVector(args.ship.velocity, SCALE * TIMEUNIT)}
           color="red"
         />
         <Line
-          start={scaleVector(args.ship.velocity, scale * timeUnit)}
+          start={scaleVector(args.ship.velocity, SCALE * TIMEUNIT)}
           end={addVector(
-            scaleVector(args.ship.acceleration, scale * timeUnit * timeUnit),
-            scaleVector(args.ship.velocity, scale * timeUnit)
+            scaleVector(args.ship.acceleration, SCALE * TIMEUNIT * TIMEUNIT),
+            scaleVector(args.ship.velocity, SCALE * TIMEUNIT)
           )}
           color="green"
         />
@@ -86,7 +84,7 @@ export function Ships(args: { setShipToShow: (ship: Entity | null) => void; setC
 export function Missile(args: { missile: Entity; index: number, setShipToShow: (ship: Entity | null) => void }) {
   const labelRef = useRef<Group>(null);
 
-  console.log("Missile: " + JSON.stringify(args.missile));
+  console.log("(Ships.Missile) Missile: " + JSON.stringify(args.missile));
   
   return (
     <>
@@ -98,7 +96,7 @@ export function Missile(args: { missile: Entity; index: number, setShipToShow: (
           intensity={5.0}
         />
       }
-      <group ref={labelRef} position={scaleVector(args.missile.position, scale) as Vector3}>
+      <group ref={labelRef} position={scaleVector(args.missile.position, SCALE) as Vector3}>
         <mesh position={[0, 0, 0]} onPointerOver={()=> args.setShipToShow(args.missile) }
         onPointerLeave={()=> args.setShipToShow(null)
         } >
@@ -107,14 +105,14 @@ export function Missile(args: { missile: Entity; index: number, setShipToShow: (
         </mesh>
         <Line
           start={[0, 0, 0]}
-          end={scaleVector(args.missile.velocity, scale * timeUnit)}
+          end={scaleVector(args.missile.velocity, SCALE * TIMEUNIT)}
           color="grey"
         />
         <Line
-          start={scaleVector(args.missile.velocity, scale * timeUnit)}
+          start={scaleVector(args.missile.velocity, SCALE * TIMEUNIT)}
           end={addVector(
-            scaleVector(args.missile.acceleration, scale * timeUnit * timeUnit),
-            scaleVector(args.missile.velocity, scale * timeUnit)
+            scaleVector(args.missile.acceleration, SCALE * TIMEUNIT * TIMEUNIT),
+            scaleVector(args.missile.velocity, SCALE * TIMEUNIT)
           )}
           color="green"
         />
@@ -141,16 +139,16 @@ export function Missiles(args: { setShipToShow: (ship: Entity | null) => void })
 export function Route(args: { plan: FlightPlan }) {
   console.log(`(Ships.Route) Display plan: ${JSON.stringify(args.plan)}`);
   console.log(`(Ships.Route) Display route: ${JSON.stringify(args.plan.path)}`);
-  let start = scaleVector(args.plan.path[0], -1.0*scale);
+  let start = scaleVector(args.plan.path[0], -1.0*SCALE);
   let prev = args.plan.path[0];
   let path = args.plan.path.slice(1);
   return (
-    <group position={scaleVector(prev, scale) as Vector3}>
+    <group position={scaleVector(prev, SCALE) as Vector3}>
       {path.map((point, index) => {
         const oldPoint = prev;
         prev = point;
-        console.log(`(Ships.Route) Displaying line from ${scaleVector(oldPoint,scale)} to ${scaleVector(point, scale)}`);
-        return <Line key={index} start={addVector(start,scaleVector(oldPoint,scale))} end={addVector(start,scaleVector(point,scale))} color={"orange"} />;
+        console.log(`(Ships.Route) Displaying line from ${scaleVector(oldPoint,SCALE)} to ${scaleVector(point, SCALE)}`);
+        return <Line key={index} start={addVector(start,scaleVector(oldPoint,SCALE))} end={addVector(start,scaleVector(point,SCALE))} color={"orange"} />;
       })}
     </group>
   );
