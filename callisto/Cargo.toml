@@ -16,3 +16,20 @@ tokio = { version = "1.37.0", features = ["full"] }
 pretty_env_logger = "0.5.0"
 log = "0.4.21"
 gomez = "0.5.0"
+serde_with = { version = "3.8.1", features = ["json"] }
+clap = { version = "4.5.4", features = ["derive"] }
+rand = "0.8.5"
+
+[dev-dependencies]
+mockstream = "0.0.3"
+lazy_static = "1.4.0"
+duct = "0.13.7"
+reqwest = "0.12.4"
+
+[[bin]]
+name = "callisto"
+path = "src/main.rs"
+
+[lib]
+name = "callisto"
+path = "src/lib.rs"

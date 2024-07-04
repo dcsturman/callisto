@@ -1,0 +1,20 @@
+{
+    "cSpell.words": [
+        "cgmath",
+        "drei",
+        "mainscreen",
+        "nalgebra",
+        "SpaceView",
+        "ulps",
+        "xacc",
+        "yvel",
+        "zacc",
+        "zpos",
+        "zvel"
+    ],
+    "cSpell.ignoreWords": [
+        "xpos",
+        "xvel",
+        "ypos"
+    ]
+}

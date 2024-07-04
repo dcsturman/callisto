@@ -56,7 +56,16 @@ input {
   color: black;
   background-color: #eeebeb;
   border: 1px solid #333;
+}
 
+.control-launch-div {
+  display: flex;
+  align-items: center;
+}
+
+.control-launch-button {
+  width: fit-content;
+  height: 30;
 }
 .coordinate-input {
   justify-content: left;

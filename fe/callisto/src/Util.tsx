@@ -1,8 +1,25 @@
 import * as THREE from "three";
-import { useLayoutEffect, useRef, RefObject } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { extend } from "@react-three/fiber";
 
 extend({ Line_: THREE.Line });
+
+
+/* Entities come in from the server with all units in meters (m). Convert them to the units we can use on screen. */
+export function scaleVector(
+  v: [number, number, number],
+  scale: number
+): [number, number, number] {
+  return v.map((x) => x * scale) as [number, number, number];
+}
+
+export function addVector(a: [number, number, number], b: [number, number, number]) {
+  return a.map((x, i) => x + b[i]) as [number, number, number];
+}
+
+export function vectorToString(v: [number, number, number]) {
+  return `${v[0].toFixed(0)}, ${v[1].toFixed(0)}, ${v[2].toFixed(0)}`;
+}
 
 export function Line({
   start,

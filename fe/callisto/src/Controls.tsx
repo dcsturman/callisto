@@ -6,12 +6,14 @@ import {
   FlightPlan
 } from "./Contexts";
 
+import { launchMissile } from "./ServerManager";
+
 const POS_SCALE = 1000.0;
 
 function AccelerationManager(args: {
-  entities: Entity[];
+  ships: Entity[];
   setAcceleration: (target: string, x: number, y: number, z: number) => void;
-  setComputerShip: (ship: Entity | null) => void;
+  setComputerShip: (entity: Entity) => void;
 }) {
   function handleSubmit(
     ship: Entity
@@ -28,12 +30,12 @@ function AccelerationManager(args: {
   return (
     <>
       <h2 className="control-form">Set Accel</h2>
-      {args.entities.map((entity) => (
+      {args.ships.map((ships) => (
         <form
-          key={entity.name + "-accel-setter"}
+          key={ships.name + "-accel-setter"}
           className="as-form"
-          onSubmit={handleSubmit(entity)}>
-          <label className="as-label" onDoubleClick={() => args.setComputerShip(entity)}>{entity.name}</label>
+          onSubmit={handleSubmit(ships)}>
+          <label className="as-label" onDoubleClick={() => args.setComputerShip(ships)}>{ships.name}</label>
           <div>
             <input className="as-input" name="x" type="text" defaultValue={0} />
             <input className="as-input" name="y" type="text" defaultValue={0} />
@@ -56,7 +58,7 @@ function ShipComputer(args: {
     end_vel: [number, number, number]
   ) => void;
 }) {
-  const [target, setTarget] = useState({
+  const [navigationTarget, setNavigationTarget] = useState({
     p_x: "0",
     p_y: "0",
     p_z: "0",
@@ -64,27 +66,30 @@ function ShipComputer(args: {
     v_y: "0",
     v_z: "0",
   });
+  const serverEntities = useContext(EntitiesServerContext);
 
-  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-    setTarget({
-      ...target,
+  const [missileTarget, setMissileTarget] = useState("");
+
+  function handleNavigationChange(event: React.ChangeEvent<HTMLInputElement>) {
+    setNavigationTarget({
+      ...navigationTarget,
       [event.target.name]: event.target.value,
     });
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleNavigationSubmit(event: React.FormEvent<HTMLFormElement>) {
     // Perform computation logic here
     event.preventDefault();
 
     let end_pos: [number, number, number] = [
-      Number(target.p_x) * POS_SCALE,
-      Number(target.p_y) * POS_SCALE,
-      Number(target.p_z) * POS_SCALE,
+      Number(navigationTarget.p_x) * POS_SCALE,
+      Number(navigationTarget.p_y) * POS_SCALE,
+      Number(navigationTarget.p_z) * POS_SCALE,
     ];
     let end_vel: [number, number, number] = [
-      Number(target.v_x),
-      Number(target.v_y),
-      Number(target.v_z),
+      Number(navigationTarget.v_x),
+      Number(navigationTarget.v_y),
+      Number(navigationTarget.v_z),
     ];
     console.log(
       "Computing route for " + args.ship.name + " to " + end_pos + " " + end_vel
@@ -92,34 +97,44 @@ function ShipComputer(args: {
     args.getAndShowPlan(args.ship.name, end_pos, end_vel);
   }
 
+  function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formElements = form.elements as typeof form.elements & {
+      missile_target: HTMLInputElement
+    }
+    console.log("Launching missile for " + args.ship.name + " to " + formElements.missile_target.value);
+    launchMissile(args.ship.name, formElements.missile_target.value, serverEntities.handler)
+  }
+
   let title = "Computer " + args.ship.name;
 
   return (
     <div>
-      <form className="control-form" onSubmit={handleSubmit}>
-        <h2>{title}</h2>
+      <h2>{title}</h2>
+      <form className="control-form" onSubmit={handleNavigationSubmit}>
         <label className="control-label">Target Position</label>
         <div>
           <input
             className="control-input"
             name="p_x"
             type="text"
-            value={target.p_x}
-            onChange={handleChange}
+            value={navigationTarget.p_x}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="p_y"
             type="text"
-            value={target.p_y}
-            onChange={handleChange}
+            value={navigationTarget.p_y}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="p_z"
             type="text"
-            value={target.p_z}
-            onChange={handleChange}
+            value={navigationTarget.p_z}
+            onChange={handleNavigationChange}
           />
         </div>
         <label className="control-label">Target Velocity</label>
@@ -128,22 +143,22 @@ function ShipComputer(args: {
             className="control-input"
             name="v_x"
             type="text"
-            value={target.v_x}
-            onChange={handleChange}
+            value={navigationTarget.v_x}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="v_y"
             type="text"
-            value={target.v_y}
-            onChange={handleChange}
+            value={navigationTarget.v_y}
+            onChange={handleNavigationChange}
           />
           <input
             className="control-input"
             name="v_z"
             type="text"
-            value={target.v_z}
-            onChange={handleChange}
+            value={navigationTarget.v_z}
+            onChange={handleNavigationChange}
           />
         </div>
         <input
@@ -151,6 +166,32 @@ function ShipComputer(args: {
           type="submit"
           value="Compute"
         />
+      </form>
+      <form className="control-form" onSubmit={handleLaunchSubmit}>
+        <label className="control-label">Launch Missile
+        <div className="control-launch-div">
+          { /* <input
+            className="control-name-input"
+            name="missile_target"
+            type="text"
+            value={missileTarget}
+            onChange={(event) => setMissileTarget(event.target.value)}
+          /> */}
+          <select
+            className="control-name-input control-input"
+            name="missile_target"
+            id="missile_target">
+            { serverEntities.entities.ships.filter((ship) => ship.name !== args.ship.name).map((ship) => (
+              <option key={ship.name} value={ship.name}>{ship.name}</option>
+            ))}
+          </select>
+          <input
+            className="control-launch-button blue-button"
+            type="submit"
+            value="Launch"
+          />
+        </div>
+        </label>
       </form>
       {args.currentPlan && (
         <div>
@@ -214,6 +255,9 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
         Number(addShip.yacc),
         Number(addShip.zacc),
       ],
+      kind: {
+        Ship: {},
+      },
     };
     console.log("Adding ship: " + JSON.stringify(newShip));
 
@@ -226,7 +270,7 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
       <h2>Add Ship</h2>
       <label className="control-label">Name</label>
       <input
-        className="control-name-input"
+        className="control-name-input control-input"
         name="name"
         type="text"
         onChange={handleChange}
@@ -315,12 +359,11 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
 
 function Controls(args: {
   nextRound: (callback: EntityRefreshCallback) => void;
-  getEntities: (entities: Entity[]) => void;
   addEntity: (entity: Entity, callback: EntityRefreshCallback) => void;
   setAcceleration: (
     target: string,
     acceleration: [number, number, number],
-    callBack: (entities: Entity[]) => void
+    callBack: EntityRefreshCallback
   ) => void;
   computerShip: Entity | null;
   setComputerShip: (ship: Entity | null) => void;
@@ -337,12 +380,12 @@ function Controls(args: {
     <div className="controls-pane">
       <h1>Controls</h1>
       <AddShip
-        submitHandler={(entity) => args.addEntity(entity, args.getEntities)}
+        submitHandler={(entity) => args.addEntity(entity, serverEntities.handler)}
       />
       <AccelerationManager
-        entities={serverEntities}
+        ships={serverEntities.entities.ships}
         setAcceleration={(target, x, y, z) => {
-          args.setAcceleration(target, [x, y, z], args.getEntities);
+          args.setAcceleration(target, [x, y, z], serverEntities.handler);
         }}
         setComputerShip={args.setComputerShip}
       />
@@ -361,7 +404,7 @@ function Controls(args: {
         onClick={() => {
           args.setComputerShip(null);
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0]);
-          args.nextRound(args.getEntities);
+          args.nextRound(serverEntities.handler);
         }}>
         Next Round
       </button>

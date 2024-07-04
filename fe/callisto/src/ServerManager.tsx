@@ -1,13 +1,13 @@
 import { Entity, EntityRefreshCallback, FlightPlan } from "./Contexts";
+import { Effect } from "./Effects";
 
 const address = "localhost";
 const port = "3000";
 
-
 export function addEntity(entity: Entity, callBack: EntityRefreshCallback) {
   console.log("Adding entity: " + JSON.stringify(entity));
 
-  fetch(`http://${address}:${port}/add`, {
+  fetch(`http://${address}:${port}/add_ship`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,7 +42,7 @@ export function setAcceleration(
   callBack: EntityRefreshCallback
 ) {
   let payload = { name: target, acceleration: acceleration };
-  fetch(`http://${address}:${port}/setaccel`, {
+  fetch(`http://${address}:${port}/set_accel`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -60,7 +60,7 @@ export function setAcceleration(
     );
 }
 
-export function nextRound(callBack: EntityRefreshCallback) {
+export function nextRound(setEvents: (events: Effect[] | null) => void, callBack: EntityRefreshCallback) {
   fetch(`http://${address}:${port}/update`, {
     method: "POST",
     headers: {
@@ -69,6 +69,7 @@ export function nextRound(callBack: EntityRefreshCallback) {
     mode: "cors",
   })
     .then((response) => response.json())
+    .then((events) => setEvents(events))
     .then(() => getEntities(callBack))
     .catch((error) => console.error("Error adding entity:", error));
 }
@@ -77,8 +78,8 @@ export function computeFlightPath(
   entity_name: string | null,
   end_pos: [number, number, number],
   end_vel: [number, number, number],
-  setCurrentPlan: (plan: FlightPlan | null) => void) {
-
+  setCurrentPlan: (plan: FlightPlan | null) => void
+) {
   if (entity_name == null) {
     setCurrentPlan(null);
     return;
@@ -89,7 +90,7 @@ export function computeFlightPath(
     end_vel: end_vel,
   };
 
-  fetch(`http://${address}:${port}/computepath`, {
+  fetch(`http://${address}:${port}/compute_path`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -97,16 +98,47 @@ export function computeFlightPath(
     mode: "cors",
     body: JSON.stringify(payload),
   })
+    .then((response) => response.json())
+    .then((plan) => setCurrentPlan(plan))
+    .catch((error) => console.error("Error computing flight path:", error));
+}
+
+export function launchMissile(
+  source: string,
+  target: string,
+  callback: EntityRefreshCallback
+) {
+  let payload = {
+    source: source,
+    target: target,
+  }
+
+  fetch(`http://${address}:${port}/launch_missile`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    mode: "cors",
+    body: JSON.stringify(payload)
+  })
   .then((response) => response.json())
-  .then((plan) => setCurrentPlan(plan))
-  .catch((error) => console.error("Error computing flight path:", error))
+  .then(() => getEntities(callback))
+  .catch((error) => console.error("Error launching missile", error));
 }
 
 export function getEntities(callback: EntityRefreshCallback) {
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {
-      callback(entities);
+      let ships = entities.filter((entity: Entity) => "Ship" === entity.kind);
+      let missiles = entities.filter(
+        (entity: Entity) => entity.kind !== "Ship" && "Missile" in entity.kind
+      );
+      let planets = entities.filter(
+        (entity: Entity) => entity.kind !== "Ship" && "Planet" in entity.kind
+      );
+      console.log(`Received Entities:\nSHIPS = ${JSON.stringify(ships)}\nMISSILES = ${JSON.stringify(missiles)}\nPLANETS = ${JSON.stringify(planets)}`);
+      callback({ ships: ships, planets: planets, missiles: missiles });
     })
     .catch((error) => console.error("Error fetching entities:", error));
 }
