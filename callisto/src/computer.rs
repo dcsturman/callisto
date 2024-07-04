@@ -198,8 +198,12 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
 
     let (x, _norm) = solver
         .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
-        .unwrap_or_else(|e| panic!("Unable to solve flight path with params {:?} and error {}.", params, e));
-
+        .unwrap_or_else(|e| {
+            panic!(
+                "Unable to solve flight path with params {:?} and error {}.",
+                params, e
+            )
+        });
 
     let v_a_1: [f64; 3] = x[0..3]
         .try_into()
@@ -278,8 +282,7 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
         .with_initial(initial)
         .build();
 
-    let attempt = solver
-        .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100);
+    let attempt = solver.find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100);
 
     // We need to compute again if either something went wrong in the first attempt (got an error) OR
     // it took too long to reach the target.
@@ -290,7 +293,12 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
         solver = SolverDriver::builder(params).with_initial(initial).build();
         let (x, _) = solver
             .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
-            .unwrap_or_else(|e| panic!("Unable to solve target path with params {:?} and error {}", params, e));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Unable to solve target path with params {:?} and error {}",
+                    params, e
+                )
+            });
         x
     } else {
         let (x, _) = attempt.unwrap();

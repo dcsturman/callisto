@@ -331,7 +331,10 @@ async fn test_update_missile() {
         .text()
         .await
         .unwrap();
-    assert_eq!(response, r#"[{"position":[5000.0,0.0,5000.0],"kind":"ShipImpact"}]"#);
+    assert_eq!(
+        response,
+        r#"[{"position":[5000.0,0.0,5000.0],"kind":"ShipImpact"}]"#
+    );
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await

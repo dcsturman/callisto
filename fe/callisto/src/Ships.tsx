@@ -8,7 +8,7 @@ import { Line } from "./Util";
 import { Entity, EntitiesServerContext, FlightPlan } from "./Contexts";
 import { Vector3 } from "@react-three/fiber";
 
-import { SCALE, TIMEUNIT } from "./Contexts";
+import { SCALE, TURN_IN_SECONDS } from "./Contexts";
 import { addVector, scaleVector, vectorToString } from "./Util";
 
 export function ShipInfoWindow(args: { ship: Entity}) {
@@ -50,14 +50,14 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
         </mesh>
         <Line
           start={[0, 0, 0]}
-          end={scaleVector(args.ship.velocity, SCALE * TIMEUNIT)}
+          end={scaleVector(args.ship.velocity, SCALE * TURN_IN_SECONDS)}
           color="red"
         />
         <Line
-          start={scaleVector(args.ship.velocity, SCALE * TIMEUNIT)}
+          start={scaleVector(args.ship.velocity, SCALE * TURN_IN_SECONDS)}
           end={addVector(
-            scaleVector(args.ship.acceleration, SCALE * TIMEUNIT * TIMEUNIT),
-            scaleVector(args.ship.velocity, SCALE * TIMEUNIT)
+            scaleVector(args.ship.acceleration, SCALE * TURN_IN_SECONDS * TURN_IN_SECONDS),
+            scaleVector(args.ship.velocity, SCALE * TURN_IN_SECONDS)
           )}
           color="green"
         />
@@ -105,14 +105,14 @@ export function Missile(args: { missile: Entity; index: number, setShipToShow: (
         </mesh>
         <Line
           start={[0, 0, 0]}
-          end={scaleVector(args.missile.velocity, SCALE * TIMEUNIT)}
+          end={scaleVector(args.missile.velocity, SCALE * TURN_IN_SECONDS)}
           color="grey"
         />
         <Line
-          start={scaleVector(args.missile.velocity, SCALE * TIMEUNIT)}
+          start={scaleVector(args.missile.velocity, SCALE * TURN_IN_SECONDS)}
           end={addVector(
-            scaleVector(args.missile.acceleration, SCALE * TIMEUNIT * TIMEUNIT),
-            scaleVector(args.missile.velocity, SCALE * TIMEUNIT)
+            scaleVector(args.missile.acceleration, SCALE * TURN_IN_SECONDS * TURN_IN_SECONDS),
+            scaleVector(args.missile.velocity, SCALE * TURN_IN_SECONDS)
           )}
           color="green"
         />

@@ -52,5 +52,5 @@ export type FlightPlan = {
 };
 
 export const SCALE = 1e-6; // 1 unit = 100km or 1e6m
-export const TIMEUNIT = 1e3;
+export const TURN_IN_SECONDS = 1e3;
 export const G = 9.81;

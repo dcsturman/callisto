@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
 use crate::computer::{compute_target_path, FlightPlan, TargetParams};
-use crate::payloads::{ Vec3asVec, EffectMsg, SHIP_IMPACT, EXHAUSTED_MISSILE } ;
+use crate::payloads::{EffectMsg, Vec3asVec, EXHAUSTED_MISSILE, SHIP_IMPACT};
 
 pub const DELTA_TIME: i64 = 1000;
 pub const G: f64 = 9.81;
@@ -215,7 +215,7 @@ impl Entity {
                 let target = target_ptr.as_ref().unwrap().read().unwrap();
                 if *burns > 0 {
                     // Temporary until missiles have actual acceleration built in
-                    const MAX_ACCELERATION: f64 = 6.0*G;
+                    const MAX_ACCELERATION: f64 = 6.0 * G;
                     const IMPACT_DISTANCE: f64 = 2500000.0;
 
                     debug!(
@@ -246,11 +246,18 @@ impl Entity {
                     // See if we impacted.
                     if (self.position - target.position).magnitude() < IMPACT_DISTANCE {
                         debug!("Missile {} impacted target {}", self.name, target.name);
-                        Some(UpdateAction::ShipImpact { ship: target.name.clone(), missile: self.name.clone() })
-                    } else { None }
+                        Some(UpdateAction::ShipImpact {
+                            ship: target.name.clone(),
+                            missile: self.name.clone(),
+                        })
+                    } else {
+                        None
+                    }
                 } else {
                     debug!("Missile {} out of propellant", self.name);
-                    Some(UpdateAction::ExhaustedMissile{ name: self.name.clone()})
+                    Some(UpdateAction::ExhaustedMissile {
+                        name: self.name.clone(),
+                    })
                 }
             }
         }
@@ -259,13 +266,8 @@ impl Entity {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum UpdateAction {
-    ShipImpact {
-        ship: String,
-        missile: String,
-    },
-    ExhaustedMissile {
-        name: String
-    }
+    ShipImpact { ship: String, missile: String },
+    ExhaustedMissile { name: String },
 }
 
 #[serde_as]
@@ -367,7 +369,6 @@ impl Entities {
     }
 
     pub fn launch_missile(&mut self, source: String, target: String) {
-
         const DEFAULT_BURN: i32 = 2;
 
         // Could use a random number generator here for the name but that makes tests flakey (random)
@@ -389,8 +390,15 @@ impl Entities {
             .get(&target)
             .unwrap_or_else(|| panic!("Target {} not found for missile {}.", target, name))
             .clone();
-        let entity =
-            Entity::new_missile(name, source, target, target_ptr, position, velocity, DEFAULT_BURN);
+        let entity = Entity::new_missile(
+            name,
+            source,
+            target,
+            target_ptr,
+            position,
+            velocity,
+            DEFAULT_BURN,
+        );
         self.add_entity(entity);
     }
 
@@ -449,7 +457,10 @@ impl Entities {
             planet.write().unwrap().update();
         }
 
-        let updates: Vec<_> = other.into_iter().filter_map(|entity| entity.write().unwrap().update()).collect();
+        let updates: Vec<_> = other
+            .into_iter()
+            .filter_map(|entity| entity.write().unwrap().update())
+            .collect();
         let mut effects = Vec::<EffectMsg>::new();
         for update in updates.iter() {
             match update {
@@ -459,16 +470,16 @@ impl Entities {
                         position: self.get(name).unwrap().read().unwrap().get_position(),
                         kind: EXHAUSTED_MISSILE.to_string(),
                     });
-                    self.remove(&name);
-                },
+                    self.remove(name);
+                }
                 UpdateAction::ShipImpact { ship, missile } => {
                     debug!("Missile impact on {} by missile {}.", ship, missile);
                     effects.push(EffectMsg {
                         position: self.get(ship).unwrap().read().unwrap().get_position(),
                         kind: SHIP_IMPACT.to_string(),
                     });
-                    self.remove(&ship);
-                    self.remove(&missile);
+                    self.remove(ship);
+                    self.remove(missile);
                 }
             }
         }
