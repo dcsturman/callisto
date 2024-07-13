@@ -5,27 +5,43 @@ import { Bloom } from "@react-three/postprocessing";
 import { Text } from "@react-three/drei";
 import { Line } from "./Util";
 
-import { Entity, EntitiesServerContext, FlightPlan } from "./Contexts";
+import { Entity, EntitiesServerContext, FlightPlan, Planet as PlanetType } from "./Contexts";
 import { Vector3 } from "@react-three/fiber";
 
-import { SCALE, TURN_IN_SECONDS } from "./Contexts";
+import { SCALE, TURN_IN_SECONDS, EntityToShowContext } from "./Contexts";
 import { addVector, scaleVector, vectorToString } from "./Util";
 
-export function ShipInfoWindow(args: { ship: Entity}) {
+//TODO: Move this somewhere else - maybe Controls.tsx
+export function EntityInfoWindow(args: { entity: Entity}) {
+  let isPlanet = false;
+  console.log("isPlanet: " + isPlanet);
+  let planet_details = null;
+  let radiusKm = 0;
+  if (args.entity.kind !== "Ship" && "Planet" in args.entity.kind) {
+    isPlanet = true;
+    planet_details = args.entity.kind.Planet as PlanetType;
+    radiusKm = planet_details.radius / 1000.0;
+    console.log("Planet details: " + JSON.stringify(planet_details));
+    console.log("radius " + planet_details.color);
+  }
+
   return (
-    <div className="ship-info-window">
-      <h2 className="ship-info-title">{args.ship.name}</h2>
+    <div id="ship-info-window" className="ship-info-window">
+      <h2 className="ship-info-title">{args.entity.name}</h2>
       <div className="ship-info-content">
-        <p>Position (km): {vectorToString(scaleVector(args.ship.position,1e-3))}</p>
-        <p>Velocity (m/s): {vectorToString(args.ship.velocity)}</p>
-        <p>Acceleration (G): {vectorToString(args.ship.acceleration)}</p>
+        <p>Position (km): {vectorToString(scaleVector(args.entity.position,1e-3))}</p>
+        <p>Velocity (m/s): {vectorToString(args.entity.velocity)}</p>
+        { isPlanet ? <p>Radius (km): {radiusKm}</p> : <p> Acceleration (G): {vectorToString(args.entity.acceleration)}</p>
+        }
       </div>
     </div>
   );
 }
 
-function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity | null) => void; setComputerShip: (ship: Entity | null) => void}) {
+function Ship(args: { ship: Entity; index: number; setComputerShip: (ship: Entity | null) => void}) {
+  const entityToShow = useContext(EntityToShowContext);
   const labelRef = useRef<Group>(null);
+
 
   function handleShipClick() {
     args.setComputerShip(args.ship);
@@ -42,8 +58,8 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
         />
       }
       <group ref={labelRef} position={scaleVector(args.ship.position, SCALE) as Vector3}>
-        <mesh position={[0, 0, 0]} onPointerOver={()=> args.setShipToShow(args.ship) }
-        onPointerLeave={()=> args.setShipToShow(null)
+        <mesh position={[0, 0, 0]} onPointerOver={()=> entityToShow.setEntityToShow(args.ship) }
+        onPointerLeave={()=> entityToShow.setEntityToShow(null)
         } onClick={handleShipClick}>
           <sphereGeometry args={[0.1]} />
           <meshBasicMaterial color={[3, 3, 8.0]} />
@@ -69,19 +85,20 @@ function Ship(args: { ship: Entity; index: number; setShipToShow: (ship: Entity 
   );
 }
 
-export function Ships(args: { setShipToShow: (ship: Entity | null) => void; setComputerShip: (ship: Entity | null) => void}) {
+export function Ships(args: { setComputerShip: (ship: Entity | null) => void}) {
   const serverEntities = useContext(EntitiesServerContext);
 
   return (
     <>
       {serverEntities.entities.ships.map((ship, index) => (
-        <Ship key={ship.name} ship={ship} index={index} setShipToShow={args.setShipToShow} setComputerShip={args.setComputerShip} />
+        <Ship key={ship.name} ship={ship} index={index} setComputerShip={args.setComputerShip} />
       ))}
     </>
   );
 }
 
-export function Missile(args: { missile: Entity; index: number, setShipToShow: (ship: Entity | null) => void }) {
+export function Missile(args: { missile: Entity; index: number}) {
+  const entityToShow = useContext(EntityToShowContext);
   const labelRef = useRef<Group>(null);
 
   console.log("(Ships.Missile) Missile: " + JSON.stringify(args.missile));
@@ -97,8 +114,8 @@ export function Missile(args: { missile: Entity; index: number, setShipToShow: (
         />
       }
       <group ref={labelRef} position={scaleVector(args.missile.position, SCALE) as Vector3}>
-        <mesh position={[0, 0, 0]} onPointerOver={()=> args.setShipToShow(args.missile) }
-        onPointerLeave={()=> args.setShipToShow(null)
+        <mesh position={[0, 0, 0]} onPointerOver={()=> entityToShow.setEntityToShow(args.missile) }
+        onPointerLeave={()=> entityToShow.setEntityToShow(null)
         } >
           <sphereGeometry args={[0.05]} />
           <meshBasicMaterial color={[8.0, 0, 0]} />
@@ -124,13 +141,13 @@ export function Missile(args: { missile: Entity; index: number, setShipToShow: (
   );
 }
 
-export function Missiles(args: { setShipToShow: (ship: Entity | null) => void }) {
+export function Missiles() {
   const serverEntities = useContext(EntitiesServerContext);
 
   return (
     <>
       {serverEntities.entities.missiles.map((missile, index) => (
-        <Missile key={missile.name} missile={missile} index={index} setShipToShow={args.setShipToShow} />
+        <Missile key={missile.name} missile={missile} index={index}  />
       ))}
     </>
   )
@@ -147,7 +164,6 @@ export function Route(args: { plan: FlightPlan }) {
       {path.map((point, index) => {
         const oldPoint = prev;
         prev = point;
-        console.log(`(Ships.Route) Displaying line from ${scaleVector(oldPoint,SCALE)} to ${scaleVector(point, SCALE)}`);
         return <Line key={index} start={addVector(start,scaleVector(oldPoint,SCALE))} end={addVector(start,scaleVector(point,SCALE))} color={"orange"} />;
       })}
     </group>

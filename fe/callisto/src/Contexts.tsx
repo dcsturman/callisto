@@ -45,6 +45,13 @@ export const EntitiesServerContext = createContext<{
 
 export const EntitiesServerProvider = EntitiesServerContext.Provider;
 
+export const EntityToShowContext = createContext<{
+  entityToShow: Entity | null;
+  setEntityToShow: (ship: Entity | null) => void;
+}>({entityToShow: null, setEntityToShow: (e) => {}});
+
+export const EntityToShowProvider = EntityToShowContext.Provider;
+
 export type FlightPlan = {
   path: [number, number, number][];
   end_velocity: [number, number, number];

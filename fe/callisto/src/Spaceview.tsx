@@ -9,16 +9,28 @@ import { useLoader } from "@react-three/fiber";
 import Color from "color";
 
 import { Line, scaleVector } from "./Util";
-import { SCALE, Planet as PlanetType, Entity, EntitiesServerContext } from "./Contexts";
+import {
+  SCALE,
+  Planet as PlanetType,
+  Entity,
+  EntitiesServerContext,
+  EntityToShowContext,
+} from "./Contexts";
 
-function Planet(args:{planet: Entity}) {
+function Planet(args: { planet: Entity }) {
+  const entityToShow = useContext(EntityToShowContext);
+
   let planet_details;
 
   if ("Planet" in args.planet.kind) {
     planet_details = args.planet.kind.Planet as PlanetType;
   } else {
-    console.error(`(Spaceview.Planet) Planet ${args.planet.name} not a planet. Details ${JSON.stringify(planet_details)}`);
-    return (<></>)
+    console.error(
+      `(Spaceview.Planet) Planet ${
+        args.planet.name
+      } not a planet. Details ${JSON.stringify(planet_details)}`
+    );
+    return <></>;
   }
 
   const color = Color(planet_details.color);
@@ -42,13 +54,16 @@ function Planet(args:{planet: Entity}) {
           resolutionY={Resolution.AUTO_SIZE} // The vertical resolution.
         />
       </EffectComposer>
-      <mesh position={pos}>
+      <mesh
+        position={pos}
+        onPointerOver={() => entityToShow.setEntityToShow(args.planet)}
+        onPointerLeave={() => entityToShow.setEntityToShow(null)}>
         <icosahedronGeometry args={[radiusUnits, 15]} />
         <meshBasicMaterial
           color={[
-            color.red()/255.0 * intensity_factor,
-            color.green()/255.0 * intensity_factor,
-            color.blue()/255.0 * intensity_factor,
+            (color.red() / 255.0) * intensity_factor,
+            (color.green() / 255.0) * intensity_factor,
+            (color.blue() / 255.0) * intensity_factor,
           ]}
         />
       </mesh>
@@ -56,7 +71,7 @@ function Planet(args:{planet: Entity}) {
   );
 }
 
-function Planets(args:{planets: Entity[]}) {
+function Planets(args: { planets: Entity[] }) {
   return (
     <>
       {args.planets.map((planet, index) => (
@@ -72,7 +87,7 @@ function Galaxy() {
   return (
     <>
       <mesh>
-        <sphereGeometry args={[5000, 64, 64]} />
+        <sphereGeometry args={[500000, 64, 64]} />
         <meshBasicMaterial
           map={starColorMap}
           side={THREE.BackSide}
@@ -86,8 +101,8 @@ function Galaxy() {
 function Axes() {
   return (
     <>
-      <Line start={[-1000, 0, 0]} end={[1000, 0, 0]} color="blue"/>
-      <Line start={[0, -1000, 0]} end={[0, 1000, 0]} color="green"/>
+      <Line start={[-1000, 0, 0]} end={[1000, 0, 0]} color="blue" />
+      <Line start={[0, -1000, 0]} end={[0, 1000, 0]} color="green" />
       <Line start={[0, 0, -1000]} end={[0, 0, 1000]} />
     </>
   );
@@ -100,7 +115,7 @@ function SpaceView() {
   return (
     <>
       <Axes />
-      <Planets planets={planets}/>
+      <Planets planets={planets} />
       <Galaxy />
     </>
   );

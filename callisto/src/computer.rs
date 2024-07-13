@@ -7,7 +7,7 @@ use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-const SOLVE_TOLERANCE: f64 = 1e-6;
+const SOLVE_TOLERANCE: f64 = 1e-4;
 // Had to implement this as serde_as could not handle a tuple
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -197,10 +197,17 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
     let mut solver = SolverDriver::builder(params).with_initial(initial).build();
 
     let (x, _norm) = solver
-        .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
+        .find(|state| {
+            println!(
+                "iter = {}\t|| r(x) || = {}\tx = {:?}",
+                state.iter(),
+                state.norm(),
+                state.x()
+            );
+            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100})
         .unwrap_or_else(|e| {
             panic!(
-                "Unable to solve flight path with params {:?} and error {}.",
+                "Unable to solve flight path with params: {:?} with error: {}.",
                 params, e
             )
         });
