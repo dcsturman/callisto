@@ -1,7 +1,6 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import * as THREE from "three";
-import { create } from "zustand";
-import { animated, useSpring, config } from "@react-spring/three";
+import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "./Util";
 import { SCALE } from "./Contexts";
 

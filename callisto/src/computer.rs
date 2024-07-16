@@ -7,7 +7,7 @@ use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-const SOLVE_TOLERANCE: f64 = 1e-6;
+const SOLVE_TOLERANCE: f64 = 1e-4;
 // Had to implement this as serde_as could not handle a tuple
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -63,7 +63,7 @@ impl Problem for FlightParams {
 
     // Domain of the system.
     fn domain(&self) -> Domain<Self::Field> {
-        Domain::unconstrained(8)
+        Domain::rect(vec![-100.0, -100.0, -100.0, -100.0, -100.0, -100.0, 0.0, 0.0], vec![100.0, 100.0, 100.0, 100.0, 100.0, 100.0, f64::INFINITY, f64::INFINITY])
     }
 }
 
@@ -141,7 +141,7 @@ impl TargetParams {
 impl Problem for TargetParams {
     type Field = f64;
     fn domain(&self) -> Domain<Self::Field> {
-        Domain::unconstrained(4)
+        Domain::rect(vec![-100.0, -100.0, -100.0, 0.0], vec![100.0, 100.0, 100.0, f64::INFINITY]) 
     }
 }
 
@@ -197,9 +197,20 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
     let mut solver = SolverDriver::builder(params).with_initial(initial).build();
 
     let (x, _norm) = solver
-        .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
-        .unwrap_or_else(|e| panic!("Unable to solve flight path with params {:?} and error {}.", params, e));
-
+        .find(|state| {
+            println!(
+                "iter = {}\t|| r(x) || = {}\tx = {:?}",
+                state.iter(),
+                state.norm(),
+                state.x()
+            );
+            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 300})
+        .unwrap_or_else(|e| {
+            panic!(
+                "Unable to solve flight path with params: {:?} with error: {}.",
+                params, e
+            )
+        });
 
     let v_a_1: [f64; 3] = x[0..3]
         .try_into()
@@ -278,8 +289,7 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
         .with_initial(initial)
         .build();
 
-    let attempt = solver
-        .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100);
+    let attempt = solver.find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100);
 
     // We need to compute again if either something went wrong in the first attempt (got an error) OR
     // it took too long to reach the target.
@@ -290,7 +300,12 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
         solver = SolverDriver::builder(params).with_initial(initial).build();
         let (x, _) = solver
             .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
-            .unwrap_or_else(|e| panic!("Unable to solve target path with params {:?} and error {}", params, e));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Unable to solve target path with params {:?} and error {}",
+                    params, e
+                )
+            });
         x
     } else {
         let (x, _) = attempt.unwrap();

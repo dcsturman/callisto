@@ -16,9 +16,9 @@ use hyper::{Method, Request, Response, StatusCode};
 use serde_json::from_slice;
 
 use computer::{compute_flight_path, FlightParams};
-use entity::{ Entities, G };
+use entity::{Entities, G};
 use payloads::{
-    LaunchMissileMsg, AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, RemoveEntityMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, LaunchMissileMsg, RemoveEntityMsg,
     SetAccelerationMsg,
 };
 
@@ -138,10 +138,10 @@ pub async fn handle_request(
             let missile = deserialize_body_or_respond!(req, LaunchMissileMsg);
 
             // Add the missile to the server
-            entities.lock().unwrap().launch_missile(
-                missile.source,
-                missile.target,
-            );
+            entities
+                .lock()
+                .unwrap()
+                .launch_missile(missile.source, missile.target);
 
             Ok(build_ok_response("Launch missile action executed"))
         }
@@ -168,7 +168,10 @@ pub async fn handle_request(
         (&Method::POST, "/update") => {
             info!("Received and processing update request.");
 
-            let effects = entities.lock().unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e)).update_all();
+            let effects = entities
+                .lock()
+                .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e))
+                .update_all();
             debug!("Effects: {:?}", effects);
 
             let json = match serde_json::to_string(&effects) {
@@ -181,10 +184,10 @@ pub async fn handle_request(
             };
 
             let resp = Response::builder()
-            .status(StatusCode::OK)
-            .header("Access-Control-Allow-Origin", "*")
-            .body(Bytes::copy_from_slice(json.as_bytes()).into())
-            .unwrap();
+                .status(StatusCode::OK)
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                .unwrap();
             Ok(resp)
         }
 
@@ -192,7 +195,7 @@ pub async fn handle_request(
             let msg = deserialize_body_or_respond!(req, ComputePathMsg);
 
             // Temporary until ships have actual acceleration built in
-            const MAX_ACCELERATION: f64 = 6.0*G;
+            const MAX_ACCELERATION: f64 = 6.0 * G;
 
             debug!(
                 "Computing path for entity: {} End pos: {:?} End vel: {:?}",

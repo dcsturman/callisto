@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
-import { Ships, ShipInfoWindow, Missiles, Route } from "./Ships";
+import { Ships, EntityInfoWindow, Missiles, Route } from "./Ships";
+import { ShipComputer } from "./Controls";
 import { Effect, Effects } from "./Effects";
 
 import {
   Entity,
   EntitiesServerProvider,
+  EntityToShowProvider,
   EntityList,
   FlightPlan,
 } from "./Contexts";
@@ -28,7 +30,7 @@ function App() {
     planets: [],
     missiles: [],
   });
-  const [shipToShow, setShipToShow] = useState<Entity | null>(null);
+  const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [computerShip, setComputerShip] = useState<Entity | null>(null);
   const [currentPlan, setCurrentPlan] = useState<FlightPlan | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
@@ -43,48 +45,89 @@ function App() {
     end_vel: [number, number, number]
   ) => computeFlightPath(entity_name, end_pos, end_vel, setCurrentPlan);
 
+  const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
+
+  function downHandler({ key }: { key: string }) {
+    if (key === "Shift") {
+      setKeyHeld({ shift: true, slash: keysHeld.slash });
+    }
+  }
+
+  function upHandler({ key }: { key: string }) {
+    if (key === "Shift") {
+      setKeyHeld({ shift: false, slash: keysHeld.slash });
+    }
+  }
+
+  useEffect(() => {
+    window.addEventListener("keydown", downHandler);
+    window.addEventListener("keyup", upHandler);
+    return () => {
+      window.removeEventListener("keydown", downHandler);
+      window.removeEventListener("keyup", upHandler);
+    };
+  });
+
   return (
-    <div className="mainscreen-container">
+    <EntityToShowProvider
+      value={{
+        entityToShow: entityToShow,
+        setEntityToShow: setEntityToShow,
+      }}>
       <>
         <EntitiesServerProvider
           value={{ entities: entities, handler: setEntities }}>
-          <Controls
-            nextRound={(callback) => nextRound(setEvents, callback)}
-            addEntity={addEntity}
-            setAcceleration={setAcceleration}
-            computerShip={computerShip}
-            setComputerShip={setComputerShip}
-            currentPlan={currentPlan}
-            getAndShowPlan={getAndShowPlan}
-          />
-          <Canvas
-            camera={{
-              fov: 75,
-              near: 0.0001,
-              far: 6000,
-              position: [-100, 0, 0],
-            }}>
-            {/*<OrbitControls enableZoom={true} keys={keys} <ambientLight color={0xffffff} intensity={0.1} />/>*/}
-            <FlyControls
-              autoForward={false}
-              dragToLook={true}
-              movementSpeed={50}
-              rollSpeed={0.5}
-              makeDefault
-            />
-            <SpaceView />
-            <Ships
-              setShipToShow={setShipToShow}
+          <div className="mainscreen-container">
+            <Controls
+              nextRound={(callback) => nextRound(setEvents, callback)}
+              addEntity={addEntity}
+              setAcceleration={setAcceleration}
+              computerShip={computerShip}
               setComputerShip={setComputerShip}
+              currentPlan={currentPlan}
+              getAndShowPlan={getAndShowPlan}
             />
-            <Missiles setShipToShow={setShipToShow}/>
-            { events && events.length > 0&& <Effects effects={events} setEffects={setEvents} /> }
-            {currentPlan && <Route plan={currentPlan} />}
-          </Canvas>
+            <div className="mainscreen-container">
+              {computerShip && (
+                <ShipComputer
+                  ship={computerShip}
+                  setComputerShip={setComputerShip}
+                  currentPlan={currentPlan}
+                  getAndShowPlan={getAndShowPlan}
+                  setAcceleration={setAcceleration}
+                />
+              )}
+              {/* Explicitly setting position to absolute seems to be necessary or it ends up relative and I cannot figure out why */}
+              <Canvas
+                style={{position: "absolute"}}
+                className="spaceview-canvas"
+                camera={{
+                  fov: 75,
+                  near: 0.0001,
+                  far: 200000,
+                  position: [-100, 0, 0],
+                }}>
+                <FlyControls
+                  autoForward={false}
+                  dragToLook={true}
+                  movementSpeed={keysHeld.shift ? 1000 : 50}
+                  rollSpeed={0.5}
+                  makeDefault
+                />
+                <SpaceView />
+                <Ships setComputerShip={setComputerShip} />
+                <Missiles />
+                {events && events.length > 0 && (
+                  <Effects effects={events} setEffects={setEvents} />
+                )}
+                {currentPlan && <Route plan={currentPlan} />}
+              </Canvas>
+            </div>
+          </div>
         </EntitiesServerProvider>
       </>
-      {shipToShow && <ShipInfoWindow ship={shipToShow} />}
-    </div>
+      {entityToShow && <EntityInfoWindow entity={entityToShow} />}
+    </EntityToShowProvider>
   );
 }
 export default App;
