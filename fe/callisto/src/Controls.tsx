@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useState, useEffect } from "react";
 import {
   Entity,
   EntitiesServerContext,
@@ -10,60 +10,25 @@ import { launchMissile } from "./ServerManager";
 
 const POS_SCALE = 1000.0;
 
-function AccelerationManager(args: {
-  setAcceleration: (target: string, x: number, y: number, z: number) => void;
+function ShipList(args: {
   setComputerShip: (entity: Entity) => void;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
   const ships = serverEntities.entities.ships;
 
-  function handleSubmit(
-    ship: Entity
-  ): (event: React.FormEvent<HTMLFormElement>) => void {
-    return (event: React.FormEvent<HTMLFormElement>) => {
-      console.log("Setting acceleration for " + ship.name);
-      event.preventDefault();
-      let x = Number(event.currentTarget.x.value);
-      let y = Number(event.currentTarget.y.value);
-      let z = Number(event.currentTarget.z.value);
-      args.setAcceleration(ship.name, x, y, z);
-    };
-  }
   return (
     <>
-      <h2 className="control-form">Set Accel</h2>
+      <h2 className="control-form">Ship List</h2>
       {ships.map((ship) => (
-        <form
+        <div
           key={ship.name + "-accel-setter"}
-          className="as-form"
-          onSubmit={handleSubmit(ship)}>
-          <label
+          className="as-form">
+          <text
             className="as-label"
             onDoubleClick={() => args.setComputerShip(ship)}>
             {ship.name}
-          </label>
-          <div>
-            <input
-              className="as-input"
-              name="x"
-              type="text"
-              defaultValue={ship.acceleration[0]}
-            />
-            <input
-              className="as-input"
-              name="y"
-              type="text"
-              defaultValue={ship.acceleration[1]}
-            />
-            <input
-              className="as-input"
-              name="z"
-              type="text"
-              defaultValue={ship.acceleration[2]}
-            />
-            <input className="as-input blue-button" type="submit" value="Set" />
-          </div>
-        </form>
+          </text>
+        </div>
       ))}
     </>
   );
@@ -94,9 +59,9 @@ export function ShipComputer(args: {
   });
 
   const [computerAccel, setComputerAccel] = useState({
-    x: args.ship.acceleration[0],
-    y: args.ship.acceleration[1],
-    z: args.ship.acceleration[2],
+    x: args.ship.acceleration[0].toString(),
+    y: args.ship.acceleration[1].toString(),
+    z: args.ship.acceleration[2].toString(),
   });
 
   const serverEntities = useContext(EntitiesServerContext);
@@ -210,6 +175,11 @@ export function ShipComputer(args: {
     if (args.currentPlan == null) {
       console.error(`(Controls.handleAssignPlan) No current plan`);
     } else {
+      setComputerAccel({
+        x: args.currentPlan.accelerations[0][0][0].toString(),
+        y: args.currentPlan.accelerations[0][0][1].toString(),
+        z: args.currentPlan.accelerations[0][0][2].toString(),
+      });
       args.setAcceleration(
         args.ship.name,
         args.currentPlan.accelerations[0][0],
@@ -218,18 +188,19 @@ export function ShipComputer(args: {
     }
   }
 
-  function AccelerationManager() {
+  // Intentionally defining as a function that returns JSX vs a true component.  If I use a true component then
+  // we lose focus on each key stroke.  But I do need accelerationManager nested inside ShipComputer as we want to share
+  // the computerAccel state between this component and the navigation computer functionality.  
+  function accelerationManager() {
     function handleSetAcceleration(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
       let x = Number(computerAccel.x);
       let y = Number(computerAccel.y);
       let z = Number(computerAccel.z);
-      setComputerAccel({x: x, y: y, z: z});
       args.setAcceleration(args.ship.name, [x, y, z], serverEntities.handler);
     }
 
     function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-      console.log(`(Controls.AccelerationManager.handleChange) Change ${event.target.name} to ${event.target.value}`);
       setComputerAccel({
         ...computerAccel,
         [event.target.name]: event.target.value,
@@ -282,7 +253,7 @@ export function ShipComputer(args: {
   return (
     <div id="computer-window" className="computer-window">
       <h1>{title}</h1>
-      <AccelerationManager />
+      {accelerationManager()}
       <hr />
       <h2 className="control-form">Navigation Computer</h2>
       <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
@@ -597,10 +568,7 @@ export function Controls(args: {
           args.addEntity(entity, serverEntities.handler)
         }
       />
-      <AccelerationManager
-        setAcceleration={(target, x, y, z) => {
-          args.setAcceleration(target, [x, y, z], serverEntities.handler);
-        }}
+      <ShipList
         setComputerShip={args.setComputerShip}
       />
       <button

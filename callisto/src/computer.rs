@@ -63,7 +63,7 @@ impl Problem for FlightParams {
 
     // Domain of the system.
     fn domain(&self) -> Domain<Self::Field> {
-        Domain::unconstrained(8)
+        Domain::rect(vec![-100.0, -100.0, -100.0, -100.0, -100.0, -100.0, 0.0, 0.0], vec![100.0, 100.0, 100.0, 100.0, 100.0, 100.0, f64::INFINITY, f64::INFINITY])
     }
 }
 
@@ -141,7 +141,7 @@ impl TargetParams {
 impl Problem for TargetParams {
     type Field = f64;
     fn domain(&self) -> Domain<Self::Field> {
-        Domain::unconstrained(4)
+        Domain::rect(vec![-100.0, -100.0, -100.0, 0.0], vec![100.0, 100.0, 100.0, f64::INFINITY]) 
     }
 }
 
@@ -204,7 +204,7 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
                 state.norm(),
                 state.x()
             );
-            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100})
+            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 300})
         .unwrap_or_else(|e| {
             panic!(
                 "Unable to solve flight path with params: {:?} with error: {}.",
