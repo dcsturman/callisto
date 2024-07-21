@@ -19,7 +19,7 @@ use computer::{compute_flight_path, FlightParams};
 use entity::{Entities, G};
 use payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, LaunchMissileMsg, RemoveEntityMsg,
-    SetAccelerationMsg,
+    SetPlanMsg,
 };
 
 enum SizeCheckError {
@@ -155,13 +155,13 @@ pub async fn handle_request(
             Ok(build_ok_response("Remove action executed"))
         }
         (&Method::POST, "/set_accel") => {
-            let accel_msg = deserialize_body_or_respond!(req, SetAccelerationMsg);
+            let plan_msg = deserialize_body_or_respond!(req, SetPlanMsg);
 
             // Change the acceleration of the entity
             entities
                 .lock()
                 .unwrap()
-                .set_acceleration(&accel_msg.name, accel_msg.acceleration);
+                .set_flight_plan(&plan_msg.name, plan_msg.plan);
 
             Ok(build_ok_response("Set acceleration action executed"))
         }

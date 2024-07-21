@@ -14,7 +14,7 @@ extern crate pretty_env_logger;
 
 use cgmath::{assert_ulps_eq, Zero};
 
-use callisto::entity::{Entities, Vec3};
+use callisto::entity::{Entities, Vec3, DEFAULT_ACCEL_DURATION};
 use callisto::payloads::FlightPathMsg;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
@@ -118,7 +118,7 @@ async fn test_add_ship() {
 
     assert_eq!(
         entities,
-        r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#
+        r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#
     );
 }
 
@@ -155,16 +155,16 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
+    let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
         .unwrap()
         .text()
         .await
         .unwrap();
 
-    assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(r#"[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"},
-        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
+    assert_eq!(serde_json::from_str::<Entities>(response.as_str()).unwrap(),
+        serde_json::from_str(r#"[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}},
+        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap());
 
     let planet = r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -187,10 +187,10 @@ async fn test_add_missile_planet_ship() {
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(
         r#"[
-            {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
+            {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
               "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
-            {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"},
-            {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
+            {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}},
+            {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap());
 
     let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -204,7 +204,7 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add planet action executed" }"#);
 
-    let missile = r#"{"source":"ship1","target":"ship2","burns":3}"#;
+    let missile = r#"{"source":"ship1","target":"ship2"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, LAUNCH_MISSILE_PATH))
         .body(missile)
@@ -222,16 +222,26 @@ async fn test_add_missile_planet_ship() {
         .text()
         .await
         .unwrap();
-    assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(r#"[
-        {"name":"ship1::ship2::0","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
-            "kind":{"Missile":{"source":"ship1","target":"ship2","burns":3}}},
-        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
+
+    let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
+    let compare: Entities = serde_json::from_str(r#"[
+        {"name":"ship1::ship2::0","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
+            "kind":{"Missile":{"source":"ship1","target":"ship2","burns":2,"acceleration":[0.31491832864888675, -5.983448244328849, 0.31491832864888675]}}},
+        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
             "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
-        {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
+        {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
             "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}}},
-        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"},
-        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
+        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}},
+        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap();
+
+    for (_i, (key, entity)) in start.entities.iter().enumerate() {
+        assert_eq!(
+            *entity.read().unwrap(),
+            *compare.entities.get(key).unwrap().read().unwrap()
+        );
+    }
+
+    assert_eq!(start, compare);
 }
 
 /*
@@ -265,15 +275,17 @@ async fn test_update_ship() {
         .unwrap();
     assert_eq!(response, r#"[]"#);
 
-    let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
+    let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
         .unwrap()
         .text()
         .await
         .unwrap();
 
-    assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(r#"[{"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#).unwrap());
+    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+    let ship = entities.get("ship1").unwrap().read().unwrap();
+    assert_eq!(ship.get_position(), Vec3::new(1000000.0, 0.0, 0.0));
+    assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
 }
 
 /*
@@ -331,6 +343,7 @@ async fn test_update_missile() {
         .text()
         .await
         .unwrap();
+
     assert_eq!(
         response,
         r#"[{"position":[5000.0,0.0,5000.0],"kind":"ShipImpact"}]"#
@@ -345,8 +358,7 @@ async fn test_update_missile() {
 
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(r#"[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}
-            ]"#).unwrap());
+            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],9000]]}}}]"#).unwrap());
 }
 
 /*
@@ -409,19 +421,24 @@ async fn test_set_acceleration() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
+    let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
         .unwrap()
         .text()
         .await
         .unwrap();
-    assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":"Ship"}]"#)
-        .unwrap());
+
+    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+
+    let ship = entities.get("ship1").unwrap().read().unwrap();
+    let flight_plan = ship.get_flight_plan().unwrap();
+    assert_eq!(flight_plan.0.0, [0.0, 0.0, 0.0].into());
+    assert_eq!(flight_plan.0.1, DEFAULT_ACCEL_DURATION);
+    assert!(!flight_plan.has_second());
 
     let response = reqwest::Client::new()
         .post(path(PORT, SET_ACCELERATION_PATH))
-        .body(r#"{"name":"ship1","acceleration":[1,2,3]}"#)
+        .body(r#"{"name":"ship1","plan":[[[1,2,3],10000]]}"#)
         .send()
         .await
         .unwrap()
@@ -432,14 +449,19 @@ async fn test_set_acceleration() {
         response,
         r#"{ "msg" : "Set acceleration action executed" }"#
     );
-    let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
+    let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
         .unwrap()
         .text()
         .await
         .unwrap();
-    assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[1.0,2.0,3.0],"kind":"Ship"}]"#).unwrap());
+
+    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+    let ship = entities.get("ship1").unwrap().read().unwrap();
+    let flight_plan = ship.get_flight_plan().unwrap();
+    assert_eq!(flight_plan.0.0, [1.0, 2.0, 3.0].into());
+    assert_eq!(flight_plan.0.1, DEFAULT_ACCEL_DURATION);
+    assert!(!flight_plan.has_second());
 }
 /**
  * Test that will compute a simple path and return it, checking if the simple computation is correct.
@@ -492,23 +514,29 @@ async fn test_compute_path() {
         }
     );
     assert_ulps_eq!(plan.end_velocity, Vec3::zero());
-    assert_eq!(plan.accelerations.len(), 2);
+    let (a, t) = plan.plan.0.into();
     assert_ulps_eq!(
-        plan.accelerations[0].0,
+        a,
         Vec3 {
             x: 6.0,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_eq!(plan.accelerations[0].1, 1000);
-    assert_ulps_eq!(
-        plan.accelerations[1].0,
-        Vec3 {
-            x: -6.0,
-            y: 0.0,
-            z: 0.0
-        }
-    );
-    assert_eq!(plan.accelerations[0].1, 1000);
+    assert_eq!(t, 1000);
+
+    if let Some(accel) = plan.plan.1 {
+        let (a, _t) = accel.into();
+        assert_ulps_eq!(
+            a,
+            Vec3 {
+                x: -6.0,
+                y: 0.0,
+                z: 0.0
+            }
+        );
+    } else {
+        panic!("Expecting second acceleration.")
+    }
+    assert_eq!(t, 1000);
 }

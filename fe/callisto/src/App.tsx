@@ -11,16 +11,15 @@ import {
   EntitiesServerProvider,
   EntityToShowProvider,
   EntityList,
-  FlightPlan,
-} from "./Contexts";
+  FlightPathResult,
+  Ship,
+} from "./Universal";
 
 import Controls from "./Controls";
 import "./index.css";
 import {
   nextRound,
-  addEntity,
   getEntities,
-  setAcceleration,
   computeFlightPath,
 } from "./ServerManager";
 
@@ -31,8 +30,8 @@ function App() {
     missiles: [],
   });
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
-  const [computerShip, setComputerShip] = useState<Entity | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<FlightPlan | null>(null);
+  const [computerShip, setComputerShip] = useState<Ship | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
 
   useEffect(() => {
@@ -80,8 +79,6 @@ function App() {
           <div className="mainscreen-container">
             <Controls
               nextRound={(callback) => nextRound(setEvents, callback)}
-              addEntity={addEntity}
-              setAcceleration={setAcceleration}
               computerShip={computerShip}
               setComputerShip={setComputerShip}
               currentPlan={currentPlan}
@@ -94,7 +91,6 @@ function App() {
                   setComputerShip={setComputerShip}
                   currentPlan={currentPlan}
                   getAndShowPlan={getAndShowPlan}
-                  setAcceleration={setAcceleration}
                 />
               )}
               {/* Explicitly setting position to absolute seems to be necessary or it ends up relative and I cannot figure out why */}

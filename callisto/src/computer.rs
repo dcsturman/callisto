@@ -1,4 +1,4 @@
-use crate::entity::{Vec3, DELTA_TIME, G};
+use crate::entity::{FlightPlan, Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
 use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;
@@ -8,25 +8,15 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 const SOLVE_TOLERANCE: f64 = 1e-4;
-// Had to implement this as serde_as could not handle a tuple
-#[serde_as]
-#[derive(Serialize, Deserialize, Debug)]
-pub struct AccelPair(#[serde_as(as = "Vec3asVec")] pub Vec3, pub i64);
-
-impl From<(Vec3, i64)> for AccelPair {
-    fn from(tuple: (Vec3, i64)) -> Self {
-        AccelPair(tuple.0, tuple.1)
-    }
-}
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct FlightPlan {
+pub struct FlightPathResult {
     #[serde_as(as = "Vec<Vec3asVec>")]
     pub path: Vec<Vec3>,
     #[serde_as(as = "Vec3asVec")]
     pub end_velocity: Vec3,
-    pub accelerations: Vec<AccelPair>,
+    pub plan: FlightPlan,
 }
 
 // System of equations is represented by a struct.
@@ -63,7 +53,19 @@ impl Problem for FlightParams {
 
     // Domain of the system.
     fn domain(&self) -> Domain<Self::Field> {
-        Domain::rect(vec![-100.0, -100.0, -100.0, -100.0, -100.0, -100.0, 0.0, 0.0], vec![100.0, 100.0, 100.0, 100.0, 100.0, 100.0, f64::INFINITY, f64::INFINITY])
+        Domain::rect(
+            vec![-100.0, -100.0, -100.0, -100.0, -100.0, -100.0, 0.0, 0.0],
+            vec![
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                f64::INFINITY,
+                f64::INFINITY,
+            ],
+        )
     }
 }
 
@@ -141,7 +143,10 @@ impl TargetParams {
 impl Problem for TargetParams {
     type Field = f64;
     fn domain(&self) -> Domain<Self::Field> {
-        Domain::rect(vec![-100.0, -100.0, -100.0, 0.0], vec![100.0, 100.0, 100.0, f64::INFINITY]) 
+        Domain::rect(
+            vec![-100.0, -100.0, -100.0, 0.0],
+            vec![100.0, 100.0, 100.0, f64::INFINITY],
+        )
     }
 }
 
@@ -172,7 +177,7 @@ impl System for TargetParams {
     }
 }
 
-pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
+pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
     let delta = params.end_pos - params.start_pos;
     let distance = delta.magnitude();
 
@@ -191,20 +196,21 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
     initial.push(guess_t);
     initial.push(guess_t);
 
-    debug!("(compute_flight_path) Params is {:?}", params);
-    debug!("(compute_flight_path) Initial is {:?}", initial);
+    info!("(compute_flight_path) Params is {:?}", params);
+    info!("(compute_flight_path) Initial is {:?}", initial);
 
     let mut solver = SolverDriver::builder(params).with_initial(initial).build();
 
     let (x, _norm) = solver
         .find(|state| {
-            println!(
+            info!(
                 "iter = {}\t|| r(x) || = {}\tx = {:?}",
                 state.iter(),
                 state.norm(),
                 state.x()
             );
-            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 300})
+            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 300
+        })
         .unwrap_or_else(|e| {
             panic!(
                 "Unable to solve flight path with params: {:?} with error: {}.",
@@ -256,22 +262,22 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPlan {
         }
     }
 
-    FlightPlan {
+    FlightPathResult {
         path,
         end_velocity: vel,
-        accelerations: vec![
-            (a_1 / G, t_1.round() as i64).into(),
-            (a_2 / G, t_2.round() as i64).into(),
-        ],
+        plan: FlightPlan::new(
+            (a_1 / G, t_1.round() as u64).into(),
+            Some((a_2 / G, t_2.round() as u64).into()),
+        ),
     }
 }
 
-pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
+pub fn compute_target_path(params: &TargetParams) -> FlightPathResult {
     let delta = params.end_pos - params.start_pos;
     let distance = delta.magnitude();
 
     let guess_a = delta / distance * params.max_acceleration;
-    let guess_t = (distance / params.max_acceleration).sqrt();
+    let guess_t = (2.0 * distance / params.max_acceleration).sqrt();
 
     let array_i: [f64; 3] = guess_a.into();
     let mut initial = Vec::<f64>::from(array_i);
@@ -282,24 +288,47 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
     let mut first_attempt = params.clone();
     first_attempt.target_vel = Vec3::zero();
 
-    debug!("(compute_target_path) Params is {:?}", first_attempt);
-    debug!("(compute_target_path) Initial is {:?}", initial);
+    info!(
+        "(compute_target_path) First attempt params is {:?}",
+        first_attempt
+    );
+    info!(
+        "(compute_target_path) First attempt initial is {:?}",
+        initial
+    );
 
     let mut solver = SolverDriver::builder(&first_attempt)
         .with_initial(initial)
         .build();
 
-    let attempt = solver.find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100);
+    let attempt = solver.find(|state| {
+        info!(
+            "iter = {}\t|| r(x) || = {}\tx = {:?}",
+            state.iter(),
+            state.norm(),
+            state.x()
+        );
+        state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
+    });
 
     // We need to compute again if either something went wrong in the first attempt (got an error) OR
     // it took too long to reach the target.
     let answer = if !matches!(attempt, Ok((x, _norm)) if x[3] <= DELTA_TIME as f64) {
+        debug!("Second attempt (coudln't get there in one round)");
         let mut initial = Vec::<f64>::from(array_i);
         initial.push(guess_t);
         // We need to compute again since we can't reach the target in one round.
         solver = SolverDriver::builder(params).with_initial(initial).build();
         let (x, _) = solver
-            .find(|state| state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100)
+            .find(|state| {
+                debug!(
+                    "iter = {}\t|| r(x) || = {}\tx = {:?}",
+                    state.iter(),
+                    state.norm(),
+                    state.x()
+                );
+                state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
+            })
             .unwrap_or_else(|e| {
                 panic!(
                     "Unable to solve target path with params {:?} and error {}",
@@ -335,10 +364,10 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPlan {
         time += delta;
     }
 
-    FlightPlan {
+    FlightPathResult {
         path,
         end_velocity: vel,
-        accelerations: vec![(a / G, answer[3].round() as i64).into()],
+        plan: FlightPlan::new((a / G, answer[3].round() as u64).into(), None),
     }
 }
 

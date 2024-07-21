@@ -1,18 +1,19 @@
-import { useContext, useState, useEffect } from "react";
+import { useContext, useState } from "react";
 import {
-  Entity,
   EntitiesServerContext,
   EntityRefreshCallback,
-  FlightPlan,
-} from "./Contexts";
+  FlightPathResult,
+  Ship,
+  DEFAULT_ACCEL_DURATION,
+} from "./Universal";
+
+import { addShip, setPlan } from "./ServerManager";
 
 import { launchMissile } from "./ServerManager";
 
 const POS_SCALE = 1000.0;
 
-function ShipList(args: {
-  setComputerShip: (entity: Entity) => void;
-}) {
+function ShipList(args: { setComputerShip: (entity: Ship) => void }) {
   const serverEntities = useContext(EntitiesServerContext);
   const ships = serverEntities.entities.ships;
 
@@ -20,14 +21,8 @@ function ShipList(args: {
     <>
       <h2 className="control-form">Ship List</h2>
       {ships.map((ship) => (
-        <div
-          key={ship.name + "-accel-setter"}
-          className="as-form">
-          <text
-            className="as-label"
-            onDoubleClick={() => args.setComputerShip(ship)}>
+        <div key={ship.name + "-accel-setter"} className="as-label clickable-label" onDoubleClick={() => args.setComputerShip(ship)}>
             {ship.name}
-          </text>
         </div>
       ))}
     </>
@@ -35,18 +30,13 @@ function ShipList(args: {
 }
 
 export function ShipComputer(args: {
-  ship: Entity;
-  setComputerShip: (ship: Entity | null) => void;
-  currentPlan: FlightPlan | null;
+  ship: Ship;
+  setComputerShip: (ship: Ship | null) => void;
+  currentPlan: FlightPathResult | null;
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number]
-  ) => void;
-  setAcceleration: (
-    target: string,
-    acceleration: [number, number, number],
-    callBack: EntityRefreshCallback
   ) => void;
 }) {
   const [navigationTarget, setNavigationTarget] = useState({
@@ -58,10 +48,16 @@ export function ShipComputer(args: {
     v_z: "0",
   });
 
+  let startAccel = [
+    args.ship.plan[0][0][0].toString(),
+    args.ship.plan[0][0][1].toString(),
+    args.ship.plan[0][0][2].toString(),
+  ];
+
   const [computerAccel, setComputerAccel] = useState({
-    x: args.ship.acceleration[0].toString(),
-    y: args.ship.acceleration[1].toString(),
-    z: args.ship.acceleration[2].toString(),
+    x: startAccel[0],
+    y: startAccel[1],
+    z: startAccel[2],
   });
 
   const serverEntities = useContext(EntitiesServerContext);
@@ -176,28 +172,28 @@ export function ShipComputer(args: {
       console.error(`(Controls.handleAssignPlan) No current plan`);
     } else {
       setComputerAccel({
-        x: args.currentPlan.accelerations[0][0][0].toString(),
-        y: args.currentPlan.accelerations[0][0][1].toString(),
-        z: args.currentPlan.accelerations[0][0][2].toString(),
+        x: args.currentPlan.plan[0][0][0].toString(),
+        y: args.currentPlan.plan[0][0][1].toString(),
+        z: args.currentPlan.plan[0][0][2].toString(),
       });
-      args.setAcceleration(
-        args.ship.name,
-        args.currentPlan.accelerations[0][0],
-        serverEntities.handler
-      );
+      setPlan(args.ship.name, args.currentPlan.plan, serverEntities.handler);
     }
   }
 
   // Intentionally defining as a function that returns JSX vs a true component.  If I use a true component then
   // we lose focus on each key stroke.  But I do need accelerationManager nested inside ShipComputer as we want to share
-  // the computerAccel state between this component and the navigation computer functionality.  
+  // the computerAccel state between this component and the navigation computer functionality.
   function accelerationManager() {
     function handleSetAcceleration(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
       let x = Number(computerAccel.x);
       let y = Number(computerAccel.y);
       let z = Number(computerAccel.z);
-      args.setAcceleration(args.ship.name, [x, y, z], serverEntities.handler);
+      setPlan(
+        args.ship.name,
+        [[[x, y, z], DEFAULT_ACCEL_DURATION], null],
+        serverEntities.handler
+      );
     }
 
     function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -249,6 +245,9 @@ export function ShipComputer(args: {
   }
 
   let title = "Computer " + args.ship.name;
+  console.log("TMP CONTROLS: currentPlan = " + JSON.stringify(args.currentPlan));
+  let accel0 = args.currentPlan?.plan[0];
+  let accel1 = args.currentPlan?.plan[1];
 
   return (
     <div id="computer-window" className="computer-window">
@@ -338,17 +337,24 @@ export function ShipComputer(args: {
           value="Compute"
         />
       </form>
-      {args.currentPlan && (
+      {accel0 && (
         <div>
           <h2 className="control-form">Current Plan</h2>
-          {args.currentPlan.accelerations.map(([accel, time], index) => (
-            <div key={"accel-" + index}>
+          <div key={"accel-0"}>
+            <p>
+              ({accel0[0][0].toFixed(1)}, {accel0[0][1].toFixed(1)},{" "}
+              {accel0[0][2].toFixed(1)}) for {accel0[1].toFixed(0)}s
+            </p>
+          </div>
+          {accel1 && (
+            <div key={"accel-1"}>
               <p>
-                ({accel[0].toFixed(1)}, {accel[1].toFixed(1)},{" "}
-                {accel[2].toFixed(1)}) for {time.toFixed(0)}s
+                ({accel1[0][0].toFixed(1)}, {accel1[0][1].toFixed(1)},{" "}
+                {accel1[0][2].toFixed(1)}) for {accel1[1].toFixed(0)}s
               </p>
             </div>
-          ))}
+          )}
+          ))
           <button
             className="control-input control-button blue-button"
             onClick={handleAssignPlan}>
@@ -392,7 +398,14 @@ export function ShipComputer(args: {
     </div>
   );
 }
-function AddShip(args: { submitHandler: (ship: Entity) => void }) {
+function AddShip(args: {
+  submitHandler: (
+    name: string,
+    position: [number, number, number],
+    velocity: [number, number, number],
+    acceleration: [number, number, number]
+  ) => void;
+}) {
   const initialShip = {
     name: "ShipName",
     xpos: "0",
@@ -414,30 +427,28 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    let newShip: Entity = {
-      name: addShip.name,
-      position: [
-        Number(addShip.xpos) * POS_SCALE,
-        Number(addShip.ypos) * POS_SCALE,
-        Number(addShip.zpos) * POS_SCALE,
-      ],
-      velocity: [
-        Number(addShip.xvel),
-        Number(addShip.yvel),
-        Number(addShip.zvel),
-      ],
-      acceleration: [
-        Number(addShip.xacc),
-        Number(addShip.yacc),
-        Number(addShip.zacc),
-      ],
-      kind: {
-        Ship: {},
-      },
-    };
-    console.log("Adding ship: " + JSON.stringify(newShip));
+    let name = addShip.name;
+    let position: [number, number, number] = [
+      Number(addShip.xpos) * POS_SCALE,
+      Number(addShip.ypos) * POS_SCALE,
+      Number(addShip.zpos) * POS_SCALE,
+    ];
+    let velocity: [number, number, number] = [
+      Number(addShip.xvel),
+      Number(addShip.yvel),
+      Number(addShip.zvel),
+    ];
+    let acceleration: [number, number, number] = [
+      Number(addShip.xacc),
+      Number(addShip.yacc),
+      Number(addShip.zacc),
+    ];
 
-    args.submitHandler(newShip);
+    console.log(
+      `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
+    );
+
+    args.submitHandler(name, position, velocity, acceleration);
     addShipUpdate(initialShip);
   }
 
@@ -543,15 +554,9 @@ function AddShip(args: { submitHandler: (ship: Entity) => void }) {
 
 export function Controls(args: {
   nextRound: (callback: EntityRefreshCallback) => void;
-  addEntity: (entity: Entity, callback: EntityRefreshCallback) => void;
-  setAcceleration: (
-    target: string,
-    acceleration: [number, number, number],
-    callBack: EntityRefreshCallback
-  ) => void;
-  computerShip: Entity | null;
-  setComputerShip: (ship: Entity | null) => void;
-  currentPlan: FlightPlan | null;
+  computerShip: Ship | null;
+  setComputerShip: (ship: Ship | null) => void;
+  currentPlan: FlightPathResult | null;
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
@@ -564,13 +569,22 @@ export function Controls(args: {
     <div className="controls-pane">
       <h1>Controls</h1>
       <AddShip
-        submitHandler={(entity) =>
-          args.addEntity(entity, serverEntities.handler)
+        submitHandler={(
+          name: string,
+          position: [number, number, number],
+          velocity: [number, number, number],
+          acceleration: [number, number, number]
+        ) =>
+          addShip(
+            name,
+            position,
+            velocity,
+            acceleration,
+            serverEntities.handler
+          )
         }
       />
-      <ShipList
-        setComputerShip={args.setComputerShip}
-      />
+      <ShipList setComputerShip={args.setComputerShip} />
       <button
         className="control-input control-button blue-button button-next-round"
         // Reset the computer and route on the next round.  If this gets any more complex move it into its

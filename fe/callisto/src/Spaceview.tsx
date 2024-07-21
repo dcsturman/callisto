@@ -12,31 +12,17 @@ import { Line, scaleVector } from "./Util";
 import {
   SCALE,
   Planet as PlanetType,
-  Entity,
   EntitiesServerContext,
   EntityToShowContext,
-} from "./Contexts";
+} from "./Universal";
 
-function Planet(args: { planet: Entity }) {
+function Planet(args: { planet: PlanetType }) {
   const entityToShow = useContext(EntityToShowContext);
 
-  let planet_details;
-
-  if ("Planet" in args.planet.kind) {
-    planet_details = args.planet.kind.Planet as PlanetType;
-  } else {
-    console.error(
-      `(Spaceview.Planet) Planet ${
-        args.planet.name
-      } not a planet. Details ${JSON.stringify(planet_details)}`
-    );
-    return <></>;
-  }
-
-  const color = Color(planet_details.color);
+  const color = Color(args.planet.color);
   const intensity_factor = 2.5;
 
-  const radiusMeters = planet_details.radius;
+  const radiusMeters = args.planet.radius;
   const radiusUnits = radiusMeters * SCALE;
   const pos = scaleVector(args.planet.position, SCALE);
 
@@ -71,7 +57,7 @@ function Planet(args: { planet: Entity }) {
   );
 }
 
-function Planets(args: { planets: Entity[] }) {
+function Planets(args: { planets: PlanetType[] }) {
   return (
     <>
       {args.planets.map((planet, index) => (

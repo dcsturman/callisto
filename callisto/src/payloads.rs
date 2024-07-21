@@ -2,11 +2,11 @@
  * here for completeness.
  */
 
-use super::computer::FlightPlan;
+use super::computer::FlightPathResult;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::serde_as;
 
-use super::entity::Vec3;
+use super::entity::{Vec3, FlightPlan};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -42,9 +42,9 @@ pub struct AddPlanetMsg {
 pub type RemoveEntityMsg = String;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct SetAccelerationMsg {
+pub struct SetPlanMsg {
     pub name: String,
-    pub acceleration: Vec3,
+    pub plan: FlightPlan
 }
 
 #[serde_as]
@@ -57,7 +57,7 @@ pub struct ComputePathMsg {
     pub end_vel: Vec3,
 }
 
-pub type FlightPathMsg = FlightPlan;
+pub type FlightPathMsg = FlightPathResult;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
