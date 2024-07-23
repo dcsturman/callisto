@@ -1,9 +1,8 @@
 /*** All the payloads used from the client to the server.  Some are not terribly meaningful or complex, but putting them all
  * here for completeness.
  */
-
 use super::computer::FlightPathResult;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use super::entity::{Vec3, FlightPlan};
@@ -55,6 +54,14 @@ pub struct ComputePathMsg {
     pub end_pos: Vec3,
     #[serde_as(as = "Vec3asVec")]
     pub end_vel: Vec3,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        //with = "::serde_with::rust::unwrap_or_skip"
+        with = "::serde_with:: As :: < Option < Vec3asVec > >"
+    )]
+    //#[serde_as(as = "Option<Vec3asVec>")]
+    pub target_velocity: Option<Vec3>,
 }
 
 pub type FlightPathMsg = FlightPathResult;
@@ -75,27 +82,89 @@ pub const EXHAUSTED_MISSILE: &str = "ExhaustedMissile";
 // So including here as a comment for completeness.
 // pub type ListEntitiesMsg = Entities;
 
-/**
+
+/*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
  */
-pub struct Vec3asVec;
-impl<'de> serde_with::DeserializeAs<'de, Vec3> for Vec3asVec {
-    fn deserialize_as<D>(deserializer: D) -> Result<Vec3, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let v: Vec<f64> = Deserialize::deserialize(deserializer)?;
-        Ok(Vec3::new(v[0], v[1], v[2]))
+serde_with::serde_conv!(
+    pub Vec3asVec,
+    Vec3,
+    |v: &Vec3| [v.x, v.y, v.z],
+    |value: [f64; 3]| -> Result<_, std::convert::Infallible> {
+        Ok(Vec3 {
+            x: value[0],
+            y: value[1],
+            z: value[2],
+        })
     }
-}
+);
 
-impl serde_with::SerializeAs<Vec3> for Vec3asVec {
-    fn serialize_as<S>(source: &Vec3, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let v = vec![source.x, source.y, source.z];
-        Serialize::serialize(&v, serializer)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use cgmath::Zero;
+
+    #[test]
+    fn test_add_ship_msg() {
+        let msg = AddShipMsg {
+            name: "ship1".to_string(),
+            position: Vec3::zero(),
+            velocity: Vec3::zero(),
+            acceleration: Vec3::zero(),
+        };
+        let json = json!({
+            "name": "ship1",
+            "position": [0.0, 0.0, 0.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "acceleration": [0.0, 0.0, 0.0],
+        });
+
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json_str, json.to_string());
+    }
+
+    #[test]
+    fn test_compute_path_msg() {
+        let msg = ComputePathMsg {
+            entity_name: "ship1".to_string(),
+            end_pos: Vec3::zero(),
+            end_vel: Vec3::zero(),
+            target_velocity: None,
+        };
+
+        let json = json!({
+            "entity_name": "ship1",
+            "end_pos": [0.0, 0.0, 0.0],
+            "end_vel": [0.0, 0.0, 0.0],
+        });
+
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json_str, json.to_string());
+
+        let rmsg = serde_json::from_str::<ComputePathMsg>(json_str.as_str()).unwrap();
+        println!("rmsg {:?}", rmsg);
+
+        let msg2 = ComputePathMsg {
+            entity_name: "ship1".to_string(),
+            end_pos: Vec3::zero(),
+            end_vel: Vec3::zero(),
+            target_velocity: Some(Vec3 { x: 10.0, y: 20.0, z: 30.0 }),
+        };
+
+        let json2 = json!({
+            "entity_name": "ship1",
+            "end_pos": [0.0, 0.0, 0.0],
+            "end_vel": [0.0, 0.0, 0.0],
+            "target_velocity": [10.0, 20.0, 30.0],
+        });
+
+        let json_str2 = serde_json::to_string(&msg2).unwrap();
+        println!("json_str2: {}", json_str2);
+        assert_eq!(json_str2, json2.to_string());
+
+        let rmsg2 = serde_json::from_str::<ComputePathMsg>(json_str2.as_str()).unwrap();
+        println!("rmsg2 {:?}", rmsg2);
     }
 }

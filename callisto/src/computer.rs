@@ -19,13 +19,24 @@ pub struct FlightPathResult {
     pub plan: FlightPlan,
 }
 
-// System of equations is represented by a struct.
+/**
+ * Parameters for this are mostly as you might expect. The starting and ending position, the starting and ending velocity.
+ * Max acceleration limits the solution to use no more than this specified acceleration..
+ * The target velocity is optional and a bit unusual.  If provided, its the velocity of the target and the end position
+ * should be adjusted based on the time of the entire solution plan so that the target is reached at the end of the plan given
+ * this velocity.  The other tricky part is while the flight plan likely won't have a duration of an exact number of turns,
+ * we should account for the target velocity for a number of full rounds.
+ */
 #[derive(Debug)]
 pub struct FlightParams {
     pub start_pos: Vec3,
     pub end_pos: Vec3,
     pub start_vel: Vec3,
     pub end_vel: Vec3,
+    // Can take into account a target velocity instead of just an end position.
+    // If we want to do that, then this is Some(target_vel) else None.
+    // In this case end_pos is the _current_ end_pos not the ultimate end position.
+    pub target_velocity: Option<Vec3>,
     pub max_acceleration: f64,
 }
 
@@ -35,6 +46,7 @@ impl FlightParams {
         end_pos: Vec3,
         start_vel: Vec3,
         end_vel: Vec3,
+        target_velocity: Option<Vec3>,
         max_acceleration: f64,
     ) -> Self {
         FlightParams {
@@ -42,6 +54,7 @@ impl FlightParams {
             end_pos,
             start_vel,
             end_vel,
+            target_velocity,
             max_acceleration,
         }
     }
@@ -99,7 +112,12 @@ impl System for FlightParams {
             + (a_1 * t_1 + self.start_vel) * t_2
             + self.start_vel * t_1
             + self.start_pos
-            - self.end_pos;
+            - (self.end_pos
+                + if let Some(target_vel) = self.target_velocity {
+                    target_vel * ((t_2 + t_1) / DELTA_TIME as f64).ceil() * DELTA_TIME as f64
+                } else {
+                    Vec3::zero()
+                });
         let vel_eqs = a_1 * t_1 + a_2 * t_2 + self.start_vel - self.end_vel;
 
         rx[0] = pos_eqs[0];
@@ -199,7 +217,9 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
     info!("(compute_flight_path) Params is {:?}", params);
     info!("(compute_flight_path) Initial is {:?}", initial);
 
-    let mut solver = SolverDriver::builder(params).with_initial(initial).build();
+    let mut solver = SolverDriver::builder(params)
+        .with_initial(initial)
+        .build();
 
     let (x, _norm) = solver
         .find(|state| {
@@ -209,7 +229,7 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
                 state.norm(),
                 state.x()
             );
-            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 300
+            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
         })
         .unwrap_or_else(|e| {
             panic!(
@@ -230,8 +250,8 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
     let t_1 = x[6];
     let t_2 = x[7];
 
-    debug!(
-        "Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
+    info!(
+        "(compute_flight_path) Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
         a_1, a_2, t_1, t_2
     );
 
@@ -252,7 +272,7 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
             let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
             let new_vel = vel + accel * delta;
 
-            debug!("(compute_flight_path) Accelerate from {:?} at {:?}m/s^2 for {:?}s. New Pos: {:?}, New Vel: {:?}", 
+            info!("(compute_flight_path) Accelerate from {:?} at {:?}m/s^2 for {:?}s. New Pos: {:?}, New Vel: {:?}", 
                 pos, accel, delta, new_pos, new_vel);
 
             path.push(new_pos);
@@ -403,6 +423,7 @@ mod tests {
                 y: 0.0,
                 z: 100.0,
             },
+            target_velocity: None,
             max_acceleration: 4.0 * G,
         };
 
@@ -425,5 +446,134 @@ mod tests {
         assert_eq!(plan.path.len(), 5);
         assert!(pos_error < 0.001);
         assert!(vel_error < 0.001);
+    }
+
+    #[test]
+    fn test_compute_flight_path_with_null_target_velocity() {
+        let _ = env_logger::try_init();
+
+        let params = FlightParams {
+            start_pos: Vec3 {
+                x: -2e7,
+                y: 1e6,
+                z: 1.5e7,
+            },
+            end_pos: Vec3 {
+                x: 1e7,
+                y: -2e6,
+                z: -2.0e7,
+            },
+            start_vel: Vec3 {
+                x: 500.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            end_vel: Vec3 {
+                x: 500.0,
+                y: 0.0,
+                z: 100.0,
+            },
+            target_velocity: Some(Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }),
+            max_acceleration: 4.0 * G,
+        };
+
+        let plan = compute_flight_path(&params);
+
+        info!(
+            "Start Pos: {:?}\nEnd Pos: {:?}",
+            params.start_pos, params.end_pos
+        );
+        info!(
+            "Start Vel: {:?}\nEnd Vel: {:?}",
+            params.start_vel, params.end_vel
+        );
+        info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
+
+        let vel_error = (plan.end_velocity - params.end_vel).magnitude();
+        let pos_error = (plan.path.last().unwrap() - params.end_pos).magnitude();
+        info!("Vel Error: {}\nPos Error: {}", vel_error, pos_error);
+        // Add assertions here to validate the computed flight path and velocity
+        assert_eq!(plan.path.len(), 5);
+        assert!(pos_error < 0.001);
+        assert!(vel_error < 0.001);
+    }
+
+    #[test]
+    fn test_compute_flight_path_with_target_velocity() {
+        let _ = env_logger::try_init();
+
+        let params = FlightParams {
+            start_pos: Vec3 {
+                x: -2e7,
+                y: 1e6,
+                z: 1.5e7,
+            },
+            end_pos: Vec3 {
+                x: 1e7,
+                y: -2e6,
+                z: -2.0e7,
+            },
+            start_vel: Vec3 {
+                x: 500.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            end_vel: Vec3 {
+                x: 500.0,
+                y: 0.0,
+                z: 100.0,
+            },
+            target_velocity: Some(Vec3 {
+                x: -1000.0,
+                y: 1000.0,
+                z: -1000.0,
+            }),
+            max_acceleration: 6.0 * G,
+        };
+
+        let plan = compute_flight_path(&params);
+
+        let full_rounds_duration = (plan.plan.duration() as f64 / DELTA_TIME as f64).ceil()*DELTA_TIME as f64;
+
+        let real_end_target = Vec3 {
+            x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration,
+            y: params.end_pos.y + params.target_velocity.unwrap().y * full_rounds_duration,
+            z: params.end_pos.z + params.target_velocity.unwrap().z * full_rounds_duration,
+        };
+
+        info!(
+            "Start Pos: {:?}\nEnd Pos: {:?}\nReal End Pos: {:?}",
+            params.start_pos, params.end_pos, real_end_target
+        );
+        info!(
+            "Start Vel: {:?}\nEnd Vel: {:?}",
+            params.start_vel, params.end_vel
+        );
+        info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
+
+        let delta_pos = (params.start_pos - real_end_target).magnitude();
+        let delta_v = (params.start_vel - params.end_vel).magnitude();
+
+        let vel_error = (plan.end_velocity - params.end_vel).magnitude() / delta_v;
+        let pos_error = (plan.path.last().unwrap() - real_end_target).magnitude() / delta_pos;
+        info!("Vel Error: {}\tPos Error: {}", vel_error, pos_error);
+        // Add assertions here to validate the computed flight path and velocity
+        assert_eq!(plan.path.len(), 3);
+        assert!(
+            pos_error < 0.001,
+            "Pos error is too high ({pos_error}).Target position: {:0.0?}, actual position: {:0.0?}",
+            real_end_target,
+            plan.path.last().unwrap()
+        );
+        assert!(
+            vel_error < 0.001,
+            "Target velocity: {:0.0?}, actual velocity: {:0.0?}",
+            params.end_vel,
+            plan.end_velocity
+        );
     }
 }

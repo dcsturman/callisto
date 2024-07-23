@@ -85,7 +85,8 @@ export function computeFlightPath(
   entity_name: string | null,
   end_pos: [number, number, number],
   end_vel: [number, number, number],
-  setCurrentPlan: (plan: FlightPathResult | null) => void
+  setCurrentPlan: (plan: FlightPathResult | null) => void,
+  target_vel: [number, number, number] | null = null,
 ) {
   if (entity_name == null) {
     setCurrentPlan(null);
@@ -95,6 +96,7 @@ export function computeFlightPath(
     entity_name: entity_name,
     end_pos: end_pos,
     end_vel: end_vel,
+    target_velocity: target_vel,
   };
 
   fetch(`http://${address}:${port}/compute_path`, {

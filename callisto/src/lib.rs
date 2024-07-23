@@ -194,6 +194,8 @@ pub async fn handle_request(
         (&Method::POST, "/compute_path") => {
             let msg = deserialize_body_or_respond!(req, ComputePathMsg);
 
+            info!("Received and processing compute path request. {:?}", msg);
+
             // Temporary until ships have actual acceleration built in
             const MAX_ACCELERATION: f64 = 6.0 * G;
 
@@ -213,6 +215,7 @@ pub async fn handle_request(
                 msg.end_pos,
                 start_vel,
                 msg.end_vel,
+                msg.target_velocity,
                 MAX_ACCELERATION,
             );
 

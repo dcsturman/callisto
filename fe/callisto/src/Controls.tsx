@@ -36,7 +36,8 @@ export function ShipComputer(args: {
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
-    end_vel: [number, number, number]
+    end_vel: [number, number, number],
+    target_vel: [number, number, number] | null
   ) => void;
 }) {
   const [navigationTarget, setNavigationTarget] = useState({
@@ -83,10 +84,16 @@ export function ShipComputer(args: {
       Number(navigationTarget.v_y),
       Number(navigationTarget.v_z),
     ];
+    let target_vel: [number, number, number] | null = [
+      Number(navigationTarget.v_x),
+      Number(navigationTarget.v_y),
+      Number(navigationTarget.v_z),
+    ];
+
     console.log(
-      "Computing route for " + args.ship.name + " to " + end_pos + " " + end_vel
+      `Computing route for ${args.ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel}`
     );
-    args.getAndShowPlan(args.ship.name, end_pos, end_vel);
+    args.getAndShowPlan(args.ship.name, end_pos, end_vel, target_vel);
   }
 
   function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -245,7 +252,6 @@ export function ShipComputer(args: {
   }
 
   let title = "Computer " + args.ship.name;
-  console.log("TMP CONTROLS: currentPlan = " + JSON.stringify(args.currentPlan));
   let accel0 = args.currentPlan?.plan[0];
   let accel1 = args.currentPlan?.plan[1];
 
@@ -390,7 +396,7 @@ export function ShipComputer(args: {
       <button
         className="control-input control-button blue-button"
         onClick={() => {
-          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0]);
+          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null);
           args.setComputerShip(null);
         }}>
         Close

@@ -70,6 +70,10 @@ impl FlightPlan {
         self.1.is_some()
     }
 
+    pub fn duration(&self) -> u64 {
+        self.0.1 + self.1.as_ref().map(|a| a.1).unwrap_or(0)
+    }
+
     pub fn advance_time(&mut self, time: u64) -> Self {
         if time < self.0.1 {
             // If time is less than the first duration:
