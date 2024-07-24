@@ -66,6 +66,9 @@ input {
   border: 1px solid #333;
 }
 
+.standoff-input {
+  width: 100px;
+}
 .control-launch-div {
   display: flex;
   align-items: center;
@@ -222,8 +225,15 @@ input {
   padding-left: 2px;
 }
 
+.target-specifics-div {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
 .target-details-div {
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
 }
 

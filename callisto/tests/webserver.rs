@@ -26,7 +26,7 @@ const ADD_SHIP_PATH: &str = "add_ship";
 const ADD_PLANET_PATH: &str = "add_planet";
 const LAUNCH_MISSILE_PATH: &str = "launch_missile";
 const REMOVE_ENTITY_PATH: &str = "remove";
-const SET_ACCELERATION_PATH: &str = "set_accel";
+const SET_ACCELERATION_PATH: &str = "set_plan";
 const INVALID_PATH: &str = "unknown";
 
 /**
@@ -358,7 +358,7 @@ async fn test_update_missile() {
 
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(r#"[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],9000]]}}}]"#).unwrap());
+            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap());
 }
 
 /*
@@ -539,4 +539,79 @@ async fn test_compute_path() {
         panic!("Expecting second acceleration.")
     }
     assert_eq!(t, 1000);
+}
+
+#[tokio::test]
+async fn test_compute_path_with_standoff() {
+    const PORT: u16 = 3017;
+    let _server = spawn_test_server(PORT).await;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+    let response = reqwest::Client::new()
+        .post(path(PORT, ADD_SHIP_PATH))
+        .body(ship)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+
+    let response = reqwest::Client::new()
+        .post(path(PORT, COMPUTE_PATH_PATH))
+        .body(r#"{"entity_name":"ship1","end_pos":[58860000,0,0],"end_vel":[0,0,0],"standoff_distance": 60000}"#)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
+
+    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path[0], Vec3::zero());
+    assert_ulps_eq!(
+        plan.path[1],
+        Vec3 {
+            x: 29400000.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
+    assert_ulps_eq!(
+        plan.path[2],
+        Vec3 {
+            x: 58800000.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero());
+    let (a, t) = plan.plan.0.into();
+    assert_ulps_eq!(
+        a,
+        Vec3 {
+            x: 6.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
+    assert_eq!(t, 999);
+
+    if let Some(accel) = plan.plan.1 {
+        let (a, _t) = accel.into();
+        assert_ulps_eq!(
+            a,
+            Vec3 {
+                x: -6.0,
+                y: 0.0,
+                z: 0.0
+            }
+        );
+    } else {
+        panic!("Expecting second acceleration.")
+    }
+    assert_eq!(t, 999);
 }

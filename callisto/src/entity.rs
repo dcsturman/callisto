@@ -71,24 +71,28 @@ impl FlightPlan {
     }
 
     pub fn duration(&self) -> u64 {
-        self.0.1 + self.1.as_ref().map(|a| a.1).unwrap_or(0)
+        self.0 .1 + self.1.as_ref().map(|a| a.1).unwrap_or(0)
+    }
+
+    pub fn empty(&self) -> bool {
+        self.0 .1 == 0 || self.0 .0 == Vec3::zero()
     }
 
     pub fn advance_time(&mut self, time: u64) -> Self {
-        if time < self.0.1 {
+        if time < self.0 .1 {
             // If time is less than the first duration:
             // This plan: first acceleration reduced by the time
             // Return: the first acceleration for time
-            self.0.1 -= time;
+            self.0 .1 -= time;
             FlightPlan::new((self.0 .0, time).into(), None)
         } else if matches!(&self.1, Some(second) if time < self.0.1 + second.1) {
             // If time is between the first duration plus the second duration:
             // This plan: The second acceleration for the remaining time (duration of the entire plan less the time)
             // Return: The first acceleration for its full time, and the portion of the second acceleration up to time.
             let new_first = self.0.clone();
-            let first_time = self.0.1;
+            let first_time = self.0 .1;
             let second = self.1.clone().unwrap();
-            self.0 = (second.0, second.1 - (time - self.0.1)).into();
+            self.0 = (second.0, second.1 - (time - self.0 .1)).into();
             self.1 = None;
             debug!("(FlightPlan.advance_time) self: {:?} new_first: {:?} second: {:?} time: {} first_time: {}", self, new_first, second, time, first_time);
             FlightPlan::new(new_first, Some((second.0, time - first_time).into()))
@@ -122,6 +126,7 @@ pub enum EntityKind {
         plan: FlightPlan,
     },
     Planet {
+        // Any valid color string OR a string starting with "!" then referring to a special template
         color: String,
         radius: f64,
         mass: f64,
@@ -290,16 +295,25 @@ impl Entity {
 
     // Method to update the position of the entity based on its velocity and acceleration.
     pub fn update(&mut self) -> Option<UpdateAction> {
-        debug!("Updating entity {:?}", self.name);
+        debug!("(Entity.update) Updating entity {:?}", self.name);
         match &mut self.kind {
             EntityKind::Ship { plan } => {
-                debug!("Updating ship {:?}", self.name);
-                let old_velocity: Vec3 = self.velocity;
-                let moves = plan.advance_time(DELTA_TIME);
-                for ap in moves.iter() {
-                    let (accel, duration) = ap.into();
-                    self.velocity += accel * G * duration as f64;
-                    self.position += (old_velocity + self.velocity) / 2.0 * duration as f64;
+                debug!("(Entity.update) Updating ship {:?}", self.name);
+                if plan.empty() {
+                    // Just move at current velocity
+                    self.position += self.velocity * DELTA_TIME as f64;
+                    debug!("(Entity.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}", self.name, self.velocity, DELTA_TIME, self.position);
+                } else {
+                    let moves = plan.advance_time(DELTA_TIME);
+
+                    for ap in moves.iter() {
+                        let old_velocity: Vec3 = self.velocity;
+                        let (accel, duration) = ap.into();
+                        self.velocity += accel * G * duration as f64;
+                        self.position += (old_velocity + self.velocity) / 2.0 * duration as f64;
+                        debug!("(Entity.update) Accelerate at {:0.3?} m/s for time {}", accel*G, duration);
+                        debug!("(Entity.update) New velocity: {:0.0?} New position: {:0.0?}", self.velocity, self.position);
+                    }
                 }
                 None
             }
@@ -342,12 +356,13 @@ impl Entity {
                     let old_velocity = self.velocity;
                     let tangent = Vec3::new(-orbit_radius.z, 0.0, orbit_radius.x).normalize();
 
-                    self.velocity = tangent * speed;
+                    self.velocity = tangent * speed + primary_velocity;
                     debug!("Planet {} velocity: {:?}", self.name, self.velocity);
 
                     // Now that we have velocity, move the planet!
-                    self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64
-                        + primary_velocity * DELTA_TIME as f64;
+                    //self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64
+                    //  + primary_velocity * DELTA_TIME as f64;
+                    self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
                 }
                 None
             }

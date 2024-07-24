@@ -49,7 +49,7 @@ export function setPlan(
   callBack: EntityRefreshCallback
 ) {
   let payload = { name: target, plan: plan };
-  fetch(`http://${address}:${port}/set_accel`, {
+  fetch(`http://${address}:${port}/set_plan`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -87,6 +87,7 @@ export function computeFlightPath(
   end_vel: [number, number, number],
   setCurrentPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
+  standoff: number = 0
 ) {
   if (entity_name == null) {
     setCurrentPlan(null);
@@ -97,6 +98,7 @@ export function computeFlightPath(
     end_pos: end_pos,
     end_vel: end_vel,
     target_velocity: target_vel,
+    standoff_distance: standoff
   };
 
   fetch(`http://${address}:${port}/compute_path`, {

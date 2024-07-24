@@ -21,8 +21,11 @@ function ShipList(args: { setComputerShip: (entity: Ship) => void }) {
     <>
       <h2 className="control-form">Ship List</h2>
       {ships.map((ship) => (
-        <div key={ship.name + "-accel-setter"} className="as-label clickable-label" onDoubleClick={() => args.setComputerShip(ship)}>
-            {ship.name}
+        <div
+          key={ship.name + "-accel-setter"}
+          className="as-label clickable-label"
+          onDoubleClick={() => args.setComputerShip(ship)}>
+          {ship.name}
         </div>
       ))}
     </>
@@ -37,7 +40,8 @@ export function ShipComputer(args: {
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number],
-    target_vel: [number, number, number] | null
+    target_vel: [number, number, number] | null,
+    standoff: number
   ) => void;
 }) {
   const [navigationTarget, setNavigationTarget] = useState({
@@ -47,6 +51,7 @@ export function ShipComputer(args: {
     v_x: "0",
     v_y: "0",
     v_z: "0",
+    standoff: "0",
   });
 
   let startAccel = [
@@ -89,11 +94,13 @@ export function ShipComputer(args: {
       Number(navigationTarget.v_y),
       Number(navigationTarget.v_z),
     ];
-
+    
+    let standoff =  Number(navigationTarget.standoff) * POS_SCALE;
+      
     console.log(
-      `Computing route for ${args.ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel}`
+      `Computing route for ${args.ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} with standoff ${standoff}`
     );
-    args.getAndShowPlan(args.ship.name, end_pos, end_vel, target_vel);
+    args.getAndShowPlan(args.ship.name, end_pos, end_vel, target_vel, standoff);
   }
 
   function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -138,6 +145,7 @@ export function ShipComputer(args: {
     let v_x = 0;
     let v_y = 0;
     let v_z = 0;
+    let standoff = 0;
 
     if (shipTarget != null) {
       p_x = shipTarget.position[0] / POS_SCALE;
@@ -146,6 +154,7 @@ export function ShipComputer(args: {
       v_x = shipTarget.velocity[0];
       v_y = shipTarget.velocity[1];
       v_z = shipTarget.velocity[2];
+      standoff = 1000;
     } else if (planetTarget != null) {
       p_x = planetTarget.position[0] / POS_SCALE;
       p_y = planetTarget.position[1] / POS_SCALE;
@@ -153,6 +162,7 @@ export function ShipComputer(args: {
       v_x = planetTarget.velocity[0];
       v_y = planetTarget.velocity[1];
       v_z = planetTarget.velocity[2];
+      standoff = planetTarget.radius * 1.1 / POS_SCALE;
     }
 
     setNavigationTarget({
@@ -162,6 +172,7 @@ export function ShipComputer(args: {
       v_x: v_x.toString(),
       v_y: v_y.toString(),
       v_z: v_z.toString(),
+      standoff: standoff.toString(),
     });
   }
 
@@ -261,7 +272,7 @@ export function ShipComputer(args: {
       {accelerationManager()}
       <hr />
       <h2 className="control-form">Navigation Computer</h2>
-      <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
+      <form className="target-entry-form" onSubmit={handleNavigationSubmit} >
         <label className="control-label" style={{ display: "flex" }}>
           Nav Target:
           <select
@@ -284,54 +295,68 @@ export function ShipComputer(args: {
           </select>
         </label>
         <div className="target-details-div">
-          <label className="control-label">
-            Target Position
-            <div style={{ display: "flex" }} className="coordinate-input">
+          <div className="target-specifics-div">
+            <label className="control-label">
+              Target Position
+              <div style={{ display: "flex" }} className="coordinate-input">
+                <input
+                  className="control-input"
+                  name="p_x"
+                  type="text"
+                  value={navigationTarget.p_x}
+                  onChange={handleNavigationChange}
+                />
+                <input
+                  className="control-input"
+                  name="p_y"
+                  type="text"
+                  value={navigationTarget.p_y}
+                  onChange={handleNavigationChange}
+                />
+                <input
+                  className="control-input"
+                  name="p_z"
+                  type="text"
+                  value={navigationTarget.p_z}
+                  onChange={handleNavigationChange}
+                />
+              </div>
+            </label>
+            <label className="control-label">
+              Target Velocity
+              <div style={{ display: "flex" }} className="coordinate-input">
+                <input
+                  className="control-input"
+                  name="v_x"
+                  type="text"
+                  value={navigationTarget.v_x}
+                  onChange={handleNavigationChange}
+                />
+                <input
+                  className="control-input"
+                  name="v_y"
+                  type="text"
+                  value={navigationTarget.v_y}
+                  onChange={handleNavigationChange}
+                />
+                <input
+                  className="control-input"
+                  name="v_z"
+                  type="text"
+                  value={navigationTarget.v_z}
+                  onChange={handleNavigationChange}
+                />
+              </div>
+            </label>
+          </div>
+          <label className="control-label" style={{ display: "flex", justifyContent: "space-between"}}>
+            Standoff:
+            <div  className="coordinate-input">
               <input
-                className="control-input"
-                name="p_x"
+                className="control-input standoff-input"
+                name="standoff"
                 type="text"
-                value={navigationTarget.p_x}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="p_y"
-                type="text"
-                value={navigationTarget.p_y}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="p_z"
-                type="text"
-                value={navigationTarget.p_z}
-                onChange={handleNavigationChange}
-              />
-            </div>
-          </label>
-          <label className="control-label">
-            Target Velocity
-            <div style={{ display: "flex" }} className="coordinate-input">
-              <input
-                className="control-input"
-                name="v_x"
-                type="text"
-                value={navigationTarget.v_x}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="v_y"
-                type="text"
-                value={navigationTarget.v_y}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="v_z"
-                type="text"
-                value={navigationTarget.v_z}
+                value={navigationTarget.standoff}
                 onChange={handleNavigationChange}
               />
             </div>
@@ -396,7 +421,7 @@ export function ShipComputer(args: {
       <button
         className="control-input control-button blue-button"
         onClick={() => {
-          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null);
+          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
           args.setComputerShip(null);
         }}>
         Close
@@ -566,7 +591,9 @@ export function Controls(args: {
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
-    end_vel: [number, number, number]
+    end_vel: [number, number, number],
+    target_vel: [number, number, number] | null,
+    standoff: number
   ) => void;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
@@ -597,7 +624,7 @@ export function Controls(args: {
         // own function.
         onClick={() => {
           args.setComputerShip(null);
-          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0]);
+          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
           args.nextRound(serverEntities.handler);
         }}>
         Next Round

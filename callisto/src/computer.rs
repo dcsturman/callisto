@@ -272,7 +272,7 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
             let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
             let new_vel = vel + accel * delta;
 
-            info!("(compute_flight_path) Accelerate from {:?} at {:?}m/s^2 for {:?}s. New Pos: {:?}, New Vel: {:?}", 
+            info!("(compute_flight_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
                 pos, accel, delta, new_pos, new_vel);
 
             path.push(new_pos);
@@ -502,6 +502,54 @@ mod tests {
         assert!(vel_error < 0.001);
     }
 
+
+    // This test tests a flight path where the first acceleration is less than a round (DELTA_TIME) so the second
+    // acceleration is partially applied in each round.
+    #[test]
+    fn test_compute_flight_short_first_accel() {
+        let _ = env_logger::try_init();
+
+        let params = FlightParams {
+            start_pos: Vec3 {
+                x: 7000000.0,
+                y: -7000000.0,
+                z: 7000000.0,
+            },
+            end_pos: Vec3 {
+                x: 145738.5,
+                y: 39021470.2,
+                z: 145738.5,
+            },
+            start_vel: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            end_vel: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            target_velocity: None,
+            max_acceleration: 6.0 * G,
+        };
+
+        let plan = compute_flight_path(&params);
+
+        info!(
+            "Start Pos: {:?}\nEnd Pos: {:?}",
+            params.start_pos, params.end_pos
+        );
+        info!(
+            "Start Vel: {:?}\nEnd Vel: {:?}",
+            params.start_vel, params.end_vel
+        );
+        info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
+        assert_eq!(plan.path.len(), 3);
+        assert_eq!(plan.end_velocity, Vec3::zero());
+        assert_eq!(plan.path[0], params.start_pos);
+        assert_eq!(plan.path[2], params.end_pos);
+    }
     #[test]
     fn test_compute_flight_path_with_target_velocity() {
         let _ = env_logger::try_init();

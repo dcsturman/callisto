@@ -42,8 +42,9 @@ function App() {
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number],
-    target_vel: [number, number, number] | null = null
-  ) => computeFlightPath(entity_name, end_pos, end_vel, setCurrentPlan, target_vel);
+    target_vel: [number, number, number] | null = null,
+    standoff: number
+  ) => computeFlightPath(entity_name, end_pos, end_vel, setCurrentPlan, target_vel, standoff);
 
   const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
 
