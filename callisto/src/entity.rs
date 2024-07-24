@@ -1,26 +1,135 @@
 use cgmath::{ElementWise, InnerSpace, Vector3, Zero};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use derivative::Derivative;
+
 use serde_with::{serde_as, skip_serializing_none};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
-use crate::computer::{compute_target_path, FlightPlan, TargetParams};
+use crate::computer::{compute_target_path, FlightPathResult, TargetParams};
 use crate::payloads::{EffectMsg, Vec3asVec, EXHAUSTED_MISSILE, SHIP_IMPACT};
 
-pub const DELTA_TIME: i64 = 1000;
+pub const DELTA_TIME: u64 = 1000;
+pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
 pub const G: f64 = 9.81;
+// Temporary until missiles have actual acceleration built in
+const MAX_MISSILE_ACCELERATION: f64 = 6.0 * G;
+const IMPACT_DISTANCE: f64 = 2500000.0;
 
 pub type Vec3 = Vector3<f64>;
 
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct AccelPair(#[serde_as(as = "Vec3asVec")] pub Vec3, pub u64);
+
+impl From<(Vec3, u64)> for AccelPair {
+    fn from(tuple: (Vec3, u64)) -> Self {
+        AccelPair(tuple.0, tuple.1)
+    }
+}
+
+impl From<AccelPair> for (Vec3, u64) {
+    fn from(val: AccelPair) -> Self {
+        (val.0, val.1)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct FlightPlan(
+    pub AccelPair,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::unwrap_or_skip"
+    )]
+    pub Option<AccelPair>,
+);
+
+impl FlightPlan {
+    pub fn new(first: AccelPair, second: Option<AccelPair>) -> Self {
+        FlightPlan(first, second)
+    }
+
+    // Constructor that creates a flight plan that just has a single acceleration.
+    // We use i64::MAX to represent infinite time.
+    pub fn acceleration(accel: Vec3) -> Self {
+        FlightPlan((accel, DEFAULT_ACCEL_DURATION).into(), None)
+    }
+
+    pub fn set_first(&mut self, accel: Vec3, time: u64) {
+        self.0 = (accel, time).into();
+        self.1 = None;
+    }
+    pub fn set_second(&mut self, accel: Vec3, time: u64) {
+        self.1 = Some((accel, time).into());
+    }
+
+    pub fn has_second(&self) -> bool {
+        self.1.is_some()
+    }
+
+    pub fn duration(&self) -> u64 {
+        self.0 .1 + self.1.as_ref().map(|a| a.1).unwrap_or(0)
+    }
+
+    pub fn empty(&self) -> bool {
+        self.0 .1 == 0 || self.0 .0 == Vec3::zero()
+    }
+
+    pub fn advance_time(&mut self, time: u64) -> Self {
+        if time < self.0 .1 {
+            // If time is less than the first duration:
+            // This plan: first acceleration reduced by the time
+            // Return: the first acceleration for time
+            self.0 .1 -= time;
+            FlightPlan::new((self.0 .0, time).into(), None)
+        } else if matches!(&self.1, Some(second) if time < self.0.1 + second.1) {
+            // If time is between the first duration plus the second duration:
+            // This plan: The second acceleration for the remaining time (duration of the entire plan less the time)
+            // Return: The first acceleration for its full time, and the portion of the second acceleration up to time.
+            let new_first = self.0.clone();
+            let first_time = self.0 .1;
+            let second = self.1.clone().unwrap();
+            self.0 = (second.0, second.1 - (time - self.0 .1)).into();
+            self.1 = None;
+            debug!("(FlightPlan.advance_time) self: {:?} new_first: {:?} second: {:?} time: {} first_time: {}", self, new_first, second, time, first_time);
+            FlightPlan::new(new_first, Some((second.0, time - first_time).into()))
+        } else {
+            // If time is more than first and second durations:
+            // This plan: becomes a zero acceleration plan.
+            // Return: the entire plan.
+            let result = self.clone();
+            self.0 = (Vec3::zero(), 0).into();
+            self.1 = None;
+            result
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = AccelPair> + '_ {
+        if let Some(second) = &self.1 {
+            vec![self.0.clone(), second.clone()].into_iter()
+        } else {
+            vec![self.0.clone()].into_iter()
+        }
+    }
+}
+
+#[derive(Derivative)]
+#[derivative(PartialEq)]
 #[skip_serializing_none]
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum EntityKind {
-    Ship,
+    Ship {
+        plan: FlightPlan,
+    },
     Planet {
+        // Any valid color string OR a string starting with "!" then referring to a special template
         color: String,
+        radius: f64,
+        mass: f64,
         // The primary is the name of the planet which is the center of the orbit.
         // None means it not orbiting anything. Some("Earth") means its orbiting the planet named Earth.
         #[serde(default)]
@@ -29,9 +138,9 @@ pub enum EntityKind {
         // TODO: Ideally this would be in the primary structure rather than also be an Option outside it.  But I right now
         // can't figure out how to skip serde for a portion of a tuple.
         #[serde(skip)]
+        #[derivative(PartialEq = "ignore")]
         primary_ptr: Option<Arc<RwLock<Entity>>>,
-        radius: f64,
-        mass: f64,
+
         // Dependency is used to enforce order of update.  Lower values (e.g. a star with value 0) are updated first.
         // Not needed to be passed in JSON to the client; not needed for comparison operations.
         #[serde(skip)]
@@ -43,7 +152,10 @@ pub enum EntityKind {
         target: String,
         // FIXME: This is dangerous.  Its not clear how to deal with a Missile without a target_ptr.
         #[serde(skip)]
+        #[derivative(PartialEq = "ignore")]
         target_ptr: Option<Arc<RwLock<Entity>>>,
+        #[serde_as(as = "Vec3asVec")]
+        acceleration: Vec3,
         burns: i32,
     },
 }
@@ -56,14 +168,15 @@ pub struct Entity {
     position: Vec3,
     #[serde_as(as = "Vec3asVec")]
     velocity: Vec3,
-    #[serde_as(as = "Vec3asVec")]
-    acceleration: Vec3,
     pub kind: EntityKind,
 }
 
 impl PartialEq for Entity {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
+            && self.position == other.position
+            && self.velocity == other.velocity
+            && self.kind == other.kind
     }
 }
 
@@ -74,32 +187,33 @@ impl Entity {
             name,
             position,
             velocity,
-            acceleration,
-            kind: EntityKind::Ship,
+            kind: EntityKind::Ship {
+                plan: FlightPlan::acceleration(acceleration),
+            },
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_planet(
         name: String,
         position: Vec3,
         color: String,
-        primary: Option<String>,
-        primary_ptr: Option<Arc<RwLock<Entity>>>,
         radius: f64,
         mass: f64,
+        primary: Option<String>,
+        primary_ptr: Option<Arc<RwLock<Entity>>>,
         dependency: i32,
     ) -> Self {
         Entity {
             name,
             position,
             velocity: Vec3::zero(),
-            acceleration: Vec3::zero(),
             kind: EntityKind::Planet {
                 color,
-                primary,
-                primary_ptr,
                 radius,
                 mass,
+                primary,
+                primary_ptr,
                 dependency,
             },
         }
@@ -114,17 +228,44 @@ impl Entity {
         velocity: Vec3,
         burns: i32,
     ) -> Self {
+        // We need to construct an initial route for the missile primarily so
+        // it can be shown in the UX once creation of the missile returns.
+        let target_pos = target_ptr.read().unwrap().position;
+        let target_vel = target_ptr.read().unwrap().velocity;
+
+        let params = TargetParams::new(
+            position,
+            target_pos,
+            velocity,
+            target_vel,
+            MAX_MISSILE_ACCELERATION,
+        );
+
+        debug!(
+            "Creating initial missile acceleration and calling targeting computer for missile {} with params: {:?}",
+            name, params
+        );
+
+        let path: FlightPathResult = compute_target_path(&params);
+        let acceleration = path.plan.0 .0;
         Entity {
             name,
             position,
             velocity,
-            acceleration: Vec3::zero(),
             kind: EntityKind::Missile {
                 source,
                 target,
                 target_ptr: Some(target_ptr),
+                acceleration,
                 burns,
             },
+        }
+    }
+
+    pub fn get_flight_plan(&self) -> Option<&FlightPlan> {
+        match &self.kind {
+            EntityKind::Ship { plan } => Some(plan),
+            _ => None,
         }
     }
 
@@ -134,13 +275,13 @@ impl Entity {
         self.name.clone()
     }
 
-    // Method to set the acceleration of the entity.
-    pub fn set_acceleration(&mut self, acceleration: Vec3) {
-        match self.kind {
-            EntityKind::Planet { .. } => {
-                panic!("Cannot set acceleration on Planet {:?}", self.name)
+    // Method to set the flight plan of the entity.
+    pub fn set_flight_plan(&mut self, new_plan: FlightPlan) {
+        match &mut self.kind {
+            EntityKind::Ship { plan } => {
+                *plan = new_plan;
             }
-            _ => self.acceleration = acceleration,
+            _ => panic!("Cannot set acceleration on non-ship {:?}", self.name),
         }
     }
 
@@ -154,14 +295,30 @@ impl Entity {
 
     // Method to update the position of the entity based on its velocity and acceleration.
     pub fn update(&mut self) -> Option<UpdateAction> {
+        debug!("(Entity.update) Updating entity {:?}", self.name);
         match &mut self.kind {
-            EntityKind::Ship => {
-                let old_velocity: Vec3 = self.velocity;
-                self.velocity += self.acceleration * G * DELTA_TIME as f64;
-                self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
+            EntityKind::Ship { plan } => {
+                debug!("(Entity.update) Updating ship {:?}", self.name);
+                if plan.empty() {
+                    // Just move at current velocity
+                    self.position += self.velocity * DELTA_TIME as f64;
+                    debug!("(Entity.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}", self.name, self.velocity, DELTA_TIME, self.position);
+                } else {
+                    let moves = plan.advance_time(DELTA_TIME);
+
+                    for ap in moves.iter() {
+                        let old_velocity: Vec3 = self.velocity;
+                        let (accel, duration) = ap.into();
+                        self.velocity += accel * G * duration as f64;
+                        self.position += (old_velocity + self.velocity) / 2.0 * duration as f64;
+                        debug!("(Entity.update) Accelerate at {:0.3?} m/s for time {}", accel*G, duration);
+                        debug!("(Entity.update) New velocity: {:0.0?} New position: {:0.0?}", self.velocity, self.position);
+                    }
+                }
                 None
             }
             EntityKind::Planet { primary_ptr, .. } => {
+                debug!("Updating planet {:?}", self.name);
                 // This is the Gravitational Constant, not the acceleration due to gravity which is defined as G and used
                 // more widely in this codebase.
                 const G_CONST: f64 = 6.673e-11;
@@ -199,25 +356,26 @@ impl Entity {
                     let old_velocity = self.velocity;
                     let tangent = Vec3::new(-orbit_radius.z, 0.0, orbit_radius.x).normalize();
 
-                    self.velocity = tangent * speed;
+                    self.velocity = tangent * speed + primary_velocity;
                     debug!("Planet {} velocity: {:?}", self.name, self.velocity);
 
                     // Now that we have velocity, move the planet!
-                    self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64
-                        + primary_velocity * DELTA_TIME as f64;
+                    //self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64
+                    //  + primary_velocity * DELTA_TIME as f64;
+                    self.position += (old_velocity + self.velocity) / 2.0 * DELTA_TIME as f64;
                 }
                 None
             }
             EntityKind::Missile {
-                target_ptr, burns, ..
+                target_ptr,
+                acceleration,
+                burns,
+                ..
             } => {
+                debug!("Updating missile {:?}", self.name);
                 // Using unwrap() below as it is an error condition if for some reason the target_ptr isn't set.
                 let target = target_ptr.as_ref().unwrap().read().unwrap();
                 if *burns > 0 {
-                    // Temporary until missiles have actual acceleration built in
-                    const MAX_ACCELERATION: f64 = 6.0 * G;
-                    const IMPACT_DISTANCE: f64 = 2500000.0;
-
                     debug!(
                         "Computing path for missile {} targeting {}: End pos: {:?} End vel: {:?}",
                         self.name, target.name, target.position, target.velocity
@@ -228,18 +386,38 @@ impl Entity {
                         target.position,
                         self.velocity,
                         target.velocity,
-                        MAX_ACCELERATION,
+                        MAX_MISSILE_ACCELERATION,
                     );
 
-                    debug!("Call targeting computer with params: {:?}", params);
+                    debug!(
+                        "Call targeting computer for missile {} with params: {:?}",
+                        self.name, params
+                    );
 
-                    let plan: FlightPlan = compute_target_path(&params);
-                    debug!("Computed path: {:?}", plan);
-                    self.acceleration = plan.accelerations[0].0;
-                    let time = plan.accelerations[0].1.min(DELTA_TIME);
+                    let mut path: FlightPathResult = compute_target_path(&params);
+                    debug!("Computed path: {:?}", path);
+
+                    // The computed path should be an acceleration towards the target.
+                    // For a missile, we should always have a single accelertion (towards the target at full thrust).
+                    // It might not be for full DELTA_TIME but that is okay.
+                    // We don't actually save the path anywhere as we will recompute each round.
+                    // We do save the current acceleration just for display purposes.
+                    // In the future its possible to have "dumb missiles" in which case we'll need to treat this
+                    // as a precomputed path instead.
+                    let next = path.plan.advance_time(DELTA_TIME);
+
+                    assert!(
+                        !next.has_second(),
+                        "Missile {} has more than one acceleration.",
+                        self.name
+                    );
+
+                    // This is only safe because of the assertion above.
+                    let (accel, time) = next.0.into();
+                    *acceleration = accel;
 
                     let old_velocity: Vec3 = self.velocity;
-                    self.velocity += self.acceleration * G * time as f64;
+                    self.velocity += accel * G * time as f64;
                     self.position += (old_velocity + self.velocity) / 2.0 * time as f64;
                     *burns -= 1;
 
@@ -273,7 +451,7 @@ pub enum UpdateAction {
 #[serde_as]
 #[derive(Debug, Default)]
 pub struct Entities {
-    entities: HashMap<String, Arc<RwLock<Entity>>>,
+    pub entities: HashMap<String, Arc<RwLock<Entity>>>,
     missile_cnt: u16,
 }
 
@@ -359,10 +537,10 @@ impl Entities {
             name,
             position,
             color,
-            primary,
-            primary_ptr,
             radius,
             mass,
+            primary,
+            primary_ptr,
             dependency,
         );
         self.add_entity(entity);
@@ -415,9 +593,9 @@ impl Entities {
         self.entities.get(name)
     }
 
-    pub fn set_acceleration(&mut self, name: &str, acceleration: Vec3) {
+    pub fn set_flight_plan(&mut self, name: &str, plan: FlightPlan) {
         if let Some(entity) = self.entities.get_mut(name) {
-            entity.write().unwrap().set_acceleration(acceleration);
+            entity.write().unwrap().set_flight_plan(plan);
         } else {
             warn!(
                 "Could not set acceleration for non-existent entity {}",
@@ -663,9 +841,9 @@ mod tests {
         let acceleration1 = Vec3::new(1.0, 1.0, 1.0);
         let acceleration2 = Vec3::new(2.0, 2.0, -2.0);
         let acceleration3 = Vec3::new(4.0, -1.0, -0.0);
-        entities.set_acceleration("Ship1", acceleration1);
-        entities.set_acceleration("Ship2", acceleration2);
-        entities.set_acceleration("Ship3", acceleration3);
+        entities.set_flight_plan("Ship1", FlightPlan((acceleration1, 10000).into(), None));
+        entities.set_flight_plan("Ship2", FlightPlan((acceleration2, 10000).into(), None));
+        entities.set_flight_plan("Ship3", FlightPlan((acceleration3, 10000).into(), None));
 
         // Update the entities a few times
         entities.update_all();
@@ -822,41 +1000,54 @@ mod tests {
             String::from("Sun"),
             Vec3::zero(),
             String::from("yellow"),
-            None,
-            None,
             7e8,
             100.0,
+            None,
+            None,
             0,
         );
 
         let tst_str = serde_json::to_string(&tst_planet).unwrap();
         assert_eq!(
             tst_str,
-            r#"{"name":"Sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":{"Planet":{"color":"yellow","radius":700000000.0,"mass":100.0}}}"#
+            r#"{"name":"Sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Planet":{"color":"yellow","radius":700000000.0,"mass":100.0}}}"#
         );
 
         let tst_planet_2 = Entity::new_planet(
             String::from("planet2"),
             Vec3::zero(),
             String::from("red"),
-            Some(String::from("planet1")),
-            Some(Arc::new(RwLock::new(tst_planet))),
             4e6,
             100.0,
+            Some(String::from("planet1")),
+            Some(Arc::new(RwLock::new(tst_planet))),
             1,
         );
 
         let tst_str = serde_json::to_string(&tst_planet_2).unwrap();
         assert_eq!(
             tst_str,
-            r#"{"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"kind":{"Planet":{"color":"red","primary":"planet1","radius":4000000.0,"mass":100.0}}}"#
+            r#"{"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Planet":{"color":"red","radius":4000000.0,"mass":100.0,"primary":"planet1"}}}"#
         );
 
-        let tst_str = r#"{"name":"planet2","position":[0,0,0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],
-            "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}}}"#;
+        // This is a special case of an planet.  It typically should never have a primary that is Some(...) but a primary_ptr that is None
+        // However, the one exception is when it comes off the wire, which is what we are testing here.
+        let tst_planet_3 = Entity::new_planet(
+            String::from("planet2"),
+            Vec3::zero(),
+            String::from("red"),
+            4e6,
+            100.0,
+            Some(String::from("planet1")),
+            None,
+            0,
+        );
 
-        let tst_planet_3 = serde_json::from_str::<Entity>(tst_str).unwrap();
-        assert_eq!(tst_planet_3, tst_planet_2);
+        let tst_str = r#"{"name":"planet2","position":[0,0,0],"velocity":[0.0,0.0,0.0],
+        "kind":{"Planet":{"color":"red","radius":4e6,"mass":100.0,"primary":"planet1"}}}"#;
+        let tst_planet_4 = serde_json::from_str::<Entity>(tst_str).unwrap();
+
+        assert_eq!(tst_planet_3, tst_planet_4);
     }
 
     #[test]

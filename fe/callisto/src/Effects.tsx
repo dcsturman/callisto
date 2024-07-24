@@ -2,7 +2,7 @@ import { useRef } from "react";
 import * as THREE from "three";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "./Util";
-import { SCALE } from "./Contexts";
+import { SCALE } from "./Universal";
 
 const UNKNOWN_KIND = "Unknown";
 const SHIP_IMPACT_KIND = "ShipImpact";

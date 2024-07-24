@@ -1,11 +1,18 @@
-import { Entity, EntityRefreshCallback, FlightPlan } from "./Contexts";
+import { Acceleration, EntityRefreshCallback, FlightPathResult, Ship, Missile, Planet } from "./Universal";
 import { Effect } from "./Effects";
 
 const address = "localhost";
 const port = "3000";
 
-export function addEntity(entity: Entity, callBack: EntityRefreshCallback) {
-  console.log("Adding entity: " + JSON.stringify(entity));
+export function addShip(name: string, position: [number, number, number], velocity: [number, number, number], acceleration: [number, number, number], callBack: EntityRefreshCallback) {
+  console.log(`Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`);
+
+  let payload = {
+    name: name,
+    position: position,
+    velocity: velocity,
+    acceleration: acceleration
+  }
 
   fetch(`http://${address}:${port}/add_ship`, {
     method: "POST",
@@ -13,7 +20,7 @@ export function addEntity(entity: Entity, callBack: EntityRefreshCallback) {
       "Content-Type": "application/json",
     },
     mode: "cors",
-    body: JSON.stringify(entity),
+    body: JSON.stringify(payload),
   })
     .then((response) => response.json())
     .then(() => getEntities(callBack))
@@ -36,13 +43,13 @@ export function removeEntity(target: string, callBack: EntityRefreshCallback) {
     );
 }
 
-export function setAcceleration(
+export function setPlan(
   target: string,
-  acceleration: [number, number, number],
+  plan: [Acceleration, Acceleration | null],
   callBack: EntityRefreshCallback
 ) {
-  let payload = { name: target, acceleration: acceleration };
-  fetch(`http://${address}:${port}/set_accel`, {
+  let payload = { name: target, plan: plan };
+  fetch(`http://${address}:${port}/set_plan`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -78,7 +85,9 @@ export function computeFlightPath(
   entity_name: string | null,
   end_pos: [number, number, number],
   end_vel: [number, number, number],
-  setCurrentPlan: (plan: FlightPlan | null) => void
+  setCurrentPlan: (plan: FlightPathResult | null) => void,
+  target_vel: [number, number, number] | null = null,
+  standoff: number = 0
 ) {
   if (entity_name == null) {
     setCurrentPlan(null);
@@ -88,6 +97,8 @@ export function computeFlightPath(
     entity_name: entity_name,
     end_pos: end_pos,
     end_vel: end_vel,
+    target_velocity: target_vel,
+    standoff_distance: standoff
   };
 
   fetch(`http://${address}:${port}/compute_path`, {
@@ -127,16 +138,29 @@ export function launchMissile(
 }
 
 export function getEntities(callback: EntityRefreshCallback) {
+
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
-    .then((entities) => {
-      let ships = entities.filter((entity: Entity) => "Ship" === entity.kind);
-      let missiles = entities.filter(
-        (entity: Entity) => entity.kind !== "Ship" && "Missile" in entity.kind
-      );
-      let planets = entities.filter(
-        (entity: Entity) => entity.kind !== "Ship" && "Planet" in entity.kind
-      );
+    .then((rawEntities) => {
+      let ships: Ship[] = [];
+      let planets: Planet[] = [];
+      let missiles: Missile[] = [];
+
+      for (const entity of rawEntities) {
+      if ("Ship" in entity.kind) {
+            let ship = new Ship(entity.name, entity.position, entity.velocity, entity.kind.Ship.plan);
+            ships.push(ship);
+      } else if ("Missile" in entity.kind) {
+            let missile = new Missile(entity.name, entity.position, entity.velocity, entity.kind.Missile.acceleration);
+            missiles.push(missile);
+      } else if ("Planet" in entity.kind) {
+            let planet = new Planet(entity.name, entity.position, entity.velocity, entity.kind.Planet.color, entity.kind.Planet.primary, entity.kind.Planet.radius, entity.kind.Planet.mass);
+            planets.push(planet);
+        } else {
+            console.log(`Unknown entity kind: ${JSON.stringify(entity.kind)}`);
+        }
+      }
+
       console.log(`Received Entities:\nSHIPS = ${JSON.stringify(ships)}\nMISSILES = ${JSON.stringify(missiles)}\nPLANETS = ${JSON.stringify(planets)}`);
       callback({ ships: ships, planets: planets, missiles: missiles });
     })

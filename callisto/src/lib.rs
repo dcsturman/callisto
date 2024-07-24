@@ -13,13 +13,14 @@ use hyper::body::Bytes;
 use hyper::body::{Body, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 
+use cgmath::InnerSpace;
 use serde_json::from_slice;
 
 use computer::{compute_flight_path, FlightParams};
 use entity::{Entities, G};
 use payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, LaunchMissileMsg, RemoveEntityMsg,
-    SetAccelerationMsg,
+    SetPlanMsg,
 };
 
 enum SizeCheckError {
@@ -154,14 +155,14 @@ pub async fn handle_request(
 
             Ok(build_ok_response("Remove action executed"))
         }
-        (&Method::POST, "/set_accel") => {
-            let accel_msg = deserialize_body_or_respond!(req, SetAccelerationMsg);
+        (&Method::POST, "/set_plan") => {
+            let plan_msg = deserialize_body_or_respond!(req, SetPlanMsg);
 
             // Change the acceleration of the entity
             entities
                 .lock()
                 .unwrap()
-                .set_acceleration(&accel_msg.name, accel_msg.acceleration);
+                .set_flight_plan(&plan_msg.name, plan_msg.plan);
 
             Ok(build_ok_response("Set acceleration action executed"))
         }
@@ -194,11 +195,16 @@ pub async fn handle_request(
         (&Method::POST, "/compute_path") => {
             let msg = deserialize_body_or_respond!(req, ComputePathMsg);
 
+            info!(
+                "(/compute_path) Received and processing compute path request. {:?}",
+                msg
+            );
+
             // Temporary until ships have actual acceleration built in
             const MAX_ACCELERATION: f64 = 6.0 * G;
 
             debug!(
-                "Computing path for entity: {} End pos: {:?} End vel: {:?}",
+                "(/compute_path) Computing path for entity: {} End pos: {:?} End vel: {:?}",
                 msg.entity_name, msg.end_pos, msg.end_vel
             );
             // Do this in a block to clean up the lock as soon as possible.
@@ -208,15 +214,27 @@ pub async fn handle_request(
                 (entity.get_position(), entity.get_velocity())
             };
 
+            let adjusted_end_pos = if let Some(standoff_distance) = msg.standoff_distance {
+                msg.end_pos - (msg.end_pos - start_pos).normalize() * standoff_distance
+            } else {
+                msg.end_pos
+            };
+
+            if let Some(distance) = msg.standoff_distance {
+                debug!("(/compute_path) Standoff distance: {:0.0?} Adjusted end pos: {:0.0?} Original end pos {:0.0?}Difference {:0.0?}", distance, adjusted_end_pos, msg.end_pos, 
+                    (adjusted_end_pos - msg.end_pos).magnitude());
+            }
+
             let params = FlightParams::new(
                 start_pos,
-                msg.end_pos,
+                adjusted_end_pos,
                 start_vel,
                 msg.end_vel,
+                msg.target_velocity,
                 MAX_ACCELERATION,
             );
 
-            debug!("Call computer with params: {:?}", params);
+            debug!("(/compute_path)Call computer with params: {:?}", params);
 
             let plan: FlightPathMsg = compute_flight_path(&params);
 
@@ -229,7 +247,7 @@ pub async fn handle_request(
                 }
             };
 
-            debug!("Flight path response: {}", json);
+            debug!("(/compute_path) Flight path response: {}", json);
 
             let resp = Response::builder()
                 .status(StatusCode::OK)

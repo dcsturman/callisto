@@ -11,16 +11,15 @@ import {
   EntitiesServerProvider,
   EntityToShowProvider,
   EntityList,
-  FlightPlan,
-} from "./Contexts";
+  FlightPathResult,
+  Ship,
+} from "./Universal";
 
 import Controls from "./Controls";
 import "./index.css";
 import {
   nextRound,
-  addEntity,
   getEntities,
-  setAcceleration,
   computeFlightPath,
 } from "./ServerManager";
 
@@ -31,8 +30,8 @@ function App() {
     missiles: [],
   });
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
-  const [computerShip, setComputerShip] = useState<Entity | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<FlightPlan | null>(null);
+  const [computerShip, setComputerShip] = useState<Ship | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
 
   useEffect(() => {
@@ -42,8 +41,10 @@ function App() {
   let getAndShowPlan = (
     entity_name: string | null,
     end_pos: [number, number, number],
-    end_vel: [number, number, number]
-  ) => computeFlightPath(entity_name, end_pos, end_vel, setCurrentPlan);
+    end_vel: [number, number, number],
+    target_vel: [number, number, number] | null = null,
+    standoff: number
+  ) => computeFlightPath(entity_name, end_pos, end_vel, setCurrentPlan, target_vel, standoff);
 
   const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
 
@@ -80,8 +81,6 @@ function App() {
           <div className="mainscreen-container">
             <Controls
               nextRound={(callback) => nextRound(setEvents, callback)}
-              addEntity={addEntity}
-              setAcceleration={setAcceleration}
               computerShip={computerShip}
               setComputerShip={setComputerShip}
               currentPlan={currentPlan}
@@ -94,7 +93,6 @@ function App() {
                   setComputerShip={setComputerShip}
                   currentPlan={currentPlan}
                   getAndShowPlan={getAndShowPlan}
-                  setAcceleration={setAcceleration}
                 />
               )}
               {/* Explicitly setting position to absolute seems to be necessary or it ends up relative and I cannot figure out why */}

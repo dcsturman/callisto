@@ -8,6 +8,9 @@ import reportWebVitals from './reportWebVitals';
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
+
+document.body.style.overflow = "hidden";
+
 root.render(
   <React.StrictMode>
     <App />
