@@ -5,7 +5,8 @@
         "velocity" : [0, 0, 0],
         "kind" : {
             "Planet" : {
-                "color" : "#fdb813",
+                "color" : "!sun",
+                "oldcolor" : "#fdb813",
                 "radius" : 6.96e8,
                 "mass" : 1.989e30
             }
@@ -17,7 +18,8 @@
         "velocity" : [0, 0, 0],
         "kind" : {
             "Planet" : {
-                "color" : "#03adfc",
+                "oldcolor" : "#03adfc",
+                "color" : "!earth",
                 "primary" : "Sun",
                 "radius" : 6.371e6,
                 "mass" : 5.972e24
@@ -30,7 +32,8 @@
         "velocity" : [0, 0, 0],
         "kind" : {
             "Planet" : {
-                "color" : "#999999",
+                "color" : "!moon",
+                "oldcolor" : "#999999",
                 "primary" : "Earth",
                 "radius": 1.7e6,
                 "mass": 7e21

@@ -1,10 +1,10 @@
-import { useContext } from "react";
+import { useContext, useRef, RefObject, createRef } from "react";
 import * as THREE from "three";
 
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { KernelSize, Resolution } from "postprocessing";
 import { TextureLoader } from "three/src/loaders/TextureLoader";
-import { useLoader } from "@react-three/fiber";
+import { useLoader, useFrame } from "@react-three/fiber";
 
 import Color from "color";
 
@@ -18,43 +18,97 @@ import {
 
 function Planet(args: { planet: PlanetType }) {
   const entityToShow = useContext(EntityToShowContext);
-
-  const color = Color(args.planet.color);
-  const intensity_factor = 2.5;
-
   const radiusMeters = args.planet.radius;
   const radiusUnits = radiusMeters * SCALE;
   const pos = scaleVector(args.planet.position, SCALE);
 
-  return (
-    <>
-      <EffectComposer>
-        <Bloom
-          intensity={1.0} // The bloom intensity.
-          blurPass={undefined} // A blur pass.
-          kernelSize={KernelSize.LARGE} // blur kernel size
-          luminanceThreshold={0.9} // luminance threshold. Raise this value to mask out darker elements in the scene.
-          luminanceSmoothing={0.025} // smoothness of the luminance threshold. Range is [0, 1]
-          mipmapBlur={true} // Enables or disables mipmap blur.
-          resolutionX={Resolution.AUTO_SIZE} // The horizontal resolution.
-          resolutionY={Resolution.AUTO_SIZE} // The vertical resolution.
-        />
-      </EffectComposer>
+  type PlanetTemplateType = Record<
+    string,
+    { texture: THREE.Texture; rotation: number }
+  >;
+
+  const PLANET_TEMPLATES: PlanetTemplateType = {
+    "!earth": {
+      texture: useLoader(TextureLoader, "/assets/earthmap1k.jpg"),
+      rotation: 0.002,
+    },
+    "!sun": {
+      texture: useLoader(TextureLoader, "/assets/sunmap.jpg"),
+      rotation: 0.0,
+    },
+    "!moon": {
+      texture: useLoader(TextureLoader, "/assets/moonmap1k.jpg"),
+      rotation: 0.0,
+    },
+  };
+
+  const bumpMap = useLoader(TextureLoader,"/assets/earthbump1k.jpg");
+  const specMap = useLoader(TextureLoader,"/assets/earthspec1k.jpg");
+
+
+  let texture_details = PLANET_TEMPLATES[args.planet.color];
+
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(() => {
+    if (texture_details != null && ref.current != null) {
+      ref.current.rotation.y += texture_details.rotation;
+    }
+  });
+
+  if (texture_details != null) {
+    return (
       <mesh
+        ref={ref}
+        rotation-y={1}
         position={pos}
         onPointerOver={() => entityToShow.setEntityToShow(args.planet)}
         onPointerLeave={() => entityToShow.setEntityToShow(null)}>
         <icosahedronGeometry args={[radiusUnits, 15]} />
-        <meshBasicMaterial
-          color={[
-            (color.red() / 255.0) * intensity_factor,
-            (color.green() / 255.0) * intensity_factor,
-            (color.blue() / 255.0) * intensity_factor,
-          ]}
+        <meshStandardMaterial
+          map={texture_details.texture}
+          //bumpMap={bumpMap}
+          //bumpScale={0.005}
+          //specularMap={specMap}
+          //specular={"grey"}
+          side={THREE.BackSide}
+          //transparent={true}
         />
       </mesh>
-    </>
-  );
+    );
+  } else {
+    const color = Color(args.planet.color);
+    const intensity_factor = 2.5;
+
+    return (
+      <>
+        <EffectComposer>
+          <Bloom
+            intensity={1.0} // The bloom intensity.
+            blurPass={undefined} // A blur pass.
+            kernelSize={KernelSize.LARGE} // blur kernel size
+            luminanceThreshold={0.9} // luminance threshold. Raise this value to mask out darker elements in the scene.
+            luminanceSmoothing={0.025} // smoothness of the luminance threshold. Range is [0, 1]
+            mipmapBlur={true} // Enables or disables mipmap blur.
+            resolutionX={Resolution.AUTO_SIZE} // The horizontal resolution.
+            resolutionY={Resolution.AUTO_SIZE} // The vertical resolution.
+          />
+        </EffectComposer>
+        <mesh
+          position={pos}
+          onPointerOver={() => entityToShow.setEntityToShow(args.planet)}
+          onPointerLeave={() => entityToShow.setEntityToShow(null)}>
+          <icosahedronGeometry args={[radiusUnits, 15]} />
+          <meshBasicMaterial
+            color={[
+              (color.red() / 255.0) * intensity_factor,
+              (color.green() / 255.0) * intensity_factor,
+              (color.blue() / 255.0) * intensity_factor,
+            ]}
+          />
+        </mesh>
+      </>
+    );
+  }
 }
 
 function Planets(args: { planets: PlanetType[] }) {
@@ -68,7 +122,7 @@ function Planets(args: { planets: PlanetType[] }) {
 }
 
 function Galaxy() {
-  const starColorMap = useLoader(TextureLoader, "galaxy1.png");
+  const starColorMap = useLoader(TextureLoader, "/assets/galaxy1.png");
 
   return (
     <>

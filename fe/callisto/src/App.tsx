@@ -78,6 +78,8 @@ function App() {
       <>
         <EntitiesServerProvider
           value={{ entities: entities, handler: setEntities }}>
+          <ambientLight />
+          <pointLight position={[-100, 10, 10]} />
           <div className="mainscreen-container">
             <Controls
               nextRound={(callback) => nextRound(setEvents, callback)}
