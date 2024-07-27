@@ -17,11 +17,7 @@ import {
 
 import Controls from "./Controls";
 import "./index.css";
-import {
-  nextRound,
-  getEntities,
-  computeFlightPath,
-} from "./ServerManager";
+import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
 
 function App() {
   const [entities, setEntities] = useState<EntityList>({
@@ -44,7 +40,15 @@ function App() {
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null = null,
     standoff: number
-  ) => computeFlightPath(entity_name, end_pos, end_vel, setCurrentPlan, target_vel, standoff);
+  ) =>
+    computeFlightPath(
+      entity_name,
+      end_pos,
+      end_vel,
+      setCurrentPlan,
+      target_vel,
+      standoff
+    );
 
   const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
 
@@ -78,8 +82,6 @@ function App() {
       <>
         <EntitiesServerProvider
           value={{ entities: entities, handler: setEntities }}>
-          <ambientLight />
-          <pointLight position={[-100, 10, 10]} />
           <div className="mainscreen-container">
             <Controls
               nextRound={(callback) => nextRound(setEvents, callback)}
@@ -99,7 +101,7 @@ function App() {
               )}
               {/* Explicitly setting position to absolute seems to be necessary or it ends up relative and I cannot figure out why */}
               <Canvas
-                style={{position: "absolute"}}
+                style={{ position: "absolute" }}
                 className="spaceview-canvas"
                 camera={{
                   fov: 75,
@@ -107,6 +109,8 @@ function App() {
                   far: 200000,
                   position: [-100, 0, 0],
                 }}>
+                <pointLight position={[-149e3, 10, 10]} intensity={6} decay={0.01} color="#fff7cd"/>
+                <ambientLight intensity={1.0} />
                 <FlyControls
                   autoForward={false}
                   dragToLook={true}
