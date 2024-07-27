@@ -1,0 +1,13 @@
+{
+  "name": "threex.planets",
+  "_cacheHeaders": {
+    "ETag": "W/\"9d6ad04fee592588da7969c605fdc530de0aa261d461b5a65ae1901ebec37fb8\"",
+    "Content-Type": "application/zip",
+    "Content-Disposition": "attachment; filename=threex.planets-master.zip"
+  },
+  "_release": "e-tag:W/\"9d6ad04",
+  "_source": "https://github.com/jeromeetienne/threex.planets/archive/master.zip",
+  "_target": "*",
+  "_originalSource": "https://github.com/jeromeetienne/threex.planets/archive/master.zip",
+  "_direct": true
+}
