@@ -1,7 +1,17 @@
 import { useContext, useRef } from "react";
 
-import { Group } from "three";
-import { Bloom } from "@react-three/postprocessing";
+import { Group, Mesh, SphereGeometry, Vector3 as TV3 } from "three";
+import {
+  extend,
+  ReactThreeFiber,
+  useThree,
+  useFrame,
+  Vector3,
+} from "@react-three/fiber";
+import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry";
+import { FontLoader, Font } from "three/examples/jsm/loaders/FontLoader";
+
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Text } from "@react-three/drei";
 import { Line } from "./Util";
 
@@ -13,10 +23,36 @@ import {
   Ship as ShipType,
   Missile as MissileType,
 } from "./Universal";
-import { Vector3 } from "@react-three/fiber";
 
 import { SCALE, TURN_IN_SECONDS, EntityToShowContext } from "./Universal";
 import { addVector, scaleVector, vectorToString } from "./Util";
+
+extend({ TextGeometry });
+
+// This is to make typescript work with "extend"
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      textGeometry: ReactThreeFiber.Object3DNode<
+        TextGeometry,
+        typeof TextGeometry
+      >;
+    }
+  }
+}
+
+let labelFont: Font | null = null;
+new FontLoader().load(
+  "/assets/Orbitron_Regular.json",
+  (font) => {
+    console.log("(Ships) Loaded Orbitron font.");
+    labelFont = font;
+  },
+  () => {},
+  (error) => {
+    console.log("Error loading Orbitron font: " + JSON.stringify(error));
+  }
+);
 
 //TODO: Move this somewhere else - maybe Controls.tsx
 export function EntityInfoWindow(args: { entity: Entity }) {
@@ -60,8 +96,15 @@ function Ship(args: {
   setComputerShip: (ship: ShipType | null) => void;
 }) {
   const entityToShow = useContext(EntityToShowContext);
-  const labelRef = useRef<Group>(null);
+  const { camera } = useThree();
+  const textRef = useRef<Mesh>(null);
+  const shipRef = useRef<Mesh>(null);
+  const textGeoRef = useRef<TextGeometry>(null);
+  const shipGeoRef = useRef<SphereGeometry>(null);
 
+  useFrame(() => {
+    textRef.current?.lookAt(camera.position);
+  });
   function handleShipClick() {
     args.setComputerShip(args.ship);
   }
@@ -69,22 +112,24 @@ function Ship(args: {
   return (
     <>
       {
-        <Bloom
-          mipmapBlur
-          luminanceThreshold={1}
-          luminanceSmoothing={1}
-          intensity={5.0}
-        />
+        <EffectComposer>
+          <Bloom
+            mipmapBlur
+            luminanceThreshold={1}
+            luminanceSmoothing={1}
+            intensity={1.0}
+          />
+        </EffectComposer>
       }
       <group
-        ref={labelRef}
         position={scaleVector(args.ship.position, SCALE) as Vector3}>
         <mesh
+          ref={shipRef}
           position={[0, 0, 0]}
           onPointerOver={() => entityToShow.setEntityToShow(args.ship)}
           onPointerLeave={() => entityToShow.setEntityToShow(null)}
           onClick={handleShipClick}>
-          <sphereGeometry args={[0.1]} />
+          <sphereGeometry ref={shipGeoRef} args={[0.2]} />
           <meshBasicMaterial color={[3, 3, 8.0]} />
         </mesh>
         <Line
@@ -103,9 +148,18 @@ function Ship(args: {
           )}
           color="green"
         />
-        <Text color="grey" fontSize={0.2} position={[0, -0.1, 0]}>
-          {args.ship.name}
-        </Text>
+        {labelFont != null && (
+          <mesh position={[0.0, -1.5, 0.0]} ref={textRef}>
+            <textGeometry
+              ref={textGeoRef}
+              args={[
+                args.ship.name,
+                { font: labelFont, size: 0.7, depth: 0.05 },
+              ]}
+            />
+            <meshBasicMaterial attach="material" color="#3dfc32" />
+          </mesh>
+        )}
       </group>
     </>
   );
@@ -115,7 +169,6 @@ export function Ships(args: {
   setComputerShip: (ship: ShipType | null) => void;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
-
   return (
     <>
       {serverEntities.entities.ships.map((ship, index) => (
@@ -138,14 +191,14 @@ export function Missile(args: { missile: MissileType; index: number }) {
 
   return (
     <>
-      {
+      <EffectComposer>
         <Bloom
           mipmapBlur
           luminanceThreshold={1}
           luminanceSmoothing={1}
           intensity={5.0}
         />
-      }
+      </EffectComposer>
       <group
         ref={labelRef}
         position={scaleVector(args.missile.position, SCALE) as Vector3}>
@@ -198,6 +251,7 @@ export function Route(args: { plan: FlightPathResult }) {
   let start = scaleVector(args.plan.path[0], -1.0 * SCALE);
   let prev = args.plan.path[0];
   let path = args.plan.path.slice(1);
+
   return (
     <group position={scaleVector(prev, SCALE) as Vector3}>
       {path.map((point, index) => {
