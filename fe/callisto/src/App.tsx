@@ -26,7 +26,7 @@ function App() {
     missiles: [],
   });
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
-  const [computerShip, setComputerShip] = useState<Ship | null>(null);
+  const [computerShipName, setComputerShipName] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
 
@@ -85,16 +85,16 @@ function App() {
           <div className="mainscreen-container">
             <Controls
               nextRound={(callback) => nextRound(setEvents, callback)}
-              computerShip={computerShip}
-              setComputerShip={setComputerShip}
+              computerShipName={computerShipName}
+              setComputerShipName={setComputerShipName}
               currentPlan={currentPlan}
               getAndShowPlan={getAndShowPlan}
             />
             <div className="mainscreen-container">
-              {computerShip && (
+              {computerShipName && (
                 <ShipComputer
-                  ship={computerShip}
-                  setComputerShip={setComputerShip}
+                  shipName={computerShipName}
+                  setComputerShipName={setComputerShipName}
                   currentPlan={currentPlan}
                   getAndShowPlan={getAndShowPlan}
                 />
@@ -109,7 +109,7 @@ function App() {
                   far: 200000,
                   position: [-100, 0, 0],
                 }}>
-                <pointLight position={[-149e3, 10, 10]} intensity={6} decay={0.01} color="#fff7cd"/>
+                <pointLight position={[-148e3, 10, 10]} intensity={6} decay={0.01} color="#fff7cd"/>
                 <ambientLight intensity={1.0} />
                 <FlyControls
                   autoForward={false}
@@ -119,7 +119,7 @@ function App() {
                   makeDefault
                 />
                 <SpaceView />
-                <Ships setComputerShip={setComputerShip} />
+                <Ships setComputerShipName={setComputerShipName} />
                 <Missiles />
                 {events && events.length > 0 && (
                   <Effects effects={events} setEffects={setEvents} />

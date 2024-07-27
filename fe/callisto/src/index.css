@@ -27,7 +27,13 @@ h2 {
   font-size: 20pt;
 }
 input {
-  color:white
+  color:white;
+  font-family: "Sono", monospace;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  font-variation-settings:
+    "MONO" 1;  
 }
 .mainscreen-container {
   display: flex;
@@ -95,6 +101,8 @@ input {
 }
 
 .control-label {
+  display: flex;
+  flex-direction: column;
   font-size:14pt;
   margin: 0px;
   padding: 0px;
@@ -110,7 +118,7 @@ input {
 .as-form {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
+  justify-content: left;
   align-items: center;
   color: black;
 }
@@ -148,7 +156,6 @@ input {
   color: #FFFFFF;
   cursor: pointer;
   direction: ltr;
-  font-weight: 400;
   letter-spacing: -.022em;
   line-height: 1.47059;
   overflow: visible;
@@ -158,6 +165,13 @@ input {
   -webkit-user-select: none;
   touch-action: manipulation;
   white-space: nowrap;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 600;
+  font-size: 18px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
 }
 
 .blue-button:disabled {
@@ -189,6 +203,25 @@ input {
   font-style: normal;
 }
 
+.sono-regular {
+  font-family: "Sono", monospace;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  font-variation-settings:
+    "MONO" 1;
+}
+
+.plan-accel-text {
+  font-family: "Sono", monospace;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  font-size: 14px;
+  font-variation-settings:
+    "MONO" 1;
+
+}
 .ship-info-window {
   position: fixed;
   bottom: 0;
@@ -203,7 +236,6 @@ input {
   position: relative;
   top: 0;
   left: 0px;
-  width: 350px;
   padding-right: 4px;
   border: 1px solid #b6bcae;
   z-index: 10;
@@ -237,7 +269,10 @@ input {
   justify-content: space-between;
 }
 
-.navigation-target-select {
-  width: auto;
-  flex-grow: 3;
+.select-dropdown {
+  width: 160px;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

@@ -93,7 +93,7 @@ export function EntityInfoWindow(args: { entity: Entity }) {
 function Ship(args: {
   ship: ShipType;
   index: number;
-  setComputerShip: (ship: ShipType | null) => void;
+  setComputerShipName: (shipName: string | null) => void;
 }) {
   const entityToShow = useContext(EntityToShowContext);
   const { camera } = useThree();
@@ -106,7 +106,7 @@ function Ship(args: {
     textRef.current?.lookAt(camera.position);
   });
   function handleShipClick() {
-    args.setComputerShip(args.ship);
+    args.setComputerShipName(args.ship.name);
   }
 
   return (
@@ -166,7 +166,7 @@ function Ship(args: {
 }
 
 export function Ships(args: {
-  setComputerShip: (ship: ShipType | null) => void;
+  setComputerShipName: (shipName: string | null) => void;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
   return (
@@ -176,7 +176,7 @@ export function Ships(args: {
           key={ship.name}
           ship={ship}
           index={index}
-          setComputerShip={args.setComputerShip}
+          setComputerShipName={args.setComputerShipName}
         />
       ))}
     </>
