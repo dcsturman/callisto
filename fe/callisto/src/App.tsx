@@ -12,7 +12,6 @@ import {
   EntityToShowProvider,
   EntityList,
   FlightPathResult,
-  Ship,
 } from "./Universal";
 
 import Controls from "./Controls";
@@ -27,14 +26,14 @@ function App() {
   });
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<FlightPathResult | null>(null);
+  const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
 
   useEffect(() => {
     getEntities(setEntities);
   }, []);
 
-  let getAndShowPlan = (
+  const getAndShowPlan = (
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number],
@@ -45,10 +44,14 @@ function App() {
       entity_name,
       end_pos,
       end_vel,
-      setCurrentPlan,
+      setProposedPlan,
       target_vel,
       standoff
     );
+
+  const resetProposedPlan = () => {
+    setProposedPlan(null);
+  }
 
   const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
 
@@ -87,7 +90,6 @@ function App() {
               nextRound={(callback) => nextRound(setEvents, callback)}
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
-              currentPlan={currentPlan}
               getAndShowPlan={getAndShowPlan}
             />
             <div className="mainscreen-container">
@@ -95,7 +97,8 @@ function App() {
                 <ShipComputer
                   shipName={computerShipName}
                   setComputerShipName={setComputerShipName}
-                  currentPlan={currentPlan}
+                  proposedPlan={proposedPlan}
+                  resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
                 />
               )}
@@ -124,7 +127,7 @@ function App() {
                 {events && events.length > 0 && (
                   <Effects effects={events} setEffects={setEvents} />
                 )}
-                {currentPlan && <Route plan={currentPlan} />}
+                {proposedPlan && <Route plan={proposedPlan} />}
               </Canvas>
             </div>
           </div>

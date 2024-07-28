@@ -92,10 +92,12 @@ export function NavigationPlan(args: {
     </>
   );
 }
+
 export function ShipComputer(args: {
   shipName: string,
   setComputerShipName: (shipName: string | null) => void;
-  currentPlan: FlightPathResult | null;
+  proposedPlan: FlightPathResult | null;
+  resetProposedPlan: () => void;
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
@@ -114,7 +116,9 @@ export function ShipComputer(args: {
     console.error(`(ShipComputer) Unable to find ship of name "${args.shipName}!`);
   }
   
-  const [navigationTarget, setNavigationTarget] = useState({
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  const initNavigationTargetState = {
     p_x: "0",
     p_y: "0",
     p_z: "0",
@@ -122,7 +126,9 @@ export function ShipComputer(args: {
     v_y: "0",
     v_z: "0",
     standoff: "0",
-  });
+  };
+  
+  const [navigationTarget, setNavigationTarget] = useState(initNavigationTargetState);
 
   let startAccel = [
     ship?.plan[0][0][0].toString(),
@@ -246,15 +252,22 @@ export function ShipComputer(args: {
   }
 
   function handleAssignPlan() {
-    if (args.currentPlan == null) {
+    if (args.proposedPlan == null) {
       console.error(`(Controls.handleAssignPlan) No current plan`);
     } else {
       setComputerAccel({
-        x: args.currentPlan.plan[0][0][0].toString(),
-        y: args.currentPlan.plan[0][0][1].toString(),
-        z: args.currentPlan.plan[0][0][2].toString(),
+        x: args.proposedPlan.plan[0][0][0].toString(),
+        y: args.proposedPlan.plan[0][0][1].toString(),
+        z: args.proposedPlan.plan[0][0][2].toString(),
       });
-      setPlan(ship.name, args.currentPlan.plan, serverEntities.handler);
+      setPlan(ship.name, args.proposedPlan.plan, serverEntities.handler);
+      args.resetProposedPlan();
+
+      if (selectRef.current !== null) {
+        selectRef.current.value = "";
+      }
+
+      setNavigationTarget(initNavigationTargetState);
     }
   }
 
@@ -333,6 +346,7 @@ export function ShipComputer(args: {
           Nav Target:
           <select
             className="select-dropdown control-name-input control-input"
+            ref={selectRef}
             name="navigation_target"
             onChange={handleNavTargetSelectChange}>
             <option key="none" value=""></option>
@@ -424,10 +438,10 @@ export function ShipComputer(args: {
           value="Compute"
         />
       </form>
-      {args.currentPlan && (
+      {args.proposedPlan && (
         <div>
-          <h2 className="control-form">Current Plan</h2>
-          <NavigationPlan plan={args.currentPlan.plan} />
+          <h2 className="control-form">Proposed Plan</h2>
+          <NavigationPlan plan={args.proposedPlan.plan} />
           <button
             className="control-input control-button blue-button"
             onClick={handleAssignPlan}>
@@ -629,7 +643,6 @@ export function Controls(args: {
   nextRound: (callback: EntityRefreshCallback) => void;
   computerShipName: string | null;
   setComputerShipName: (shipName: string | null) => void;
-  currentPlan: FlightPathResult | null;
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
@@ -665,7 +678,7 @@ export function Controls(args: {
         computerShipName={args.computerShipName}
         setComputerShipName={args.setComputerShipName}
       />
-      {computerShip && <NavigationPlan plan={computerShip.plan}/>}
+      {computerShip && (<><h2 className="control-form">Current Plan</h2><NavigationPlan plan={computerShip.plan}/></>)}
       <button
         className="control-input control-button blue-button button-next-round"
         // Reset the computer and route on the next round.  If this gets any more complex move it into its

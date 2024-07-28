@@ -95,12 +95,12 @@ export function computeFlightPath(
   entity_name: string | null,
   end_pos: [number, number, number],
   end_vel: [number, number, number],
-  setCurrentPlan: (plan: FlightPathResult | null) => void,
+  setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
   standoff: number = 0
 ) {
   if (entity_name == null) {
-    setCurrentPlan(null);
+    setProposedPlan(null);
     return;
   }
   let payload = {
@@ -120,7 +120,7 @@ export function computeFlightPath(
     body: JSON.stringify(payload),
   })
     .then((response) => response.json())
-    .then((plan) => setCurrentPlan(plan))
+    .then((plan) => setProposedPlan(plan))
     .catch((error) => console.error("Error computing flight path:", error));
 }
 
