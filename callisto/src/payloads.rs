@@ -61,12 +61,7 @@ pub struct ComputePathMsg {
         with = "::serde_with:: As :: < Option < Vec3asVec > >"
     )]
     pub target_velocity: Option<Vec3>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "::serde_with::rust::unwrap_or_skip"
-    )]
-    pub standoff_distance: Option<f64>,
+    pub standoff_distance: f64,
 }
 
 pub type FlightPathMsg = FlightPathResult;
@@ -137,13 +132,14 @@ mod tests {
             end_pos: Vec3::zero(),
             end_vel: Vec3::zero(),
             target_velocity: None,
-            standoff_distance: None,
+            standoff_distance: 0.0,
         };
 
         let json = json!({
             "entity_name": "ship1",
             "end_pos": [0.0, 0.0, 0.0],
             "end_vel": [0.0, 0.0, 0.0],
+            "standoff_distance": 0.0
         });
 
         let json_str = serde_json::to_string(&msg).unwrap();
@@ -157,7 +153,7 @@ mod tests {
             end_pos: Vec3::zero(),
             end_vel: Vec3::zero(),
             target_velocity: Some(Vec3 { x: 10.0, y: 20.0, z: 30.0 }),
-            standoff_distance: Some(100.0),
+            standoff_distance: 100.0,
         };
 
         let json2 = json!({

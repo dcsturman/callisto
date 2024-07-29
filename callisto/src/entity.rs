@@ -559,15 +559,21 @@ impl Entities {
             .unwrap_or_else(|| panic!("Missile source {} not found for missile {}.", source, name))
             .clone();
 
-        let source_entity = source_ptr.read().unwrap();
-
-        let position = source_entity.position;
-        let velocity = source_entity.velocity;
-
-        let target_ptr = self
+            let target_ptr = self
             .get(&target)
             .unwrap_or_else(|| panic!("Target {} not found for missile {}.", target, name))
             .clone();
+
+        let source_entity = source_ptr.read().unwrap();
+        let target_entity = target_ptr.read().unwrap();
+        let direction = (target_entity.position - source_entity.position).normalize();
+        let offset = 1000000.0 * direction;
+
+        let target_ptr = target_ptr.clone();
+
+        let position = source_entity.position + offset;
+        let velocity = source_entity.velocity;
+
         let entity = Entity::new_missile(
             name,
             source,

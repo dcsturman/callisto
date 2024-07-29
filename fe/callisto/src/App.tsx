@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import * as THREE from "three";
+import { Canvas,  useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
 import { Ships, EntityInfoWindow, Missiles, Route } from "./Ships";
@@ -12,7 +13,6 @@ import {
   EntityToShowProvider,
   EntityList,
   FlightPathResult,
-  Ship,
 } from "./Universal";
 
 import Controls from "./Controls";
@@ -26,29 +26,31 @@ function App() {
     missiles: [],
   });
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
-  const [computerShip, setComputerShip] = useState<Ship | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<FlightPathResult | null>(null);
+  const [computerShipName, setComputerShipName] = useState<string | null>(null);
+  const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
+  const [cameraPos, setCameraPos] = useState<THREE.Vector3>(new THREE.Vector3(-100, 0, 0));
 
-  useEffect(() => {
-    getEntities(setEntities);
-  }, []);
 
-  let getAndShowPlan = (
+  const getAndShowPlan = (
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null = null,
-    standoff: number
-  ) =>
+    standoff: number = 0
+  ) => {
     computeFlightPath(
       entity_name,
       end_pos,
       end_vel,
-      setCurrentPlan,
+      setProposedPlan,
       target_vel,
       standoff
-    );
+    )};
+
+  const resetProposedPlan = () => {
+    setProposedPlan(null);
+  }
 
   const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
 
@@ -63,6 +65,10 @@ function App() {
       setKeyHeld({ shift: false, slash: keysHeld.slash });
     }
   }
+
+  useEffect(() => {
+    getEntities(setEntities);
+  }, []);
 
   useEffect(() => {
     window.addEventListener("keydown", downHandler);
@@ -85,17 +91,18 @@ function App() {
           <div className="mainscreen-container">
             <Controls
               nextRound={(callback) => nextRound(setEvents, callback)}
-              computerShip={computerShip}
-              setComputerShip={setComputerShip}
-              currentPlan={currentPlan}
+              computerShipName={computerShipName}
+              setComputerShipName={setComputerShipName}
               getAndShowPlan={getAndShowPlan}
+              setCameraPos={setCameraPos}
             />
             <div className="mainscreen-container">
-              {computerShip && (
+              {computerShipName && (
                 <ShipComputer
-                  ship={computerShip}
-                  setComputerShip={setComputerShip}
-                  currentPlan={currentPlan}
+                  shipName={computerShipName}
+                  setComputerShipName={setComputerShipName}
+                  proposedPlan={proposedPlan}
+                  resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
                 />
               )}
@@ -109,7 +116,7 @@ function App() {
                   far: 200000,
                   position: [-100, 0, 0],
                 }}>
-                <pointLight position={[-149e3, 10, 10]} intensity={6} decay={0.01} color="#fff7cd"/>
+                <pointLight position={[-148e3, 10, 10]} intensity={6} decay={0.01} color="#fff7cd"/>
                 <ambientLight intensity={1.0} />
                 <FlyControls
                   autoForward={false}
@@ -118,13 +125,14 @@ function App() {
                   rollSpeed={0.5}
                   makeDefault
                 />
+                <GrabCamera cameraPos={cameraPos} setCameraPos={setCameraPos} />
                 <SpaceView />
-                <Ships setComputerShip={setComputerShip} />
+                <Ships setComputerShipName={setComputerShipName}/>
                 <Missiles />
                 {events && events.length > 0 && (
                   <Effects effects={events} setEffects={setEvents} />
                 )}
-                {currentPlan && <Route plan={currentPlan} />}
+                {proposedPlan && <Route plan={proposedPlan} />}
               </Canvas>
             </div>
           </div>
@@ -134,4 +142,17 @@ function App() {
     </EntityToShowProvider>
   );
 }
+
+function GrabCamera(args: { cameraPos: THREE.Vector3, setCameraPos: (pos: THREE.Vector3) => void }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    args.setCameraPos(camera.position);
+  }, []);
+
+  useEffect(() => {
+    camera.position.set(args.cameraPos.x, args.cameraPos.y, args.cameraPos.z);
+  }, [args.cameraPos]);
+  return null;
+}
+
 export default App;

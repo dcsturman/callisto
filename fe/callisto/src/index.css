@@ -14,6 +14,7 @@ body {
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 9pt;
 }
 
 .axis {
@@ -21,13 +22,24 @@ body {
 }
 
 h1 {
-  font-size: 30pt;
-}
-h2 {
   font-size: 20pt;
 }
+h2 {
+  font-size: 14pt;
+}
+
+.ship-list-label {
+  padding-right: 8px;
+}
+
 input {
-  color:white
+  color:white;
+  font-family: "Sono", monospace;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  font-variation-settings:
+    "MONO" 1;  
 }
 .mainscreen-container {
   display: flex;
@@ -64,6 +76,7 @@ input {
   color: black;
   background-color: #eeebeb;
   border: 1px solid #333;
+  font-size: 9pt;
 }
 
 .standoff-input {
@@ -95,7 +108,9 @@ input {
 }
 
 .control-label {
-  font-size:14pt;
+  display: flex;
+  flex-direction: column;
+  font-size:12pt;
   margin: 0px;
   padding: 0px;
   color: white;
@@ -110,7 +125,7 @@ input {
 .as-form {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
+  justify-content: left;
   align-items: center;
   color: black;
 }
@@ -148,7 +163,6 @@ input {
   color: #FFFFFF;
   cursor: pointer;
   direction: ltr;
-  font-weight: 400;
   letter-spacing: -.022em;
   line-height: 1.47059;
   overflow: visible;
@@ -158,6 +172,13 @@ input {
   -webkit-user-select: none;
   touch-action: manipulation;
   white-space: nowrap;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 600;
+  font-size: 12pt;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
 }
 
 .blue-button:disabled {
@@ -189,6 +210,25 @@ input {
   font-style: normal;
 }
 
+.sono-regular {
+  font-family: "Sono", monospace;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  font-variation-settings:
+    "MONO" 1;
+}
+
+.plan-accel-text {
+  font-family: "Sono", monospace;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  font-size: 14px;
+  font-variation-settings:
+    "MONO" 1;
+
+}
 .ship-info-window {
   position: fixed;
   bottom: 0;
@@ -203,7 +243,6 @@ input {
   position: relative;
   top: 0;
   left: 0px;
-  width: 350px;
   padding-right: 4px;
   border: 1px solid #b6bcae;
   z-index: 10;
@@ -214,14 +253,14 @@ input {
 }
 
 .control-form {
-  padding-top: 15px;
+  padding-top: 6px;
   padding-left: 2px;
 }
 
 .target-entry-form {
   display: flex;
   flex-direction: column;
-  padding-top: 15px;
+  padding-top: 4px;
   padding-left: 2px;
 }
 
@@ -237,7 +276,10 @@ input {
   justify-content: space-between;
 }
 
-.navigation-target-select {
-  width: auto;
-  flex-grow: 3;
+.select-dropdown {
+  width: 160px;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

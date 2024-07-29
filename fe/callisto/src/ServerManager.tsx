@@ -48,7 +48,17 @@ export function setPlan(
   plan: [Acceleration, Acceleration | null],
   callBack: EntityRefreshCallback
 ) {
-  let payload = { name: target, plan: plan };
+  let plan_arr = [];
+
+  // Since the Rust backend just expects null values in flightplans to be skipped
+  // we have to custom build the body.
+  if (plan[1] == null) {
+    plan_arr = [plan[0]];
+  } else {
+    plan_arr = [plan[0], plan[1]];
+  }
+  let payload = { name: target, plan: plan_arr };
+
   fetch(`http://${address}:${port}/set_plan`, {
     method: "POST",
     headers: {
@@ -85,12 +95,12 @@ export function computeFlightPath(
   entity_name: string | null,
   end_pos: [number, number, number],
   end_vel: [number, number, number],
-  setCurrentPlan: (plan: FlightPathResult | null) => void,
+  setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
-  standoff: number = 0
+  standoff: number | null = null
 ) {
   if (entity_name == null) {
-    setCurrentPlan(null);
+    setProposedPlan(null);
     return;
   }
   let payload = {
@@ -110,7 +120,7 @@ export function computeFlightPath(
     body: JSON.stringify(payload),
   })
     .then((response) => response.json())
-    .then((plan) => setCurrentPlan(plan))
+    .then((plan) => setProposedPlan(plan))
     .catch((error) => console.error("Error computing flight path:", error));
 }
 

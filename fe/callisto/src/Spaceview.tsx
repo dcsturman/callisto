@@ -220,9 +220,9 @@ function Galaxy() {
 function Axes() {
   return (
     <>
-      <Line start={[-1000, 0, 0]} end={[1000, 0, 0]} color="blue" />
-      <Line start={[0, -1000, 0]} end={[0, 1000, 0]} color="green" />
-      <Line start={[0, 0, -1000]} end={[0, 0, 1000]} />
+      <Line start={[-400000, 0, 0]} end={[400000, 0, 0]} color="blue" />
+      <Line start={[0, -400000, 0]} end={[0, 400000, 0]} color="green" />
+      <Line start={[0, 0, -400000]} end={[0, 0, 400000]} />
     </>
   );
 }
