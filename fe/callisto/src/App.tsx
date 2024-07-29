@@ -67,6 +67,10 @@ function App() {
   }
 
   useEffect(() => {
+    getEntities(setEntities);
+  }, []);
+
+  useEffect(() => {
     window.addEventListener("keydown", downHandler);
     window.addEventListener("keyup", upHandler);
     return () => {

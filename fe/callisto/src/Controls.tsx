@@ -54,7 +54,6 @@ function ShipList(args: {
         (ship) => ship.name === args.computerShipName
       );
       if (ship) {
-        console.log("Moving camera to ship position: " + ship.position.map((x) => x*SCALE));
         args.setCameraPos(new THREE.Vector3(
           ship.position[0] * SCALE - 40,
           ship.position[1] * SCALE,
