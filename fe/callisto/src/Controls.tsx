@@ -1,4 +1,5 @@
 import { useContext, useState, useEffect, useRef } from "react";
+import * as THREE from "three";
 import {
   EntitiesServerContext,
   EntityRefreshCallback,
@@ -6,6 +7,7 @@ import {
   Ship,
   DEFAULT_ACCEL_DURATION,
   Acceleration,
+  SCALE
 } from "./Universal";
 
 import { addShip, setPlan, launchMissile } from "./ServerManager";
@@ -15,7 +17,9 @@ const POS_SCALE = 1000.0;
 function ShipList(args: {
   computerShipName: string | null;
   setComputerShipName: (shipName: string | null) => void;
+  setCameraPos: (pos: THREE.Vector3) => void;
 }) {
+
   const serverEntities = useContext(EntitiesServerContext);
 
   const ships = serverEntities.entities.ships;
@@ -44,9 +48,25 @@ function ShipList(args: {
     }
   }
 
+  function moveCameraToShip() {
+    if (args.computerShipName) {
+      let ship = serverEntities.entities.ships.find(
+        (ship) => ship.name === args.computerShipName
+      );
+      if (ship) {
+        console.log("Moving camera to ship position: " + ship.position.map((x) => x*SCALE));
+        args.setCameraPos(new THREE.Vector3(
+          ship.position[0] * SCALE - 40,
+          ship.position[1] * SCALE,
+          ship.position[2] * SCALE
+        ));
+      }
+    }
+  }
+
   return (
-    <>
-      <h2 className="control-form">Ship List</h2>
+    <div className="control-launch-div">
+      <h2 className="ship-list-label">Ship: </h2>
       <select
         className="select-dropdown control-name-input control-input"
         name="shiplist_choice"
@@ -58,7 +78,8 @@ function ShipList(args: {
           <option key={ship.name + "-shiplist"}>{ship.name}</option>
         ))}
       </select>
-    </>
+      <button className="control-input blue-button" onClick={moveCameraToShip}>Go</button>
+    </div>
   );
 }
 
@@ -324,20 +345,20 @@ export function ShipComputer(args: {
       {accelerationManager()}
       <hr />
       <button
-          className="control-input control-button blue-button"
-          onClick={() => {
-            setNavigationTarget({
-              p_x: (ship.position[0]/ POS_SCALE).toString(),
-              p_y: (ship.position[1]/ POS_SCALE).toString(),
-              p_z: (ship.position[2]/ POS_SCALE).toString(),
-              v_x: "0",
-              v_y: "0",
-              v_z: "0",
-              standoff: "0"
-            });
-            args.getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, 0);
-          }}>
-      Full Stop
+        className="control-input control-button blue-button"
+        onClick={() => {
+          setNavigationTarget({
+            p_x: (ship.position[0] / POS_SCALE).toString(),
+            p_y: (ship.position[1] / POS_SCALE).toString(),
+            p_z: (ship.position[2] / POS_SCALE).toString(),
+            v_x: "0",
+            v_y: "0",
+            v_z: "0",
+            standoff: "0",
+          });
+          args.getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, 0);
+        }}>
+        Full Stop
       </button>
       <hr />
       <h2 className="control-form">Navigation</h2>
@@ -476,9 +497,6 @@ function AddShip(args: {
     xvel: "0",
     yvel: "0",
     zvel: "0",
-    xacc: "0",
-    yacc: "0",
-    zacc: "0",
   };
 
   const [addShip, addShipUpdate] = useState(initialShip);
@@ -500,17 +518,12 @@ function AddShip(args: {
       Number(addShip.yvel),
       Number(addShip.zvel),
     ];
-    let acceleration: [number, number, number] = [
-      Number(addShip.xacc),
-      Number(addShip.yacc),
-      Number(addShip.zacc),
-    ];
 
     console.log(
-      `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
+      `Adding Ship ${name}: Position ${position}, Velocity ${velocity}`
     );
 
-    args.submitHandler(name, position, velocity, acceleration);
+    args.submitHandler(name, position, velocity, [0, 0, 0]);
     addShipUpdate(initialShip);
   }
 
@@ -579,32 +592,6 @@ function AddShip(args: {
           />
         </div>
       </label>
-      <label className="control-label">
-        Acceleration
-        <div className="coordinate-input">
-          <input
-            className="control-input"
-            name="xacc"
-            type="text"
-            value={addShip.xacc}
-            onChange={handleChange}
-          />
-          <input
-            className="control-input"
-            name="yacc"
-            type="text"
-            value={addShip.yacc}
-            onChange={handleChange}
-          />
-          <input
-            className="control-input"
-            name="zacc"
-            type="text"
-            value={addShip.zacc}
-            onChange={handleChange}
-          />
-        </div>
-      </label>
       <input
         className="control-input control-button blue-button"
         type="submit"
@@ -625,6 +612,7 @@ export function Controls(args: {
     target_vel: [number, number, number] | null,
     standoff: number
   ) => void;
+  setCameraPos: (pos: THREE.Vector3) => void;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
 
@@ -653,7 +641,7 @@ export function Controls(args: {
       );
     }
   }
-
+  
   return (
     <div className="controls-pane">
       <h1>Controls</h1>
@@ -673,12 +661,20 @@ export function Controls(args: {
           )
         }
       />
+      <hr />
       <ShipList
         computerShipName={args.computerShipName}
         setComputerShipName={args.setComputerShipName}
+        setCameraPos={args.setCameraPos}
       />
       {computerShip && (
         <>
+          <h2 className="control-form">Current Position</h2>
+          <pre className="plan-accel-text">
+              {("(" + computerShip.position[0].toFixed(0) + ", " 
+              + computerShip.position[1].toFixed(0) + ", "
+              + computerShip.position[2].toFixed(0) + ")") }
+          </pre>
           <h2 className="control-form">Current Plan</h2>
           <NavigationPlan plan={computerShip.plan} />
           <hr />

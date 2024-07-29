@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import * as THREE from "three";
+import { Canvas,  useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
 import { Ships, EntityInfoWindow, Missiles, Route } from "./Ships";
@@ -28,10 +29,8 @@ function App() {
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
+  const [cameraPos, setCameraPos] = useState<THREE.Vector3>(new THREE.Vector3(-100, 0, 0));
 
-  useEffect(() => {
-    getEntities(setEntities);
-  }, []);
 
   const getAndShowPlan = (
     entity_name: string | null,
@@ -91,6 +90,7 @@ function App() {
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
               getAndShowPlan={getAndShowPlan}
+              setCameraPos={setCameraPos}
             />
             <div className="mainscreen-container">
               {computerShipName && (
@@ -121,8 +121,9 @@ function App() {
                   rollSpeed={0.5}
                   makeDefault
                 />
+                <GrabCamera cameraPos={cameraPos} setCameraPos={setCameraPos} />
                 <SpaceView />
-                <Ships setComputerShipName={setComputerShipName} />
+                <Ships setComputerShipName={setComputerShipName}/>
                 <Missiles />
                 {events && events.length > 0 && (
                   <Effects effects={events} setEffects={setEvents} />
@@ -137,4 +138,17 @@ function App() {
     </EntityToShowProvider>
   );
 }
+
+function GrabCamera(args: { cameraPos: THREE.Vector3, setCameraPos: (pos: THREE.Vector3) => void }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    args.setCameraPos(camera.position);
+  }, []);
+
+  useEffect(() => {
+    camera.position.set(args.cameraPos.x, args.cameraPos.y, args.cameraPos.z);
+  }, [args.cameraPos]);
+  return null;
+}
+
 export default App;
