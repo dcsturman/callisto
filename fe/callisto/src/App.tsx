@@ -38,8 +38,8 @@ function App() {
     end_pos: [number, number, number],
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null = null,
-    standoff: number
-  ) =>
+    standoff: number = 0
+  ) => {
     computeFlightPath(
       entity_name,
       end_pos,
@@ -47,7 +47,7 @@ function App() {
       setProposedPlan,
       target_vel,
       standoff
-    );
+    )};
 
   const resetProposedPlan = () => {
     setProposedPlan(null);

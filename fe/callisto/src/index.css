@@ -71,6 +71,7 @@ input {
   color: black;
   background-color: #eeebeb;
   border: 1px solid #333;
+  font-size: 9pt;
 }
 
 .standoff-input {

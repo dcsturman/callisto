@@ -197,29 +197,50 @@ impl System for TargetParams {
 
 pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
     let delta = params.end_pos - params.start_pos;
+    let delta_v = params.end_vel - params.start_vel;
     let distance = delta.magnitude();
+    let speed = delta_v.magnitude();
 
-    // Guess initial acceleration as if there was no change in velocity between start and end.
-    let guess_accel_1 = delta / distance * params.max_acceleration;
-    // Second phase of acceleration is guessed just to be inverse of first.
-    let guess_accel_2 = guess_accel_1 * -1.0;
+    debug!(
+        "(compute_flight_path) delta = {:?}, distance3 = {distance}",
+        delta
+    );
+    // Three rougth cases for initial guess:
+    // 1. (most common) mostly correcting for position. Use standard t = at^2
+    // 2. Mostly correcting for velocity.
+    // 3. Both are near (or at) zero
+    let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = if distance <= speed && speed > 0.0 {
+        debug!("(compute_flight_path) Making guess based on velocity");
+        let accel = delta_v / speed * params.max_acceleration;
+        let t_1 = params.start_vel.magnitude() / accel.magnitude()
+            * (1.0 + std::f64::consts::SQRT_2 / 2.0);
+        let t_2 = t_1 - params.start_vel.magnitude() / accel.magnitude();
+        (accel, -1.0 * accel, t_1, t_2)
+    } else if distance == 0.0 {
+        debug!("(compute_flight_path) Making guess given zero differences.");
+        (delta, delta, 0.0, 0.0)
+    } else {
+        debug!("(compute_flight_path) Making guess based on distance.");
+        let accel = delta / distance * params.max_acceleration;
 
-    // Make our starting guess that time is the same in the two phases of acceleration
-    let guess_t = (distance / params.max_acceleration).sqrt();
+        // Make our starting guess that time is the same in the two phases of acceleration
+        let t = (distance / params.max_acceleration).sqrt();
+
+        // Second phase of acceleration is guessed just to be inverse of first.
+        (accel, -1.0 * accel, t, t)
+    };
 
     let array_i: [f64; 3] = guess_accel_1.into();
     let mut initial = Vec::<f64>::from(array_i);
     let array_i_2: [f64; 3] = guess_accel_2.into();
     initial.append(&mut Vec::<f64>::from(array_i_2));
-    initial.push(guess_t);
-    initial.push(guess_t);
+    initial.push(guess_t_1);
+    initial.push(guess_t_2);
 
     info!("(compute_flight_path) Params is {:?}", params);
     info!("(compute_flight_path) Initial is {:?}", initial);
 
-    let mut solver = SolverDriver::builder(params)
-        .with_initial(initial)
-        .build();
+    let mut solver = SolverDriver::builder(params).with_initial(initial).build();
 
     let (x, _norm) = solver
         .find(|state| {
@@ -502,7 +523,6 @@ mod tests {
         assert!(vel_error < 0.001);
     }
 
-
     // This test tests a flight path where the first acceleration is less than a round (DELTA_TIME) so the second
     // acceleration is partially applied in each round.
     #[test]
@@ -585,7 +605,8 @@ mod tests {
 
         let plan = compute_flight_path(&params);
 
-        let full_rounds_duration = (plan.plan.duration() as f64 / DELTA_TIME as f64).ceil()*DELTA_TIME as f64;
+        let full_rounds_duration =
+            (plan.plan.duration() as f64 / DELTA_TIME as f64).ceil() * DELTA_TIME as f64;
 
         let real_end_target = Vec3 {
             x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration,
@@ -615,6 +636,70 @@ mod tests {
             pos_error < 0.001,
             "Pos error is too high ({pos_error}).Target position: {:0.0?}, actual position: {:0.0?}",
             real_end_target,
+            plan.path.last().unwrap()
+        );
+        assert!(
+            vel_error < 0.001,
+            "Target velocity: {:0.0?}, actual velocity: {:0.0?}",
+            params.end_vel,
+            plan.end_velocity
+        );
+    }
+
+    #[test]
+    fn test_compute_flight_path_zero_velocity() {
+        let _ = env_logger::try_init();
+
+        let params = FlightParams {
+            start_pos: Vec3 {
+                x: 7000000.0,
+                y: -7000000.0,
+                z: 7000000.0,
+            },
+            end_pos: Vec3 {
+                x: 7000000.0,
+                y: -7000000.0,
+                z: 7000000.0,
+            },
+            start_vel: Vec3 {
+                x: 6000.0,
+                y: 6000.0,
+                z: -6000.0,
+            },
+            end_vel: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            target_velocity: None,
+            max_acceleration: 6.0 * G,
+        };
+
+        let plan = compute_flight_path(&params);
+
+        info!(
+            "Start Pos: {:?}\nEnd Pos: {:?}\n",
+            params.start_pos, params.end_pos,
+        );
+
+        info!(
+            "Start Vel: {:?}\nEnd Vel: {:?}",
+            params.start_vel, params.end_vel
+        );
+        info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
+
+        let delta_v = (params.start_vel - params.end_vel).magnitude();
+
+        let vel_error = (plan.end_velocity - params.end_vel).magnitude() / delta_v;
+
+        let pos_error = (plan.path.last().unwrap() - params.end_pos).magnitude();
+        info!("Vel Error: {}\tPos Error: {}", vel_error, pos_error);
+        // Add assertions here to validate the computed flight path and velocity
+        assert_eq!(plan.path.len(), 3);
+        assert!(
+            pos_error < 0.001,
+            "Pos error is too high ({pos_error}).Target position: {:0.0?}, actual position: {:0.0?}",
+            params.end_pos,
             plan.path.last().unwrap()
         );
         assert!(

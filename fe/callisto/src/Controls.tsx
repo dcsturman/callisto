@@ -51,9 +51,7 @@ function ShipList(args: {
         className="select-dropdown control-name-input control-input"
         name="shiplist_choice"
         ref={selectRef}
-        defaultValue={
-          (args.computerShipName || "")
-        }
+        defaultValue={args.computerShipName || ""}
         onChange={handleShipListSelectChange}>
         <option key="none" value=""></option>
         {ships.map((ship) => (
@@ -94,7 +92,7 @@ export function NavigationPlan(args: {
 }
 
 export function ShipComputer(args: {
-  shipName: string,
+  shipName: string;
   setComputerShipName: (shipName: string | null) => void;
   proposedPlan: FlightPathResult | null;
   resetProposedPlan: () => void;
@@ -106,16 +104,19 @@ export function ShipComputer(args: {
     standoff: number
   ) => void;
 }) {
-
   const serverEntities = useContext(EntitiesServerContext);
 
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
-  const ship = serverEntities.entities.ships.find((ship) => (ship.name === args.shipName)) || new Ship("Error", [0, 0, 0], [0, 0, 0], [[[0, 0, 0],0], null]);
+  const ship =
+    serverEntities.entities.ships.find((ship) => ship.name === args.shipName) ||
+    new Ship("Error", [0, 0, 0], [0, 0, 0], [[[0, 0, 0], 0], null]);
 
   if (ship == null) {
-    console.error(`(ShipComputer) Unable to find ship of name "${args.shipName}!`);
+    console.error(
+      `(ShipComputer) Unable to find ship of name "${args.shipName}!`
+    );
   }
-  
+
   const selectRef = useRef<HTMLSelectElement>(null);
 
   const initNavigationTargetState = {
@@ -127,8 +128,10 @@ export function ShipComputer(args: {
     v_z: "0",
     standoff: "0",
   };
-  
-  const [navigationTarget, setNavigationTarget] = useState(initNavigationTargetState);
+
+  const [navigationTarget, setNavigationTarget] = useState(
+    initNavigationTargetState
+  );
 
   let startAccel = [
     ship?.plan[0][0][0].toString(),
@@ -142,7 +145,6 @@ export function ShipComputer(args: {
     z: startAccel[2],
   });
 
-  
   function handleNavigationChange(event: React.ChangeEvent<HTMLInputElement>) {
     setNavigationTarget({
       ...navigationTarget,
@@ -176,25 +178,6 @@ export function ShipComputer(args: {
       `Computing route for ${ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} with standoff ${standoff}`
     );
     args.getAndShowPlan(ship.name, end_pos, end_vel, target_vel, standoff);
-  }
-
-  function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const formElements = form.elements as typeof form.elements & {
-      missile_target: HTMLInputElement;
-    };
-    console.log(
-      "Launching missile for " +
-        ship?.name +
-        " to " +
-        formElements.missile_target.value
-    );
-    launchMissile(
-      ship?.name,
-      formElements.missile_target.value,
-      serverEntities.handler
-    );
   }
 
   function handleNavTargetSelectChange(
@@ -241,13 +224,13 @@ export function ShipComputer(args: {
     }
 
     setNavigationTarget({
-      p_x: p_x.toString(),
-      p_y: p_y.toString(),
-      p_z: p_z.toString(),
-      v_x: v_x.toString(),
-      v_y: v_y.toString(),
-      v_z: v_z.toString(),
-      standoff: standoff.toString(),
+      p_x: p_x.toFixed(0),
+      p_y: p_y.toFixed(0),
+      p_z: p_z.toFixed(0),
+      v_x: v_x.toFixed(1),
+      v_y: v_y.toFixed(1),
+      v_z: v_z.toFixed(1),
+      standoff: standoff.toFixed(1),
     });
   }
 
@@ -333,12 +316,29 @@ export function ShipComputer(args: {
     );
   }
 
-  let title = ship.name;
+  let title = ship.name + " Nav";
 
   return (
     <div id="computer-window" className="computer-window">
       <h1>{title}</h1>
       {accelerationManager()}
+      <hr />
+      <button
+          className="control-input control-button blue-button"
+          onClick={() => {
+            setNavigationTarget({
+              p_x: (ship.position[0]/ POS_SCALE).toString(),
+              p_y: (ship.position[1]/ POS_SCALE).toString(),
+              p_z: (ship.position[2]/ POS_SCALE).toString(),
+              v_x: "0",
+              v_y: "0",
+              v_z: "0",
+              standoff: "0"
+            });
+            args.getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, 0);
+          }}>
+      Full Stop
+      </button>
       <hr />
       <h2 className="control-form">Navigation</h2>
       <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
@@ -449,31 +449,6 @@ export function ShipComputer(args: {
           </button>
         </div>
       )}
-      <hr />
-      <form className="control-form" onSubmit={handleLaunchSubmit}>
-        <label className="control-label">
-          <h2>Missile</h2>
-          <div className="control-launch-div">
-            <select
-              className="control-name-input control-input"
-              name="missile_target"
-              id="missile_target">
-              {serverEntities.entities.ships
-                .filter((candidate) => candidate.name !== ship.name)
-                .map((notMeShip) => (
-                  <option key={notMeShip.name} value={notMeShip.name}>
-                    {notMeShip.name}
-                  </option>
-                ))}
-            </select>
-            <input
-              className="control-launch-button blue-button"
-              type="submit"
-              value="Launch"
-            />
-          </div>
-        </label>
-      </form>
       <button
         className="control-input control-button blue-button"
         onClick={() => {
@@ -653,8 +628,32 @@ export function Controls(args: {
 }) {
   const serverEntities = useContext(EntitiesServerContext);
 
-  const computerShip = serverEntities.entities.ships.find((ship) => ship.name === args.computerShipName);
-    
+  const computerShip = serverEntities.entities.ships.find(
+    (ship) => ship.name === args.computerShipName
+  );
+
+  function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formElements = form.elements as typeof form.elements & {
+      missile_target: HTMLInputElement;
+    };
+    if (computerShip) {
+      console.log(
+        "Launching missile for " +
+          computerShip.name +
+          " to " +
+          formElements.missile_target.value
+      );
+
+      launchMissile(
+        computerShip.name,
+        formElements.missile_target.value,
+        serverEntities.handler
+      );
+    }
+  }
+
   return (
     <div className="controls-pane">
       <h1>Controls</h1>
@@ -678,7 +677,37 @@ export function Controls(args: {
         computerShipName={args.computerShipName}
         setComputerShipName={args.setComputerShipName}
       />
-      {computerShip && (<><h2 className="control-form">Current Plan</h2><NavigationPlan plan={computerShip.plan}/></>)}
+      {computerShip && (
+        <>
+          <h2 className="control-form">Current Plan</h2>
+          <NavigationPlan plan={computerShip.plan} />
+          <hr />
+          <form className="control-form" onSubmit={handleLaunchSubmit}>
+            <label className="control-label">
+              <h2>Missile</h2>
+              <div className="control-launch-div">
+                <select
+                  className="control-name-input control-input"
+                  name="missile_target"
+                  id="missile_target">
+                  {serverEntities.entities.ships
+                    .filter((candidate) => candidate.name !== computerShip.name)
+                    .map((notMeShip) => (
+                      <option key={notMeShip.name} value={notMeShip.name}>
+                        {notMeShip.name}
+                      </option>
+                    ))}
+                </select>
+                <input
+                  className="control-launch-button blue-button"
+                  type="submit"
+                  value="Launch"
+                />
+              </div>
+            </label>
+          </form>
+        </>
+      )}
       <button
         className="control-input control-button blue-button button-next-round"
         // Reset the computer and route on the next round.  If this gets any more complex move it into its

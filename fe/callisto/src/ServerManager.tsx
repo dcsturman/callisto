@@ -97,7 +97,7 @@ export function computeFlightPath(
   end_vel: [number, number, number],
   setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
-  standoff: number = 0
+  standoff: number | null = null
 ) {
   if (entity_name == null) {
     setProposedPlan(null);

@@ -214,14 +214,14 @@ pub async fn handle_request(
                 (entity.get_position(), entity.get_velocity())
             };
 
-            let adjusted_end_pos = if let Some(standoff_distance) = msg.standoff_distance {
-                msg.end_pos - (msg.end_pos - start_pos).normalize() * standoff_distance
+            let adjusted_end_pos = if msg.standoff_distance > 0.0 {
+                msg.end_pos - (msg.end_pos - start_pos).normalize() * msg.standoff_distance
             } else {
                 msg.end_pos
             };
 
-            if let Some(distance) = msg.standoff_distance {
-                debug!("(/compute_path) Standoff distance: {:0.0?} Adjusted end pos: {:0.0?} Original end pos {:0.0?}Difference {:0.0?}", distance, adjusted_end_pos, msg.end_pos, 
+            if msg.standoff_distance > 0.0 {
+                debug!("(/compute_path) Standoff distance: {:0.0?} Adjusted end pos: {:0.0?} Original end pos {:0.0?}Difference {:0.0?}", msg.standoff_distance, adjusted_end_pos, msg.end_pos, 
                     (adjusted_end_pos - msg.end_pos).magnitude());
             }
 

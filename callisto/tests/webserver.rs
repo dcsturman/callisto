@@ -294,7 +294,7 @@ async fn test_update_ship() {
  */
 #[tokio::test]
 async fn test_update_missile() {
-    const PORT: u16 = 3018;
+    const PORT: u16 = 3019;
     let _server = spawn_test_server(PORT).await;
 
     let ship =
@@ -467,7 +467,7 @@ async fn test_set_acceleration() {
  * Test that will compute a simple path and return it, checking if the simple computation is correct.
  */
 #[tokio::test]
-async fn test_compute_path() {
+async fn test_compute_path_basic() {
     const PORT: u16 = 3017;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
@@ -485,7 +485,7 @@ async fn test_compute_path() {
 
     let response = reqwest::Client::new()
         .post(path(PORT, COMPUTE_PATH_PATH))
-        .body(r#"{"entity_name":"ship1","end_pos":[58860000,0,0],"end_vel":[0,0,0]}"#)
+        .body(r#"{"entity_name":"ship1","end_pos":[58860000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#)
         .send()
         .await
         .unwrap()
@@ -543,7 +543,7 @@ async fn test_compute_path() {
 
 #[tokio::test]
 async fn test_compute_path_with_standoff() {
-    const PORT: u16 = 3017;
+    const PORT: u16 = 3018;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
     let response = reqwest::Client::new()
