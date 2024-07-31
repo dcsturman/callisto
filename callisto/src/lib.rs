@@ -1,5 +1,8 @@
 mod computer;
 pub mod entity;
+pub mod ship;
+pub mod missile;
+pub mod planet;
 pub mod payloads;
 
 extern crate pretty_env_logger;
@@ -17,7 +20,7 @@ use cgmath::InnerSpace;
 use serde_json::from_slice;
 
 use computer::{compute_flight_path, FlightParams};
-use entity::{Entities, G};
+use entity::{Entities, Entity, G};
 use payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, LaunchMissileMsg, RemoveEntityMsg,
     SetPlanMsg,
@@ -151,7 +154,16 @@ pub async fn handle_request(
             debug!("Removing entity: {}", name);
 
             // Remove the entity from the server
-            entities.lock().unwrap().remove(&name);
+            let mut entities = entities.lock().unwrap();
+            if entities.ships.remove(&name).is_none() &&
+                entities.planets.remove(&name).is_none() &&
+                    entities.missiles.remove(&name).is_none() {
+                        warn!("Unable to find entity named {} to remove", name);
+                        let err_msg = format!("Unable to find entity named {} to remove", name);
+                        return Ok(Response::new(
+                            Bytes::copy_from_slice(err_msg.as_bytes()).into()
+                        ));
+            }
 
             Ok(build_ok_response("Remove action executed"))
         }
@@ -210,7 +222,7 @@ pub async fn handle_request(
             // Do this in a block to clean up the lock as soon as possible.
             let (start_pos, start_vel) = {
                 let entities = entities.lock().unwrap();
-                let entity = entities.get(&msg.entity_name).unwrap().read().unwrap();
+                let entity = entities.ships.get(&msg.entity_name).unwrap().read().unwrap();
                 (entity.get_position(), entity.get_velocity())
             };
 

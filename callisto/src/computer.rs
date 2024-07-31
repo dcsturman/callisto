@@ -1,4 +1,5 @@
-use crate::entity::{FlightPlan, Vec3, DELTA_TIME, G};
+use crate::entity::{Vec3, DELTA_TIME, G};
+use crate::ship::FlightPlan;
 use crate::payloads::Vec3asVec;
 use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;

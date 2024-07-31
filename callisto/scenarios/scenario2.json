@@ -1,80 +1,60 @@
-[
+{
+    "planets": [
     {
         "name" : "Sun",
         "position" : [-149.6e9, 0, 0],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Planet" : {
                 "color" : "#fdb813",
                 "radius" : 30.96e8,
                 "oldradius" : 6.96e8,
                 "mass" : 1.989e30
-            }
-        }
     },
     {
         "name" : "Mercury",
         "position" : [-100.0e9, 0, 0],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Planet" : {
                 "color" : "!mercury",
                 "primary" : "Sun",
                 "radius" : 2.43e6,
                 "mass" : 3.3e23
-            }
-        }
     },
     {
         "name" : "Venus",
         "position" : [-40e9, 0, 0],
         "velocity" : [ 0, 0, 0],
-        "kind" : {
-            "Planet" : {
                 "color" : "!venus",
                 "primary" : "Sun",
                 "radius" : 6.05e6,
                 "mass" : 4.86e24
             }
-        }
     },
     { 
         "name" : "Earth",
         "position" : [0, 0, 0],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Planet" : {
                 "color" : "!earth",
                 "primary" : "Sun",
                 "radius" : 6.371e6,
                 "mass" : 5.972e24
-            }
-        }
     },
     {
         "name" : "Moon",
         "position" : [0, 0, 3.84e7],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Planet" : {
                 "color" : "!moon",
                 "oldcolor" : "#999999",
                 "primary" : "Earth",
                 "radius": 1.7e6,
                 "mass": 7e21
-            }
-        }
-    },
+    }
+],
+    "ships": [
     {
         "name" : "Killer",
         "position" : [7000000, -7000000, 7000000],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Ship" : {
-                "plan" : [
-                    [[0, 0, 0], 10000]
-                ]
-            }
-        }
-    }
-]
+         "plan" : [
+            [[0, 0, 0], 10000]
+         ]
+    }]
+}

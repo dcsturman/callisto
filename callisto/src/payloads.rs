@@ -5,7 +5,8 @@ use super::computer::FlightPathResult;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use super::entity::{Vec3, FlightPlan};
+use super::entity::Vec3;
+use super::ship::FlightPlan;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
