@@ -151,28 +151,9 @@ export function getEntities(callback: EntityRefreshCallback) {
 
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
-    .then((rawEntities) => {
-      let ships: Ship[] = [];
-      let planets: Planet[] = [];
-      let missiles: Missile[] = [];
-
-      for (const entity of rawEntities) {
-      if ("Ship" in entity.kind) {
-            let ship = new Ship(entity.name, entity.position, entity.velocity, entity.kind.Ship.plan);
-            ships.push(ship);
-      } else if ("Missile" in entity.kind) {
-            let missile = new Missile(entity.name, entity.position, entity.velocity, entity.kind.Missile.acceleration);
-            missiles.push(missile);
-      } else if ("Planet" in entity.kind) {
-            let planet = new Planet(entity.name, entity.position, entity.velocity, entity.kind.Planet.color, entity.kind.Planet.primary, entity.kind.Planet.radius, entity.kind.Planet.mass);
-            planets.push(planet);
-        } else {
-            console.log(`Unknown entity kind: ${JSON.stringify(entity.kind)}`);
-        }
-      }
-
-      console.log(`Received Entities:\nSHIPS = ${JSON.stringify(ships)}\nMISSILES = ${JSON.stringify(missiles)}\nPLANETS = ${JSON.stringify(planets)}`);
-      callback({ ships: ships, planets: planets, missiles: missiles });
+    .then((entities) => {
+      console.log(`Received Entities: ${entities}`);
+      callback(entities);
     })
     .catch((error) => console.error("Error fetching entities:", error));
 }
