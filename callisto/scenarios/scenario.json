@@ -1,40 +1,28 @@
-[
-    {
+{
+    "planets" : [{
         "name" : "Sun",
         "position" : [-149.6e9, 0, 0],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Planet" : {
-                "color" : "#fdb813",
-                "radius" : 6.96e8,
-                "mass" : 1.989e30
-            }
-        }
+        "color" : "#fdb813",
+        "radius" : 6.96e8,
+        "mass" : 1.989e30
     },
     { 
         "name" : "Earth",
         "position" : [0, 0, 0],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Planet" : {
-                "color" : "#03adfc",
-                "primary" : "Sun",
-                "radius" : 6.371e6,
-                "mass" : 5.972e24
-            }
-        }
+        "primary" : "Sun",
+        "radius" : 6.371e6,
+        "color" : "#03adfc", 
+        "mass" : 5.972e24
     },
     {
         "name" : "Moon",
         "position" : [0, 0, 3.84e7],
         "velocity" : [0, 0, 0],
-        "kind" : {
-            "Planet" : {
-                "color" : "#999999",
-                "primary" : "Earth",
-                "radius": 1.7e6,
-                "mass": 7e21
-            }
-        }
-    }
-]
+        "color" : "#999999",
+        "radius": 1.7e6,
+        "mass": 7e21,
+        "primary" : "Earth"
+    }]
+}

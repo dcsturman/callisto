@@ -14,7 +14,8 @@ extern crate pretty_env_logger;
 
 use cgmath::{assert_ulps_eq, Zero};
 
-use callisto::entity::{Entities, Vec3, DEFAULT_ACCEL_DURATION};
+use callisto::entity::{Entity, Entities, Vec3, DEFAULT_ACCEL_DURATION};
+
 use callisto::payloads::FlightPathMsg;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
@@ -68,7 +69,7 @@ async fn test_simple_get() {
         .await
         .unwrap();
 
-    assert_eq!(body, "[]");
+    assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[]}"#);
 }
 
 /**
@@ -118,7 +119,7 @@ async fn test_add_ship() {
 
     assert_eq!(
         entities,
-        r#"[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#
+        r#"{"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}],"missiles":[],"planets":[]}"#
     );
 }
 
@@ -143,7 +144,7 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let ship = r#"{"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0], "acceleration":[0,0,0]}"#;
+    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0]}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -163,8 +164,8 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
 
     assert_eq!(serde_json::from_str::<Entities>(response.as_str()).unwrap(),
-        serde_json::from_str(r#"[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}},
-        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap());
+        serde_json::from_str(r#"{"ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap());
 
     let planet = r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -186,11 +187,11 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(
-        r#"[
+        r#"{"planets":[
             {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-              "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
-            {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}},
-            {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap());
+              "color":"red","radius":1.5e8,"mass":100.0}],
+            "ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
+            {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap());
 
     let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -224,20 +225,36 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
 
     let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
-    let compare: Entities = serde_json::from_str(r#"[
-        {"name":"ship1::ship2::0","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-            "kind":{"Missile":{"source":"ship1","target":"ship2","burns":2,"acceleration":[0.31491832864888675, -5.983448244328849, 0.31491832864888675]}}},
+    let compare: Entities = serde_json::from_str(r#"{"missiles":[
+        {"name":"ship1::ship2::0","position":[615457.4548966637, 494365.96391733096, 615457.4548966637],"velocity":[0.0,0.0,0.0],
+            "source":"ship1","target":"ship2","burns":2,"acceleration":[-3.692744729379982, -2.9541957835039856, -3.692744729379982]}],
+        "planets":[
         {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-            "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0}}},
+            "color":"red","radius":1.5e8,"mass":100.0},
         {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-            "kind":{"Planet":{"color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}}},
-        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}},
-        {"name":"ship2","position":[100.0,100.0,100.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap();
+            "color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}],
+        "ships":[
+        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap();
 
-    for (_i, (key, entity)) in start.entities.iter().enumerate() {
+    for (_i, (key, entity)) in start.ships.iter().enumerate() {
         assert_eq!(
             *entity.read().unwrap(),
-            *compare.entities.get(key).unwrap().read().unwrap()
+            *compare.ships.get(key).unwrap().read().unwrap()
+        );
+    }
+
+    for (_i, (key, entity)) in start.planets.iter().enumerate() {
+        assert_eq!(
+            *entity.read().unwrap(),
+            *compare.planets.get(key).unwrap().read().unwrap()
+        );
+    }
+
+    for (_i, (key, entity)) in start.missiles.iter().enumerate() {
+        assert_eq!(
+            *entity.read().unwrap(),
+            *compare.missiles.get(key).unwrap().read().unwrap()
         );
     }
 
@@ -283,7 +300,7 @@ async fn test_update_ship() {
         .unwrap();
 
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-    let ship = entities.get("ship1").unwrap().read().unwrap();
+    let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     assert_eq!(ship.get_position(), Vec3::new(1000000.0, 0.0, 0.0));
     assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
 }
@@ -357,8 +374,8 @@ async fn test_update_missile() {
         .unwrap();
 
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(r#"[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"kind":{"Ship":{"plan":[[[0.0,0.0,0.0],10000]]}}}]"#).unwrap());
+        serde_json::from_str(r#"{"ships":[
+            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap());
 }
 
 /*
@@ -399,7 +416,7 @@ async fn test_remove_ship() {
         .await
         .unwrap();
 
-    assert_eq!(entities, "[]");
+    assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[]}"#);
 }
 
 /**
@@ -430,10 +447,10 @@ async fn test_set_acceleration() {
 
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-    let ship = entities.get("ship1").unwrap().read().unwrap();
-    let flight_plan = ship.get_flight_plan().unwrap();
-    assert_eq!(flight_plan.0.0, [0.0, 0.0, 0.0].into());
-    assert_eq!(flight_plan.0.1, DEFAULT_ACCEL_DURATION);
+    let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+    let flight_plan = &ship.plan;
+    assert_eq!(flight_plan.0 .0, [0.0, 0.0, 0.0].into());
+    assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
     assert!(!flight_plan.has_second());
 
     let response = reqwest::Client::new()
@@ -457,10 +474,10 @@ async fn test_set_acceleration() {
         .unwrap();
 
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-    let ship = entities.get("ship1").unwrap().read().unwrap();
-    let flight_plan = ship.get_flight_plan().unwrap();
-    assert_eq!(flight_plan.0.0, [1.0, 2.0, 3.0].into());
-    assert_eq!(flight_plan.0.1, DEFAULT_ACCEL_DURATION);
+    let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+    let flight_plan = &ship.plan;
+    assert_eq!(flight_plan.0 .0, [1.0, 2.0, 3.0].into());
+    assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
     assert!(!flight_plan.has_second());
 }
 /**
