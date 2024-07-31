@@ -23,6 +23,6 @@
         "color" : "#999999",
         "radius": 1.7e6,
         "mass": 7e21,
-        "primary" : "Earth",
+        "primary" : "Earth"
     }]
 }
