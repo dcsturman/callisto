@@ -300,7 +300,7 @@ export function ShipComputer(args: {
     return (
       <>
         {" "}
-        <h2 className="control-form">Set Accel</h2>
+        <h2 className="control-form">Set Accel (m/s<sup>2</sup>)</h2>
         <form
           key={ship.name + "-accel-setter"}
           className="as-form"
@@ -386,7 +386,7 @@ export function ShipComputer(args: {
         </label>
         <div className="target-details-div">
           <label className="control-label">
-            Target Position
+            Target Position (km)
             <div style={{ display: "flex" }} className="coordinate-input">
               <input
                 className="control-input"
@@ -412,7 +412,7 @@ export function ShipComputer(args: {
             </div>
           </label>
           <label className="control-label">
-            Target Velocity
+            Target Velocity (m/s)
             <div style={{ display: "flex" }} className="coordinate-input">
               <input
                 className="control-input"
@@ -440,7 +440,7 @@ export function ShipComputer(args: {
           <label
             className="control-label"
             style={{ display: "flex", justifyContent: "space-between" }}>
-            Standoff:
+            Standoff (km)
             <div className="coordinate-input">
               <input
                 className="control-input standoff-input"
@@ -540,7 +540,7 @@ function AddShip(args: {
         />
       </label>
       <label className="control-label">
-        Position
+        Position (km)
         <div className="coordinate-input">
           <input
             className="control-input"
@@ -566,7 +566,7 @@ function AddShip(args: {
         </div>
       </label>
       <label className="control-label">
-        Velocity
+        Velocity (m/s)
         <div className="coordinate-input">
           <input
             className="control-input"
@@ -670,11 +670,11 @@ export function Controls(args: {
         <>
           <h2 className="control-form">Current Position</h2>
           <pre className="plan-accel-text">
-              {("(" + computerShip.position[0].toFixed(0) + ", " 
-              + computerShip.position[1].toFixed(0) + ", "
-              + computerShip.position[2].toFixed(0) + ")") }
+              {("(" + (computerShip.position[0]/POS_SCALE).toFixed(0) + ", " 
+              + (computerShip.position[1]/POS_SCALE).toFixed(0) + ", "
+              + (computerShip.position[2]/POS_SCALE).toFixed(0) + ")") }
           </pre>
-          <h2 className="control-form">Current Plan</h2>
+          <h2 className="control-form">Current Plan (s @ m/s<sup>2</sup>)</h2>
           <NavigationPlan plan={computerShip.plan} />
           <hr />
           <form className="control-form" onSubmit={handleLaunchSubmit}>
