@@ -18,6 +18,7 @@ pub struct AddShipMsg {
     pub velocity: Vec3,
     #[serde_as(as = "Vec3asVec")]
     pub acceleration: Vec3,
+    pub usp: String,
 }
 
 #[serde_as]
@@ -106,6 +107,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use cgmath::Zero;
+    use crate::ship::EXAMPLE_USP;
 
     #[test]
     fn test_add_ship_msg() {
@@ -114,12 +116,15 @@ mod tests {
             position: Vec3::zero(),
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
+            usp: EXAMPLE_USP.to_string()
+            
         };
         let json = json!({
             "name": "ship1",
             "position": [0.0, 0.0, 0.0],
             "velocity": [0.0, 0.0, 0.0],
             "acceleration": [0.0, 0.0, 0.0],
+            "usp": EXAMPLE_USP
         });
 
         let json_str = serde_json::to_string(&msg).unwrap();

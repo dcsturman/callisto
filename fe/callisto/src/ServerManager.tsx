@@ -4,14 +4,15 @@ import { Effect } from "./Effects";
 const address = "localhost";
 const port = "3000";
 
-export function addShip(name: string, position: [number, number, number], velocity: [number, number, number], acceleration: [number, number, number], callBack: EntityRefreshCallback) {
+export function addShip(name: string, position: [number, number, number], velocity: [number, number, number], acceleration: [number, number, number], usp: string, callBack: EntityRefreshCallback) {
   console.log(`Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`);
 
   let payload = {
     name: name,
     position: position,
     velocity: velocity,
-    acceleration: acceleration
+    acceleration: acceleration,
+    usp: usp,
   }
 
   fetch(`http://${address}:${port}/add_ship`, {
@@ -152,7 +153,7 @@ export function getEntities(callback: EntityRefreshCallback) {
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {
-      console.log(`Received Entities: ${entities}`);
+      console.log(`Received Entities: ${JSON.stringify(entities)}`);
       callback(entities);
     })
     .catch((error) => console.error("Error fetching entities:", error));

@@ -11,6 +11,7 @@ import {
 } from "./Universal";
 
 import { addShip, setPlan, launchMissile } from "./ServerManager";
+import { validateUSP } from "./Ships";
 
 const POS_SCALE = 1000.0;
 
@@ -129,7 +130,7 @@ export function ShipComputer(args: {
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
   const ship =
     serverEntities.entities.ships.find((ship) => ship.name === args.shipName) ||
-    new Ship("Error", [0, 0, 0], [0, 0, 0], [[[0, 0, 0], 0], null]);
+    new Ship("Error", [0, 0, 0], [0, 0, 0], [[[0, 0, 0], 0], null],"0000000-00000-0");
 
   if (ship == null) {
     console.error(
@@ -485,9 +486,12 @@ function AddShip(args: {
     name: string,
     position: [number, number, number],
     velocity: [number, number, number],
-    acceleration: [number, number, number]
+    acceleration: [number, number, number],
+    usp: string
   ) => void;
 }) {
+  let uspRef = useRef<HTMLInputElement>(null);
+
   const initialShip = {
     name: "ShipName",
     xpos: "0",
@@ -496,16 +500,22 @@ function AddShip(args: {
     xvel: "0",
     yvel: "0",
     zvel: "0",
+    usp: "0000000-00000-0"
   };
 
   const [addShip, addShipUpdate] = useState(initialShip);
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    if (uspRef.current) {
+      uspRef.current.style.color = "black";
+    }    
+
     addShipUpdate({ ...addShip, [event.target.name]: event.target.value });
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     let name = addShip.name;
     let position: [number, number, number] = [
       Number(addShip.xpos) * POS_SCALE,
@@ -518,11 +528,27 @@ function AddShip(args: {
       Number(addShip.zvel),
     ];
 
+    let usp: string = addShip.usp.replace(/-/g, "");
+    console.log(usp);
+     usp = usp.substring(0, 7) + "-" + usp.substring(7, 12) + "-" + usp.substring(12);
+     addShipUpdate({ ...addShip, usp: usp });
+
     console.log(
-      `Adding Ship ${name}: Position ${position}, Velocity ${velocity}`
+      `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, USP ${usp}`
     );
 
-    args.submitHandler(name, position, velocity, [0, 0, 0]);
+    let [valid, error] = validateUSP(usp);
+
+    if (!valid) {
+      uspRef.current?.focus();
+      console.log("Invalid USP: " + error);
+      if (uspRef.current) {
+        uspRef.current.style.color = "red";
+      }
+      return;
+    }
+
+    args.submitHandler(name, position, velocity, [0, 0, 0], usp);
     addShipUpdate(initialShip);
   }
 
@@ -591,6 +617,17 @@ function AddShip(args: {
           />
         </div>
       </label>
+      <label className="control-label">
+        USP
+        <input
+          ref={uspRef}
+          className="control-input usp-input"
+          name="usp"
+          type="text"
+          value={addShip.usp}
+          onChange={handleChange}
+        />
+      </label>
       <input
         className="control-input control-button blue-button"
         type="submit"
@@ -649,13 +686,15 @@ export function Controls(args: {
           name: string,
           position: [number, number, number],
           velocity: [number, number, number],
-          acceleration: [number, number, number]
+          acceleration: [number, number, number],
+          usp: string
         ) =>
           addShip(
             name,
             position,
             velocity,
             acceleration,
+            usp,
             serverEntities.handler
           )
         }
@@ -668,6 +707,8 @@ export function Controls(args: {
       />
       {computerShip && (
         <>
+          <h2 className="control-form">USP</h2>
+          <pre className="plan-accel-text">{computerShip.usp}</pre>
           <h2 className="control-form">Current Position</h2>
           <pre className="plan-accel-text">
               {("(" + (computerShip.position[0]/POS_SCALE).toFixed(0) + ", " 

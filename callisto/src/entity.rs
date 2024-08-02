@@ -97,12 +97,13 @@ impl Entities {
         Ok(entities)
     }
 
-    pub fn add_ship(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3) {
+    pub fn add_ship(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3, usp: &str) {
         let ship = Ship::new(
             name.clone(),
             position,
             velocity,
             FlightPlan::acceleration(acceleration),
+            usp.to_string().into(),
         );
         self.ships.insert(name, Arc::new(RwLock::new(ship)));
     }
@@ -441,6 +442,7 @@ impl<'de> Deserialize<'de> for Entities {
 mod tests {
     use super::*;
     use cgmath::{Vector2, Zero};
+    use crate::ship::EXAMPLE_USP;
 
     #[test]
     fn test_add_ship() {
@@ -451,18 +453,21 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
         entities.add_ship(
             String::from("Ship3"),
             Vec3::new(7.0, 8.0, 9.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP
         );
 
         assert_eq!(
@@ -509,18 +514,21 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
         entities.add_ship(
             String::from("Ship3"),
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
 
         // Assign random accelerations to entities
@@ -819,27 +827,30 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
         entities.add_ship(
             String::from("Ship3"),
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
+            EXAMPLE_USP,
         );
 
         let tst_str = serde_json::to_string(&entities).unwrap();
 
         let mut cmp_str = r#"{
         "ships":[
-            {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
-            {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
-            {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}],
+            {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+            {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+            {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}],
         "missiles":[],
         "planets":[
             {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":6e24},
