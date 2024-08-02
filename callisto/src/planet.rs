@@ -65,12 +65,8 @@ fn above_surface_or_none(surface: f64, distance: f64) -> Option<f64> {
 impl Planet {
     #[allow(clippy::too_many_arguments)]    
     pub fn new(name: String, position: Vec3, color: String, radius: f64, mass: f64, primary: Option<String>, primary_ptr: Option<Arc<RwLock<Planet>>>, dependency: i32) -> Self {
-        let gravity_radius_2 = above_surface_or_none(radius, gravity_radius(2.0, mass));
-        let gravity_radius_1 = above_surface_or_none(radius, gravity_radius(1.0, mass));
-        let gravity_radius_05 = above_surface_or_none(radius, gravity_radius(0.5, mass));
-        let gravity_radius_025 = above_surface_or_none(radius, gravity_radius(0.25, mass));
 
-        Planet {
+        let mut p = Planet {
             name,
             position,
             velocity: Vec3::zero(),
@@ -80,11 +76,26 @@ impl Planet {
             primary,
             primary_ptr,
             dependency,
-            gravity_radius_2,
-            gravity_radius_1,
-            gravity_radius_05,
-            gravity_radius_025,
-        }
+            gravity_radius_2: None,
+            gravity_radius_1: None,
+            gravity_radius_05: None,
+            gravity_radius_025: None,
+        };
+
+        p.reset_gravity_wells();
+        p
+    }
+
+    pub fn reset_gravity_wells(&mut self) {
+        let gravity_radius_2 = above_surface_or_none(self.radius, gravity_radius(2.0, self.mass));
+        let gravity_radius_1 = above_surface_or_none(self.radius, gravity_radius(1.0, self.mass));
+        let gravity_radius_05 = above_surface_or_none(self.radius, gravity_radius(0.5, self.mass));
+        let gravity_radius_025 = above_surface_or_none(self.radius, gravity_radius(0.25, self.mass));
+
+        self.gravity_radius_2 = gravity_radius_2;
+        self.gravity_radius_1 = gravity_radius_1;
+        self.gravity_radius_05 = gravity_radius_05;
+        self.gravity_radius_025 = gravity_radius_025;
     }
 }
 

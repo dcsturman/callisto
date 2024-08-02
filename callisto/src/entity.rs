@@ -83,6 +83,7 @@ impl Entities {
         info!("Load scenario file \"{}\".", file_name);
 
         entities.fixup_pointers();
+        entities.reset_gravity_wells();
 
         for ship in entities.ships.values() {
             debug!("Loaded entity {:?}", ship.read().unwrap());
@@ -358,6 +359,13 @@ impl Entities {
                 )
             });
             missile.target_ptr.replace(looked_up.clone());
+        }
+    }
+
+    pub fn reset_gravity_wells(&mut self) {
+        for planet in self.planets.values() {
+            let mut planet = planet.write().unwrap();
+            planet.reset_gravity_wells();
         }
     }
 }

@@ -35,12 +35,16 @@ export class Planet extends Entity {
   gravity_radius_05: number = 0;
   gravity_radius_025: number = 0;
 
-  constructor(name: string, position: [number, number, number], velocity: [number, number, number], color: string, primary: [number, number, number], radius: number, mass: number) {
+  constructor(name: string, position: [number, number, number], velocity: [number, number, number], color: string, primary: [number, number, number], radius: number, mass: number, gravity_radius_2: number, gravity_radius_1: number, gravity_radius_05: number, gravity_radius_025: number) {
     super(name, position, velocity);
     this.color = color;
     this.primary = primary;
     this.radius = radius;
     this.mass = mass;
+    this.gravity_radius_2 = gravity_radius_2;
+    this.gravity_radius_1 = gravity_radius_1;
+    this.gravity_radius_05 = gravity_radius_05;
+    this.gravity_radius_025 = gravity_radius_025;
   }
 }
 
