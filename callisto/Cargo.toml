@@ -20,10 +20,12 @@ serde_with = { version = "3.8.1", features = ["json"] }
 clap = { version = "4.5.4", features = ["derive"] }
 rand = "0.8.5"
 derivative = "2.2.0"
+assert-json-diff = "2.0.2"
 
 [dev-dependencies]
 mockstream = "0.0.3"
 lazy_static = "1.4.0"
+test-log="*"
 duct = "0.13.7"
 reqwest = "0.12.4"
 

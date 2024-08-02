@@ -502,7 +502,7 @@ async fn test_compute_path_basic() {
 
     let response = reqwest::Client::new()
         .post(path(PORT, COMPUTE_PATH_PATH))
-        .body(r#"{"entity_name":"ship1","end_pos":[58860000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#)
+        .body(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#)
         .send()
         .await
         .unwrap()
@@ -517,7 +517,7 @@ async fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29430000.0,
+            x: 29421000.0,
             y: 0.0,
             z: 0.0
         }
@@ -525,7 +525,7 @@ async fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58860000.0,
+            x: 58842000.0,
             y: 0.0,
             z: 0.0
         }
@@ -577,7 +577,7 @@ async fn test_compute_path_with_standoff() {
 
     let response = reqwest::Client::new()
         .post(path(PORT, COMPUTE_PATH_PATH))
-        .body(r#"{"entity_name":"ship1","end_pos":[58860000,0,0],"end_vel":[0,0,0],"standoff_distance": 60000}"#)
+        .body(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance": 60000}"#)
         .send()
         .await
         .unwrap()
@@ -592,7 +592,7 @@ async fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29400000.0,
+            x: 29391000.0,
             y: 0.0,
             z: 0.0
         }
@@ -600,7 +600,7 @@ async fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58800000.0,
+            x: 58782000.0,
             y: 0.0,
             z: 0.0
         }

@@ -7,7 +7,8 @@ import {
   Ship,
   DEFAULT_ACCEL_DURATION,
   Acceleration,
-  SCALE
+  SCALE,
+  ViewControlParams
 } from "./Universal";
 
 import { addShip, setPlan, launchMissile } from "./ServerManager";
@@ -755,6 +756,15 @@ export function Controls(args: {
         }}>
         Next Round
       </button>
+    </div>
+  );
+}
+
+export function ViewControls(args: { setViewControls: (controls: ViewControlParams) => void, viewControls: ViewControlParams}) {
+  return (
+    <div className="view-controls-window">
+      <h2>View Controls</h2>
+      <label> <input type="checkbox" checked={args.viewControls.gravityWells} onChange={() => args.setViewControls({gravityWells: !args.viewControls.gravityWells})}/> Gravity Well</label>
     </div>
   );
 }

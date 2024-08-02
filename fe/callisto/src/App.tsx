@@ -4,8 +4,9 @@ import { Canvas,  useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
 import { Ships, EntityInfoWindow, Missiles, Route } from "./Ships";
-import { ShipComputer } from "./Controls";
+import { ShipComputer, Controls, ViewControls } from "./Controls";
 import { Effect, Effects } from "./Effects";
+import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
 
 import {
   Entity,
@@ -13,11 +14,11 @@ import {
   EntityToShowProvider,
   EntityList,
   FlightPathResult,
+  ViewControlParams,
 } from "./Universal";
 
-import Controls from "./Controls";
 import "./index.css";
-import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
+
 
 function App() {
   const [entities, setEntities] = useState<EntityList>({
@@ -30,6 +31,7 @@ function App() {
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
   const [cameraPos, setCameraPos] = useState<THREE.Vector3>(new THREE.Vector3(-100, 0, 0));
+  const [viewControls, setViewControls] = useState<ViewControlParams>({gravityWells: false});
 
 
   const getAndShowPlan = (
@@ -97,6 +99,7 @@ function App() {
               setCameraPos={setCameraPos}
             />
             <div className="mainscreen-container">
+              <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
               {computerShipName && (
                 <ShipComputer
                   shipName={computerShipName}
@@ -126,7 +129,7 @@ function App() {
                   makeDefault
                 />
                 <GrabCamera cameraPos={cameraPos} setCameraPos={setCameraPos} />
-                <SpaceView />
+                <SpaceView controlGravityWell={viewControls.gravityWells}/>
                 <Ships setComputerShipName={setComputerShipName}/>
                 <Missiles />
                 {events && events.length > 0 && (

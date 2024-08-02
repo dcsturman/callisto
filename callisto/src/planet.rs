@@ -5,7 +5,7 @@ use serde_with::{serde_as, skip_serializing_none};
 use serde::{Deserialize, Serialize};
 use derivative::Derivative;
 
-use super::entity::{DELTA_TIME, Entity, UpdateAction, Vec3};
+use super::entity::{DELTA_TIME, G, Entity, UpdateAction, Vec3};
 use super::payloads::Vec3asVec;
 
 #[derive(Derivative)]
@@ -36,13 +36,40 @@ pub struct Planet {
     // Dependency is used to enforce order of update.  Lower values (e.g. a star with value 0) are updated first.
             // Not needed to be passed in JSON to the client; not needed for comparison operations.
     #[serde(skip)]
+    #[derivative(PartialEq = "ignore")]
     pub dependency: i32,
+
+    #[derivative(PartialEq = "ignore")]
+    pub gravity_radius_2: Option<f64>,
+    #[derivative(PartialEq = "ignore")]
+    pub gravity_radius_1: Option<f64>,
+    #[derivative(PartialEq = "ignore")]
+    pub gravity_radius_05: Option<f64>,
+    #[derivative(PartialEq = "ignore")]
+    pub gravity_radius_025: Option<f64>,
 
 }
 
+fn gravity_radius(power: f64, mass: f64) -> f64 {
+    const GRAV_CONST: f64 = 6.674e-11;
+    (GRAV_CONST * mass / (G*power)).sqrt()
+}
+
+fn above_surface_or_none(surface: f64, distance: f64) -> Option<f64> {
+    if distance < surface {
+        None
+    } else { 
+        Some(distance) 
+    }
+}
 impl Planet {
     #[allow(clippy::too_many_arguments)]    
     pub fn new(name: String, position: Vec3, color: String, radius: f64, mass: f64, primary: Option<String>, primary_ptr: Option<Arc<RwLock<Planet>>>, dependency: i32) -> Self {
+        let gravity_radius_2 = above_surface_or_none(radius, gravity_radius(2.0, mass));
+        let gravity_radius_1 = above_surface_or_none(radius, gravity_radius(1.0, mass));
+        let gravity_radius_05 = above_surface_or_none(radius, gravity_radius(0.5, mass));
+        let gravity_radius_025 = above_surface_or_none(radius, gravity_radius(0.25, mass));
+
         Planet {
             name,
             position,
@@ -53,6 +80,10 @@ impl Planet {
             primary,
             primary_ptr,
             dependency,
+            gravity_radius_2,
+            gravity_radius_1,
+            gravity_radius_05,
+            gravity_radius_025,
         }
     }
 }

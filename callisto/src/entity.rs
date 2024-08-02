@@ -13,7 +13,9 @@ use crate::ship::{FlightPlan, Ship};
 
 pub const DELTA_TIME: u64 = 1000;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
-pub const G: f64 = 9.81;
+// We will use 4 sig figs for every physics constant we import.
+// This is the value of 1 (earth) gravity in m/s^2
+pub const G: f64 = 9.807;
 pub type Vec3 = Vector3<f64>;
 
 pub trait Entity: Debug + PartialEq + Serialize + Send + Sync {
@@ -118,9 +120,13 @@ impl Entities {
         mass: f64,
     ) {
         debug!(
-            "Add planet {} with primary {}",
+            "Add planet {} with position {:?},  color {:?}, primary {}, radius {:?}, mass {:?}, ",
             name,
-            primary.as_ref().unwrap_or(&String::from("None"))
+            position,
+            color,
+            primary.as_ref().unwrap_or(&String::from("None")),
+            radius,
+            mass
         );
 
         let (primary_ptr, dependency) = if let Some(primary_name) = &primary {
@@ -443,6 +449,9 @@ mod tests {
     use super::*;
     use cgmath::{Vector2, Zero};
     use crate::ship::EXAMPLE_USP;
+    use serde_json::{json, Value};
+    use assert_json_diff::assert_json_eq;
+
 
     #[test]
     fn test_add_ship() {
@@ -502,7 +511,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_update_all() {
         let _ = pretty_env_logger::try_init();
 
@@ -545,9 +554,9 @@ mod tests {
         entities.update_all();
 
         // Validate the new positions for each entity
-        let expected_position1 = Vec3::new(44146000.0, 44147000.0, 44148000.0);
-        let expected_position2 = Vec3::new(88294000.0, 88295000.0, -88284000.0);
-        let expected_position3 = Vec3::new(176587000.0, -44137000.0, 9000.0);
+        let expected_position1 = Vec3::new(44132500.0, 44133500.0, 44134500.0);
+        let expected_position2 = Vec3::new(88267000.0, 88268000.0, -88257000.0);
+        let expected_position3 = Vec3::new(176533000.0, -44123500.0, 9000.0);
         assert_eq!(
             entities
                 .ships
@@ -786,10 +795,12 @@ mod tests {
         assert_eq!(tst_planet_3, tst_planet_4);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_mixed_entities_serialize() {
         let mut entities = Entities::default();
 
+        // This constant is the radius of the earth's orbit (distance from sun).
+        // It is NOT the radius of the earth (6.371e6 m)
         const EARTH_RADIUS: f64 = 151.25e9;
         // Create some planets and see if they move.
         entities.add_planet(
@@ -798,7 +809,7 @@ mod tests {
             String::from("blue"),
             None,
             6.371e6,
-            6e24,
+            5.972e24,
         );
         entities.add_planet(
             String::from("Planet2"),
@@ -806,7 +817,7 @@ mod tests {
             String::from("red"),
             None,
             3e7,
-            3e23,
+            3.00e23,
         );
         entities.add_planet(
             String::from("Planet3"),
@@ -844,22 +855,21 @@ mod tests {
             EXAMPLE_USP,
         );
 
-        let tst_str = serde_json::to_string(&entities).unwrap();
+        let cmp = json!({
+            "ships":[
+                {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+                {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+                {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}],
+            "missiles":[],
+            "planets":[
+                {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":5.972e24,
+                "gravity_radius_1":6375069.342849095,"gravity_radius_05":9015709.525726125,"gravity_radius_025":12750138.68569819},
+                {"name":"Planet2","position":[0.0,5000000.0,151250000000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30000000.0,"mass":3.00e23},
+                {"name":"Planet3","position":[106949900654.4653,8000.0,106949900654.4653],"velocity":[0.0,0.0,0.0],"color":"green","radius":4000000.0,"mass":1e26,
+                "gravity_radius_2":18446331.779326223,"gravity_radius_1":26087052.57835697,"gravity_radius_05":36892663.558652446,"gravity_radius_025":52174105.15671394}
+             ]});
 
-        let mut cmp_str = r#"{
-        "ships":[
-            {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
-            {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
-            {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}],
-        "missiles":[],
-        "planets":[
-            {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":6e24},
-            {"name":"Planet2","position":[0.0,5000000.0,151250000000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30000000.0,"mass":3e23},
-            {"name":"Planet3","position":[106949900654.4653,8000.0,106949900654.4653],"velocity":[0.0,0.0,0.0],"color":"green","radius":4000000.0,"mass":1e26}
-         ]}"#.to_string();
-
-        cmp_str.retain(|c| !c.is_whitespace());
-        assert_eq!(tst_str, cmp_str);
+        assert_json_eq!(&entities, &cmp);
     }
     #[test]
     fn test_unordered_scenario_file() {

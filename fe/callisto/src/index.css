@@ -252,6 +252,14 @@ input {
   z-index: 10;
 }
 
+.view-controls-window {
+  position: fixed;
+  top: 0;
+  right: 0px;
+  padding-left: 4px;
+  border: 1px solid #b6bcae;
+  z-index: 12;
+}
 .button-next-round {
   margin-top: auto
 }
