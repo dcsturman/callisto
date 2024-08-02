@@ -119,6 +119,7 @@ pub async fn handle_request(
                 ship.position,
                 ship.velocity,
                 ship.acceleration,
+                &ship.usp,
             );
 
             Ok(build_ok_response("Add ship action executed"))

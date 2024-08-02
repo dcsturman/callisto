@@ -79,6 +79,10 @@ input {
   font-size: 9pt;
 }
 
+.usp-input {
+  width: 150px;
+}
+
 .standoff-input {
   width: 100px;
 }

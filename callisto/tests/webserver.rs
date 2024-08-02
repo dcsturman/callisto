@@ -97,7 +97,7 @@ async fn test_add_ship() {
     const PORT: u16 = 3012;
     let _server = spawn_test_server(PORT).await;
 
-    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0]}"#;
+    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -119,7 +119,7 @@ async fn test_add_ship() {
 
     assert_eq!(
         entities,
-        r#"{"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}],"missiles":[],"planets":[]}"#
+        r#"{"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}],"missiles":[],"planets":[]}"#
     );
 }
 
@@ -132,7 +132,7 @@ async fn test_add_missile_planet_ship() {
     let _server = spawn_test_server(PORT).await;
 
     let ship =
-        r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+        r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -144,7 +144,7 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0]}"#;
+    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -164,8 +164,8 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
 
     assert_eq!(serde_json::from_str::<Entities>(response.as_str()).unwrap(),
-        serde_json::from_str(r#"{"ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
-        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap());
+        serde_json::from_str(r#"{"ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]}"#).unwrap());
 
     let planet = r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -190,8 +190,8 @@ async fn test_add_missile_planet_ship() {
         r#"{"planets":[
             {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
               "color":"red","radius":1.5e8,"mass":100.0}],
-            "ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
-            {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap());
+            "ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+            {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]}"#).unwrap());
 
     let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e8,"mass":100}"#;
     let response = reqwest::Client::new()
@@ -234,8 +234,8 @@ async fn test_add_missile_planet_ship() {
         {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
             "color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}],
         "ships":[
-        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]},
-        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap();
+        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]}"#).unwrap();
 
     for (_i, (key, entity)) in start.ships.iter().enumerate() {
         assert_eq!(
@@ -270,7 +270,7 @@ async fn test_update_ship() {
     let _server = spawn_test_server(PORT).await;
 
     let ship =
-        r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0]}"#;
+        r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -315,7 +315,7 @@ async fn test_update_missile() {
     let _server = spawn_test_server(PORT).await;
 
     let ship =
-        r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0]}"#;
+        r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -328,7 +328,7 @@ async fn test_update_missile() {
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
     let ship2 =
-        r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+        r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship2)
@@ -375,7 +375,7 @@ async fn test_update_missile() {
 
     assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         serde_json::from_str(r#"{"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]]}]}"#).unwrap());
+            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]}"#).unwrap());
 }
 
 /*
@@ -386,7 +386,7 @@ async fn test_remove_ship() {
     const PORT: u16 = 3015;
     let _server = spawn_test_server(PORT).await;
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -426,7 +426,7 @@ async fn test_remove_ship() {
 async fn test_set_acceleration() {
     const PORT: u16 = 3016;
     let _server = spawn_test_server(PORT).await;
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -487,7 +487,7 @@ async fn test_set_acceleration() {
 async fn test_compute_path_basic() {
     const PORT: u16 = 3017;
     let _server = spawn_test_server(PORT).await;
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -562,7 +562,7 @@ async fn test_compute_path_basic() {
 async fn test_compute_path_with_standoff() {
     const PORT: u16 = 3018;
     let _server = spawn_test_server(PORT).await;
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0]}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
