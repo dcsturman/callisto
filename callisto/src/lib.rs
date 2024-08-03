@@ -271,7 +271,7 @@ pub async fn handle_request(
             info!("Received and processing get request.");
             let json = match serde_json::to_string::<Entities>(&entities.lock().unwrap()) {
                 Ok(json) => {
-                    info!("Entities: {:?}", json);
+                    info!("(/) Entities: {:?}", json);
                     json
                 }
                 Err(_) => {

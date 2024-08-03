@@ -23,12 +23,12 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
   const radiusUnits = radiusMeters * SCALE;
   const pos = scaleVector(args.planet.position, SCALE);
 
-  function gravityWell() {
+  function gravityWell(distance: number) {
     return (
       <>
         {controlGravityWell && (
           <mesh position={pos}>
-            <sphereGeometry args={[radiusUnits * 3, 15, 15]} />
+            <sphereGeometry args={[distance * SCALE, 15, 15]} />
             <meshStandardMaterial color="#999999" wireframe={false} opacity={0.07} transparent={true} side={THREE.FrontSide} />
           </mesh>
         )}
@@ -150,7 +150,10 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
   if (texture_details != null) {
     return (
       <>
-      {gravityWell()}
+      {args.planet.gravity_radius_025 && gravityWell(args.planet.gravity_radius_025)}
+      {args.planet.gravity_radius_05 && gravityWell(args.planet.gravity_radius_05)}
+      {args.planet.gravity_radius_1 && gravityWell(args.planet.gravity_radius_1)}
+      {args.planet.gravity_radius_2 && gravityWell(args.planet.gravity_radius_2)}
       <mesh
         ref={ref}
         rotation-y={1}

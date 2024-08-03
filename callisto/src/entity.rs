@@ -162,6 +162,8 @@ impl Entities {
             primary_ptr,
             dependency,
         );
+
+        debug!("Added planet with fixed gravity wells {:?}", entity);
         self.planets.insert(name, Arc::new(RwLock::new(entity)));
     }
 

@@ -92,6 +92,8 @@ impl Planet {
         let gravity_radius_05 = above_surface_or_none(self.radius, gravity_radius(0.5, self.mass));
         let gravity_radius_025 = above_surface_or_none(self.radius, gravity_radius(0.25, self.mass));
 
+        debug!("Gravity radius 025: {:?}: given radius {:?} and gravity_radius {}", gravity_radius_025, self.radius, gravity_radius(0.25, self.mass));
+        debug!("(planet.reset_gravity_wells) Planet {} has gravity wells {:?}, {:?}, {:?}, {:?}", self.name, gravity_radius_2, gravity_radius_1, gravity_radius_05, gravity_radius_025);
         self.gravity_radius_2 = gravity_radius_2;
         self.gravity_radius_1 = gravity_radius_1;
         self.gravity_radius_05 = gravity_radius_05;

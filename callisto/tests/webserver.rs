@@ -14,6 +14,9 @@ extern crate pretty_env_logger;
 
 use cgmath::{assert_ulps_eq, Zero};
 
+use serde_json::json;
+use assert_json_diff::assert_json_eq;
+
 use callisto::entity::{Entity, Entities, Vec3, DEFAULT_ACCEL_DURATION};
 
 use callisto::payloads::FlightPathMsg;
@@ -167,7 +170,7 @@ async fn test_add_missile_planet_ship() {
         serde_json::from_str(r#"{"ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]}"#).unwrap());
 
-    let planet = r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e8,"mass":100}"#;
+    let planet = r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e6,"mass":3e24}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_PLANET_PATH))
         .body(planet)
@@ -185,15 +188,23 @@ async fn test_add_missile_planet_ship() {
         .text()
         .await
         .unwrap();
-    assert_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        serde_json::from_str(
-        r#"{"planets":[
-            {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-              "color":"red","radius":1.5e8,"mass":100.0}],
-            "ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
-            {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]}"#).unwrap());
 
-    let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e8,"mass":100}"#;
+    let result = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
+
+    let compare = json!({"planets":[
+        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+          "color":"red","radius":1.5e6,"mass":3e24,
+          "gravity_radius_1":4518410.048543495,
+          "gravity_radius_05":6389996.771013086,
+          "gravity_radius_025": 9036820.09708699,
+          "gravity_radius_2": 3194998.385506543}],
+        "missiles":[],
+        "ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]});
+
+    assert_json_eq!(result, compare);
+
+    let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e6,"mass":1e23}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_PLANET_PATH))
         .body(planet)
@@ -225,40 +236,24 @@ async fn test_add_missile_planet_ship() {
         .unwrap();
 
     let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
-    let compare: Entities = serde_json::from_str(r#"{"missiles":[
+    let compare = json!({"missiles":[
         {"name":"ship1::ship2::0","position":[615457.4548966637, 494365.96391733096, 615457.4548966637],"velocity":[0.0,0.0,0.0],
             "source":"ship1","target":"ship2","burns":2,"acceleration":[-3.692744729379982, -2.9541957835039856, -3.692744729379982]}],
         "planets":[
         {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-            "color":"red","radius":1.5e8,"mass":100.0},
+            "color":"red","radius":1.5e6,"mass":3e24,
+            "gravity_radius_1":4518410.048543495,
+            "gravity_radius_05":6389996.771013086,
+            "gravity_radius_025": 9036820.09708699,
+            "gravity_radius_2": 3194998.385506543},
         {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-            "color":"red","radius":1.5e8,"mass":100.0,"primary":"planet1"}],
+            "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+            "gravity_radius_025":1649890.0717635232}],
         "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
-        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]}"#).unwrap();
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}]});
 
-    for (_i, (key, entity)) in start.ships.iter().enumerate() {
-        assert_eq!(
-            *entity.read().unwrap(),
-            *compare.ships.get(key).unwrap().read().unwrap()
-        );
-    }
-
-    for (_i, (key, entity)) in start.planets.iter().enumerate() {
-        assert_eq!(
-            *entity.read().unwrap(),
-            *compare.planets.get(key).unwrap().read().unwrap()
-        );
-    }
-
-    for (_i, (key, entity)) in start.missiles.iter().enumerate() {
-        assert_eq!(
-            *entity.read().unwrap(),
-            *compare.missiles.get(key).unwrap().read().unwrap()
-        );
-    }
-
-    assert_eq!(start, compare);
+    assert_json_eq!(&start, &compare);
 }
 
 /*
