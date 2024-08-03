@@ -1,5 +1,6 @@
 import { useContext, useState, useEffect, useRef } from "react";
 import * as THREE from "three";
+import { useThree } from "@react-three/fiber";
 import {
   EntitiesServerContext,
   EntityRefreshCallback,
@@ -20,6 +21,7 @@ function ShipList(args: {
   computerShipName: string | null;
   setComputerShipName: (shipName: string | null) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
+  camera: THREE.Camera | null;
 }) {
 
   const serverEntities = useContext(EntitiesServerContext);
@@ -51,16 +53,29 @@ function ShipList(args: {
   }
 
   function moveCameraToShip() {
+    if (args.camera == null) {
+      console.log("Cannot move camera because camera object in Three is null.");
+      return;
+    }
     if (args.computerShipName) {
       let ship = serverEntities.entities.ships.find(
         (ship) => ship.name === args.computerShipName
       );
       if (ship) {
-        args.setCameraPos(new THREE.Vector3(
-          ship.position[0] * SCALE - 40,
+        const downCamera = new THREE.Vector3(0, 0, 40);
+        downCamera.applyQuaternion(args.camera.quaternion);
+        console.log("(ShipList moveCameraToShip) Downcamera vector: " + JSON.stringify(downCamera));
+        let new_camera_pos = new THREE.Vector3(
+          ship.position[0] * SCALE,
           ship.position[1] * SCALE,
           ship.position[2] * SCALE
-        ));
+        ).add(downCamera);
+
+        console.log("****** Ship.position[0]*SSCALE" + ship.position[0]*SCALE);
+        console.log(
+          "(ShipList moveCameraToShip) Moving Camera from " + JSON.stringify(args.camera.position) +
+          "to new camera position: " + JSON.stringify(new_camera_pos));
+        args.setCameraPos(new_camera_pos);
       }
     }
   }
@@ -650,6 +665,7 @@ export function Controls(args: {
     standoff: number
   ) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
+  camera: THREE.Camera | null;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
 
@@ -705,6 +721,7 @@ export function Controls(args: {
         computerShipName={args.computerShipName}
         setComputerShipName={args.setComputerShipName}
         setCameraPos={args.setCameraPos}
+        camera = {args.camera}
       />
       {computerShip && (
         <>
