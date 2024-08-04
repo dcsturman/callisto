@@ -213,18 +213,15 @@ pub async fn handle_request(
                 msg
             );
 
-            // Temporary until ships have actual acceleration built in
-            const MAX_ACCELERATION: f64 = 6.0 * G;
-
             debug!(
                 "(/compute_path) Computing path for entity: {} End pos: {:?} End vel: {:?}",
                 msg.entity_name, msg.end_pos, msg.end_vel
             );
             // Do this in a block to clean up the lock as soon as possible.
-            let (start_pos, start_vel) = {
+            let (start_pos, start_vel, max_accel) = {
                 let entities = entities.lock().unwrap();
                 let entity = entities.ships.get(&msg.entity_name).unwrap().read().unwrap();
-                (entity.get_position(), entity.get_velocity())
+                (entity.get_position(), entity.get_velocity(), entity.usp.maneuver as f64 * G)
             };
 
             let adjusted_end_pos = if msg.standoff_distance > 0.0 {
@@ -244,7 +241,7 @@ pub async fn handle_request(
                 start_vel,
                 msg.end_vel,
                 msg.target_velocity,
-                MAX_ACCELERATION,
+                max_accel,
             );
 
             debug!("(/compute_path)Call computer with params: {:?}", params);
@@ -274,7 +271,7 @@ pub async fn handle_request(
             info!("Received and processing get request.");
             let json = match serde_json::to_string::<Entities>(&entities.lock().unwrap()) {
                 Ok(json) => {
-                    info!("Entities: {:?}", json);
+                    info!("(/) Entities: {:?}", json);
                     json
                 }
                 Err(_) => {

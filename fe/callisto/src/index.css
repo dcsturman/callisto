@@ -89,6 +89,7 @@ input {
 .control-launch-div {
   display: flex;
   align-items: center;
+  padding-right: 2px;
 }
 
 .control-launch-button {
@@ -105,7 +106,6 @@ input {
 /* This isn't working as I'd like */
 .control-name-input {
   width: 100%;
-  /* This stuff should go away if I figure out inheritance */
   height: 30px;
   background-color:#eeebeb;
   color: black;
@@ -252,6 +252,14 @@ input {
   z-index: 10;
 }
 
+.view-controls-window {
+  position: fixed;
+  top: 0;
+  right: 0px;
+  padding-left: 4px;
+  border: 1px solid #b6bcae;
+  z-index: 12;
+}
 .button-next-round {
   margin-top: auto
 }
@@ -259,6 +267,7 @@ input {
 .control-form {
   padding-top: 6px;
   padding-left: 2px;
+  padding-right: 6px;
 }
 
 .target-entry-form {

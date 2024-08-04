@@ -1,6 +1,6 @@
 import { useContext, useRef } from "react";
 
-import { Group, Mesh, SphereGeometry, Vector3 as TV3 } from "three";
+import { Group, Mesh, SphereGeometry, } from "three";
 import {
   extend,
   ReactThreeFiber,
@@ -16,10 +16,8 @@ import { Text } from "@react-three/drei";
 import { Line } from "./Util";
 
 import {
-  Entity,
   EntitiesServerContext,
   FlightPathResult,
-  Planet as PlanetType,
   Ship as ShipType,
   Missile as MissileType,
 } from "./Universal";
@@ -55,40 +53,6 @@ new FontLoader().load(
 );
 
 //TODO: Move this somewhere else - maybe Controls.tsx
-export function EntityInfoWindow(args: { entity: Entity }) {
-  let isPlanet = false;
-  let isShip = false;
-  let ship_next_accel: [number, number, number] = [0, 0, 0];
-  let radiusKm = 0;
-
-  if (args.entity instanceof PlanetType) {
-    isPlanet = true;
-    radiusKm = args.entity.radius / 1000.0;
-  } else if (args.entity instanceof ShipType) {
-    isShip = true;
-    ship_next_accel = args.entity.plan[0][0];
-  }
-
-  return (
-    <div id="ship-info-window" className="ship-info-window">
-      <h2 className="ship-info-title">{args.entity.name}</h2>
-      <div className="ship-info-content">
-        <p>
-          Position (km):{" "}
-          {vectorToString(scaleVector(args.entity.position, 1e-3))}
-        </p>
-        <p>Velocity (m/s): {vectorToString(args.entity.velocity)}</p>
-        {isPlanet ? (
-          <p>Radius (km): {radiusKm}</p>
-        ) : isShip ? (
-          <p> Acceleration (G): {vectorToString(ship_next_accel)}</p>
-        ) : (
-          <></>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function Ship(args: {
   ship: ShipType;
@@ -284,7 +248,7 @@ export function validateUSP(usp: string): [boolean, string | null] {
     return [false, `USP has an O.  Maybe you intended a zero? Provided string is ${usp}.`];
   } else if (usp.indexOf("I") !== -1) {
     return [false, `USP has an I.  Maybe you intended a one? Provided string is ${usp}.`];
-  } else if (usp.toUpperCase() != usp) {
+  } else if (usp.toUpperCase() !== usp) {
     return [false, `USP must only use uppercase.  Provided string is ${usp}.`];
   }
   return [true, null];

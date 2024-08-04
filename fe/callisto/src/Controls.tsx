@@ -7,11 +7,15 @@ import {
   Ship,
   DEFAULT_ACCEL_DURATION,
   Acceleration,
-  SCALE
+  SCALE,
+  ViewControlParams,
+  Entity,
+  Planet,
 } from "./Universal";
 
 import { addShip, setPlan, launchMissile } from "./ServerManager";
 import { validateUSP } from "./Ships";
+import { scaleVector, vectorToString } from "./Util";
 
 const POS_SCALE = 1000.0;
 
@@ -19,6 +23,7 @@ function ShipList(args: {
   computerShipName: string | null;
   setComputerShipName: (shipName: string | null) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
+  camera: THREE.Camera | null;
 }) {
 
   const serverEntities = useContext(EntitiesServerContext);
@@ -50,16 +55,23 @@ function ShipList(args: {
   }
 
   function moveCameraToShip() {
+    if (args.camera == null) {
+      console.log("Cannot move camera because camera object in Three is null.");
+      return;
+    }
     if (args.computerShipName) {
       let ship = serverEntities.entities.ships.find(
         (ship) => ship.name === args.computerShipName
       );
       if (ship) {
-        args.setCameraPos(new THREE.Vector3(
-          ship.position[0] * SCALE - 40,
+        const downCamera = new THREE.Vector3(0, 0, 40);
+        downCamera.applyQuaternion(args.camera.quaternion);
+        let new_camera_pos = new THREE.Vector3(
+          ship.position[0] * SCALE,
           ship.position[1] * SCALE,
           ship.position[2] * SCALE
-        ));
+        ).add(downCamera);
+        args.setCameraPos(new_camera_pos);
       }
     }
   }
@@ -69,13 +81,13 @@ function ShipList(args: {
       <h2 className="ship-list-label">Ship: </h2>
       <select
         className="select-dropdown control-name-input control-input"
-        name="shiplist_choice"
+        name="ship_list_choice"
         ref={selectRef}
         defaultValue={args.computerShipName || ""}
         onChange={handleShipListSelectChange}>
         <option key="none" value=""></option>
         {ships.map((ship) => (
-          <option key={ship.name + "-shiplist"}>{ship.name}</option>
+          <option key={ship.name + "-ship_list"}>{ship.name}</option>
         ))}
       </select>
       <button className="control-input blue-button" onClick={moveCameraToShip}>Go</button>
@@ -649,6 +661,7 @@ export function Controls(args: {
     standoff: number
   ) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
+  camera: THREE.Camera | null;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
 
@@ -704,6 +717,7 @@ export function Controls(args: {
         computerShipName={args.computerShipName}
         setComputerShipName={args.setComputerShipName}
         setCameraPos={args.setCameraPos}
+        camera = {args.camera}
       />
       {computerShip && (
         <>
@@ -749,12 +763,57 @@ export function Controls(args: {
         // Reset the computer and route on the next round.  If this gets any more complex move it into its
         // own function.
         onClick={() => {
-          args.setComputerShipName(null);
+          //args.setComputerShipName(null);
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
           args.nextRound(serverEntities.handler);
         }}>
         Next Round
       </button>
+    </div>
+  );
+}
+
+export function ViewControls(args: { setViewControls: (controls: ViewControlParams) => void, viewControls: ViewControlParams}) {
+  return (
+    <div className="view-controls-window">
+      <h2>View Controls</h2>
+      <label style={{display: "flex"}}> <input  type="checkbox" checked={args.viewControls.gravityWells} onChange={() => args.setViewControls({gravityWells: !args.viewControls.gravityWells})}/> Gravity Well</label>
+    </div>
+  );
+}
+
+
+export function EntityInfoWindow(args: { entity: Entity }) {
+  let isPlanet = false;
+  let isShip = false;
+  let ship_next_accel: [number, number, number] = [0, 0, 0];
+  let radiusKm = 0;
+
+  if (args.entity instanceof Planet) {
+    isPlanet = true;
+    radiusKm = args.entity.radius / 1000.0;
+  } else if (args.entity instanceof Ship) {
+    isShip = true;
+    ship_next_accel = args.entity.plan[0][0];
+  }
+
+  return (
+    <div id="ship-info-window" className="ship-info-window">
+      <h2 className="ship-info-title">{args.entity.name}</h2>
+      <div className="ship-info-content">
+        <p>
+          Position (km):{" "}
+          {vectorToString(scaleVector(args.entity.position, 1e-3))}
+        </p>
+        <p>Velocity (m/s): {vectorToString(args.entity.velocity)}</p>
+        {isPlanet ? (
+          <p>Radius (km): {radiusKm}</p>
+        ) : isShip ? (
+          <p> Acceleration (G): {vectorToString(ship_next_accel)}</p>
+        ) : (
+          <></>
+        )}
+      </div>
     </div>
   );
 }

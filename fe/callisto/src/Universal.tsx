@@ -30,13 +30,21 @@ export class Planet extends Entity {
   primary: [number, number, number] = [0, 0, 0];
   radius: number = 6.371e6;
   mass: number = 100;
+  gravity_radius_2: number = 0;
+  gravity_radius_1: number = 0;
+  gravity_radius_05: number = 0;
+  gravity_radius_025: number = 0;
 
-  constructor(name: string, position: [number, number, number], velocity: [number, number, number], color: string, primary: [number, number, number], radius: number, mass: number) {
+  constructor(name: string, position: [number, number, number], velocity: [number, number, number], color: string, primary: [number, number, number], radius: number, mass: number, gravity_radius_2: number, gravity_radius_1: number, gravity_radius_05: number, gravity_radius_025: number) {
     super(name, position, velocity);
     this.color = color;
     this.primary = primary;
     this.radius = radius;
     this.mass = mass;
+    this.gravity_radius_2 = gravity_radius_2;
+    this.gravity_radius_1 = gravity_radius_1;
+    this.gravity_radius_05 = gravity_radius_05;
+    this.gravity_radius_025 = gravity_radius_025;
   }
 }
 
@@ -77,6 +85,8 @@ export type FlightPathResult = {
   end_velocity: [number, number, number];
   plan: [Acceleration, Acceleration | null]
 };
+
+export type ViewControlParams = {gravityWells: boolean};
 
 export const SCALE = 1e-6; // 1 unit = 100km or 1e6m
 export const TURN_IN_SECONDS = 1e3;

@@ -1,4 +1,4 @@
-import { useContext, useRef, RefObject, createRef } from "react";
+import { useContext, useRef } from "react";
 import * as THREE from "three";
 
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -16,12 +16,30 @@ import {
   EntityToShowContext,
 } from "./Universal";
 
-function Planet(args: { planet: PlanetType }) {
+function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
+  const controlGravityWell = args.controlGravityWell;
   const entityToShow = useContext(EntityToShowContext);
   const radiusMeters = args.planet.radius;
   const radiusUnits = radiusMeters * SCALE;
   const pos = scaleVector(args.planet.position, SCALE);
 
+  const GRAVITY_WELL_OPACITY = 0.15;
+
+  // Render the gravity wells at the given distance from the planet.
+  // The order is the render order which is ugly but is critical to avoid some of the transparent 
+  // gravity wells from not being rendered.
+  function gravityWell(distance: number, order: number) {
+    return (
+      <>
+        {controlGravityWell && (
+          <mesh position={pos} renderOrder={order} >
+            <sphereGeometry args={[distance * SCALE, 15, 15]} />
+            <meshLambertMaterial color="#ffffff" opacity={GRAVITY_WELL_OPACITY} alphaToCoverage={true} shadowSide={THREE.FrontSide} transparent={true} side={THREE.FrontSide} />
+          </mesh>
+        )}
+      </>
+    );
+  }
   type PlanetTemplateType = Record<
     string,
     {
@@ -41,7 +59,7 @@ function Planet(args: { planet: PlanetType }) {
       bumpMap: useLoader(TextureLoader, "/assets/earthbump1k.jpg"),
       bumpScale: 0.05,
       specularMap: useLoader(TextureLoader, "/assets/earthspec1k.jpg"),
-      specular: new THREE.Color('grey')
+      specular: new THREE.Color("grey"),
     },
     "!sun": {
       texture: useLoader(TextureLoader, "/assets/sunmap.jpg"),
@@ -49,15 +67,15 @@ function Planet(args: { planet: PlanetType }) {
       bumpMap: useLoader(TextureLoader, "/assets/sunmap.jpg"),
       bumpScale: 0.05,
       specularMap: undefined,
-      specular: undefined
+      specular: undefined,
     },
     "!moon": {
       texture: useLoader(TextureLoader, "/assets/moonmap1k.jpg"),
       rotation: 0.0,
-      bumpMap: useLoader(TextureLoader,"/assets/moonbump1k.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/moonbump1k.jpg"),
       bumpScale: 0.002,
       specularMap: undefined,
-      specular: undefined
+      specular: undefined,
     },
     "!mercury": {
       texture: useLoader(TextureLoader, "/assets/mercurymap.jpg"),
@@ -68,62 +86,62 @@ function Planet(args: { planet: PlanetType }) {
       specular: undefined,
     },
     "!venus": {
-      texture: useLoader(TextureLoader,"/assets/venusmap.jpg"),
+      texture: useLoader(TextureLoader, "/assets/venusmap.jpg"),
       rotation: 0.0005,
-      bumpMap: useLoader(TextureLoader,"/assets/venusbump.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/venusbump.jpg"),
       bumpScale: 0.005,
       specularMap: undefined,
       specular: undefined,
     },
     "!mars": {
-      texture: useLoader(TextureLoader,"/assets/marsmap1k.jpg"),
+      texture: useLoader(TextureLoader, "/assets/marsmap1k.jpg"),
       rotation: 0.002,
-      bumpMap: useLoader(TextureLoader,"/assets/marsbump1k.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/marsbump1k.jpg"),
       bumpScale: 0.05,
       specularMap: undefined,
-      specular: undefined
+      specular: undefined,
     },
     "!jupiter": {
-      texture: useLoader(TextureLoader,"/assets/jupitermap.jpg"),
+      texture: useLoader(TextureLoader, "/assets/jupitermap.jpg"),
       rotation: 0.005,
-      bumpMap: useLoader(TextureLoader,"/assets/jupitermap.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/jupitermap.jpg"),
       bumpScale: 0.02,
       specularMap: undefined,
       specular: undefined,
     },
     "!saturn": {
-      texture: useLoader(TextureLoader,"/assets/saturnmap.jpg"),
+      texture: useLoader(TextureLoader, "/assets/saturnmap.jpg"),
       rotation: 0.005,
-      bumpMap: useLoader(TextureLoader,"/assets/saturnmap.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/saturnmap.jpg"),
       bumpScale: 0.05,
       specularMap: undefined,
       specular: undefined,
     },
     "!uranus": {
-      texture: useLoader(TextureLoader,"/assets/uranusmap.jpg"),
+      texture: useLoader(TextureLoader, "/assets/uranusmap.jpg"),
       rotation: 0.003,
-      bumpMap: useLoader(TextureLoader,"/assets/uranusmap.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/uranusmap.jpg"),
       bumpScale: 0.05,
       specularMap: undefined,
       specular: undefined,
     },
     "!neptune": {
-      texture: useLoader(TextureLoader,"/assets/neptunemap.jpg"),
+      texture: useLoader(TextureLoader, "/assets/neptunemap.jpg"),
       rotation: 0.003,
-      bumpMap: useLoader(TextureLoader,"/assets/neptunemap.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/neptunemap.jpg"),
       bumpScale: 0.05,
       specularMap: undefined,
       specular: undefined,
     },
     "!pluto": {
-      texture: useLoader(TextureLoader,"/assets/plutomap1k.jpg"),
+      texture: useLoader(TextureLoader, "/assets/plutomap1k.jpg"),
       rotation: 0.001,
-      bumpMap: useLoader(TextureLoader,"/assets/plutobump1k.jpg"),
+      bumpMap: useLoader(TextureLoader, "/assets/plutobump1k.jpg"),
       bumpScale: 0.005,
       specularMap: undefined,
       specular: undefined,
-    }
-   };
+    },
+  };
 
   let texture_details = PLANET_TEMPLATES[args.planet.color];
 
@@ -136,6 +154,11 @@ function Planet(args: { planet: PlanetType }) {
 
   if (texture_details != null) {
     return (
+      <>
+      {args.planet.gravity_radius_025 && gravityWell(args.planet.gravity_radius_025, 5)}
+      {args.planet.gravity_radius_05 && gravityWell(args.planet.gravity_radius_05, 4)}
+      {args.planet.gravity_radius_1 && gravityWell(args.planet.gravity_radius_1, 3)}
+      {args.planet.gravity_radius_2 && gravityWell(args.planet.gravity_radius_2, 2 )}
       <mesh
         ref={ref}
         rotation-y={1}
@@ -149,14 +172,16 @@ function Planet(args: { planet: PlanetType }) {
           bumpScale={texture_details.bumpScale}
           specularMap={texture_details.specularMap}
           specular={texture_details.specular}
+          shininess={8}
           side={THREE.FrontSide}
           transparent={false}
         />
       </mesh>
+      </>
     );
   } else {
     const color = Color(args.planet.color);
-    const intensity_factor = 2.5;
+    const GLOW_INTENSITY = 2.5;
 
     return (
       <>
@@ -179,9 +204,9 @@ function Planet(args: { planet: PlanetType }) {
           <icosahedronGeometry args={[radiusUnits, 15]} />
           <meshBasicMaterial
             color={[
-              (color.red() / 255.0) * intensity_factor,
-              (color.green() / 255.0) * intensity_factor,
-              (color.blue() / 255.0) * intensity_factor,
+              (color.red() / 255.0) * GLOW_INTENSITY,
+              (color.green() / 255.0) * GLOW_INTENSITY,
+              (color.blue() / 255.0) * GLOW_INTENSITY,
             ]}
           />
         </mesh>
@@ -190,11 +215,11 @@ function Planet(args: { planet: PlanetType }) {
   }
 }
 
-function Planets(args: { planets: PlanetType[] }) {
+function Planets(args: { planets: PlanetType[], controlGravityWell: boolean }) {
   return (
     <>
       {args.planets.map((planet, index) => (
-        <Planet key={planet.name} planet={planet} />
+        <Planet key={planet.name} planet={planet} controlGravityWell={args.controlGravityWell} />
       ))}
     </>
   );
@@ -227,14 +252,14 @@ function Axes() {
   );
 }
 
-function SpaceView() {
+function SpaceView(args: { controlGravityWell: boolean }) {
   const serverEntities = useContext(EntitiesServerContext);
   const planets = serverEntities.entities.planets;
 
   return (
     <>
       <Axes />
-      <Planets planets={planets} />
+      <Planets planets={planets} controlGravityWell={args.controlGravityWell} />
       <Galaxy />
     </>
   );

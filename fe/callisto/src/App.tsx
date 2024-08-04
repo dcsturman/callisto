@@ -3,9 +3,10 @@ import * as THREE from "three";
 import { Canvas,  useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
-import { Ships, EntityInfoWindow, Missiles, Route } from "./Ships";
-import { ShipComputer } from "./Controls";
+import { Ships, Missiles, Route } from "./Ships";
+import { EntityInfoWindow, ShipComputer, Controls, ViewControls } from "./Controls";
 import { Effect, Effects } from "./Effects";
+import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
 
 import {
   Entity,
@@ -13,11 +14,11 @@ import {
   EntityToShowProvider,
   EntityList,
   FlightPathResult,
+  ViewControlParams,
 } from "./Universal";
 
-import Controls from "./Controls";
 import "./index.css";
-import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
+
 
 function App() {
   const [entities, setEntities] = useState<EntityList>({
@@ -30,6 +31,8 @@ function App() {
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
   const [events, setEvents] = useState<Effect[] | null>(null);
   const [cameraPos, setCameraPos] = useState<THREE.Vector3>(new THREE.Vector3(-100, 0, 0));
+  const [camera, setCamera] = useState<THREE.Camera | null>(null);
+  const [viewControls, setViewControls] = useState<ViewControlParams>({gravityWells: false});
 
 
   const getAndShowPlan = (
@@ -95,8 +98,10 @@ function App() {
               setComputerShipName={setComputerShipName}
               getAndShowPlan={getAndShowPlan}
               setCameraPos={setCameraPos}
+              camera={camera}
             />
             <div className="mainscreen-container">
+              <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
               {computerShipName && (
                 <ShipComputer
                   shipName={computerShipName}
@@ -125,8 +130,8 @@ function App() {
                   rollSpeed={0.5}
                   makeDefault
                 />
-                <GrabCamera cameraPos={cameraPos} setCameraPos={setCameraPos} />
-                <SpaceView />
+                <GrabCamera cameraPos={cameraPos} setCameraPos={setCameraPos} setCamera={setCamera}/>
+                <SpaceView controlGravityWell={viewControls.gravityWells}/>
                 <Ships setComputerShipName={setComputerShipName}/>
                 <Missiles />
                 {events && events.length > 0 && (
@@ -143,15 +148,16 @@ function App() {
   );
 }
 
-function GrabCamera(args: { cameraPos: THREE.Vector3, setCameraPos: (pos: THREE.Vector3) => void }) {
+function GrabCamera(args: { cameraPos: THREE.Vector3, setCameraPos: (pos: THREE.Vector3) => void, setCamera: (camera: THREE.Camera) => void }) {
   const { camera } = useThree();
   useEffect(() => {
     args.setCameraPos(camera.position);
-  }, []);
+  });
 
   useEffect(() => {
     camera.position.set(args.cameraPos.x, args.cameraPos.y, args.cameraPos.z);
-  }, [args.cameraPos]);
+    args.setCamera(camera);
+  });
   return null;
 }
 
