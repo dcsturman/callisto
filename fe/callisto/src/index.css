@@ -106,7 +106,6 @@ input {
 /* This isn't working as I'd like */
 .control-name-input {
   width: 100%;
-  /* This stuff should go away if I figure out inheritance */
   height: 30px;
   background-color:#eeebeb;
   color: black;
