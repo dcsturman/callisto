@@ -6,7 +6,7 @@
         "velocity" : [0, 0, 0],
                 "color" : "#fdb813",
                 "radius" : 30.96e8,
-                "oldradius" : 6.96e8,
+                "old_radius" : 6.96e8,
                 "mass" : 1.989e30
     },
     {
@@ -41,7 +41,6 @@
         "position" : [0, 0, 3.84e7],
         "velocity" : [0, 0, 0],
                 "color" : "!moon",
-                "oldcolor" : "#999999",
                 "primary" : "Earth",
                 "radius": 1.7e6,
                 "mass": 7e21

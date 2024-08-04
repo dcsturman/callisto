@@ -1,9 +1,13 @@
 {
     "cSpell.words": [
         "cgmath",
+        "conv",
         "drei",
         "mainscreen",
+        "mockstream",
         "nalgebra",
+        "powerplant",
+        "serde",
         "SpaceView",
         "ulps",
         "xacc",
@@ -13,6 +17,13 @@
         "zvel"
     ],
     "cSpell.ignoreWords": [
+        "Sono",
+        "earthbump",
+        "earthmap",
+        "earthspec",
+        "moonbump",
+        "moonmap",
+        "sunmap",
         "xpos",
         "xvel",
         "ypos"

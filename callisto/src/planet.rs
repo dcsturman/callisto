@@ -26,9 +26,6 @@ pub struct Planet {
     pub mass: f64,
     #[serde(default)]
     pub primary: Option<String>,
-
-    // TODO: Ideally this would be in the primary structure rather than also be an Option outside it.  But I right now
-    // can't figure out how to skip serde for a portion of a tuple.
     #[serde(skip)]
     #[derivative(PartialEq = "ignore")]
     pub primary_ptr: Option<Arc<RwLock<Planet>>>,
@@ -51,8 +48,8 @@ pub struct Planet {
 }
 
 fn gravity_radius(power: f64, mass: f64) -> f64 {
-    const GRAV_CONST: f64 = 6.674e-11;
-    (GRAV_CONST * mass / (G*power)).sqrt()
+    const GRAVITY_CONST: f64 = 6.674e-11;
+    (GRAVITY_CONST * mass / (G*power)).sqrt()
 }
 
 fn above_surface_or_none(surface: f64, distance: f64) -> Option<f64> {

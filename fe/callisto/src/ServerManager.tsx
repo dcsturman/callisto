@@ -1,4 +1,4 @@
-import { Acceleration, EntityRefreshCallback, FlightPathResult, Ship, Missile, Planet } from "./Universal";
+import { Acceleration, EntityRefreshCallback, FlightPathResult } from "./Universal";
 import { Effect } from "./Effects";
 
 const address = "localhost";
@@ -51,7 +51,7 @@ export function setPlan(
 ) {
   let plan_arr = [];
 
-  // Since the Rust backend just expects null values in flightplans to be skipped
+  // Since the Rust backend just expects null values in flight plans to be skipped
   // we have to custom build the body.
   if (plan[1] == null) {
     plan_arr = [plan[0]];

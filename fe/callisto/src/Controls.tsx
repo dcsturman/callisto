@@ -1,6 +1,5 @@
 import { useContext, useState, useEffect, useRef } from "react";
 import * as THREE from "three";
-import { useThree } from "@react-three/fiber";
 import {
   EntitiesServerContext,
   EntityRefreshCallback,
@@ -9,11 +8,14 @@ import {
   DEFAULT_ACCEL_DURATION,
   Acceleration,
   SCALE,
-  ViewControlParams
+  ViewControlParams,
+  Entity,
+  Planet,
 } from "./Universal";
 
 import { addShip, setPlan, launchMissile } from "./ServerManager";
 import { validateUSP } from "./Ships";
+import { scaleVector, vectorToString } from "./Util";
 
 const POS_SCALE = 1000.0;
 
@@ -64,17 +66,11 @@ function ShipList(args: {
       if (ship) {
         const downCamera = new THREE.Vector3(0, 0, 40);
         downCamera.applyQuaternion(args.camera.quaternion);
-        console.log("(ShipList moveCameraToShip) Downcamera vector: " + JSON.stringify(downCamera));
         let new_camera_pos = new THREE.Vector3(
           ship.position[0] * SCALE,
           ship.position[1] * SCALE,
           ship.position[2] * SCALE
         ).add(downCamera);
-
-        console.log("****** Ship.position[0]*SSCALE" + ship.position[0]*SCALE);
-        console.log(
-          "(ShipList moveCameraToShip) Moving Camera from " + JSON.stringify(args.camera.position) +
-          "to new camera position: " + JSON.stringify(new_camera_pos));
         args.setCameraPos(new_camera_pos);
       }
     }
@@ -85,13 +81,13 @@ function ShipList(args: {
       <h2 className="ship-list-label">Ship: </h2>
       <select
         className="select-dropdown control-name-input control-input"
-        name="shiplist_choice"
+        name="ship_list_choice"
         ref={selectRef}
         defaultValue={args.computerShipName || ""}
         onChange={handleShipListSelectChange}>
         <option key="none" value=""></option>
         {ships.map((ship) => (
-          <option key={ship.name + "-shiplist"}>{ship.name}</option>
+          <option key={ship.name + "-ship_list"}>{ship.name}</option>
         ))}
       </select>
       <button className="control-input blue-button" onClick={moveCameraToShip}>Go</button>
@@ -781,7 +777,43 @@ export function ViewControls(args: { setViewControls: (controls: ViewControlPara
   return (
     <div className="view-controls-window">
       <h2>View Controls</h2>
-      <label> <input type="checkbox" checked={args.viewControls.gravityWells} onChange={() => args.setViewControls({gravityWells: !args.viewControls.gravityWells})}/> Gravity Well</label>
+      <label style={{display: "flex"}}> <input  type="checkbox" checked={args.viewControls.gravityWells} onChange={() => args.setViewControls({gravityWells: !args.viewControls.gravityWells})}/> Gravity Well</label>
+    </div>
+  );
+}
+
+
+export function EntityInfoWindow(args: { entity: Entity }) {
+  let isPlanet = false;
+  let isShip = false;
+  let ship_next_accel: [number, number, number] = [0, 0, 0];
+  let radiusKm = 0;
+
+  if (args.entity instanceof Planet) {
+    isPlanet = true;
+    radiusKm = args.entity.radius / 1000.0;
+  } else if (args.entity instanceof Ship) {
+    isShip = true;
+    ship_next_accel = args.entity.plan[0][0];
+  }
+
+  return (
+    <div id="ship-info-window" className="ship-info-window">
+      <h2 className="ship-info-title">{args.entity.name}</h2>
+      <div className="ship-info-content">
+        <p>
+          Position (km):{" "}
+          {vectorToString(scaleVector(args.entity.position, 1e-3))}
+        </p>
+        <p>Velocity (m/s): {vectorToString(args.entity.velocity)}</p>
+        {isPlanet ? (
+          <p>Radius (km): {radiusKm}</p>
+        ) : isShip ? (
+          <p> Acceleration (G): {vectorToString(ship_next_accel)}</p>
+        ) : (
+          <></>
+        )}
+      </div>
     </div>
   );
 }

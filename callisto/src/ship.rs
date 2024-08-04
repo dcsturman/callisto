@@ -253,11 +253,13 @@ pub struct USP {
     pub powerplant: u8,
     pub computer: u8,
     pub crew: u8,
+
     pub beam: u8,
     pub pulse: u8,
     pub particle: u8,
     pub missile: u8,
     pub sand: u8,
+    
     pub tl: u8,
 }
 

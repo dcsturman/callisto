@@ -3,8 +3,8 @@ import * as THREE from "three";
 import { Canvas,  useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
-import { Ships, EntityInfoWindow, Missiles, Route } from "./Ships";
-import { ShipComputer, Controls, ViewControls } from "./Controls";
+import { Ships, Missiles, Route } from "./Ships";
+import { EntityInfoWindow, ShipComputer, Controls, ViewControls } from "./Controls";
 import { Effect, Effects } from "./Effects";
 import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
 
@@ -152,12 +152,12 @@ function GrabCamera(args: { cameraPos: THREE.Vector3, setCameraPos: (pos: THREE.
   const { camera } = useThree();
   useEffect(() => {
     args.setCameraPos(camera.position);
-  }, []);
+  });
 
   useEffect(() => {
     camera.position.set(args.cameraPos.x, args.cameraPos.y, args.cameraPos.z);
     args.setCamera(camera);
-  }, [args.cameraPos]);
+  });
   return null;
 }
 

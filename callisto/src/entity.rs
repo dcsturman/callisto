@@ -459,7 +459,7 @@ mod tests {
     use super::*;
     use cgmath::{Vector2, Zero};
     use crate::ship::EXAMPLE_USP;
-    use serde_json::{json, Value};
+    use serde_json::json;
     use assert_json_diff::assert_json_eq;
 
 

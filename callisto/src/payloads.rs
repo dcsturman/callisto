@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(json_str, json.to_string());
     }
 
-    #[test]
+    #[test_log::test]
     fn test_compute_path_msg() {
         let msg = ComputePathMsg {
             entity_name: "ship1".to_string(),
@@ -151,8 +151,7 @@ mod tests {
         let json_str = serde_json::to_string(&msg).unwrap();
         assert_eq!(json_str, json.to_string());
 
-        let rmsg = serde_json::from_str::<ComputePathMsg>(json_str.as_str()).unwrap();
-        println!("rmsg {:?}", rmsg);
+        let _response_msg = serde_json::from_str::<ComputePathMsg>(json_str.as_str()).unwrap();
 
         let msg2 = ComputePathMsg {
             entity_name: "ship1".to_string(),
@@ -174,7 +173,6 @@ mod tests {
         println!("json_str2: {}", json_str2);
         assert_eq!(json_str2, json2.to_string());
 
-        let rmsg2 = serde_json::from_str::<ComputePathMsg>(json_str2.as_str()).unwrap();
-        println!("rmsg2 {:?}", rmsg2);
+        let _response_msg2 = serde_json::from_str::<ComputePathMsg>(json_str2.as_str()).unwrap();
     }
 }
