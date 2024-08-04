@@ -767,7 +767,7 @@ export function Controls(args: {
         // Reset the computer and route on the next round.  If this gets any more complex move it into its
         // own function.
         onClick={() => {
-          args.setComputerShipName(null);
+          //args.setComputerShipName(null);
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
           args.nextRound(serverEntities.handler);
         }}>

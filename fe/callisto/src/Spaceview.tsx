@@ -1,4 +1,4 @@
-import { useContext, useRef, RefObject, createRef } from "react";
+import { useContext, useRef } from "react";
 import * as THREE from "three";
 
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -23,13 +23,18 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
   const radiusUnits = radiusMeters * SCALE;
   const pos = scaleVector(args.planet.position, SCALE);
 
-  function gravityWell(distance: number) {
+  const GRAVITY_WELL_OPACITY = 0.15;
+
+  // Render the gravity wells at the given distance from the planet.
+  // The order is the render order which is ugly but is critical to avoid some of the transparent 
+  // gravity wells from not being rendered.
+  function gravityWell(distance: number, order: number) {
     return (
       <>
         {controlGravityWell && (
-          <mesh position={pos}>
+          <mesh position={pos} renderOrder={order} >
             <sphereGeometry args={[distance * SCALE, 15, 15]} />
-            <meshStandardMaterial color="#999999" wireframe={false} opacity={0.07} transparent={true} side={THREE.FrontSide} />
+            <meshLambertMaterial color="#ffffff" opacity={GRAVITY_WELL_OPACITY} alphaToCoverage={true} shadowSide={THREE.FrontSide} transparent={true} side={THREE.FrontSide} />
           </mesh>
         )}
       </>
@@ -150,10 +155,10 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
   if (texture_details != null) {
     return (
       <>
-      {args.planet.gravity_radius_025 && gravityWell(args.planet.gravity_radius_025)}
-      {args.planet.gravity_radius_05 && gravityWell(args.planet.gravity_radius_05)}
-      {args.planet.gravity_radius_1 && gravityWell(args.planet.gravity_radius_1)}
-      {args.planet.gravity_radius_2 && gravityWell(args.planet.gravity_radius_2)}
+      {args.planet.gravity_radius_025 && gravityWell(args.planet.gravity_radius_025, 5)}
+      {args.planet.gravity_radius_05 && gravityWell(args.planet.gravity_radius_05, 4)}
+      {args.planet.gravity_radius_1 && gravityWell(args.planet.gravity_radius_1, 3)}
+      {args.planet.gravity_radius_2 && gravityWell(args.planet.gravity_radius_2, 2 )}
       <mesh
         ref={ref}
         rotation-y={1}
@@ -176,7 +181,7 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
     );
   } else {
     const color = Color(args.planet.color);
-    const intensity_factor = 2.5;
+    const GLOW_INTENSITY = 2.5;
 
     return (
       <>
@@ -199,9 +204,9 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
           <icosahedronGeometry args={[radiusUnits, 15]} />
           <meshBasicMaterial
             color={[
-              (color.red() / 255.0) * intensity_factor,
-              (color.green() / 255.0) * intensity_factor,
-              (color.blue() / 255.0) * intensity_factor,
+              (color.red() / 255.0) * GLOW_INTENSITY,
+              (color.green() / 255.0) * GLOW_INTENSITY,
+              (color.blue() / 255.0) * GLOW_INTENSITY,
             ]}
           />
         </mesh>
