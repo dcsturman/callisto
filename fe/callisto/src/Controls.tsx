@@ -672,9 +672,6 @@ const FIRE_ACTION_MISSILE = 2;
 
 const FIRE_ACTION_NAME = ["Beam", "Pulse", "Missile"];
 
-const FIRE_ACTION_ICON_ELEMENT = [BeamIcon, PulseIcon, Missile];
-
-
 type FireState = FireAction[];
 
 function FireActions(args: { actions:FireState }) {
