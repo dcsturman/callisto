@@ -11,11 +11,18 @@ import {
   ViewControlParams,
   Entity,
   Planet,
+  USP_BEAM,
+  USP_PULSE,
+  USP_MISSILE
 } from "./Universal";
 
 import { addShip, setPlan, launchMissile } from "./ServerManager";
 import { validateUSP } from "./Ships";
 import { scaleVector, vectorToString } from "./Util";
+
+import { ReactComponent as BeamIcon } from './icons/laser.svg';
+import { ReactComponent as PulseIcon } from './icons/laser.svg';
+import { ReactComponent as  Missile} from './icons/missile.svg';
 
 const POS_SCALE = 1000.0;
 
@@ -649,6 +656,42 @@ function AddShip(args: {
   );
 }
 
+
+class FireAction {
+  kind: number; //0 is beam, 1 is pulse, 2 is missile
+  target: string;
+  constructor(kind: number, target: string) {
+    this.kind = kind;
+    this.target = target;
+  }
+}
+
+const FIRE_ACTION_BEAM = 0;
+const FIRE_ACTION_PULSE = 1;
+const FIRE_ACTION_MISSILE = 2;
+
+const FIRE_ACTION_NAME = ["Beam", "Pulse", "Missile"];
+
+const FIRE_ACTION_ICON_ELEMENT = [BeamIcon, PulseIcon, Missile];
+
+
+type FireState = FireAction[];
+
+function FireActions(args: { actions:FireState }) {
+  return (
+    <div className="control-form">
+      <h2>Fire Actions</h2>
+      {args.actions.map((action, index) => 
+          (action.kind === FIRE_ACTION_BEAM) ?
+          (<p><BeamIcon key={index+"_img"} className="beam-type-icon" /> to {action.target}</p>)
+        : (action.kind === FIRE_ACTION_PULSE) ? 
+          (<p><PulseIcon key={index+"_img"} className="pulse-type-icon" /> to {action.target}</p>)
+          : (<p><Missile key={index+"_img"} className="missile-type-icon" /> to {action.target}</p>)
+      )}
+    </div>
+  );
+}
+
 export function Controls(args: {
   nextRound: (callback: EntityRefreshCallback) => void;
   computerShipName: string | null;
@@ -663,31 +706,37 @@ export function Controls(args: {
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
 }) {
+  const [fire_actions, setFireActions] = useState(new Map<string, FireState>());
+  const [action, setAction] = useState(0);
+
   const serverEntities = useContext(EntitiesServerContext);
 
   const computerShip = serverEntities.entities.ships.find(
     (ship) => ship.name === args.computerShipName
   );
 
-  function handleLaunchSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleFireSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const formElements = form.elements as typeof form.elements & {
-      missile_target: HTMLInputElement;
+      fire_target: HTMLInputElement;
     };
+
     if (computerShip) {
       console.log(
-        "Launching missile for " +
+        "Fire " + FIRE_ACTION_NAME[action] + " for " +
           computerShip.name +
           " to " +
-          formElements.missile_target.value
+          formElements.fire_target.value
       );
 
-      launchMissile(
+      setFireActions(new Map(fire_actions.set(computerShip.name, [...fire_actions.get(computerShip.name) || [], new FireAction(action, formElements.fire_target.value)])));
+
+      /* launchMissile(
         computerShip.name,
         formElements.missile_target.value,
         serverEntities.handler
-      );
+      );*/
     }
   }
   
@@ -732,14 +781,14 @@ export function Controls(args: {
           <h2 className="control-form">Current Plan (s @ m/s<sup>2</sup>)</h2>
           <NavigationPlan plan={computerShip.plan} />
           <hr />
-          <form className="control-form" onSubmit={handleLaunchSubmit}>
+          <form className="control-form" onSubmit={handleFireSubmit}>
             <label className="control-label">
-              <h2>Missile</h2>
+              <h2>Fire Control</h2>
               <div className="control-launch-div">
                 <select
                   className="control-name-input control-input"
-                  name="missile_target"
-                  id="missile_target">
+                  name="fire_target"
+                  id="fire_target">
                   {serverEntities.entities.ships
                     .filter((candidate) => candidate.name !== computerShip.name)
                     .map((notMeShip) => (
@@ -748,16 +797,33 @@ export function Controls(args: {
                       </option>
                     ))}
                 </select>
-                <input
+                {computerShip.usp.substring(USP_MISSILE, USP_MISSILE + 1) !== "0" && (
+                  <input
+                  onClick={(e) => setAction(FIRE_ACTION_MISSILE)}
                   className="control-launch-button blue-button"
                   type="submit"
-                  value="Launch"
-                />
+                  value="Missile"
+                />)}
+                {computerShip.usp.substring(USP_BEAM, USP_BEAM + 1) !== "0" && (
+                  <input
+                  className="control-launch-button blue-button"
+                  onClick={(e) => setAction(FIRE_ACTION_BEAM)}
+                  type="submit"
+                  value="Beam"
+                />)}
+                {computerShip.usp.substring(USP_PULSE, USP_PULSE + 1) !== "0" && (                
+                <input
+                  className="control-launch-button blue-button"
+                  onClick={(e) => setAction(FIRE_ACTION_PULSE)}
+                  type="submit"
+                  value="Pulse"
+                />)}
               </div>
             </label>
           </form>
         </>
       )}
+      {computerShip && ((fire_actions.get(computerShip.name) || []).length > 0 && <FireActions actions={fire_actions.get(computerShip?.name) || []} />)}
       <button
         className="control-input control-button blue-button button-next-round"
         // Reset the computer and route on the next round.  If this gets any more complex move it into its

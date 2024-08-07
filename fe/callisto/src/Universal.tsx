@@ -14,6 +14,10 @@ export class Entity {
   }
 }
 
+export const USP_BEAM = 8;
+export const USP_PULSE = 9;
+export const USP_MISSILE = 10;
+
 export class Ship extends Entity {
   plan: [Acceleration, Acceleration | null] = [[[0, 0, 0], 0], null];
   usp: string = "0000000-00000-0";

@@ -23,7 +23,7 @@ import {
 } from "./Universal";
 
 import { SCALE, TURN_IN_SECONDS, EntityToShowContext } from "./Universal";
-import { addVector, scaleVector, vectorToString } from "./Util";
+import { addVector, scaleVector } from "./Util";
 
 extend({ TextGeometry });
 
