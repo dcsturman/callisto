@@ -7,6 +7,7 @@ use serde_with::serde_as;
 
 use super::entity::Vec3;
 use super::ship::FlightPlan;
+use super::combat::Weapon;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -68,22 +69,37 @@ pub struct ComputePathMsg {
 
 pub type FlightPathMsg = FlightPathResult;
 
-#[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct EffectMsg {
-    #[serde_as(as = "Vec3asVec")]
-    pub position: Vec3,
-    pub kind: String,
+pub struct FireAction {
+    pub kind: Weapon,
+    pub target: String,
 }
 
-// Constants for EffectMsg.kind
-pub const SHIP_IMPACT: &str = "ShipImpact";
-pub const EXHAUSTED_MISSILE: &str = "ExhaustedMissile";
+pub type FireActionsMsg  = Vec<(String, Vec<FireAction>)>;
+
+pub const EMPTY_FIRE_ACTIONS_MSG: FireActionsMsg = vec![];
 
 // We don't currently need this explicit type to document the response to a ListEntities (GET) request
 // So including here as a comment for completeness.
 // pub type ListEntitiesMsg = Entities;
 
+
+#[serde_as]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[serde(tag = "kind")]
+pub enum EffectMsg {
+    ShipImpact { 
+        #[serde_as(as = "Vec3asVec")]
+        position: Vec3
+    },
+    ExhaustedMissile {
+        #[serde_as(as = "Vec3asVec")]
+        position: Vec3
+    },
+    Damage {
+        content: String
+    }
+}
 
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
@@ -108,6 +124,7 @@ mod tests {
     use serde_json::json;
     use cgmath::Zero;
     use crate::ship::EXAMPLE_USP;
+    use assert_json_diff::assert_json_eq;
 
     #[test]
     fn test_add_ship_msg() {
@@ -174,5 +191,63 @@ mod tests {
         assert_eq!(json_str2, json2.to_string());
 
         let _response_msg2 = serde_json::from_str::<ComputePathMsg>(json_str2.as_str()).unwrap();
+    }
+
+    #[test_log::test] fn test_serialize_effect_msg() {
+        let msg = EffectMsg::ShipImpact { position: Vec3::zero() };
+        let json = json!({
+            "kind" : "ShipImpact",
+            "position": [0.0, 0.0, 0.0]
+        });
+
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json_str, json.to_string());
+
+        let msg = EffectMsg::Damage { content: "2 points to the hull".to_string() };
+        let json = json!({
+            "kind" : "Damage",
+            "content" : "2 points to the hull"
+        });
+
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json_str, json.to_string());
+
+        let msg = EffectMsg::ExhaustedMissile { position: Vec3::zero() };
+        let json = json!({
+            "kind" : "ExhaustedMissile",
+            "position": [0.0, 0.0, 0.0]
+        });
+
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json_str, json.to_string());
+    }
+
+    #[test_log::test]
+    fn test_serialize_fire_actions_msg() {
+        let msg = vec![
+            ("ship1".to_string(), vec![FireAction { kind: Weapon::Beam, target: "ship2".to_string() }]),
+            ("ship2".to_string(), vec![FireAction { kind: Weapon::Pulse, target: "ship1".to_string() }]),
+        ];
+        let json = json!([
+            [
+                "ship1", [
+                    {
+                        "kind": "Beam",
+                        "target": "ship2"
+                    }
+                ]
+            ],
+            [
+                "ship2", [
+                    {
+                        "kind": "Pulse",
+                        "target": "ship1"
+                    }
+                ]
+            ]
+        ]);
+
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json_str, json.to_string());
     }
 }

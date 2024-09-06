@@ -1,4 +1,5 @@
 import { useContext, useState, useEffect, useRef } from "react";
+import { Tooltip } from 'react-tooltip'
 import * as THREE from "three";
 import {
   EntitiesServerContext,
@@ -13,18 +14,41 @@ import {
   Planet,
   USP_BEAM,
   USP_PULSE,
-  USP_MISSILE
+  USP_MISSILE,
 } from "./Universal";
 
-import { addShip, setPlan, launchMissile } from "./ServerManager";
+import { addShip, setPlan } from "./ServerManager";
 import { validateUSP } from "./Ships";
 import { scaleVector, vectorToString } from "./Util";
 
-import { ReactComponent as BeamIcon } from './icons/laser.svg';
-import { ReactComponent as PulseIcon } from './icons/laser.svg';
-import { ReactComponent as  Missile} from './icons/missile.svg';
+import { CiCircleQuestion } from "react-icons/ci";
+
+import { ReactComponent as BeamIcon } from "./icons/laser.svg";
+import { ReactComponent as PulseIcon } from "./icons/laser.svg";
+import { ReactComponent as Missile } from "./icons/missile.svg";
 
 const POS_SCALE = 1000.0;
+
+const FIRE_ACTION_NAME = ["Beam", "Pulse", "Missile"];
+
+const FIRE_ACTION_BEAM = FIRE_ACTION_NAME[0];
+const FIRE_ACTION_PULSE = FIRE_ACTION_NAME[1];
+const FIRE_ACTION_MISSILE = FIRE_ACTION_NAME[2];
+
+class FireAction {
+  kind: string;
+  target: string;
+  constructor(kind: string, target: string) {
+    this.kind = kind;
+    this.target = target;
+  }
+}
+
+export type FireState = FireAction[];
+
+export function stringifyFireState(actions: Map<String, FireState>) {
+  return JSON.stringify(Array.from(actions.entries()));
+}
 
 function ShipList(args: {
   computerShipName: string | null;
@@ -32,7 +56,6 @@ function ShipList(args: {
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
 }) {
-
   const serverEntities = useContext(EntitiesServerContext);
 
   const ships = serverEntities.entities.ships;
@@ -97,7 +120,9 @@ function ShipList(args: {
           <option key={ship.name + "-ship_list"}>{ship.name}</option>
         ))}
       </select>
-      <button className="control-input blue-button" onClick={moveCameraToShip}>Go</button>
+      <button className="control-input blue-button" onClick={moveCameraToShip}>
+        Go
+      </button>
     </div>
   );
 }
@@ -149,7 +174,13 @@ export function ShipComputer(args: {
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
   const ship =
     serverEntities.entities.ships.find((ship) => ship.name === args.shipName) ||
-    new Ship("Error", [0, 0, 0], [0, 0, 0], [[[0, 0, 0], 0], null],"0000000-00000-0");
+    new Ship(
+      "Error",
+      [0, 0, 0],
+      [0, 0, 0],
+      [[[0, 0, 0], 0], null],
+      "0000000-00000-0"
+    );
 
   if (ship == null) {
     console.error(
@@ -283,8 +314,8 @@ export function ShipComputer(args: {
         y: args.proposedPlan.plan[0][0][1].toString(),
         z: args.proposedPlan.plan[0][0][2].toString(),
       });
-      setPlan(ship.name, args.proposedPlan.plan, serverEntities.handler);
-      args.resetProposedPlan();
+      setPlan(ship.name, args.proposedPlan.plan, serverEntities.handler)
+      .then(() => args.resetProposedPlan());
 
       if (selectRef.current !== null) {
         selectRef.current.value = "";
@@ -303,11 +334,33 @@ export function ShipComputer(args: {
       let x = Number(computerAccel.x);
       let y = Number(computerAccel.y);
       let z = Number(computerAccel.z);
+
+      let setColor = (id: string, color: string) => {
+        let elem = document.getElementById(id);
+        if (elem !== null) {
+          elem.style.color = color;
+        }
+      }
+
       setPlan(
         ship.name,
         [[[x, y, z], DEFAULT_ACCEL_DURATION], null],
         serverEntities.handler
-      );
+      )
+        .then(() => {
+          setColor("control-input-x", "black");
+          setColor("control-input-y", "black");
+          setColor("control-input-z", "black");
+
+          args.resetProposedPlan();
+        })
+        .catch((error) => {
+          setColor("control-input-x", "red");
+          setColor("control-input-y", "red");
+          setColor("control-input-z", "red");
+
+          args.resetProposedPlan();
+        });
     }
 
     function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -320,13 +373,16 @@ export function ShipComputer(args: {
     return (
       <>
         {" "}
-        <h2 className="control-form">Set Accel (m/s<sup>2</sup>)</h2>
+        <h2 className="control-form">
+          Set Accel (m/s<sup>2</sup>)
+        </h2>
         <form
           key={ship.name + "-accel-setter"}
           className="as-form"
           onSubmit={handleSetAcceleration}>
           <input
             className="control-input"
+            id ="control-input-x"
             name="x"
             type="text"
             onChange={handleChange}
@@ -334,6 +390,7 @@ export function ShipComputer(args: {
           />
           <input
             className="control-input"
+            id ="control-input-y"
             name="y"
             type="text"
             onChange={handleChange}
@@ -341,6 +398,7 @@ export function ShipComputer(args: {
           />
           <input
             className="control-input"
+            id ="control-input-z"
             name="z"
             type="text"
             onChange={handleChange}
@@ -519,7 +577,7 @@ function AddShip(args: {
     xvel: "0",
     yvel: "0",
     zvel: "0",
-    usp: "0000000-00000-0"
+    usp: "0000000-00000-0",
   };
 
   const [addShip, addShipUpdate] = useState(initialShip);
@@ -527,7 +585,7 @@ function AddShip(args: {
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     if (uspRef.current) {
       uspRef.current.style.color = "black";
-    }    
+    }
 
     addShipUpdate({ ...addShip, [event.target.name]: event.target.value });
   }
@@ -549,8 +607,13 @@ function AddShip(args: {
 
     let usp: string = addShip.usp.replace(/-/g, "");
     console.log(usp);
-     usp = usp.substring(0, 7) + "-" + usp.substring(7, 12) + "-" + usp.substring(12);
-     addShipUpdate({ ...addShip, usp: usp });
+    usp =
+      usp.substring(0, 7) +
+      "-" +
+      usp.substring(7, 12) +
+      "-" +
+      usp.substring(12);
+    addShipUpdate({ ...addShip, usp: usp });
 
     console.log(
       `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, USP ${usp}`
@@ -637,7 +700,22 @@ function AddShip(args: {
         </div>
       </label>
       <label className="control-label">
-        USP
+        <div> USP
+        <CiCircleQuestion data-tooltip-id="usp-help-tooltip" data-tooltip-variant="info" data-tooltip-place="bottom" data-tooltip-position-strategy="absolute"/>
+        <Tooltip id="usp-help-tooltip" className="info-tooltip"
+        render = {() => (
+        <span className="tooltip-content">
+          <h3>USP Description</h3>
+        <p>The USP is a 13 characters in hex:</p>
+        <ul>
+          <li>hull, armor, jump, maneuver, </li>
+          <li>powerplant, computer, crew</li>
+          <li>beam, pulse, particle, </li>
+          <li>missile, sand</li>
+          <li>tech level</li>
+        </ul>
+        </span >)}/>
+        </div>
         <input
           ref={uspRef}
           className="control-input usp-input"
@@ -656,41 +734,34 @@ function AddShip(args: {
   );
 }
 
-
-class FireAction {
-  kind: number; //0 is beam, 1 is pulse, 2 is missile
-  target: string;
-  constructor(kind: number, target: string) {
-    this.kind = kind;
-    this.target = target;
-  }
-}
-
-const FIRE_ACTION_BEAM = 0;
-const FIRE_ACTION_PULSE = 1;
-const FIRE_ACTION_MISSILE = 2;
-
-const FIRE_ACTION_NAME = ["Beam", "Pulse", "Missile"];
-
-type FireState = FireAction[];
-
-function FireActions(args: { actions:FireState }) {
+function FireActions(args: { actions: FireState }) {
   return (
     <div className="control-form">
       <h2>Fire Actions</h2>
-      {args.actions.map((action, index) => 
-          (action.kind === FIRE_ACTION_BEAM) ?
-          (<p><BeamIcon key={index+"_img"} className="beam-type-icon" /> to {action.target}</p>)
-        : (action.kind === FIRE_ACTION_PULSE) ? 
-          (<p><PulseIcon key={index+"_img"} className="pulse-type-icon" /> to {action.target}</p>)
-          : (<p><Missile key={index+"_img"} className="missile-type-icon" /> to {action.target}</p>)
+      {args.actions.map((action, index) =>
+        action.kind === FIRE_ACTION_BEAM ? (
+          <p key={index + "_fire_img"}>
+            <BeamIcon className="beam-type-icon" /> to {action.target}
+          </p>
+        ) : action.kind === FIRE_ACTION_PULSE ? (
+          <p key={index + "_fire_img"}>
+            <PulseIcon className="pulse-type-icon" /> to {action.target}
+          </p>
+        ) : (
+          <p key={index + "_fire_img"}>
+            <Missile className="missile-type-icon" /> to {action.target}
+          </p>
+        )
       )}
     </div>
   );
 }
 
 export function Controls(args: {
-  nextRound: (callback: EntityRefreshCallback) => void;
+  nextRound: (
+    fireActions: Map<string, FireState>,
+    callback: EntityRefreshCallback
+  ) => void;
   computerShipName: string | null;
   setComputerShipName: (shipName: string | null) => void;
   getAndShowPlan: (
@@ -704,7 +775,7 @@ export function Controls(args: {
   camera: THREE.Camera | null;
 }) {
   const [fire_actions, setFireActions] = useState(new Map<string, FireState>());
-  const [action, setAction] = useState(0);
+  const [action, setAction] = useState(FIRE_ACTION_NAME[0]);
 
   const serverEntities = useContext(EntitiesServerContext);
 
@@ -721,22 +792,24 @@ export function Controls(args: {
 
     if (computerShip) {
       console.log(
-        "Fire " + FIRE_ACTION_NAME[action] + " for " +
+        "Fire " +
+          action +
+          " for " +
           computerShip.name +
           " to " +
           formElements.fire_target.value
       );
 
-      setFireActions(new Map(fire_actions.set(computerShip.name, [...fire_actions.get(computerShip.name) || [], new FireAction(action, formElements.fire_target.value)])));
+      let new_actions = new Map(fire_actions);
+      let current_ship_actions = new_actions.get(computerShip.name);
+      let new_action = new FireAction(action, formElements.fire_target.value);
+      current_ship_actions = [...(current_ship_actions || []), new_action];
+      new_actions.set(computerShip.name, current_ship_actions);
 
-      /* launchMissile(
-        computerShip.name,
-        formElements.missile_target.value,
-        serverEntities.handler
-      );*/
+      setFireActions(new_actions);
     }
   }
-  
+
   return (
     <div className="controls-pane">
       <h1>Controls</h1>
@@ -763,7 +836,7 @@ export function Controls(args: {
         computerShipName={args.computerShipName}
         setComputerShipName={args.setComputerShipName}
         setCameraPos={args.setCameraPos}
-        camera = {args.camera}
+        camera={args.camera}
       />
       {computerShip && (
         <>
@@ -771,11 +844,17 @@ export function Controls(args: {
           <pre className="plan-accel-text">{computerShip.usp}</pre>
           <h2 className="control-form">Current Position</h2>
           <pre className="plan-accel-text">
-              {("(" + (computerShip.position[0]/POS_SCALE).toFixed(0) + ", " 
-              + (computerShip.position[1]/POS_SCALE).toFixed(0) + ", "
-              + (computerShip.position[2]/POS_SCALE).toFixed(0) + ")") }
+            {"(" +
+              (computerShip.position[0] / POS_SCALE).toFixed(0) +
+              ", " +
+              (computerShip.position[1] / POS_SCALE).toFixed(0) +
+              ", " +
+              (computerShip.position[2] / POS_SCALE).toFixed(0) +
+              ")"}
           </pre>
-          <h2 className="control-form">Current Plan (s @ m/s<sup>2</sup>)</h2>
+          <h2 className="control-form">
+            Current Plan (s @ m/s<sup>2</sup>)
+          </h2>
           <NavigationPlan plan={computerShip.plan} />
           <hr />
           <form className="control-form" onSubmit={handleFireSubmit}>
@@ -794,41 +873,50 @@ export function Controls(args: {
                       </option>
                     ))}
                 </select>
-                {computerShip.usp.substring(USP_MISSILE, USP_MISSILE + 1) !== "0" && (
+                {computerShip.usp.substring(USP_MISSILE, USP_MISSILE + 1) !==
+                  "0" && (
                   <input
-                  onClick={(e) => setAction(FIRE_ACTION_MISSILE)}
-                  className="control-launch-button blue-button"
-                  type="submit"
-                  value="Missile"
-                />)}
+                    onClick={(e) => setAction(FIRE_ACTION_MISSILE)}
+                    className="control-launch-button blue-button"
+                    type="submit"
+                    value="Missile"
+                  />
+                )}
                 {computerShip.usp.substring(USP_BEAM, USP_BEAM + 1) !== "0" && (
                   <input
-                  className="control-launch-button blue-button"
-                  onClick={(e) => setAction(FIRE_ACTION_BEAM)}
-                  type="submit"
-                  value="Beam"
-                />)}
-                {computerShip.usp.substring(USP_PULSE, USP_PULSE + 1) !== "0" && (                
-                <input
-                  className="control-launch-button blue-button"
-                  onClick={(e) => setAction(FIRE_ACTION_PULSE)}
-                  type="submit"
-                  value="Pulse"
-                />)}
+                    className="control-launch-button blue-button"
+                    onClick={(e) => setAction(FIRE_ACTION_BEAM)}
+                    type="submit"
+                    value="Beam"
+                  />
+                )}
+                {computerShip.usp.substring(USP_PULSE, USP_PULSE + 1) !==
+                  "0" && (
+                  <input
+                    className="control-launch-button blue-button"
+                    onClick={(e) => setAction(FIRE_ACTION_PULSE)}
+                    type="submit"
+                    value="Pulse"
+                  />
+                )}
               </div>
             </label>
           </form>
         </>
       )}
-      {computerShip && ((fire_actions.get(computerShip.name) || []).length > 0 && <FireActions actions={fire_actions.get(computerShip?.name) || []} />)}
+      {computerShip &&
+        (fire_actions.get(computerShip.name) || []).length > 0 && (
+          <FireActions actions={fire_actions.get(computerShip?.name) || []} />
+        )}
       <button
         className="control-input control-button blue-button button-next-round"
         // Reset the computer and route on the next round.  If this gets any more complex move it into its
         // own function.
         onClick={() => {
-          //args.setComputerShipName(null);
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
-          args.nextRound(serverEntities.handler);
+          args.nextRound(fire_actions, serverEntities.handler);
+          setFireActions(new Map<string, FireState>());
+          args.setComputerShipName(null);
         }}>
         Next Round
       </button>
@@ -836,15 +924,29 @@ export function Controls(args: {
   );
 }
 
-export function ViewControls(args: { setViewControls: (controls: ViewControlParams) => void, viewControls: ViewControlParams}) {
+export function ViewControls(args: {
+  setViewControls: (controls: ViewControlParams) => void;
+  viewControls: ViewControlParams;
+}) {
   return (
     <div className="view-controls-window">
       <h2>View Controls</h2>
-      <label style={{display: "flex"}}> <input  type="checkbox" checked={args.viewControls.gravityWells} onChange={() => args.setViewControls({gravityWells: !args.viewControls.gravityWells})}/> Gravity Well</label>
+      <label style={{ display: "flex" }}>
+        {" "}
+        <input
+          type="checkbox"
+          checked={args.viewControls.gravityWells}
+          onChange={() =>
+            args.setViewControls({
+              gravityWells: !args.viewControls.gravityWells,
+            })
+          }
+        />{" "}
+        Gravity Well
+      </label>
     </div>
   );
 }
-
 
 export function EntityInfoWindow(args: { entity: Entity }) {
   let isPlanet = false;

@@ -4,16 +4,17 @@ import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "./Util";
 import { SCALE } from "./Universal";
 
-const UNKNOWN_KIND = "Unknown";
-const SHIP_IMPACT_KIND = "ShipImpact";
+const SHIP_IMPACT = "ShipImpact";
 const EXHAUSTED_MISSILE = "ExhaustedMissile";
+const DAMAGE_EFFECT = "Damage";
 
 const MISSILE_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [1.0, 1.0, 1.0];
 
 export class Effect {
-  position: [number, number, number] = [0, 0, 0];
-  kind: String = UNKNOWN_KIND;
+  kind: string = "ShipImpact";
+  content: string | null = null;
+  position: [number, number, number] | null = [0, 0, 0];
 }
 
 export function Explosion(args: {
@@ -49,43 +50,59 @@ export function Explosion(args: {
   );
 }
 
-export function Effects(args: {
+export function Explosions(args: {
   effects: Effect[];
   setEffects: (entities: Effect[] | null) => void;
 }) {
-  console.log("(Effects.Effects) Effects: " + JSON.stringify(args.effects));
+  console.log("(Effects.Explosions) Effects: " + JSON.stringify(args.effects));
 
   return (
     <>
       {args.effects.map((effect, index) => {
-        let color: [number, number, number] = [0.0, 0.0, 0.0];
+        let color: [number, number, number] = [0, 0, 0];
+        let key: string = "";
+        let removeMe: () => void = () => {};
 
         switch (effect.kind) {
-          case SHIP_IMPACT_KIND:
+          case SHIP_IMPACT:
             color = MISSILE_HIT_COLOR;
-            break;
+            key = "Boom-" + index;
+            removeMe = () => {
+              args.setEffects(args.effects.filter((e) => e !== effect));
+            };
+            return (
+              <Explosion
+                key={key}
+                center={effect.position?? [0, 0, 0]}
+                color={color}
+                cleanupFn={removeMe}
+              />
+            );
           case EXHAUSTED_MISSILE:
             color = MISSILE_EXHAUSTED_COLOR;
-            break;
-          default:
-            console.log(
-              "(Effects.Effects) Unknown effect kind: " + effect.kind
+            key = "Boom-" + index;
+            removeMe = () => {
+              args.setEffects(args.effects.filter((e) => e !== effect));
+            };
+            return (
+              <Explosion
+                key={key}
+                center={(effect.position?? [0, 0, 0])}
+                color={color}
+                cleanupFn={removeMe}
+              />
             );
-            break;
+          case DAMAGE_EFFECT:
+            // DamageEffects don't show up as explosions so skip.
+            return <></>;
+          default:
+            console.error(
+              `(Effects.Effects) Unknown effect kind: ${
+                effect.kind
+              } (${JSON.stringify(effect)})`
+            );
+            return <></>;
         }
-
-        let key = "Boom-" + index;
-        let removeMe = () => {
-          args.setEffects(args.effects.filter((e) => e !== effect));
-        };
-        return (
-          <Explosion
-            key={key}
-            center={effect.position}
-            color={color}
-            cleanupFn={removeMe}
-          />
-        );
       })}
     </>
   );

@@ -314,3 +314,10 @@ input {
   height: 20px;
   fill: green;
 }
+
+.info-tooltip {
+  z-index: 100;
+}
+.tooltip-content {
+  font-size: 9pt
+}

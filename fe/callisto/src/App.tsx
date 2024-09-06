@@ -5,7 +5,7 @@ import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
 import { Ships, Missiles, Route } from "./Ships";
 import { EntityInfoWindow, ShipComputer, Controls, ViewControls } from "./Controls";
-import { Effect, Effects } from "./Effects";
+import { Effect, Explosions } from "./Effects";
 import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
 
 import {
@@ -93,7 +93,7 @@ function App() {
           value={{ entities: entities, handler: setEntities }}>
           <div className="mainscreen-container">
             <Controls
-              nextRound={(callback) => nextRound(setEvents, callback)}
+              nextRound={(fireActions, callback) => nextRound(fireActions, setEvents, callback)}
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
               getAndShowPlan={getAndShowPlan}
@@ -135,7 +135,7 @@ function App() {
                 <Ships setComputerShipName={setComputerShipName}/>
                 <Missiles />
                 {events && events.length > 0 && (
-                  <Effects effects={events} setEffects={setEvents} />
+                  <Explosions effects={events} setEffects={setEvents} />
                 )}
                 {proposedPlan && <Route plan={proposedPlan} />}
               </Canvas>

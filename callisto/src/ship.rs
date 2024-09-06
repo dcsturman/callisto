@@ -1,4 +1,4 @@
-use cgmath::Zero;
+use cgmath::{InnerSpace, Zero};
 use serde::{Deserialize, Serialize};
 
 use derivative::Derivative;
@@ -23,37 +23,51 @@ pub struct Ship {
     pub plan: FlightPlan,
     #[serde_as(as = "USPasString")]
     pub usp: USP,
+    // Structure and hull are derived from USP (2x the hull) but can change in combat.
+    pub hull: u8,
+    pub structure: u8,
 
-    // usp used to record damage (vs ideal state).
+    // usp used to record ideal state (vs damage)
     // Is just cloned from the usp initially so never serialized or deserialized.  We may need
     // to send it explicitly in some messages.
     #[serde(skip)]
-    pub current_usp: USP,
+    pub original_usp: USP,
 
-    // Need structure and hull as they are derived from USP.
-    #[serde(skip)]
-    pub hull: u8,
-    #[serde(skip)]
-    pub structure: u8,
 }
 
 impl Ship {
     pub fn new(name: String, position: Vec3, velocity: Vec3, plan: FlightPlan, usp: USP) -> Self {
-        let hull = usp.hull;
+        let hull = usp.hull*2;
         Ship {
             name,
             position,
             velocity,
             plan,
             usp: usp.clone(),
-            current_usp: usp,
+            original_usp: usp,
             hull,
             structure: hull,
         }
     }
 
-    pub fn set_flight_plan(&mut self, new_plan: FlightPlan) {
-        self.plan = new_plan;
+    pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> bool {
+        // First validate the plan to make sure its legal.
+        // Its legal as long as the magnitudes in the flight plan are less than the max of the maneuverability rating
+        // and the powerplant rating.
+        // We use the current maneuverability rating in case the ship took damage
+        let max_accel = f64::max(self.usp.maneuver as f64, self.usp.powerplant as f64);
+        if new_plan.0.0.magnitude() <= max_accel {
+            if let Some(second) = &new_plan.1 {
+                if second.0.magnitude() < max_accel {
+                    self.plan = new_plan.clone();
+                    return true;
+                }
+            } else {
+                self.plan = new_plan.clone();
+                return true;
+            }
+        }
+        false
     }
 }
 
