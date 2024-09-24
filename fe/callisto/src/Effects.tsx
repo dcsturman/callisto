@@ -3,18 +3,24 @@ import * as THREE from "three";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "./Util";
 import { SCALE } from "./Universal";
+import { GrowLine } from "./Util";
 
 const SHIP_IMPACT = "ShipImpact";
 const EXHAUSTED_MISSILE = "ExhaustedMissile";
+const SHIP_DESTROYED = "ShipDestroyed";
+const BEAM_HIT = "BeamHit";
 const DAMAGE_EFFECT = "Damage";
 
 const MISSILE_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [1.0, 1.0, 1.0];
+const SHIP_DESTROYED_COLOR: [number, number, number] = [0.0, 0.0, 1.0];
+const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 
 export class Effect {
   kind: string = "ShipImpact";
   content: string | null = null;
   position: [number, number, number] | null = [0, 0, 0];
+  origin: [number, number, number] | null = [0, 0, 0];
 }
 
 export function Explosion(args: {
@@ -22,34 +28,57 @@ export function Explosion(args: {
   color: [number, number, number];
   cleanupFn: () => void;
 }) {
-  const myMat = useRef<THREE.MeshBasicMaterial>(null!);
-  const { scale } = useSpring({
-    from: { scale: 0.0 },
-    to: [{ scale: 100.0 }, { scale: 0.0 }],
+  const { scale, opacity } = useSpring({
+    from: { scale: 0.0, opacity: 1.0 },
+    to: [{ scale: 100.0, opacity: 0.0 }],
     onResolve: (result) => {
       if (result.finished) {
         args.cleanupFn();
       }
     },
     config: {
-      tension: 180,
-      friction: 60,
+      mass: 50,
+      tension: 280,
+      friction: 180,
     },
   });
 
   return (
     <animated.mesh scale={scale} position={scaleVector(args.center, SCALE)}>
       <sphereGeometry args={[0.05]} />
-      <meshBasicMaterial
-        transparent={true}
-        opacity={0.4}
-        color={args.color}
-        ref={myMat}
-      />
+      <animated.meshStandardMaterial transparent={true} color={args.color} opacity={opacity} />
     </animated.mesh>
   );
 }
 
+export function Beam(args: {
+  origin: [number, number, number];
+  end: [number, number, number];
+  color: [number, number, number];
+  cleanupFn: () => void;
+}) {
+
+  const AnimatedLine = animated(GrowLine);
+
+  const { scale } = useSpring({
+    from: { scale: 0.0 },
+    to: [ { scale: 1.0 }],
+    onResolve: (result) => {
+      if (result.finished) {
+        args.cleanupFn();
+      }
+    },
+    config: {
+      mass: 10,
+      tension: 180,
+      friction: 40,
+    },
+  });
+
+  return (
+    <AnimatedLine start={scaleVector(args.origin, SCALE)} end={scaleVector(args.end, SCALE)} scale={scale} color={args.color} />
+  )
+}
 export function Explosions(args: {
   effects: Effect[];
   setEffects: (entities: Effect[] | null) => void;
@@ -66,7 +95,7 @@ export function Explosions(args: {
         switch (effect.kind) {
           case SHIP_IMPACT:
             color = MISSILE_HIT_COLOR;
-            key = "Boom-" + index;
+            key = "Impact-" + index;
             removeMe = () => {
               args.setEffects(args.effects.filter((e) => e !== effect));
             };
@@ -80,7 +109,7 @@ export function Explosions(args: {
             );
           case EXHAUSTED_MISSILE:
             color = MISSILE_EXHAUSTED_COLOR;
-            key = "Boom-" + index;
+            key = "Gone-" + index;
             removeMe = () => {
               args.setEffects(args.effects.filter((e) => e !== effect));
             };
@@ -88,6 +117,35 @@ export function Explosions(args: {
               <Explosion
                 key={key}
                 center={(effect.position?? [0, 0, 0])}
+                color={color}
+                cleanupFn={removeMe}
+              />
+            );
+          case SHIP_DESTROYED:
+            color = SHIP_DESTROYED_COLOR;
+            key = "Destroyed-" + index;
+            removeMe = () => {
+              args.setEffects(args.effects.filter((e) => e !== effect));
+            };
+            return (
+              <Explosion
+                key={key}
+                center={(effect.position?? [0, 0, 0])}
+                color={color}
+                cleanupFn={removeMe}
+              />
+            );
+          case BEAM_HIT:
+            color = BEAM_HIT_COLOR;
+            key = "Beam-" + index;
+            removeMe = () => {
+              args.setEffects(args.effects.filter((e) => e !== effect));
+            };
+            return (
+              <Beam
+                key={key}
+                origin={(effect.origin?? [0, 0, 0])}
+                end={(effect.position?? [0, 0, 0])}
                 color={color}
                 cleanupFn={removeMe}
               />
@@ -106,4 +164,32 @@ export function Explosions(args: {
       })}
     </>
   );
+}
+
+export function ResultsWindow(args: {
+  clearShowResults: () => void,
+  effects: Effect[] | null,
+  setEffects: (entities: Effect[] | null) => void
+}) {
+  function closeWindow() {
+    if (args.effects !== null) {
+      args.setEffects(args.effects.filter((effect) => effect.kind !== DAMAGE_EFFECT));
+    }
+    args.clearShowResults();
+  }
+
+  let messages: Effect[] = [];
+  if (args.effects !== null) {
+    messages = args.effects?.filter((effect) => effect.kind === DAMAGE_EFFECT);
+  }
+  return (
+    <div id="results-window" className="computer-window">
+      <h1>Results</h1>
+      <br></br>
+      <>{console.log("***** messages = " + JSON.stringify(messages))}</>
+      {messages.length === 0 && <h2>No results</h2>}
+      {messages.length > 0 && messages.map((msg, index) => (<p key={"msg-" + index}>{msg.content}</p>))}
+      <button className="control-input control-button blue-button button-next-round" onClick={closeWindow}>Okay!</button>
+    </div>
+  )
 }

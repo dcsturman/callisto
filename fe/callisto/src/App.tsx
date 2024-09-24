@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import * as THREE from "three";
-import { Canvas,  useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 import SpaceView from "./Spaceview";
 import { Ships, Missiles, Route } from "./Ships";
-import { EntityInfoWindow, ShipComputer, Controls, ViewControls } from "./Controls";
-import { Effect, Explosions } from "./Effects";
+import {
+  EntityInfoWindow,
+  ShipComputer,
+  Controls,
+  ViewControls,
+} from "./Controls";
+import { Effect, Explosions, ResultsWindow } from "./Effects";
 import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
 
 import {
@@ -19,7 +24,6 @@ import {
 
 import "./index.css";
 
-
 function App() {
   const [entities, setEntities] = useState<EntityList>({
     ships: [],
@@ -28,12 +32,18 @@ function App() {
   });
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
-  const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
+  const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(
+    null
+  );
+  const [showResults, setShowResults] = useState<boolean>(false);
   const [events, setEvents] = useState<Effect[] | null>(null);
-  const [cameraPos, setCameraPos] = useState<THREE.Vector3>(new THREE.Vector3(-100, 0, 0));
+  const [cameraPos, setCameraPos] = useState<THREE.Vector3>(
+    new THREE.Vector3(-100, 0, 0)
+  );
   const [camera, setCamera] = useState<THREE.Camera | null>(null);
-  const [viewControls, setViewControls] = useState<ViewControlParams>({gravityWells: false});
-
+  const [viewControls, setViewControls] = useState<ViewControlParams>({
+    gravityWells: false,
+  });
 
   const getAndShowPlan = (
     entity_name: string | null,
@@ -49,11 +59,12 @@ function App() {
       setProposedPlan,
       target_vel,
       standoff
-    )};
+    );
+  };
 
   const resetProposedPlan = () => {
     setProposedPlan(null);
-  }
+  };
 
   const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
 
@@ -93,7 +104,12 @@ function App() {
           value={{ entities: entities, handler: setEntities }}>
           <div className="mainscreen-container">
             <Controls
-              nextRound={(fireActions, callback) => nextRound(fireActions, setEvents, callback)}
+              nextRound={(fireActions, callback) =>
+                nextRound(fireActions, setEvents, (es: EntityList) => {
+                  setShowResults(true);
+                  callback(es);
+                })
+              }
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
               getAndShowPlan={getAndShowPlan}
@@ -101,7 +117,10 @@ function App() {
               camera={camera}
             />
             <div className="mainscreen-container">
-              <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
+              <ViewControls
+                viewControls={viewControls}
+                setViewControls={setViewControls}
+              />
               {computerShipName && (
                 <ShipComputer
                   shipName={computerShipName}
@@ -109,6 +128,13 @@ function App() {
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
+                />
+              )}
+              {showResults && (
+                <ResultsWindow
+                  clearShowResults={() => setShowResults(false)}
+                  effects={events}
+                  setEffects={setEvents}
                 />
               )}
               {/* Explicitly setting position to absolute seems to be necessary or it ends up relative and I cannot figure out why */}
@@ -121,7 +147,12 @@ function App() {
                   far: 200000,
                   position: [-100, 0, 0],
                 }}>
-                <pointLight position={[-148e3, 10, 10]} intensity={6} decay={0.01} color="#fff7cd"/>
+                <pointLight
+                  position={[-148e3, 10, 10]}
+                  intensity={6}
+                  decay={0.01}
+                  color="#fff7cd"
+                />
                 <ambientLight intensity={1.0} />
                 <FlyControls
                   autoForward={false}
@@ -130,9 +161,13 @@ function App() {
                   rollSpeed={0.5}
                   makeDefault
                 />
-                <GrabCamera cameraPos={cameraPos} setCameraPos={setCameraPos} setCamera={setCamera}/>
-                <SpaceView controlGravityWell={viewControls.gravityWells}/>
-                <Ships setComputerShipName={setComputerShipName}/>
+                <GrabCamera
+                  cameraPos={cameraPos}
+                  setCameraPos={setCameraPos}
+                  setCamera={setCamera}
+                />
+                <SpaceView controlGravityWell={viewControls.gravityWells} />
+                <Ships setComputerShipName={setComputerShipName} />
                 <Missiles />
                 {events && events.length > 0 && (
                   <Explosions effects={events} setEffects={setEvents} />
@@ -148,7 +183,11 @@ function App() {
   );
 }
 
-function GrabCamera(args: { cameraPos: THREE.Vector3, setCameraPos: (pos: THREE.Vector3) => void, setCamera: (camera: THREE.Camera) => void }) {
+function GrabCamera(args: {
+  cameraPos: THREE.Vector3;
+  setCameraPos: (pos: THREE.Vector3) => void;
+  setCamera: (camera: THREE.Camera) => void;
+}) {
   const { camera } = useThree();
   useEffect(() => {
     args.setCameraPos(camera.position);

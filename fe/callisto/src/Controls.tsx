@@ -840,8 +840,20 @@ export function Controls(args: {
       />
       {computerShip && (
         <>
-          <h2 className="control-form">USP</h2>
-          <pre className="plan-accel-text">{computerShip.usp}</pre>
+          <div className="vital-stats-bloc">
+            <div>
+            <h2 className="control-form">USP</h2>
+            <pre className="plan-accel-text">{computerShip.usp}</pre>
+            </div>
+            <div>
+            <h2 className="control-form">Hull</h2>
+            <pre className="plan-accel-text">{computerShip.hull}</pre>
+            </div>
+            <div>
+            <h2 className="control-form">Struct</h2>
+            <pre className="plan-accel-text">{computerShip.structure}</pre>
+            </div>
+          </div>
           <h2 className="control-form">Current Position</h2>
           <pre className="plan-accel-text">
             {"(" +

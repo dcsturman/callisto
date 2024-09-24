@@ -271,6 +271,11 @@ input {
   padding-right: 6px;
 }
 
+.vital-stats-bloc {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
 .target-entry-form {
   display: flex;
   flex-direction: column;

@@ -5,8 +5,8 @@ use super::computer::FlightPathResult;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use super::entity::Vec3;
-use super::ship::FlightPlan;
+use super::entity::{ Entity, Vec3 };
+use super::ship::{ FlightPlan, Ship };
 use super::combat::Weapon;
 
 #[serde_as]
@@ -96,8 +96,24 @@ pub enum EffectMsg {
         #[serde_as(as = "Vec3asVec")]
         position: Vec3
     },
+    ShipDestroyed {
+        #[serde_as(as = "Vec3asVec")]
+        position: Vec3
+    },
+    BeamHit {
+        #[serde_as(as = "Vec3asVec")]
+        origin: Vec3,
+        #[serde_as(as = "Vec3asVec")]
+        position: Vec3
+    },
     Damage {
         content: String
+    }
+}
+impl EffectMsg {
+    pub fn from_damage(attacker_name: &str, defender: &Ship, damage: u8, weapon_name: &str, damage_loc_name: &str) -> EffectMsg {
+        EffectMsg::Damage { content: format!("{} did {} {} damage to {}'s {}",
+            attacker_name, damage, weapon_name, defender.get_name(), damage_loc_name) as String }
     }
 }
 
@@ -124,7 +140,6 @@ mod tests {
     use serde_json::json;
     use cgmath::Zero;
     use crate::ship::EXAMPLE_USP;
-    use assert_json_diff::assert_json_eq;
 
     #[test]
     fn test_add_ship_msg() {

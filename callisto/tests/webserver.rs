@@ -365,7 +365,7 @@ async fn test_update_missile() {
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-             "hull":5, "structure":6}],
+             "hull":6, "structure":6}],
              "missiles":[],"planets":[]});
 
     assert_json_eq!(

@@ -5,6 +5,7 @@ pub mod missile;
 pub mod payloads;
 pub mod planet;
 pub mod ship;
+mod damage_tables;
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -203,16 +204,42 @@ pub async fn handle_request(
         (&Method::POST, "/update") => {
             info!("(/update) Received and processing update request.");
 
+            // Outlining the logic here to capture it in one place.
+            // We've been sent a set of FireActions from the client.  This can be beam weapons, sand, or missiles being launched.
+            // For combat we need to apply all that to a copy of our ships, apply all attacks, then copy those ships back once the effect
+            // of that combat is applied.  We do this so that all fire is simultaneous and order doesn't matter.
+            // 1. Create a copy of current ships called next_round_ships
+            // 2. First all the fire actions are applied to the next_round_ships.  
+            // 3. Fire actions also can create a set of missiles and a set
+            // of effects (things to show back to the user - explosions and such).
+            // 4. Those missiles are then added into the list of missiles in entities. The effects are saved to send back to user after adding in
+            // any effects from updating missiles.
+            // 5. Copy back the next_round_ships as all the ships are done firing.
+            // So at this point we have a bunch of missiles in flight, and all other weapons have fired.
+            // 6. update_all updates all the planets, missiles, ships in that order.  Ships come last so that damage done to them impacts
+            // their movement.
+            // In updating missiles, they may hit and cause damage.  Note we don't in this case need a clone of the ships as what happens
+            // to a ship that launches a missile doesn't impact the missile once its taken flight.
+            // 7. Once all combat is done (fire actions and missile updates) we do a pass over each ship to validate it (really see if it explodes)
+            // 8. We collect all the effects from the fire actions, the missile updates, and ship validation.
+            // 9. Send those effects back to the user.
+            // Call out each of these steps in the code below to make this clear.
+
+            // Get the set of fire actions provided with the REST call to update
             let fire_actions = deserialize_body_or_respond!(req, FireActionsMsg);
 
             info!("(/update) Processing {} fire_actions.", fire_actions.len());
 
+            // Grab the lock on entities
             let mut entities = entities
                 .lock()
                 .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e));
 
+            // 1. Create a copy of ships called next_round_ships
             let mut next_round_ships = entities.ships.clone();
 
+            // 2. Apply all fire actions to next_round_ships
+            // 3. Get back a set of missiles and effects.
             let (new_missiles, mut effects) = fire_actions
                 .into_iter()
                 .map(|action| do_fire_actions(&action.0, &mut next_round_ships, action.1))
@@ -225,14 +252,22 @@ pub async fn handle_request(
                     },
                 );
 
+            // 4. Launch all missiles created by the fire actions
             new_missiles.iter().for_each(|missile| {
                 entities.launch_missile(&missile.source, &missile.target);
             });
 
+            // 5. Copy back the next_round_ships into entities
+            entities.ships = next_round_ships;
+
+
+            // 6. Update all planets, ships, and missiles.
+            // 7. Collect the effects and append them to the ones created by the fire actions.
             effects.append(&mut entities.update_all());
 
-            debug!("Effects: {:?}", effects);
+            debug!("(/update) Effects: {:?}", effects);
 
+            // 8. Marshall the events and reply with them back to the user.
             let json = match serde_json::to_string(&effects) {
                 Ok(json) => json,
                 Err(_) => {
