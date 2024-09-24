@@ -1,4 +1,4 @@
-use cgmath::Zero;
+use cgmath::{InnerSpace, Zero};
 use serde::{Deserialize, Serialize};
 
 use derivative::Derivative;
@@ -23,37 +23,50 @@ pub struct Ship {
     pub plan: FlightPlan,
     #[serde_as(as = "USPasString")]
     pub usp: USP,
+    // Structure and hull are derived from USP (2x the hull) but can change in combat.
+    pub hull: u8,
+    pub structure: u8,
 
-    // usp used to record damage (vs ideal state).
+    // usp used to record ideal state (vs damage)
     // Is just cloned from the usp initially so never serialized or deserialized.  We may need
     // to send it explicitly in some messages.
     #[serde(skip)]
-    pub current_usp: USP,
-
-    // Need structure and hull as they are derived from USP.
-    #[serde(skip)]
-    pub hull: u8,
-    #[serde(skip)]
-    pub structure: u8,
+    pub original_usp: USP,
 }
 
 impl Ship {
     pub fn new(name: String, position: Vec3, velocity: Vec3, plan: FlightPlan, usp: USP) -> Self {
-        let hull = usp.hull;
+        let hull = usp.hull * 2;
         Ship {
             name,
             position,
             velocity,
             plan,
             usp: usp.clone(),
-            current_usp: usp,
+            original_usp: usp,
             hull,
             structure: hull,
         }
     }
 
-    pub fn set_flight_plan(&mut self, new_plan: FlightPlan) {
-        self.plan = new_plan;
+    pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> bool {
+        // First validate the plan to make sure its legal.
+        // Its legal as long as the magnitudes in the flight plan are less than the max of the maneuverability rating
+        // and the powerplant rating.
+        // We use the current maneuverability rating in case the ship took damage
+        let max_accel = f64::max(self.usp.maneuver as f64, self.usp.powerplant as f64);
+        if new_plan.0 .0.magnitude() <= max_accel {
+            if let Some(second) = &new_plan.1 {
+                if second.0.magnitude() < max_accel {
+                    self.plan = new_plan.clone();
+                    return true;
+                }
+            } else {
+                self.plan = new_plan.clone();
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -89,12 +102,23 @@ impl Entity for Ship {
     }
 
     fn update(&mut self) -> Option<UpdateAction> {
-        debug!("(Entity.update) Updating ship {:?}", self.name);
+        debug!("(Ship.update) Updating ship {:?}", self.name);
+
+        // If our ship is blow up, just return that effect (no need to do anything else)
+        if self.structure == 0 {
+            debug!("(Ship.update) Ship {} is destroyed.", self.name);
+            return Some(UpdateAction::ShipDestroyed);
+        }
+
         if self.plan.empty() {
             // Just move at current velocity
             self.position += self.velocity * DELTA_TIME as f64;
-            debug!("(Entity.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}", self.name, self.velocity, DELTA_TIME, self.position);
+            debug!("(Ship.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}", self.name, self.velocity, DELTA_TIME, self.position);
         } else {
+            // Adjust time in case max acceleration has changed due to combat damage.  Note this might be simplistic and require a new plan but that is up
+            // to the user to notice and fix.
+            let max_thrust = u8::max(self.usp.maneuver, self.usp.powerplant) as f64;
+            self.plan.ensure_thrust_limit(max_thrust);
             let moves = self.plan.advance_time(DELTA_TIME);
 
             for ap in moves.iter() {
@@ -103,12 +127,12 @@ impl Entity for Ship {
                 self.velocity += accel * G * duration as f64;
                 self.position += (old_velocity + self.velocity) / 2.0 * duration as f64;
                 debug!(
-                    "(Entity.update) Accelerate at {:0.3?} m/s for time {}",
+                    "(Ship.update) Accelerate at {:0.3?} m/s for time {}",
                     accel * G,
                     duration
                 );
                 debug!(
-                    "(Entity.update) New velocity: {:0.0?} New position: {:0.0?}",
+                    "(Ship.update) New velocity: {:0.0?} New position: {:0.0?}",
                     self.velocity, self.position
                 );
             }
@@ -155,6 +179,10 @@ pub struct FlightPlan(
     pub Option<AccelPair>,
 );
 
+fn renormalize(orig: Vec3, limit: f64) -> Vec3 {
+    orig / orig.magnitude() * limit
+}
+
 impl FlightPlan {
     pub fn new(first: AccelPair, second: Option<AccelPair>) -> Self {
         FlightPlan(first, second)
@@ -184,6 +212,18 @@ impl FlightPlan {
 
     pub fn empty(&self) -> bool {
         self.0 .1 == 0 || self.0 .0 == Vec3::zero()
+    }
+
+    pub fn ensure_thrust_limit(&mut self, limit: f64) {
+        if self.0 .0.magnitude() > limit {
+            self.0 .0 = renormalize(self.0 .0, limit);
+        }
+
+        if let Some(second) = &self.1 {
+            if second.0.magnitude() > limit {
+                self.set_second(renormalize(second.0, limit), second.1)
+            }
+        }
     }
 
     pub fn advance_time(&mut self, time: u64) -> Self {
@@ -233,18 +273,18 @@ impl FlightPlan {
  * Power plant level
  * Computer code
  * Crew size code
- * <dash>
+ * --dash--
  * Beam Lasers
  * Pulse Lasers
  * Particle Beam
  * Missiles
- * <skip bay weapons for now>
+ * --skip bay weapons for now--
  * Sand
- * <skip screens for now>
- * <dash>
+ * --skip screens for now--
+ * --dash--
  * TL
  */
-#[derive(Default,Debug, PartialEq, Clone)]
+#[derive(Default, Debug, PartialEq, Clone)]
 pub struct USP {
     pub hull: u8,
     pub armor: u8,
@@ -259,7 +299,7 @@ pub struct USP {
     pub particle: u8,
     pub missile: u8,
     pub sand: u8,
-    
+
     pub tl: u8,
 }
 
@@ -320,7 +360,13 @@ fn int_to_digit(code: u8) -> char {
 impl From<String> for USP {
     fn from(usp: String) -> Self {
         let mut codes = usp.chars().filter(|c| *c != '-');
-        assert_eq!(codes.clone().count(), USP_LEN, "USP must be {} characters long: {}", USP_LEN, usp);
+        assert_eq!(
+            codes.clone().count(),
+            USP_LEN,
+            "USP must be {} characters long: {}",
+            USP_LEN,
+            usp
+        );
         USP {
             hull: digit_to_int(codes.next().unwrap()),
             armor: digit_to_int(codes.next().unwrap()),
@@ -355,7 +401,7 @@ impl From<&USP> for String {
         result.push(int_to_digit(usp.particle));
         result.push(int_to_digit(usp.missile));
         result.push(int_to_digit(usp.sand));
-        result.push('-');        
+        result.push('-');
         result.push(int_to_digit(usp.tl));
         result.to_string()
     }
@@ -364,10 +410,6 @@ impl From<&USP> for String {
 serde_with::serde_conv!(
     USPasString,
     USP,
-    |usp: &USP| -> String {
-        usp.into()
-    },
-    |s: String| -> Result<_, std::convert::Infallible> {
-        Ok(USP::from(s))
-    }
+    |usp: &USP| -> String { usp.into() },
+    |s: String| -> Result<_, std::convert::Infallible> { Ok(USP::from(s)) }
 );

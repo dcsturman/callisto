@@ -1,9 +1,11 @@
+pub mod combat;
 mod computer;
 pub mod entity;
-pub mod ship;
 pub mod missile;
-pub mod planet;
 pub mod payloads;
+pub mod planet;
+pub mod ship;
+mod damage_tables;
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -22,9 +24,11 @@ use serde_json::from_slice;
 use computer::{compute_flight_path, FlightParams};
 use entity::{Entities, Entity, G};
 use payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FlightPathMsg, LaunchMissileMsg, RemoveEntityMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, FlightPathMsg, RemoveEntityMsg,
     SetPlanMsg,
 };
+
+use combat::do_fire_actions;
 
 enum SizeCheckError {
     SizeErr(Response<Full<Bytes>>),
@@ -139,6 +143,8 @@ pub async fn handle_request(
 
             Ok(build_ok_response("Add planet action executed"))
         }
+        //TODO: Remove this method
+        /*
         (&Method::POST, "/launch_missile") => {
             let missile = deserialize_body_or_respond!(req, LaunchMissileMsg);
 
@@ -146,48 +152,122 @@ pub async fn handle_request(
             entities
                 .lock()
                 .unwrap()
-                .launch_missile(missile.source, missile.target);
+                .launch_missile(&missile.source, &missile.target);
 
             Ok(build_ok_response("Launch missile action executed"))
-        }
+        }*/
         (&Method::POST, "/remove") => {
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
             debug!("Removing entity: {}", name);
 
             // Remove the entity from the server
             let mut entities = entities.lock().unwrap();
-            if entities.ships.remove(&name).is_none() &&
-                entities.planets.remove(&name).is_none() &&
-                    entities.missiles.remove(&name).is_none() {
-                        warn!("Unable to find entity named {} to remove", name);
-                        let err_msg = format!("Unable to find entity named {} to remove", name);
-                        return Ok(Response::new(
-                            Bytes::copy_from_slice(err_msg.as_bytes()).into()
-                        ));
+            if entities.ships.remove(&name).is_none()
+                && entities.planets.remove(&name).is_none()
+                && entities.missiles.remove(&name).is_none()
+            {
+                warn!("Unable to find entity named {} to remove", name);
+                let err_msg = format!("Unable to find entity named {} to remove", name);
+                return Ok(Response::new(
+                    Bytes::copy_from_slice(err_msg.as_bytes()).into(),
+                ));
             }
 
             Ok(build_ok_response("Remove action executed"))
         }
         (&Method::POST, "/set_plan") => {
+            info!("Received and processing plan set request.");
             let plan_msg = deserialize_body_or_respond!(req, SetPlanMsg);
 
             // Change the acceleration of the entity
-            entities
+            let okay = entities
                 .lock()
                 .unwrap()
-                .set_flight_plan(&plan_msg.name, plan_msg.plan);
+                .set_flight_plan(&plan_msg.name, &plan_msg.plan);
 
+            if !okay {
+                warn!(
+                    "Unable to set flight plan {:?} for entity {}",
+                    &plan_msg.plan, plan_msg.name
+                );
+                // When set_flight_plan fails, we don't set a new plan. So return a 304 Not Modified
+                let err_msg = format!("Unable to set acceleration for entity {}", plan_msg.name);
+                let resp: Response<Full<Bytes>> = Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(Bytes::copy_from_slice(err_msg.as_bytes()).into())
+                    .unwrap();
+                return Ok(resp);
+            }
             Ok(build_ok_response("Set acceleration action executed"))
         }
         (&Method::POST, "/update") => {
-            info!("Received and processing update request.");
+            info!("(/update) Received and processing update request.");
 
-            let effects = entities
+            // Outlining the logic here to capture it in one place.
+            // We've been sent a set of FireActions from the client.  This can be beam weapons, sand, or missiles being launched.
+            // For combat we need to apply all that to a copy of our ships, apply all attacks, then copy those ships back once the effect
+            // of that combat is applied.  We do this so that all fire is simultaneous and order doesn't matter.
+            // 1. Create a copy of current ships called next_round_ships
+            // 2. First all the fire actions are applied to the next_round_ships.  
+            // 3. Fire actions also can create a set of missiles and a set
+            // of effects (things to show back to the user - explosions and such).
+            // 4. Those missiles are then added into the list of missiles in entities. The effects are saved to send back to user after adding in
+            // any effects from updating missiles.
+            // 5. Copy back the next_round_ships as all the ships are done firing.
+            // So at this point we have a bunch of missiles in flight, and all other weapons have fired.
+            // 6. update_all updates all the planets, missiles, ships in that order.  Ships come last so that damage done to them impacts
+            // their movement.
+            // In updating missiles, they may hit and cause damage.  Note we don't in this case need a clone of the ships as what happens
+            // to a ship that launches a missile doesn't impact the missile once its taken flight.
+            // 7. Once all combat is done (fire actions and missile updates) we do a pass over each ship to validate it (really see if it explodes)
+            // 8. We collect all the effects from the fire actions, the missile updates, and ship validation.
+            // 9. Send those effects back to the user.
+            // Call out each of these steps in the code below to make this clear.
+
+            // Get the set of fire actions provided with the REST call to update
+            let fire_actions = deserialize_body_or_respond!(req, FireActionsMsg);
+
+            info!("(/update) Processing {} fire_actions.", fire_actions.len());
+
+            // Grab the lock on entities
+            let mut entities = entities
                 .lock()
-                .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e))
-                .update_all();
-            debug!("Effects: {:?}", effects);
+                .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e));
 
+            // 1. Create a copy of ships called next_round_ships
+            let mut next_round_ships = entities.ships.clone();
+
+            // 2. Apply all fire actions to next_round_ships
+            // 3. Get back a set of missiles and effects.
+            let (new_missiles, mut effects) = fire_actions
+                .into_iter()
+                .map(|action| do_fire_actions(&action.0, &mut next_round_ships, action.1))
+                .fold(
+                    (vec![], vec![]),
+                    |(mut missiles, mut effects), (mut new_missiles, mut new_effects)| {
+                        missiles.append(&mut new_missiles);
+                        effects.append(&mut new_effects);
+                        (missiles, effects)
+                    },
+                );
+
+            // 4. Launch all missiles created by the fire actions
+            new_missiles.iter().for_each(|missile| {
+                entities.launch_missile(&missile.source, &missile.target);
+            });
+
+            // 5. Copy back the next_round_ships into entities
+            entities.ships = next_round_ships;
+
+
+            // 6. Update all planets, ships, and missiles.
+            // 7. Collect the effects and append them to the ones created by the fire actions.
+            effects.append(&mut entities.update_all());
+
+            debug!("(/update) Effects: {:?}", effects);
+
+            // 8. Marshall the events and reply with them back to the user.
             let json = match serde_json::to_string(&effects) {
                 Ok(json) => json,
                 Err(_) => {
@@ -220,8 +300,17 @@ pub async fn handle_request(
             // Do this in a block to clean up the lock as soon as possible.
             let (start_pos, start_vel, max_accel) = {
                 let entities = entities.lock().unwrap();
-                let entity = entities.ships.get(&msg.entity_name).unwrap().read().unwrap();
-                (entity.get_position(), entity.get_velocity(), entity.usp.maneuver as f64 * G)
+                let entity = entities
+                    .ships
+                    .get(&msg.entity_name)
+                    .unwrap()
+                    .read()
+                    .unwrap();
+                (
+                    entity.get_position(),
+                    entity.get_velocity(),
+                    entity.usp.maneuver as f64 * G,
+                )
             };
 
             let adjusted_end_pos = if msg.standoff_distance > 0.0 {

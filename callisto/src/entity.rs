@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, EXHAUSTED_MISSILE, SHIP_IMPACT};
+use crate::payloads::EffectMsg;
 use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -10,6 +10,7 @@ use std::sync::{Arc, RwLock};
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship};
+use crate::combat::{ attack, Weapon };
 
 pub const DELTA_TIME: u64 = 1000;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
@@ -32,6 +33,7 @@ pub trait Entity: Debug + PartialEq + Serialize + Send + Sync {
 pub enum UpdateAction {
     ShipImpact { ship: String, missile: String },
     ExhaustedMissile { name: String },
+    ShipDestroyed,
 }
 
 #[serde_as]
@@ -167,7 +169,7 @@ impl Entities {
         self.planets.insert(name, Arc::new(RwLock::new(entity)));
     }
 
-    pub fn launch_missile(&mut self, source: String, target: String) {
+    pub fn launch_missile(&mut self, source: &str, target: &str) {
         const DEFAULT_BURN: i32 = 2;
 
         // Could use a random number generator here for the name but that makes tests flakey (random)
@@ -177,13 +179,13 @@ impl Entities {
         let name = format!("{}::{}::{:X}", source, target, id);
         let source_ptr = self
             .ships
-            .get(&source)
+            .get(source)
             .unwrap_or_else(|| panic!("Missile source {} not found for missile {}.", source, name))
             .clone();
 
         let target_ptr = self
             .ships
-            .get(&target)
+            .get(target)
             .unwrap_or_else(|| panic!("Target {} not found for missile {}.", target, name))
             .clone();
 
@@ -199,8 +201,8 @@ impl Entities {
 
         let entity = Missile::new(
             name.clone(),
-            source,
-            target,
+            source.to_string(),
+            target.to_string(),
             target_ptr,
             position,
             velocity,
@@ -209,14 +211,16 @@ impl Entities {
         self.missiles.insert(name, Arc::new(RwLock::new(entity)));
     }
 
-    pub fn set_flight_plan(&mut self, name: &str, plan: FlightPlan) {
+    // Set the flight plan. Returns true if it was set. False if the plan was invalid for any reason.
+    pub fn set_flight_plan(&mut self, name: &str, plan: &FlightPlan) -> bool {
         if let Some(entity) = self.ships.get_mut(name) {
-            entity.write().unwrap().set_flight_plan(plan);
+            return entity.write().unwrap().set_flight_plan(plan);
         } else {
             warn!(
                 "Could not set acceleration for non-existent entity {}",
                 name
             );
+            return false;
         }
     }
 
@@ -228,21 +232,14 @@ impl Entities {
             a_ent.dependency.cmp(&b_ent.dependency)
         });
 
-        debug!("(Entities.update_all) Sorted planets: {:?}", planets);
-
         // If we have effects from planet updates this has to change and get a bit more complex (like missiles below)
         planets.iter().for_each(|planet| {
             planet.write().unwrap().update();
         });
 
-        // If we have effects from planet updates this has to change and get a bit more complex (like missiles below)
-        self.ships.iter().for_each(|(_, ship)| {
-            ship.write().unwrap().update();
-        });
+        let mut cleanup_missile_list = Vec::<String>::new();
 
-        let mut cleanup_list = Vec::<String>::new();
-
-        let effects = self
+        let mut effects = self
             .missiles
             .values_mut()
             .filter_map(|missile| {
@@ -250,9 +247,12 @@ impl Entities {
                 let update = missile.update();
                 let missile_name = missile.get_name();
                 let missile_pos = missile.get_position();
+                let missile_source: &str = &missile.source;
+                // We use UpdateAction vs just returning the effect so that the call to attack() stays at this level rather than
+                // being embedded in the missile update code.  Also enables elimination of missiles.
                 match update? {
                     UpdateAction::ShipImpact { ship, missile } => {
-                        debug!("Missile impact on {} by missile {}.", ship, missile);
+                        debug!("(Entity.update_all) Missile impact on {} by missile {}.", ship, missile);
                         let ship_pos = self
                             .ships
                             .get(&ship)
@@ -262,31 +262,50 @@ impl Entities {
                             .get_position()
                             .clone();
 
-                        debug!("(Entities.update_all) Removing ship {}", ship);
-                        self.ships.remove(&ship);
-                        cleanup_list.push(missile);
+                        let mut target = self.ships.get(&ship).unwrap_or_else(|| panic!("Cannot find target {} for missile.", ship)).write().unwrap();
+                        let mut effects = attack(0, 0, missile_source, &mut target, Weapon::Missile);
+                        cleanup_missile_list.push(missile);
 
-                        Some(EffectMsg {
-                            position: ship_pos,
-                            kind: SHIP_IMPACT.to_string(),
-                        })
+                        effects.push(EffectMsg::ShipImpact { position: ship_pos });
+                        Some(effects)
                     }
                     UpdateAction::ExhaustedMissile { name } => {
                         assert!(name == missile_name);
-                        debug!("Removing missile {}", name);
-                        cleanup_list.push(name.clone());
-                        Some(EffectMsg {
-                            position: missile_pos,
-                            kind: EXHAUSTED_MISSILE.to_string(),
-                        })
+                        debug!("(Entity.update_all) Removing missile {}", name);
+                        cleanup_missile_list.push(name.clone());
+                        Some(vec![EffectMsg::ExhaustedMissile { position: missile_pos }])
                     }
+                    update => panic!("(Entity.update_all) Unexpected update {:?} during missile updates.", update)
                 }
             })
-            .collect::<Vec<_>>();
+            .flatten().collect::<Vec<_>>();
 
-        cleanup_list.iter().for_each(|name| {
-            debug!("(Entities.update_all) Removing missile {}", name);
+        let mut cleanup_ships_list = Vec::<String>::new();            
+        effects.append(&mut self.ships.values_mut().filter_map(|ship| {
+            let mut ship = ship.write().unwrap();
+            let update = ship.update();
+            let name = ship.get_name();            
+            let pos = ship.get_position();
+
+            match update? {
+                UpdateAction::ShipDestroyed => {
+                    debug!("(Entity.update_all) Ship {} destroyed at position {:?}.", name, pos);
+                    cleanup_ships_list.push(name.to_string());
+                    Some(vec![EffectMsg::ShipDestroyed { position: pos },EffectMsg::Damage { content: format!("{} destroyed.", name) } ])
+                },
+                update => panic!("(Entity.update_all) Unexpected update {:?} during ship updates.", update)
+            }        
+        }).flatten().collect::<Vec<_>>());
+
+
+        cleanup_missile_list.iter().for_each(|name| {
+            debug!("(Entity.update_all) Removing missile {}", name);
             self.missiles.remove(name);
+        });
+
+        cleanup_ships_list.iter().for_each(|name| {
+            debug!("(Entity.update_all) Removing ship {}", name);
+            self.ships.remove(name);
         });
 
         effects
@@ -554,9 +573,9 @@ mod tests {
         let acceleration1 = Vec3::new(1.0, 1.0, 1.0);
         let acceleration2 = Vec3::new(2.0, 2.0, -2.0);
         let acceleration3 = Vec3::new(4.0, -1.0, -0.0);
-        entities.set_flight_plan("Ship1", FlightPlan((acceleration1, 10000).into(), None));
-        entities.set_flight_plan("Ship2", FlightPlan((acceleration2, 10000).into(), None));
-        entities.set_flight_plan("Ship3", FlightPlan((acceleration3, 10000).into(), None));
+        entities.set_flight_plan("Ship1", &FlightPlan((acceleration1, 10000).into(), None));
+        entities.set_flight_plan("Ship2", &FlightPlan((acceleration2, 10000).into(), None));
+        entities.set_flight_plan("Ship3", &FlightPlan((acceleration3, 10000).into(), None));
 
         // Update the entities a few times
         entities.update_all();
@@ -867,9 +886,9 @@ mod tests {
 
         let cmp = json!({
             "ships":[
-                {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
-                {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"},
-                {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B"}],
+                {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
+                {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
+                {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6}],
             "missiles":[],
             "planets":[
                 {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":5.972e24,

@@ -1,11 +1,25 @@
-import { Acceleration, EntityRefreshCallback, FlightPathResult } from "./Universal";
+import {
+  Acceleration,
+  EntityRefreshCallback,
+  FlightPathResult,
+} from "./Universal";
+import { FireState, stringifyFireState } from "./Controls";
 import { Effect } from "./Effects";
 
 const address = "localhost";
 const port = "3000";
 
-export function addShip(name: string, position: [number, number, number], velocity: [number, number, number], acceleration: [number, number, number], usp: string, callBack: EntityRefreshCallback) {
-  console.log(`Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`);
+export function addShip(
+  name: string,
+  position: [number, number, number],
+  velocity: [number, number, number],
+  acceleration: [number, number, number],
+  usp: string,
+  callBack: EntityRefreshCallback
+) {
+  console.log(
+    `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
+  );
 
   let payload = {
     name: name,
@@ -13,7 +27,7 @@ export function addShip(name: string, position: [number, number, number], veloci
     velocity: velocity,
     acceleration: acceleration,
     usp: usp,
-  }
+  };
 
   fetch(`http://${address}:${port}/add_ship`, {
     method: "POST",
@@ -44,7 +58,7 @@ export function removeEntity(target: string, callBack: EntityRefreshCallback) {
     );
 }
 
-export function setPlan(
+export async function setPlan(
   target: string,
   plan: [Acceleration, Acceleration | null],
   callBack: EntityRefreshCallback
@@ -60,30 +74,41 @@ export function setPlan(
   }
   let payload = { name: target, plan: plan_arr };
 
-  fetch(`http://${address}:${port}/set_plan`, {
+  let response = await fetch(`http://${address}:${port}/set_plan`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     mode: "cors",
     body: JSON.stringify(payload),
-  })
-    .then((response) => response.json())
-    .then(() => getEntities(callBack))
-    .catch((error) =>
-      console.error(
-        "Error setting acceleration for entity '" + target + "':",
-        error
-      )
+  });
+
+  if (response.status === 200) {
+    await response.json();
+    getEntities(callBack);
+  } else if (response.status === 400) {
+    console.log(`Invalid plan provided: ${JSON.stringify(payload)}`);
+    throw new RangeError("Invalid plan provided");
+  } else {
+    console.error(
+      "Unknown response code " +
+        response.status +
+        " from server when setting plan."
     );
+  }
 }
 
-export function nextRound(setEvents: (events: Effect[] | null) => void, callBack: EntityRefreshCallback) {
+export function nextRound(
+  fireActions: Map<string, FireState>,
+  setEvents: (events: Effect[] | null) => void,
+  callBack: EntityRefreshCallback
+) {
   fetch(`http://${address}:${port}/update`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
+    body: stringifyFireState(fireActions),
     mode: "cors",
   })
     .then((response) => response.json())
@@ -109,7 +134,7 @@ export function computeFlightPath(
     end_pos: end_pos,
     end_vel: end_vel,
     target_velocity: target_vel,
-    standoff_distance: standoff
+    standoff_distance: standoff,
   };
 
   fetch(`http://${address}:${port}/compute_path`, {
@@ -133,7 +158,7 @@ export function launchMissile(
   let payload = {
     source: source,
     target: target,
-  }
+  };
 
   fetch(`http://${address}:${port}/launch_missile`, {
     method: "POST",
@@ -141,15 +166,14 @@ export function launchMissile(
       "Content-Type": "application/json",
     },
     mode: "cors",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   })
-  .then((response) => response.json())
-  .then(() => getEntities(callback))
-  .catch((error) => console.error("Error launching missile", error));
+    .then((response) => response.json())
+    .then(() => getEntities(callback))
+    .catch((error) => console.error("Error launching missile", error));
 }
 
 export function getEntities(callback: EntityRefreshCallback) {
-
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
     .then((entities) => {

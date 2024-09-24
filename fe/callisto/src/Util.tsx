@@ -25,11 +25,13 @@ export function Line({
   start,
   end,
   color = "grey",
+  scale = 1.0,
   debug = false
 }: {
   start: [number, number, number];
   end: [number, number, number];
-  color?: string;
+  color?: string | [number, number, number];
+  scale?: number;
   debug?: boolean;
 }) {
   const lineRef = useRef<THREE.Line>(null);
@@ -40,13 +42,57 @@ export function Line({
         [start, end].map((point) => new THREE.Vector3(...point))
       );
     } else {
-      console.log("ref is null");
+      console.error("(Util.Line) geometry ref is null");
+    }
+  }, [start, end]);
+
+  return (
+    <line_ ref={lineRef} scale={[scale, scale, scale]} onPointerOver={()=> { if (debug)  {console.log(`start: ${start} end: ${end}`)}}}>
+      <bufferGeometry />
+      <lineBasicMaterial color={color} />
+    </line_>
+  );
+}
+
+
+export function GrowLine({
+  start,
+  end,
+  color = "grey",
+  scale = 1.0,
+  debug = false
+}: {
+  start: [number, number, number];
+  end: [number, number, number];
+  color?: string | [number, number, number];
+  scale?: number;
+  debug?: boolean;
+}) {
+  const lineRef = useRef<THREE.Line>(null);
+  const MAX_POINTS = 100;
+
+  useLayoutEffect(() => {
+    if (lineRef.current?.geometry) {
+      let points = [];
+
+      for (let i = 0; i < MAX_POINTS; i++) {
+        points.push(
+          new THREE.Vector3(
+            start[0] + (end[0] - start[0]) * i / MAX_POINTS,
+            start[1] + (end[1] - start[1]) * i / MAX_POINTS,
+            start[2] + (end[2] - start[2]) * i / MAX_POINTS
+          )
+        );
+      }
+      lineRef.current.geometry.setFromPoints(points);
+    } else {
+      console.error("(Util.Line) geometry ref is null");
     }
   }, [start, end]);
 
   return (
     <line_ ref={lineRef} onPointerOver={()=> { if (debug)  {console.log(`start: ${start} end: ${end}`)}}}>
-      <bufferGeometry />
+      <bufferGeometry drawRange={{start: 0, count: MAX_POINTS*scale}}/>
       <lineBasicMaterial color={color} />
     </line_>
   );

@@ -89,7 +89,11 @@ input {
 .control-launch-div {
   display: flex;
   align-items: center;
-  padding-right: 2px;
+}
+
+.control-button {
+  height: 30px;
+  width: 100%
 }
 
 .control-launch-button {
@@ -97,7 +101,7 @@ input {
   height: 30;
 }
 .coordinate-input {
-  justify-content: left;
+  justify-content: space-between;
   display: flex;
   flex-direction: row;
   height: unset
@@ -119,11 +123,6 @@ input {
   padding: 0px;
   color: white;
   height: unset
-}
-
-.control-button {
-  height: 30px;
-  width: 100%;
 }
 
 .as-form {
@@ -170,6 +169,7 @@ input {
   letter-spacing: -.022em;
   line-height: 1.47059;
   overflow: visible;
+  margin: 2px;
   text-align: center;
   vertical-align: baseline;
   user-select: none;
@@ -265,11 +265,17 @@ input {
 }
 
 .control-form {
+  justify-content: space-between;
   padding-top: 6px;
   padding-left: 2px;
   padding-right: 6px;
 }
 
+.vital-stats-bloc {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
 .target-entry-form {
   display: flex;
   flex-direction: column;
@@ -295,4 +301,28 @@ input {
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.beam-type-icon {
+  width: 20px;
+  height: 20px;
+  fill: red;
+}
+
+.pulse-type-icon {
+  width: 20px;
+  height: 20px;
+  fill: rgb(0, 140, 255);
+}
+.missile-type-icon {
+  width: 20px;
+  height: 20px;
+  fill: green;
+}
+
+.info-tooltip {
+  z-index: 100;
+}
+.tooltip-content {
+  font-size: 9pt
 }

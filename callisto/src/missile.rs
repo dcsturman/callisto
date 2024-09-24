@@ -4,11 +4,11 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
-use cgmath::InnerSpace;
-use super::entity::{Entity, Vec3, DELTA_TIME, G, UpdateAction};
-use super::ship::Ship;
 use super::computer::{compute_target_path, FlightPathResult, TargetParams};
+use super::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
 use super::payloads::Vec3asVec;
+use super::ship::Ship;
+use cgmath::InnerSpace;
 
 // Temporary until missiles have actual acceleration built in
 const MAX_MISSILE_ACCELERATION: f64 = 6.0 * G;
@@ -25,19 +25,26 @@ pub struct Missile {
     position: Vec3,
     #[serde_as(as = "Vec3asVec")]
     velocity: Vec3,
-   pub  source: String,
+    pub source: String,
     pub target: String,
-    // FIXME: This is dangerous.  Its not clear how to deal with a Missile without a target_ptr.
     #[serde(skip)]
     #[derivative(PartialEq = "ignore")]
     pub target_ptr: Option<Arc<RwLock<Ship>>>,
-    #[serde_as(as = "Vec3asVec")]    
+    #[serde_as(as = "Vec3asVec")]
     pub acceleration: Vec3,
     pub burns: i32,
 }
 
 impl Missile {
-    pub fn new(name: String, source: String, target: String, target_ptr: Arc<RwLock<Ship>>, position: Vec3, velocity: Vec3, burns: i32) -> Self {
+    pub fn new(
+        name: String,
+        source: String,
+        target: String,
+        target_ptr: Arc<RwLock<Ship>>,
+        position: Vec3,
+        velocity: Vec3,
+        burns: i32,
+    ) -> Self {
         // We need to construct an initial route for the missile primarily so
         // it can be shown in the UX once creation of the missile returns.
         let target_pos = target_ptr.read().unwrap().get_position();
@@ -103,7 +110,10 @@ impl Entity for Missile {
         if self.burns > 0 {
             debug!(
                 "Computing path for missile {} targeting {}: End pos: {:?} End vel: {:?}",
-                self.name, target.get_name(), target.get_position(), target.get_velocity()
+                self.name,
+                target.get_name(),
+                target.get_position(),
+                target.get_velocity()
             );
 
             let params = TargetParams::new(
@@ -123,7 +133,7 @@ impl Entity for Missile {
             debug!("Computed path: {:?}", path);
 
             // The computed path should be an acceleration towards the target.
-            // For a missile, we should always have a single accelertion (towards the target at full thrust).
+            // For a missile, we should always have a single acceleration (towards the target at full thrust).
             // It might not be for full DELTA_TIME but that is okay.
             // We don't actually save the path anywhere as we will recompute each round.
             // We do save the current acceleration just for display purposes.
@@ -148,7 +158,11 @@ impl Entity for Missile {
 
             // See if we impacted.
             if (self.position - target.get_position()).magnitude() < IMPACT_DISTANCE {
-                debug!("Missile {} impacted target {}", self.name, target.get_name());
+                debug!(
+                    "Missile {} impacted target {}",
+                    self.name,
+                    target.get_name()
+                );
                 Some(UpdateAction::ShipImpact {
                     ship: target.get_name().to_string(),
                     missile: self.name.clone(),

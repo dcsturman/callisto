@@ -14,9 +14,15 @@ export class Entity {
   }
 }
 
+export const USP_BEAM = 8;
+export const USP_PULSE = 9;
+export const USP_MISSILE = 11;
+
 export class Ship extends Entity {
   plan: [Acceleration, Acceleration | null] = [[[0, 0, 0], 0], null];
   usp: string = "0000000-00000-0";
+  hull: number = 0;
+  structure: number = 0;
 
   constructor(name: string, position: [number, number, number], velocity: [number, number, number], plan: [Acceleration, Acceleration | null], usp: string) {
     super(name, position, velocity);
