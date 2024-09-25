@@ -180,9 +180,9 @@ impl Server {
         match serde_json::to_string::<Entities>(&self.entities.lock().unwrap()) {
             Ok(json) => {
                 info!("(/) Entities: {:?}", json);
-                return Ok(json);
+                Ok(json)
             }
-            Err(_) => return Err("Error converting entities to JSON".to_string()),
-        };
+            Err(_) => Err("Error converting entities to JSON".to_string()),
+        }
     }
 }

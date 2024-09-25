@@ -1,18 +1,18 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{ EffectMsg, FireAction };
+use crate::payloads::{EffectMsg, FireAction};
+use rand::RngCore;
 use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
-use rand::RngCore;
 
+use crate::combat::do_fire_actions;
 use crate::combat::{attack, Weapon};
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship};
-use crate::combat::do_fire_actions;
 
 pub const DELTA_TIME: u64 = 1000;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
@@ -39,7 +39,7 @@ pub enum UpdateAction {
 }
 
 #[serde_as]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Entities {
     pub ships: HashMap<String, Arc<RwLock<Ship>>>,
     pub missiles: HashMap<String, Arc<RwLock<Missile>>>,
@@ -86,6 +86,10 @@ impl Entities {
 
     pub fn len(&self) -> usize {
         self.ships.len() + self.missiles.len() + self.planets.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
     }
 
     pub fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -231,26 +235,34 @@ impl Entities {
     // Set the flight plan. Returns true if it was set. False if the plan was invalid for any reason.
     pub fn set_flight_plan(&mut self, name: &str, plan: &FlightPlan) -> bool {
         if let Some(entity) = self.ships.get_mut(name) {
-            return entity.write().unwrap().set_flight_plan(plan);
+            entity.write().unwrap().set_flight_plan(plan)
         } else {
             warn!(
                 "Could not set acceleration for non-existent entity {}",
                 name
             );
-            return false;
+            false
         }
     }
 
-    pub fn fire_actions(&mut self, fire_actions: Vec<(String, Vec<FireAction>)>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    pub fn fire_actions(
+        &mut self,
+        fire_actions: Vec<(String, Vec<FireAction>)>,
+        rng: &mut dyn RngCore,
+    ) -> Vec<EffectMsg> {
         let mut next_round_ships = self.ships.clone();
 
-        let effects = fire_actions.iter().map(|(attacker, actions)| {
-            let (missiles, effects) = do_fire_actions(&attacker, &mut next_round_ships, actions, rng);
-            for missile in missiles {
-                self.launch_missile(&missile.source, &missile.target);
-            };
-            effects
-        }).flatten().collect();
+        let effects = fire_actions
+            .iter()
+            .flat_map(|(attacker, actions)| {
+                let (missiles, effects) =
+                    do_fire_actions(attacker, &mut next_round_ships, actions, rng);
+                for missile in missiles {
+                    self.launch_missile(&missile.source, &missile.target);
+                }
+                effects
+            })
+            .collect();
         effects
     }
 
@@ -292,8 +304,7 @@ impl Entities {
                             .unwrap()
                             .read()
                             .unwrap()
-                            .get_position()
-                            .clone();
+                            .get_position();
 
                         let mut target = self
                             .ships
@@ -395,20 +406,16 @@ impl Entities {
 
         for missile in self.missiles.values() {
             let missile = missile.read().unwrap();
-            if missile.target_ptr.is_none() {
+            if missile.target_ptr.is_none() || missile
+                .target_ptr
+                .as_ref()
+                .unwrap()
+                .read()
+                .unwrap()
+                .get_name()
+                != missile.target
+            {
                 return false;
-            } else {
-                if missile
-                    .target_ptr
-                    .as_ref()
-                    .unwrap()
-                    .read()
-                    .unwrap()
-                    .get_name()
-                    != missile.target
-                {
-                    return false;
-                }
             }
         }
         true
@@ -541,9 +548,9 @@ mod tests {
     use crate::ship::EXAMPLE_USP;
     use assert_json_diff::assert_json_eq;
     use cgmath::{Vector2, Zero};
-    use serde_json::json;
     use rand::rngs::SmallRng;
     use rand::SeedableRng;
+    use serde_json::json;
 
     #[test]
     fn test_add_ship() {

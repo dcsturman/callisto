@@ -165,7 +165,7 @@ pub async fn handle_request(
                     .header("Access-Control-Allow-Origin", "*")
                     .body(Bytes::copy_from_slice(err.as_bytes()).into())
                     .unwrap();
-                    return Ok(resp);
+                    Ok(resp)
                 }
             }
         }

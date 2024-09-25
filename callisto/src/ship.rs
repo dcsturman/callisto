@@ -349,10 +349,10 @@ fn digit_to_int(code: char) -> u8 {
 
 fn int_to_digit(code: u8) -> char {
     match code {
-        x if x <= 9 => (x + '0' as u8) as char,
-        x if x <= 17 => (x - 10 + 'A' as u8) as char,
-        x if x <= 22 => (x - 18 + 'J' as u8) as char,
-        x if x <= 33 => (x - 23 + 'P' as u8) as char,
+        x if x <= 9 => (x + b'0') as char,
+        x if x <= 17 => (x - 10 + b'A') as char,
+        x if x <= 22 => (x - 18 + b'J') as char,
+        x if x <= 33 => (x - 23 + b'P') as char,
         _ => panic!("(ship.intToDigit) Unknown code: {}", code),
     }
 }
