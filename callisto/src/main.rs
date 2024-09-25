@@ -26,6 +26,10 @@ struct Args {
     /// JSON file for planets in scenario
     #[arg(short, long)]
     scenario_file: Option<String>,
+
+    /// Run in test mode. Specifically, this will use a fixed random number generator.
+    #[arg(short, long)]
+    test: bool,
 }
 
 #[tokio::main]
@@ -35,8 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
     let port = args.port;
-
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+    let test_mode = args.test;
 
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
@@ -44,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Entities::load_from_file(&file_name)
             .unwrap_or_else(|e| panic!("Issue loading scenario file {}: {}", file_name, e))
     } else {
-        Entities::default()
+        Entities::new()
     }));
 
     info!(
@@ -69,7 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let e = entities.clone();
         tokio::task::spawn(async move {
             let ent = e.clone();
-            let handler = move |req| handle_request(req, ent.clone());
+            let handler = move |req| {
+                handle_request(req, ent.clone(), test_mode)
+            };
 
             // We bind the incoming connection to our service
             let builder = http1::Builder::new();

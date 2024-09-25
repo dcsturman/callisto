@@ -1,16 +1,18 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::EffectMsg;
+use crate::payloads::{ EffectMsg, FireAction };
 use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
+use rand::RngCore;
 
+use crate::combat::{attack, Weapon};
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship};
-use crate::combat::{ attack, Weapon };
+use crate::combat::do_fire_actions;
 
 pub const DELTA_TIME: u64 = 1000;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
@@ -37,7 +39,7 @@ pub enum UpdateAction {
 }
 
 #[serde_as]
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Entities {
     pub ships: HashMap<String, Arc<RwLock<Ship>>>,
     pub missiles: HashMap<String, Arc<RwLock<Missile>>>,
@@ -74,6 +76,14 @@ impl PartialEq for Entities {
 }
 
 impl Entities {
+    pub fn new() -> Self {
+        Entities {
+            ships: HashMap::new(),
+            missiles: HashMap::new(),
+            planets: HashMap::new(),
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.ships.len() + self.missiles.len() + self.planets.len()
     }
@@ -102,7 +112,14 @@ impl Entities {
         Ok(entities)
     }
 
-    pub fn add_ship(&mut self, name: String, position: Vec3, velocity: Vec3, acceleration: Vec3, usp: &str) {
+    pub fn add_ship(
+        &mut self,
+        name: String,
+        position: Vec3,
+        velocity: Vec3,
+        acceleration: Vec3,
+        usp: &str,
+    ) {
         let ship = Ship::new(
             name.clone(),
             position,
@@ -224,7 +241,20 @@ impl Entities {
         }
     }
 
-    pub fn update_all(&mut self) -> Vec<EffectMsg> {
+    pub fn fire_actions(&mut self, fire_actions: Vec<(String, Vec<FireAction>)>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+        let mut next_round_ships = self.ships.clone();
+
+        let effects = fire_actions.iter().map(|(attacker, actions)| {
+            let (missiles, effects) = do_fire_actions(&attacker, &mut next_round_ships, actions, rng);
+            for missile in missiles {
+                self.launch_missile(&missile.source, &missile.target);
+            };
+            effects
+        }).flatten().collect();
+        effects
+    }
+
+    pub fn update_all(&mut self, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
         let mut planets = self.planets.values_mut().collect::<Vec<_>>();
         planets.sort_by(|a, b| {
             let a_ent = a.read().unwrap();
@@ -252,7 +282,10 @@ impl Entities {
                 // being embedded in the missile update code.  Also enables elimination of missiles.
                 match update? {
                     UpdateAction::ShipImpact { ship, missile } => {
-                        debug!("(Entity.update_all) Missile impact on {} by missile {}.", ship, missile);
+                        debug!(
+                            "(Entity.update_all) Missile impact on {} by missile {}.",
+                            ship, missile
+                        );
                         let ship_pos = self
                             .ships
                             .get(&ship)
@@ -262,8 +295,14 @@ impl Entities {
                             .get_position()
                             .clone();
 
-                        let mut target = self.ships.get(&ship).unwrap_or_else(|| panic!("Cannot find target {} for missile.", ship)).write().unwrap();
-                        let mut effects = attack(0, 0, missile_source, &mut target, Weapon::Missile);
+                        let mut target = self
+                            .ships
+                            .get(&ship)
+                            .unwrap_or_else(|| panic!("Cannot find target {} for missile.", ship))
+                            .write()
+                            .unwrap();
+                        let mut effects =
+                            attack(0, 0, missile_source, &mut target, Weapon::Missile, rng);
                         cleanup_missile_list.push(missile);
 
                         effects.push(EffectMsg::ShipImpact { position: ship_pos });
@@ -273,30 +312,53 @@ impl Entities {
                         assert!(name == missile_name);
                         debug!("(Entity.update_all) Removing missile {}", name);
                         cleanup_missile_list.push(name.clone());
-                        Some(vec![EffectMsg::ExhaustedMissile { position: missile_pos }])
+                        Some(vec![EffectMsg::ExhaustedMissile {
+                            position: missile_pos,
+                        }])
                     }
-                    update => panic!("(Entity.update_all) Unexpected update {:?} during missile updates.", update)
+                    update => panic!(
+                        "(Entity.update_all) Unexpected update {:?} during missile updates.",
+                        update
+                    ),
                 }
             })
-            .flatten().collect::<Vec<_>>();
+            .flatten()
+            .collect::<Vec<_>>();
 
-        let mut cleanup_ships_list = Vec::<String>::new();            
-        effects.append(&mut self.ships.values_mut().filter_map(|ship| {
-            let mut ship = ship.write().unwrap();
-            let update = ship.update();
-            let name = ship.get_name();            
-            let pos = ship.get_position();
+        let mut cleanup_ships_list = Vec::<String>::new();
+        effects.append(
+            &mut self
+                .ships
+                .values_mut()
+                .filter_map(|ship| {
+                    let mut ship = ship.write().unwrap();
+                    let update = ship.update();
+                    let name = ship.get_name();
+                    let pos = ship.get_position();
 
-            match update? {
-                UpdateAction::ShipDestroyed => {
-                    debug!("(Entity.update_all) Ship {} destroyed at position {:?}.", name, pos);
-                    cleanup_ships_list.push(name.to_string());
-                    Some(vec![EffectMsg::ShipDestroyed { position: pos },EffectMsg::Damage { content: format!("{} destroyed.", name) } ])
-                },
-                update => panic!("(Entity.update_all) Unexpected update {:?} during ship updates.", update)
-            }        
-        }).flatten().collect::<Vec<_>>());
-
+                    match update? {
+                        UpdateAction::ShipDestroyed => {
+                            debug!(
+                                "(Entity.update_all) Ship {} destroyed at position {:?}.",
+                                name, pos
+                            );
+                            cleanup_ships_list.push(name.to_string());
+                            Some(vec![
+                                EffectMsg::ShipDestroyed { position: pos },
+                                EffectMsg::Damage {
+                                    content: format!("{} destroyed.", name),
+                                },
+                            ])
+                        }
+                        update => panic!(
+                            "(Entity.update_all) Unexpected update {:?} during ship updates.",
+                            update
+                        ),
+                    }
+                })
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
 
         cleanup_missile_list.iter().for_each(|name| {
             debug!("(Entity.update_all) Removing missile {}", name);
@@ -476,15 +538,16 @@ impl<'de> Deserialize<'de> for Entities {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cgmath::{Vector2, Zero};
     use crate::ship::EXAMPLE_USP;
-    use serde_json::json;
     use assert_json_diff::assert_json_eq;
-
+    use cgmath::{Vector2, Zero};
+    use serde_json::json;
+    use rand::rngs::SmallRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_add_ship() {
-        let mut entities = Entities::default();
+        let mut entities = Entities::new();
 
         entities.add_ship(
             String::from("Ship1"),
@@ -505,7 +568,7 @@ mod tests {
             Vec3::new(7.0, 8.0, 9.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP
+            EXAMPLE_USP,
         );
 
         assert_eq!(
@@ -543,8 +606,9 @@ mod tests {
     #[test_log::test]
     fn test_update_all() {
         let _ = pretty_env_logger::try_init();
+        let mut rng = SmallRng::seed_from_u64(0);
 
-        let mut entities = Entities::default();
+        let mut entities = Entities::new();
 
         // Create entities with random positions and names
         entities.add_ship(
@@ -578,9 +642,9 @@ mod tests {
         entities.set_flight_plan("Ship3", &FlightPlan((acceleration3, 10000).into(), None));
 
         // Update the entities a few times
-        entities.update_all();
-        entities.update_all();
-        entities.update_all();
+        entities.update_all(&mut rng);
+        entities.update_all(&mut rng);
+        entities.update_all(&mut rng);
 
         // Validate the new positions for each entity
         let expected_position1 = Vec3::new(44132500.0, 44133500.0, 44134500.0);
@@ -621,8 +685,9 @@ mod tests {
     #[test]
     fn test_sun_update() {
         let _ = pretty_env_logger::try_init();
+        let mut rng = SmallRng::seed_from_u64(0);
 
-        let mut entities = Entities::default();
+        let mut entities = Entities::new();
 
         // Create some planets and see if they move.
         entities.add_planet(
@@ -635,9 +700,9 @@ mod tests {
         );
 
         // Update the planet a few times
-        entities.update_all();
-        entities.update_all();
-        entities.update_all();
+        entities.update_all(&mut rng);
+        entities.update_all(&mut rng);
+        entities.update_all(&mut rng);
 
         // Validate the position remains the same
         let expected_position = Vec3::new(0.0, 0.0, 0.0);
@@ -656,6 +721,7 @@ mod tests {
     // TODO: Add test to add a moon.
     fn test_planet_update() {
         let _ = pretty_env_logger::try_init();
+        let mut rng = SmallRng::seed_from_u64(0);
 
         fn check_radius_and_y(
             pos: Vec3,
@@ -678,7 +744,7 @@ mod tests {
             );
         }
 
-        let mut entities = Entities::default();
+        let mut entities = Entities::new();
 
         const EARTH_RADIUS: f64 = 151.25e9;
         // Create some planets and see if they move.
@@ -712,9 +778,9 @@ mod tests {
         );
 
         // Update the entities a few times
-        entities.update_all();
-        entities.update_all();
-        entities.update_all();
+        entities.update_all(&mut rng);
+        entities.update_all(&mut rng);
+        entities.update_all(&mut rng);
 
         // FIXME: This isn't really testing what we want to test.
         // Fix it so we have real primaries and test the distance to those.
@@ -826,7 +892,7 @@ mod tests {
 
     #[test_log::test]
     fn test_mixed_entities_serialize() {
-        let mut entities = Entities::default();
+        let mut entities = Entities::new();
 
         // This constant is the radius of the earth's orbit (distance from sun).
         // It is NOT the radius of the earth (6.371e6 m)
@@ -885,18 +951,18 @@ mod tests {
         );
 
         let cmp = json!({
-            "ships":[
-                {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
-                {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
-                {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6}],
-            "missiles":[],
-            "planets":[
-                {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":5.972e24,
-                "gravity_radius_1":6375069.342849095,"gravity_radius_05":9015709.525726125,"gravity_radius_025":12750138.68569819},
-                {"name":"Planet2","position":[0.0,5000000.0,151250000000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30000000.0,"mass":3.00e23},
-                {"name":"Planet3","position":[106949900654.4653,8000.0,106949900654.4653],"velocity":[0.0,0.0,0.0],"color":"green","radius":4000000.0,"mass":1e26,
-                "gravity_radius_2":18446331.779326223,"gravity_radius_1":26087052.57835697,"gravity_radius_05":36892663.558652446,"gravity_radius_025":52174105.15671394}
-             ]});
+        "ships":[
+            {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
+            {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
+            {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6}],
+        "missiles":[],
+        "planets":[
+            {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":5.972e24,
+            "gravity_radius_1":6375069.342849095,"gravity_radius_05":9015709.525726125,"gravity_radius_025":12750138.68569819},
+            {"name":"Planet2","position":[0.0,5000000.0,151250000000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30000000.0,"mass":3.00e23},
+            {"name":"Planet3","position":[106949900654.4653,8000.0,106949900654.4653],"velocity":[0.0,0.0,0.0],"color":"green","radius":4000000.0,"mass":1e26,
+            "gravity_radius_2":18446331.779326223,"gravity_radius_1":26087052.57835697,"gravity_radius_05":36892663.558652446,"gravity_radius_025":52174105.15671394}
+         ]});
 
         assert_json_eq!(&entities, &cmp);
     }

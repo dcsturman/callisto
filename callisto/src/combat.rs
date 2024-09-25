@@ -127,7 +127,8 @@ fn damage_lookup(table: &HdEntryTable, roll: usize) -> HdEntry {
 pub fn do_fire_actions(
     attacker: &str,
     ships: &mut HashMap<String, Arc<RwLock<Ship>>>,
-    actions: Vec<FireAction>,
+    actions: &Vec<FireAction>,
+    rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
     let mut new_missiles = vec![];
     let effects = actions
@@ -161,6 +162,7 @@ pub fn do_fire_actions(
                         &attacker,
                         &mut target,
                         action.kind.clone(),
+                        rng
                     ));
                     effects
                 }
@@ -537,8 +539,8 @@ pub fn attack(
     attacker_name: &str,
     defender: &mut Ship,
     weapon: Weapon,
+    rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
-    let mut rng = rand::thread_rng();
 
     let damage_roll: usize = rng.next_u32() as usize % HIT_DAMAGE_TABLE.len();
     let damage = damage_lookup(&HIT_DAMAGE_TABLE, damage_roll);
@@ -549,7 +551,7 @@ pub fn attack(
 
     let mut effects: Vec<EffectMsg> = (0..damage.single_hits)
         .map(|_| {
-            let roll = roll(&mut rng);
+            let roll = roll(rng);
             let location = EXTERNAL_DAMAGE_TABLE[roll].clone();
             do_damage(
                 location,
@@ -558,7 +560,7 @@ pub fn attack(
                 defender,
                 weapon.clone(),
                 roll,
-                &mut rng,
+                rng,
             )
         })
         .flatten()
@@ -567,7 +569,7 @@ pub fn attack(
     effects.append(
         &mut (0..damage.double_hits)
             .map(|_| {
-                let roll = roll(&mut rng);
+                let roll = roll(rng);
                 let location = EXTERNAL_DAMAGE_TABLE[roll].clone();
                 do_damage(
                     location,
@@ -576,7 +578,7 @@ pub fn attack(
                     defender,
                     weapon.clone(),
                     roll,
-                    &mut rng,
+                    rng,
                 )
             })
             .flatten()
@@ -586,7 +588,7 @@ pub fn attack(
     effects.append(
         &mut (0..damage.triple_hits)
             .map(|_| {
-                let roll = roll(&mut rng);
+                let roll = roll(rng);
                 let location = EXTERNAL_DAMAGE_TABLE[roll].clone();
                 do_damage(
                     location,
@@ -595,7 +597,7 @@ pub fn attack(
                     defender,
                     weapon.clone(),
                     roll,
-                    &mut rng,
+                    rng,
                 )
             })
             .flatten()

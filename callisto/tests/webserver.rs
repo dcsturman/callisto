@@ -39,6 +39,7 @@ const INVALID_PATH: &str = "unknown";
  */
 async fn spawn_test_server(port: u16) -> Child {
     let handle = Command::new(SERVER_PATH)
+        .arg("-t")
         .arg("-p")
         .arg(port.to_string())
         .kill_on_drop(true)
@@ -347,7 +348,9 @@ async fn test_update_missile() {
         .await
         .unwrap();
 
-    let compare = json!([{"kind" : "ShipImpact", "position" : [5000.0,0.0,5000.0]}]).to_string();
+    let compare = json!([{"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
+        {"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
+        {"kind" : "ShipImpact", "position" : [5000.0,0.0,5000.0]}]).to_string();
 
     assert_eq!(response, compare);
 
@@ -365,7 +368,7 @@ async fn test_update_missile() {
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-             "hull":6, "structure":6}],
+             "hull":4, "structure":6}],
              "missiles":[],"planets":[]});
 
     assert_json_eq!(
