@@ -105,7 +105,7 @@ impl HdEntry {
 pub type HdEntryTable = [HdEntry; 12];
 
 fn damage_lookup(table: &HdEntryTable, roll: usize) -> HdEntry {
-    let table_top = table.iter().rev().next().unwrap().top_range;
+    let table_top = table.iter().next_back().unwrap().top_range;
     let mut extra_single = 0;
     let mut extra_double = 0;
 
@@ -127,17 +127,23 @@ fn damage_lookup(table: &HdEntryTable, roll: usize) -> HdEntry {
 pub fn do_fire_actions(
     attacker: &str,
     ships: &mut HashMap<String, Arc<RwLock<Ship>>>,
-    actions: Vec<FireAction>,
+    actions: &[FireAction],
+    rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
     let mut new_missiles = vec![];
     let effects = actions
         .iter()
-        .map(|action| {
+        .flat_map(|action| {
             let mut target = ships.get(&action.target).unwrap().write().unwrap();
             let weapon = action.kind.clone();
             match weapon {
                 Weapon::Missile => {
                     // Missiles don't actually attack when fired.  They'll come back and call the attack function on impact.
+                    debug!(
+                        "(Combat.do_fire_actions) {} launches missile at {}.",
+                        attacker,
+                        target.get_name()
+                    );
                     new_missiles.push(LaunchMissileMsg {
                         source: attacker.to_string(),
                         target: target.get_name().to_string(),
@@ -158,15 +164,15 @@ pub fn do_fire_actions(
                     effects.append(&mut attack(
                         0,
                         0,
-                        &attacker,
+                        attacker,
                         &mut target,
                         action.kind.clone(),
+                        rng,
                     ));
                     effects
                 }
             }
         })
-        .flatten()
         .collect();
 
     (new_missiles, effects)
@@ -299,8 +305,8 @@ fn turret_hit(
     table_pos: usize,
     rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
-    let effects = (0..damage)
-        .map(|_| {
+    (0..damage)
+        .flat_map(|_| {
             let total_turrets: u8 = defender.usp.beam
                 + defender.usp.pulse
                 + defender.usp.particle
@@ -316,7 +322,7 @@ fn turret_hit(
                     rng,
                 );
             }
-            let turret = (rng.next_u32() as u8 % total_turrets) as u8;
+            let turret = rng.next_u32() as u8 % total_turrets;
             let damage_loc_name;
             if turret < defender.usp.beam {
                 damage_loc_name = "beam turret";
@@ -347,9 +353,7 @@ fn turret_hit(
                 damage_loc_name,
             )]
         })
-        .flatten()
-        .collect();
-    effects
+        .collect()
 }
 
 fn jump_hit(
@@ -506,7 +510,7 @@ fn do_damage(
         defender.get_name(),
         String::from(location.clone())
     );
-    let effects = match location {
+    match location {
         ShipSystem::Hull => hull_hit(damage, attacker_name, defender, weapon, table_pos, rng),
         ShipSystem::Armor => armor_hit(damage, attacker_name, defender, weapon, table_pos, rng),
         ShipSystem::Structure => {
@@ -526,9 +530,7 @@ fn do_damage(
         ShipSystem::Fuel => fuel_hit(damage, attacker_name, defender, weapon, table_pos, rng),
         ShipSystem::Hold => hold_hit(damage, attacker_name, defender, weapon, table_pos, rng),
         ShipSystem::Bridge => bridge_hit(damage, attacker_name, defender, weapon, table_pos, rng),
-    };
-
-    effects
+    }
 }
 
 pub fn attack(
@@ -537,19 +539,22 @@ pub fn attack(
     attacker_name: &str,
     defender: &mut Ship,
     weapon: Weapon,
+    rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
-    let mut rng = rand::thread_rng();
-
     let damage_roll: usize = rng.next_u32() as usize % HIT_DAMAGE_TABLE.len();
     let damage = damage_lookup(&HIT_DAMAGE_TABLE, damage_roll);
-    debug!(
-        "(Combat.attack) Damage roll {} for {:?} damage using {:?}.",
-        damage_roll, damage, weapon
+    info!(
+        "(Combat.attack) Damage roll {} by {} against {} for {:?} damage using {:?}.",
+        damage_roll,
+        attacker_name,
+        defender.get_name(),
+        damage,
+        weapon
     );
 
     let mut effects: Vec<EffectMsg> = (0..damage.single_hits)
-        .map(|_| {
-            let roll = roll(&mut rng);
+        .flat_map(|_| {
+            let roll = roll(rng);
             let location = EXTERNAL_DAMAGE_TABLE[roll].clone();
             do_damage(
                 location,
@@ -558,16 +563,15 @@ pub fn attack(
                 defender,
                 weapon.clone(),
                 roll,
-                &mut rng,
+                rng,
             )
         })
-        .flatten()
         .collect();
 
     effects.append(
         &mut (0..damage.double_hits)
-            .map(|_| {
-                let roll = roll(&mut rng);
+            .flat_map(|_| {
+                let roll = roll(rng);
                 let location = EXTERNAL_DAMAGE_TABLE[roll].clone();
                 do_damage(
                     location,
@@ -576,17 +580,16 @@ pub fn attack(
                     defender,
                     weapon.clone(),
                     roll,
-                    &mut rng,
+                    rng,
                 )
             })
-            .flatten()
             .collect(),
     );
 
     effects.append(
         &mut (0..damage.triple_hits)
-            .map(|_| {
-                let roll = roll(&mut rng);
+            .flat_map(|_| {
+                let roll = roll(rng);
                 let location = EXTERNAL_DAMAGE_TABLE[roll].clone();
                 do_damage(
                     location,
@@ -595,10 +598,9 @@ pub fn attack(
                     defender,
                     weapon.clone(),
                     roll,
-                    &mut rng,
+                    rng,
                 )
             })
-            .flatten()
             .collect(),
     );
 

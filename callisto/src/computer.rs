@@ -1,6 +1,6 @@
 use crate::entity::{Vec3, DELTA_TIME, G};
-use crate::ship::FlightPlan;
 use crate::payloads::Vec3asVec;
+use crate::ship::FlightPlan;
 use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;
 use gomez::{Domain, Problem, SolverDriver, System};
@@ -318,7 +318,10 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPathResult {
     let delta = params.end_pos - params.start_pos;
     let distance = delta.magnitude();
 
-    let guess_a = delta / distance * params.max_acceleration;
+    // If our guess has any NaN elements its due to distance being zero, so we know that element can be 0.
+    let guess_a =
+        (delta / distance * params.max_acceleration).map(|a| if a.is_nan() { 0.0 } else { a });
+
     let guess_t = (2.0 * distance / params.max_acceleration).sqrt();
 
     let array_i: [f64; 3] = guess_a.into();

@@ -21,6 +21,7 @@ clap = { version = "4.5.4", features = ["derive"] }
 rand = "0.8.5"
 derivative = "2.2.0"
 assert-json-diff = "2.0.2"
+approx = "0.5.1"
 
 [dev-dependencies]
 mockstream = "0.0.3"
