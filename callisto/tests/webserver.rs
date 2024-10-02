@@ -216,7 +216,7 @@ async fn test_add_planet_ship() {
 
     assert_json_eq!(result, compare);
 
-    let planet = r#"{"name":"planet2","position":[0,0,0],"primary":"planet1", "color":"red","radius":1.5e6,"mass":1e23}"#;
+    let planet = r#"{"name":"planet2","position":[1000000,0,0],"primary":"planet1", "color":"red","radius":1.5e6,"mass":1e23}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_PLANET_PATH))
         .body(planet)
@@ -244,7 +244,7 @@ async fn test_add_planet_ship() {
             "gravity_radius_05":6389996.771013086,
             "gravity_radius_025": 9036820.09708699,
             "gravity_radius_2": 3194998.385506543},
-        {"name":"planet2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+        {"name":"planet2","position":[1000000.0,0.0,0.0],"velocity":[0.0,0.0,14148.851543499915],
             "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
             "gravity_radius_025":1649890.0717635232}],
         "ships":[
@@ -348,9 +348,11 @@ async fn test_update_missile() {
         .await
         .unwrap();
 
-    let compare = json!([{"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
+    let compare =
+        json!([{"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
         {"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
-        {"kind" : "ShipImpact", "position" : [5000.0,0.0,5000.0]}]).to_string();
+        {"kind" : "ShipImpact", "position" : [5000.0,0.0,5000.0]}])
+        .to_string();
 
     assert_eq!(response, compare);
 

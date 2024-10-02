@@ -5,8 +5,14 @@ pub mod entity;
 pub mod missile;
 pub mod payloads;
 pub mod planet;
-pub mod ship;
 pub mod server;
+pub mod ship;
+
+#[macro_use]
+pub mod cov_util;
+
+#[cfg(test)]
+pub mod tests;
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -28,8 +34,7 @@ use server::Server;
 
 use entity::Entities;
 use payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, RemoveEntityMsg,
-    SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, RemoveEntityMsg, SetPlanMsg,
 };
 
 enum SizeCheckError {
@@ -94,9 +99,9 @@ macro_rules! deserialize_body_or_respond {
 pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
-    test_mode: bool
+    test_mode: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    let rng = &mut if test_mode {
+    let rng = if test_mode {
         info!("(lib.handleRequest) Server in TEST mode.");
         // Use 0 to seed all test case random number generators.
         Box::new(SmallRng::seed_from_u64(0))
@@ -112,7 +117,7 @@ pub async fn handle_request(
         req.uri().path()
     );
 
-    let server = Server::new(entities);
+    let mut server = Server::new(entities, rng);
 
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, _) => {
@@ -143,7 +148,7 @@ pub async fn handle_request(
             match server.add_planet(planet) {
                 Ok(msg) => Ok(build_ok_response(&msg)),
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
-            }            
+            }
         }
         (&Method::POST, "/remove") => {
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
@@ -158,13 +163,13 @@ pub async fn handle_request(
             let plan_msg = deserialize_body_or_respond!(req, SetPlanMsg);
 
             match server.set_plan(plan_msg) {
-                Ok(msg) => Ok(build_ok_response(&msg)),
+                Ok(_) => Ok(build_ok_response("Set acceleration action executed")),
                 Err(err) => {
                     let resp: Response<Full<Bytes>> = Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(Bytes::copy_from_slice(err.as_bytes()).into())
-                    .unwrap();
+                        .status(StatusCode::BAD_REQUEST)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(err.as_bytes()).into())
+                        .unwrap();
                     Ok(resp)
                 }
             }
@@ -177,13 +182,13 @@ pub async fn handle_request(
             // The first element is the name of the ship. The second element is a vector of FireActions.
             let fire_actions = deserialize_body_or_respond!(req, FireActionsMsg);
 
-            match server.update(fire_actions, rng) {
+            match server.update(fire_actions) {
                 Ok(msg) => {
                     let resp = Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(Bytes::copy_from_slice(msg.as_bytes()).into())
-                    .unwrap();
+                        .status(StatusCode::OK)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(msg.as_bytes()).into())
+                        .unwrap();
                     Ok(resp)
                 }
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
@@ -196,10 +201,10 @@ pub async fn handle_request(
             match server.compute_path(msg) {
                 Ok(json) => {
                     let resp = Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(Bytes::copy_from_slice(json.as_bytes()).into())
-                    .unwrap();
+                        .status(StatusCode::OK)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                        .unwrap();
                     Ok(resp)
                 }
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
@@ -211,12 +216,12 @@ pub async fn handle_request(
             match server.get() {
                 Ok(json) => {
                     let resp = Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Access-Control-Allow-Origin", "*")
-                    .body(Bytes::copy_from_slice(json.as_bytes()).into())
-                    .unwrap();
+                        .status(StatusCode::OK)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                        .unwrap();
                     Ok(resp)
-                    }
+                }
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
             }
         }

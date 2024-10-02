@@ -59,7 +59,7 @@ impl Missile {
         );
 
         debug!(
-            "Creating initial missile acceleration and calling targeting computer for missile {} with params: {:?}",
+            "(Missile.new) Creating initial missile acceleration and calling targeting computer for missile {} with params: {:?}",
             name, params
         );
 
@@ -176,5 +176,43 @@ impl Entity for Missile {
                 name: self.name.clone(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::Vec3;
+    use crate::ship::{FlightPlan, Ship};
+    use cgmath::Zero;
+    use std::sync::{Arc, RwLock};
+
+    #[test_log::test]
+    fn test_missile_basics() {
+        let _ = pretty_env_logger::try_init();
+        let mut missile = Missile::new(
+            String::from("missile1"),
+            String::from("source1"),
+            String::from("target1"),
+            Arc::new(RwLock::new(Ship::new(
+                String::from("target1"),
+                Vec3::zero(),
+                Vec3::zero(),
+                FlightPlan::default(),
+                String::from("98266C2-30060-B").into(),
+            ))),
+            Vec3::zero(),
+            Vec3::zero(),
+            100,
+        );
+        assert_eq!(missile.get_name(), "missile1");
+        assert_eq!(missile.get_position(), Vec3::zero());
+        assert_eq!(missile.get_velocity(), Vec3::zero());
+        missile.set_name("missile2".to_string());
+        missile.set_position(Vec3::new(1000.0, 2000.0, 3000.0));
+        missile.set_velocity(Vec3::new(4000.0, 5000.0, 6000.0));
+        assert_eq!(missile.get_name(), "missile2");
+        assert_eq!(missile.get_position(), Vec3::new(1000.0, 2000.0, 3000.0));
+        assert_eq!(missile.get_velocity(), Vec3::new(4000.0, 5000.0, 6000.0));
     }
 }

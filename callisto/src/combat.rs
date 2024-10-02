@@ -139,6 +139,11 @@ pub fn do_fire_actions(
             match weapon {
                 Weapon::Missile => {
                     // Missiles don't actually attack when fired.  They'll come back and call the attack function on impact.
+                    debug!(
+                        "(Combat.do_fire_actions) {} launches missile at {}.",
+                        attacker,
+                        target.get_name()
+                    );
                     new_missiles.push(LaunchMissileMsg {
                         source: attacker.to_string(),
                         target: target.get_name().to_string(),
@@ -162,7 +167,7 @@ pub fn do_fire_actions(
                         attacker,
                         &mut target,
                         action.kind.clone(),
-                        rng
+                        rng,
                     ));
                     effects
                 }
@@ -536,12 +541,15 @@ pub fn attack(
     weapon: Weapon,
     rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
-
     let damage_roll: usize = rng.next_u32() as usize % HIT_DAMAGE_TABLE.len();
     let damage = damage_lookup(&HIT_DAMAGE_TABLE, damage_roll);
-    debug!(
-        "(Combat.attack) Damage roll {} for {:?} damage using {:?}.",
-        damage_roll, damage, weapon
+    info!(
+        "(Combat.attack) Damage roll {} by {} against {} for {:?} damage using {:?}.",
+        damage_roll,
+        attacker_name,
+        defender.get_name(),
+        damage,
+        weapon
     );
 
     let mut effects: Vec<EffectMsg> = (0..damage.single_hits)

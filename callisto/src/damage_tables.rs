@@ -1,6 +1,6 @@
-use crate::combat::{ ShipSystem, HdEntry, HdEntryTable };
+use crate::combat::{HdEntry, HdEntryTable, ShipSystem};
 
-pub const EXTERNAL_DAMAGE_TABLE : [ShipSystem; 13] = [
+pub const EXTERNAL_DAMAGE_TABLE: [ShipSystem; 13] = [
     ShipSystem::Hull,
     ShipSystem::Hull,
     ShipSystem::Hull,
@@ -13,10 +13,10 @@ pub const EXTERNAL_DAMAGE_TABLE : [ShipSystem; 13] = [
     ShipSystem::Fuel,
     ShipSystem::Manuever,
     ShipSystem::Sensors,
-    ShipSystem::Hull
+    ShipSystem::Hull,
 ];
 
-pub const INTERNAL_DAMAGE_TABLE : [ShipSystem; 13] = [
+pub const INTERNAL_DAMAGE_TABLE: [ShipSystem; 13] = [
     ShipSystem::Hull,
     ShipSystem::Hull,
     ShipSystem::Structure,
@@ -104,5 +104,5 @@ pub const HIT_DAMAGE_TABLE: HdEntryTable = [
         single_hits: 0,
         double_hits: 0,
         triple_hits: 2,
-    }
+    },
 ];

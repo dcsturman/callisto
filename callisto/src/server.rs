@@ -2,7 +2,6 @@ use std::result::Result;
 use std::sync::{Arc, Mutex};
 
 use cgmath::InnerSpace;
-use log::{debug, info, warn};
 use rand::RngCore;
 
 use crate::computer::{compute_flight_path, FlightParams};
@@ -11,15 +10,17 @@ use crate::payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, FlightPathMsg, RemoveEntityMsg,
     SetPlanMsg,
 };
+use crate::cov_util::{debug, info};
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
 pub struct Server {
     entities: Arc<Mutex<Entities>>,
+    rng: Box<dyn RngCore + Send>,
 }
 
 impl Server {
-    pub fn new(entities: Arc<Mutex<Entities>>) -> Self {
-        Server { entities }
+    pub fn new(entities: Arc<Mutex<Entities>>, rng: Box<dyn RngCore + Send>) -> Self {
+        Server { entities, rng }
     }
 
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
@@ -33,6 +34,10 @@ impl Server {
         );
 
         Ok("Add ship action executed".to_string())
+    }
+
+    pub fn get_entities(&self) -> Result<Entities, String> {
+        Ok(self.entities.lock().unwrap().clone())
     }
 
     pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
@@ -64,31 +69,15 @@ impl Server {
         Ok("Remove action executed".to_string())
     }
 
-    pub fn set_plan(&self, plan_msg: SetPlanMsg) -> Result<String, String> {
+    pub fn set_plan(&self, plan_msg: SetPlanMsg) -> Result<(), String> {
         // Change the acceleration of the entity
-        let okay = self
-            .entities
+        self.entities
             .lock()
             .unwrap()
-            .set_flight_plan(&plan_msg.name, &plan_msg.plan);
-
-        if !okay {
-            warn!(
-                "Unable to set flight plan {:?} for entity {}",
-                &plan_msg.plan, plan_msg.name
-            );
-            // When set_flight_plan fails, we don't set a new plan. So return a 304 Not Modified
-            let err_msg = format!("Unable to set acceleration for entity {}", plan_msg.name);
-            return Err(err_msg);
-        }
-        Ok("Set acceleration action executed".to_string())
+            .set_flight_plan(&plan_msg.name, &plan_msg.plan)
     }
 
-    pub fn update(
-        &self,
-        fire_actions: FireActionsMsg,
-        rng: &mut dyn RngCore,
-    ) -> Result<String, String> {
+    pub fn update(&mut self, fire_actions: FireActionsMsg) -> Result<String, String> {
         // Grab the lock on entities
         let mut entities = self
             .entities
@@ -99,10 +88,10 @@ impl Server {
         // so that all effects are "simultaneous"
         // 2. Add all new missiles into the entities structure.
         // 3. Return a set of effects
-        let mut effects = entities.fire_actions(fire_actions, rng);
+        let mut effects = entities.fire_actions(fire_actions, &mut self.rng);
 
         // 4. Update all entities (ships, planets, missiles) and gather in their effects.
-        effects.append(&mut entities.update_all(rng));
+        effects.append(&mut entities.update_all(&mut self.rng));
 
         debug!("(/update) Effects: {:?}", effects);
 

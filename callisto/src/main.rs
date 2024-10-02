@@ -74,9 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let e = entities.clone();
         tokio::task::spawn(async move {
             let ent = e.clone();
-            let handler = move |req| {
-                handle_request(req, ent.clone(), test_mode)
-            };
+            let handler = move |req| handle_request(req, ent.clone(), test_mode);
 
             // We bind the incoming connection to our service
             let builder = http1::Builder::new();

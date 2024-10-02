@@ -5,9 +5,9 @@ use super::computer::FlightPathResult;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use super::entity::{ Entity, Vec3 };
-use super::ship::{ FlightPlan, Ship };
 use super::combat::Weapon;
+use super::entity::{Entity, Vec3};
+use super::ship::{FlightPlan, Ship};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -46,7 +46,7 @@ pub type RemoveEntityMsg = String;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetPlanMsg {
     pub name: String,
-    pub plan: FlightPlan
+    pub plan: FlightPlan,
 }
 
 #[serde_as]
@@ -75,7 +75,7 @@ pub struct FireAction {
     pub target: String,
 }
 
-pub type FireActionsMsg  = Vec<(String, Vec<FireAction>)>;
+pub type FireActionsMsg = Vec<(String, Vec<FireAction>)>;
 
 pub const EMPTY_FIRE_ACTIONS_MSG: FireActionsMsg = vec![];
 
@@ -83,37 +83,50 @@ pub const EMPTY_FIRE_ACTIONS_MSG: FireActionsMsg = vec![];
 // So including here as a comment for completeness.
 // pub type ListEntitiesMsg = Entities;
 
-
 #[serde_as]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[serde(tag = "kind")]
 pub enum EffectMsg {
-    ShipImpact { 
+    ShipImpact {
         #[serde_as(as = "Vec3asVec")]
-        position: Vec3
+        position: Vec3,
     },
     ExhaustedMissile {
         #[serde_as(as = "Vec3asVec")]
-        position: Vec3
+        position: Vec3,
     },
     ShipDestroyed {
         #[serde_as(as = "Vec3asVec")]
-        position: Vec3
+        position: Vec3,
     },
     BeamHit {
         #[serde_as(as = "Vec3asVec")]
         origin: Vec3,
         #[serde_as(as = "Vec3asVec")]
-        position: Vec3
+        position: Vec3,
     },
     Damage {
-        content: String
-    }
+        content: String,
+    },
 }
 impl EffectMsg {
-    pub fn from_damage(attacker_name: &str, defender: &Ship, damage: u8, weapon_name: &str, damage_loc_name: &str) -> EffectMsg {
-        EffectMsg::Damage { content: format!("{} did {} {} damage to {}'s {}",
-            attacker_name, damage, weapon_name, defender.get_name(), damage_loc_name) as String }
+    pub fn from_damage(
+        attacker_name: &str,
+        defender: &Ship,
+        damage: u8,
+        weapon_name: &str,
+        damage_loc_name: &str,
+    ) -> EffectMsg {
+        EffectMsg::Damage {
+            content: format!(
+                "{} did {} {} damage to {}'s {}",
+                attacker_name,
+                damage,
+                weapon_name,
+                defender.get_name(),
+                damage_loc_name
+            ) as String,
+        }
     }
 }
 
@@ -137,9 +150,9 @@ serde_with::serde_conv!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-    use cgmath::Zero;
     use crate::ship::EXAMPLE_USP;
+    use cgmath::Zero;
+    use serde_json::json;
 
     #[test]
     fn test_add_ship_msg() {
@@ -148,8 +161,7 @@ mod tests {
             position: Vec3::zero(),
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
-            usp: EXAMPLE_USP.to_string()
-            
+            usp: EXAMPLE_USP.to_string(),
         };
         let json = json!({
             "name": "ship1",
@@ -189,7 +201,11 @@ mod tests {
             entity_name: "ship1".to_string(),
             end_pos: Vec3::zero(),
             end_vel: Vec3::zero(),
-            target_velocity: Some(Vec3 { x: 10.0, y: 20.0, z: 30.0 }),
+            target_velocity: Some(Vec3 {
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+            }),
             standoff_distance: 100.0,
         };
 
@@ -202,14 +218,16 @@ mod tests {
         });
 
         let json_str2 = serde_json::to_string(&msg2).unwrap();
-        println!("json_str2: {}", json_str2);
         assert_eq!(json_str2, json2.to_string());
 
         let _response_msg2 = serde_json::from_str::<ComputePathMsg>(json_str2.as_str()).unwrap();
     }
 
-    #[test_log::test] fn test_serialize_effect_msg() {
-        let msg = EffectMsg::ShipImpact { position: Vec3::zero() };
+    #[test_log::test]
+    fn test_serialize_effect_msg() {
+        let msg = EffectMsg::ShipImpact {
+            position: Vec3::zero(),
+        };
         let json = json!({
             "kind" : "ShipImpact",
             "position": [0.0, 0.0, 0.0]
@@ -218,7 +236,9 @@ mod tests {
         let json_str = serde_json::to_string(&msg).unwrap();
         assert_eq!(json_str, json.to_string());
 
-        let msg = EffectMsg::Damage { content: "2 points to the hull".to_string() };
+        let msg = EffectMsg::Damage {
+            content: "2 points to the hull".to_string(),
+        };
         let json = json!({
             "kind" : "Damage",
             "content" : "2 points to the hull"
@@ -227,7 +247,9 @@ mod tests {
         let json_str = serde_json::to_string(&msg).unwrap();
         assert_eq!(json_str, json.to_string());
 
-        let msg = EffectMsg::ExhaustedMissile { position: Vec3::zero() };
+        let msg = EffectMsg::ExhaustedMissile {
+            position: Vec3::zero(),
+        };
         let json = json!({
             "kind" : "ExhaustedMissile",
             "position": [0.0, 0.0, 0.0]
@@ -240,8 +262,20 @@ mod tests {
     #[test_log::test]
     fn test_serialize_fire_actions_msg() {
         let msg = vec![
-            ("ship1".to_string(), vec![FireAction { kind: Weapon::Beam, target: "ship2".to_string() }]),
-            ("ship2".to_string(), vec![FireAction { kind: Weapon::Pulse, target: "ship1".to_string() }]),
+            (
+                "ship1".to_string(),
+                vec![FireAction {
+                    kind: Weapon::Beam,
+                    target: "ship2".to_string(),
+                }],
+            ),
+            (
+                "ship2".to_string(),
+                vec![FireAction {
+                    kind: Weapon::Pulse,
+                    target: "ship1".to_string(),
+                }],
+            ),
         ];
         let json = json!([
             [
