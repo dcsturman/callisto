@@ -16,8 +16,11 @@ import {
   EntityToShowContext,
 } from "./Universal";
 
-function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
-  const controlGravityWell = args.controlGravityWell;
+function Planet(args: {
+  planet: PlanetType;
+  controlGravityWell: boolean;
+  controlJumpDistance: boolean;
+}) {
   const entityToShow = useContext(EntityToShowContext);
   const radiusMeters = args.planet.radius;
   const radiusUnits = radiusMeters * SCALE;
@@ -26,20 +29,54 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
   const GRAVITY_WELL_OPACITY = 0.15;
 
   // Render the gravity wells at the given distance from the planet.
-  // The order is the render order which is ugly but is critical to avoid some of the transparent 
+  // The order is the render order which is ugly but is critical to avoid some of the transparent
   // gravity wells from not being rendered.
   function gravityWell(distance: number, order: number) {
     return (
       <>
-        {controlGravityWell && (
-          <mesh position={pos} renderOrder={order} >
-            <sphereGeometry args={[distance * SCALE, 15, 15]} />
-            <meshLambertMaterial color="#ffffff" opacity={GRAVITY_WELL_OPACITY} alphaToCoverage={true} shadowSide={THREE.FrontSide} transparent={true} side={THREE.FrontSide} />
-          </mesh>
-        )}
+        <mesh position={pos} renderOrder={order}>
+          <sphereGeometry args={[distance * SCALE, 15, 15]} />
+          <meshLambertMaterial
+            color="#ffffff"
+            opacity={GRAVITY_WELL_OPACITY}
+            alphaToCoverage={true}
+            shadowSide={THREE.FrontSide}
+            transparent={true}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
       </>
     );
   }
+
+  function allViewChanges() {
+    return (
+      <>
+        {args.controlJumpDistance && (<mesh position={pos} renderOrder={12}>
+          <sphereGeometry args={[args.planet.radius*200 * SCALE, 14, 14]} />
+          <meshBasicMaterial
+            color="#888888"
+            wireframe={true}
+            alphaToCoverage={false}
+            transparent={true}
+          />
+        </mesh>)}
+        {args.controlGravityWell &&
+          args.planet.gravity_radius_025 &&
+          gravityWell(args.planet.gravity_radius_025, 10)}
+        {args.controlGravityWell &&
+          args.planet.gravity_radius_05 &&
+          gravityWell(args.planet.gravity_radius_05, 8)}
+        {args.controlGravityWell &&
+          args.planet.gravity_radius_1 &&
+          gravityWell(args.planet.gravity_radius_1, 6)}
+        {args.controlGravityWell &&
+          args.planet.gravity_radius_2 &&
+          gravityWell(args.planet.gravity_radius_2, 4)}
+      </>
+    );
+  }
+
   type PlanetTemplateType = Record<
     string,
     {
@@ -155,28 +192,25 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
   if (texture_details != null) {
     return (
       <>
-      {args.planet.gravity_radius_025 && gravityWell(args.planet.gravity_radius_025, 5)}
-      {args.planet.gravity_radius_05 && gravityWell(args.planet.gravity_radius_05, 4)}
-      {args.planet.gravity_radius_1 && gravityWell(args.planet.gravity_radius_1, 3)}
-      {args.planet.gravity_radius_2 && gravityWell(args.planet.gravity_radius_2, 2 )}
-      <mesh
-        ref={ref}
-        rotation-y={1}
-        position={pos}
-        onPointerOver={() => entityToShow.setEntityToShow(args.planet)}
-        onPointerLeave={() => entityToShow.setEntityToShow(null)}>
-        <icosahedronGeometry args={[radiusUnits, 15]} />
-        <meshPhongMaterial
-          map={texture_details.texture}
-          bumpMap={texture_details.bumpMap}
-          bumpScale={texture_details.bumpScale}
-          specularMap={texture_details.specularMap}
-          specular={texture_details.specular}
-          shininess={8}
-          side={THREE.FrontSide}
-          transparent={false}
-        />
-      </mesh>
+        {allViewChanges()}
+        <mesh
+          ref={ref}
+          rotation-y={1}
+          position={pos}
+          onPointerOver={() => entityToShow.setEntityToShow(args.planet)}
+          onPointerLeave={() => entityToShow.setEntityToShow(null)}>
+          <icosahedronGeometry args={[radiusUnits, 15]} />
+          <meshPhongMaterial
+            map={texture_details.texture}
+            bumpMap={texture_details.bumpMap}
+            bumpScale={texture_details.bumpScale}
+            specularMap={texture_details.specularMap}
+            specular={texture_details.specular}
+            shininess={8}
+            side={THREE.FrontSide}
+            transparent={false}
+          />
+        </mesh>
       </>
     );
   } else {
@@ -185,6 +219,7 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
 
     return (
       <>
+        {allViewChanges()}
         <EffectComposer>
           <Bloom
             intensity={1.0} // The bloom intensity.
@@ -215,11 +250,20 @@ function Planet(args: { planet: PlanetType; controlGravityWell: boolean }) {
   }
 }
 
-function Planets(args: { planets: PlanetType[], controlGravityWell: boolean }) {
+function Planets(args: {
+  planets: PlanetType[];
+  controlGravityWell: boolean;
+  controlJumpDistance: boolean;
+}) {
   return (
     <>
       {args.planets.map((planet, index) => (
-        <Planet key={planet.name} planet={planet} controlGravityWell={args.controlGravityWell} />
+        <Planet
+          key={planet.name}
+          planet={planet}
+          controlGravityWell={args.controlGravityWell}
+          controlJumpDistance={args.controlJumpDistance}
+        />
       ))}
     </>
   );
@@ -252,14 +296,21 @@ function Axes() {
   );
 }
 
-function SpaceView(args: { controlGravityWell: boolean }) {
+function SpaceView(args: {
+  controlGravityWell: boolean;
+  controlJumpDistance: boolean;
+}) {
   const serverEntities = useContext(EntitiesServerContext);
   const planets = serverEntities.entities.planets;
 
   return (
     <>
       <Axes />
-      <Planets planets={planets} controlGravityWell={args.controlGravityWell} />
+      <Planets
+        planets={planets}
+        controlGravityWell={args.controlGravityWell}
+        controlJumpDistance={args.controlJumpDistance}
+      />
       <Galaxy />
     </>
   );

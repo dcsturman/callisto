@@ -29,6 +29,10 @@ export class Ship extends Entity {
     this.plan = plan;
     this.usp = usp;
   }
+
+  static parse(json: any): Ship {
+    return new Ship(json.name, json.position, json.velocity, json.plan, json.usp);
+  }
 }
 
 export class Planet extends Entity {
@@ -52,6 +56,10 @@ export class Planet extends Entity {
     this.gravity_radius_05 = gravity_radius_05;
     this.gravity_radius_025 = gravity_radius_025;
   }
+
+  static parse(json: any): Planet {
+    return new Planet(json.name, json.position, json.velocity, json.color, json.primary, json.radius, json.mass, json.gravity_radius_2, json.gravity_radius_1, json.gravity_radius_05, json.gravity_radius_025);
+  }
 }
 
 export class Missile extends Entity {
@@ -63,12 +71,30 @@ export class Missile extends Entity {
     super(name, position, velocity);
     this.acceleration = acceleration;
   }
+
+  static parse(json: any): Missile {
+    return new Missile(json.name, json.position, json.velocity, json.acceleration);
+  }
 }
 
-export type EntityList = {
+export class EntityList {
   ships: Ship[];
   planets: Planet[];
   missiles: Missile[];
+
+  constructor() {
+    this.ships = [];
+    this.planets = [];
+    this.missiles = [];
+  }
+
+  static parse(json: any): EntityList {
+    let entities = new EntityList();
+    entities.ships = json.ships.map((ship: any) => Ship.parse(ship));
+    entities.planets = json.planets.map((planet: any) => Planet.parse(planet));
+    entities.missiles = json.missiles.map((missile: any) => Missile.parse(missile));
+    return entities;
+  }
 };
 export type EntityRefreshCallback = (entities: EntityList) => void;
 
@@ -92,7 +118,7 @@ export type FlightPathResult = {
   plan: [Acceleration, Acceleration | null]
 };
 
-export type ViewControlParams = {gravityWells: boolean};
+export type ViewControlParams = {gravityWells: boolean, jumpDistance: boolean};
 
 export const SCALE = 1e-6; // 1 unit = 100km or 1e6m
 export const TURN_IN_SECONDS = 1e3;

@@ -1,7 +1,9 @@
 import {
   Acceleration,
   EntityRefreshCallback,
+  EntityList,
   FlightPathResult,
+  Planet,
 } from "./Universal";
 import { FireState, stringifyFireState } from "./Controls";
 import { Effect } from "./Effects";
@@ -176,6 +178,7 @@ export function launchMissile(
 export function getEntities(callback: EntityRefreshCallback) {
   return fetch(`http://${address}:${port}/`)
     .then((response) => response.json())
+    .then((json) => EntityList.parse(json))
     .then((entities) => {
       console.log(`Received Entities: ${JSON.stringify(entities)}`);
       callback(entities);
