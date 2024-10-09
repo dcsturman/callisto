@@ -950,11 +950,24 @@ export function ViewControls(args: {
           checked={args.viewControls.gravityWells}
           onChange={() =>
             args.setViewControls({
-              gravityWells: !args.viewControls.gravityWells,
+              ...args.viewControls, gravityWells: !args.viewControls.gravityWells
             })
           }
         />{" "}
         Gravity Well
+      </label>
+      <label style={{ display: "flex" }}>
+        {" "}
+        <input
+          type="checkbox"
+          checked={args.viewControls.jumpDistance}
+          onChange={() =>
+            args.setViewControls({
+              ...args.viewControls, jumpDistance: !args.viewControls.jumpDistance
+            })
+          }
+        />{" "}
+        100 Diameter Limit
       </label>
     </div>
   );
@@ -973,6 +986,8 @@ export function EntityInfoWindow(args: { entity: Entity }) {
     isShip = true;
     ship_next_accel = args.entity.plan[0][0];
   }
+
+  console.log("(EntityInfoWindow) isPlanet = ", isPlanet, " Entity = ", JSON.stringify(args.entity), " classname = ", args.entity.constructor.name);
 
   return (
     <div id="ship-info-window" className="ship-info-window">

@@ -112,7 +112,7 @@ impl Planet {
             self.radius,
             gravity_radius(0.25, self.mass)
         );
-        debug!(
+        info!(
             "(planet.reset_gravity_wells) Planet {} has gravity wells {:?}, {:?}, {:?}, {:?}",
             self.name, gravity_radius_2, gravity_radius_1, gravity_radius_05, gravity_radius_025
         );

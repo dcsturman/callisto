@@ -43,6 +43,7 @@ function App() {
   const [camera, setCamera] = useState<THREE.Camera | null>(null);
   const [viewControls, setViewControls] = useState<ViewControlParams>({
     gravityWells: false,
+    jumpDistance: false
   });
 
   const getAndShowPlan = (
@@ -166,7 +167,7 @@ function App() {
                   setCameraPos={setCameraPos}
                   setCamera={setCamera}
                 />
-                <SpaceView controlGravityWell={viewControls.gravityWells} />
+                <SpaceView controlGravityWell={viewControls.gravityWells} controlJumpDistance={viewControls.jumpDistance} />
                 <Ships setComputerShipName={setComputerShipName} />
                 <Missiles />
                 {events && events.length > 0 && (

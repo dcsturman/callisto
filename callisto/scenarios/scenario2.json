@@ -5,8 +5,7 @@
         "position" : [-149.6e9, 0, 0],
         "velocity" : [0, 0, 0],
                 "color" : "#fdb813",
-                "radius" : 30.96e8,
-                "old_radius" : 6.96e8,
+                "radius" : 6.96e8,
                 "mass" : 1.989e30
     },
     {
