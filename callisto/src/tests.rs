@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
-use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION};
+use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
 use crate::payloads::{AddShipMsg, AddPlanetMsg, EffectMsg, FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
 use crate::server::Server;
 use crate::ship::EXAMPLE_USP;
@@ -166,7 +166,7 @@ fn test_update_ship() {
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
-    assert_eq!(ship.get_position(), Vec3::new(1000000.0, 0.0, 0.0));
+    assert_eq!(ship.get_position(), Vec3::new(1000.0*DELTA_TIME as f64, 0.0, 0.0));
     assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
 }
 
@@ -206,7 +206,7 @@ fn test_update_missile() {
     let entities = server.get().unwrap();
     let compare = json!(
         {"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -298,12 +298,12 @@ fn test_compute_path_basic() {
         .unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path.len(), 7);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29421000.0,
+            x: 3812961.6,
             y: 0.0,
             z: 0.0
         }
@@ -311,12 +311,12 @@ fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58842000.0,
+            x: 15251846.4,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero());
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
     let (a, t) = plan.plan.0.into();
     assert_ulps_eq!(
         a,
@@ -357,12 +357,12 @@ fn test_compute_path_with_standoff() {
     let response = server.compute_path(serde_json::from_str(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 60000}"#).unwrap()).unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path.len(), 7);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29391000.0,
+            x: 3812961.6,
             y: 0.0,
             z: 0.0
         }
@@ -370,12 +370,12 @@ fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58782000.0,
+            x: 15251846.4,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero());
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
     let (a, t) = plan.plan.0.into();
     assert_ulps_eq!(
         a,
@@ -436,7 +436,7 @@ fn test_exhausted_missile() {
     // Third round missile should exhaust itself.
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
     let expected =
-        json!([{"kind": "ExhaustedMissile", "position":[83922261.21834418,0.0,83922261.21834418]}]);
+        json!([{"kind": "ExhaustedMissile", "position":[11491790.796242177,0.0,11491790.796242177]}]);
     assert_eq!(response, expected.to_string(), "Round 2");
 }
 

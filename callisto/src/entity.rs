@@ -15,7 +15,7 @@ use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship};
 use crate::cov_util::{debug, info, error};
 
-pub const DELTA_TIME: u64 = 1000;
+pub const DELTA_TIME: u64 = 360;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
 // We will use 4 sig figs for every physics constant we import.
 // This is the value of 1 (earth) gravity in m/s^2
@@ -606,6 +606,7 @@ mod tests {
     use super::*;
     use crate::cov_util::debug;
     use crate::ship::EXAMPLE_USP;
+    use cgmath::assert_relative_eq;
     use assert_json_diff::assert_json_eq;
     use cgmath::{Vector2, Zero};
     use rand::rngs::SmallRng;
@@ -778,10 +779,10 @@ mod tests {
         entities.update_all(&mut rng);
 
         // Validate the new positions for each entity
-        let expected_position1 = Vec3::new(44132500.0, 44133500.0, 44134500.0);
-        let expected_position2 = Vec3::new(88267000.0, 88268000.0, -88257000.0);
-        let expected_position3 = Vec3::new(176533000.0, -44123500.0, 9000.0);
-        assert_eq!(
+        let expected_position1 = Vec3::new(5720442.4, 5721442.4, 5722442.4);
+        let expected_position2 = Vec3::new(11442884.8, 11443884.8, -11432884.8);
+        let expected_position3 = Vec3::new(22884769.6, -5711442.4, 9000.0);
+        assert_relative_eq!(
             entities
                 .ships
                 .get("Ship1")
@@ -789,9 +790,10 @@ mod tests {
                 .read()
                 .unwrap()
                 .get_position(),
-            expected_position1
+            expected_position1,
+            epsilon = 1e-7
         );
-        assert_eq!(
+        assert_relative_eq!(
             entities
                 .ships
                 .get("Ship2")
@@ -799,9 +801,10 @@ mod tests {
                 .read()
                 .unwrap()
                 .get_position(),
-            expected_position2
+            expected_position2,
+            epsilon = 1e-7
         );
-        assert_eq!(
+        assert_relative_eq!(
             entities
                 .ships
                 .get("Ship3")
@@ -809,7 +812,8 @@ mod tests {
                 .read()
                 .unwrap()
                 .get_position(),
-            expected_position3
+            expected_position3,
+            epsilon = 1e-7
         );
     }
 

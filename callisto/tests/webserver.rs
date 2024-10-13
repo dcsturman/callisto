@@ -17,7 +17,7 @@ use cgmath::{assert_ulps_eq, Zero};
 use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
-use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION};
+use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
 use callisto::payloads::{FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
@@ -298,7 +298,7 @@ async fn test_update_ship() {
 
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
-    assert_eq!(ship.get_position(), Vec3::new(1000000.0, 0.0, 0.0));
+    assert_eq!(ship.get_position(), Vec3::new(1000.0*DELTA_TIME as f64, 0.0, 0.0));
     assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
 }
 
@@ -365,7 +365,7 @@ async fn test_update_missile() {
 
     let compare = json!(
         {"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -513,12 +513,12 @@ async fn test_compute_path_basic() {
 
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path.len(), 7);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29421000.0,
+            x: 3812961.6,
             y: 0.0,
             z: 0.0
         }
@@ -526,12 +526,12 @@ async fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58842000.0,
+            x: 15251846.4,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero());
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
     let (a, t) = plan.plan.0.into();
     assert_ulps_eq!(
         a,
@@ -588,12 +588,12 @@ async fn test_compute_path_with_standoff() {
 
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path.len(), 7);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29391000.0,
+            x: 3812961.6,
             y: 0.0,
             z: 0.0
         }
@@ -601,12 +601,12 @@ async fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58782000.0,
+            x: 15251846.4,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero());
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
     let (a, t) = plan.plan.0.into();
     assert_ulps_eq!(
         a,
