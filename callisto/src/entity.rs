@@ -8,12 +8,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
+use crate::combat::attack;
 use crate::combat::do_fire_actions;
-use crate::combat::{attack, Weapon};
+use crate::cov_util::{debug, error, info};
 use crate::missile::Missile;
 use crate::planet::Planet;
-use crate::ship::{FlightPlan, Ship};
-use crate::cov_util::{debug, info, error};
+use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
+use crate::ship::{Weapon, WeaponMount, WeaponType};
 
 pub const DELTA_TIME: u64 = 360;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
@@ -102,6 +103,13 @@ impl Entities {
         entities.fixup_pointers()?;
         entities.reset_gravity_wells();
 
+        // Fix all the initial current values in the ship based on the design.
+        // This does limit our ability to load wounded ships into a scenario.  If we need
+        // that we can add it later.
+        for ship in entities.ships.values_mut() {
+            ship.write().unwrap().fixup_current_values();
+        }
+
         #[cfg(not(coverage))]
         for ship in entities.ships.values() {
             debug!("Loaded entity {:?}", ship.read().unwrap());
@@ -126,14 +134,14 @@ impl Entities {
         position: Vec3,
         velocity: Vec3,
         acceleration: Vec3,
-        usp: &str,
+        design: Arc<ShipDesignTemplate>,
     ) {
         let ship = Ship::new(
             name.clone(),
             position,
             velocity,
             FlightPlan::acceleration(acceleration),
-            usp.to_string().into(),
+            design,
         );
         self.ships.insert(name, Arc::new(RwLock::new(ship)));
     }
@@ -244,22 +252,27 @@ impl Entities {
         if let Some(entity) = self.ships.get_mut(name) {
             entity.write().unwrap().set_flight_plan(plan)
         } else {
-            Err(format!("Could not set acceleration for non-existent entity {}", name))
+            Err(format!(
+                "Could not set acceleration for non-existent entity {}",
+                name
+            ))
         }
     }
 
     pub fn fire_actions(
         &mut self,
         fire_actions: Vec<(String, Vec<FireAction>)>,
+        ship_snapshot: &HashMap<String, Ship>,
         rng: &mut dyn RngCore,
     ) -> Vec<EffectMsg> {
-        let mut next_round_ships = self.ships.clone();
-
         let effects = fire_actions
             .iter()
             .flat_map(|(attacker, actions)| {
+                let attack_ship = ship_snapshot.get(attacker).unwrap_or_else(|| {
+                    panic!("Cannot find attacker {} for fire actions.", attacker)
+                });
                 let (missiles, effects) =
-                    do_fire_actions(attacker, &mut next_round_ships, actions, rng);
+                    do_fire_actions(&attack_ship, &mut self.ships, actions, rng);
                 for missile in missiles {
                     if let Err(msg) = self.launch_missile(&missile.source, &missile.target) {
                         error!("Could not launch missile: {}", msg);
@@ -271,7 +284,7 @@ impl Entities {
         effects
     }
 
-    pub fn update_all(&mut self, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    pub fn update_all(&mut self, ship_snapshot: &HashMap<String, Ship>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
         let mut planets = self.planets.values_mut().collect::<Vec<_>>();
         planets.sort_by(|a, b| {
             let a_ent = a.read().unwrap();
@@ -286,7 +299,7 @@ impl Entities {
 
         let mut cleanup_missile_list = Vec::<String>::new();
 
-        // Creating this sorted list is necessary ONLY to ensure unit tests run consistenly
+        // Creating this sorted list is necessary ONLY to ensure unit tests run consistently
         // If it ends up being slow we should take it out.
         let mut sorted_missiles = self.missiles.values().collect::<Vec<_>>();
         sorted_missiles.sort_by(|a, b| {
@@ -302,34 +315,37 @@ impl Entities {
                 let update = missile.update();
                 let missile_name = missile.get_name();
                 let missile_pos = missile.get_position();
-                let missile_source: &str = &missile.source;
+                let missile_source = ship_snapshot.get(&missile.source).unwrap();
+
                 // We use UpdateAction vs just returning the effect so that the call to attack() stays at this level rather than
                 // being embedded in the missile update code.  Also enables elimination of missiles.
                 match update? {
                     UpdateAction::ShipImpact { ship, missile } => {
+                        // When a missile impacts fake it as an attack by a single turrent missile.
+                        const FAKE_MISSILE_LAUNCHER: Weapon = Weapon {
+                            kind: WeaponType::Missile,
+                            mount: WeaponMount::Turret(1),
+                        };
                         info!(
                             "(Entity.update_all) Missile impact on {} by missile {}.",
                             ship, missile
                         );
-                        let ship_pos = self
-                            .ships
-                            .get(&ship)
-                            .unwrap()
-                            .read()
-                            .unwrap()
-                            .get_position();
-
                         let mut target = self
                             .ships
                             .get(&ship)
                             .unwrap_or_else(|| panic!("Cannot find target {} for missile.", ship))
                             .write()
                             .unwrap();
-                        let mut effects =
-                            attack(0, 0, missile_source, &mut target, Weapon::Missile, rng);
+                        let effects = attack(
+                            0,
+                            0,
+                            &missile_source,
+                            &mut target,
+                            &FAKE_MISSILE_LAUNCHER,
+                            rng,
+                        );
                         cleanup_missile_list.push(missile);
 
-                        effects.push(EffectMsg::ShipImpact { position: ship_pos });
                         Some(effects)
                     }
                     UpdateAction::ExhaustedMissile { name } => {
@@ -369,7 +385,7 @@ impl Entities {
                             cleanup_ships_list.push(name.to_string());
                             Some(vec![
                                 EffectMsg::ShipDestroyed { position: pos },
-                                EffectMsg::Damage {
+                                EffectMsg::Message {
                                     content: format!("{} destroyed.", name),
                                 },
                             ])
@@ -582,10 +598,7 @@ impl<'de> Deserialize<'de> for Entities {
             ships: guts
                 .ships
                 .into_iter()
-                .map(|mut e| {
-                    e.post_deserialize();
-                    (e.get_name().to_string(), Arc::new(RwLock::new(e)))
-                })
+                .map(|e| (e.get_name().to_string(), Arc::new(RwLock::new(e))))
                 .collect(),
             missiles: guts
                 .missiles
@@ -605,9 +618,9 @@ impl<'de> Deserialize<'de> for Entities {
 mod tests {
     use super::*;
     use crate::cov_util::debug;
-    use crate::ship::EXAMPLE_USP;
-    use cgmath::assert_relative_eq;
+    use crate::ship::{config_test_ship_templates, ShipDesignTemplate};
     use assert_json_diff::assert_json_eq;
+    use cgmath::assert_relative_eq;
     use cgmath::{Vector2, Zero};
     use rand::rngs::SmallRng;
     use rand::SeedableRng;
@@ -623,7 +636,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            Arc::new(ShipDesignTemplate::default()),
         );
 
         // Add another ship
@@ -632,7 +645,7 @@ mod tests {
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            Arc::new(ShipDesignTemplate::default()),
         );
 
         // Add a planet
@@ -680,27 +693,27 @@ mod tests {
     fn test_add_ship() {
         let _ = pretty_env_logger::try_init();
         let mut entities = Entities::new();
-
+        let design = Arc::new(ShipDesignTemplate::default());
         entities.add_ship(
             String::from("Ship1"),
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         entities.add_ship(
             String::from("Ship3"),
             Vec3::new(7.0, 8.0, 9.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
 
         assert_eq!(
@@ -741,6 +754,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
 
         let mut entities = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
 
         // Create entities with random positions and names
         entities.add_ship(
@@ -748,40 +762,49 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         entities.add_ship(
             String::from("Ship3"),
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
 
         // Assign random accelerations to entities
         let acceleration1 = Vec3::new(1.0, 1.0, 1.0);
-        let acceleration2 = Vec3::new(2.0, 2.0, -2.0);
-        let acceleration3 = Vec3::new(4.0, -1.0, -0.0);
-        entities.set_flight_plan("Ship1", &FlightPlan((acceleration1, 10000).into(), None)).unwrap();
-        entities.set_flight_plan("Ship2", &FlightPlan((acceleration2, 10000).into(), None)).unwrap();
-        entities.set_flight_plan("Ship3", &FlightPlan((acceleration3, 10000).into(), None)).unwrap();
+        let acceleration2 = Vec3::new(2.0, 1.0, -2.0);
+        let acceleration3 = Vec3::new(-1.0, -1.0, -0.0);
+        entities
+            .set_flight_plan("Ship1", &FlightPlan((acceleration1, 10000).into(), None))
+            .unwrap();
+        entities
+            .set_flight_plan("Ship2", &FlightPlan((acceleration2, 10000).into(), None))
+            .unwrap();
+        entities
+            .set_flight_plan("Ship3", &FlightPlan((acceleration3, 10000).into(), None))
+            .unwrap();
 
         // Update the entities a few times
-        entities.update_all(&mut rng);
-        entities.update_all(&mut rng);
-        entities.update_all(&mut rng);
+        let ship_snapshot = deep_clone(&entities.ships);
+        entities.update_all(&ship_snapshot, &mut rng);
+        let ship_snapshot = deep_clone(&entities.ships);        
+        entities.update_all(&ship_snapshot, &mut rng);
+        let ship_snapshot = deep_clone(&entities.ships);        
+        entities.update_all(&ship_snapshot, &mut rng);
 
         // Validate the new positions for each entity
         let expected_position1 = Vec3::new(5720442.4, 5721442.4, 5722442.4);
-        let expected_position2 = Vec3::new(11442884.8, 11443884.8, -11432884.8);
-        let expected_position3 = Vec3::new(22884769.6, -5711442.4, 9000.0);
+        let expected_position2 = Vec3::new(11442884.8, 5724442.4, -11432884.8);
+        let expected_position3 = Vec3::new(-5712442.4, -5711442.4, 9000.0);
         assert_relative_eq!(
             entities
                 .ships
@@ -820,6 +843,7 @@ mod tests {
     #[test_log::test]
     fn test_entities_validate() {
         let mut entities = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
 
         // Test 1: Empty entities should be valid
         assert!(entities.validate(), "Empty entities should be valid");
@@ -844,7 +868,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         assert!(
             entities.validate(),
@@ -857,7 +881,7 @@ mod tests {
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         assert!(
             entities.validate(),
@@ -964,13 +988,14 @@ mod tests {
         );
 
         let mut entities = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
 
         entities.add_ship(
             String::from("Ship1"),
             Vec3::new(300.0, 200.0, 300.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
 
         entities.add_ship(
@@ -978,7 +1003,7 @@ mod tests {
             Vec3::new(800.0, 500.0, 300.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         entities.launch_missile("Ship1", "Ship2").unwrap();
         // Test 9: Create a missile with no target_ptr
@@ -1029,10 +1054,14 @@ mod tests {
             6e24,
         );
 
+        
         // Update the planet a few times
-        entities.update_all(&mut rng);
-        entities.update_all(&mut rng);
-        entities.update_all(&mut rng);
+        let ship_snapshot = deep_clone(&entities.ships);
+        entities.update_all(&ship_snapshot, &mut rng);
+        let ship_snapshot = deep_clone(&entities.ships);
+        entities.update_all(&ship_snapshot, &mut rng);
+        let ship_snapshot = deep_clone(&entities.ships);
+        entities.update_all(&ship_snapshot, &mut rng);
 
         // Validate the position remains the same
         let expected_position = Vec3::new(0.0, 0.0, 0.0);
@@ -1108,9 +1137,9 @@ mod tests {
         );
 
         // Update the entities a few times
-        entities.update_all(&mut rng);
-        entities.update_all(&mut rng);
-        entities.update_all(&mut rng);
+        entities.update_all(&deep_clone(&entities.ships), &mut rng);
+        entities.update_all(&deep_clone(&entities.ships), &mut rng);
+        entities.update_all(&deep_clone(&entities.ships), &mut rng);
 
         // FIXME: This isn't really testing what we want to test.
         // Fix it so we have real primaries and test the distance to those.
@@ -1185,7 +1214,11 @@ mod tests {
 
         let tst_planet_2 = Planet::new(
             String::from("planet2"),
-            Vec3 { x: 1000000000.0, y: 0.0, z: 0.0 },
+            Vec3 {
+                x: 1000000000.0,
+                y: 0.0,
+                z: 0.0,
+            },
             String::from("red"),
             4e6,
             100.0,
@@ -1194,8 +1227,6 @@ mod tests {
             1,
         );
 
-
-        
         let tst_str = serde_json::to_string(&tst_planet_2).unwrap();
         assert_eq!(
             tst_str,
@@ -1225,6 +1256,7 @@ mod tests {
     #[test_log::test]
     fn test_mixed_entities_serialize() {
         let mut entities = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
 
         // This constant is the radius of the earth's orbit (distance from sun).
         // It is NOT the radius of the earth (6.371e6 m)
@@ -1265,28 +1297,58 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
         entities.add_ship(
             String::from("Ship3"),
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
 
         let cmp = json!({
         "ships":[
-            {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
-            {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6},
-            {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6}],
+            {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+            "current_hull":160,
+            "current_armor":5,
+            "current_power":300,
+            "current_maneuver":3,
+            "current_jump":2,
+            "current_fuel":81,
+            "current_crew":11,
+            "current_sensors": "Improved",
+            "active_weapons": [true, true, true, true]
+            },
+            {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+            "current_hull":160,
+            "current_armor":5,
+            "current_power":300,
+            "current_maneuver":3,
+            "current_jump":2,
+            "current_fuel":81,
+            "current_crew":11,
+            "current_sensors": "Improved",
+            "active_weapons": [true, true, true, true]
+            },
+            {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+            "current_hull":160,
+            "current_armor":5,
+            "current_power":300,
+            "current_maneuver":3,
+            "current_jump":2,
+            "current_fuel":81,
+            "current_crew":11,
+            "current_sensors": "Improved",
+            "active_weapons": [true, true, true, true]
+            }],
         "missiles":[],
         "planets":[
             {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":5.972e24,
@@ -1308,8 +1370,11 @@ mod tests {
 
     #[test]
     fn test_entities_equality() {
+        config_test_ship_templates();
+
         let mut entities1 = Entities::new();
         let mut entities2 = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
 
         // Add some ships
         entities1.add_ship(
@@ -1317,14 +1382,14 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
-            "38266C2-30060-B",
+            design.clone(),
         );
         entities2.add_ship(
             "Ship1".to_string(),
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
-            "38266C2-30060-B",
+            design.clone(),
         );
 
         // Add some planets
@@ -1376,7 +1441,7 @@ mod tests {
             Vec3::new(10.0, 11.0, 12.0),
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
-            "50244C2-30060-B",
+            design.clone(),
         );
         assert_ne!(
             entities1, entities2,
@@ -1389,7 +1454,7 @@ mod tests {
             Vec3::new(10.0, 11.0, 12.0),
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
-            "50244C2-30060-B",
+            design.clone(),
         );
         assert_eq!(entities1, entities2, "Entities should be equal again");
 
@@ -1473,7 +1538,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            Arc::new(ShipDesignTemplate::default()),
         );
 
         // Test entities with one ship
@@ -1502,13 +1567,14 @@ mod tests {
     #[test]
     fn test_launch_missile_invalid_target() {
         let mut entities = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
 
         entities.add_ship(
             String::from("Ship1"),
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            EXAMPLE_USP,
+            design.clone(),
         );
 
         // Test launching a missile with an invalid target
@@ -1526,6 +1592,8 @@ mod tests {
 
     #[test_log::test]
     fn test_fixup_pointers() {
+        config_test_ship_templates();
+
         // The best way to test this to to build a scenario file and then
         // deserialize it into an Entities struct.
         // Then we run fixup_pointers on it.
@@ -1535,10 +1603,10 @@ mod tests {
         // Test 1: Valid file
         let scenario = json!({"ships":[
             {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
@@ -1553,10 +1621,10 @@ mod tests {
         // Test 2: Add missile with a non-existent target
         let bad_scenario = json!({"ships":[
             {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
              {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
@@ -1572,10 +1640,10 @@ mod tests {
         // Test3: Add a planet with a non-existent primary
         let bad_scenario = json!({"ships":[
             {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
@@ -1588,41 +1656,52 @@ mod tests {
         );
     }
     #[test]
-        fn test_set_flight_plan() {
-            let mut entities = Entities::new();
-            
-            // Add a ship
-            entities.add_ship(
-                String::from("TestShip"),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::zero(),
-                Vec3::zero(),
-                "38266C2-30060-B".into(),
-            );
-    
-            // Create a flight plan
-            let acceleration = Vec3::new(1.0, 2.0, 3.0);
-            let duration = 5000;
-            let plan = FlightPlan::new((acceleration, duration).into(), None);
-    
-            // Set the flight plan
-            let result = entities.set_flight_plan("TestShip", &plan);
-    
-            // Assert that the flight plan was set successfully
-            assert!(result.is_ok(), "Flight plan should be set successfully");
-    
-            // Verify that the flight plan was set correctly
-            if let Some(ship) = entities.ships.get("TestShip") {
-                let ship_plan = &ship.read().unwrap().plan;
-                assert_eq!(ship_plan.0.0, acceleration, "Acceleration should match");
-                assert_eq!(ship_plan.0.1, duration, "Duration should match");
-                assert!(ship_plan.1.is_none(), "Second acceleration should be None");
-            } else {
-                panic!("TestShip not found in entities");
-            }
-    
-            // Test setting flight plan for non-existent ship
-            let result = entities.set_flight_plan("NonExistentShip", &plan);
-            assert!(result.is_err(), "Setting flight plan for non-existent ship should fail");
+    fn test_set_flight_plan() {
+        let mut entities = Entities::new();
+
+        // Add a ship
+        entities.add_ship(
+            String::from("TestShip"),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::zero(),
+            Vec3::zero(),
+            Arc::new(ShipDesignTemplate::default()),
+        );
+
+        // Create a flight plan
+        let acceleration = Vec3::new(1.0, 2.0, 2.0);
+        let duration = 5000;
+        let plan = FlightPlan::new((acceleration, duration).into(), None);
+
+        // Set the flight plan
+        let result = entities.set_flight_plan("TestShip", &plan);
+
+        // Assert that the flight plan was set successfully
+        assert!(result.is_ok(), "Flight plan should be set successfully");
+
+        // Verify that the flight plan was set correctly
+        if let Some(ship) = entities.ships.get("TestShip") {
+            let ship_plan = &ship.read().unwrap().plan;
+            assert_eq!(ship_plan.0 .0, acceleration, "Acceleration should match");
+            assert_eq!(ship_plan.0 .1, duration, "Duration should match");
+            assert!(ship_plan.1.is_none(), "Second acceleration should be None");
+        } else {
+            panic!("TestShip not found in entities");
         }
+
+        // Test setting flight plan for non-existent ship
+        let result = entities.set_flight_plan("NonExistentShip", &plan);
+        assert!(
+            result.is_err(),
+            "Setting flight plan for non-existent ship should fail"
+        );
+    }
+}
+
+// Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
+pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<String, Ship> {
+    ships
+        .into_iter()
+        .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
+        .collect()
 }

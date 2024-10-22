@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 
@@ -5,11 +6,13 @@ use cgmath::InnerSpace;
 use rand::RngCore;
 
 use crate::computer::{compute_flight_path, FlightParams};
-use crate::entity::{Entities, Entity, G};
+use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, FlightPathMsg, RemoveEntityMsg,
     SetPlanMsg,
 };
+use crate::ship::Ship;
+
 use crate::cov_util::{debug, info};
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
@@ -25,12 +28,13 @@ impl Server {
 
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
         // Add the ship to the server
+        let design = crate::ship::SHIP_TEMPLATES.get().expect("(Server.add_ship) Ship templates not loaded").get(&ship.design).expect(format!("(Server.add_ship) Could not find design {}.", ship.design).as_str());
         self.entities.lock().unwrap().add_ship(
             ship.name,
             ship.position,
             ship.velocity,
             ship.acceleration,
-            &ship.usp,
+            design.clone()
         );
 
         Ok("Add ship action executed".to_string())
@@ -84,14 +88,23 @@ impl Server {
             .lock()
             .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e));
 
-        // 1. This method will perform all the fire actions on a clone of the ships and then copy it back over the current ships
-        // so that all effects are "simultaneous"
+        // Take a snapshot of all the ships.  We'll use this for attackers while
+        // damage goes directly onto the "official" ships.  But it means if they are damaged
+        // or destroyed they still get to take their actions.
+        let ship_snapshot: HashMap<String, Ship> = deep_clone(&entities.ships);
+
+
+        // 1. This method will make a clone of all ships to use as attacker while impacting damage on the primary copy of ships.  This way ships still get ot attack
+        // even when damaged.  This gives us a "simultaneous" attack semantics.
         // 2. Add all new missiles into the entities structure.
+        // 3. Then update all the entities.  Note this means ship movement is after combat so a ship with degraded maneuver might not move as much as expected.
+        // Its not clear to me if this is the right order - or should they move then take damage - but we'll do it this way for now.
         // 3. Return a set of effects
-        let mut effects = entities.fire_actions(fire_actions, &mut self.rng);
+        
+        let mut effects = entities.fire_actions(fire_actions, &ship_snapshot, &mut self.rng);
 
         // 4. Update all entities (ships, planets, missiles) and gather in their effects.
-        effects.append(&mut entities.update_all(&mut self.rng));
+        effects.append(&mut entities.update_all(&ship_snapshot, &mut self.rng));
 
         debug!("(/update) Effects: {:?}", effects);
 
@@ -126,7 +139,7 @@ impl Server {
             (
                 entity.get_position(),
                 entity.get_velocity(),
-                entity.usp.maneuver as f64 * G,
+                entity.max_acceleration() * G,
             )
         };
 

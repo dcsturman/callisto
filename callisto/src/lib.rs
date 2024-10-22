@@ -1,6 +1,6 @@
 pub mod combat;
 mod computer;
-mod damage_tables;
+mod combat_tables;
 pub mod entity;
 pub mod missile;
 pub mod payloads;
@@ -85,7 +85,7 @@ macro_rules! deserialize_body_or_respond {
         let msg: $msg_type = match from_slice(&body_bytes) {
             Ok(msg) => msg,
             Err(e) => {
-                warn!("Invalid JSON ({}): {:?}", e, body_bytes);
+                warn_cov!("Invalid JSON ({}): {:?}", e, body_bytes);
                 let mut resp: Response<Full<Bytes>> =
                     Response::new("Invalid JSON".as_bytes().into());
                 *resp.status_mut() = StatusCode::BAD_REQUEST;

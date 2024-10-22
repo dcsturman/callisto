@@ -28,12 +28,11 @@ macro_rules! info {
      };
 }
 
-macro_rules! warn {
+macro_rules! warn_cov {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
             log::warn!(target: $target, $($arg)+);
-   
         }
     };
     ($($arg:tt)+) => { 
@@ -62,6 +61,7 @@ macro_rules! error {
 pub(crate) use debug;
 pub(crate) use info;
 pub(crate) use error;
+pub(crate) use warn_cov;
 
 
 

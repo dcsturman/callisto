@@ -61,7 +61,7 @@ fn path(port: u16, verb: &str) -> String {
  * Test that we can get a response to a get request when the entities state is empty (so the response is very simple)
  */
 #[tokio::test]
-async fn test_simple_get() {
+async fn integration_simple_get() {
     const PORT: u16 = 3010;
     let _server = spawn_test_server(PORT).await;
 
@@ -79,7 +79,7 @@ async fn test_simple_get() {
  * Test that we get a 404 response when we request a path that doesn't exist.
  */
 #[tokio::test]
-async fn test_simple_unknown() {
+async fn integration_simple_unknown() {
     const PORT: u16 = 3011;
     let _server = spawn_test_server(PORT).await;
 
@@ -96,11 +96,13 @@ async fn test_simple_unknown() {
  * Test that we can add a ship to the server and get it back.
  */
 #[tokio::test]
-async fn test_add_ship() {
+async fn integration_add_ship() {
     const PORT: u16 = 3012;
     let _server = spawn_test_server(PORT).await;
+    // Need this only because we are going to deserialize ships.
+    callisto::ship::config_test_ship_templates();
 
-    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -121,7 +123,21 @@ async fn test_add_ship() {
         .unwrap();
 
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-    let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6}],"missiles":[],"planets":[]});
+    let compare = json!({"ships":[
+        {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }],
+        "missiles":[],
+        "planets":[]});
 
     assert_json_eq!(entities, compare);
 }
@@ -130,11 +146,13 @@ async fn test_add_ship() {
 * Test that we can add a ship, a planet, and a missile to the server and get them back.
 */
 #[tokio::test]
-async fn test_add_planet_ship() {
+async fn integration_add_planet_ship() {
     const PORT: u16 = 3013;
     let _server = spawn_test_server(PORT).await;
+    // Need this only because we are going to deserialize ships.
+    callisto::ship::config_test_ship_templates();
 
-    let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -146,7 +164,7 @@ async fn test_add_planet_ship() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -168,11 +186,29 @@ async fn test_add_planet_ship() {
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-         "hull":6,"structure":6}, 
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-          "hull":6,"structure":6}],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+          "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }],
           "missiles":[],
           "planets":[]});
     assert_json_eq!(entities, compare);
@@ -207,12 +243,29 @@ async fn test_add_planet_ship() {
           "gravity_radius_025": 9036820.09708699,
           "gravity_radius_2": 3194998.385506543}],
         "missiles":[],
-        "ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-                  "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-                  "hull": 6, "structure": 6},
-                 {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-                  "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-                  "hull":6, "structure": 6}]});
+        "ships":[
+            {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "current_hull":160,
+             "current_armor":5,
+             "current_power":300,
+             "current_maneuver":3,
+             "current_jump":2,
+             "current_fuel":81,
+             "current_crew":11,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true, true, true]},
+            {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "current_hull":160,
+             "current_armor":5,
+             "current_power":300,
+             "current_maneuver":3,
+             "current_jump":2,
+             "current_fuel":81,
+             "current_crew":11,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true, true, true]}]});
 
     assert_json_eq!(result, compare);
 
@@ -249,11 +302,27 @@ async fn test_add_planet_ship() {
             "gravity_radius_025":1649890.0717635232}],
         "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-         "hull": 6, "structure": 6},
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]},
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-         "hull": 6, "structure": 6}]});
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]}]});
 
     assert_json_eq!(&start, &compare);
 }
@@ -262,11 +331,12 @@ async fn test_add_planet_ship() {
  * Test that creates a ship and then updates its position.
  */
 #[tokio::test]
-async fn test_update_ship() {
+async fn integration_update_ship() {
     const PORT: u16 = 3014;
     let _server = spawn_test_server(PORT).await;
+    callisto::ship::config_test_ship_templates();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -298,7 +368,10 @@ async fn test_update_ship() {
 
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
-    assert_eq!(ship.get_position(), Vec3::new(1000.0*DELTA_TIME as f64, 0.0, 0.0));
+    assert_eq!(
+        ship.get_position(),
+        Vec3::new(1000.0 * DELTA_TIME as f64, 0.0, 0.0)
+    );
     assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
 }
 
@@ -307,11 +380,12 @@ async fn test_update_ship() {
  *
  */
 #[tokio::test]
-async fn test_update_missile() {
+async fn integration_update_missile() {
     const PORT: u16 = 3019;
     let _server = spawn_test_server(PORT).await;
+    callisto::ship::config_test_ship_templates();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -323,7 +397,7 @@ async fn test_update_missile() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship2)
@@ -335,7 +409,7 @@ async fn test_update_missile() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let fire_missile = json!([["ship1", [{"kind": "Missile", "target": "ship2"}] ]]);
+    let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]);
     let body = serde_json::to_string(&fire_missile).unwrap();
     //let missile = r#"{"source":"ship1","target":"ship2"}"#;
     let response = reqwest::Client::new()
@@ -348,13 +422,14 @@ async fn test_update_missile() {
         .await
         .unwrap();
 
-    let compare =
-        json!([{"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
-        {"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
-        {"kind" : "ShipImpact", "position" : [5000.0,0.0,5000.0]}])
-        .to_string();
+    let compare = json!([
+        {"kind": "Message", "content": "ship1 hit by ship2's missile but damage absorbed by armor."},
+        {"kind": "Message", "content": "ship1 hit by ship2's missile but damage absorbed by armor."},
+        {"kind": "Message", "content": "ship2 hit by a missile for 5 damage."},
+        {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
+    ]);
 
-    assert_eq!(response, compare);
+    assert_json_eq!(serde_json::from_str::<Vec<callisto::payloads::EffectMsg>>(response.as_str()).unwrap(), compare);
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -364,14 +439,30 @@ async fn test_update_missile() {
         .unwrap();
 
     let compare = json!(
-        {"ships":[
-            {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-             "hull":6,"structure":6},
-            {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-             "hull":4, "structure":6}],
-             "missiles":[],"planets":[]});
+            {"ships":[
+                {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+                 "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+                 "current_hull":88,
+                 "current_armor":13,
+                 "current_power":240,
+                 "current_maneuver":9,
+                 "current_jump":0,
+                 "current_fuel":6,
+                 "current_crew":13,
+                 "current_sensors": "Improved",
+                 "active_weapons": [true, true]},
+                {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
+                 "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+                 "current_hull":83,
+                 "current_armor":13,
+                 "current_power":240,
+                 "current_maneuver":9,
+                 "current_jump":0,
+                 "current_fuel":6,
+                 "current_crew":13,
+                 "current_sensors": "Improved",
+                 "active_weapons": [true, true]}],
+                 "missiles":[],"planets":[]});
 
     assert_json_eq!(
         serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
@@ -383,11 +474,11 @@ async fn test_update_missile() {
  * Test that we can add a ship, then remove it, and test that the entities list is empty.
  */
 #[tokio::test]
-async fn test_remove_ship() {
+async fn integration_remove_ship() {
     const PORT: u16 = 3015;
     let _server = spawn_test_server(PORT).await;
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -424,10 +515,10 @@ async fn test_remove_ship() {
  * Test that creates a ship entity, assigns an acceleration, and then gets all entities to check that the acceleration is properly set.
  */
 #[tokio::test]
-async fn test_set_acceleration() {
+async fn integration_set_acceleration() {
     const PORT: u16 = 3016;
     let _server = spawn_test_server(PORT).await;
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -446,6 +537,7 @@ async fn test_set_acceleration() {
         .await
         .unwrap();
 
+    callisto::ship::config_test_ship_templates();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
@@ -456,7 +548,7 @@ async fn test_set_acceleration() {
 
     let response = reqwest::Client::new()
         .post(path(PORT, SET_ACCELERATION_PATH))
-        .body(r#"{"name":"ship1","plan":[[[1,2,3],10000]]}"#)
+        .body(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#)
         .send()
         .await
         .unwrap()
@@ -477,18 +569,19 @@ async fn test_set_acceleration() {
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     let flight_plan = &ship.plan;
-    assert_eq!(flight_plan.0 .0, [1.0, 2.0, 3.0].into());
+    assert_eq!(flight_plan.0 .0, [1.0, 2.0, 2.0].into());
     assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
     assert!(!flight_plan.has_second());
 }
+
 /**
  * Test that will compute a simple path and return it, checking if the simple computation is correct.
  */
 #[tokio::test]
-async fn test_compute_path_basic() {
+async fn integration_compute_path_basic() {
     const PORT: u16 = 3017;
     let _server = spawn_test_server(PORT).await;
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -513,12 +606,12 @@ async fn test_compute_path_basic() {
 
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 7);
+    assert_eq!(plan.path.len(), 9);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 3812961.6,
+            x: 1906480.8,
             y: 0.0,
             z: 0.0
         }
@@ -526,7 +619,7 @@ async fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 15251846.4,
+            x: 7625923.2,
             y: 0.0,
             z: 0.0
         }
@@ -536,19 +629,19 @@ async fn test_compute_path_basic() {
     assert_ulps_eq!(
         a,
         Vec3 {
-            x: 6.0,
+            x: 3.0,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_eq!(t, 1000);
+    assert_eq!(t, 1414);
 
     if let Some(accel) = plan.plan.1 {
         let (a, _t) = accel.into();
         assert_ulps_eq!(
             a,
             Vec3 {
-                x: -6.0,
+                x: -3.0,
                 y: 0.0,
                 z: 0.0
             }
@@ -556,14 +649,14 @@ async fn test_compute_path_basic() {
     } else {
         panic!("Expecting second acceleration.")
     }
-    assert_eq!(t, 1000);
+    assert_eq!(t, 1414);
 }
 
 #[tokio::test]
-async fn test_compute_path_with_standoff() {
+async fn integration_compute_path_with_standoff() {
     const PORT: u16 = 3018;
     let _server = spawn_test_server(PORT).await;
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -588,12 +681,12 @@ async fn test_compute_path_with_standoff() {
 
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 7);
+    assert_eq!(plan.path.len(), 9);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 3812961.6,
+            x: 1906480.8,
             y: 0.0,
             z: 0.0
         }
@@ -601,7 +694,7 @@ async fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 15251846.4,
+            x: 7625923.2,
             y: 0.0,
             z: 0.0
         }
@@ -611,19 +704,19 @@ async fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         a,
         Vec3 {
-            x: 6.0,
+            x: 3.0,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_eq!(t, 999);
+    assert_eq!(t, 1413);
 
     if let Some(accel) = plan.plan.1 {
         let (a, _t) = accel.into();
         assert_ulps_eq!(
             a,
             Vec3 {
-                x: -6.0,
+                x: -3.0,
                 y: 0.0,
                 z: 0.0
             }
@@ -631,5 +724,5 @@ async fn test_compute_path_with_standoff() {
     } else {
         panic!("Expecting second acceleration.")
     }
-    assert_eq!(t, 999);
+    assert_eq!(t, 1413);
 }
