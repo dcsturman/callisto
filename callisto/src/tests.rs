@@ -738,6 +738,10 @@ fn test_slugfest() {
 
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+
+    // Should only have 3 ships now as the Harrier should have been destroyed
+    assert_eq!(entities.ships.len(), 3);
+
     println!("**** SLUGFEST RESULTS *****\n{:?}", entities);
 }
 
@@ -804,4 +808,16 @@ fn test_get_entities() {
 
     // Check that there are no missiles
     assert!(entities.missiles.is_empty());
+}
+
+
+// Test for get_designs in server.
+#[test]
+fn test_get_designs() {
+    let server = setup_test_with_server();
+    let result = server.get_designs();
+    assert!(result.is_ok());
+    let designs = result.unwrap();
+    assert!(designs.len() > 0);
+    assert!(designs.contains("Buccaneer"));
 }

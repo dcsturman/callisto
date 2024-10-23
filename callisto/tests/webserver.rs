@@ -5,24 +5,26 @@
  * is up and running and responds to requests.  We want to test all the message formats back and forth.
  * Testing the logic should be done in the unit tests for main.rs.
  */
+extern crate callisto;
+
+use std::collections::HashMap;
+
 use tokio::process::{Child, Command};
 use tokio::time::{sleep, Duration};
-
-extern crate callisto;
-extern crate log;
-extern crate pretty_env_logger;
-
-use cgmath::{assert_ulps_eq, Zero};
 
 use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
+use cgmath::{assert_ulps_eq, Zero};
+use pretty_env_logger;
 use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
+use callisto::ship::ShipDesignTemplate;
 use callisto::payloads::{FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "./target/debug/callisto";
 const GET_ENTITIES_PATH: &str = "";
+const GET_DESIGNS_PATH: &str = "designs";
 const UPDATE_ENTITIES_PATH: &str = "update";
 const COMPUTE_PATH_PATH: &str = "compute_path";
 const ADD_SHIP_PATH: &str = "add_ship";
@@ -31,6 +33,7 @@ const ADD_PLANET_PATH: &str = "add_planet";
 const REMOVE_ENTITY_PATH: &str = "remove";
 const SET_ACCELERATION_PATH: &str = "set_plan";
 const INVALID_PATH: &str = "unknown";
+
 
 /**
  * Spawns a callisto server and returns a handle to it.  Used across tests to get a server up and running.
@@ -57,12 +60,36 @@ fn path(port: u16, verb: &str) -> String {
     format!("http://{}:{}/{}", SERVER_ADDRESS, port, verb)
 }
 
+
+/**
+ * Test for get_designs in server.
+ */
+#[tokio::test]
+async fn integration_get_designs() {
+    const PORT: u16 = 3010;
+    let _server = spawn_test_server(PORT).await;
+
+    let body = reqwest::get(path(PORT, GET_DESIGNS_PATH))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    assert!(body.len() > 0);
+    let result = serde_json::from_str::<HashMap<String,ShipDesignTemplate>>(body.as_str());
+    assert!(result.is_ok(), "Unable to deserialize designs with body: {} , Error {:?}", body, result.unwrap_err());
+    let designs = result.unwrap();
+    assert!(designs.len() > 0, "Received empty design list.");
+    assert!(designs.contains_key("Buccaneer"), "Buccaneer not found in designs.");
+    assert!(designs.get("Buccaneer").unwrap().name == "Buccaneer", "Buccaneer body malformed in design file.");
+}
 /**
  * Test that we can get a response to a get request when the entities state is empty (so the response is very simple)
  */
 #[tokio::test]
 async fn integration_simple_get() {
-    const PORT: u16 = 3010;
+    const PORT: u16 = 3011;
     let _server = spawn_test_server(PORT).await;
 
     let body = reqwest::get(path(PORT, GET_ENTITIES_PATH))
@@ -80,7 +107,7 @@ async fn integration_simple_get() {
  */
 #[tokio::test]
 async fn integration_simple_unknown() {
-    const PORT: u16 = 3011;
+    const PORT: u16 = 3012;
     let _server = spawn_test_server(PORT).await;
 
     let response = reqwest::get(path(PORT, INVALID_PATH)).await.unwrap();
@@ -97,7 +124,7 @@ async fn integration_simple_unknown() {
  */
 #[tokio::test]
 async fn integration_add_ship() {
-    const PORT: u16 = 3012;
+    const PORT: u16 = 3013;
     let _server = spawn_test_server(PORT).await;
     // Need this only because we are going to deserialize ships.
     callisto::ship::config_test_ship_templates();
@@ -147,7 +174,7 @@ async fn integration_add_ship() {
 */
 #[tokio::test]
 async fn integration_add_planet_ship() {
-    const PORT: u16 = 3013;
+    const PORT: u16 = 3014;
     let _server = spawn_test_server(PORT).await;
     // Need this only because we are going to deserialize ships.
     callisto::ship::config_test_ship_templates();
@@ -332,7 +359,7 @@ async fn integration_add_planet_ship() {
  */
 #[tokio::test]
 async fn integration_update_ship() {
-    const PORT: u16 = 3014;
+    const PORT: u16 = 3015;
     let _server = spawn_test_server(PORT).await;
     callisto::ship::config_test_ship_templates();
 
@@ -366,7 +393,7 @@ async fn integration_update_ship() {
         .await
         .unwrap();
 
-    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();    
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     assert_eq!(
         ship.get_position(),
@@ -381,7 +408,7 @@ async fn integration_update_ship() {
  */
 #[tokio::test]
 async fn integration_update_missile() {
-    const PORT: u16 = 3019;
+    const PORT: u16 = 3016;
     let _server = spawn_test_server(PORT).await;
     callisto::ship::config_test_ship_templates();
 
@@ -475,7 +502,7 @@ async fn integration_update_missile() {
  */
 #[tokio::test]
 async fn integration_remove_ship() {
-    const PORT: u16 = 3015;
+    const PORT: u16 = 3017;
     let _server = spawn_test_server(PORT).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
@@ -516,7 +543,7 @@ async fn integration_remove_ship() {
  */
 #[tokio::test]
 async fn integration_set_acceleration() {
-    const PORT: u16 = 3016;
+    const PORT: u16 = 3018;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
@@ -579,7 +606,7 @@ async fn integration_set_acceleration() {
  */
 #[tokio::test]
 async fn integration_compute_path_basic() {
-    const PORT: u16 = 3017;
+    const PORT: u16 = 3019;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()
@@ -654,7 +681,7 @@ async fn integration_compute_path_basic() {
 
 #[tokio::test]
 async fn integration_compute_path_with_standoff() {
-    const PORT: u16 = 3018;
+    const PORT: u16 = 3020;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = reqwest::Client::new()

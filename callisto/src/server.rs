@@ -11,9 +11,10 @@ use crate::payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, FlightPathMsg, RemoveEntityMsg,
     SetPlanMsg,
 };
-use crate::ship::Ship;
+use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
-use crate::cov_util::{debug, info};
+use crate::{debug, warn, info};
+
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
 pub struct Server {
@@ -28,13 +29,17 @@ impl Server {
 
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
         // Add the ship to the server
-        let design = crate::ship::SHIP_TEMPLATES.get().expect("(Server.add_ship) Ship templates not loaded").get(&ship.design).expect(format!("(Server.add_ship) Could not find design {}.", ship.design).as_str());
+        let design = crate::ship::SHIP_TEMPLATES
+            .get()
+            .expect("(Server.add_ship) Ship templates not loaded")
+            .get(&ship.design)
+            .expect(format!("(Server.add_ship) Could not find design {}.", ship.design).as_str());
         self.entities.lock().unwrap().add_ship(
             ship.name,
             ship.position,
             ship.velocity,
             ship.acceleration,
-            design.clone()
+            design.clone(),
         );
 
         Ok("Add ship action executed".to_string())
@@ -42,6 +47,18 @@ impl Server {
 
     pub fn get_entities(&self) -> Result<Entities, String> {
         Ok(self.entities.lock().unwrap().clone())
+    }
+
+    pub fn get_designs(&self) -> Result<String, String> {
+        // Strip the Arc, etc. from the ShipTemplates before marshalling back.
+        let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
+            .get()
+            .expect("(Server.get_designs) Ship templates not loaded")
+            .into_iter()
+            .map(|(key, value)| (key.clone(), (*value.clone()).clone()))
+            .collect();
+
+        Ok(serde_json::to_string(&clean_templates).unwrap())
     }
 
     pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
@@ -93,14 +110,13 @@ impl Server {
         // or destroyed they still get to take their actions.
         let ship_snapshot: HashMap<String, Ship> = deep_clone(&entities.ships);
 
-
         // 1. This method will make a clone of all ships to use as attacker while impacting damage on the primary copy of ships.  This way ships still get ot attack
         // even when damaged.  This gives us a "simultaneous" attack semantics.
         // 2. Add all new missiles into the entities structure.
         // 3. Then update all the entities.  Note this means ship movement is after combat so a ship with degraded maneuver might not move as much as expected.
         // Its not clear to me if this is the right order - or should they move then take damage - but we'll do it this way for now.
         // 3. Return a set of effects
-        
+
         let mut effects = entities.fire_actions(fire_actions, &ship_snapshot, &mut self.rng);
 
         // 4. Update all entities (ships, planets, missiles) and gather in their effects.

@@ -9,7 +9,7 @@ use serde_with::{serde_as, skip_serializing_none};
 use once_cell::sync::OnceCell;
 use strum_macros::FromRepr;
 
-use crate::cov_util::debug;
+use crate::{debug, info};
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
 
@@ -329,7 +329,7 @@ pub fn load_ship_templates_from_file(file_name: &str) -> Result<HashMap<String, 
 pub fn config_test_ship_templates() {
     const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
     let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE).expect("Unable to load ship template file.");
-    SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!"));
+    SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| { info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!" );});
 }
 
 impl ShipDesignTemplate {

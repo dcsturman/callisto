@@ -9,14 +9,12 @@ pub mod server;
 pub mod ship;
 
 #[macro_use]
-pub mod cov_util;
+mod cov_util;
 
 #[cfg(test)]
 pub mod tests;
 
 extern crate pretty_env_logger;
-#[macro_use]
-extern crate log;
 
 use std::sync::{Arc, Mutex};
 
@@ -85,7 +83,7 @@ macro_rules! deserialize_body_or_respond {
         let msg: $msg_type = match from_slice(&body_bytes) {
             Ok(msg) => msg,
             Err(e) => {
-                warn_cov!("Invalid JSON ({}): {:?}", e, body_bytes);
+                warn!("Invalid JSON ({}): {:?}", e, body_bytes);
                 let mut resp: Response<Full<Bytes>> =
                     Response::new("Invalid JSON".as_bytes().into());
                 *resp.status_mut() = StatusCode::BAD_REQUEST;
@@ -225,6 +223,22 @@ pub async fn handle_request(
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
             }
         }
+
+        (&Method::GET, "/designs") => {
+            info!("Received and processing get designs request.");
+            match server.get_designs() {
+                Ok(json) => {
+                    let resp = Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                        .unwrap();
+                    Ok(resp)
+                }
+                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+            }
+        }
+
         _ => {
             // Return a 404 Not Found response for any other requests
             Ok(Response::builder()

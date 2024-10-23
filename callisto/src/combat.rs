@@ -5,7 +5,7 @@ use cgmath::InnerSpace;
 use rand::RngCore;
 
 use crate::combat_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
-use crate::cov_util::debug;
+use crate::debug;
 use crate::entity::Entity;
 use crate::payloads::{EffectMsg, FireAction, LaunchMissileMsg};
 use crate::ship::{BaySize, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};

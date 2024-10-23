@@ -3,12 +3,13 @@ use std::sync::{Arc, RwLock};
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-
-use super::computer::{compute_target_path, FlightPathResult, TargetParams};
-use super::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
-use super::payloads::Vec3asVec;
-use super::ship::Ship;
 use cgmath::InnerSpace;
+
+use crate::computer::{compute_target_path, FlightPathResult, TargetParams};
+use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
+use crate::payloads::Vec3asVec;
+use crate::ship::Ship;
+use crate::debug;
 
 // Temporary until missiles have actual acceleration built in
 const MAX_MISSILE_ACCELERATION: f64 = 6.0 * G;

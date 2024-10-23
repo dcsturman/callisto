@@ -1,12 +1,15 @@
-use crate::entity::{Vec3, DELTA_TIME, G};
-use crate::payloads::Vec3asVec;
-use crate::ship::FlightPlan;
+
 use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;
 use gomez::{Domain, Problem, SolverDriver, System};
 use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+
+use crate::entity::{Vec3, DELTA_TIME, G};
+use crate::payloads::Vec3asVec;
+use crate::ship::FlightPlan;
+use crate::{debug, info};
 
 const SOLVE_TOLERANCE: f64 = 1e-4;
 

@@ -10,7 +10,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::combat::attack;
 use crate::combat::do_fire_actions;
-use crate::cov_util::{debug, error, info};
+use crate::{debug, error, info};
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
@@ -617,7 +617,7 @@ impl<'de> Deserialize<'de> for Entities {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cov_util::debug;
+    use crate::debug;
     use crate::ship::{config_test_ship_templates, ShipDesignTemplate};
     use assert_json_diff::assert_json_eq;
     use cgmath::assert_relative_eq;
