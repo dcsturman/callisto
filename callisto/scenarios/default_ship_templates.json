@@ -1,0 +1,254 @@
+[
+    {
+        "name": "Buccaneer",
+        "displacement": 400,
+        "hull": 160,
+        "armor": 5,
+        "maneuver": 3,
+        "jump": 2,
+        "power": 300,
+        "fuel": 81,
+        "crew": 11,
+        "sensors": "Improved",
+        "computer": 5,
+        "weapons": [
+            {   
+                "kind": "Pulse",
+                "mount": {
+                    "Turret":  2
+                }
+            },
+            {   
+                "kind": "Pulse",
+                "mount": {
+                    "Turret":  2
+                }
+            },
+            {   
+                "kind": "Sand",
+                "mount": {
+                    "Turret":  2
+                }
+            },
+            {   
+                "kind": "Sand",
+                "mount": {
+                    "Turret":  2
+                }
+            }
+        ],
+        "tl": 15
+    },
+    {
+        "name": "Scout/Courier",
+        "displacement": 100,
+        "hull": 40,
+        "armor": 4,
+        "maneuver": 2,
+        "jump": 2,
+        "power": 60,
+        "fuel": 23,
+        "crew": 3,
+        "sensors": "Military",
+        "computer": 5,
+        "weapons": [],
+        "tl": 12
+    },
+    {
+        "name": "Free Trader",
+        "displacement": 200,
+        "hull": 80,
+        "armor": 2,
+        "maneuver": 1,
+        "jump": 1,
+        "power": 75,
+        "fuel": 21,
+        "crew": 5,
+        "sensors": "Civilian",
+        "computer": 5,
+        "weapons": [],
+        "tl": 12
+    },
+    {
+        "name": "Gazelle",
+        "displacement": 400,
+        "hull": 176,
+        "armor": 3,
+        "maneuver": 6,
+        "jump": 5,
+        "power": 540,
+        "fuel": 128,
+        "crew": 21,
+        "sensors": "Military",
+        "computer": 30,
+        "weapons": [
+            {
+                "kind": "Particle",
+                "mount": "Barbette"
+            },
+            {
+                "kind": "Particle",
+                "mount": "Barbette"
+            },
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 3 }
+            }
+        ],
+        "tl": 15
+    },
+    {
+        "name": "Harrier",
+        "displacement": 200,
+        "hull": 80,
+        "armor": 4,
+        "maneuver": 6,
+        "jump": 2,
+        "power": 260,
+        "fuel": 42,
+        "crew": 11,
+        "sensors": "Advanced",
+        "stealth": "Advanced",
+        "computer": 20,
+        "weapons": [
+            {
+                "kind": "Particle",
+                "mount": "Barbette"
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 1 }
+            }
+        ],
+        "tl": 15
+    },
+    {
+        "name": "System Defense Boat",
+        "displacement": 200,
+        "hull": 88,
+        "armor": 13,
+        "maneuver": 9,
+        "jump": 0,
+        "power": 240,
+        "fuel": 6,
+        "crew": 13,
+        "sensors": "Improved",
+        "computer": 35,
+        "weapons": [
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            }
+        ],
+        "tl": 15
+
+    },
+    {
+        "name": "Midu Agasham",
+        "displacement": 3000,
+        "hull": 1320,
+        "armor": 4,
+        "maneuver": 6,
+        "jump": 4,
+        "power": 3540,
+        "fuel": 1236,
+        "crew": 97,
+        "sensors": "Advanced",
+        "computer": 70,
+        "weapons": [
+            {
+                "kind": "Particle",
+                "mount": { "Bay" : "Small" }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            }
+        ],
+        "tl": 15
+    }
+]

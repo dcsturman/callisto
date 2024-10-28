@@ -79,7 +79,7 @@ input {
   font-size: 9pt;
 }
 
-.usp-input {
+.design-input {
   width: 150px;
 }
 
@@ -260,9 +260,6 @@ input {
   border: 1px solid #b6bcae;
   z-index: 12;
 }
-.button-next-round {
-  margin-top: auto
-}
 
 .control-form {
   justify-content: space-between;
@@ -296,7 +293,6 @@ input {
 }
 
 .select-dropdown {
-  width: 160px;
   font-family: "Orbitron", sans-serif;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
@@ -325,4 +321,47 @@ input {
 }
 .tooltip-content {
   font-size: 9pt
+}
+
+.label-with-tooltip {
+  flex-direction: row;
+}
+
+.weapon-button {
+  width: 40px;
+  height: auto;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.barbette-button {
+  padding-bottom: 0px;
+}
+
+.weapon-button-count {
+  font-size: 10pt;
+  font-weight: bold;
+  color: white;
+  z-index: 3;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.weapon-list {
+  display: flex;
+  flex-direction: row;
+  justify-content: left;
+  align-items: center;
+}
+
+.weapon-button-container {
+  display: flex;
+ }
+
+ .button-next-round {
+  margin-top: auto
+}
+
+.stats-bloc-entry {
+  padding-right: 4px;
 }

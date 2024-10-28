@@ -15,13 +15,15 @@ use std::sync::{Arc, Mutex};
 use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
-use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION};
-use crate::payloads::{AddShipMsg, AddPlanetMsg, EffectMsg, FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
+use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
+use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
 use crate::server::Server;
-use crate::ship::EXAMPLE_USP;
+use crate::ship::ShipDesignTemplate;
 
 fn setup_test_with_server() -> Server {
     let _ = pretty_env_logger::try_init();
+    crate::ship::config_test_ship_templates();
+
     Server::new(
         Arc::new(Mutex::new(Entities::new())),
         Box::new(rand::rngs::SmallRng::seed_from_u64(0)),
@@ -44,7 +46,16 @@ fn test_simple_get() {
 #[test]
 fn test_add_ship() {
     let server = setup_test_with_server();
-    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer","current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
@@ -52,7 +63,7 @@ fn test_add_ship() {
 
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-    let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B", "hull":6,"structure":6}],"missiles":[],"planets":[]});
+    let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, "current_sensors": "Improved", "active_weapons": [true, true, true, true]}],"missiles":[],"planets":[]});
 
     assert_json_eq!(entities, compare);
 }
@@ -64,29 +75,49 @@ fn test_add_ship() {
 fn test_add_planet_ship() {
     let server = setup_test_with_server();
 
-    let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
     let response = server.get().unwrap();
+
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-         "hull":6,"structure":6}, 
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-          "hull":6,"structure":6}],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }],
           "missiles":[],
           "planets":[]});
+
     assert_json_eq!(entities, compare);
 
     let planet =
@@ -100,19 +131,38 @@ fn test_add_planet_ship() {
     let result = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     let compare = json!({"planets":[
-        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-          "color":"red","radius":1.5e6,"mass":3e24,
-          "gravity_radius_1":4518410.048543495,
-          "gravity_radius_05":6389996.771013086,
-          "gravity_radius_025": 9036820.09708699,
-          "gravity_radius_2": 3194998.385506543}],
-        "missiles":[],
-        "ships":[{"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-                  "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-                  "hull": 6, "structure": 6},
-                 {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-                  "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-                  "hull":6, "structure": 6}]});
+    {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+      "color":"red","radius":1.5e6,"mass":3e24,
+      "gravity_radius_1":4518410.048543495,
+      "gravity_radius_05":6389996.771013086,
+      "gravity_radius_025": 9036820.09708699,
+      "gravity_radius_2": 3194998.385506543}],
+    "missiles":[],
+    "ships":[
+        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        },
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }]});
 
     assert_json_eq!(result, compare);
 
@@ -126,23 +176,41 @@ fn test_add_planet_ship() {
 
     let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
     let compare = json!({"missiles":[],
-        "planets":[
-        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-            "color":"red","radius":1.5e6,"mass":3e24,
-            "gravity_radius_1":4518410.048543495,
-            "gravity_radius_05":6389996.771013086,
-            "gravity_radius_025": 9036820.09708699,
-            "gravity_radius_2": 3194998.385506543},
-        {"name":"planet2","position":[1000000.0,0.0,0.0],"velocity":[0.0,0.0,14148.851543499915],
-            "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
-            "gravity_radius_025":1649890.0717635232}],
-        "ships":[
+    "planets":[
+    {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+        "color":"red","radius":1.5e6,"mass":3e24,
+        "gravity_radius_1":4518410.048543495,
+        "gravity_radius_05":6389996.771013086,
+        "gravity_radius_025": 9036820.09708699,
+        "gravity_radius_2": 3194998.385506543},
+    {"name":"planet2","position":[1000000.0,0.0,0.0],"velocity":[0.0,0.0,14148.851543499915],
+        "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+        "gravity_radius_025":1649890.0717635232}],
+    "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-         "hull": 6, "structure": 6},
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-         "hull": 6, "structure": 6}]});
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true]
+        }]});
 
     assert_json_eq!(&start, &compare);
 }
@@ -154,7 +222,7 @@ fn test_add_planet_ship() {
 fn test_update_ship() {
     let mut server = setup_test_with_server();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
@@ -166,7 +234,10 @@ fn test_update_ship() {
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
-    assert_eq!(ship.get_position(), Vec3::new(1000000.0, 0.0, 0.0));
+    assert_eq!(
+        ship.get_position(),
+        Vec3::new(1000.0 * DELTA_TIME as f64, 0.0, 0.0)
+    );
     assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
 }
 
@@ -178,40 +249,57 @@ fn test_update_ship() {
 fn test_update_missile() {
     let mut server = setup_test_with_server();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
     assert_eq!(response, r"Add ship action executed");
 
-    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let fire_missile = json!([["ship1", [{"kind": "Missile", "target": "ship2"}] ]]).to_string();
+    let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]).to_string();
     let response = server
         .update(serde_json::from_str(&fire_missile).unwrap())
         .unwrap();
 
-    let compare =
-        json!([{"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
-        {"kind" : "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
-        {"kind" : "ShipImpact", "position" : [5000.0,0.0,5000.0]}])
-        .to_string();
+    let compare = json!([
+            {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
+        ]);
 
-    assert_eq!(response, compare);
+    assert_json_eq!(
+        serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap().iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect::<Vec<_>>(),
+        compare
+    );
 
     let entities = server.get().unwrap();
     let compare = json!(
         {"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-             "hull":6,"structure":6},
+            {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "current_hull":88,
+             "current_armor":13,
+             "current_power":240,
+             "current_maneuver":9,
+             "current_jump":0,
+             "current_fuel":6,
+             "current_crew":13,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true]},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"usp":"38266C2-30060-B",
-             "hull":4, "structure":6}],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "current_hull":83,
+             "current_armor":13,
+             "current_power":240,
+             "current_maneuver":9,
+             "current_jump":0,
+             "current_fuel":6,
+             "current_crew":13,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true]}],
              "missiles":[],"planets":[]});
 
     assert_json_eq!(
@@ -226,7 +314,7 @@ fn test_update_missile() {
 #[test]
 fn test_remove_ship() {
     let server = setup_test_with_server();
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
@@ -251,7 +339,7 @@ fn test_remove_ship() {
 fn test_set_acceleration() {
     let server = setup_test_with_server();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
@@ -267,14 +355,14 @@ fn test_set_acceleration() {
     assert!(!flight_plan.has_second());
 
     let response = server
-        .set_plan(serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,3],10000]]}"#).unwrap());
+        .set_plan(serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#).unwrap());
     assert!(response.is_ok());
 
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     let flight_plan = &ship.plan;
-    assert_eq!(flight_plan.0 .0, [1.0, 2.0, 3.0].into());
+    assert_eq!(flight_plan.0 .0, [1.0, 2.0, 2.0].into());
     assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
     assert!(!flight_plan.has_second());
 }
@@ -286,24 +374,24 @@ fn test_set_acceleration() {
 fn test_compute_path_basic() {
     let server = setup_test_with_server();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let path_request = r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#;
+    let path_request = r#"{"entity_name":"ship1","end_pos":[29430000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#;
     let response = server
         .compute_path(serde_json::from_str(&path_request).unwrap())
         .unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path.len(), 7);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29421000.0,
+            x: 1906480.8,
             y: 0.0,
             z: 0.0
         }
@@ -311,17 +399,17 @@ fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58842000.0,
+            x: 7625923.2,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero());
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
     let (a, t) = plan.plan.0.into();
     assert_ulps_eq!(
         a,
         Vec3 {
-            x: 6.0,
+            x: 3.0,
             y: 0.0,
             z: 0.0
         }
@@ -333,7 +421,7 @@ fn test_compute_path_basic() {
         assert_ulps_eq!(
             a,
             Vec3 {
-                x: -6.0,
+                x: -3.0,
                 y: 0.0,
                 z: 0.0
             }
@@ -348,7 +436,7 @@ fn test_compute_path_basic() {
 fn test_compute_path_with_standoff() {
     let server = setup_test_with_server();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"38266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
@@ -357,12 +445,12 @@ fn test_compute_path_with_standoff() {
     let response = server.compute_path(serde_json::from_str(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 60000}"#).unwrap()).unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
-    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path.len(), 9);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 29391000.0,
+            x: 1906480.8,
             y: 0.0,
             z: 0.0
         }
@@ -370,29 +458,29 @@ fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 58782000.0,
+            x: 7625923.2,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero());
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
     let (a, t) = plan.plan.0.into();
     assert_ulps_eq!(
         a,
         Vec3 {
-            x: 6.0,
+            x: 3.0,
             y: 0.0,
             z: 0.0
         }
     );
-    assert_eq!(t, 999);
+    assert_eq!(t, 1413);
 
     if let Some(accel) = plan.plan.1 {
         let (a, _t) = accel.into();
         assert_ulps_eq!(
             a,
             Vec3 {
-                x: -6.0,
+                x: -3.0,
                 y: 0.0,
                 z: 0.0
             }
@@ -400,7 +488,7 @@ fn test_compute_path_with_standoff() {
     } else {
         panic!("Expecting second acceleration.")
     }
-    assert_eq!(t, 999);
+    assert_eq!(t, 1413);
 }
 
 #[test]
@@ -408,26 +496,27 @@ fn test_exhausted_missile() {
     let mut server = setup_test_with_server();
 
     // Create two ships with one to fire at the other.
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"98266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
     // Put second ship far way (out of range of a missile)
-    let ship2 = r#"{"name":"ship2","position":[1e9,0,1e9],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"98266C2-30060-B"}"#;
+    let ship2 = r#"{"name":"ship2","position":[1e9,0,1e9],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
     // Fire a missile
-    let fire_actions = json!([["ship1", [{"kind": "Missile", "target": "ship2"}] ]]).to_string();
+    let fire_actions = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]).to_string();
     let response = server
         .update(serde_json::from_str(&fire_actions).unwrap())
         .unwrap();
-    // First round nothing happens.
-    assert_eq!(response, "[]", "Round 0");
+    
+    // First round 3 missiles are launched due to triple turret
+    assert_eq!(response, "[{\"kind\":\"Message\",\"content\":\"ship1 launches 3 missile(s) at ship2.\"}]", "Round 0");
 
     // Second round nothing happens.
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
@@ -435,51 +524,58 @@ fn test_exhausted_missile() {
 
     // Third round missile should exhaust itself.
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
-    let expected =
-        json!([{"kind": "ExhaustedMissile", "position":[83922261.21834418,0.0,83922261.21834418]}]);
-    assert_eq!(response, expected.to_string(), "Round 2");
+    assert_eq!(serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap().iter().filter(|e| matches!(e, EffectMsg::ExhaustedMissile { .. }) ).count(), 3, "Round 2");
 }
 
 #[test]
 fn test_destroy_ship() {
     let mut server = setup_test_with_server();
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"98266C2-40060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    // Make this a very weak ship with 1 size and 0 armor
-    let ship2 = r#"{"name":"ship2","position":[5e6,0,5e6],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"10266C2-30060-B"}"#;
+    // Make this a very weak ship
+    let ship2 = r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Scout/Courier"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
     // Pummel the weak ship.
-    let fire_actions = json!([
-        ["ship1", [{"kind": "Missile", "target": "ship2"}] ],
-        ["ship1", [{"kind": "Missile", "target": "ship2"}] ],
-        ["ship1", [{"kind": "Missile", "target": "ship2"}] ],
-        ["ship1", [{"kind": "Missile", "target": "ship2"}] ],
-        ["ship1", [{"kind": "Beam", "target": "ship2"}] ],
-        ["ship1", [{"kind": "Beam", "target": "ship2"}] ],
-        ["ship1", [{"kind": "Beam", "target": "ship2"}] ],
-        ["ship1", [{"kind": "Beam", "target": "ship2"}] ],
-    ])
+    let fire_actions = json!([["ship1", [
+        {"weapon_id": 0, "target": "ship2"},
+        {"weapon_id": 1, "target": "ship2"},
+        {"weapon_id": 2, "target": "ship2"},
+        {"weapon_id": 3, "target": "ship2"},
+    ]]])
     .to_string();
 
     let response = server
         .update(serde_json::from_str(&fire_actions).unwrap())
         .unwrap();
 
+    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();     
+
+    // Ship should not be dead yet!
+    assert!(!effects.contains(&EffectMsg::ShipDestroyed {
+        position: Vec3::new(50000.0, 0.0, 50000.0)
+    }));
+
+    let response = server
+        .update(serde_json::from_str(&fire_actions).unwrap())
+        .unwrap();
+
+
     // For this test we don't worry about all the specific damage effects, but just check for messages related to
     // ship destruction.
     let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+
     assert!(effects.contains(&EffectMsg::ShipDestroyed {
-        position: Vec3::new(5000000.0, 0.0, 5000000.0)
+        position: Vec3::new(50000.0, 0.0, 50000.0)
     }));
-    assert!(effects.contains(&EffectMsg::Damage {
+    assert!(effects.contains(&EffectMsg::Message {
         content: "ship2 destroyed.".to_string()
     }));
 }
@@ -488,101 +584,148 @@ fn test_destroy_ship() {
 fn test_big_fight() {
     let mut server = setup_test_with_server();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"98266C2-30060-B"}"#;
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "usp":"98266C2-30060-B"}"#;
+    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
     let fire_actions = json!([["ship1", [
-    {"kind": "Missile", "target": "ship2"},
-    {"kind": "Missile", "target": "ship2"},
-    {"kind": "Missile", "target": "ship2"},
-    {"kind": "Beam", "target": "ship2"},
-    {"kind": "Beam", "target": "ship2"},
-    {"kind": "Beam", "target": "ship2"},
-    {"kind": "Beam", "target": "ship2"},
-    {"kind": "Missile", "target": "ship2"}
+        {"weapon_id": 0, "target": "ship2"},
+        {"weapon_id": 1, "target": "ship2"},
+        {"weapon_id": 2, "target": "ship2"},
+        {"weapon_id": 3, "target": "ship2"},
     ]],
     ["ship2", [
-        {"kind": "Missile", "target": "ship1"},
-        {"kind": "Missile", "target": "ship1"},
-        {"kind": "Missile", "target": "ship1"},
-        {"kind": "Beam", "target": "ship1"},
-        {"kind": "Beam", "target": "ship1"},
-        {"kind": "Beam", "target": "ship1"},
-        {"kind": "Beam", "target": "ship1"},
-        {"kind": "Missile", "target": "ship1"}
+        {"weapon_id": 0, "target": "ship1"},
+        {"weapon_id": 1, "target": "ship1"},
+        {"weapon_id": 2, "target": "ship1"},
+        {"weapon_id": 3, "target": "ship1"},
     ]]]);
 
     let response = server
         .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
         .unwrap();
+
     let compare = json!([
-        {"kind": "BeamHit", "origin": [0.0, 0.0, 0.0], "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship1 did 1 Beam Laser damage to ship2's hull"},
-        {"kind": "Damage", "content": "ship1 did 1 Beam Laser damage to ship2's hull"},
-        {"kind": "BeamHit", "origin": [0.0, 0.0, 0.0], "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship1 did 1 Beam Laser damage to ship2's hull"},
-        {"kind": "Damage", "content": "ship1 did 1 Beam Laser damage to ship2's maneuver drive"},
-        {"kind": "BeamHit", "origin": [0.0, 0.0, 0.0], "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship1 did 1 Beam Laser damage to ship2's missile turret"},
-        {"kind": "BeamHit", "origin": [0.0, 0.0, 0.0], "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship1 did 1 Beam Laser damage to ship2's hull"},
-        {"kind": "BeamHit", "origin": [5000.0, 0.0, 5000.0], "position": [0.0, 0.0, 0.0]},
-        {"kind": "Damage", "content": "ship2 did 1 Beam Laser damage to ship1's hull"},
-        {"kind": "BeamHit", "origin": [5000.0, 0.0, 5000.0], "position": [0.0, 0.0, 0.0]},
-        {"kind": "Damage", "content": "ship2 did 1 Beam Laser damage to ship1's hull"},
-        {"kind": "BeamHit", "origin": [5000.0, 0.0, 5000.0], "position": [0.0, 0.0, 0.0]},
-        {"kind": "Damage", "content": "ship2 did 2 Beam Laser damage to ship1's hull"},
-        {"kind": "BeamHit", "origin": [5000.0, 0.0, 5000.0], "position": [0.0, 0.0, 0.0]},
-        {"kind": "Damage", "content": "ship2 did 2 Beam Laser damage to ship1's maneuver drive"},
-        {"kind": "Damage", "content": "ship1 did 2 Missile damage to ship2's armor"},
-        {"kind": "ShipImpact", "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship1 did 1 Missile damage to ship2's beam turret"},
-        {"kind": "ShipImpact", "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
-        {"kind": "ShipImpact", "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship1 did 1 Missile damage to ship2's maneuver drive"},
-        {"kind": "Damage", "content": "ship1 did 1 Missile damage to ship2's hull"},
-        {"kind": "ShipImpact", "position": [5000.0, 0.0, 5000.0]},
-        {"kind": "Damage", "content": "ship2 did 1 Missile damage to ship1's hull"},
-        {"kind": "Damage", "content": "ship2 did 1 Missile damage to ship1's maneuver drive"},
-        {"kind": "ShipImpact", "position": [0.0, 0.0, 0.0]},
-        {"kind": "Damage", "content": "ship2 did 2 Missile damage to ship1's armor"},
-        {"kind": "ShipImpact", "position": [0.0, 0.0, 0.0]},
-        {"kind": "Damage", "content": "ship2 did 1 Missile damage to ship1's hull"},
-        {"kind": "Damage", "content": "ship2 did 1 Missile damage to ship1's maneuver drive"},
-        {"kind": "ShipImpact", "position": [0.0, 0.0, 0.0]},
-        {"kind": "Damage", "content": "ship2 did 1 Missile damage to ship1's missile turret"},
-        {"kind": "ShipImpact", "position": [0.0, 0.0, 0.0]}
+        {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
+        {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
+        {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]}
     ]);
+    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+
 
     assert_json_eq!(
-        serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap(),
+        effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect::<Vec<_>>(),
         compare
     );
 
     let entities = server.get().unwrap();
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"96226C2-30050-B",
-         "hull":12,"structure":18}, 
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "current_hull":114,"current_armor":3,
+         "current_power":540,"current_maneuver":5,
+         "current_jump":5,"current_fuel":126,
+         "current_crew":21,"current_sensors":"Military",
+         "active_weapons":[true,true,true,true]},
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"usp":"96246C2-20050-B",
-          "hull":12,"structure":18}],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "current_hull":142,"current_armor":3,
+         "current_power":540,"current_maneuver":6,
+         "current_jump":5,"current_fuel":128,
+         "current_crew":21,"current_sensors":"Military",
+         "active_weapons":[true,true,true,true]},
+         ],
           "missiles":[],
           "planets":[]});
     assert_json_eq!(
         serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
         compare
     );
+}
+
+#[test_log::test]
+fn test_slugfest() {
+    let mut server = setup_test_with_server();
+
+    let destroyer = r#"{"name":"destroyer","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(destroyer).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+    
+    let harrier = r#"{"name":"harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(harrier).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+    
+    let buc1 = r#"{"name":"buc1","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(buc1).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+    
+    let buc2 = r#"{"name":"buc2","position":[4000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(buc2).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    let fire_actions = json!([["destroyer", [
+        {"weapon_id": 0, "target": "harrier"},
+        {"weapon_id": 1, "target": "buc1"},
+        {"weapon_id": 2, "target": "buc1"},
+        {"weapon_id": 3, "target": "buc1"},
+        {"weapon_id": 4, "target": "buc2"},
+        {"weapon_id": 5, "target": "buc2"},
+        {"weapon_id": 6, "target": "buc2"},
+        {"weapon_id": 7, "target": "buc1"},
+        {"weapon_id": 8, "target": "buc1"},
+        {"weapon_id": 9, "target": "buc1"},
+        {"weapon_id": 10, "target": "harrier"},
+        {"weapon_id": 11, "target": "buc2"},
+        {"weapon_id": 12, "target": "buc2"},
+        {"weapon_id": 13, "target": "buc2"},
+        {"weapon_id": 14, "target": "harrier"},
+        ]],
+    ["harrier", [
+        {"weapon_id": 0, "target": "destroyer"},
+        {"weapon_id": 1, "target": "destroyer"}]],
+    ["buc1", [
+        {"weapon_id": 0, "target": "destroyer"},
+        {"weapon_id": 1, "target": "destroyer"},
+        {"weapon_id": 2, "target": "destroyer"},
+        {"weapon_id": 3, "target": "destroyer"},
+        ]],
+    ["buc2", [
+        {"weapon_id": 0, "target": "destroyer"},
+        {"weapon_id": 1, "target": "destroyer"},
+        {"weapon_id": 2, "target": "destroyer"},
+        {"weapon_id": 3, "target": "destroyer"},
+        ]]
+    ]);
+    
+    let _response = server
+    .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
+    .unwrap();
+
+    let response = server.get().unwrap();
+    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+
+    // Should only have 3 ships now as the Harrier should have been destroyed
+    assert_eq!(entities.ships.len(), 3);
+
+    println!("**** SLUGFEST RESULTS *****\n{:?}", entities);
 }
 
 #[test]
@@ -608,7 +751,7 @@ fn test_get_entities() {
             position: ship_position,
             velocity: ship_velocity,
             acceleration: ship_acceleration,
-            usp: EXAMPLE_USP.to_string(),
+            design: ShipDesignTemplate::default().name.to_string(),
         })
         .unwrap();
 
@@ -648,4 +791,16 @@ fn test_get_entities() {
 
     // Check that there are no missiles
     assert!(entities.missiles.is_empty());
+}
+
+
+// Test for get_designs in server.
+#[test]
+fn test_get_designs() {
+    let server = setup_test_with_server();
+    let result = server.get_designs();
+    assert!(result.is_ok());
+    let designs = result.unwrap();
+    assert!(designs.len() > 0);
+    assert!(designs.contains("Buccaneer"));
 }

@@ -3,9 +3,10 @@ import {
   EntityRefreshCallback,
   EntityList,
   FlightPathResult,
-  Planet,
+  ShipDesignTemplates,
+  ShipDesignTemplate,
 } from "./Universal";
-import { FireState, stringifyFireState } from "./Controls";
+import { FireActionMsg } from "./Controls";
 import { Effect } from "./Effects";
 
 const address = "localhost";
@@ -16,7 +17,7 @@ export function addShip(
   position: [number, number, number],
   velocity: [number, number, number],
   acceleration: [number, number, number],
-  usp: string,
+  design: string,
   callBack: EntityRefreshCallback
 ) {
   console.log(
@@ -28,7 +29,7 @@ export function addShip(
     position: position,
     velocity: velocity,
     acceleration: acceleration,
-    usp: usp,
+    design: design,
   };
 
   fetch(`http://${address}:${port}/add_ship`, {
@@ -89,8 +90,9 @@ export async function setPlan(
     await response.json();
     getEntities(callBack);
   } else if (response.status === 400) {
-    console.log(`Invalid plan provided: ${JSON.stringify(payload)}`);
-    throw new RangeError("Invalid plan provided");
+    let msg = await response.text();
+    alert(`Proposed plan cannot be assigned: ${JSON.stringify(payload)} because ${msg}`);
+    console.log(`Invalid plan provided: ${JSON.stringify(payload)} because ${msg}`);
   } else {
     console.error(
       "Unknown response code " +
@@ -101,7 +103,7 @@ export async function setPlan(
 }
 
 export function nextRound(
-  fireActions: Map<string, FireState>,
+  fireActions: FireActionMsg,
   setEvents: (events: Effect[] | null) => void,
   callBack: EntityRefreshCallback
 ) {
@@ -110,7 +112,7 @@ export function nextRound(
     headers: {
       "Content-Type": "application/json",
     },
-    body: stringifyFireState(fireActions),
+    body: JSON.stringify(Object.entries(fireActions)),
     mode: "cors",
   })
     .then((response) => response.json())
@@ -184,4 +186,29 @@ export function getEntities(callback: EntityRefreshCallback) {
       callback(entities);
     })
     .catch((error) => console.error("Error fetching entities:", error));
+}
+
+export async function getTemplates(
+  callBack: (templates: ShipDesignTemplates) => void
+) {
+  return fetch(`http://${address}:${port}/designs`)
+    .then((response) => response.json())
+    .then((json: any) => {
+      let templates: {[key: string]: ShipDesignTemplate} = {};
+      Object.entries(json).forEach((entry: [string, any]) => {
+        let currentTemplate: ShipDesignTemplate = ShipDesignTemplate.parse(
+          entry[1]
+        );
+        templates[entry[0]] = currentTemplate;
+      });
+      return templates;
+    })
+    .then((templates: ShipDesignTemplates) => {
+      console.log("Received Templates: ");
+      for (let v of Object.values(templates)) {
+        console.log(` ${v.name}`);
+      }
+      callBack(templates);
+    })
+    .catch((error) => console.error("Error fetching templates:", error));
 }

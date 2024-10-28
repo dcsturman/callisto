@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! debug {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
@@ -13,6 +14,7 @@ macro_rules! debug {
      };
 }
 
+#[macro_export]
 macro_rules! info {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
@@ -28,12 +30,12 @@ macro_rules! info {
      };
 }
 
+#[macro_export]
 macro_rules! warn {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
             log::warn!(target: $target, $($arg)+);
-   
         }
     };
     ($($arg:tt)+) => { 
@@ -44,6 +46,7 @@ macro_rules! warn {
      };
 }
 
+#[macro_export]
 macro_rules! error {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
@@ -58,11 +61,6 @@ macro_rules! error {
         }
      };
 }
-
-pub(crate) use debug;
-pub(crate) use info;
-pub(crate) use error;
-
 
 
 

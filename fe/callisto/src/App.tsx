@@ -6,12 +6,13 @@ import SpaceView from "./Spaceview";
 import { Ships, Missiles, Route } from "./Ships";
 import {
   EntityInfoWindow,
-  ShipComputer,
   Controls,
   ViewControls,
 } from "./Controls";
 import { Effect, Explosions, ResultsWindow } from "./Effects";
-import { nextRound, getEntities, computeFlightPath } from "./ServerManager";
+import { nextRound, getEntities, getTemplates, computeFlightPath } from "./ServerManager";
+
+import { ShipComputer } from "./ShipComputer";
 
 import {
   Entity,
@@ -19,6 +20,7 @@ import {
   EntityToShowProvider,
   EntityList,
   FlightPathResult,
+  ShipDesignTemplates,
   ViewControlParams,
 } from "./Universal";
 
@@ -45,6 +47,7 @@ function App() {
     gravityWells: false,
     jumpDistance: false
   });
+  const [templates, setTemplates] = useState<ShipDesignTemplates>({});
 
   const getAndShowPlan = (
     entity_name: string | null,
@@ -82,6 +85,7 @@ function App() {
   }
 
   useEffect(() => {
+    getTemplates(setTemplates);
     getEntities(setEntities);
   }, []);
 
@@ -113,6 +117,7 @@ function App() {
               }
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
+              shipDesignTemplates={templates}
               getAndShowPlan={getAndShowPlan}
               setCameraPos={setCameraPos}
               camera={camera}

@@ -13,7 +13,10 @@ use log::info;
 extern crate callisto;
 
 use callisto::entity::Entities;
+use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 use callisto::handle_request;
+
+const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
 
 /// Server to implement physically pseudo-realistic spaceflight and possibly combat.
 #[derive(Parser, Debug)]
@@ -26,6 +29,10 @@ struct Args {
     /// JSON file for planets in scenario
     #[arg(short, long)]
     scenario_file: Option<String>,
+
+    /// JSON file for ship templates in scenario
+    #[arg(short, long, default_value = DEFAULT_SHIP_TEMPLATES_FILE)]
+    design_file: String,
 
     /// Run in test mode. Specifically, this will use a fixed random number generator.
     #[arg(short, long)]
@@ -43,6 +50,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let test_mode = args.test;
 
+    let templates = load_ship_templates_from_file(&args.design_file).expect(&format!("Unable to load ship template file {}.", args.design_file));
+    SHIP_TEMPLATES.set(templates).expect("(Main) attempting to set SHIP_TEMPLATES twice!");
+    
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         println!("Loading scenario file: {}", file_name);

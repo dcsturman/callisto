@@ -3,16 +3,18 @@ use std::sync::{Arc, RwLock};
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-
-use super::computer::{compute_target_path, FlightPathResult, TargetParams};
-use super::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
-use super::payloads::Vec3asVec;
-use super::ship::Ship;
 use cgmath::InnerSpace;
 
+use crate::computer::{compute_target_path, FlightPathResult, TargetParams};
+use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
+use crate::payloads::Vec3asVec;
+use crate::ship::Ship;
+use crate::debug;
+
 // Temporary until missiles have actual acceleration built in
-const MAX_MISSILE_ACCELERATION: f64 = 6.0 * G;
-const IMPACT_DISTANCE: f64 = 2500000.0;
+const MAX_MISSILE_ACCELERATION: f64 = 10.0 * G;
+pub const DEFAULT_BURN: i32 = 10;
+pub const IMPACT_DISTANCE: f64 = 25000.0;
 
 #[derive(Derivative)]
 #[derivative(PartialEq)]
@@ -130,7 +132,7 @@ impl Entity for Missile {
             );
 
             let mut path: FlightPathResult = compute_target_path(&params);
-            debug!("Computed path: {:?}", path);
+            debug!("Computed path: {:?} with expected time to impact of {} turns.", path, path.path.len()-1);
 
             // The computed path should be an acceleration towards the target.
             // For a missile, we should always have a single acceleration (towards the target at full thrust).
@@ -183,7 +185,7 @@ impl Entity for Missile {
 mod tests {
     use super::*;
     use crate::entity::Vec3;
-    use crate::ship::{FlightPlan, Ship};
+    use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
     use cgmath::Zero;
     use std::sync::{Arc, RwLock};
 
@@ -199,7 +201,7 @@ mod tests {
                 Vec3::zero(),
                 Vec3::zero(),
                 FlightPlan::default(),
-                String::from("98266C2-30060-B").into(),
+                Arc::new(ShipDesignTemplate::default())
             ))),
             Vec3::zero(),
             Vec3::zero(),

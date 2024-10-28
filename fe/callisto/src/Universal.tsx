@@ -7,31 +7,78 @@ export class Entity {
   position: [number, number, number] = [0, 0, 0];
   velocity: [number, number, number] = [0, 0, 0];
 
-  constructor(name: string, position: [number, number, number], velocity: [number, number, number]) {
+  constructor(
+    name: string,
+    position: [number, number, number],
+    velocity: [number, number, number]
+  ) {
     this.name = name;
     this.position = position;
     this.velocity = velocity;
   }
 }
 
-export const USP_BEAM = 8;
-export const USP_PULSE = 9;
-export const USP_MISSILE = 11;
-
 export class Ship extends Entity {
   plan: [Acceleration, Acceleration | null] = [[[0, 0, 0], 0], null];
-  usp: string = "0000000-00000-0";
-  hull: number = 0;
-  structure: number = 0;
+  design: string = "Buccaneer";
 
-  constructor(name: string, position: [number, number, number], velocity: [number, number, number], plan: [Acceleration, Acceleration | null], usp: string) {
+  current_hull: number = 0;
+  current_armor: number = 0;
+  current_power: number = 0;
+  current_maneuver: number = 0;
+  current_jump: number = 0;
+  current_fuel: number = 0;
+  current_crew: number = 0;
+  current_sensors: string = "";
+  active_weapons: boolean[] = [];
+
+  constructor(
+    name: string,
+    position: [number, number, number],
+    velocity: [number, number, number],
+    plan: [Acceleration, Acceleration | null],
+    design: string,
+    current_hull: number,
+    current_armor: number,
+    current_power: number,
+    current_maneuver: number,
+    current_jump: number,
+    current_fuel: number,
+    current_crew: number,
+    current_sensors: string,
+    active_weapons: boolean[]
+  ) {
     super(name, position, velocity);
     this.plan = plan;
-    this.usp = usp;
+    this.design = design;
+    this.current_hull = current_hull;
+    this.current_armor = current_armor;
+    this.current_power = current_power;
+    this.current_maneuver = current_maneuver;
+    this.current_jump = current_jump;
+    this.current_fuel = current_fuel;
+    this.current_crew = current_crew;
+    this.current_sensors = current_sensors;
+    this.active_weapons = active_weapons;
   }
 
   static parse(json: any): Ship {
-    return new Ship(json.name, json.position, json.velocity, json.plan, json.usp);
+    return new Ship(
+      json.name,
+      json.position,
+      json.velocity,
+      json.plan,
+      json.design,
+      json.current_hull,
+      json.current_armor,
+      json.current_power,
+      json.current_maneuver,
+      json.current_jump,
+      json.current_fuel,
+      json.current_crew,
+      json.current_sensors,
+      json.active_weapons
+    );
   }
 }
 
@@ -45,7 +92,19 @@ export class Planet extends Entity {
   gravity_radius_05: number = 0;
   gravity_radius_025: number = 0;
 
-  constructor(name: string, position: [number, number, number], velocity: [number, number, number], color: string, primary: [number, number, number], radius: number, mass: number, gravity_radius_2: number, gravity_radius_1: number, gravity_radius_05: number, gravity_radius_025: number) {
+  constructor(
+    name: string,
+    position: [number, number, number],
+    velocity: [number, number, number],
+    color: string,
+    primary: [number, number, number],
+    radius: number,
+    mass: number,
+    gravity_radius_2: number,
+    gravity_radius_1: number,
+    gravity_radius_05: number,
+    gravity_radius_025: number
+  ) {
     super(name, position, velocity);
     this.color = color;
     this.primary = primary;
@@ -58,7 +117,19 @@ export class Planet extends Entity {
   }
 
   static parse(json: any): Planet {
-    return new Planet(json.name, json.position, json.velocity, json.color, json.primary, json.radius, json.mass, json.gravity_radius_2, json.gravity_radius_1, json.gravity_radius_05, json.gravity_radius_025);
+    return new Planet(
+      json.name,
+      json.position,
+      json.velocity,
+      json.color,
+      json.primary,
+      json.radius,
+      json.mass,
+      json.gravity_radius_2,
+      json.gravity_radius_1,
+      json.gravity_radius_05,
+      json.gravity_radius_025
+    );
   }
 }
 
@@ -67,13 +138,23 @@ export class Missile extends Entity {
   burns: number = 1;
   acceleration: [number, number, number] = [0, 0, 0];
 
-  constructor(name: string, position: [number, number, number], velocity: [number, number, number], acceleration: [number, number, number]) {
+  constructor(
+    name: string,
+    position: [number, number, number],
+    velocity: [number, number, number],
+    acceleration: [number, number, number]
+  ) {
     super(name, position, velocity);
     this.acceleration = acceleration;
   }
 
   static parse(json: any): Missile {
-    return new Missile(json.name, json.position, json.velocity, json.acceleration);
+    return new Missile(
+      json.name,
+      json.position,
+      json.velocity,
+      json.acceleration
+    );
   }
 }
 
@@ -118,9 +199,91 @@ export type FlightPathResult = {
   plan: [Acceleration, Acceleration | null]
 };
 
-export type ViewControlParams = {gravityWells: boolean, jumpDistance: boolean};
+export type WeaponMount = String | { Turret: number } | { BaySize: string };
+
+export class Weapon {
+  kind: string;
+  mount: WeaponMount;
+
+  static parse(json: any): Weapon {
+    let w = new Weapon();
+    w.kind = json.kind;
+    w.mount = json.mount;
+    return w;
+  }
+
+  toString(): string {
+    return `${this.kind} ${this.mount}`;
+  }
+
+  constructor() {
+    this.kind = "Beam";
+    this.mount = { Turret: 0 };
+  }
+}
+
+export class ShipDesignTemplate {
+  name: string;
+  displacement: number;
+  hull: number;
+  armor: number;
+  maneuver: number;
+  jump: number;
+  power: number;
+  fuel: number;
+  crew: number;
+  sensors: string;
+  computer: number;
+  weapons: Weapon[];
+  tl: number;
+
+  static parse(json: any): ShipDesignTemplate {
+    let t = new ShipDesignTemplate();
+    t.name = json.name;
+    t.displacement = json.displacement;
+    t.hull = json.hull;
+    t.armor = json.armor;
+    t.maneuver = json.maneuver;
+    t.jump = json.jump;
+    t.power = json.power;
+    t.fuel = json.fuel;
+    t.crew = json.crew;
+    t.sensors = json.sensors;
+    t.computer = json.computer;
+    t.weapons = json.weapons.map((w: any) => Weapon.parse(w));
+    t.tl = json.tl;
+    return t;
+  }
+
+  constructor() {
+    this.name = "";
+    this.displacement = 0;
+    this.hull = 0;
+    this.armor = 0;
+    this.maneuver = 0;
+    this.jump = 0;
+    this.power = 0;
+    this.fuel = 0;
+    this.crew = 0;
+    this.sensors = "";
+    this.computer = 0;
+    this.weapons = [];
+    this.tl = 0;
+  }
+}
+
+export type ShipDesignTemplates = { [key: string] : ShipDesignTemplate };
+
+export type ViewControlParams = {
+  gravityWells: boolean;
+  jumpDistance: boolean;
+};
 
 export const SCALE = 1e-6; // 1 unit = 100km or 1e6m
-export const TURN_IN_SECONDS = 1e3;
-export const G = 9.81;
+// Be sure TURN_IN_SECONDS and G match the constants in entity.rs
+export const TURN_IN_SECONDS = 360;
+export const G = 9.807;
 export const DEFAULT_ACCEL_DURATION = 10000;
+// Not to be confused with SCALE, POSITION_SCALE is the degree vector values for position should be scaled.
+// i.e. rather than having users enter meters, they enter position in kilometers.  Thus a 1000.0 scale.
+export const POSITION_SCALE = 1000.0;

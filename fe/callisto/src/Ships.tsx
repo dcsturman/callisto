@@ -96,11 +96,13 @@ function Ship(args: {
           <sphereGeometry ref={shipGeoRef} args={[0.2]} />
           <meshBasicMaterial color={[3, 3, 8.0]} />
         </mesh>
+        {/* vector showing a ships's velocity (so distance next turn) */}
         <Line
           start={[0, 0, 0]}
           end={scaleVector(args.ship.velocity, SCALE * TURN_IN_SECONDS)}
           color="red"
         />
+        {/* vector showing a ships's planed move in the next turn */}
         <Line
           start={scaleVector(args.ship.velocity, SCALE * TURN_IN_SECONDS)}
           end={addVector(
@@ -173,11 +175,13 @@ export function Missile(args: { missile: MissileType; index: number }) {
           <sphereGeometry args={[0.05]} />
           <meshBasicMaterial color={[8.0, 0, 0]} />
         </mesh>
+        {/* vector showing a missile's velocity (so distance next turn) */}
         <Line
           start={[0, 0, 0]}
           end={scaleVector(args.missile.velocity, SCALE * TURN_IN_SECONDS)}
           color="grey"
         />
+        {/* vector showing a missile's planed move in the next turn */}
         <Line
           start={scaleVector(args.missile.velocity, SCALE * TURN_IN_SECONDS)}
           end={addVector(
@@ -232,24 +236,4 @@ export function Route(args: { plan: FlightPathResult }) {
       })}
     </group>
   );
-}
-
-// Validate a USP string to see if its structurally correct.
-// Could just return a boolean but we return a boolean if correct and then an optional string
-// if there is an error message.
-export function validateUSP(usp: string): [boolean, string | null] {
-  if (usp.length !== 13+2) {
-    return [false, `USP must be 13 characters long.  Provided string is ${usp.replace(/-/g, "").length} characters long.`];
-  } else if (usp[7] !== "-") {
-    return [false, `USP must have a dash at position 8.  Provided string is ${usp}.`];
-  } else if (usp[13] !== "-") {
-    return [false, `USP must have a dash at position 14.  Provided string is ${usp} with ${usp[14]} at position 14.`];
-  } else if (usp.indexOf("O") !== -1) {
-    return [false, `USP has an O.  Maybe you intended a zero? Provided string is ${usp}.`];
-  } else if (usp.indexOf("I") !== -1) {
-    return [false, `USP has an I.  Maybe you intended a one? Provided string is ${usp}.`];
-  } else if (usp.toUpperCase() !== usp) {
-    return [false, `USP must only use uppercase.  Provided string is ${usp}.`];
-  }
-  return [true, null];
 }

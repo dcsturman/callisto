@@ -1,6 +1,6 @@
 pub mod combat;
 mod computer;
-mod damage_tables;
+mod combat_tables;
 pub mod entity;
 pub mod missile;
 pub mod payloads;
@@ -9,14 +9,12 @@ pub mod server;
 pub mod ship;
 
 #[macro_use]
-pub mod cov_util;
+mod cov_util;
 
 #[cfg(test)]
 pub mod tests;
 
 extern crate pretty_env_logger;
-#[macro_use]
-extern crate log;
 
 use std::sync::{Arc, Mutex};
 
@@ -102,11 +100,11 @@ pub async fn handle_request(
     test_mode: bool,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let rng = if test_mode {
-        info!("(lib.handleRequest) Server in TEST mode.");
+        info!("(lib.handleRequest) Server in TEST mode for random numbers (constant seed of 0).");
         // Use 0 to seed all test case random number generators.
         Box::new(SmallRng::seed_from_u64(0))
     } else {
-        info!("(lib.handleRequest) Server in standard mode.");
+        debug!("(lib.handleRequest) Server in standard mode for random numbers.");
         Box::new(SmallRng::from_entropy())
     };
 
@@ -165,6 +163,7 @@ pub async fn handle_request(
             match server.set_plan(plan_msg) {
                 Ok(_) => Ok(build_ok_response("Set acceleration action executed")),
                 Err(err) => {
+                    warn!("(/set_plan)) Error setting plan: {}", err);
                     let resp: Response<Full<Bytes>> = Response::builder()
                         .status(StatusCode::BAD_REQUEST)
                         .header("Access-Control-Allow-Origin", "*")
@@ -225,6 +224,22 @@ pub async fn handle_request(
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
             }
         }
+
+        (&Method::GET, "/designs") => {
+            info!("Received and processing get designs request.");
+            match server.get_designs() {
+                Ok(json) => {
+                    let resp = Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                        .unwrap();
+                    Ok(resp)
+                }
+                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+            }
+        }
+
         _ => {
             // Return a 404 Not Found response for any other requests
             Ok(Response::builder()

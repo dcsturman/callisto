@@ -1,16 +1,25 @@
-use cgmath::{InnerSpace, Zero};
-use serde::{Deserialize, Serialize};
-
-use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::cov_util::debug;
+use cgmath::{InnerSpace, Zero};
+use derivative::Derivative;
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, skip_serializing_none};
+use once_cell::sync::OnceCell;
+use strum_macros::FromRepr;
+
+use crate::{debug, info};
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
 
+pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
+
 #[skip_serializing_none]
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Derivative)]
+#[derivative(PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Ship {
     name: String,
     #[serde_as(as = "Vec3asVec")]
@@ -18,32 +27,154 @@ pub struct Ship {
     #[serde_as(as = "Vec3asVec")]
     velocity: Vec3,
     pub plan: FlightPlan,
-    #[serde_as(as = "USPasString")]
-    pub usp: USP,
-    // Structure and hull are derived from USP (2x the hull) but can change in combat.
-    pub hull: u8,
-    pub structure: u8,
 
-    // usp used to record ideal state (vs damage)
-    // Is just cloned from the usp initially so never serialized or deserialized.  We may need
-    // to send it explicitly in some messages.
+    #[serde_as(as = "TemplateNameOnly")]
+    #[derivative(PartialEq = "ignore")]
+    pub design: Arc<ShipDesignTemplate>,
+
+    #[serde(default)]
+    pub current_hull: u32,
+    #[serde(default)]
+    pub current_armor: u32,
+    #[serde(default)]
+    pub current_power: u32,
+    #[serde(default)]
+    pub current_maneuver: u8,
+    #[serde(default)]
+    pub current_jump: u8,
+    #[serde(default)]
+    pub current_fuel: u32,
+    #[serde(default)]
+    pub current_crew: u32,
+    #[serde(default)]
+    pub current_sensors: Sensors,
+    #[serde(default)]
+    pub active_weapons: Vec<bool>,
+
+    // Index by turning ShipSystem enum into usize.
+    // Skip these in both serializing and deserializing
+    // as we don't expect them when loading from a file and
+    // don't intend to send them to the server.
+    #[serde(skip)]    
+    pub crit_level: [u8; 11],
     #[serde(skip)]
-    pub original_usp: USP,
+    pub attack_dm: i32
+}
+
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ShipDesignTemplate {
+    pub name: String,
+    pub displacement: u32,
+    pub hull: u32,
+    pub armor: u32,
+    pub maneuver: u8,
+    pub jump: u8,
+    pub power: u32,
+    pub fuel: u32,
+    pub crew: u32,
+    pub sensors: Sensors,
+    pub stealth: Option<Stealth>,
+    pub computer: u32,
+    pub weapons: Vec<Weapon>,
+    pub tl: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Weapon {
+    pub kind: WeaponType,
+    pub mount: WeaponMount,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum WeaponMount {
+    Turret(u8),
+    Barbette,
+    Bay(BaySize),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaySize {
+    Small,
+    Medium,
+    Large,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WeaponType {
+    Beam = 0,
+    Pulse,
+    Missile,
+    Sand,
+    Particle,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
+pub enum Sensors {
+    Basic = 0,
+    Civilian,
+    Military,
+    Improved,
+    Advanced
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum Stealth {
+    Basic,
+    Improved,
+    Enhanced,
+    Advanced
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, FromRepr)]
+pub enum ShipSystem {
+    Sensors = 0,
+    Powerplant,
+    Fuel,
+    Weapon,
+    Armor,
+    Hull,
+    Manuever,
+    Cargo,
+    Jump,
+    Crew,
+    Bridge,
 }
 
 impl Ship {
-    pub fn new(name: String, position: Vec3, velocity: Vec3, plan: FlightPlan, usp: USP) -> Self {
-        let hull = usp.hull * 2;
+    pub fn new(name: String, position: Vec3, velocity: Vec3, plan: FlightPlan, design: Arc<ShipDesignTemplate>) -> Self {
         Ship {
             name,
             position,
             velocity,
             plan,
-            usp: usp.clone(),
-            original_usp: usp,
-            hull,
-            structure: hull,
+            design: design.clone(),
+            current_hull: design.hull,
+            current_armor: design.armor,
+            current_power: design.power,
+            current_maneuver: design.maneuver,
+            current_jump: design.jump,
+            current_fuel: design.fuel,
+            current_crew: design.crew,
+            current_sensors: design.sensors,
+            active_weapons: vec![true; design.weapons.len()],
+            crit_level: [0; 11],
+            attack_dm: 0
         }
+    }
+
+    pub fn fixup_current_values(&mut self) {
+        self.current_hull = u32::max(self.current_hull, self.design.hull);
+        self.current_armor = u32::max(self.current_armor, self.design.armor);
+        self.current_power = u32::max(self.current_power, self.design.power);
+        self.current_maneuver = u8::max(self.current_maneuver, self.design.maneuver);
+        self.current_jump = u8::max(self.current_jump, self.design.jump);
+        self.current_fuel = u32::max(self.current_fuel, self.design.fuel);
+        self.current_crew = u32::max(self.current_crew, self.design.crew);
+        self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
+        self.active_weapons = vec![true; self.design.weapons.len()];
+        self.crit_level = [0; 11];
+        self.attack_dm = 0;
     }
 
     pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> Result<(), String> {
@@ -52,9 +183,10 @@ impl Ship {
         // and the powerplant rating.
         // We use the current maneuverability rating in case the ship took damage
         let max_accel = self.max_acceleration();
-        if new_plan.0 .0.magnitude() <= max_accel {
+        debug!("(Ship.set_flight_plan) ship: {}, max_accel: {} new_plan: {:?} with magnitude on first accel of {}", self.name, max_accel, new_plan, new_plan.0 .0.magnitude());
+        if new_plan.0.in_limits(max_accel) {
             if let Some(second) = &new_plan.1 {
-                if second.0.magnitude() <= max_accel {
+                if second.in_limits(max_accel) {
                     self.plan = new_plan.clone();
                     Ok(())
                 } else {
@@ -69,12 +201,28 @@ impl Ship {
         }
     }
 
-    pub fn post_deserialize(&mut self) {
-        self.original_usp = self.usp.clone();
+    pub fn max_acceleration(&self) -> f64 {
+        self.design.best_thrust(self.current_power) as f64
     }
 
-    pub fn max_acceleration(&self) -> f64 {
-        u8::max(self.usp.maneuver, self.usp.powerplant) as f64
+    pub fn get_current_hull_points(&self) -> u32 {
+        self.current_hull
+    }
+
+    pub fn get_max_hull_points(&self) -> u32 {
+        self.design.hull
+    }
+
+    pub fn set_hull_points(&mut self, new_hull: u32) {
+        self.current_hull = new_hull;
+    }
+
+    pub fn get_current_armor(&self) -> u32 {
+        self.current_armor
+    }
+
+    pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
+        &self.design.weapons[weapon_id as usize]
     }
 }
 
@@ -113,7 +261,7 @@ impl Entity for Ship {
         debug!("(Ship.update) Updating ship {:?}", self.name);
 
         // If our ship is blow up, just return that effect (no need to do anything else)
-        if self.structure == 0 {
+        if self.current_hull == 0 {
             debug!("(Ship.update) Ship {} is destroyed.", self.name);
             return Some(UpdateAction::ShipDestroyed);
         }
@@ -125,7 +273,7 @@ impl Entity for Ship {
         } else {
             // Adjust time in case max acceleration has changed due to combat damage.  Note this might be simplistic and require a new plan but that is up
             // to the user to notice and fix.
-            let max_thrust = u8::max(self.usp.maneuver, self.usp.powerplant) as f64;
+            let max_thrust = self.max_acceleration();
             self.plan.ensure_thrust_limit(max_thrust);
             let moves = self.plan.advance_time(DELTA_TIME);
 
@@ -160,6 +308,221 @@ impl PartialEq for Ship {
 }
  */
 
+
+serde_with::serde_conv!(
+    pub TemplateNameOnly,
+    Arc<ShipDesignTemplate>,
+    |t: &Arc<ShipDesignTemplate>| t.name.clone(),
+    |value: String| -> Result<_, std::convert::Infallible> {
+        let template: Arc<ShipDesignTemplate> = SHIP_TEMPLATES.get().expect("(Deserializing Ship) Ship templates not loaded").get(&value).unwrap().clone();
+        Ok(template)
+    }
+);
+
+// Load ship templates from a file.
+pub fn load_ship_templates_from_file(file_name: &str) -> Result<HashMap<String, Arc<ShipDesignTemplate>>, Box<dyn std::error::Error>> {
+    let file = std::fs::File::open(file_name)?;
+    let reader = std::io::BufReader::new(file);
+    let templates: Vec<ShipDesignTemplate> = serde_json::from_reader(reader)?;
+    
+    // Sort the weapons in each template as loaded to ensure they are in order.  This is a dependency the UX depends on.
+    let table = templates.into_iter().map(|mut template| { template.weapons.sort(); (template.name.clone(), Arc::new(template))}).collect();
+
+    Ok(table)
+}
+
+// Helper method designed only for use in tests to load templates from a default file.
+pub fn config_test_ship_templates() {
+    const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
+    let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE).expect("Unable to load ship template file.");
+    SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| { info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!" );});
+}
+
+impl ShipDesignTemplate {
+    // Making this overly simplistic for now.  Assume for power usage that
+    // basic systems and sensors are prioritized, and we ignore weapons.
+    pub fn best_thrust(&self, current_power: u32) -> u8 {
+        // First take out basic ship systems.
+        let power: i32 = current_power as i32 - self.displacement as i32 / 5;
+        // Now adjust for sensors.
+        let power = power - match self.sensors {
+            Sensors::Basic => 0,
+            Sensors::Civilian => 1,
+            Sensors::Military => 2,
+            Sensors::Improved => 4,
+            Sensors::Advanced => 6,
+        };
+
+        if power <= 0 {
+            return 0;
+        }
+
+        // Power left for thrust is one thrust per 10% of ship displacement in power units.
+        let available_thrust = power * 10 / self.displacement as i32;
+
+        u8::min(self.maneuver, available_thrust as u8)
+    }
+}
+
+impl PartialOrd for Weapon {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (&self.mount, &other.mount) {
+            (WeaponMount::Bay(BaySize::Large ), WeaponMount::Bay(BaySize::Large)) => self.kind.partial_cmp(&other.kind),
+            (WeaponMount::Bay(BaySize::Large), _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => self.kind.partial_cmp(&other.kind),
+            (WeaponMount::Bay(BaySize::Medium), _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Large)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Medium)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => self.kind.partial_cmp(&other.kind),
+            (WeaponMount::Bay(BaySize::Small), _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Barbette, _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Turret(_), WeaponMount::Bay(_)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Turret(_), WeaponMount::Barbette) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.partial_cmp(&other.kind),
+        }
+    }
+}
+
+impl Ord for Weapon {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+impl Default for Sensors {
+    fn default() -> Self {
+        Sensors::Civilian
+    }
+}
+
+impl Sensors {
+    pub fn max(lhs: Sensors, rhs: Sensors) -> Sensors {
+        if lhs > rhs {
+            lhs
+        } else {
+            rhs
+        }
+    }
+}
+impl From<Sensors> for i32 {
+    fn from(s: Sensors) -> Self {
+        match s {
+            Sensors::Basic => -4,
+            Sensors::Civilian => -2,
+            Sensors::Military => 0,
+            Sensors::Improved => 1,
+            Sensors::Advanced => 2,
+        }
+    }
+}
+
+impl From<Sensors> for String {
+    fn from(s: Sensors) -> Self {
+        match s {
+            Sensors::Basic => "Basic".to_string(),
+            Sensors::Civilian => "Civilian".to_string(),
+            Sensors::Military => "Military".to_string(),
+            Sensors::Improved => "Improved".to_string(),
+            Sensors::Advanced => "Advanced".to_string(),
+        }
+    }
+}
+
+impl std::ops::Sub<i32> for Sensors {
+    type Output = Sensors;
+
+    fn sub(self, rhs: i32) -> Self::Output {
+        let int_rep = self as u32 as i32;
+        if int_rep - rhs <= 0 {
+            Sensors::Basic
+        } else {
+            Sensors::from_repr((int_rep - rhs) as usize).unwrap()
+        }
+    }
+}
+
+impl From<Stealth> for i32 {
+    fn from(s: Stealth) -> Self {
+        match s {
+            Stealth::Basic => -2,
+            Stealth::Improved => -2,
+            Stealth::Enhanced => -4,
+            Stealth::Advanced => -6,
+        }
+    }
+}
+
+impl From<Stealth> for String {
+    fn from(s: Stealth) -> Self {
+        match s {
+            Stealth::Basic => "Basic".to_string(),
+            Stealth::Improved => "Improved".to_string(),
+            Stealth::Enhanced => "Enhanced".to_string(),
+            Stealth::Advanced => "Advanced".to_string(),
+        }
+    }
+}
+
+impl From<WeaponType> for String {
+    fn from(w: WeaponType) -> Self {
+        String::from(&w)
+    }
+}
+
+impl From<&WeaponType> for String {
+    fn from(w: &WeaponType) -> Self {
+        match w {
+            WeaponType::Beam => "beam laser".to_string(),
+            WeaponType::Pulse => "pulse laser".to_string(),
+            WeaponType::Missile => "missile".to_string(),
+            WeaponType::Sand => "sand".to_string(),
+            WeaponType::Particle => "particle beam".to_string(),
+        }
+    }
+}
+
+impl From<&Weapon> for String {
+    fn from(w: &Weapon) -> Self {
+        match (&w.kind, &w.mount) {
+            (kind, WeaponMount::Turret(1)) => format!("{} single turret", String::from(kind)),
+            (kind, WeaponMount::Turret(2)) => format!("{} double turret", String::from(kind)),
+            (kind, WeaponMount::Turret(3)) => format!("{} triple turret", String::from(kind)),
+            (_, WeaponMount::Turret(size)) => panic!("(From<Weapon> for String) illegal turret size {}.", size),
+            (kind, WeaponMount::Barbette) => format!("{} barbette", String::from(kind)),
+            (kind, WeaponMount::Bay(BaySize::Small)) => format!("{} small bay", String::from(kind)),
+            (kind, WeaponMount::Bay(BaySize::Medium)) => format!("{} medium bay", String::from(kind)),
+            (kind, WeaponMount::Bay(BaySize::Large)) => format!("{} large bay", String::from(kind)),
+        }
+    }
+}
+
+impl WeaponType {
+    pub fn is_laser(&self) -> bool {
+        match self {
+            WeaponType::Beam | WeaponType::Pulse => true,
+            _ => false,
+        }
+    }
+}
+
+impl From<ShipSystem> for String {
+    fn from(s: ShipSystem) -> Self {
+        match s {
+            ShipSystem::Hull => "hull".to_string(),
+            ShipSystem::Armor => "armor".to_string(),
+            ShipSystem::Jump => "jump drive".to_string(),
+            ShipSystem::Manuever => "maneuver drive".to_string(),
+            ShipSystem::Powerplant => "power plant".to_string(),
+            ShipSystem::Crew => "crew".to_string(),
+            ShipSystem::Weapon => "a weapon".to_string(),
+            ShipSystem::Sensors => "sensors".to_string(),
+            ShipSystem::Fuel => "fuel".to_string(),
+            ShipSystem::Bridge => "bridge".to_string(),
+            ShipSystem::Cargo => "cargo".to_string(),
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AccelPair(#[serde_as(as = "Vec3asVec")] pub Vec3, pub u64);
@@ -176,6 +539,14 @@ impl From<AccelPair> for (Vec3, u64) {
     }
 }
 
+impl AccelPair {
+    pub fn in_limits(&self, limit: f64) -> bool {
+        self.0.magnitude() <= limit || approx::relative_eq!(&self.0.magnitude(),
+            &limit,
+            max_relative = 1e-3
+        )
+    }
+}
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct FlightPlan(
     pub AccelPair,
@@ -283,49 +654,33 @@ impl FlightPlan {
     }
 }
 
-/**
- * Structure of the USP and how to decode it:
- * Hull size (basically 1 code per 100 tons up to 2K tons)  Gives Hull points and Structure points.
- * Armor level
- * Jump level
- * Manuever level
- * Power plant level
- * Computer code
- * Crew size code
- * --dash--
- * Beam Lasers
- * Pulse Lasers
- * Particle Beam
- * Missiles
- * --skip bay weapons for now--
- * Sand
- * --skip screens for now--
- * --dash--
- * TL
- */
-#[derive(Default, Debug, PartialEq, Clone)]
-pub struct USP {
-    pub hull: u8,
-    pub armor: u8,
-    pub jump: u8,
-    pub maneuver: u8,
-    pub powerplant: u8,
-    pub computer: u8,
-    pub crew: u8,
-
-    pub beam: u8,
-    pub pulse: u8,
-    pub particle: u8,
-    pub missile: u8,
-    pub sand: u8,
-
-    pub tl: u8,
+impl Default for ShipDesignTemplate {
+    fn default() -> Self {
+        ShipDesignTemplate {
+            name: "Buccaneer".to_string(),
+            displacement: 400,
+            hull: 160,
+            armor: 5,
+            maneuver: 3,
+            jump: 2,
+            power: 300,
+            fuel: 81,
+            crew: 11,
+            sensors: Sensors::Improved,
+            stealth: None,
+            computer: 5,
+            weapons: vec![ 
+                Weapon{ kind: WeaponType::Pulse, mount: WeaponMount::Turret(2) }, 
+                Weapon{ kind: WeaponType::Pulse, mount: WeaponMount::Turret(2) },
+                Weapon{ kind: WeaponType::Sand, mount: WeaponMount::Turret(2) }, 
+                Weapon{ kind: WeaponType::Sand, mount: WeaponMount::Turret(2) }, 
+            ],
+            tl: 15
+        }
+    }
 }
-
-const USP_LEN: usize = 13;
-
-pub const EXAMPLE_USP: &str = "38266C2-30060-B";
-
+    
+#[allow(dead_code)]    
 fn digit_to_int(code: char) -> u8 {
     match code {
         '0' => 0,
@@ -366,6 +721,7 @@ fn digit_to_int(code: char) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 fn int_to_digit(code: u8) -> char {
     match code {
         x if x <= 9 => (x + b'0') as char,
@@ -375,63 +731,6 @@ fn int_to_digit(code: u8) -> char {
         _ => panic!("(ship.intToDigit) Unknown code: {}", code),
     }
 }
-
-impl From<String> for USP {
-    fn from(usp: String) -> Self {
-        let mut codes = usp.chars().filter(|c| *c != '-');
-        assert_eq!(
-            codes.clone().count(),
-            USP_LEN,
-            "USP must be {} characters long: {}",
-            USP_LEN,
-            usp
-        );
-        USP {
-            hull: digit_to_int(codes.next().unwrap()),
-            armor: digit_to_int(codes.next().unwrap()),
-            jump: digit_to_int(codes.next().unwrap()),
-            maneuver: digit_to_int(codes.next().unwrap()),
-            powerplant: digit_to_int(codes.next().unwrap()),
-            computer: digit_to_int(codes.next().unwrap()),
-            crew: digit_to_int(codes.next().unwrap()),
-            beam: digit_to_int(codes.next().unwrap()),
-            pulse: digit_to_int(codes.next().unwrap()),
-            particle: digit_to_int(codes.next().unwrap()),
-            missile: digit_to_int(codes.next().unwrap()),
-            sand: digit_to_int(codes.next().unwrap()),
-            tl: digit_to_int(codes.next().unwrap()),
-        }
-    }
-}
-
-impl From<&USP> for String {
-    fn from(usp: &USP) -> Self {
-        let mut result = String::new();
-        result.push(int_to_digit(usp.hull));
-        result.push(int_to_digit(usp.armor));
-        result.push(int_to_digit(usp.jump));
-        result.push(int_to_digit(usp.maneuver));
-        result.push(int_to_digit(usp.powerplant));
-        result.push(int_to_digit(usp.computer));
-        result.push(int_to_digit(usp.crew));
-        result.push('-');
-        result.push(int_to_digit(usp.beam));
-        result.push(int_to_digit(usp.pulse));
-        result.push(int_to_digit(usp.particle));
-        result.push(int_to_digit(usp.missile));
-        result.push(int_to_digit(usp.sand));
-        result.push('-');
-        result.push(int_to_digit(usp.tl));
-        result.to_string()
-    }
-}
-
-serde_with::serde_conv!(
-    USPasString,
-    USP,
-    |usp: &USP| -> String { usp.into() },
-    |s: String| -> Result<_, std::convert::Infallible> { Ok(USP::from(s)) }
-);
 
 #[cfg(test)]
 mod tests {
@@ -493,14 +792,13 @@ mod tests {
         let initial_position = Vec3::new(0.0, 0.0, 0.0);
         let initial_velocity = Vec3::new(1.0, 1.0, 1.0);
         let initial_plan = FlightPlan::default();
-        let initial_usp = "38266C2-30060-B".to_string();
 
         let mut ship = Ship::new(
             "TestShip".to_string(),
             initial_position,
             initial_velocity,
             initial_plan.clone(),
-            initial_usp.clone().into(),
+            Arc::new(ShipDesignTemplate::default())
         );
 
         // Test initial values
@@ -508,8 +806,6 @@ mod tests {
         assert_eq!(ship.get_position(), initial_position);
         assert_eq!(ship.get_velocity(), initial_velocity);
         assert_eq!(ship.plan, initial_plan);
-        let usp_str: String = From::<&USP>::from(&ship.usp);
-        assert_eq!(usp_str.as_str(), initial_usp.as_str());
 
         // Test setters
         let new_name = "UpdatedShip".to_string();
@@ -529,8 +825,7 @@ mod tests {
         assert_eq!(ship.plan, new_plan);
 
         // Test hull and structure
-        assert_eq!(ship.hull, 6); // 2 * usp.hull (3 for '3' in the USP)
-        assert_eq!(ship.structure, 6);
+        assert_eq!(ship.current_hull, 160); // 2 * usp.hull (3 for '3' in the USP)
 
         // Test invalid flight plan
         let invalid_plan = FlightPlan::acceleration(Vec3::new(100.0, 100.0, 100.0)); // Assuming this exceeds max acceleration
@@ -688,19 +983,18 @@ mod tests {
         let initial_position = Vec3::new(0.0, 0.0, 0.0);
         let initial_velocity = Vec3::new(1.0, 1.0, 1.0);
         let initial_plan = FlightPlan::default();
-        let initial_usp = "38266C2-30060-B".to_string();
 
         let mut ship = Ship::new(
             "TestShip".to_string(),
             initial_position,
             initial_velocity,
             initial_plan.clone(),
-            initial_usp.clone().into(),
+            Arc::new(ShipDesignTemplate::default())
         );
 
         // Test case 1: Set a valid flight plan
         let valid_plan = FlightPlan::new(
-            AccelPair(Vec3::new(2.0, 2.0, 2.0), 5000),
+            AccelPair(Vec3::new(2.0, 2.0, 1.0), 5000),
             Some(AccelPair(Vec3::new(-1.0, -1.0, -1.0), 3000)),
         );
         assert!(ship.set_flight_plan(&valid_plan).is_ok());
@@ -716,7 +1010,7 @@ mod tests {
 
         // Test case 3: Set a flight plan with only one acceleration
         let single_accel_plan = FlightPlan::new(
-            AccelPair(Vec3::new(3.0, 3.0, 3.0), 4000),
+            AccelPair(Vec3::new(2.0, 2.0, 1.0), 4000),
             None,
         );
         assert!(ship.set_flight_plan(&single_accel_plan).is_ok());
@@ -755,14 +1049,14 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            EXAMPLE_USP.to_string().into(),
+            Arc::new(ShipDesignTemplate::default())
         );
         let ship2 = Ship::new(
             "ship2".to_string(),
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            EXAMPLE_USP.to_string().into(),
+            Arc::new(ShipDesignTemplate::default())
         );
         assert!(ship1 < ship2);
         assert!(ship2 > ship1);

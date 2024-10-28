@@ -5,9 +5,8 @@ use super::computer::FlightPathResult;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use super::combat::Weapon;
-use super::entity::{Entity, Vec3};
-use super::ship::{FlightPlan, Ship};
+use super::entity::Vec3;
+use super::ship::FlightPlan;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -19,7 +18,7 @@ pub struct AddShipMsg {
     pub velocity: Vec3,
     #[serde_as(as = "Vec3asVec")]
     pub acceleration: Vec3,
-    pub usp: String,
+    pub design: String,
 }
 
 #[serde_as]
@@ -71,7 +70,7 @@ pub type FlightPathMsg = FlightPathResult;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FireAction {
-    pub kind: Weapon,
+    pub weapon_id: u32,
     pub target: String,
 }
 
@@ -105,28 +104,13 @@ pub enum EffectMsg {
         #[serde_as(as = "Vec3asVec")]
         position: Vec3,
     },
-    Damage {
+    Message {
         content: String,
     },
 }
 impl EffectMsg {
-    pub fn from_damage(
-        attacker_name: &str,
-        defender: &Ship,
-        damage: u8,
-        weapon_name: &str,
-        damage_loc_name: &str,
-    ) -> EffectMsg {
-        EffectMsg::Damage {
-            content: format!(
-                "{} did {} {} damage to {}'s {}",
-                attacker_name,
-                damage,
-                weapon_name,
-                defender.get_name(),
-                damage_loc_name
-            ) as String,
-        }
+    pub fn message(content: String) -> EffectMsg {
+        EffectMsg::Message { content }
     }
 }
 
@@ -149,26 +133,29 @@ serde_with::serde_conv!(
 
 #[cfg(test)]
 mod tests {
+    use crate::ship::ShipDesignTemplate;
+
     use super::*;
-    use crate::ship::EXAMPLE_USP;
     use cgmath::Zero;
     use serde_json::json;
 
     #[test]
     fn test_add_ship_msg() {
+        let default_template_name = ShipDesignTemplate::default().name;
+
         let msg = AddShipMsg {
             name: "ship1".to_string(),
             position: Vec3::zero(),
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
-            usp: EXAMPLE_USP.to_string(),
+            design: default_template_name.clone(),
         };
         let json = json!({
             "name": "ship1",
             "position": [0.0, 0.0, 0.0],
             "velocity": [0.0, 0.0, 0.0],
             "acceleration": [0.0, 0.0, 0.0],
-            "usp": EXAMPLE_USP
+            "design": "Buccaneer"
         });
 
         let json_str = serde_json::to_string(&msg).unwrap();
@@ -236,11 +223,11 @@ mod tests {
         let json_str = serde_json::to_string(&msg).unwrap();
         assert_eq!(json_str, json.to_string());
 
-        let msg = EffectMsg::Damage {
+        let msg = EffectMsg::Message {
             content: "2 points to the hull".to_string(),
         };
         let json = json!({
-            "kind" : "Damage",
+            "kind" : "Message",
             "content" : "2 points to the hull"
         });
 
@@ -265,14 +252,14 @@ mod tests {
             (
                 "ship1".to_string(),
                 vec![FireAction {
-                    kind: Weapon::Beam,
+                    weapon_id: 0,
                     target: "ship2".to_string(),
                 }],
             ),
             (
                 "ship2".to_string(),
                 vec![FireAction {
-                    kind: Weapon::Pulse,
+                    weapon_id: 1,
                     target: "ship1".to_string(),
                 }],
             ),
@@ -281,7 +268,7 @@ mod tests {
             [
                 "ship1", [
                     {
-                        "kind": "Beam",
+                        "weapon_id": 0,
                         "target": "ship2"
                     }
                 ]
@@ -289,7 +276,7 @@ mod tests {
             [
                 "ship2", [
                     {
-                        "kind": "Pulse",
+                        "weapon_id": 1,
                         "target": "ship1"
                     }
                 ]

@@ -5,7 +5,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
-use crate::cov_util::debug;
+use crate::{debug, info};
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
 
