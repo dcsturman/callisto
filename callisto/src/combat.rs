@@ -5,7 +5,7 @@ use cgmath::InnerSpace;
 use rand::RngCore;
 
 use crate::combat_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
-use crate::debug;
+use crate::{ debug, error };
 use crate::entity::Entity;
 use crate::payloads::{EffectMsg, FireAction, LaunchMissileMsg};
 use crate::ship::{BaySize, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
@@ -24,7 +24,7 @@ pub fn roll_dice(dice: usize, rng: &mut dyn RngCore) -> u32 {
 
 pub fn attack(
     hit_mod: i32,
-    _damage_mod: i16,
+    damage_mod: i32,
     attacker: &Ship,
     defender: &mut Ship,
     weapon: &Weapon,
@@ -32,6 +32,9 @@ pub fn attack(
 ) -> Vec<EffectMsg> {
     let attacker_name = attacker.get_name();
 
+    debug!("(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}", attacker.get_name(), attacker.get_position(), defender.get_name(), defender.get_position(), (defender.get_position() - attacker.get_position()).magnitude(), find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize),RANGE_MOD[find_range_band(
+            (defender.get_position() - attacker.get_position()).magnitude() as usize,
+        )]);
     debug!(
         "(Combat.attack) Ship {} attacking with {:?} against {} with hit mod {} and range {}",
         attacker_name,
@@ -55,7 +58,12 @@ pub fn attack(
             "(Combat.attack) {}'s attack roll is {} and misses.",
             attacker_name, hit_roll
         );
-        return vec![];
+        return vec![EffectMsg::message(format!(
+            "{}'s {} attack misses {}.",
+            attacker_name,
+            String::from(&weapon.kind),
+            defender.get_name()
+        ))];
     }
 
     debug!(
@@ -70,7 +78,8 @@ pub fn attack(
     let mut damage = u32::try_from(
         roll_dice(DAMAGE_WEAPON_DICE[weapon.kind as usize] as usize, rng) as i32 + hit_roll
             - STANDARD_ROLL_THRESHOLD
-            - defender.get_current_armor() as i32,
+            - defender.get_current_armor() as i32
+            + damage_mod,
     )
     .unwrap_or(0);
 
@@ -478,13 +487,14 @@ fn apply_crit(
 }
 
 fn find_range_band(distance: usize) -> usize {
-    RANGE_BANDS.iter().position(|&x| x >= distance).unwrap_or(5)
+    RANGE_BANDS.iter().position(|&x| x >= distance).unwrap_or(RANGE_BANDS.len())
 }
 
 // Process all incoming fire actions and turn them into either missile launches or attacks.
 pub fn do_fire_actions(
     attacker: &Ship,
     ships: &mut HashMap<String, Arc<RwLock<Ship>>>,
+    sand_counts: &mut HashMap<String, u32>,
     actions: &[FireAction],
     rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
@@ -507,7 +517,10 @@ pub fn do_fire_actions(
 
             let weapon = attacker.get_weapon(action.weapon_id);
             debug!("(Combat.do_fire_actions) {:?}.", weapon);
-
+            debug!(
+                "(Combat.do_fire_actions) active_weapons={:?}.",
+                attacker.active_weapons
+            );
             if !attacker.active_weapons[action.weapon_id as usize] {
                 debug!(
                     "(Combat.do_fire_actions) Weapon {} is disabled.",
@@ -540,15 +553,85 @@ pub fn do_fire_actions(
                         target.get_name()
                     );
 
-                    vec![]
+                    vec![EffectMsg::message(format!(
+                            "{} launches {} missile(s) at {}.",
+                            attacker.get_name(),
+                            num_missiles,
+                            target.get_name()
+                        ))]
                 }
-                _ => attack(0, 0, attacker, &mut target, weapon, rng),
+                WeaponType::Beam | WeaponType::Pulse => {
+                    // Lasers are special as sand can be used against them.
+                    debug!(
+                        "(Combat.do_fire_actions) {} fires {} at {} with lasers.",
+                        attacker.get_name(),
+                        String::from(&weapon.kind),
+                        target.get_name()
+                    );
+                    let (sand_mod, mut effects) = match sand_counts.get(target.get_name()) {
+                        Some(sand_count) if *sand_count > 0 => {
+                            sand_counts.insert(target.get_name().to_string(), *sand_count-1);
+                            let effect = roll_dice(2, rng) as i32 - STANDARD_ROLL_THRESHOLD;
+                            if effect >= 0 {
+                                debug!(
+                                    "(Combat.do_fire_actions) {}'s sand successfully deployed against {} with effect {}.",
+                                    target.get_name(),
+                                    attacker.get_name(),
+                                    effect
+                                );
+                                let sand_mod = effect + roll(rng) as i32;
+                                (sand_mod, vec![EffectMsg::message(format!(
+                                    "{}'s sand successfully deployed against {} with mod {}.",
+                                    target.get_name(),
+                                    attacker.get_name(),
+                                    sand_mod))])
+            
+                            } else {
+                                debug!(
+                                    "(Combat.do_fire_actions) {}'s sand failed to deploy against {} with effect {}.",
+                                    target.get_name(),
+                                    attacker.get_name(),
+                                    effect);
+
+                                (0, vec![EffectMsg::message(format!(
+                                    "{}'s sand failed to deploy against {}.",
+                                    target.get_name(),
+                                    attacker.get_name()))])
+                            }
+
+                        }
+                        _ => { debug!("(Combat.do_fire_actions) {} has no sand to deploy against {}.", target.get_name(), attacker.get_name()); (0, vec![])},
+                    };
+                   
+                    effects.append(&mut attack(0, -sand_mod, attacker, &mut target, weapon, rng));
+                    effects
+                }
+                _ => {
+                    debug!(
+                        "(Combat.do_fire_actions) {} fires {} at {}.",
+                        attacker.get_name(),
+                        String::from(&weapon.kind),
+                        target.get_name()
+                    );
+
+                    attack(0, 0, attacker, &mut target, weapon, rng)
+                }
             }
         })
         .collect();
 
     (new_missiles, effects)
 }
+
+pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, u32> {
+    ship_snapshot.into_iter().map(|(name, ship)| (name.clone(), ship.design.weapons.iter().enumerate().filter(
+        |(index, weapon)| weapon.kind == WeaponType::Sand && ship.active_weapons[*index]).fold(0 as u32,|total, (_, weapon)| match weapon.mount {
+            WeaponMount::Turret(n) => total + n as u32,
+            WeaponMount::Barbette => { error!("Barbette sand mount not supported."); total },
+            WeaponMount::Bay(_) => { error!("Bay sand mount not supported."); total },
+        }))).collect()
+    }
+
 
 #[cfg(test)]
 mod tests {
@@ -623,6 +706,7 @@ mod tests {
 
         let mut ships = HashMap::new();
         ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+        let mut sand_counts = create_sand_counts(&crate::entity::deep_clone(&ships));
 
         let actions = vec![
             FireAction {
@@ -651,7 +735,7 @@ mod tests {
             }, // Missile Bay (Large)
         ];
 
-        let (missiles, effects) = do_fire_actions(&attacker, &mut ships, &actions, &mut rng);
+        let (missiles, effects) = do_fire_actions(&attacker, &mut ships, &mut sand_counts, &actions, &mut rng);
 
         // Check beam weapon effect
         assert!(effects
@@ -1022,10 +1106,10 @@ mod tests {
             // Check that we have effects. If not it means we missed which is okay for some attacks.
             // This is a hack but since the random seed is known, we map which should hit and which should miss.
             if !should_hit {
-                assert!(effects.is_empty(), "Miss should produce no effects");
+                assert!(effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).next().is_none(), "Miss should produce no effects");
                 break;
             } else {
-                assert!(!effects.is_empty(), "Hit should produce effects");
+                assert!(effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).next().is_some(), "Hit should produce effects");
             }
 
             // Check for specific effect types based on weapon type
@@ -1072,7 +1156,7 @@ mod tests {
             },
             &mut rng,
         );
-        assert!(miss_effects.is_empty(), "Miss should produce no effects");
+        assert!(miss_effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).next().is_none(), "Miss should produce no effects");
 
         // Test critical hit scenario
         let crit_effects = attack(
@@ -1094,7 +1178,7 @@ mod tests {
         for size in vec![BaySize::Medium, BaySize::Large] {
             let mut effects = vec![];
 
-            while effects.is_empty() {
+            while effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).next().is_none() {
                 defender.current_hull = 200;
                 effects = attack(
                     0,

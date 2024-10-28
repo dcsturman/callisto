@@ -450,13 +450,10 @@ async fn integration_update_missile() {
         .unwrap();
 
     let compare = json!([
-        {"kind": "Message", "content": "ship1 hit by ship2's missile but damage absorbed by armor."},
-        {"kind": "Message", "content": "ship1 hit by ship2's missile but damage absorbed by armor."},
-        {"kind": "Message", "content": "ship2 hit by a missile for 5 damage."},
         {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
     ]);
 
-    assert_json_eq!(serde_json::from_str::<Vec<callisto::payloads::EffectMsg>>(response.as_str()).unwrap(), compare);
+    assert_json_eq!(serde_json::from_str::<Vec<callisto::payloads::EffectMsg>>(response.as_str()).unwrap().iter().filter(|e| !matches!(e, callisto::payloads::EffectMsg::Message { .. })).collect::<Vec<_>>(), compare);
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await

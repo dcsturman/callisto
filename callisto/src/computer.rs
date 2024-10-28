@@ -1,15 +1,16 @@
-
 use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;
 use gomez::{Domain, Problem, SolverDriver, System};
+
 use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::entity::{Vec3, DELTA_TIME, G};
+use crate::missile::IMPACT_DISTANCE;
 use crate::payloads::Vec3asVec;
 use crate::ship::FlightPlan;
-use crate::{debug, info};
+use crate::{debug, error, info};
 
 const SOLVE_TOLERANCE: f64 = 1e-4;
 
@@ -41,6 +42,7 @@ pub struct FlightParams {
     // If we want to do that, then this is Some(target_vel) else None.
     // In this case end_pos is the _current_ end_pos not the ultimate end position.
     pub target_velocity: Option<Vec3>,
+    // max_acceleration allowed in m/sec^2 (not G's)
     pub max_acceleration: f64,
 }
 
@@ -68,7 +70,11 @@ impl Problem for FlightParams {
     // Field type, f32 or f64.
     type Field = f64;
 
-    // Domain of the system.
+    // Domain of the system expressed as a rectangular space.
+    // The first six values are for each vector (3 values) of acceleration.  Since
+    // the max acceleration in the system is 10G or 10*9.807, 100 (or -100) is a valid limit.
+    // However they could go a long time so the second two values for duration of each acceleration
+    // are without bounds as long as they are positive (cannot have negative time).
     fn domain(&self) -> Domain<Self::Field> {
         Domain::rect(
             vec![-100.0, -100.0, -100.0, -100.0, -100.0, -100.0, 0.0, 0.0],
@@ -86,6 +92,19 @@ impl Problem for FlightParams {
     }
 }
 
+/**
+ * This is the system that is solved to find the flight path.
+ * There are 8 inputs into the equations (x).
+ * The first three are the first acceleration by x, y, z coordinates.
+ * The next three are the second acceleration by x, y, z coordinates.
+ * The seventh is the duration (time) of the first acceleration.
+ * The eighth is the duration (time) of the second acceleration.
+ * The solver will find an x that gives us minimal error.  In particular it finds r(x) where:
+ * The first three values of r(x) (by x, y, z) are the difference between the target position and the actual position.
+ * The next three values of r(x) (by x, y, z) are the difference between the target velocity and the actual veloctiy.
+ * The seventh value is the difference between the first acceleration magnitude and the max acceleration.
+ * The eighth value is the difference between the second acceleration magnitude and the max acceleration.
+ */
 impl System for FlightParams {
     // Evaluation of the system (computing the residuals).
     fn eval<Sx, Srx>(
@@ -122,7 +141,7 @@ impl System for FlightParams {
                 } else {
                     Vec3::zero()
                 });
-        let vel_eqs = a_1 * t_1 + a_2 * t_2 + self.start_vel - self.end_vel;
+        let vel_eqs = self.start_vel + a_1 * t_1 + a_2 * t_2 - self.end_vel;
 
         rx[0] = pos_eqs[0];
         rx[1] = pos_eqs[1];
@@ -172,6 +191,16 @@ impl Problem for TargetParams {
     }
 }
 
+/**
+ * This is the system that is solved to find the flight path for missiles. We are looking
+ * to solve for an acceleration and time at that acceleration given the targets velocity and position.
+ * There are 4 inputs into the equations (x).
+ * The first three are the first acceleration by x, y, z coordinates.
+ * The fourth is the time at that acceleration.
+ * The solver will find an x that gives us minimal error.  In particular it finds r(x) where:
+ * The first three values of r(x) (by x, y, z) are the difference between the target position and the actual position.
+ * The eighth value is the difference between the acceleration magnitude and the max acceleration.
+ */
 impl System for TargetParams {
     fn eval<Sx, Srx>(
         &self,
@@ -199,6 +228,10 @@ impl System for TargetParams {
     }
 }
 
+/**
+ * Computes a flight path given the parameters.
+ * Returns a FlightPathResult which contains the path, the end velocity and the plan.
+ */
 pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
     let delta = params.end_pos - params.start_pos;
     let delta_v = params.end_vel - params.start_vel;
@@ -209,7 +242,8 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
         "(compute_flight_path) delta = {:?}, distance3 = {distance}",
         delta
     );
-    // Three rougth cases for initial guess:
+
+    // Three rough cases for initial guess:
     // 1. (most common) mostly correcting for position. Use standard t = at^2
     // 2. Mostly correcting for velocity.
     // 3. Both are near (or at) zero
@@ -249,18 +283,20 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
     let (x, _norm) = solver
         .find(|state| {
             info!(
-                "iter = {}\t|| r(x) || = {}\tx = {:?}",
+                "iter = {}\t|| r(x) || = {}\tx = {:?}\trx = {:?}",
                 state.iter(),
                 state.norm(),
-                state.x()
+                state.x(),
+                state.rx()
             );
             state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
         })
         .unwrap_or_else(|e| {
-            panic!(
+            error!(
                 "Unable to solve flight path with params: {:?} with error: {}.",
                 params, e
-            )
+            );
+            (&array_i, 0.0)
         });
 
     let v_a_1: [f64; 3] = x[0..3]
@@ -310,6 +346,8 @@ pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
     FlightPathResult {
         path,
         end_velocity: vel,
+        // Convert acceleration back into G's (vs m/s^2) at this point.
+        // Also convert time into an unsigned integer.
         plan: FlightPlan::new(
             (a_1 / G, t_1.round() as u64).into(),
             Some((a_2 / G, t_2.round() as u64).into()),
@@ -321,11 +359,23 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPathResult {
     let delta = params.end_pos - params.start_pos;
     let distance = delta.magnitude();
 
+    // Simple but important case where we are launching the missile within impact difference.
+    // i.e. it doesn't need to go anywhere.
+    if (params.start_pos - params.end_pos).magnitude() < IMPACT_DISTANCE {
+        info!("(compute_target_path) No need to compute flight path.");
+        return FlightPathResult {
+            path: vec![params.start_pos, params.end_pos],
+            end_velocity: params.start_vel,
+            plan: FlightPlan::new((Vec3::zero(), 0).into(), None),
+        };
+    }
+
     // If our guess has any NaN elements its due to distance being zero, so we know that element can be 0.
     let guess_a =
         (delta / distance * params.max_acceleration).map(|a| if a.is_nan() { 0.0 } else { a });
 
     let guess_t = (2.0 * distance / params.max_acceleration).sqrt();
+    debug!("(computer.compute_target_path) time guess is {} based on distance = {}, max_accel = {}", guess_t, distance, params.max_acceleration);
 
     let array_i: [f64; 3] = guess_a.into();
     let mut initial = Vec::<f64>::from(array_i);
@@ -361,32 +411,45 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPathResult {
 
     // We need to compute again if either something went wrong in the first attempt (got an error) OR
     // it took too long to reach the target.
-    let answer = if !matches!(attempt, Ok((x, _norm)) if x[3] <= DELTA_TIME as f64) {
-        debug!("Second attempt (coudln't get there in one round)");
+    let answer = if !matches!(attempt, Ok((result, _norm)) if result[3] <= DELTA_TIME as f64) {
+        debug!(
+            "Second attempt (couldn't get there in one round) taking into account target velocity."
+        );
         let mut initial = Vec::<f64>::from(array_i);
         initial.push(guess_t);
         // We need to compute again since we can't reach the target in one round.
+        // Use the original params without having zero'd out the target velocity.
         solver = SolverDriver::builder(params).with_initial(initial).build();
-        let (x, _) = solver
+        solver
             .find(|state| {
                 debug!(
-                    "iter = {}\t|| r(x) || = {}\tx = {:?}",
+                    "iter = {}\t|| r(x) || = {}\tx = {:?}\tr(x) = {:?}",
                     state.iter(),
                     state.norm(),
-                    state.x()
+                    state.x(),
+                    state.rx()
                 );
                 state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
             })
             .unwrap_or_else(|e| {
-                panic!(
+                error!(
                     "Unable to solve target path with params {:?} and error {}",
                     params, e
-                )
-            });
-        x
+                );
+                // Unlikely to be right but better than nothing
+                (&array_i, 0.0)
+            })
+            .0
     } else {
-        let (x, _) = attempt.unwrap();
-        x
+        attempt
+            .unwrap_or_else(|e| {
+                error!(
+                    "Unable to solve target path with params {:?} and error {}",
+                    params, e
+                );
+                (&array_i, 0.0)
+            })
+            .0
     };
 
     let mut path = Vec::new();
@@ -423,14 +486,11 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPathResult {
 mod tests {
     use super::super::entity::G;
     use super::*;
-    extern crate pretty_env_logger;
     use cgmath::assert_relative_eq;
-    use pretty_env_logger::env_logger;
+    use rand::Rng;
 
     #[test_log::test]
     fn test_compute_flight_path() {
-        let _ = env_logger::try_init();
-
         let params = FlightParams {
             start_pos: Vec3 {
                 x: -2e7,
@@ -524,7 +584,7 @@ mod tests {
         let pos_error = (plan.path.last().unwrap() - params.end_pos).magnitude();
         info!("Vel Error: {}\nPos Error: {}", vel_error, pos_error);
         // Add assertions here to validate the computed flight path and velocity
-        // Note asserting the path length in this case is kind of weak as we just had 
+        // Note asserting the path length in this case is kind of weak as we just had
         // to see what value made sense.  The other two tests are more meaningful.
         assert_eq!(plan.path.len(), 7);
         assert!(pos_error < 0.001);
@@ -581,25 +641,24 @@ mod tests {
         // And one extra for the turn-around datapoint
         // expected_len = CEIL(t/DELTA_TIME)+3;
 
-        let t = 2.0*(
-            (params.start_pos - params.end_pos).magnitude() / MAX_ACCEL
-        )
-        .sqrt();
+        let t = 2.0 * ((params.start_pos - params.end_pos).magnitude() / MAX_ACCEL).sqrt();
         let expected_len = (t / DELTA_TIME as f64).floor() as usize + 3;
 
-        info!(" distance: {}", (params.start_pos - params.end_pos).magnitude());
+        info!(
+            " distance: {}",
+            (params.start_pos - params.end_pos).magnitude()
+        );
         info!("Expected len: {}", expected_len);
-        info!(" Actual plan: {:?}",plan.plan);
+        info!(" Actual plan: {:?}", plan.plan);
 
         assert_eq!(plan.path.len(), expected_len);
-        assert_relative_eq!(plan.end_velocity, Vec3::zero(),epsilon = 1e-10);
+        assert_relative_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-10);
         assert_relative_eq!(plan.path[0], params.start_pos, epsilon = 1e-10);
         assert_relative_eq!(*plan.path.last().unwrap(), params.end_pos, epsilon = 1e-7);
     }
-    #[test]
-    fn test_compute_flight_path_with_target_velocity() {
-        let _ = env_logger::try_init();
 
+    #[test_log::test]
+    fn test_compute_flight_path_with_target_velocity() {
         let params = FlightParams {
             start_pos: Vec3 {
                 x: -2e7,
@@ -672,10 +731,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_compute_flight_path_zero_velocity() {
-        let _ = env_logger::try_init();
-
         let params = FlightParams {
             start_pos: Vec3 {
                 x: 7000000.0,
@@ -734,5 +791,57 @@ mod tests {
             params.end_vel,
             plan.end_velocity
         );
+    }
+
+    #[test_log::test]
+    fn test_compute_flight_path_acceleration_limits() {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..100 {
+            // Generate random parameters
+            let start_pos = Vec3::new(
+                rng.gen_range(-1e8..1e8),
+                rng.gen_range(-1e8..1e8),
+                rng.gen_range(-1e8..1e8),
+            );
+            let end_pos = Vec3::new(
+                rng.gen_range(-1e8..1e8),
+                rng.gen_range(-1e8..1e8),
+                rng.gen_range(-1e8..1e8),
+            );
+            let start_vel = Vec3::new(
+                rng.gen_range(-1e3..1e3),
+                rng.gen_range(-1e3..1e3),
+                rng.gen_range(-1e3..1e3),
+            );
+            let end_vel = Vec3::new(
+                rng.gen_range(-1e3..1e3),
+                rng.gen_range(-1e3..1e3),
+                rng.gen_range(-1e3..1e3),
+            );
+            let max_acceleration = rng.gen_range(1.0..10.0) * G;
+
+            let params = FlightParams {
+                start_pos,
+                end_pos,
+                start_vel,
+                end_vel,
+                target_velocity: None,
+                max_acceleration,
+            };
+
+            let result = compute_flight_path(&params);
+
+            // Check that the magnitudes of accelerations are within the limit
+            for accel_pair in result.plan.iter() {
+                assert!(
+                    accel_pair.in_limits(params.max_acceleration / G),
+                    "Acceleration magnitude ({}) exceeds max acceleration ({}) for params: {:?}",
+                    accel_pair.0.magnitude() * G,
+                    params.max_acceleration,
+                    params
+                );
+            }
+        }
     }
 }

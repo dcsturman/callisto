@@ -3,13 +3,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::payloads::{EffectMsg, FireAction};
 use rand::RngCore;
+
 use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
 use crate::combat::attack;
-use crate::combat::do_fire_actions;
+use crate::combat::{ do_fire_actions, create_sand_counts};
 use crate::{debug, error, info};
 use crate::missile::Missile;
 use crate::planet::Planet;
@@ -20,7 +21,7 @@ pub const DELTA_TIME: u64 = 360;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
 // We will use 4 sig figs for every physics constant we import.
 // This is the value of 1 (earth) gravity in m/s^2
-pub const G: f64 = 9.807;
+pub const G: f64 = 9.807000000;
 pub type Vec3 = Vector3<f64>;
 
 pub trait Entity: Debug + PartialEq + Serialize + Send + Sync {
@@ -46,6 +47,7 @@ pub struct Entities {
     pub ships: HashMap<String, Arc<RwLock<Ship>>>,
     pub missiles: HashMap<String, Arc<RwLock<Missile>>>,
     pub planets: HashMap<String, Arc<RwLock<Planet>>>,
+    pub next_missile_id: u32,
 }
 
 impl PartialEq for Entities {
@@ -83,6 +85,7 @@ impl Entities {
             ships: HashMap::new(),
             missiles: HashMap::new(),
             planets: HashMap::new(),
+            next_missile_id: 0,
         }
     }
 
@@ -203,11 +206,10 @@ impl Entities {
     }
 
     pub fn launch_missile(&mut self, source: &str, target: &str) -> Result<(), String> {
-        const DEFAULT_BURN: i32 = 2;
-
         // Could use a random number generator here for the name but that makes tests flakey (random)
         // So this counter used to distinguish missiles between the same source and target
-        let id = self.missiles.len();
+        let id = self.next_missile_id;
+        self.next_missile_id += 1;
 
         let name = format!("{}::{}::{:X}", source, target, id);
         let source_ptr = self
@@ -225,7 +227,7 @@ impl Entities {
         let source_ship = source_ptr.read().unwrap();
         let target_ship = target_ptr.read().unwrap();
         let direction = (target_ship.get_position() - source_ship.get_position()).normalize();
-        let offset = 1000000.0 * direction;
+        let offset = 10000.0 * direction;
 
         let target_ptr = target_ptr.clone();
 
@@ -239,10 +241,10 @@ impl Entities {
             target_ptr,
             position,
             velocity,
-            DEFAULT_BURN,
+            crate::missile::DEFAULT_BURN,
         );
 
-        debug!("Added missile {:?}", entity);
+        debug!("(Entities.launch_missile) Added missile {}", &name);
         self.missiles.insert(name, Arc::new(RwLock::new(entity)));
         Ok(())
     }
@@ -265,6 +267,9 @@ impl Entities {
         ship_snapshot: &HashMap<String, Ship>,
         rng: &mut dyn RngCore,
     ) -> Vec<EffectMsg> {
+        // Create a snapshot of all the sand capabilities of each ship.
+        let mut sand_counts = create_sand_counts(ship_snapshot);
+
         let effects = fire_actions
             .iter()
             .flat_map(|(attacker, actions)| {
@@ -272,7 +277,7 @@ impl Entities {
                     panic!("Cannot find attacker {} for fire actions.", attacker)
                 });
                 let (missiles, effects) =
-                    do_fire_actions(&attack_ship, &mut self.ships, actions, rng);
+                    do_fire_actions(&attack_ship, &mut self.ships, &mut sand_counts,actions, rng);
                 for missile in missiles {
                     if let Err(msg) = self.launch_missile(&missile.source, &missile.target) {
                         error!("Could not launch missile: {}", msg);
@@ -321,7 +326,7 @@ impl Entities {
                 // being embedded in the missile update code.  Also enables elimination of missiles.
                 match update? {
                     UpdateAction::ShipImpact { ship, missile } => {
-                        // When a missile impacts fake it as an attack by a single turrent missile.
+                        // When a missile impacts fake it as an attack by a single turret missile.
                         const FAKE_MISSILE_LAUNCHER: Weapon = Weapon {
                             kind: WeaponType::Missile,
                             mount: WeaponMount::Turret(1),
@@ -610,6 +615,7 @@ impl<'de> Deserialize<'de> for Entities {
                 .into_iter()
                 .map(|e| (e.get_name().to_string(), Arc::new(RwLock::new(e))))
                 .collect(),
+            next_missile_id: 0,
         })
     }
 }

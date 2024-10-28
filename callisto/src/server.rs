@@ -13,7 +13,7 @@ use crate::payloads::{
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
-use crate::{debug, warn, info};
+use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
@@ -28,6 +28,11 @@ impl Server {
     }
 
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
+        info!(
+            "(Server.add_ship) Received and processing add ship request. {:?}",
+            ship
+        );
+
         // Add the ship to the server
         let design = crate::ship::SHIP_TEMPLATES
             .get()
@@ -182,6 +187,12 @@ impl Server {
         debug!("(/compute_path)Call computer with params: {:?}", params);
 
         let plan: FlightPathMsg = compute_flight_path(&params);
+
+        debug!(
+            "(/compute_path) Plan has real acceleration of {} vs max_accel of {}",
+            plan.plan.0 .0.magnitude(),
+            max_accel/G
+        );
 
         let json = match serde_json::to_string(&plan) {
             Ok(json) => json,

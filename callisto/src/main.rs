@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let templates = load_ship_templates_from_file(&args.design_file).expect(&format!("Unable to load ship template file {}.", args.design_file));
     SHIP_TEMPLATES.set(templates).expect("(Main) attempting to set SHIP_TEMPLATES twice!");
-
+    
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         println!("Loading scenario file: {}", file_name);

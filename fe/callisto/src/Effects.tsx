@@ -1,5 +1,3 @@
-import { useRef } from "react";
-import * as THREE from "three";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "./Util";
 import { SCALE } from "./Universal";
@@ -9,7 +7,7 @@ const SHIP_IMPACT = "ShipImpact";
 const EXHAUSTED_MISSILE = "ExhaustedMissile";
 const SHIP_DESTROYED = "ShipDestroyed";
 const BEAM_HIT = "BeamHit";
-const DAMAGE_EFFECT = "Damage";
+const MESSAGE_EFFECT = "Message";
 
 const MISSILE_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [1.0, 1.0, 1.0];
@@ -150,7 +148,7 @@ export function Explosions(args: {
                 cleanupFn={removeMe}
               />
             );
-          case DAMAGE_EFFECT:
+          case MESSAGE_EFFECT:
             // DamageEffects don't show up as explosions so skip.
             return <></>;
           default:
@@ -173,20 +171,19 @@ export function ResultsWindow(args: {
 }) {
   function closeWindow() {
     if (args.effects !== null) {
-      args.setEffects(args.effects.filter((effect) => effect.kind !== DAMAGE_EFFECT));
+      args.setEffects(args.effects.filter((effect) => effect.kind !== MESSAGE_EFFECT));
     }
     args.clearShowResults();
   }
 
   let messages: Effect[] = [];
   if (args.effects !== null) {
-    messages = args.effects?.filter((effect) => effect.kind === DAMAGE_EFFECT);
+    messages = args.effects?.filter((effect) => effect.kind === MESSAGE_EFFECT);
   }
   return (
     <div id="results-window" className="computer-window">
       <h1>Results</h1>
       <br></br>
-      <>{console.log("***** messages = " + JSON.stringify(messages))}</>
       {messages.length === 0 && <h2>No results</h2>}
       {messages.length > 0 && messages.map((msg, index) => (<p key={"msg-" + index}>{msg.content}</p>))}
       <button className="control-input control-button blue-button button-next-round" onClick={closeWindow}>Okay!</button>

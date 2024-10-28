@@ -80,27 +80,27 @@ pub struct ShipDesignTemplate {
     pub tl: u8,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Weapon {
     pub kind: WeaponType,
     pub mount: WeaponMount,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum WeaponMount {
     Turret(u8),
     Barbette,
     Bay(BaySize),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BaySize {
     Small,
     Medium,
     Large,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WeaponType {
     Beam = 0,
     Pulse,
@@ -172,6 +172,9 @@ impl Ship {
         self.current_fuel = u32::max(self.current_fuel, self.design.fuel);
         self.current_crew = u32::max(self.current_crew, self.design.crew);
         self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
+        self.active_weapons = vec![true; self.design.weapons.len()];
+        self.crit_level = [0; 11];
+        self.attack_dm = 0;
     }
 
     pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> Result<(), String> {
@@ -180,9 +183,10 @@ impl Ship {
         // and the powerplant rating.
         // We use the current maneuverability rating in case the ship took damage
         let max_accel = self.max_acceleration();
-        if new_plan.0 .0.magnitude() <= max_accel {
+        debug!("(Ship.set_flight_plan) ship: {}, max_accel: {} new_plan: {:?} with magnitude on first accel of {}", self.name, max_accel, new_plan, new_plan.0 .0.magnitude());
+        if new_plan.0.in_limits(max_accel) {
             if let Some(second) = &new_plan.1 {
-                if second.0.magnitude() <= max_accel {
+                if second.in_limits(max_accel) {
                     self.plan = new_plan.clone();
                     Ok(())
                 } else {
@@ -320,7 +324,9 @@ pub fn load_ship_templates_from_file(file_name: &str) -> Result<HashMap<String, 
     let file = std::fs::File::open(file_name)?;
     let reader = std::io::BufReader::new(file);
     let templates: Vec<ShipDesignTemplate> = serde_json::from_reader(reader)?;
-    let table = templates.into_iter().map(|template| (template.name.clone(), Arc::new(template))).collect();
+    
+    // Sort the weapons in each template as loaded to ensure they are in order.  This is a dependency the UX depends on.
+    let table = templates.into_iter().map(|mut template| { template.weapons.sort(); (template.name.clone(), Arc::new(template))}).collect();
 
     Ok(table)
 }
@@ -358,6 +364,31 @@ impl ShipDesignTemplate {
     }
 }
 
+impl PartialOrd for Weapon {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (&self.mount, &other.mount) {
+            (WeaponMount::Bay(BaySize::Large ), WeaponMount::Bay(BaySize::Large)) => self.kind.partial_cmp(&other.kind),
+            (WeaponMount::Bay(BaySize::Large), _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => self.kind.partial_cmp(&other.kind),
+            (WeaponMount::Bay(BaySize::Medium), _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Large)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Medium)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => self.kind.partial_cmp(&other.kind),
+            (WeaponMount::Bay(BaySize::Small), _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Barbette, _) => Some(std::cmp::Ordering::Less),
+            (WeaponMount::Turret(_), WeaponMount::Bay(_)) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Turret(_), WeaponMount::Barbette) => Some(std::cmp::Ordering::Greater),
+            (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.partial_cmp(&other.kind),
+        }
+    }
+}
+
+impl Ord for Weapon {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
 impl Default for Sensors {
     fn default() -> Self {
         Sensors::Civilian
@@ -465,6 +496,15 @@ impl From<&Weapon> for String {
     }
 }
 
+impl WeaponType {
+    pub fn is_laser(&self) -> bool {
+        match self {
+            WeaponType::Beam | WeaponType::Pulse => true,
+            _ => false,
+        }
+    }
+}
+
 impl From<ShipSystem> for String {
     fn from(s: ShipSystem) -> Self {
         match s {
@@ -499,6 +539,14 @@ impl From<AccelPair> for (Vec3, u64) {
     }
 }
 
+impl AccelPair {
+    pub fn in_limits(&self, limit: f64) -> bool {
+        self.0.magnitude() <= limit || approx::relative_eq!(&self.0.magnitude(),
+            &limit,
+            max_relative = 1e-3
+        )
+    }
+}
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct FlightPlan(
     pub AccelPair,

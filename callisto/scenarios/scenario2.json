@@ -53,8 +53,6 @@
          "plan" : [
             [[0, 0, 0], 10000]
          ],
-         "usp" : "8B244C2-J0060-B",
-         "hull" : 16,
-         "structure" : 16
+         "design": "Harrier"
     }]
 }

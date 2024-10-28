@@ -12,8 +12,9 @@ use crate::ship::Ship;
 use crate::debug;
 
 // Temporary until missiles have actual acceleration built in
-const MAX_MISSILE_ACCELERATION: f64 = 6.0 * G;
-const IMPACT_DISTANCE: f64 = 2500000.0;
+const MAX_MISSILE_ACCELERATION: f64 = 10.0 * G;
+pub const DEFAULT_BURN: i32 = 10;
+pub const IMPACT_DISTANCE: f64 = 25000.0;
 
 #[derive(Derivative)]
 #[derivative(PartialEq)]
@@ -131,7 +132,7 @@ impl Entity for Missile {
             );
 
             let mut path: FlightPathResult = compute_target_path(&params);
-            debug!("Computed path: {:?}", path);
+            debug!("Computed path: {:?} with expected time to impact of {} turns.", path, path.path.len()-1);
 
             // The computed path should be an acceleration towards the target.
             // For a missile, we should always have a single acceleration (towards the target at full thrust).
