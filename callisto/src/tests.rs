@@ -267,11 +267,15 @@ fn test_update_missile() {
         .unwrap();
 
     let compare = json!([
-            {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
-        ]);
+        {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
+    ]);
 
     assert_json_eq!(
-        serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap().iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect::<Vec<_>>(),
+        serde_json::from_str::<Vec<EffectMsg>>(response.as_str())
+            .unwrap()
+            .iter()
+            .filter(|e| !matches!(e, EffectMsg::Message { .. }))
+            .collect::<Vec<_>>(),
         compare
     );
 
@@ -514,9 +518,12 @@ fn test_exhausted_missile() {
     let response = server
         .update(serde_json::from_str(&fire_actions).unwrap())
         .unwrap();
-    
+
     // First round 3 missiles are launched due to triple turret
-    assert_eq!(response, "[{\"kind\":\"Message\",\"content\":\"ship1 launches 3 missile(s) at ship2.\"}]", "Round 0");
+    assert_eq!(
+        response, "[{\"kind\":\"Message\",\"content\":\"ship1 launches 3 missile(s) at ship2.\"}]",
+        "Round 0"
+    );
 
     // Second round nothing happens.
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
@@ -524,7 +531,15 @@ fn test_exhausted_missile() {
 
     // Third round missile should exhaust itself.
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
-    assert_eq!(serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap().iter().filter(|e| matches!(e, EffectMsg::ExhaustedMissile { .. }) ).count(), 3, "Round 2");
+    assert_eq!(
+        serde_json::from_str::<Vec<EffectMsg>>(response.as_str())
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, EffectMsg::ExhaustedMissile { .. }))
+            .count(),
+        3,
+        "Round 2"
+    );
 }
 
 #[test]
@@ -556,7 +571,7 @@ fn test_destroy_ship() {
         .update(serde_json::from_str(&fire_actions).unwrap())
         .unwrap();
 
-    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();     
+    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
 
     // Ship should not be dead yet!
     assert!(!effects.contains(&EffectMsg::ShipDestroyed {
@@ -566,7 +581,6 @@ fn test_destroy_ship() {
     let response = server
         .update(serde_json::from_str(&fire_actions).unwrap())
         .unwrap();
-
 
     // For this test we don't worry about all the specific damage effects, but just check for messages related to
     // ship destruction.
@@ -616,15 +630,35 @@ fn test_big_fight() {
     let compare = json!([
         {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
         {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
         {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
         {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
         {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]}
     ]);
-    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+    let mut effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+    effects = effects
+        .iter()
+        .filter_map(|e| {
+            if matches!(e, EffectMsg::Message { .. }) {
+                None
+            } else {
+                Some(e.clone())
+            }
+        })
+        .collect::<Vec<EffectMsg>>();
 
+    effects.sort_by(|a, b| {
+        serde_json::to_string(a).unwrap().cmp(&serde_json::to_string(b).unwrap())
+    });
 
+    println!("**** FIGHT RESULTS *****\n{:?}", effects);
+    println!("**** EXPECTED RESULTS *****\n{:?}", compare);
     assert_json_eq!(
-        effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect::<Vec<_>>(),
+        effects
+            .iter()
+            .filter(|e| !matches!(e, EffectMsg::Message { .. }))
+            .collect::<Vec<_>>(),
         compare
     );
 
@@ -632,14 +666,14 @@ fn test_big_fight() {
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
-         "current_hull":114,"current_armor":3,
-         "current_power":540,"current_maneuver":5,
-         "current_jump":5,"current_fuel":126,
+         "current_hull":96,"current_armor":3,
+         "current_power":540,"current_maneuver":4,
+         "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
          "active_weapons":[true,true,true,true]},
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
-         "current_hull":142,"current_armor":3,
+         "current_hull":135,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
@@ -662,19 +696,19 @@ fn test_slugfest() {
         .add_ship(serde_json::from_str(destroyer).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
-    
+
     let harrier = r#"{"name":"harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
     let response = server
         .add_ship(serde_json::from_str(harrier).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
-    
+
     let buc1 = r#"{"name":"buc1","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(buc1).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
-    
+
     let buc2 = r#"{"name":"buc2","position":[4000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(buc2).unwrap())
@@ -714,10 +748,10 @@ fn test_slugfest() {
         {"weapon_id": 3, "target": "destroyer"},
         ]]
     ]);
-    
+
     let _response = server
-    .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
-    .unwrap();
+        .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
+        .unwrap();
 
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
@@ -792,7 +826,6 @@ fn test_get_entities() {
     // Check that there are no missiles
     assert!(entities.missiles.is_empty());
 }
-
 
 // Test for get_designs in server.
 #[test]

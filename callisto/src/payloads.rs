@@ -83,7 +83,7 @@ pub const EMPTY_FIRE_ACTIONS_MSG: FireActionsMsg = vec![];
 // pub type ListEntitiesMsg = Entities;
 
 #[serde_as]
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[serde(tag = "kind")]
 pub enum EffectMsg {
     ShipImpact {
