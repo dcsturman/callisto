@@ -507,7 +507,7 @@ fn test_exhausted_missile() {
     assert_eq!(response, "Add ship action executed");
 
     // Put second ship far way (out of range of a missile)
-    let ship2 = r#"{"name":"ship2","position":[1e9,0,1e9],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let ship2 = r#"{"name":"ship2","position":[1e10,0,1e10],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
@@ -525,9 +525,11 @@ fn test_exhausted_missile() {
         "Round 0"
     );
 
-    // Second round nothing happens.
-    let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
-    assert_eq!(response, "[]", "Round 1");
+    // Second to 9th round nothing happens.
+    for round in 0..9 {
+        let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+        assert_eq!(response, "[]", "Round {}", round);
+    }
 
     // Third round missile should exhaust itself.
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
@@ -538,7 +540,7 @@ fn test_exhausted_missile() {
             .filter(|e| matches!(e, EffectMsg::ExhaustedMissile { .. }))
             .count(),
         3,
-        "Round 2"
+        "Round 9"
     );
 }
 
