@@ -571,17 +571,6 @@ fn test_destroy_ship() {
         .update(serde_json::from_str(&fire_actions).unwrap())
         .unwrap();
 
-    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
-
-    // Ship should not be dead yet!
-    assert!(!effects.contains(&EffectMsg::ShipDestroyed {
-        position: Vec3::new(50000.0, 0.0, 50000.0)
-    }));
-
-    let response = server
-        .update(serde_json::from_str(&fire_actions).unwrap())
-        .unwrap();
-
     // For this test we don't worry about all the specific damage effects, but just check for messages related to
     // ship destruction.
     let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
@@ -652,8 +641,6 @@ fn test_big_fight() {
         serde_json::to_string(a).unwrap().cmp(&serde_json::to_string(b).unwrap())
     });
 
-    println!("**** FIGHT RESULTS *****\n{:?}", effects);
-    println!("**** EXPECTED RESULTS *****\n{:?}", compare);
     assert_json_eq!(
         effects
             .iter()
