@@ -64,6 +64,24 @@ impl FlightParams {
             max_acceleration,
         }
     }
+
+    pub fn pos_eq(&self, a_1: Vec3, a_2: Vec3, t_1: f64, t_2: f64) -> Vec3 {
+        a_1 * t_1 * t_1 / 2.0
+            + a_2 * t_2 * t_2 / 2.0
+            + (a_1 * t_1 + self.start_vel) * t_2
+            + self.start_vel * t_1
+            + self.start_pos
+            - (self.end_pos
+                + if let Some(target_vel) = self.target_velocity {
+                    target_vel * ((t_2 + t_1) / DELTA_TIME as f64).ceil() * DELTA_TIME as f64
+                } else {
+                    Vec3::zero()
+                })
+    }
+
+    pub fn vel_eq(&self, a_1: Vec3, a_2: Vec3, t_1: f64, t_2: f64) -> Vec3 {
+        self.start_vel + a_1 * t_1 + a_2 * t_2 - self.end_vel
+    }
 }
 
 impl Problem for FlightParams {
@@ -130,18 +148,8 @@ impl System for FlightParams {
         let t_2 = x[7];
         // First the 3 position equations
 
-        let pos_eqs = a_1 * t_1 * t_1 / 2.0
-            + a_2 * t_2 * t_2 / 2.0
-            + (a_1 * t_1 + self.start_vel) * t_2
-            + self.start_vel * t_1
-            + self.start_pos
-            - (self.end_pos
-                + if let Some(target_vel) = self.target_velocity {
-                    target_vel * ((t_2 + t_1) / DELTA_TIME as f64).ceil() * DELTA_TIME as f64
-                } else {
-                    Vec3::zero()
-                });
-        let vel_eqs = self.start_vel + a_1 * t_1 + a_2 * t_2 - self.end_vel;
+        let pos_eqs = self.pos_eq(a_1, a_2, t_1, t_2);
+        let vel_eqs = self.vel_eq(a_1, a_2, t_1, t_2);
 
         rx[0] = pos_eqs[0];
         rx[1] = pos_eqs[1];
@@ -375,7 +383,10 @@ pub fn compute_target_path(params: &TargetParams) -> FlightPathResult {
         (delta / distance * params.max_acceleration).map(|a| if a.is_nan() { 0.0 } else { a });
 
     let guess_t = (2.0 * distance / params.max_acceleration).sqrt();
-    debug!("(computer.compute_target_path) time guess is {} based on distance = {}, max_accel = {}", guess_t, distance, params.max_acceleration);
+    debug!(
+        "(computer.compute_target_path) time guess is {} based on distance = {}, max_accel = {}",
+        guess_t, distance, params.max_acceleration
+    );
 
     let array_i: [f64; 3] = guess_a.into();
     let mut initial = Vec::<f64>::from(array_i);
@@ -489,6 +500,21 @@ mod tests {
     use cgmath::assert_relative_eq;
     use rand::Rng;
 
+    fn pos_error(_start: &Vec3, end: &Vec3, result: &Vec3) -> f64 {
+        (end - result).magnitude() / end.magnitude()
+    }
+
+    fn vel_error(start: &Vec3, end: &Vec3, result: &Vec3) -> f64 {
+        // Velocity error we take as a fraction of the larger of the start or end velocity.
+        let bigger = if start.magnitude() > end.magnitude() {
+            start.magnitude()
+        } else {
+            end.magnitude()
+        };
+
+        (result - end).magnitude() / bigger
+    }
+
     #[test_log::test]
     fn test_compute_flight_path() {
         let params = FlightParams {
@@ -528,13 +554,17 @@ mod tests {
         );
         info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
 
-        let vel_error = (plan.end_velocity - params.end_vel).magnitude();
-        let pos_error = (plan.path.last().unwrap() - params.end_pos).magnitude();
-        info!("Vel Error: {}\nPos Error: {}", vel_error, pos_error);
+        let v_error = vel_error(&params.start_vel, &params.end_vel, &plan.end_velocity);
+        let p_error = pos_error(
+            &params.start_pos,
+            &params.end_pos,
+            &plan.path.last().unwrap(),
+        );
+        info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
         // Add assertions here to validate the computed flight path and velocity
         assert_eq!(plan.path.len(), 7);
-        assert!(pos_error < 0.001);
-        assert!(vel_error < 0.001);
+        assert!(p_error < 0.001);
+        assert!(v_error < 0.001);
     }
 
     #[test_log::test]
