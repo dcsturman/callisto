@@ -658,6 +658,55 @@ mod tests {
     }
 
     #[test_log::test]
+    fn test_fast_velocity_compute() {
+        let params = FlightParams {
+            start_pos: Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            end_pos: Vec3 {
+                x: -1e6,
+                y: 0.0,
+                z: 0.0,
+            },
+            start_vel: Vec3 {
+                x: 1e4,
+                y: 0.0,
+                z: 0.0,
+            },
+            end_vel: Vec3 {
+                x: 1e2,
+                y: 0.0,
+                z: 0.0,
+            },
+            target_velocity: None,
+            //max_acceleration: 4.0 * G,
+            max_acceleration: 40.0,
+        };
+
+        let plan = compute_flight_path(&params);
+
+        info!(
+            "Start Pos: {:?}\nEnd Pos: {:?}",
+            params.start_pos, params.end_pos
+        );
+        info!(
+            "Start Vel: {:?}\nEnd Vel: {:?}",
+            params.start_vel, params.end_vel
+        );
+        info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
+
+        let v_error = vel_error(&params.start_vel, &params.end_vel, &plan.end_velocity);
+        let p_error = pos_error(&params.start_pos, &params.end_pos,  plan.path.last().unwrap());
+
+        info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
+
+        assert!(p_error < 0.01);
+        assert!(v_error < 0.01);
+    }
+    
+    #[test_log::test]
     fn test_compute_flight_path_with_target_velocity() {
         let params = FlightParams {
             start_pos: Vec3 {
