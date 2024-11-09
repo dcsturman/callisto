@@ -3,13 +3,13 @@ use std::sync::{Arc, RwLock};
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-use cgmath::InnerSpace;
+use cgmath::{ InnerSpace, Zero };
 
-use crate::computer::{compute_target_path, FlightPathResult, TargetParams};
+use crate::computer::{FlightPathResult, TargetParams};
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
 use crate::ship::Ship;
-use crate::debug;
+use crate::{debug, error};
 
 // Temporary until missiles have actual acceleration built in
 const MAX_MISSILE_ACCELERATION: f64 = 10.0 * G;
@@ -65,8 +65,8 @@ impl Missile {
             name, params
         );
 
-        let path: FlightPathResult = compute_target_path(&params);
-        let acceleration = path.plan.0 .0;
+        let acceleration = if let Some(path) = params.compute_target_path() {path.plan.0 .0 } else {Vec3::zero()};
+
         Missile {
             name,
             position,
@@ -131,7 +131,16 @@ impl Entity for Missile {
                 self.name, params
             );
 
-            let mut path: FlightPathResult = compute_target_path(&params);
+            let mut path: FlightPathResult = match params.compute_target_path() {
+                Some(p) => p,
+                None => {
+                    error!("(missile.update)Unable to compute path for missile {}", self.name);
+                    return Some(UpdateAction::ExhaustedMissile {
+                        name: self.name.clone(),
+                    });
+                }
+            };
+
             debug!("Computed path: {:?} with expected time to impact of {} turns.", path, path.path.len()-1);
 
             // The computed path should be an acceleration towards the target.

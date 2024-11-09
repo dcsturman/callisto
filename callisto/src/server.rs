@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use cgmath::InnerSpace;
 use rand::RngCore;
 
-use crate::computer::{compute_flight_path, FlightParams};
+use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, FlightPathMsg, RemoveEntityMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, RemoveEntityMsg,
     SetPlanMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
@@ -186,7 +186,12 @@ impl Server {
 
         debug!("(/compute_path)Call computer with params: {:?}", params);
 
-        let plan: FlightPathMsg = compute_flight_path(&params);
+        let plan = if let Some(plan) = params.compute_flight_path() {
+            debug!("(/compute_path) Plan: {:?}", plan);
+            plan
+        } else {
+            return Err("Unable to compute flight path".to_string());
+        };
 
         debug!(
             "(/compute_path) Plan has real acceleration of {} vs max_accel of {}",

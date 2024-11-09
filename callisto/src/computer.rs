@@ -1,6 +1,7 @@
 use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;
 use gomez::{Domain, Problem, SolverDriver, System};
+use std::error::Error;
 
 use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
@@ -10,9 +11,10 @@ use crate::entity::{Vec3, DELTA_TIME, G};
 use crate::missile::IMPACT_DISTANCE;
 use crate::payloads::Vec3asVec;
 use crate::ship::FlightPlan;
-use crate::{debug, error, info};
+use crate::{debug, error, info, warn};
 
 const SOLVE_TOLERANCE: f64 = 1e-4;
+const MAX_ITERATIONS: usize = 400;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -81,6 +83,185 @@ impl FlightParams {
 
     pub fn vel_eq(&self, a_1: Vec3, a_2: Vec3, t_1: f64, t_2: f64) -> Vec3 {
         self.start_vel + a_1 * t_1 + a_2 * t_2 - self.end_vel
+    }
+
+    /**
+     * Computes a best guess for the acceleration and time at that acceleration.
+     * We get more random with each new attempt, but that can help with root solving.
+     */
+    pub fn best_guess(&self, attempt: u16) -> (Vec3, Vec3, f64, f64) {
+        let delta = self.end_pos - self.start_pos;
+        let delta_v = self.end_vel - self.start_vel;
+        let distance = delta.magnitude();
+        let speed = delta_v.magnitude();
+
+        // Three cases.
+        // 1) Based on differences in velocity
+        // 2) Something to deal wtih no real movement at all
+        // 3) Based on distance.
+        if distance <= speed && speed > 0.0 {
+            debug!("(best_guess) Making guess based on velocity");
+            let accel = delta_v / speed * self.max_acceleration;
+            let t_1 = self.start_vel.magnitude() / accel.magnitude()
+                * (1.0 + std::f64::consts::SQRT_2 / 2.0);
+            let t_2 = t_1 - self.start_vel.magnitude() / accel.magnitude();
+            match attempt {
+                0 => (accel, -accel, t_1, t_2),
+                1 => (-accel, accel, t_1, t_2),
+                2 => (accel, -accel, 1000000.0, 1000000.0),
+                _ => (-accel, accel, -1000000.0, -1000000.0),
+            }
+        } else if distance == 0.0 {
+            debug!("(best_guess) Making guess given zero differences.");
+
+            match attempt {
+                0 => (delta, -delta, 0.0, 0.0),
+                1 => (-delta, delta, 0.0, 0.0),
+                2 => (delta, -delta, 1000000.0, 1000000.0),
+                _ => (-delta, delta, -1000000.0, -1000000.0),
+            }
+        } else {
+            debug!("(best_guess) Making guess based on distance.");
+            let accel = delta / distance * self.max_acceleration;
+
+            // 0 = 1/2 a * t^2 + v_0 * t - distance
+            // t = -v_0 +- sqrt(v_0^2 + 2 * a * distance) / a
+            let root_part = (self.start_vel.magnitude().powi(2)
+                + 2.0 * self.max_acceleration * distance)
+                .sqrt();
+
+            if root_part < 0.0 {
+                error!("(best_guess) Unable to compute best guess.  Root part is negative.");
+                return (Vec3::zero(), Vec3::zero(), 0.0, 0.0);
+            }
+
+            let (t_a, t_b) = match attempt {
+                0 => (
+                    (-self.start_vel.magnitude() + root_part) / self.max_acceleration,
+                    (-self.start_vel.magnitude() - root_part) / self.max_acceleration,
+                ),
+                1 => (1000000.0, 1000000.0),
+                2 => (-1000000.0, -1000000.0),
+                _ => (0.0, 0.0),
+            };
+
+            debug!("(best_guess) t_a: {}, t_b: {}", t_a, t_b);
+            if t_a > 0.0 {
+                (accel, -1.0 * accel, t_a, t_b)
+            } else if t_b > 0.0 {
+                (accel, -1.0 * accel, t_b, t_b)
+            } else {
+                error!("(best_guess) Unable to compute best guess.  Both times are negative.");
+                (Vec3::zero(), Vec3::zero(), 0.0, 0.0)
+            }
+        }
+    }
+
+    /**
+     * Computes a flight path given the parameters.
+     * Returns a FlightPathResult which contains the path, the end velocity and the plan.
+     */
+    pub fn compute_flight_path(&self) -> Option<FlightPathResult> {
+        for attempt in 0..3 {
+            warn!("(compute_flight_path) Attempt {}", attempt);
+            let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess(attempt);
+            let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_accel_1).into();
+            initial.append(&mut Into::<[f64; 3]>::into(guess_accel_2).into());
+            initial.push(guess_t_1);
+            initial.push(guess_t_2);
+
+            info!("(compute_flight_path) Params is {:?}", self);
+            info!("(compute_flight_path) Initial is {:?}", initial);
+
+            let mut solver = SolverDriver::builder(self).with_initial(initial).build();
+            let solver_result = solver.find(|state| {
+                info!(
+                    "iter = {}\t|| |r(x)| = {:0.4?}\tx = {:0.2?}\trx = {:0.2?}",
+                    state.iter(),
+                    state.norm(),
+                    state.x(),
+                    state.rx()
+                );
+                state.norm() <= SOLVE_TOLERANCE || state.iter() >= MAX_ITERATIONS
+            });
+
+            let answer = if let Err(e) = solver_result {
+                warn!(
+                    "Unable to solve flight path with params: {:?} with error: {}.",
+                    self, e
+                );
+                // This attempt didn't work. On to the next one (and skip all the use of the answer)
+                continue;
+            } else {
+                let (answer, norm) = solver_result.unwrap();
+                if norm < SOLVE_TOLERANCE {
+                    answer
+                } else {
+                    warn!(
+                        "Unable to solve flight path with params: {:?} with norm: {:0.4?}.",
+                        self, norm
+                    );
+                    // This attempt didn't work. On to the next one (and skip all the use of the answer)
+                    continue;
+                }
+            };
+
+            let v_a_1: [f64; 3] = answer[0..3]
+                .try_into()
+                .expect("(compute_flight_path) Unable to convert to fixed array");
+            let a_1: Vec3 = Vec3::from(v_a_1);
+
+            let v_a_2: [f64; 3] = answer[3..6]
+                .try_into()
+                .expect("(compute_flight_path)Unable to convert to fixed array");
+            let a_2: Vec3 = Vec3::from(v_a_2);
+            let t_1 = answer[6];
+            let t_2 = answer[7];
+
+            info!(
+            "(compute_flight_path) Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
+            a_1, a_2, t_1, t_2
+        );
+
+            // Now that we've solved for acceleration lets create a path and end velocity
+            let mut path = Vec::new();
+            let mut vel = self.start_vel;
+            let mut pos = self.start_pos;
+
+            // Every path starts with the starting position
+            path.push(pos);
+            for (accel, duration) in [(a_1, t_1), (a_2, t_2)].iter() {
+                let mut time = 0.0;
+                let mut delta: f64 = DELTA_TIME as f64;
+                while time < *duration {
+                    if time + delta > *duration {
+                        delta = *duration - time;
+                    }
+                    let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
+                    let new_vel = vel + accel * delta;
+
+                    info!("(compute_flight_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
+                    pos, accel, delta, new_pos, new_vel);
+
+                    path.push(new_pos);
+                    pos = new_pos;
+                    vel = new_vel;
+                    time += delta;
+                }
+            }
+
+            return Some(FlightPathResult {
+                path,
+                end_velocity: vel,
+                // Convert acceleration back into G's (vs m/s^2) at this point.
+                // Also convert time into an unsigned integer.
+                plan: FlightPlan::new(
+                    (a_1 / G, t_1.round() as u64).into(),
+                    Some((a_2 / G, t_2.round() as u64).into()),
+                ),
+            });
+        }
+        None
     }
 }
 
@@ -187,6 +368,124 @@ impl TargetParams {
             max_acceleration,
         }
     }
+
+    fn solve(&self, guess: &Vec<f64>) -> Result<Vec<f64>, Box<dyn Error>> {
+        info!("(TargetParams.solve) Solving with guess {:?}", guess);
+        let mut solver = SolverDriver::builder(self).with_initial(guess.clone()).build();
+
+        let res = solver
+            .find(|state| {
+                info!(
+                    "iter = {}\t|| |r(x)| = {:0.4?}\tx = {:0.2?}\trx = {:0.2?}",
+                    state.iter(),
+                    state.norm(),
+                    state.x(),
+                    state.rx()
+                );
+                state.norm() <= SOLVE_TOLERANCE || state.iter() >= MAX_ITERATIONS
+            })?.0;
+        Ok(res.into())
+    }
+
+    fn compute_path(&self, answer: &Vec<f64>) -> Vec<Vec3> {
+        let mut path = Vec::new();
+        let mut vel = self.start_vel;
+        let mut pos = self.start_pos;
+        let a: Vec3 = Vec3::from(
+            (<&[f64] as TryInto<[f64; 3]>>::try_into(&answer[0..3]))
+                .expect("Unable to convert to fixed array"),
+        );
+
+        path.push(pos);
+        let mut time = 0.0;
+        let mut delta: f64 = DELTA_TIME as f64;
+        while time < answer[3] {
+            if time + delta > answer[3] {
+                delta = answer[3] - time;
+            }
+            let new_pos = pos + vel * delta + a * delta * delta / 2.0;
+            let new_vel = vel + a * delta;
+            path.push(new_pos);
+            pos = new_pos;
+            vel = new_vel;
+            time += delta;
+        }
+        path
+    }
+
+    pub fn compute_target_path(&self) -> Option<FlightPathResult> {
+        let delta = self.end_pos - self.start_pos;
+        let distance = delta.magnitude();
+
+        // Simple but important case where we are launching the missile within impact difference.
+        // i.e. it doesn't need to go anywhere.
+        if (self.start_pos - self.end_pos).magnitude() < IMPACT_DISTANCE {
+            info!("(compute_target_path) No need to compute flight path.");
+            return Some(FlightPathResult {
+                path: vec![self.start_pos, self.end_pos],
+                end_velocity: self.start_vel,
+                plan: FlightPlan::new((Vec3::zero(), 0).into(), None),
+            });
+        }
+
+        // If our guess has any NaN elements its due to distance being zero, so we know that element can be 0.
+        // TODO: I don't think this is necessary any more (the check for nan)
+        let guess_a =
+            (delta / distance * self.max_acceleration).map(|a| if a.is_nan() { 0.0 } else { a });
+
+        let guess_t = (2.0 * distance / self.max_acceleration).sqrt();
+        debug!(
+            "(compute_target_path) time guess is {} based on distance = {}, max_accel = {}",
+            guess_t, distance, self.max_acceleration
+        );
+
+        let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_a).into();
+        initial.push(guess_t);
+
+        // Our first attempt is if this target can be reached in one round (DELTA_TIME).  In this case,
+        // we ignore target velocity.
+        let mut first_attempt = self.clone();
+        first_attempt.target_vel = Vec3::zero();
+
+        match first_attempt.solve(&initial) {
+            Ok(result) if result[3] <= DELTA_TIME as f64 => {
+                debug!("(compute_target_path) First attempt worked.");
+                Some(FlightPathResult {
+                    path: first_attempt.compute_path(&result),
+                    end_velocity: self.start_vel + guess_a * guess_t,
+                    plan: FlightPlan::new((guess_a / G, guess_t.round() as u64).into(), None),
+                })
+            }
+            Ok(_) => {
+                debug!(
+                    "Second attempt (couldn't get there in one round) taking into account target velocity."
+                );
+                self.solve(&initial).map_or_else(
+                    |e| {
+                        error!(
+                            "Unable to solve target path with params {:?} and error {}",
+                            self, e
+                        );
+                        None
+                    },
+                    |result| {
+                        Some(FlightPathResult {
+                            path: self.compute_path(&result),
+                            end_velocity: self.start_vel + guess_a * guess_t,
+                            plan: FlightPlan::new(
+                                (guess_a / G, guess_t.round() as u64).into(),
+                                None,
+                            ),
+                        })
+                    },
+                )
+            }
+            Err(e) => {
+                debug!("(compute_target_path) First attempt failed with error {:?}.", e);
+                None
+            }
+        }
+    }
 }
 
 impl Problem for TargetParams {
@@ -233,263 +532,6 @@ impl System for TargetParams {
         rx[1] = pos_eqs[1];
         rx[2] = pos_eqs[2];
         rx[3] = a_eq;
-    }
-}
-
-/**
- * Computes a flight path given the parameters.
- * Returns a FlightPathResult which contains the path, the end velocity and the plan.
- */
-pub fn compute_flight_path(params: &FlightParams) -> FlightPathResult {
-    let delta = params.end_pos - params.start_pos;
-    let delta_v = params.end_vel - params.start_vel;
-    let distance = delta.magnitude();
-    let speed = delta_v.magnitude();
-
-    debug!(
-        "(compute_flight_path) delta = {:?}, distance3 = {distance}",
-        delta
-    );
-
-    // Three rough cases for initial guess:
-    // 1. (most common) mostly correcting for position. Use standard t = at^2
-    // 2. Mostly correcting for velocity.
-    // 3. Both are near (or at) zero
-    let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = if distance <= speed && speed > 0.0 {
-        debug!("(compute_flight_path) Making guess based on velocity");
-        let accel = delta_v / speed * params.max_acceleration;
-        let t_1 = params.start_vel.magnitude() / accel.magnitude()
-            * (1.0 + std::f64::consts::SQRT_2 / 2.0);
-        let t_2 = t_1 - params.start_vel.magnitude() / accel.magnitude();
-        (accel, -1.0 * accel, t_1, t_2)
-    } else if distance == 0.0 {
-        debug!("(compute_flight_path) Making guess given zero differences.");
-        (delta, delta, 0.0, 0.0)
-    } else {
-        debug!("(compute_flight_path) Making guess based on distance.");
-        let accel = delta / distance * params.max_acceleration;
-
-        // Make our starting guess that time is the same in the two phases of acceleration
-        let t = (distance / params.max_acceleration).sqrt();
-
-        // Second phase of acceleration is guessed just to be inverse of first.
-        (accel, -1.0 * accel, t, t)
-    };
-
-    let array_i: [f64; 3] = guess_accel_1.into();
-    let mut initial = Vec::<f64>::from(array_i);
-    let array_i_2: [f64; 3] = guess_accel_2.into();
-    initial.append(&mut Vec::<f64>::from(array_i_2));
-    initial.push(guess_t_1);
-    initial.push(guess_t_2);
-
-    info!("(compute_flight_path) Params is {:?}", params);
-    info!("(compute_flight_path) Initial is {:?}", initial);
-
-    let mut solver = SolverDriver::builder(params).with_initial(initial).build();
-
-    let (x, _norm) = solver
-        .find(|state| {
-            info!(
-                "iter = {}\t|| r(x) || = {}\tx = {:?}\trx = {:?}",
-                state.iter(),
-                state.norm(),
-                state.x(),
-                state.rx()
-            );
-            state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
-        })
-        .unwrap_or_else(|e| {
-            error!(
-                "Unable to solve flight path with params: {:?} with error: {}.",
-                params, e
-            );
-            (&array_i, 0.0)
-        });
-
-    let v_a_1: [f64; 3] = x[0..3]
-        .try_into()
-        .expect("Unable to convert to fixed array");
-    let a_1: Vec3 = Vec3::from(v_a_1);
-
-    let v_a_2: [f64; 3] = x[3..6]
-        .try_into()
-        .expect("Unable to convert to fixed array");
-    let a_2: Vec3 = Vec3::from(v_a_2);
-    let t_1 = x[6];
-    let t_2 = x[7];
-
-    info!(
-        "(compute_flight_path) Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
-        a_1, a_2, t_1, t_2
-    );
-
-    // Now that we've solved for acceleration lets create a path and end velocity
-    let mut path = Vec::new();
-    let mut vel = params.start_vel;
-    let mut pos = params.start_pos;
-
-    // Every path starts with the starting position
-    path.push(pos);
-    for (accel, duration) in [(a_1, t_1), (a_2, t_2)].iter() {
-        let mut time = 0.0;
-        let mut delta: f64 = DELTA_TIME as f64;
-        while time < *duration {
-            if time + delta > *duration {
-                delta = *duration - time;
-            }
-            let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
-            let new_vel = vel + accel * delta;
-
-            info!("(compute_flight_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
-                pos, accel, delta, new_pos, new_vel);
-
-            path.push(new_pos);
-            pos = new_pos;
-            vel = new_vel;
-            time += delta;
-        }
-    }
-
-    FlightPathResult {
-        path,
-        end_velocity: vel,
-        // Convert acceleration back into G's (vs m/s^2) at this point.
-        // Also convert time into an unsigned integer.
-        plan: FlightPlan::new(
-            (a_1 / G, t_1.round() as u64).into(),
-            Some((a_2 / G, t_2.round() as u64).into()),
-        ),
-    }
-}
-
-pub fn compute_target_path(params: &TargetParams) -> FlightPathResult {
-    let delta = params.end_pos - params.start_pos;
-    let distance = delta.magnitude();
-
-    // Simple but important case where we are launching the missile within impact difference.
-    // i.e. it doesn't need to go anywhere.
-    if (params.start_pos - params.end_pos).magnitude() < IMPACT_DISTANCE {
-        info!("(compute_target_path) No need to compute flight path.");
-        return FlightPathResult {
-            path: vec![params.start_pos, params.end_pos],
-            end_velocity: params.start_vel,
-            plan: FlightPlan::new((Vec3::zero(), 0).into(), None),
-        };
-    }
-
-    // If our guess has any NaN elements its due to distance being zero, so we know that element can be 0.
-    let guess_a =
-        (delta / distance * params.max_acceleration).map(|a| if a.is_nan() { 0.0 } else { a });
-
-    let guess_t = (2.0 * distance / params.max_acceleration).sqrt();
-    debug!(
-        "(computer.compute_target_path) time guess is {} based on distance = {}, max_accel = {}",
-        guess_t, distance, params.max_acceleration
-    );
-
-    let array_i: [f64; 3] = guess_a.into();
-    let mut initial = Vec::<f64>::from(array_i);
-    initial.push(guess_t);
-
-    // Our first attempt is if this target can be reached in one round (DELTA_TIME).  In this case,
-    // we ignore target velocity.
-    let mut first_attempt = params.clone();
-    first_attempt.target_vel = Vec3::zero();
-
-    info!(
-        "(compute_target_path) First attempt params is {:?}",
-        first_attempt
-    );
-    info!(
-        "(compute_target_path) First attempt initial is {:?}",
-        initial
-    );
-
-    let mut solver = SolverDriver::builder(&first_attempt)
-        .with_initial(initial)
-        .build();
-
-    let attempt = solver.find(|state| {
-        info!(
-            "iter = {}\t|| r(x) || = {}\tx = {:?}",
-            state.iter(),
-            state.norm(),
-            state.x()
-        );
-        state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
-    });
-
-    // We need to compute again if either something went wrong in the first attempt (got an error) OR
-    // it took too long to reach the target.
-    let answer = if !matches!(attempt, Ok((result, _norm)) if result[3] <= DELTA_TIME as f64) {
-        debug!(
-            "Second attempt (couldn't get there in one round) taking into account target velocity."
-        );
-        let mut initial = Vec::<f64>::from(array_i);
-        initial.push(guess_t);
-        // We need to compute again since we can't reach the target in one round.
-        // Use the original params without having zero'd out the target velocity.
-        solver = SolverDriver::builder(params).with_initial(initial).build();
-        solver
-            .find(|state| {
-                debug!(
-                    "iter = {}\t|| r(x) || = {}\tx = {:?}\tr(x) = {:?}",
-                    state.iter(),
-                    state.norm(),
-                    state.x(),
-                    state.rx()
-                );
-                state.norm() <= SOLVE_TOLERANCE || state.iter() >= 100
-            })
-            .unwrap_or_else(|e| {
-                error!(
-                    "Unable to solve target path with params {:?} and error {}",
-                    params, e
-                );
-                // Unlikely to be right but better than nothing
-                (&array_i, 0.0)
-            })
-            .0
-    } else {
-        attempt
-            .unwrap_or_else(|e| {
-                error!(
-                    "Unable to solve target path with params {:?} and error {}",
-                    params, e
-                );
-                (&array_i, 0.0)
-            })
-            .0
-    };
-
-    let mut path = Vec::new();
-    let mut vel = params.start_vel;
-    let mut pos = params.start_pos;
-    let a: Vec3 = Vec3::from(
-        (<&[f64] as TryInto<[f64; 3]>>::try_into(&answer[0..3]))
-            .expect("Unable to convert to fixed array"),
-    );
-
-    path.push(pos);
-    let mut time = 0.0;
-    let mut delta: f64 = DELTA_TIME as f64;
-    while time < answer[3] {
-        if time + delta > answer[3] {
-            delta = answer[3] - time;
-        }
-        let new_pos = pos + vel * delta + guess_a * delta * delta / 2.0;
-        let new_vel = vel + guess_a * delta;
-        path.push(new_pos);
-        pos = new_pos;
-        vel = new_vel;
-        time += delta;
-    }
-
-    FlightPathResult {
-        path,
-        end_velocity: vel,
-        plan: FlightPlan::new((a / G, answer[3].round() as u64).into(), None),
     }
 }
 
@@ -542,7 +584,7 @@ mod tests {
             max_acceleration: 4.0 * G,
         };
 
-        let plan = compute_flight_path(&params);
+        let plan = params.compute_flight_path().unwrap();
 
         info!(
             "Start Pos: {:?}\nEnd Pos: {:?}",
@@ -598,7 +640,7 @@ mod tests {
             max_acceleration: 4.0 * G,
         };
 
-        let plan = compute_flight_path(&params);
+        let plan = params.compute_flight_path().unwrap();
 
         info!(
             "Start Pos: {:?}\nEnd Pos: {:?}",
@@ -610,15 +652,20 @@ mod tests {
         );
         info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
 
-        let vel_error = (plan.end_velocity - params.end_vel).magnitude();
-        let pos_error = (plan.path.last().unwrap() - params.end_pos).magnitude();
-        info!("Vel Error: {}\nPos Error: {}", vel_error, pos_error);
+        let v_error = vel_error(&params.start_vel, &params.end_vel, &plan.end_velocity);
+        let p_error = pos_error(
+            &params.start_pos,
+            &params.end_pos,
+            &plan.path.last().unwrap(),
+        );
+        info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
+
         // Add assertions here to validate the computed flight path and velocity
         // Note asserting the path length in this case is kind of weak as we just had
         // to see what value made sense.  The other two tests are more meaningful.
         assert_eq!(plan.path.len(), 7);
-        assert!(pos_error < 0.001);
-        assert!(vel_error < 0.001);
+        assert!(p_error < 0.001);
+        assert!(v_error < 0.001);
     }
 
     // This test tests a flight path where the first acceleration is less than a round (DELTA_TIME) so the second
@@ -651,7 +698,7 @@ mod tests {
             max_acceleration: MAX_ACCEL,
         };
 
-        let plan = compute_flight_path(&params);
+        let plan = params.compute_flight_path().unwrap();
 
         info!(
             "Start Pos: {:?}\nEnd Pos: {:?}",
@@ -715,7 +762,7 @@ mod tests {
             max_acceleration: 40.0,
         };
 
-        let plan = compute_flight_path(&params);
+        let plan = params.compute_flight_path().unwrap();
 
         info!(
             "Start Pos: {:?}\nEnd Pos: {:?}",
@@ -728,14 +775,18 @@ mod tests {
         info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
 
         let v_error = vel_error(&params.start_vel, &params.end_vel, &plan.end_velocity);
-        let p_error = pos_error(&params.start_pos, &params.end_pos,  plan.path.last().unwrap());
+        let p_error = pos_error(
+            &params.start_pos,
+            &params.end_pos,
+            plan.path.last().unwrap(),
+        );
 
         info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
 
         assert!(p_error < 0.01);
         assert!(v_error < 0.01);
     }
-    
+
     #[test_log::test]
     fn test_compute_flight_path_with_target_velocity() {
         let params = FlightParams {
@@ -767,7 +818,7 @@ mod tests {
             max_acceleration: 6.0 * G,
         };
 
-        let plan = compute_flight_path(&params);
+        let plan = params.compute_flight_path().unwrap();
 
         let full_rounds_duration =
             (plan.plan.duration() as f64 / DELTA_TIME as f64).ceil() * DELTA_TIME as f64;
@@ -788,22 +839,24 @@ mod tests {
         );
         info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
 
-        let delta_pos = (params.start_pos - real_end_target).magnitude();
-        let delta_v = (params.start_vel - params.end_vel).magnitude();
+        let v_error = vel_error(&params.start_vel, &params.end_vel, &plan.end_velocity);
+        let p_error = pos_error(
+            &params.start_pos,
+            &real_end_target,
+            plan.path.last().unwrap(),
+        );
 
-        let vel_error = (plan.end_velocity - params.end_vel).magnitude() / delta_v;
-        let pos_error = (plan.path.last().unwrap() - real_end_target).magnitude() / delta_pos;
-        info!("Vel Error: {}\tPos Error: {}", vel_error, pos_error);
+        info!("Vel Error: {}\tPos Error: {}", v_error, p_error);
         // Add assertions here to validate the computed flight path and velocity
         assert_eq!(plan.path.len(), 7);
         assert!(
-            pos_error < 0.001,
-            "Pos error is too high ({pos_error}).Target position: {:0.0?}, actual position: {:0.0?}",
+            p_error < 0.001,
+            "Pos error is too high ({p_error}).Target position: {:0.0?}, actual position: {:0.0?}",
             real_end_target,
             plan.path.last().unwrap()
         );
         assert!(
-            vel_error < 0.001,
+            v_error < 0.001,
             "Target velocity: {:0.0?}, actual velocity: {:0.0?}",
             params.end_vel,
             plan.end_velocity
@@ -837,7 +890,7 @@ mod tests {
             max_acceleration: 6.0 * G,
         };
 
-        let plan = compute_flight_path(&params);
+        let plan = params.compute_flight_path().unwrap();
 
         info!(
             "Start Pos: {:?}\nEnd Pos: {:?}\n",
@@ -850,22 +903,24 @@ mod tests {
         );
         info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
 
-        let delta_v = (params.start_vel - params.end_vel).magnitude();
+        let v_error = vel_error(&params.start_vel, &params.end_vel, &plan.end_velocity);
+        let p_error = pos_error(
+            &params.start_pos,
+            &params.end_pos,
+            plan.path.last().unwrap(),
+        );
 
-        let vel_error = (plan.end_velocity - params.end_vel).magnitude() / delta_v;
-
-        let pos_error = (plan.path.last().unwrap() - params.end_pos).magnitude();
-        info!("Vel Error: {}\tPos Error: {}", vel_error, pos_error);
+        info!("Vel Error: {}\tPos Error: {}", v_error, p_error);
         // Add assertions here to validate the computed flight path and velocity
         assert_eq!(plan.path.len(), 3);
         assert!(
-            pos_error < 0.001,
-            "Pos error is too high ({pos_error}).Target position: {:0.0?}, actual position: {:0.0?}",
+            p_error < 0.001,
+            "Pos error is too high ({p_error}).Target position: {:0.0?}, actual position: {:0.0?}",
             params.end_pos,
             plan.path.last().unwrap()
         );
         assert!(
-            vel_error < 0.001,
+            v_error < 0.001,
             "Target velocity: {:0.0?}, actual velocity: {:0.0?}",
             params.end_vel,
             plan.end_velocity
@@ -909,7 +964,7 @@ mod tests {
                 max_acceleration,
             };
 
-            let result = compute_flight_path(&params);
+            let result = params.compute_flight_path().unwrap();
 
             // Check that the magnitudes of accelerations are within the limit
             for accel_pair in result.plan.iter() {
