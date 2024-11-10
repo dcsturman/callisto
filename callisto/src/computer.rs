@@ -375,7 +375,7 @@ impl TargetParams {
 
         let res = solver
             .find(|state| {
-                info!(
+                debug!(
                     "iter = {}\t|| |r(x)| = {:0.4?}\tx = {:0.2?}\trx = {:0.2?}",
                     state.iter(),
                     state.norm(),
@@ -449,11 +449,19 @@ impl TargetParams {
 
         match first_attempt.solve(&initial) {
             Ok(result) if result[3] <= DELTA_TIME as f64 => {
-                debug!("(compute_target_path) First attempt worked.");
+                let a = Vec3::from(
+                    (<&[f64] as TryInto<[f64; 3]>>::try_into(&result[0..3]))
+                        .expect("Unable to convert to fixed array"),
+                );
+                let t = result[3];
+                debug!("(compute_target_path) First attempt worked. Acceleration: {:?}, time: {:?}.", a, t);
+                if (self.start_vel + a*t).magnitude() > IMPACT_DISTANCE {
+                    warn!("(compute_target_path) First attempt worked we might be going to fast to detect impact!");
+                }
                 Some(FlightPathResult {
                     path: first_attempt.compute_path(&result),
-                    end_velocity: self.start_vel + guess_a * guess_t,
-                    plan: FlightPlan::new((guess_a / G, guess_t.round() as u64).into(), None),
+                    end_velocity: self.start_vel + a * t,
+                    plan: FlightPlan::new((a / G, t.round() as u64).into(), None),
                 })
             }
             Ok(_) => {
@@ -469,6 +477,7 @@ impl TargetParams {
                         None
                     },
                     |result| {
+                        debug!("(compute_target_path) Second attempt worked.", );
                         Some(FlightPathResult {
                             path: self.compute_path(&result),
                             end_velocity: self.start_vel + guess_a * guess_t,

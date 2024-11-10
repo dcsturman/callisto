@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::combat::attack;
 use crate::combat::{ do_fire_actions, create_sand_counts};
-use crate::{debug, error, info};
+use crate::{debug, error, warn, info};
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
@@ -335,23 +335,33 @@ impl Entities {
                             "(Entity.update_all) Missile impact on {} by missile {}.",
                             ship, missile
                         );
-                        let mut target = self
+                        let target = self
                             .ships
                             .get(&ship)
-                            .unwrap_or_else(|| panic!("Cannot find target {} for missile.", ship))
-                            .write()
-                            .unwrap();
-                        let effects = attack(
-                            0,
-                            0,
-                            &missile_source,
-                            &mut target,
-                            &FAKE_MISSILE_LAUNCHER,
-                            rng,
-                        );
-                        cleanup_missile_list.push(missile);
+                            .map_or_else(|| { warn!("Cannot find target {} for missile. It may have been destroyed.", ship); None},
+                            |ship| Some(ship.clone()));
+                        if let Some(target) = target {
+                            let mut target = target.write().unwrap();
+                            let effects = attack(
+                                0,
+                                0,
+                                &missile_source,
+                                &mut target,
+                                &FAKE_MISSILE_LAUNCHER,
+                                rng,
+                            );
+                            cleanup_missile_list.push(missile);
 
-                        Some(effects)
+                            Some(effects)
+                         } else {
+                            debug!(
+                                "(Entity.update_all) Missile {} exhausted at position {:?}.",
+                                missile, missile_pos
+                            );
+                            Some(vec![EffectMsg::ExhaustedMissile {
+                                position: missile_pos,
+                            }])
+                        }
                     }
                     UpdateAction::ExhaustedMissile { name } => {
                         assert!(name == missile_name);
