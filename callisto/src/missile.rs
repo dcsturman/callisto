@@ -3,18 +3,18 @@ use std::sync::{Arc, RwLock};
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-use cgmath::InnerSpace;
+use cgmath::{ InnerSpace, Zero };
 
-use crate::computer::{compute_target_path, FlightPathResult, TargetParams};
+use crate::computer::{FlightPathResult, TargetParams};
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
 use crate::ship::Ship;
-use crate::debug;
+use crate::{debug, error, info};
 
 // Temporary until missiles have actual acceleration built in
 const MAX_MISSILE_ACCELERATION: f64 = 10.0 * G;
 pub const DEFAULT_BURN: i32 = 10;
-pub const IMPACT_DISTANCE: f64 = 25000.0;
+pub const IMPACT_DISTANCE: f64 = 250000.0;
 
 #[derive(Derivative)]
 #[derivative(PartialEq)]
@@ -65,8 +65,8 @@ impl Missile {
             name, params
         );
 
-        let path: FlightPathResult = compute_target_path(&params);
-        let acceleration = path.plan.0 .0;
+        let acceleration = if let Some(path) = params.compute_target_path() {path.plan.0 .0 } else {Vec3::zero()};
+
         Missile {
             name,
             position,
@@ -111,7 +111,7 @@ impl Entity for Missile {
         let target = self.target_ptr.as_ref().unwrap().read().unwrap();
         if self.burns > 0 {
             debug!(
-                "Computing path for missile {} targeting {}: End pos: {:?} End vel: {:?}",
+                "(update) Computing path for missile {} targeting {}: End pos: {:0.0?} End vel: {:0.0?}",
                 self.name,
                 target.get_name(),
                 target.get_position(),
@@ -127,12 +127,21 @@ impl Entity for Missile {
             );
 
             debug!(
-                "Call targeting computer for missile {} with params: {:?}",
+                "(update) Call targeting computer for missile {} with params: {:0.0?}",
                 self.name, params
             );
 
-            let mut path: FlightPathResult = compute_target_path(&params);
-            debug!("Computed path: {:?} with expected time to impact of {} turns.", path, path.path.len()-1);
+            let mut path: FlightPathResult = match params.compute_target_path() {
+                Some(p) => p,
+                None => {
+                    error!("(update) Unable to compute path for missile {}", self.name);
+                    return Some(UpdateAction::ExhaustedMissile {
+                        name: self.name.clone(),
+                    });
+                }
+            };
+
+            debug!("(update) Computed path: {:?} with expected time to impact of {} turns.", path, path.path.len()-1);
 
             // The computed path should be an acceleration towards the target.
             // For a missile, we should always have a single acceleration (towards the target at full thrust).
@@ -145,7 +154,7 @@ impl Entity for Missile {
 
             assert!(
                 !next.has_second(),
-                "Missile {} has more than one acceleration.",
+                "(missile.update) Missile {} has more than one acceleration.",
                 self.name
             );
 
@@ -159,9 +168,10 @@ impl Entity for Missile {
             self.burns -= 1;
 
             // See if we impacted.
+            debug!("(update) Missile {} is {:0.0} away from target {}", self.name, (self.position - target.get_position()).magnitude(), target.get_name());
             if (self.position - target.get_position()).magnitude() < IMPACT_DISTANCE {
                 debug!(
-                    "Missile {} impacted target {}",
+                    "(update) Missile {} impacted target {}",
                     self.name,
                     target.get_name()
                 );
@@ -173,7 +183,7 @@ impl Entity for Missile {
                 None
             }
         } else {
-            debug!("Missile {} out of propellant", self.name);
+            info!("(update) Missile {} out of propellant", self.name);
             Some(UpdateAction::ExhaustedMissile {
                 name: self.name.clone(),
             })
