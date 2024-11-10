@@ -531,7 +531,7 @@ fn test_exhausted_missile() {
         assert_eq!(response, "[]", "Round {}", round);
     }
 
-    // Third round missile should exhaust itself.
+    // 10th round missile should exhaust itself.
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
     assert_eq!(
         serde_json::from_str::<Vec<EffectMsg>>(response.as_str())
@@ -747,8 +747,6 @@ fn test_slugfest() {
 
     // Should only have 3 ships now as the Harrier should have been destroyed
     assert_eq!(entities.ships.len(), 3);
-
-    println!("**** SLUGFEST RESULTS *****\n{:?}", entities);
 }
 
 #[test]
@@ -825,4 +823,76 @@ fn test_get_designs() {
     let designs = result.unwrap();
     assert!(designs.len() > 0);
     assert!(designs.contains("Buccaneer"));
+}
+
+#[test]
+fn test_missile_impact_close() {
+    let mut server = setup_test_with_server();
+
+    // Add the firing ship
+    let firing_ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(firing_ship).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    // Add the target ship very close to the firing ship
+    let target_ship = r#"{"name":"ship2","position":[1000,1000,1000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(target_ship).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    // Fire a missile within impact range.
+    let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}]]]).to_string();
+    let response = server
+        .update(serde_json::from_str(&fire_missile).unwrap())
+        .unwrap();
+
+    // Check for impact effect
+    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+    assert!(effects.iter().any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
+        "Expected ShipImpact effect, but got: {:?}", effects);
+
+    // Ensure no ExhaustedMissile effect
+    assert!(!effects.iter().any(|e| matches!(e, EffectMsg::ExhaustedMissile { .. })),
+        "Unexpected ExhaustedMissile effect");
+
+    // Check that the target ship took damage
+    let entities = server.get().unwrap();
+    let entities = serde_json::from_str::<Entities>(&entities).unwrap();
+    let target_ship = entities.ships.get("ship2").unwrap().read().unwrap();
+    assert!(target_ship.get_current_hull_points() < target_ship.get_max_hull_points(),
+        "Target ship should have taken damage");
+
+    // Add the target ship very close to the firing ship but not in impact range.
+    let target_ship = r#"{"name":"ship2","position":[4000000,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(target_ship).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    // Fire a missile that should get there in one round.
+    let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}]]]).to_string();
+    let response = server
+        .update(serde_json::from_str(&fire_missile).unwrap())
+        .unwrap();
+
+    // Check for impact effect
+    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+    assert!(effects.iter().any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
+        "Expected ShipImpact effect, but got: {:?}", effects);
+
+    // Ensure no ExhaustedMissile effect
+    assert!(!effects.iter().any(|e| matches!(e, EffectMsg::ExhaustedMissile { .. })),
+        "Unexpected ExhaustedMissile effect");
+
+    // Check that the target ship took damage
+    let entities = server.get().unwrap();
+    let entities = serde_json::from_str::<Entities>(&entities).unwrap();
+    let target_ship = entities.ships.get("ship2").unwrap().read().unwrap();
+    assert!(target_ship.get_current_hull_points() < target_ship.get_max_hull_points(),
+        "Target ship should have taken damage");
+
+    
 }

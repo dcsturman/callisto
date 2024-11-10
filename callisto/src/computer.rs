@@ -97,7 +97,7 @@ impl FlightParams {
 
         // Three cases.
         // 1) Based on differences in velocity
-        // 2) Something to deal wtih no real movement at all
+        // 2) Something to deal with no real movement at all
         // 3) Based on distance.
         if distance <= speed && speed > 0.0 {
             debug!("(best_guess) Making guess based on velocity");
@@ -111,7 +111,7 @@ impl FlightParams {
                 2 => (accel, -accel, 1000000.0, 1000000.0),
                 _ => (-accel, accel, -1000000.0, -1000000.0),
             }
-        } else if distance == 0.0 {
+        } else if approx::ulps_eq!(distance, 0.0) {
             debug!("(best_guess) Making guess given zero differences.");
 
             match attempt {
@@ -219,9 +219,9 @@ impl FlightParams {
             let t_2 = answer[7];
 
             info!(
-            "(compute_flight_path) Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
-            a_1, a_2, t_1, t_2
-        );
+                "(compute_flight_path) Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
+                a_1, a_2, t_1, t_2
+            );
 
             // Now that we've solved for acceleration lets create a path and end velocity
             let mut path = Vec::new();
@@ -233,7 +233,7 @@ impl FlightParams {
             for (accel, duration) in [(a_1, t_1), (a_2, t_2)].iter() {
                 let mut time = 0.0;
                 let mut delta: f64 = DELTA_TIME as f64;
-                while time < *duration {
+                while approx::relative_ne!(time - *duration, 0.0, epsilon=1e-4) && time < *duration {
                     if time + delta > *duration {
                         delta = *duration - time;
                     }
@@ -371,7 +371,9 @@ impl TargetParams {
 
     fn solve(&self, guess: &Vec<f64>) -> Result<Vec<f64>, Box<dyn Error>> {
         info!("(TargetParams.solve) Solving with guess {:?}", guess);
-        let mut solver = SolverDriver::builder(self).with_initial(guess.clone()).build();
+        let mut solver = SolverDriver::builder(self)
+            .with_initial(guess.clone())
+            .build();
 
         let res = solver
             .find(|state| {
@@ -383,7 +385,8 @@ impl TargetParams {
                     state.rx()
                 );
                 state.norm() <= SOLVE_TOLERANCE || state.iter() >= MAX_ITERATIONS
-            })?.0;
+            })?
+            .0;
         Ok(res.into())
     }
 
@@ -454,8 +457,11 @@ impl TargetParams {
                         .expect("Unable to convert to fixed array"),
                 );
                 let t = result[3];
-                debug!("(compute_target_path) First attempt worked. Acceleration: {:?}, time: {:?}.", a, t);
-                if (self.start_vel + a*t).magnitude() > IMPACT_DISTANCE {
+                debug!(
+                    "(compute_target_path) First attempt worked. Acceleration: {:?}, time: {:?}.",
+                    a, t
+                );
+                if (self.start_vel + a * t).magnitude() > IMPACT_DISTANCE {
                     warn!("(compute_target_path) First attempt worked we might be going to fast to detect impact!");
                 }
                 Some(FlightPathResult {
@@ -464,7 +470,7 @@ impl TargetParams {
                     plan: FlightPlan::new((a / G, t.round() as u64).into(), None),
                 })
             }
-            Ok(_) => {
+            Ok(_result) => {
                 debug!(
                     "Second attempt (couldn't get there in one round) taking into account target velocity."
                 );
@@ -477,7 +483,7 @@ impl TargetParams {
                         None
                     },
                     |result| {
-                        debug!("(compute_target_path) Second attempt worked.", );
+                        debug!("(compute_target_path) Second attempt worked.",);
                         Some(FlightPathResult {
                             path: self.compute_path(&result),
                             end_velocity: self.start_vel + guess_a * guess_t,
@@ -490,7 +496,10 @@ impl TargetParams {
                 )
             }
             Err(e) => {
-                debug!("(compute_target_path) First attempt failed with error {:?}.", e);
+                debug!(
+                    "(compute_target_path) First attempt failed with error {:?}.",
+                    e
+                );
                 None
             }
         }
@@ -986,5 +995,46 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test_log::test]
+    fn test_compute_flight_plan_to_current_location() {
+        // Define current position and velocity
+        let current_pos = Vec3::new(1000000.0, 2000000.0, 3000000.0);
+        let current_vel = Vec3::new(100.0, 200.0, 300.0);
+
+        // Create FlightParams
+        let params = FlightParams {
+            start_pos: current_pos,
+            end_pos: current_pos, // Same as start_pos
+            start_vel: current_vel,
+            end_vel: current_vel, // Same as start_vel
+            target_velocity: None,
+            max_acceleration: 6.0 * G, // Using a typical max acceleration
+        };
+
+        // Compute flight path
+        let result = params.compute_flight_path().unwrap();
+
+        // Assertions
+        assert_eq!(
+            result.path.len(),
+            1,
+            "Path should only have start point {:?}:",
+            result.path
+        );
+        assert_relative_eq!(result.path[0], current_pos);
+        assert_relative_eq!(result.end_velocity, current_vel);
+
+        // Check that the flight plan has zero zero duration; acceleration could be anything.
+        assert_eq!(result.plan.0 .1, 0);
+        if let Some(accel) = &result.plan.1 {
+            assert_eq!(accel.1, 0);
+        } else {
+            panic!("Expecting first acceleration.")
+        }
+
+        // Additional check: ensure the plan duration is zero
+        assert_eq!(result.plan.duration(), 0);
     }
 }
