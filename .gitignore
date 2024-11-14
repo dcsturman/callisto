@@ -16,7 +16,12 @@ Cargo.lock
 # Editor configuration
 .editorconfig
 
+# Added by me.
+node_modules/
+
 
 # Added by cargo
 
 /target
+callisto/scenarios/Google API credentials.json
+callisto/scenarios/authorized_users.json

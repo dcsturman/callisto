@@ -15,11 +15,11 @@ use tokio::time::{sleep, Duration};
 use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
+use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
+use callisto::payloads::{FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
+use callisto::ship::ShipDesignTemplate;
 use cgmath::{assert_ulps_eq, Zero};
 use pretty_env_logger;
-use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
-use callisto::ship::ShipDesignTemplate;
-use callisto::payloads::{FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "./target/debug/callisto";
@@ -34,7 +34,6 @@ const REMOVE_ENTITY_PATH: &str = "remove";
 const SET_ACCELERATION_PATH: &str = "set_plan";
 const INVALID_PATH: &str = "unknown";
 
-
 /**
  * Spawns a callisto server and returns a handle to it.  Used across tests to get a server up and running.
  * @param port The port to run the server on.
@@ -45,6 +44,7 @@ async fn spawn_test_server(port: u16) -> Child {
         .arg("-t")
         .arg("-p")
         .arg(port.to_string())
+        .arg("-n")
         .kill_on_drop(true)
         .spawn()
         .expect("Daemon failed to start.");
@@ -59,7 +59,6 @@ async fn spawn_test_server(port: u16) -> Child {
 fn path(port: u16, verb: &str) -> String {
     format!("http://{}:{}/{}", SERVER_ADDRESS, port, verb)
 }
-
 
 /**
  * Test for get_designs in server.
@@ -77,12 +76,23 @@ async fn integration_get_designs() {
         .unwrap();
 
     assert!(body.len() > 0);
-    let result = serde_json::from_str::<HashMap<String,ShipDesignTemplate>>(body.as_str());
-    assert!(result.is_ok(), "Unable to deserialize designs with body: {} , Error {:?}", body, result.unwrap_err());
+    let result = serde_json::from_str::<HashMap<String, ShipDesignTemplate>>(body.as_str());
+    assert!(
+        result.is_ok(),
+        "Unable to deserialize designs with body: {} , Error {:?}",
+        body,
+        result.unwrap_err()
+    );
     let designs = result.unwrap();
     assert!(designs.len() > 0, "Received empty design list.");
-    assert!(designs.contains_key("Buccaneer"), "Buccaneer not found in designs.");
-    assert!(designs.get("Buccaneer").unwrap().name == "Buccaneer", "Buccaneer body malformed in design file.");
+    assert!(
+        designs.contains_key("Buccaneer"),
+        "Buccaneer not found in designs."
+    );
+    assert!(
+        designs.get("Buccaneer").unwrap().name == "Buccaneer",
+        "Buccaneer body malformed in design file."
+    );
 }
 /**
  * Test that we can get a response to a get request when the entities state is empty (so the response is very simple)
@@ -393,7 +403,7 @@ async fn integration_update_ship() {
         .await
         .unwrap();
 
-    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();    
+    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     assert_eq!(
         ship.get_position(),
@@ -453,7 +463,14 @@ async fn integration_update_missile() {
         {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
     ]);
 
-    assert_json_eq!(serde_json::from_str::<Vec<callisto::payloads::EffectMsg>>(response.as_str()).unwrap().iter().filter(|e| !matches!(e, callisto::payloads::EffectMsg::Message { .. })).collect::<Vec<_>>(), compare);
+    assert_json_eq!(
+        serde_json::from_str::<Vec<callisto::payloads::EffectMsg>>(response.as_str())
+            .unwrap()
+            .iter()
+            .filter(|e| !matches!(e, callisto::payloads::EffectMsg::Message { .. }))
+            .collect::<Vec<_>>(),
+        compare
+    );
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await

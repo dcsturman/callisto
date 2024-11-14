@@ -1,6 +1,7 @@
+pub mod authentication;
 pub mod combat;
-mod computer;
 mod combat_tables;
+mod computer;
 pub mod entity;
 pub mod missile;
 pub mod payloads;
@@ -23,8 +24,7 @@ use hyper::body::Bytes;
 use hyper::body::{Body, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 
-use rand::rngs::SmallRng;
-use rand::SeedableRng;
+use once_cell::sync::OnceCell;
 
 use serde_json::from_slice;
 
@@ -32,8 +32,14 @@ use server::Server;
 
 use entity::Entities;
 use payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, RemoveEntityMsg, SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg,
 };
+
+use authentication::TokenTimeoutError;
+
+pub const STATUS_INVALID_TOKEN: u16 = 498;
+
+pub static AUTHORIZED_USERS: OnceCell<Vec<String>> = OnceCell::new();
 
 enum SizeCheckError {
     SizeErr(Response<Full<Bytes>>),
@@ -94,20 +100,63 @@ macro_rules! deserialize_body_or_respond {
     }};
 }
 
+pub fn load_authorized_users_from_file(
+    file_name: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let file = std::fs::File::open(file_name)?;
+    let reader = std::io::BufReader::new(file);
+    let mut templates: Vec<String> = serde_json::from_reader(reader)?;
+    templates.sort();
+
+    Ok(templates)
+}
+
+async fn check_authorization(
+    req: &Request<Incoming>,
+    authenticator: Arc<crate::authentication::Authenticator>,
+) -> Result<String, (hyper::StatusCode, String)> {
+    let auth_header = req.headers().get("Authorization");
+    debug!("(lib.check_authorization) Authorization header found.",);
+
+    // Need to check if email address is valid and if it on our list of accepted users
+    match auth_header {
+        Some(header) => {
+            let token = header.to_str().unwrap();
+            let valid = authenticator.validate_session_key(token);
+
+            match valid {
+                Ok(email) => {
+                    if AUTHORIZED_USERS.get().unwrap().contains(&email) {
+                        Ok(email)
+                    } else {
+                        Err((
+                            hyper::StatusCode::FORBIDDEN,
+                            "Unauthorized user".to_string(),
+                        ))
+                    }
+                }
+                Err(e) => {
+                    error!("(lib.check_authorization) Invalid session key: {:?}", e);
+                    Err((
+                        hyper::StatusCode::UNAUTHORIZED,
+                        "Invalid session key".to_string(),
+                    ))
+                }
+            }
+        }
+        None => Err((
+            hyper::StatusCode::UNAUTHORIZED,
+            "No Authorization header".to_string(),
+        )),
+    }
+}
+
 pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
     test_mode: bool,
+    authenticator: Arc<crate::authentication::Authenticator>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    let rng = if test_mode {
-        info!("(lib.handleRequest) Server in TEST mode for random numbers (constant seed of 0).");
-        // Use 0 to seed all test case random number generators.
-        Box::new(SmallRng::seed_from_u64(0))
-    } else {
-        debug!("(lib.handleRequest) Server in standard mode for random numbers.");
-        Box::new(SmallRng::from_entropy())
-    };
-
     info!(
         "Request: {:?}\n\tmethod: {}\n\turi: {}",
         req,
@@ -115,7 +164,32 @@ pub async fn handle_request(
         req.uri().path()
     );
 
-    let mut server = Server::new(entities, rng);
+    // Check authorization (session key) except in a few very specific cases.  We call that out
+    // here as its easier to see what we aren't authenticating.
+    if !test_mode && !(req.method() == Method::OPTIONS || req.uri().path() == "/login") {
+        match check_authorization(&req, authenticator.clone()).await {
+            Ok(email) => {
+                debug!("(lib.handleRequest) User {} authorized.", email);
+            }
+            Err((status, msg)) => {
+                warn!(
+                    "(lib.handleRequest) User not authorized with status {} and message {}.",
+                    status, msg
+                );
+
+                return Ok(Response::builder()
+                    .status(status)
+                    .body(Bytes::copy_from_slice(msg.as_bytes()).into())
+                    .unwrap());
+            }
+        }
+    } else if test_mode {
+        warn!("(lib.handleRequest) Server in test mode.  All users authorized.");
+    } else {
+        debug!("(lib.handleRequest) Ignore authentication for this request.");
+    }
+
+    let mut server = Server::new(entities, test_mode);
 
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, _) => {
@@ -128,9 +202,28 @@ pub async fn handle_request(
             );
             resp.headers_mut().insert(
                 "Access-Control-Allow-Headers",
-                "Content-Type".parse().unwrap(),
+                "Content-Type, Authorization".parse().unwrap(),
             );
             Ok(resp)
+        }
+        (&Method::POST, "/login") => {
+            let login_msg = deserialize_body_or_respond!(req, LoginMsg);
+
+            match server.login(login_msg, authenticator.clone()).await {
+                Ok(msg) => {
+                    debug!(
+                        "(lib.handleRequest/login) Received and processing login request. {:?}",
+                        msg
+                    );
+                    let resp = Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(msg.as_bytes()).into())
+                        .unwrap();
+                    Ok(resp)
+                }
+                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+            }
         }
         (&Method::POST, "/add_ship") => {
             let ship = deserialize_body_or_respond!(req, AddShipMsg);
@@ -241,6 +334,7 @@ pub async fn handle_request(
         }
 
         _ => {
+            info!("Unknown method or URI on this request.  Returning 404.");
             // Return a 404 Not Found response for any other requests
             Ok(Response::builder()
                 .status(404)

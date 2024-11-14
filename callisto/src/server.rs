@@ -3,13 +3,14 @@ use std::result::Result;
 use std::sync::{Arc, Mutex};
 
 use cgmath::InnerSpace;
-use rand::RngCore;
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
 
+use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, RemoveEntityMsg,
-    SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -19,12 +20,27 @@ use crate::{debug, info, warn};
 // Add function beyond what Entities does and provides an API to our server.
 pub struct Server {
     entities: Arc<Mutex<Entities>>,
-    rng: Box<dyn RngCore + Send>,
+    test_mode: bool,
 }
 
 impl Server {
-    pub fn new(entities: Arc<Mutex<Entities>>, rng: Box<dyn RngCore + Send>) -> Self {
-        Server { entities, rng }
+    pub fn new(entities: Arc<Mutex<Entities>>, test_mode: bool) -> Self {
+        Server { entities, test_mode }
+    }
+
+    pub async fn  login(&self, login: LoginMsg, authenticator: Arc<Authenticator>) -> Result<String, String> {
+        info!("(Server.login) Received and processing login request. {:?}", &login);
+        
+        let code = login.code;
+
+        let (session_key, email) = authenticator.authenticate_google_user(&code).await.unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
+        debug!("(Server.login) Authenticated user {} with session key  {}.", email, session_key);
+
+        let auth_response = crate::payloads::AuthResponse {
+            email,
+            key: session_key,
+        };
+        Ok(serde_json::to_string(&auth_response).unwrap_or_else(|e| panic!("(Server.login) Unable to serialize auth response: {:?}", e)))
     }
 
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
@@ -38,7 +54,7 @@ impl Server {
             .get()
             .expect("(Server.add_ship) Ship templates not loaded")
             .get(&ship.design)
-            .expect(format!("(Server.add_ship) Could not find design {}.", ship.design).as_str());
+            .unwrap_or_else(|| panic!("(Server.add_ship) Could not find design {}.", ship.design));
         self.entities.lock().unwrap().add_ship(
             ship.name,
             ship.position,
@@ -59,7 +75,7 @@ impl Server {
         let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
             .get()
             .expect("(Server.get_designs) Ship templates not loaded")
-            .into_iter()
+            .iter()
             .map(|(key, value)| (key.clone(), (*value.clone()).clone()))
             .collect();
 
@@ -104,6 +120,8 @@ impl Server {
     }
 
     pub fn update(&mut self, fire_actions: FireActionsMsg) -> Result<String, String> {
+        let mut rng = get_rng(self.test_mode);
+
         // Grab the lock on entities
         let mut entities = self
             .entities
@@ -122,10 +140,10 @@ impl Server {
         // Its not clear to me if this is the right order - or should they move then take damage - but we'll do it this way for now.
         // 3. Return a set of effects
 
-        let mut effects = entities.fire_actions(fire_actions, &ship_snapshot, &mut self.rng);
+        let mut effects = entities.fire_actions(fire_actions, &ship_snapshot, &mut rng);
 
         // 4. Update all entities (ships, planets, missiles) and gather in their effects.
-        effects.append(&mut entities.update_all(&ship_snapshot, &mut self.rng));
+        effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
 
         debug!("(/update) Effects: {:?}", effects);
 
@@ -196,7 +214,7 @@ impl Server {
         debug!(
             "(/compute_path) Plan has real acceleration of {} vs max_accel of {}",
             plan.plan.0 .0.magnitude(),
-            max_accel/G
+            max_accel / G
         );
 
         let json = match serde_json::to_string(&plan) {
@@ -220,3 +238,15 @@ impl Server {
         }
     }
 }
+
+fn get_rng(test_mode: bool) -> Box<SmallRng> {
+    if test_mode {
+        info!("(lib.get_rng) Server in TEST mode for random numbers (constant seed of 0).");
+        // Use 0 to seed all test case random number generators.
+        Box::new(SmallRng::seed_from_u64(0))
+    } else {
+        debug!("(lib.get_rng) Server in standard mode for random numbers.");
+        Box::new(SmallRng::from_entropy())
+    }
+}
+

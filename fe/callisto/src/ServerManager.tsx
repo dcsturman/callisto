@@ -12,13 +12,33 @@ import { Effect } from "./Effects";
 const address = "localhost";
 const port = "3000";
 
+type AuthResponse = {
+  email: string;
+  key: string;
+}
+
+export function login(code: string, setEmail: (email: string) => void, setToken: (token: string) => void) {
+  fetch(`http://${address}:${port}/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ "code" : code })
+  })
+    .then((response) => response.text())
+    .then((body) =>  JSON.parse(body) as AuthResponse)
+    .then((authResponse: AuthResponse) => { setEmail(authResponse.email); setToken(authResponse.key); })
+    .catch((error) => console.error("Error logging in:", error));
+}
+
 export function addShip(
   name: string,
   position: [number, number, number],
   velocity: [number, number, number],
   acceleration: [number, number, number],
   design: string,
-  callBack: EntityRefreshCallback
+  callBack: EntityRefreshCallback,
+  token: string
 ) {
   console.log(
     `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
@@ -36,26 +56,28 @@ export function addShip(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": token
     },
     mode: "cors",
     body: JSON.stringify(payload),
   })
     .then((response) => response.json())
-    .then(() => getEntities(callBack))
+    .then(() => getEntities(callBack, token))
     .catch((error) => console.error("Error adding entity:", error));
 }
 
-export function removeEntity(target: string, callBack: EntityRefreshCallback) {
+export function removeEntity(target: string, callBack: EntityRefreshCallback, token: string) {
   fetch(`http://${address}:${port}/remove`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": token
     },
     mode: "cors",
     body: JSON.stringify(target),
   })
     .then((response) => response.json())
-    .then(() => getEntities(callBack))
+    .then(() => getEntities(callBack, token))
     .catch((error) =>
       console.error("Error removing entity '" + target + "':", error)
     );
@@ -64,7 +86,8 @@ export function removeEntity(target: string, callBack: EntityRefreshCallback) {
 export async function setPlan(
   target: string,
   plan: [Acceleration, Acceleration | null],
-  callBack: EntityRefreshCallback
+  callBack: EntityRefreshCallback,
+  token: string
 ) {
   let plan_arr = [];
 
@@ -81,6 +104,7 @@ export async function setPlan(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": token
     },
     mode: "cors",
     body: JSON.stringify(payload),
@@ -88,7 +112,7 @@ export async function setPlan(
 
   if (response.status === 200) {
     await response.json();
-    getEntities(callBack);
+    getEntities(callBack, token);
   } else if (response.status === 400) {
     let msg = await response.text();
     alert(`Proposed plan cannot be assigned: ${JSON.stringify(payload)} because ${msg}`);
@@ -105,19 +129,21 @@ export async function setPlan(
 export function nextRound(
   fireActions: FireActionMsg,
   setEvents: (events: Effect[] | null) => void,
-  callBack: EntityRefreshCallback
+  callBack: EntityRefreshCallback,
+  token: string
 ) {
   fetch(`http://${address}:${port}/update`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": token
     },
     body: JSON.stringify(Object.entries(fireActions)),
     mode: "cors",
   })
     .then((response) => response.json())
     .then((events) => setEvents(events))
-    .then(() => getEntities(callBack))
+    .then(() => getEntities(callBack, token))
     .catch((error) => console.error("Error adding entity:", error));
 }
 
@@ -127,7 +153,8 @@ export function computeFlightPath(
   end_vel: [number, number, number],
   setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
-  standoff: number | null = null
+  standoff: number | null = null,
+  token: string
 ) {
   if (entity_name == null) {
     setProposedPlan(null);
@@ -145,6 +172,7 @@ export function computeFlightPath(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": token
     },
     mode: "cors",
     body: JSON.stringify(payload),
@@ -157,7 +185,8 @@ export function computeFlightPath(
 export function launchMissile(
   source: string,
   target: string,
-  callback: EntityRefreshCallback
+  callback: EntityRefreshCallback,
+  token: string
 ) {
   let payload = {
     source: source,
@@ -168,17 +197,22 @@ export function launchMissile(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": token
     },
     mode: "cors",
     body: JSON.stringify(payload),
   })
     .then((response) => response.json())
-    .then(() => getEntities(callback))
+    .then(() => getEntities(callback, token))
     .catch((error) => console.error("Error launching missile", error));
 }
 
-export function getEntities(callback: EntityRefreshCallback) {
-  return fetch(`http://${address}:${port}/`)
+export function getEntities(callback: EntityRefreshCallback, token: string) {
+  return fetch(`http://${address}:${port}/`, {
+    headers: {
+      "Authorization": token
+    }
+  })
     .then((response) => response.json())
     .then((json) => EntityList.parse(json))
     .then((entities) => {
@@ -189,9 +223,14 @@ export function getEntities(callback: EntityRefreshCallback) {
 }
 
 export async function getTemplates(
-  callBack: (templates: ShipDesignTemplates) => void
+  callBack: (templates: ShipDesignTemplates) => void,
+  token: string
 ) {
-  return fetch(`http://${address}:${port}/designs`)
+  return fetch(`http://${address}:${port}/designs`, {
+    headers: {
+      "Authorization": token
+    }
+  })
     .then((response) => response.json())
     .then((json: any) => {
       let templates: {[key: string]: ShipDesignTemplate} = {};

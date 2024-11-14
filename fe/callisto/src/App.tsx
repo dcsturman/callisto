@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
+
+import { Authentication, Logout } from "./Authentication";
 import SpaceView from "./Spaceview";
 import { Ships, Missiles, Route } from "./Ships";
 import {
@@ -26,7 +28,23 @@ import {
 
 import "./index.css";
 
+
 function App() {
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  return (
+    <div >
+      {authToken ? (<>
+        <Simulator token={authToken}setAuthToken={setAuthToken} email={email} setEmail={setEmail} />
+        </>
+      ) : (
+        <Authentication setAuthToken={setAuthToken} setEmail={setEmail} />
+      )}
+    </div>
+  );
+}
+
+function Simulator(args: { token: string, setAuthToken: (token: string | null) => void, email: string | null, setEmail: (email: string | null) => void }) {
   const [entities, setEntities] = useState<EntityList>({
     ships: [],
     planets: [],
@@ -62,7 +80,8 @@ function App() {
       end_vel,
       setProposedPlan,
       target_vel,
-      standoff
+      standoff,
+      args.token
     );
   };
 
@@ -85,8 +104,8 @@ function App() {
   }
 
   useEffect(() => {
-    getTemplates(setTemplates);
-    getEntities(setEntities);
+    getTemplates(setTemplates, args.token);
+    getEntities(setEntities, args.token);
   }, []);
 
   useEffect(() => {
@@ -113,7 +132,7 @@ function App() {
                 nextRound(fireActions, setEvents, (es: EntityList) => {
                   setShowResults(true);
                   callback(es);
-                })
+                }, args.token)
               }
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
@@ -121,11 +140,17 @@ function App() {
               getAndShowPlan={getAndShowPlan}
               setCameraPos={setCameraPos}
               camera={camera}
+              token={args.token}
             />
             <div className="mainscreen-container">
               <ViewControls
                 viewControls={viewControls}
                 setViewControls={setViewControls}
+              />
+              <Logout
+                setAuthToken={args.setAuthToken}
+                email={args.email}
+                setEmail={args.setEmail}
               />
               {computerShipName && (
                 <ShipComputer
@@ -134,6 +159,7 @@ function App() {
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
+                  token={args.token}
                 />
               )}
               {showResults && (
@@ -143,7 +169,6 @@ function App() {
                   setEffects={setEvents}
                 />
               )}
-              {/* Explicitly setting position to absolute seems to be necessary or it ends up relative and I cannot figure out why */}
               <Canvas
                 style={{ position: "absolute" }}
                 className="spaceview-canvas"
