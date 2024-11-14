@@ -44,7 +44,6 @@ async fn spawn_test_server(port: u16) -> Child {
         .arg("-t")
         .arg("-p")
         .arg(port.to_string())
-        .arg("-n")
         .kill_on_drop(true)
         .spawn()
         .expect("Daemon failed to start.");

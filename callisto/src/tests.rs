@@ -26,7 +26,7 @@ fn setup_test_with_server() -> Server {
 
     Server::new(
         Arc::new(Mutex::new(Entities::new())),
-        Box::new(rand::rngs::SmallRng::seed_from_u64(0)),
+        true
     )
 }
 
