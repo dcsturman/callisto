@@ -15,11 +15,8 @@ extern crate callisto;
 use callisto::entity::Entities;
 use callisto::handle_request;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
-use callisto::AUTHORIZED_USERS;
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
-const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./scenarios/authorized_users.json";
-
 
 /// Server to implement physically pseudo-realistic spaceflight and possibly combat.
 #[derive(Parser, Debug)]
@@ -56,31 +53,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     let test_mode = args.test;
+    if test_mode {
+        info!("(main) Server in TEST mode.");
+    } else {
+        info!("(main) Server in standard mode.");
+    }
 
-    let authorized_users = callisto::load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE)
-        .expect("Unable to load authorized users file.");
-    AUTHORIZED_USERS
-        .set(authorized_users)
-        .expect("(Main) attempting to set AUTHORIZED_USERS twice!");
+    let templates = load_ship_templates_from_file(&args.design_file).unwrap_or_else(|e| {
+        panic!(
+            "Unable to load ship template file {}. Reason {:?}",
+            args.design_file, e
+        )
+    });
 
-    let templates = load_ship_templates_from_file(&args.design_file).unwrap_or_else(|e| panic!(
-        "Unable to load ship template file {}. Reason {:?}",
-        args.design_file,
-        e
-    ));
-    
     SHIP_TEMPLATES
         .set(templates)
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
-    info!(
-        "(main) Loaded authorized users: {:?}",
-        AUTHORIZED_USERS.get().unwrap()
-    );
 
     // Build the authenticator
-    let mut authenticator = callisto::authentication::Authenticator::new(
-        &args.web_server
-    );
+    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server);
 
     authenticator.fetch_google_public_keys().await;
 

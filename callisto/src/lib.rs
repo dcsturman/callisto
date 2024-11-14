@@ -23,24 +23,15 @@ use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use hyper::body::{Body, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
-
-use once_cell::sync::OnceCell;
-
 use serde_json::from_slice;
-
-use server::Server;
 
 use entity::Entities;
 use payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg,
 };
-
-use authentication::TokenTimeoutError;
+use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
-
-pub static AUTHORIZED_USERS: OnceCell<Vec<String>> = OnceCell::new();
-
 enum SizeCheckError {
     SizeErr(Response<Full<Bytes>>),
     HyperErr(hyper::Error),
@@ -100,57 +91,6 @@ macro_rules! deserialize_body_or_respond {
     }};
 }
 
-pub fn load_authorized_users_from_file(
-    file_name: &str,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(file_name)?;
-    let reader = std::io::BufReader::new(file);
-    let mut templates: Vec<String> = serde_json::from_reader(reader)?;
-    templates.sort();
-
-    Ok(templates)
-}
-
-async fn check_authorization(
-    req: &Request<Incoming>,
-    authenticator: Arc<crate::authentication::Authenticator>,
-) -> Result<String, (hyper::StatusCode, String)> {
-    let auth_header = req.headers().get("Authorization");
-    debug!("(lib.check_authorization) Authorization header found.",);
-
-    // Need to check if email address is valid and if it on our list of accepted users
-    match auth_header {
-        Some(header) => {
-            let token = header.to_str().unwrap();
-            let valid = authenticator.validate_session_key(token);
-
-            match valid {
-                Ok(email) => {
-                    if AUTHORIZED_USERS.get().unwrap().contains(&email) {
-                        Ok(email)
-                    } else {
-                        Err((
-                            hyper::StatusCode::FORBIDDEN,
-                            "Unauthorized user".to_string(),
-                        ))
-                    }
-                }
-                Err(e) => {
-                    error!("(lib.check_authorization) Invalid session key: {:?}", e);
-                    Err((
-                        hyper::StatusCode::UNAUTHORIZED,
-                        "Invalid session key".to_string(),
-                    ))
-                }
-            }
-        }
-        None => Err((
-            hyper::StatusCode::UNAUTHORIZED,
-            "No Authorization header".to_string(),
-        )),
-    }
-}
-
 pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
@@ -166,8 +106,8 @@ pub async fn handle_request(
 
     // Check authorization (session key) except in a few very specific cases.  We call that out
     // here as its easier to see what we aren't authenticating.
-    if !test_mode && !(req.method() == Method::OPTIONS || req.uri().path() == "/login") {
-        match check_authorization(&req, authenticator.clone()).await {
+    if !(test_mode || req.method() == Method::OPTIONS || req.uri().path() == "/login") {
+        match authenticator.clone().check_authorization(&req).await {
             Ok(email) => {
                 debug!("(lib.handleRequest) User {} authorized.", email);
             }
@@ -176,7 +116,7 @@ pub async fn handle_request(
                     "(lib.handleRequest) User not authorized with status {} and message {}.",
                     status, msg
                 );
-
+                //
                 return Ok(Response::builder()
                     .status(status)
                     .body(Bytes::copy_from_slice(msg.as_bytes()).into())
@@ -222,7 +162,22 @@ pub async fn handle_request(
                         .unwrap();
                     Ok(resp)
                 }
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => {
+                    // When authentication via Google fails, we return UNAUTHORIZED.
+                    // May want to consider a special case for a TokenTimeoutError but the only way that
+                    // could really happen is if something is very wrong at Google or a stale auth code
+                    // was delivered later (and that would imply an attack).
+                    warn!(
+                        "(lib.handleRequest/login) Error logging in so returning UNAUTHORIZED: {}",
+                        err
+                    );
+                    let resp: Response<Full<Bytes>> = Response::builder()
+                        .status(StatusCode::UNAUTHORIZED)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(Bytes::copy_from_slice(err.as_bytes()).into())
+                        .unwrap();
+                    Ok(resp)
+                }
             }
         }
         (&Method::POST, "/add_ship") => {

@@ -9,7 +9,6 @@
 use pretty_env_logger;
 
 use cgmath::{assert_ulps_eq, Zero};
-use rand::SeedableRng;
 use std::sync::{Arc, Mutex};
 
 use assert_json_diff::assert_json_eq;
@@ -24,10 +23,7 @@ fn setup_test_with_server() -> Server {
     let _ = pretty_env_logger::try_init();
     crate::ship::config_test_ship_templates();
 
-    Server::new(
-        Arc::new(Mutex::new(Entities::new())),
-        true
-    )
+    Server::new(Arc::new(Mutex::new(Entities::new())), true)
 }
 
 /**

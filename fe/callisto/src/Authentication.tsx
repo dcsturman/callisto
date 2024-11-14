@@ -13,6 +13,21 @@ export function Authentication(args: {
   const [googleAuthResponse, setGoogleAuthResponse] = useState<any>(null);
   const [secureState, setSecureState] = useState<string | undefined>();
 
+/** 
+ * The out of the box version of useGoogleLogin is missing options on the type signature.  So to make this wor
+ * I had to "Go to Definition" and modify to look like this:
+ interface AuthCodeFlowOptions extends Omit<CodeClientConfig, 'client_id' | 'scope' | 'callback'> {
+    onSuccess?: (codeResponse: Omit<CodeResponse, 'error' | 'error_description' | 'error_uri'>) => void;
+    onError?: (errorResponse: Pick<CodeResponse, 'error' | 'error_description' | 'error_uri'>) => void;
+    onNonOAuthError?: (nonOAuthError: NonOAuthError) => void;
+    scope?: CodeResponse['scope'];
+    overrideScope?: boolean;
+    accessType?: 'offline' | 'online';
+    isSignedIn: boolean;
+    responseType?: 'code' | 'token';
+    prompt?: '' | 'none' | 'consent' | 'select_account'; 
+  }
+ */
   const googleLogin = useGoogleLogin({
     onSuccess: (codeResponse: CodeResponse) => setGoogleAuthResponse(codeResponse),
     onError: (error) => console.log("Login Failed:", error),

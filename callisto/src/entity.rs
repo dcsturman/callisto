@@ -276,13 +276,8 @@ impl Entities {
                 let attack_ship = ship_snapshot.get(attacker).unwrap_or_else(|| {
                     panic!("Cannot find attacker {} for fire actions.", attacker)
                 });
-                let (missiles, effects) = do_fire_actions(
-                    attack_ship,
-                    &mut self.ships,
-                    &mut sand_counts,
-                    actions,
-                    rng,
-                );
+                let (missiles, effects) =
+                    do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, rng);
                 for missile in missiles {
                     if let Err(msg) = self.launch_missile(&missile.source, &missile.target) {
                         error!("Could not launch missile: {}", msg);

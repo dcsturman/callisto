@@ -10,7 +10,7 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -25,22 +25,40 @@ pub struct Server {
 
 impl Server {
     pub fn new(entities: Arc<Mutex<Entities>>, test_mode: bool) -> Self {
-        Server { entities, test_mode }
+        Server {
+            entities,
+            test_mode,
+        }
     }
 
-    pub async fn  login(&self, login: LoginMsg, authenticator: Arc<Authenticator>) -> Result<String, String> {
-        info!("(Server.login) Received and processing login request. {:?}", &login);
-        
+    pub async fn login(
+        &self,
+        login: LoginMsg,
+        authenticator: Arc<Authenticator>,
+    ) -> Result<String, String> {
+        info!(
+            "(Server.login) Received and processing login request. {:?}",
+            &login
+        );
+
         let code = login.code;
 
-        let (session_key, email) = authenticator.authenticate_google_user(&code).await.unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
-        debug!("(Server.login) Authenticated user {} with session key  {}.", email, session_key);
+        let (session_key, email) = authenticator
+            .authenticate_google_user(&code)
+            .await
+            .unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
+        debug!(
+            "(Server.login) Authenticated user {} with session key  {}.",
+            email, session_key
+        );
 
         let auth_response = crate::payloads::AuthResponse {
             email,
             key: session_key,
         };
-        Ok(serde_json::to_string(&auth_response).unwrap_or_else(|e| panic!("(Server.login) Unable to serialize auth response: {:?}", e)))
+        Ok(serde_json::to_string(&auth_response).unwrap_or_else(|e| {
+            panic!("(Server.login) Unable to serialize auth response: {:?}", e)
+        }))
     }
 
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
@@ -249,4 +267,3 @@ fn get_rng(test_mode: bool) -> Box<SmallRng> {
         Box::new(SmallRng::from_entropy())
     }
 }
-

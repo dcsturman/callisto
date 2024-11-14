@@ -35,7 +35,7 @@ function App() {
   return (
     <div >
       {authToken ? (<>
-        <Simulator token={authToken}setAuthToken={setAuthToken} email={email} setEmail={setEmail} />
+        <Simulator token={authToken} setToken={setAuthToken} email={email} setEmail={setEmail} />
         </>
       ) : (
         <Authentication setAuthToken={setAuthToken} setEmail={setEmail} />
@@ -44,7 +44,7 @@ function App() {
   );
 }
 
-function Simulator(args: { token: string, setAuthToken: (token: string | null) => void, email: string | null, setEmail: (email: string | null) => void }) {
+function Simulator(args: { token: string, setToken: (token: string | null) => void, email: string | null, setEmail: (email: string | null) => void }) {
   const [entities, setEntities] = useState<EntityList>({
     ships: [],
     planets: [],
@@ -81,7 +81,8 @@ function Simulator(args: { token: string, setAuthToken: (token: string | null) =
       setProposedPlan,
       target_vel,
       standoff,
-      args.token
+      args.token,
+      args.setToken
     );
   };
 
@@ -104,8 +105,8 @@ function Simulator(args: { token: string, setAuthToken: (token: string | null) =
   }
 
   useEffect(() => {
-    getTemplates(setTemplates, args.token);
-    getEntities(setEntities, args.token);
+    getTemplates(setTemplates, args.token, args.setToken);
+    getEntities(setEntities, args.token, args.setToken);
   }, []);
 
   useEffect(() => {
@@ -132,7 +133,7 @@ function Simulator(args: { token: string, setAuthToken: (token: string | null) =
                 nextRound(fireActions, setEvents, (es: EntityList) => {
                   setShowResults(true);
                   callback(es);
-                }, args.token)
+                }, args.token, args.setToken)
               }
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
@@ -141,6 +142,7 @@ function Simulator(args: { token: string, setAuthToken: (token: string | null) =
               setCameraPos={setCameraPos}
               camera={camera}
               token={args.token}
+              setToken={args.setToken}
             />
             <div className="mainscreen-container">
               <ViewControls
@@ -148,7 +150,7 @@ function Simulator(args: { token: string, setAuthToken: (token: string | null) =
                 setViewControls={setViewControls}
               />
               <Logout
-                setAuthToken={args.setAuthToken}
+                setAuthToken={args.setToken}
                 email={args.email}
                 setEmail={args.setEmail}
               />
@@ -160,6 +162,7 @@ function Simulator(args: { token: string, setAuthToken: (token: string | null) =
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
                   token={args.token}
+                  setToken={args.setToken}
                 />
               )}
               {showResults && (

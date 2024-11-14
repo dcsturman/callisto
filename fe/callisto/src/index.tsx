@@ -12,6 +12,7 @@ const root = ReactDOM.createRoot(
 
 document.body.style.overflow = "hidden";
 
+// Awkward adn brittle to hardcode the clientID in here but its not a secret.
 root.render(
   <GoogleOAuthProvider clientId="402344016908-a6k9ekcrnmcaki9bl32io9cjp2jtanv5.apps.googleusercontent.com">
   <React.StrictMode>

@@ -1,4 +1,6 @@
 use base64::{engine::general_purpose, Engine as _};
+use hyper::body::Incoming;
+use hyper::Request;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -12,12 +14,14 @@ use crate::{debug, error, info};
 type GoogleProfile = String;
 
 const GOOGLE_CREDENTIALS_FILE: &str = "./scenarios/Google API credentials.json";
+const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./scenarios/authorized_users.json";
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
 #[allow(dead_code)]
 pub struct Authenticator {
     credentials: GoogleCredentials,
     session_keys: RwLock<HashMap<String, String>>,
+    authorized_users: Vec<String>,
     node_server_url: String,
     public_keys: Option<GooglePublicKeys>,
 }
@@ -31,9 +35,12 @@ impl Authenticator {
                     e, GOOGLE_CREDENTIALS_FILE
                 )
             });
+        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE)
+            .expect("Unable to load authorized users file.");
         Authenticator {
             credentials,
             session_keys: RwLock::new(HashMap::new()),
+            authorized_users,
             node_server_url: url.to_string(),
             public_keys: None,
         }
@@ -139,9 +146,10 @@ impl Authenticator {
         // Generate a cryptographically secure session key.
         let mut session_key: String = "Bearer ".to_string();
 
-        session_key.push_str(&general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()));
+        session_key.push_str(
+            &general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()),
+        );
 
-        
         // Record it with the email from token_data.email.
         let email = token_data.claims.email.clone();
         self.session_keys
@@ -163,7 +171,49 @@ impl Authenticator {
         }
     }
 
-   pub async fn fetch_google_public_keys(&mut self) {
+    pub async fn check_authorization(
+        &self,
+        req: &Request<Incoming>,
+    ) -> Result<String, (hyper::StatusCode, String)> {
+        let auth_header = req.headers().get("Authorization");
+        debug!("(Authenticator.check_authorization) Authorization header found.",);
+
+        // Need to check if email address is valid and if it on our list of accepted users
+        match auth_header {
+            Some(header) => {
+                let token = header.to_str().unwrap();
+                let valid = self.validate_session_key(token);
+
+                match valid {
+                    Ok(email) => {
+                        if self.authorized_users.contains(&email) {
+                            Ok(email)
+                        } else {
+                            Err((
+                                hyper::StatusCode::FORBIDDEN,
+                                "Unauthorized user".to_string(),
+                            ))
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "(Authenticator.check_authorization) Invalid session key: {:?}",
+                            e
+                        );
+                        Err((
+                            hyper::StatusCode::UNAUTHORIZED,
+                            "Invalid session key".to_string(),
+                        ))
+                    }
+                }
+            }
+            None => Err((
+                hyper::StatusCode::UNAUTHORIZED,
+                "No Authorization header".to_string(),
+            )),
+        }
+    }
+    pub async fn fetch_google_public_keys(&mut self) {
         // Fetch Google's public keys
         let client = reqwest::Client::new();
         let public_keys_response = client
@@ -207,6 +257,17 @@ fn load_google_credentials_from_file(file_name: &str) -> Result<GoogleCredential
     });
     debug!("Load Google credentials file \"{}\".", file_name);
     Ok(credentials.web)
+}
+
+pub fn load_authorized_users_from_file(
+    file_name: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let file = std::fs::File::open(file_name)?;
+    let reader = std::io::BufReader::new(file);
+    let mut templates: Vec<String> = serde_json::from_reader(reader)?;
+    templates.sort();
+
+    Ok(templates)
 }
 
 // Error types.

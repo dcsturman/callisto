@@ -27,6 +27,7 @@ export function ShipComputer(args: {
       standoff: number
     ) => void;
     token: string;
+    setToken: (token: string | null) => void;
   }) {
     const serverEntities = useContext(EntitiesServerContext);
   
@@ -182,7 +183,7 @@ export function ShipComputer(args: {
           y: args.proposedPlan.plan[0][0][1].toString(),
           z: args.proposedPlan.plan[0][0][2].toString(),
         });
-        setPlan(ship.name, args.proposedPlan.plan, serverEntities.handler, args.token)
+        setPlan(ship.name, args.proposedPlan.plan, serverEntities.handler, args.token, args.setToken)
         .then(() => args.resetProposedPlan());
   
         if (selectRef.current !== null) {
@@ -214,7 +215,8 @@ export function ShipComputer(args: {
           ship.name,
           [[[x, y, z], DEFAULT_ACCEL_DURATION], null],
           serverEntities.handler,
-          args.token
+          args.token,
+          args.setToken
         )
           .then(() => {
             setColor("control-input-x", "black");

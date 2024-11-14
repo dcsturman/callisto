@@ -314,6 +314,7 @@ export function Controls(args: {
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
   token: string;
+  setToken: (token: string | null) => void;
 }) {
   const [fire_actions, setFireActions] = useState({} as { [actor: string]: { weapons: { [weapon: string]:{ kind: string; mount: WeaponMount; used: number; total: number }}; state: FireState} });
 
@@ -391,7 +392,8 @@ export function Controls(args: {
             acceleration,
             designName,
             serverEntities.handler,
-            args.token
+            args.token,
+            args.setToken
           )
         }
         shipDesignTemplates={args.shipDesignTemplates}
