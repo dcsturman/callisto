@@ -10,7 +10,7 @@ import { FireActionMsg } from "./Controls";
 import { Effect } from "./Effects";
 
 const address = "localhost";
-const port = "3000";
+const port = "30000";
 
 export function addShip(
   name: string,

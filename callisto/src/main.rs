@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
     let port = args.port;
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     let test_mode = args.test;
 
@@ -67,9 +67,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         entities.lock().unwrap()
     );
 
-    println!("Starting Callisto server listening on address: {}", addr);
+    info!("Starting Callisto server listening on address: {}", addr);
 
-    // We create a TcpListener and bind it to 127.0.0.1:3000
+    // We create a TcpListener and bind it to 127.0.0.1:PORT
     let listener = TcpListener::bind(addr).await?;
 
     // We start a loop to continuously accept incoming connections
