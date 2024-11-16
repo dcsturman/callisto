@@ -22,7 +22,6 @@ function validate_response(
   setToken: (token: string | null) => void
 ): Response {
   if (response.ok) {
-    console.log("*** Response ok");
     return response;
   } else {
     if (
@@ -56,7 +55,6 @@ export function login(
   setEmail: (email: string) => void,
   setToken: (token: string | null) => void
 ) {
-  console.log(`*** Attempt to log in. via http://${CALLISTO_BACKEND}/login`);
   fetch(`http://${CALLISTO_BACKEND}/login`, {
     method: "POST",
     headers: {
