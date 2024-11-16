@@ -12,7 +12,7 @@ import {
   ViewControls,
 } from "./Controls";
 import { Effect, Explosions, ResultsWindow } from "./Effects";
-import { nextRound, getEntities, getTemplates, computeFlightPath } from "./ServerManager";
+import { nextRound, getEntities, getTemplates, computeFlightPath, CALLISTO_BACKEND } from "./ServerManager";
 
 import { ShipComputer } from "./ShipComputer";
 
@@ -32,6 +32,7 @@ import "./index.css";
 function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  console.log(`Connecting to Callisto backend at http://${CALLISTO_BACKEND}`);
   return (
     <div >
       {authToken ? (<>
@@ -107,7 +108,7 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
   useEffect(() => {
     getTemplates(setTemplates, args.token, args.setToken);
     getEntities(setEntities, args.token, args.setToken);
-  }, []);
+  }, [args.token, args.setToken]);
 
   useEffect(() => {
     window.addEventListener("keydown", downHandler);
