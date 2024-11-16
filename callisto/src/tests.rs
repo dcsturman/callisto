@@ -9,7 +9,6 @@
 use pretty_env_logger;
 
 use cgmath::{assert_ulps_eq, Zero};
-use rand::SeedableRng;
 use std::sync::{Arc, Mutex};
 
 use assert_json_diff::assert_json_eq;
@@ -24,10 +23,7 @@ fn setup_test_with_server() -> Server {
     let _ = pretty_env_logger::try_init();
     crate::ship::config_test_ship_templates();
 
-    Server::new(
-        Arc::new(Mutex::new(Entities::new())),
-        Box::new(rand::rngs::SmallRng::seed_from_u64(0)),
-    )
+    Server::new(Arc::new(Mutex::new(Entities::new())), true)
 }
 
 /**
@@ -640,7 +636,9 @@ fn test_big_fight() {
         .collect::<Vec<EffectMsg>>();
 
     effects.sort_by(|a, b| {
-        serde_json::to_string(a).unwrap().cmp(&serde_json::to_string(b).unwrap())
+        serde_json::to_string(a)
+            .unwrap()
+            .cmp(&serde_json::to_string(b).unwrap())
     });
 
     assert_json_eq!(
@@ -851,19 +849,30 @@ fn test_missile_impact_close() {
 
     // Check for impact effect
     let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
-    assert!(effects.iter().any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
-        "Expected ShipImpact effect, but got: {:?}", effects);
+    assert!(
+        effects
+            .iter()
+            .any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
+        "Expected ShipImpact effect, but got: {:?}",
+        effects
+    );
 
     // Ensure no ExhaustedMissile effect
-    assert!(!effects.iter().any(|e| matches!(e, EffectMsg::ExhaustedMissile { .. })),
-        "Unexpected ExhaustedMissile effect");
+    assert!(
+        !effects
+            .iter()
+            .any(|e| matches!(e, EffectMsg::ExhaustedMissile { .. })),
+        "Unexpected ExhaustedMissile effect"
+    );
 
     // Check that the target ship took damage
     let entities = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(&entities).unwrap();
     let target_ship = entities.ships.get("ship2").unwrap().read().unwrap();
-    assert!(target_ship.get_current_hull_points() < target_ship.get_max_hull_points(),
-        "Target ship should have taken damage");
+    assert!(
+        target_ship.get_current_hull_points() < target_ship.get_max_hull_points(),
+        "Target ship should have taken damage"
+    );
 
     // Add the target ship very close to the firing ship but not in impact range.
     let target_ship = r#"{"name":"ship2","position":[4000000,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
@@ -880,19 +889,28 @@ fn test_missile_impact_close() {
 
     // Check for impact effect
     let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
-    assert!(effects.iter().any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
-        "Expected ShipImpact effect, but got: {:?}", effects);
+    assert!(
+        effects
+            .iter()
+            .any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
+        "Expected ShipImpact effect, but got: {:?}",
+        effects
+    );
 
     // Ensure no ExhaustedMissile effect
-    assert!(!effects.iter().any(|e| matches!(e, EffectMsg::ExhaustedMissile { .. })),
-        "Unexpected ExhaustedMissile effect");
+    assert!(
+        !effects
+            .iter()
+            .any(|e| matches!(e, EffectMsg::ExhaustedMissile { .. })),
+        "Unexpected ExhaustedMissile effect"
+    );
 
     // Check that the target ship took damage
     let entities = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(&entities).unwrap();
     let target_ship = entities.ships.get("ship2").unwrap().read().unwrap();
-    assert!(target_ship.get_current_hull_points() < target_ship.get_max_hull_points(),
-        "Target ship should have taken damage");
-
-    
+    assert!(
+        target_ship.get_current_hull_points() < target_ship.get_max_hull_points(),
+        "Target ship should have taken damage"
+    );
 }

@@ -1,9 +1,9 @@
 use std::sync::{Arc, RwLock};
 
+use cgmath::{InnerSpace, Zero};
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-use cgmath::{ InnerSpace, Zero };
 
 use crate::computer::{FlightPathResult, TargetParams};
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
@@ -65,7 +65,11 @@ impl Missile {
             name, params
         );
 
-        let acceleration = if let Some(path) = params.compute_target_path() {path.plan.0 .0 } else {Vec3::zero()};
+        let acceleration = if let Some(path) = params.compute_target_path() {
+            path.plan.0 .0
+        } else {
+            Vec3::zero()
+        };
 
         Missile {
             name,
@@ -141,7 +145,11 @@ impl Entity for Missile {
                 }
             };
 
-            debug!("(update) Computed path: {:?} with expected time to impact of {} turns.", path, path.path.len()-1);
+            debug!(
+                "(update) Computed path: {:?} with expected time to impact of {} turns.",
+                path,
+                path.path.len() - 1
+            );
 
             // The computed path should be an acceleration towards the target.
             // For a missile, we should always have a single acceleration (towards the target at full thrust).
@@ -168,7 +176,12 @@ impl Entity for Missile {
             self.burns -= 1;
 
             // See if we impacted.
-            debug!("(update) Missile {} is {:0.0} away from target {}", self.name, (self.position - target.get_position()).magnitude(), target.get_name());
+            debug!(
+                "(update) Missile {} is {:0.0} away from target {}",
+                self.name,
+                (self.position - target.get_position()).magnitude(),
+                target.get_name()
+            );
             if (self.position - target.get_position()).magnitude() < IMPACT_DISTANCE {
                 debug!(
                     "(update) Missile {} impacted target {}",
@@ -211,7 +224,7 @@ mod tests {
                 Vec3::zero(),
                 Vec3::zero(),
                 FlightPlan::default(),
-                Arc::new(ShipDesignTemplate::default())
+                Arc::new(ShipDesignTemplate::default()),
             ))),
             Vec3::zero(),
             Vec3::zero(),

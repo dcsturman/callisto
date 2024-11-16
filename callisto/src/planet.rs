@@ -5,14 +5,13 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
-use crate::{debug, info};
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
+use crate::{debug, info};
 
 // This is the Gravitational Constant, not the acceleration due to gravity which is defined as G and used
 // more widely in this codebase.  So intentionally not "pub"
 const G_CONST: f64 = 6.673e-11;
-
 
 #[derive(Derivative)]
 #[derivative(PartialEq)]
@@ -124,9 +123,12 @@ impl Planet {
 
     pub fn calculate_rotational_velocity(&self) -> Result<Vec3, String> {
         // We assume orbits are just on the x, z plane and around the primary.
-        let primary = self.primary_ptr.as_ref().ok_or_else(|| {
-            format!("Planet {} has no primary.", self.name)
-        })?.read().unwrap();
+        let primary = self
+            .primary_ptr
+            .as_ref()
+            .ok_or_else(|| format!("Planet {} has no primary.", self.name))?
+            .read()
+            .unwrap();
         let orbit_radius =
             Vec3::new(1.0, 0.0, 1.0).mul_element_wise(self.position - primary.get_position());
         let speed = (G_CONST * primary.mass / orbit_radius.magnitude()).sqrt();
@@ -134,7 +136,7 @@ impl Planet {
         let tangent = Vec3::new(-orbit_radius.z, 0.0, orbit_radius.x).normalize();
         debug!("(Planet.calculate_rotational_velocity) Planet {} orbit radius = {:?}, speed = {}, tangent = {:?}, tangent*speed = {:?}",
             self.get_name(), orbit_radius, speed, tangent, tangent*speed);
-        
+
         Ok(tangent * speed + primary.get_velocity())
     }
 }
@@ -178,7 +180,7 @@ impl Entity for Planet {
                 // Unwrap should be 100% safe here as we are in the "if let" statement
                 old_velocity = self.velocity;
                 self.velocity = self.calculate_rotational_velocity().unwrap();
-            
+
                 // Now that we have velocity, move the planet the average of the prior velocity and the new velocity
                 self.position += (old_velocity + self.velocity) / 2.0 * MINI_STEP as f64;
                 time += MINI_STEP;
@@ -265,7 +267,7 @@ mod tests {
         );
 
         let initial_position = planet.get_position();
-        
+
         // Velocity doesn't actually change on first update as
         // velocity vector created on planet creation is same as on first update.
         assert_ne!(
@@ -299,17 +301,19 @@ mod tests {
 
         // The distance should be roughly constant (allowing for some numerical error)
         assert!(
-            (distance_to_sun - TARGET_DISTANCE).abs() < TARGET_DISTANCE/100.0,
-            "Planet should maintain a roughly constant distance from the Sun: {}", (distance_to_sun - TARGET_DISTANCE).abs());
+            (distance_to_sun - TARGET_DISTANCE).abs() < TARGET_DISTANCE / 100.0,
+            "Planet should maintain a roughly constant distance from the Sun: {}",
+            (distance_to_sun - TARGET_DISTANCE).abs()
+        );
 
-        // Velocity should be perpendicular to the position vector (circular orbit). However we have plenty of error in 
+        // Velocity should be perpendicular to the position vector (circular orbit). However we have plenty of error in
         // this math.  5e12 (really 0.5e13) is about half a percent error.
-        let position_velocity_dot = (planet.get_position()-sun.read().unwrap().get_position()).dot(planet.get_velocity());
+        let position_velocity_dot =
+            (planet.get_position() - sun.read().unwrap().get_position()).dot(planet.get_velocity());
         assert!(
             position_velocity_dot.abs() < 5e12,
-            "Velocity should be perpendicular to the position vector: {}", position_velocity_dot
-
-
+            "Velocity should be perpendicular to the position vector: {}",
+            position_velocity_dot
         );
     }
 }

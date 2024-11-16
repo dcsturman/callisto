@@ -13,8 +13,8 @@ use log::info;
 extern crate callisto;
 
 use callisto::entity::Entities;
-use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 use callisto::handle_request;
+use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
 
@@ -37,6 +37,10 @@ struct Args {
     /// Run in test mode. Specifically, this will use a fixed random number generator.
     #[arg(short, long)]
     test: bool,
+
+    // Name of the web server hosting the react app.
+    #[arg(short, long, default_value = "http://localhost:50001")]
+    web_server: String,
 }
 
 #[tokio::main]
@@ -49,10 +53,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     let test_mode = args.test;
+    if test_mode {
+        info!("(main) Server in TEST mode.");
+    } else {
+        info!("(main) Server in standard mode.");
+    }
 
-    let templates = load_ship_templates_from_file(&args.design_file).expect(&format!("Unable to load ship template file {}.", args.design_file));
-    SHIP_TEMPLATES.set(templates).expect("(Main) attempting to set SHIP_TEMPLATES twice!");
-    
+    let templates = load_ship_templates_from_file(&args.design_file).unwrap_or_else(|e| {
+        panic!(
+            "Unable to load ship template file {}. Reason {:?}",
+            args.design_file, e
+        )
+    });
+
+    SHIP_TEMPLATES
+        .set(templates)
+        .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
+
+    // Build the authenticator
+    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server);
+
+    authenticator.fetch_google_public_keys().await;
+
+    let authenticator = Arc::new(authenticator);
+
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         println!("Loading scenario file: {}", file_name);
@@ -82,9 +106,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         // Spawn a tokio task to serve multiple connections concurrently
         let e = entities.clone();
+        let a = authenticator.clone();
         tokio::task::spawn(async move {
             let ent = e.clone();
-            let handler = move |req| handle_request(req, ent.clone(), test_mode);
+            let handler = move |req| handle_request(req, ent.clone(), test_mode, a.clone());
 
             // We bind the incoming connection to our service
             let builder = http1::Builder::new();

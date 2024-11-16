@@ -10,12 +10,12 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
 use crate::combat::attack;
-use crate::combat::{ do_fire_actions, create_sand_counts};
-use crate::{debug, error, warn, info};
+use crate::combat::{create_sand_counts, do_fire_actions};
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
+use crate::{debug, error, info, warn};
 
 pub const DELTA_TIME: u64 = 360;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
@@ -277,7 +277,7 @@ impl Entities {
                     panic!("Cannot find attacker {} for fire actions.", attacker)
                 });
                 let (missiles, effects) =
-                    do_fire_actions(&attack_ship, &mut self.ships, &mut sand_counts,actions, rng);
+                    do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, rng);
                 for missile in missiles {
                     if let Err(msg) = self.launch_missile(&missile.source, &missile.target) {
                         error!("Could not launch missile: {}", msg);
@@ -289,7 +289,11 @@ impl Entities {
         effects
     }
 
-    pub fn update_all(&mut self, ship_snapshot: &HashMap<String, Ship>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    pub fn update_all(
+        &mut self,
+        ship_snapshot: &HashMap<String, Ship>,
+        rng: &mut dyn RngCore,
+    ) -> Vec<EffectMsg> {
         let mut planets = self.planets.values_mut().collect::<Vec<_>>();
         planets.sort_by(|a, b| {
             let a_ent = a.read().unwrap();
@@ -345,7 +349,7 @@ impl Entities {
                             let effects = attack(
                                 0,
                                 0,
-                                &missile_source,
+                                missile_source,
                                 &mut target,
                                 &FAKE_MISSILE_LAUNCHER,
                                 rng,
@@ -522,15 +526,15 @@ impl std::fmt::Display for Entities {
             return Ok(());
         }
 
-        write!(f, "Entities {{\n")?;
+        writeln!(f, "Entities {{")?;
         for ship in self.ships.values() {
-            write!(f, "  {:?}\n,", ship.read().unwrap())?;
+            writeln!(f, "  {:?},", ship.read().unwrap())?;
         }
         for missile in self.missiles.values() {
-            write!(f, "  {:?}\n,", missile.read().unwrap())?;
+            writeln!(f, "  {:?},", missile.read().unwrap())?;
         }
         for planet in self.planets.values() {
-            write!(f, "  {:?}\n,", planet.read().unwrap())?;
+            writeln!(f, "  {:?},", planet.read().unwrap())?;
         }
         write!(f, "}}")?;
         Ok(())
@@ -812,9 +816,9 @@ mod tests {
         // Update the entities a few times
         let ship_snapshot = deep_clone(&entities.ships);
         entities.update_all(&ship_snapshot, &mut rng);
-        let ship_snapshot = deep_clone(&entities.ships);        
+        let ship_snapshot = deep_clone(&entities.ships);
         entities.update_all(&ship_snapshot, &mut rng);
-        let ship_snapshot = deep_clone(&entities.ships);        
+        let ship_snapshot = deep_clone(&entities.ships);
         entities.update_all(&ship_snapshot, &mut rng);
 
         // Validate the new positions for each entity
@@ -1070,7 +1074,6 @@ mod tests {
             6e24,
         );
 
-        
         // Update the planet a few times
         let ship_snapshot = deep_clone(&entities.ships);
         entities.update_all(&ship_snapshot, &mut rng);
@@ -1717,7 +1720,7 @@ mod tests {
 // Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
 pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<String, Ship> {
     ships
-        .into_iter()
+        .iter()
         .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
         .collect()
 }

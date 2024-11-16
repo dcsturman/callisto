@@ -16,6 +16,9 @@ Cargo.lock
 # Editor configuration
 .editorconfig
 
+# Added by me.
+node_modules/
+
 
 # Added by cargo
 
@@ -23,6 +26,6 @@ Cargo.lock
 
 # Added by me
 node_modules/
-authorized_users.json
-Google\ API\ Credentials.json
 .vscode
+callisto/secrets/**
+callisto/config/authorized_users.json
