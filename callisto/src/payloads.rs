@@ -8,6 +8,17 @@ use serde_with::serde_as;
 use super::entity::Vec3;
 use super::ship::FlightPlan;
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LoginMsg {
+    pub code: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AuthResponse {
+    pub email: String,
+    pub key: String,
+}
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AddShipMsg {

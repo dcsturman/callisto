@@ -365,3 +365,40 @@ input {
 .stats-bloc-entry {
   padding-right: 4px;
 }
+
+.authentication-container {
+  background-image: url("../public/assets/galaxy1.png");
+  background-size: cover;
+  background-repeat: repeat;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: black;
+  color: white;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.authentication-title {
+  font-size: 48pt;
+  background-color: transparent
+}
+
+.logout-window {
+  position: fixed;
+  bottom: 0;
+  right: 0px;
+  padding-left: 4px;
+  border: 0px solid #b6bcae;
+  z-index: 5;
+}
+
+.authentication-blurb {
+  font-size: 12pt;
+  width: 40%
+}

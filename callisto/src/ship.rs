@@ -1,17 +1,17 @@
-use std::fmt::Debug;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use cgmath::{InnerSpace, Zero};
 use derivative::Derivative;
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-use once_cell::sync::OnceCell;
 use strum_macros::FromRepr;
 
-use crate::{debug, info};
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
+use crate::{debug, info};
 
 pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
 
@@ -55,10 +55,10 @@ pub struct Ship {
     // Skip these in both serializing and deserializing
     // as we don't expect them when loading from a file and
     // don't intend to send them to the server.
-    #[serde(skip)]    
+    #[serde(skip)]
     pub crit_level: [u8; 11],
     #[serde(skip)]
-    pub attack_dm: i32
+    pub attack_dm: i32,
 }
 
 #[skip_serializing_none]
@@ -109,13 +109,14 @@ pub enum WeaponType {
     Particle,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
 pub enum Sensors {
     Basic = 0,
+    #[default]
     Civilian,
     Military,
     Improved,
-    Advanced
+    Advanced,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -123,7 +124,7 @@ pub enum Stealth {
     Basic,
     Improved,
     Enhanced,
-    Advanced
+    Advanced,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, FromRepr)]
@@ -142,7 +143,13 @@ pub enum ShipSystem {
 }
 
 impl Ship {
-    pub fn new(name: String, position: Vec3, velocity: Vec3, plan: FlightPlan, design: Arc<ShipDesignTemplate>) -> Self {
+    pub fn new(
+        name: String,
+        position: Vec3,
+        velocity: Vec3,
+        plan: FlightPlan,
+        design: Arc<ShipDesignTemplate>,
+    ) -> Self {
         Ship {
             name,
             position,
@@ -159,7 +166,7 @@ impl Ship {
             current_sensors: design.sensors,
             active_weapons: vec![true; design.weapons.len()],
             crit_level: [0; 11],
-            attack_dm: 0
+            attack_dm: 0,
         }
     }
 
@@ -190,13 +197,16 @@ impl Ship {
                     self.plan = new_plan.clone();
                     Ok(())
                 } else {
-                    Err("Flight plan has second acceleration that exceeds max acceleration".to_string())
+                    Err(
+                        "Flight plan has second acceleration that exceeds max acceleration"
+                            .to_string(),
+                    )
                 }
             } else {
                 self.plan = new_plan.clone();
                 Ok(())
             }
-        } else  {
+        } else {
             Err("Flight plan has first acceleration that exceeds max acceleration".to_string())
         }
     }
@@ -308,7 +318,6 @@ impl PartialEq for Ship {
 }
  */
 
-
 serde_with::serde_conv!(
     pub TemplateNameOnly,
     Arc<ShipDesignTemplate>,
@@ -320,13 +329,21 @@ serde_with::serde_conv!(
 );
 
 // Load ship templates from a file.
-pub fn load_ship_templates_from_file(file_name: &str) -> Result<HashMap<String, Arc<ShipDesignTemplate>>, Box<dyn std::error::Error>> {
+pub fn load_ship_templates_from_file(
+    file_name: &str,
+) -> Result<HashMap<String, Arc<ShipDesignTemplate>>, Box<dyn std::error::Error>> {
     let file = std::fs::File::open(file_name)?;
     let reader = std::io::BufReader::new(file);
     let templates: Vec<ShipDesignTemplate> = serde_json::from_reader(reader)?;
-    
+
     // Sort the weapons in each template as loaded to ensure they are in order.  This is a dependency the UX depends on.
-    let table = templates.into_iter().map(|mut template| { template.weapons.sort(); (template.name.clone(), Arc::new(template))}).collect();
+    let table = templates
+        .into_iter()
+        .map(|mut template| {
+            template.weapons.sort();
+            (template.name.clone(), Arc::new(template))
+        })
+        .collect();
 
     Ok(table)
 }
@@ -334,8 +351,11 @@ pub fn load_ship_templates_from_file(file_name: &str) -> Result<HashMap<String, 
 // Helper method designed only for use in tests to load templates from a default file.
 pub fn config_test_ship_templates() {
     const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
-    let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE).expect("Unable to load ship template file.");
-    SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| { info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!" );});
+    let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
+        .expect("Unable to load ship template file.");
+    SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| {
+        info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!");
+    });
 }
 
 impl ShipDesignTemplate {
@@ -345,13 +365,14 @@ impl ShipDesignTemplate {
         // First take out basic ship systems.
         let power: i32 = current_power as i32 - self.displacement as i32 / 5;
         // Now adjust for sensors.
-        let power = power - match self.sensors {
-            Sensors::Basic => 0,
-            Sensors::Civilian => 1,
-            Sensors::Military => 2,
-            Sensors::Improved => 4,
-            Sensors::Advanced => 6,
-        };
+        let power = power
+            - match self.sensors {
+                Sensors::Basic => 0,
+                Sensors::Civilian => 1,
+                Sensors::Military => 2,
+                Sensors::Improved => 4,
+                Sensors::Advanced => 6,
+            };
 
         if power <= 0 {
             return 0;
@@ -366,32 +387,39 @@ impl ShipDesignTemplate {
 
 impl PartialOrd for Weapon {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (&self.mount, &other.mount) {
-            (WeaponMount::Bay(BaySize::Large ), WeaponMount::Bay(BaySize::Large)) => self.kind.partial_cmp(&other.kind),
-            (WeaponMount::Bay(BaySize::Large), _) => Some(std::cmp::Ordering::Less),
-            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => Some(std::cmp::Ordering::Greater),
-            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => self.kind.partial_cmp(&other.kind),
-            (WeaponMount::Bay(BaySize::Medium), _) => Some(std::cmp::Ordering::Less),
-            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Large)) => Some(std::cmp::Ordering::Greater),
-            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Medium)) => Some(std::cmp::Ordering::Greater),
-            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => self.kind.partial_cmp(&other.kind),
-            (WeaponMount::Bay(BaySize::Small), _) => Some(std::cmp::Ordering::Less),
-            (WeaponMount::Barbette, _) => Some(std::cmp::Ordering::Less),
-            (WeaponMount::Turret(_), WeaponMount::Bay(_)) => Some(std::cmp::Ordering::Greater),
-            (WeaponMount::Turret(_), WeaponMount::Barbette) => Some(std::cmp::Ordering::Greater),
-            (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.partial_cmp(&other.kind),
-        }
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for Weapon {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-impl Default for Sensors {
-    fn default() -> Self {
-        Sensors::Civilian
+        match (&self.mount, &other.mount) {
+            (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => {
+                self.kind.cmp(&other.kind)
+            }
+            (WeaponMount::Bay(BaySize::Large), _) => std::cmp::Ordering::Less,
+            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => {
+                std::cmp::Ordering::Greater
+            }
+            (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => {
+                self.kind.cmp(&other.kind)
+            }
+            (WeaponMount::Bay(BaySize::Medium), _) => std::cmp::Ordering::Less,
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Large)) => {
+                std::cmp::Ordering::Greater
+            }
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Medium)) => {
+                std::cmp::Ordering::Greater
+            }
+            (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => {
+                self.kind.cmp(&other.kind)
+            }
+            (WeaponMount::Bay(BaySize::Small), _) => std::cmp::Ordering::Less,
+            (WeaponMount::Barbette, _) => std::cmp::Ordering::Less,
+            (WeaponMount::Turret(_), WeaponMount::Bay(_)) => std::cmp::Ordering::Greater,
+            (WeaponMount::Turret(_), WeaponMount::Barbette) => std::cmp::Ordering::Greater,
+            (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.cmp(&other.kind),
+        }
     }
 }
 
@@ -487,10 +515,14 @@ impl From<&Weapon> for String {
             (kind, WeaponMount::Turret(1)) => format!("{} single turret", String::from(kind)),
             (kind, WeaponMount::Turret(2)) => format!("{} double turret", String::from(kind)),
             (kind, WeaponMount::Turret(3)) => format!("{} triple turret", String::from(kind)),
-            (_, WeaponMount::Turret(size)) => panic!("(From<Weapon> for String) illegal turret size {}.", size),
+            (_, WeaponMount::Turret(size)) => {
+                panic!("(From<Weapon> for String) illegal turret size {}.", size)
+            }
             (kind, WeaponMount::Barbette) => format!("{} barbette", String::from(kind)),
             (kind, WeaponMount::Bay(BaySize::Small)) => format!("{} small bay", String::from(kind)),
-            (kind, WeaponMount::Bay(BaySize::Medium)) => format!("{} medium bay", String::from(kind)),
+            (kind, WeaponMount::Bay(BaySize::Medium)) => {
+                format!("{} medium bay", String::from(kind))
+            }
             (kind, WeaponMount::Bay(BaySize::Large)) => format!("{} large bay", String::from(kind)),
         }
     }
@@ -498,10 +530,7 @@ impl From<&Weapon> for String {
 
 impl WeaponType {
     pub fn is_laser(&self) -> bool {
-        match self {
-            WeaponType::Beam | WeaponType::Pulse => true,
-            _ => false,
-        }
+        matches!(self, WeaponType::Beam | WeaponType::Pulse)
     }
 }
 
@@ -541,10 +570,8 @@ impl From<AccelPair> for (Vec3, u64) {
 
 impl AccelPair {
     pub fn in_limits(&self, limit: f64) -> bool {
-        self.0.magnitude() <= limit || approx::relative_eq!(&self.0.magnitude(),
-            &limit,
-            max_relative = 1e-3
-        )
+        self.0.magnitude() <= limit
+            || approx::relative_eq!(&self.0.magnitude(), &limit, max_relative = 1e-3)
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -629,11 +656,17 @@ impl FlightPlan {
             let new_first = self.0.clone();
             let first_time = self.0 .1;
             let second = self.1.clone().unwrap();
-            self.0 = (second.0, second.1 - (
-                time - self.0 .1)).into();
+            self.0 = (second.0, second.1 - (time - self.0 .1)).into();
             self.1 = None;
             debug!("(FlightPlan.advance_time) self: {:?} new_first: {:?} second: {:?} time: {} first_time: {}", self, new_first, second, time, first_time);
-            FlightPlan::new(new_first, if time <= first_time { None } else { Some((second.0, time - first_time).into())})
+            FlightPlan::new(
+                new_first,
+                if time <= first_time {
+                    None
+                } else {
+                    Some((second.0, time - first_time).into())
+                },
+            )
         } else {
             // If time is more than first and second durations:
             // This plan: becomes a zero acceleration plan.
@@ -669,18 +702,30 @@ impl Default for ShipDesignTemplate {
             sensors: Sensors::Improved,
             stealth: None,
             computer: 5,
-            weapons: vec![ 
-                Weapon{ kind: WeaponType::Pulse, mount: WeaponMount::Turret(2) }, 
-                Weapon{ kind: WeaponType::Pulse, mount: WeaponMount::Turret(2) },
-                Weapon{ kind: WeaponType::Sand, mount: WeaponMount::Turret(2) }, 
-                Weapon{ kind: WeaponType::Sand, mount: WeaponMount::Turret(2) }, 
+            weapons: vec![
+                Weapon {
+                    kind: WeaponType::Pulse,
+                    mount: WeaponMount::Turret(2),
+                },
+                Weapon {
+                    kind: WeaponType::Pulse,
+                    mount: WeaponMount::Turret(2),
+                },
+                Weapon {
+                    kind: WeaponType::Sand,
+                    mount: WeaponMount::Turret(2),
+                },
+                Weapon {
+                    kind: WeaponType::Sand,
+                    mount: WeaponMount::Turret(2),
+                },
             ],
-            tl: 15
+            tl: 15,
         }
     }
 }
-    
-#[allow(dead_code)]    
+
+#[allow(dead_code)]
 fn digit_to_int(code: char) -> u8 {
     match code {
         '0' => 0,
@@ -798,7 +843,7 @@ mod tests {
             initial_position,
             initial_velocity,
             initial_plan.clone(),
-            Arc::new(ShipDesignTemplate::default())
+            Arc::new(ShipDesignTemplate::default()),
         );
 
         // Test initial values
@@ -886,8 +931,8 @@ mod tests {
 
         flight_plan.ensure_thrust_limit(6.0);
 
-        assert_ulps_eq!(flight_plan.0.0, accel1);
-        assert_eq!(flight_plan.0.1, time1);
+        assert_ulps_eq!(flight_plan.0 .0, accel1);
+        assert_eq!(flight_plan.0 .1, time1);
         assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(1.0, 2.0, 2.0));
         assert_eq!(flight_plan.1.as_ref().unwrap().1, 3000);
 
@@ -899,8 +944,8 @@ mod tests {
         flight_plan.ensure_thrust_limit(6.0);
 
         let expected_accel2 = accel2.normalize() * 6.0;
-        assert_ulps_eq!(flight_plan.0.0, expected_accel2);
-        assert_eq!(flight_plan.0.1, time1);
+        assert_ulps_eq!(flight_plan.0 .0, expected_accel2);
+        assert_eq!(flight_plan.0 .1, time1);
         assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(1.0, 2.0, 2.0));
         assert_eq!(flight_plan.1.as_ref().unwrap().1, 3000);
 
@@ -909,8 +954,8 @@ mod tests {
 
         flight_plan.ensure_thrust_limit(6.0);
 
-        assert_ulps_eq!(flight_plan.0.0, expected_accel2);
-        assert_eq!(flight_plan.0.1, time1);
+        assert_ulps_eq!(flight_plan.0 .0, expected_accel2);
+        assert_eq!(flight_plan.0 .1, time1);
         let expected_accel3 = Vec3::new(4.0, 4.0, 4.0).normalize() * 6.0;
         assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, expected_accel3);
         assert_eq!(flight_plan.1.as_ref().unwrap().1, 2000);
@@ -921,8 +966,8 @@ mod tests {
 
         flight_plan.ensure_thrust_limit(4.0);
 
-        assert_ulps_eq!(flight_plan.0.0, Vec3::new(4.0, 0.0, 0.0));
-        assert_eq!(flight_plan.0.1, 1000);
+        assert_ulps_eq!(flight_plan.0 .0, Vec3::new(4.0, 0.0, 0.0));
+        assert_eq!(flight_plan.0 .1, 1000);
         assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(0.0, 3.2, 2.4));
         assert_eq!(flight_plan.1.as_ref().unwrap().1, 1500);
     }
@@ -939,20 +984,20 @@ mod tests {
 
         // Test case 1: Advance time less than first duration
         let result = flight_plan.advance_time(2000);
-        assert_eq!(result.0.0, accel1);
-        assert_eq!(result.0.1, 2000);
+        assert_eq!(result.0 .0, accel1);
+        assert_eq!(result.0 .1, 2000);
         assert_eq!(result.1, None);
-        assert_eq!(flight_plan.0.0, accel1);
-        assert_eq!(flight_plan.0.1, 3000);
+        assert_eq!(flight_plan.0 .0, accel1);
+        assert_eq!(flight_plan.0 .1, 3000);
         assert_eq!(flight_plan.1, Some(AccelPair(accel2, time2)));
 
         // Test case 2: Advance time equal to remaining first duration
         let result = flight_plan.advance_time(3000);
-        assert_eq!(result.0.0, accel1);
-        assert_eq!(result.0.1, 3000);
+        assert_eq!(result.0 .0, accel1);
+        assert_eq!(result.0 .1, 3000);
         assert_eq!(result.1, None);
-        assert_eq!(flight_plan.0.0, accel2);
-        assert_eq!(flight_plan.0.1, time2);
+        assert_eq!(flight_plan.0 .0, accel2);
+        assert_eq!(flight_plan.0 .1, time2);
         assert_eq!(flight_plan.1, None);
 
         // Reset flight plan for next test
@@ -961,20 +1006,20 @@ mod tests {
 
         // Test case 3: Advance time more than first duration but less than total duration
         let result = flight_plan.advance_time(6000);
-        assert_eq!(result.0.0, accel1);
-        assert_eq!(result.0.1, time1);
+        assert_eq!(result.0 .0, accel1);
+        assert_eq!(result.0 .1, time1);
         assert_eq!(result.1, Some(AccelPair(accel2, 1000)));
-        assert_eq!(flight_plan.0.0, accel2);
-        assert_eq!(flight_plan.0.1, 2000);
+        assert_eq!(flight_plan.0 .0, accel2);
+        assert_eq!(flight_plan.0 .1, 2000);
         assert_eq!(flight_plan.1, None);
 
         // Test case 4: Advance time more than total duration
         let result = flight_plan.advance_time(3000);
-        assert_eq!(result.0.0, accel2);
-        assert_eq!(result.0.1, 2000);
+        assert_eq!(result.0 .0, accel2);
+        assert_eq!(result.0 .1, 2000);
         assert_eq!(result.1, None);
-        assert_eq!(flight_plan.0.0, Vec3::zero());
-        assert_eq!(flight_plan.0.1, 0);
+        assert_eq!(flight_plan.0 .0, Vec3::zero());
+        assert_eq!(flight_plan.0 .1, 0);
         assert_eq!(flight_plan.1, None);
     }
 
@@ -989,7 +1034,7 @@ mod tests {
             initial_position,
             initial_velocity,
             initial_plan.clone(),
-            Arc::new(ShipDesignTemplate::default())
+            Arc::new(ShipDesignTemplate::default()),
         );
 
         // Test case 1: Set a valid flight plan
@@ -1001,18 +1046,12 @@ mod tests {
         assert_eq!(ship.plan, valid_plan);
 
         // Test case 2: Set a flight plan with acceleration exceeding ship's capabilities
-        let invalid_plan = FlightPlan::new(
-            AccelPair(Vec3::new(100.0, 100.0, 100.0), 5000),
-            None,
-        );
+        let invalid_plan = FlightPlan::new(AccelPair(Vec3::new(100.0, 100.0, 100.0), 5000), None);
         assert!(ship.set_flight_plan(&invalid_plan).is_err());
         assert_eq!(ship.plan, valid_plan); // Plan should not have changed
 
         // Test case 3: Set a flight plan with only one acceleration
-        let single_accel_plan = FlightPlan::new(
-            AccelPair(Vec3::new(2.0, 2.0, 1.0), 4000),
-            None,
-        );
+        let single_accel_plan = FlightPlan::new(AccelPair(Vec3::new(2.0, 2.0, 1.0), 4000), None);
         assert!(ship.set_flight_plan(&single_accel_plan).is_ok());
         assert_eq!(ship.plan, single_accel_plan);
 
@@ -1049,14 +1088,14 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default())
+            Arc::new(ShipDesignTemplate::default()),
         );
         let ship2 = Ship::new(
             "ship2".to_string(),
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default())
+            Arc::new(ShipDesignTemplate::default()),
         );
         assert!(ship1 < ship2);
         assert!(ship2 > ship1);
@@ -1072,10 +1111,7 @@ mod tests {
         let time1 = 5000;
         let accel2 = Vec3::new(-2.0, -1.0, 0.0);
         let time2 = 3000;
-        let flight_plan = FlightPlan::new(
-            AccelPair(accel1, time1),
-            Some(AccelPair(accel2, time2)),
-        );
+        let flight_plan = FlightPlan::new(AccelPair(accel1, time1), Some(AccelPair(accel2, time2)));
 
         let mut iter = flight_plan.iter();
         assert_eq!(iter.next(), Some(AccelPair(accel1, time1)));
@@ -1083,10 +1119,7 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         // Test case 2: FlightPlan with only one acceleration
-        let flight_plan = FlightPlan::new(
-            AccelPair(accel1, time1),
-            None,
-        );
+        let flight_plan = FlightPlan::new(AccelPair(accel1, time1), None);
 
         let mut iter = flight_plan.iter();
         assert_eq!(iter.next(), Some(AccelPair(accel1, time1)));
@@ -1112,10 +1145,7 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         // Test case 5: Using a for loop with the iterator
-        let flight_plan = FlightPlan::new(
-            AccelPair(accel1, time1),
-            Some(AccelPair(accel2, time2)),
-        );
+        let flight_plan = FlightPlan::new(AccelPair(accel1, time1), Some(AccelPair(accel2, time2)));
 
         let mut count = 0;
         for (index, accel_pair) in flight_plan.iter().enumerate() {

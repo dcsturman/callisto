@@ -233,7 +233,9 @@ impl FlightParams {
             for (accel, duration) in [(a_1, t_1), (a_2, t_2)].iter() {
                 let mut time = 0.0;
                 let mut delta: f64 = DELTA_TIME as f64;
-                while approx::relative_ne!(time - *duration, 0.0, epsilon=1e-4) && time < *duration {
+                while approx::relative_ne!(time - *duration, 0.0, epsilon = 1e-4)
+                    && time < *duration
+                {
                     if time + delta > *duration {
                         delta = *duration - time;
                     }
@@ -390,7 +392,7 @@ impl TargetParams {
         Ok(res.into())
     }
 
-    fn compute_path(&self, answer: &Vec<f64>) -> Vec<Vec3> {
+    fn compute_path(&self, answer: &[f64]) -> Vec<Vec3> {
         let mut path = Vec::new();
         let mut vel = self.start_vel;
         let mut pos = self.start_pos;

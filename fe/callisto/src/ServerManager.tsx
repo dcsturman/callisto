@@ -8,9 +8,65 @@ import {
 } from "./Universal";
 import { FireActionMsg } from "./Controls";
 import { Effect } from "./Effects";
+import { StatusCodes, getReasonPhrase } from "http-status-codes";
 
 const address = "localhost";
 const port = "3000";
+
+type AuthResponse = {
+  email: string;
+  key: string;
+};
+
+function validate_response(
+  response: Response,
+  setToken: (token: string | null) => void
+): Response {
+  if (response.ok) {
+    return response;
+  } else {
+    if (
+      response.status === StatusCodes.UNAUTHORIZED ||
+      response.status === StatusCodes.FORBIDDEN
+    ) {
+      console.log(
+        "(ServerManager.validate_response) Clearing token: " +
+          getReasonPhrase(response.status)
+      );
+      setToken(null);
+    }
+    throw new Error(response.statusText);
+  }
+}
+
+function handle_network_error(
+  error: Error,
+  setToken: (token: string | null) => void
+) {
+  setToken(null);
+  console.error("(ServerManager.handle_network_error) Network Error: " + error);
+}
+
+export function login(
+  code: string,
+  setEmail: (email: string) => void,
+  setToken: (token: string | null) => void
+) {
+  fetch(`http://${address}:${port}/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ code: code }),
+  })
+    .then((response) => validate_response(response, setToken).text())
+    .then((body) => JSON.parse(body) as AuthResponse)
+    .then((authResponse: AuthResponse) => {
+      setEmail(authResponse.email);
+      setToken(authResponse.key);
+    })
+    .catch((error) => handle_network_error(error, setToken));
+}
 
 export function addShip(
   name: string,
@@ -18,7 +74,9 @@ export function addShip(
   velocity: [number, number, number],
   acceleration: [number, number, number],
   design: string,
-  callBack: EntityRefreshCallback
+  callBack: EntityRefreshCallback,
+  token: string,
+  setToken: (token: string | null) => void
 ) {
   console.log(
     `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
@@ -36,35 +94,42 @@ export function addShip(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: token,
     },
     mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => response.json())
-    .then(() => getEntities(callBack))
-    .catch((error) => console.error("Error adding entity:", error));
+    .then((response) => validate_response(response, setToken).json())
+    .then(() => getEntities(callBack, token, setToken))
+    .catch((error) => handle_network_error(error, setToken));
 }
 
-export function removeEntity(target: string, callBack: EntityRefreshCallback) {
+export function removeEntity(
+  target: string,
+  callBack: EntityRefreshCallback,
+  token: string,
+  setToken: (token: string | null) => void
+) {
   fetch(`http://${address}:${port}/remove`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: token,
     },
     mode: "cors",
     body: JSON.stringify(target),
   })
-    .then((response) => response.json())
-    .then(() => getEntities(callBack))
-    .catch((error) =>
-      console.error("Error removing entity '" + target + "':", error)
-    );
+    .then((response) => validate_response(response, setToken).json())
+    .then(() => getEntities(callBack, token, setToken))
+    .catch((error) => handle_network_error(error, setToken));
 }
 
 export async function setPlan(
   target: string,
   plan: [Acceleration, Acceleration | null],
-  callBack: EntityRefreshCallback
+  callBack: EntityRefreshCallback,
+  token: string,
+  setToken: (token: string | null) => void
 ) {
   let plan_arr = [];
 
@@ -77,48 +142,54 @@ export async function setPlan(
   }
   let payload = { name: target, plan: plan_arr };
 
-  let response = await fetch(`http://${address}:${port}/set_plan`, {
+  fetch(`http://${address}:${port}/set_plan`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: token,
     },
     mode: "cors",
     body: JSON.stringify(payload),
-  });
-
-  if (response.status === 200) {
-    await response.json();
-    getEntities(callBack);
-  } else if (response.status === 400) {
-    let msg = await response.text();
-    alert(`Proposed plan cannot be assigned: ${JSON.stringify(payload)} because ${msg}`);
-    console.log(`Invalid plan provided: ${JSON.stringify(payload)} because ${msg}`);
-  } else {
-    console.error(
-      "Unknown response code " +
-        response.status +
-        " from server when setting plan."
-    );
-  }
+  })
+    .then((response) => {
+      if (response.status === StatusCodes.BAD_REQUEST) {
+        let msg = response.text();
+        alert(
+          `Proposed plan cannot be assigned: ${JSON.stringify(
+            payload
+          )} because ${msg}`
+        );
+        console.log(
+          `Invalid plan provided: ${JSON.stringify(payload)} because ${msg}`
+        );
+      } else {
+        validate_response(response, setToken).json();
+        getEntities(callBack, token, setToken);
+      }
+    })
+    .catch((error) => handle_network_error(error, setToken));
 }
 
 export function nextRound(
   fireActions: FireActionMsg,
   setEvents: (events: Effect[] | null) => void,
-  callBack: EntityRefreshCallback
+  callBack: EntityRefreshCallback,
+  token: string,
+  setToken: (token: string | null) => void
 ) {
   fetch(`http://${address}:${port}/update`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: token,
     },
     body: JSON.stringify(Object.entries(fireActions)),
     mode: "cors",
   })
-    .then((response) => response.json())
+    .then((response) => validate_response(response, setToken).json())
     .then((events) => setEvents(events))
-    .then(() => getEntities(callBack))
-    .catch((error) => console.error("Error adding entity:", error));
+    .then(() => getEntities(callBack, token, setToken))
+    .catch((error) => handle_network_error(error, setToken));
 }
 
 export function computeFlightPath(
@@ -127,7 +198,9 @@ export function computeFlightPath(
   end_vel: [number, number, number],
   setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
-  standoff: number | null = null
+  standoff: number | null = null,
+  token: string,
+  setToken: (token: string | null) => void
 ) {
   if (entity_name == null) {
     setProposedPlan(null);
@@ -145,19 +218,22 @@ export function computeFlightPath(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: token,
     },
     mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => response.json())
+    .then((response) => validate_response(response, setToken).json())
     .then((plan) => setProposedPlan(plan))
-    .catch((error) => console.error("Error computing flight path:", error));
+    .catch((error) => handle_network_error(error, setToken));
 }
 
 export function launchMissile(
   source: string,
   target: string,
-  callback: EntityRefreshCallback
+  callback: EntityRefreshCallback,
+  token: string,
+  setToken: (token: string | null) => void
 ) {
   let payload = {
     source: source,
@@ -168,33 +244,48 @@ export function launchMissile(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: token,
     },
     mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => response.json())
-    .then(() => getEntities(callback))
-    .catch((error) => console.error("Error launching missile", error));
+    .then((response) => validate_response(response, setToken).json())
+    .then(() => getEntities(callback, token, setToken))
+    .catch((error) => handle_network_error(error, setToken));
 }
 
-export function getEntities(callback: EntityRefreshCallback) {
-  return fetch(`http://${address}:${port}/`)
-    .then((response) => response.json())
+export function getEntities(
+  callback: EntityRefreshCallback,
+  token: string,
+  setToken: (token: string | null) => void
+) {
+  return fetch(`http://${address}:${port}/`, {
+    headers: {
+      Authorization: token,
+    },
+  })
+    .then((response) => validate_response(response, setToken).json())
     .then((json) => EntityList.parse(json))
     .then((entities) => {
       console.log(`Received Entities: ${JSON.stringify(entities)}`);
       callback(entities);
     })
-    .catch((error) => console.error("Error fetching entities:", error));
+    .catch((error) => handle_network_error(error, setToken));
 }
 
 export async function getTemplates(
-  callBack: (templates: ShipDesignTemplates) => void
+  callBack: (templates: ShipDesignTemplates) => void,
+  token: string,
+  setToken: (token: string | null) => void
 ) {
-  return fetch(`http://${address}:${port}/designs`)
-    .then((response) => response.json())
+  return fetch(`http://${address}:${port}/designs`, {
+    headers: {
+      Authorization: token,
+    },
+  })
+    .then((response) => validate_response(response, setToken).json())
     .then((json: any) => {
-      let templates: {[key: string]: ShipDesignTemplate} = {};
+      let templates: { [key: string]: ShipDesignTemplate } = {};
       Object.entries(json).forEach((entry: [string, any]) => {
         let currentTemplate: ShipDesignTemplate = ShipDesignTemplate.parse(
           entry[1]
@@ -210,5 +301,5 @@ export async function getTemplates(
       }
       callBack(templates);
     })
-    .catch((error) => console.error("Error fetching templates:", error));
+    .catch((error) => handle_network_error(error, setToken));
 }

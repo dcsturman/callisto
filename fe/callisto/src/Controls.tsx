@@ -313,6 +313,8 @@ export function Controls(args: {
   ) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
+  token: string;
+  setToken: (token: string | null) => void;
 }) {
   const [fire_actions, setFireActions] = useState({} as { [actor: string]: { weapons: { [weapon: string]:{ kind: string; mount: WeaponMount; used: number; total: number }}; state: FireState} });
 
@@ -389,7 +391,9 @@ export function Controls(args: {
             velocity,
             acceleration,
             designName,
-            serverEntities.handler
+            serverEntities.handler,
+            args.token,
+            args.setToken
           )
         }
         shipDesignTemplates={args.shipDesignTemplates}
@@ -537,7 +541,6 @@ export function ViewControls(args: {
     </div>
   );
 }
-
 export function EntityInfoWindow(args: { entity: Entity }) {
   let isPlanet = false;
   let isShip = false;

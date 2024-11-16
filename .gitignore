@@ -16,6 +16,9 @@ Cargo.lock
 # Editor configuration
 .editorconfig
 
+# Added by me.
+node_modules/
+
 
 # Added by cargo
 
@@ -25,3 +28,4 @@ Cargo.lock
 node_modules/
 authorized_users.json
 Google\ API\ Credentials.json
+
