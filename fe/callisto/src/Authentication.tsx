@@ -30,7 +30,7 @@ export function Authentication(args: {
  */
   const googleLogin = useGoogleLogin({
     onSuccess: (codeResponse: CodeResponse) => setGoogleAuthResponse(codeResponse),
-    onError: (error) => console.log("Login Failed:", error),
+    onError: (error: any) => console.log("Login Failed:", error),
     flow: 'auth-code',
     state: secureState,
     redirect_uri: "http://localhost:50001",

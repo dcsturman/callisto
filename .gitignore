@@ -26,6 +26,5 @@ node_modules/
 
 # Added by me
 node_modules/
-authorized_users.json
-Google\ API\ Credentials.json
-
+callisto/secrets/**
+callisto/config/authorized_users.json
