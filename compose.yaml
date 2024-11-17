@@ -13,6 +13,8 @@ services:
       context: callisto
     environment:
       RUST_LOG: info
+    expose:
+      - 8080
     ports:
       - 30000:8080
   fe:
@@ -20,6 +22,9 @@ services:
       context: fe/callisto
     environment:
       NODE_ENV: production
+      REACT_APP_CALLISTO_BACKEND: localhost:30000
+    expose:
+      - 3000
     ports:
       - 50001:3000
 

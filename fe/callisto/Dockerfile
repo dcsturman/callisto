@@ -15,6 +15,7 @@ FROM node:${NODE_VERSION}-alpine AS base
 # Set working directory for all build stages.
 WORKDIR /usr/src/app
 COPY ./public ./public
+RUN echo $PORT 1>&2
 RUN npm install -g serve
 
 
