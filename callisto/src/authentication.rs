@@ -13,7 +13,7 @@ use crate::{debug, error, info};
 
 type GoogleProfile = String;
 
-const GOOGLE_CREDENTIALS_FILE: &str = "./secrets/Google API credentials.json";
+const GOOGLE_CREDENTIALS_FILE: &str = "Google API credentials.json";
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
@@ -27,8 +27,9 @@ pub struct Authenticator {
 }
 
 impl Authenticator {
-    pub fn new(url: &str) -> Self {
-        let credentials = load_google_credentials_from_file(GOOGLE_CREDENTIALS_FILE)
+    pub fn new(url: &str, secrets_dir: String) -> Self {
+        let api_creds = format!("{}/{}", secrets_dir, GOOGLE_CREDENTIALS_FILE);
+        let credentials = load_google_credentials_from_file(&api_creds)
             .unwrap_or_else(|e| {
                 panic!(
                     "Error {:?} loading Google credentials file {}",

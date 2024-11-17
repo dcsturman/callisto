@@ -41,6 +41,10 @@ struct Args {
     // Name of the web server hosting the react app.
     #[arg(short, long, default_value = "http://localhost:50001")]
     web_server: String,
+
+    // Location of the secrets directory.  Important, for example, if using Docker secrets
+    #[arg(long, default_value = "./secrets")]
+    secrets_dir: String,
 }
 
 #[tokio::main]
@@ -71,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
     // Build the authenticator
-    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server);
+    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server, args.secrets_dir);
 
     authenticator.fetch_google_public_keys().await;
 

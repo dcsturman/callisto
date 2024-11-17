@@ -1,7 +1,9 @@
+#![cfg_attr(coverage, feature(no_coverage))]
+
 #[macro_export]
 macro_rules! debug {
     (target: $target:expr, $($arg:tt)+) => {
-        #[cfg(not(coverage))]
+        #[cfg_attr(coverage, no_coverage)]
         {
             log::debug!(target: $target, $($arg)+);
         }

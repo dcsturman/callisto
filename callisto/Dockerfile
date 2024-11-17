@@ -11,7 +11,6 @@ WORKDIR /app
 # Build dependencies
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir ./src && echo 'fn main() {}' > ./src/main.rs && touch ./src/lib.rs
-RUN cargo install cargo-llvm-cov@0.1.13
 RUN cargo build --release
 
 # Replace with real src

@@ -46,3 +46,6 @@ path = "src/main.rs"
 [lib]
 name = "callisto"
 path = "src/lib.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
