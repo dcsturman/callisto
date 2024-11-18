@@ -37,7 +37,6 @@ EXPOSE 8080
 COPY --from=release /app/target/release/callisto /callisto
 COPY --from=build /app/scenarios /scenarios
 COPY --from=build /app/config /config
-COPY --from=build /app/secrets /secrets
 
 ENV RUST_LOG=debug
 # set the binary as entrypoint

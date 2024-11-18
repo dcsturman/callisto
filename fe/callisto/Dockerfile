@@ -15,7 +15,6 @@ FROM node:${NODE_VERSION}-alpine AS base
 # Set working directory for all build stages.
 WORKDIR /usr/src/app
 COPY ./public ./public
-RUN echo $PORT 1>&2
 RUN npm install -g serve
 
 
@@ -67,7 +66,6 @@ COPY package.json .
 
 # Copy the production dependencies from the deps stage and also
 # the built application from the build stage into the image.
-COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/build ./build
 COPY --from=base /usr/src/app/public ./public
 

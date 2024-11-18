@@ -13,7 +13,7 @@ use crate::{debug, error, info};
 
 type GoogleProfile = String;
 
-const GOOGLE_CREDENTIALS_FILE: &str = "Google API credentials.json";
+const GOOGLE_CREDENTIALS_FILE: &str = "google_credentials.json";
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 

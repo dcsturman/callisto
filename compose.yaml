@@ -11,8 +11,11 @@ services:
   be:
     build:
       context: callisto
+    secrets:
+      - google_credentials.json
+    command: --secrets-dir /run/secrets
     environment:
-      RUST_LOG: info
+      RUST_LOG: debug
     expose:
       - 8080
     ports:
@@ -27,6 +30,9 @@ services:
       - 3000
     ports:
       - 50001:3000
+secrets:
+  google_credentials.json:
+    file: callisto/secrets/google_credentials.json
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
