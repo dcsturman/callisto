@@ -245,7 +245,7 @@ impl Authenticator {
 
         let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
             panic!(
-                "(validate_google_token) Unable to parse Google public keys: {:?}",
+                "(validate_google_token) Error: Unable to parse Google public keys: {:?}",
                 e
             )
         });
