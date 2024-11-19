@@ -10,7 +10,7 @@
       {
         "source": "/login",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
@@ -18,7 +18,7 @@
       {
         "source": "/add_ship",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
@@ -26,7 +26,7 @@
       {
         "source": "/add_planet",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
@@ -34,7 +34,7 @@
       {
         "source": "/remove",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
@@ -42,7 +42,7 @@
       {
         "source": "/set_plan",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
@@ -50,35 +50,35 @@
       {
         "source": "/compute_path",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
-      },                              
+      },
       {
         "source": "/update",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
-      },                                    
+      },
       {
         "source": "/entities",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
-      },                              
+      },
       {
         "source": "/designs",
         "run": {
-          "serviceId": "callisto-be", 
+          "serviceId": "callisto-be",
           "region": "us-central1",
           "port": "30000"
         }
-      }                                 
+      }
     ]
   }
 }
