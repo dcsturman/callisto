@@ -34,14 +34,18 @@ jobs:
           workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
           service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
 
+      - name: 'Debug project_id'
+        run: |-
+            echo "Project ID: ${{ env.PROJECT_ID }}"
+
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
-          project_id: $PROJECT_ID
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: 'Docker auth'
         run: |-
-          gcloud auth configure-docker $GAR_LOCATION-docker.pkg.dev
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
       - name: 'Build and push container'
         working-directory: ./callisto
