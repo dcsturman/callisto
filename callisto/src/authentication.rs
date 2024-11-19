@@ -27,9 +27,8 @@ pub struct Authenticator {
 }
 
 impl Authenticator {
-    pub fn new(url: &str, secrets_dir: String) -> Self {
-        let api_creds = format!("{}/{}", secrets_dir, GOOGLE_CREDENTIALS_FILE);
-        let credentials = load_google_credentials_from_file(&api_creds)
+    pub fn new(url: &str, secret: String) -> Self {
+        let credentials = load_google_credentials_from_file(&secret)
             .unwrap_or_else(|e| {
                 panic!(
                     "Error {:?} loading Google credentials file {}",
@@ -71,8 +70,8 @@ impl Authenticator {
         ];
 
         debug!(
-            "(authenticate_google_user) Make request of Google with client_id {:?}.",
-            self.credentials.client_id
+            "(authenticate_google_user) Make request of Google with client_id {:?}, redirect_uri {:?}, access_type {:?}, grant_type {:?}.",
+            self.credentials.client_id, redirect_uri, "offline", GRANT_TYPE
         );
 
         let client = reqwest::Client::new();
@@ -85,9 +84,22 @@ impl Authenticator {
             .expect("(authenticate_google_user) Unable to fetch Google token");
 
         debug!("(authenticate_google_user) Fetched token response.");
+        let body = token_response.text().await.unwrap_or_else(|e| {
+                panic!(
+                    "(authenticate_google_user) Unable to get text from token response: {:?}",
+                    e
+                )
+            });
+
+        debug!("(authenticate_google_user) **** NOT SAFE **** Body of token response is :{:?}", body);
 
         let token_response_json: GoogleTokenResponse =
-            serde_json::from_str(&token_response.text().await.unwrap()).unwrap();
+            serde_json::from_str(&body).unwrap_or_else(|e| {
+                panic!(
+                    "(authenticate_google_user) Unable to parse token response: {:?}",
+                    e
+                )
+            });
 
         let token = token_response_json.id_token;
 

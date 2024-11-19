@@ -324,7 +324,13 @@ impl Entities {
                 let update = missile.update();
                 let missile_name = missile.get_name();
                 let missile_pos = missile.get_position();
-                let missile_source = ship_snapshot.get(&missile.source).unwrap();
+                let missile_source = match ship_snapshot.get(&missile.source) {
+                    None => {
+                        warn!("Cannot find source {} for missile. It may have been destroyed.", &missile.source);
+                        return None;
+                    }
+                    Some(ship) => ship,
+                };
 
                 // We use UpdateAction vs just returning the effect so that the call to attack() stays at this level rather than
                 // being embedded in the missile update code.  Also enables elimination of missiles.

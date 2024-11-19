@@ -10,7 +10,7 @@ import { FireActionMsg } from "./Controls";
 import { Effect } from "./Effects";
 import { StatusCodes, getReasonPhrase } from "http-status-codes";
 
-export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "localhost:30000";
+export const CALLISTO_BACKEND = process.env.REACT_APP_C_BACKEND || "http://localhost:30000";
 
 type AuthResponse = {
   email: string;
@@ -55,7 +55,7 @@ export function login(
   setEmail: (email: string) => void,
   setToken: (token: string | null) => void
 ) {
-  fetch(`http://${CALLISTO_BACKEND}/login`, {
+  fetch(`${CALLISTO_BACKEND}/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -93,7 +93,7 @@ export function addShip(
     design: design,
   };
 
-  fetch(`http://${CALLISTO_BACKEND}/add_ship`, {
+  fetch(`${CALLISTO_BACKEND}/add_ship`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -113,7 +113,7 @@ export function removeEntity(
   token: string,
   setToken: (token: string | null) => void
 ) {
-  fetch(`http://${CALLISTO_BACKEND}/remove`, {
+  fetch(`${CALLISTO_BACKEND}/remove`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -145,7 +145,7 @@ export async function setPlan(
   }
   let payload = { name: target, plan: plan_arr };
 
-  fetch(`http://${CALLISTO_BACKEND}/set_plan`, {
+  fetch(`${CALLISTO_BACKEND}/set_plan`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -180,7 +180,7 @@ export function nextRound(
   token: string,
   setToken: (token: string | null) => void
 ) {
-  fetch(`http://${CALLISTO_BACKEND}/update`, {
+  fetch(`${CALLISTO_BACKEND}/update`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -217,7 +217,7 @@ export function computeFlightPath(
     standoff_distance: standoff,
   };
 
-  fetch(`http://${CALLISTO_BACKEND}/compute_path`, {
+  fetch(`${CALLISTO_BACKEND}/compute_path`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -243,7 +243,7 @@ export function launchMissile(
     target: target,
   };
 
-  fetch(`http://${CALLISTO_BACKEND}/launch_missile`, {
+  fetch(`${CALLISTO_BACKEND}/launch_missile`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -262,7 +262,7 @@ export function getEntities(
   token: string,
   setToken: (token: string | null) => void
 ) {
-  return fetch(`http://${CALLISTO_BACKEND}/`, {
+  return fetch(`${CALLISTO_BACKEND}/entities`, {
     headers: {
       Authorization: token,
     },
@@ -281,7 +281,7 @@ export async function getTemplates(
   token: string,
   setToken: (token: string | null) => void
 ) {
-  return fetch(`http://${CALLISTO_BACKEND}/designs`, {
+  return fetch(`${CALLISTO_BACKEND}/designs`, {
     headers: {
       Authorization: token,
     },

@@ -29,7 +29,7 @@ FROM debian:bookworm-slim AS run
 RUN apt-get update && apt-get install -y ca-certificates
 
 # Expose our port
-EXPOSE 8080
+EXPOSE 30000
 
 # if needed, install additional dependencies here
 # RUN apk add --no-cache libgcc
@@ -38,6 +38,6 @@ COPY --from=release /app/target/release/callisto /callisto
 COPY --from=build /app/scenarios /scenarios
 COPY --from=build /app/config /config
 
-ENV RUST_LOG=debug
+ENV RUST_LOG=warn
 # set the binary as entrypoint
-ENTRYPOINT ["/callisto", "-s", "/scenarios/scenario2.json", "-p", "8080"]
+ENTRYPOINT ["/callisto", "-s", "/scenarios/scenario2.json", "-p", "30000"]

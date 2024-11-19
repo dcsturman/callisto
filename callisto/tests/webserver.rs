@@ -23,7 +23,7 @@ use pretty_env_logger;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "./target/debug/callisto";
-const GET_ENTITIES_PATH: &str = "";
+const GET_ENTITIES_PATH: &str = "entities";
 const GET_DESIGNS_PATH: &str = "designs";
 const UPDATE_ENTITIES_PATH: &str = "update";
 const COMPUTE_PATH_PATH: &str = "compute_path";
@@ -144,7 +144,9 @@ async fn integration_add_ship() {
         .body(ship)
         .send()
         .await
-        .unwrap()
+        .unwrap_or_else(|e| {
+            panic!("Unable to get response from server: {:?}", e)
+        })
         .text()
         .await
         .unwrap();

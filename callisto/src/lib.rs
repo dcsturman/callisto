@@ -132,7 +132,8 @@ pub async fn handle_request(
     let mut server = Server::new(entities, test_mode);
 
     match (req.method(), req.uri().path()) {
-        (&Method::OPTIONS, _) => {
+        (&Method::OPTIONS, curious) => {
+            debug!("(lib.handleRequest) Received and processing OPTIONS request with uri: {}", curious);
             let mut resp = Response::new("".as_bytes().into());
             resp.headers_mut()
                 .insert("Access-Control-Allow-Origin", "*".parse().unwrap());
@@ -258,7 +259,7 @@ pub async fn handle_request(
             }
         }
 
-        (&Method::GET, "/") => {
+        (&Method::GET, "/entities") => {
             info!("Received and processing get request.");
             match server.get() {
                 Ok(json) => {
@@ -288,8 +289,8 @@ pub async fn handle_request(
             }
         }
 
-        _ => {
-            info!("Unknown method or URI on this request.  Returning 404.");
+        (method, uri) => {
+            info!("Unknown method {method} or URI {uri} on this request.  Returning 404.");
             // Return a 404 Not Found response for any other requests
             Ok(Response::builder()
                 .status(404)

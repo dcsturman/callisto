@@ -29,3 +29,4 @@ node_modules/
 .vscode
 callisto/secrets/**
 callisto/config/authorized_users.json
+/.firebase
