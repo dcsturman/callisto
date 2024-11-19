@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout'
-        uses: 'actions/checkout@v3'
+        uses: 'actions/checkout@v4'
 
       - name: 'Google auth'
         id: 'auth'
@@ -40,7 +40,8 @@ jobs:
 
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
-
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: 'Docker auth'
         run: |-
