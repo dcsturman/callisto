@@ -36,6 +36,11 @@ jobs:
         with:
           version: '>= 501.0.0'
 
+      - name: 'Build and push container image'
+        working-directory: ./callisto
+        run: |-
+          gcloud builds submit --config cloudbuild.yaml
+
       - name: 'Docker auth'
         run: |-
           gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
