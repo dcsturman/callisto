@@ -27,7 +27,7 @@ jobs:
       - name: 'Google auth'
         uses: 'google-github-actions/auth@v2'
         with:
-          proejct_id: ${{ env.PROJECT_ID }}
+          project_id: ${{ env.PROJECT_ID }}
           workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
           service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
 
