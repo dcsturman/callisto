@@ -14,7 +14,7 @@ env:
   PROJECT_ID: callisto-1731280702227
   GAR_LOCATION: gcr.io
   REGION: us-central1
-  APP: app
+  APP: callisto
 
 jobs:
   deploy:
@@ -42,12 +42,12 @@ jobs:
             CLOUDSDK_CORE_PROJECT=${{ env.PROJECT_ID }}
             gcloud auth login --quiet --force --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
 
-      - name: 'Set up Cloud SDK'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.PROJECT_ID }}
-          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
-          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+#      - name: 'Set up Cloud SDK'
+#        uses: google-github-actions/setup-gcloud@v2
+#        with:
+#          project_id: ${{ env.PROJECT_ID }}
+#          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
+#          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
 
       - name: 'Docker auth'
         run: |-
