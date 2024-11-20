@@ -15,6 +15,7 @@ env:
   GAR_LOCATION: gcr.io
   REGION: us-central1
   APP: app
+  CLOUDSDK_CORE_PROJECT: $PROJECT_ID
 
 jobs:
   deploy:
@@ -39,7 +40,7 @@ jobs:
         run: |-
             echo "Project ID: ${{ env.PROJECT_ID }}"
             ls /home/runner/work/callisto/callisto/gha-creds-*.json
-            gcloud auth login --force --project ${{ env.PROJECT_ID }} --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
+            gcloud auth login --quiet --force --project ${{ env.PROJECT_ID }} --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
