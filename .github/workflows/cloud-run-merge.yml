@@ -39,6 +39,7 @@ jobs:
       - name: 'Build and push container image'
         working-directory: ./callisto
         run: |-
+          gcloud auth login
           gcloud builds submit --tag "${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}" .
 
       - name: 'Docker auth'
