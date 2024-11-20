@@ -44,6 +44,7 @@ jobs:
 
       - name: 'Debug try to set project'
         run: |-
+            CLOUDSDK_CORE_PROJECT=${{ env.PROJECT_ID }}
             gcloud auth login --quiet --force --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
             gcloud config set project ${{ env.PROJECT_ID }}
             gcloud builds submit --config cloudbuild.yaml
