@@ -42,9 +42,9 @@ jobs:
             gcloud auth login --force --project ${{ env.PROJECT_ID }} --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
 
       - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v2'
+        uses: 'google-github-actions/setup-gcloud@v2 --project ${{ env.PROJECT_ID }}'
         with:
-          project: ${{ env.PROJECT_ID }}
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: 'Docker auth'
         run: |-
