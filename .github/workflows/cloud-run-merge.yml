@@ -12,6 +12,7 @@ env:
   PROJECT_ID: callisto-1731280702227
   GAR_LOCATION: gcr.io
   REGION: us-central1
+  APP: callisto-be
 
 jobs:
   deploy:
