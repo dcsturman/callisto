@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev-hosting
+      - test-dev-hostin
     paths:
       - 'callisto/**'
       - '.github/workflows/cloud-run-merge.yml'
