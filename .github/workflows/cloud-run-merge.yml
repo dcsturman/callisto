@@ -42,12 +42,12 @@ jobs:
             ls /home/runner/work/callisto/callisto/gha-creds-*.json
             CLOUDSDK_CORE_PROJECT=${{ env.PROJECT_ID }}
             gcloud auth login --quiet --force --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
-            gcloud confi set project ${{ env.PROJECT_ID }}
+            gcloud config set project ${{ env.PROJECT_ID }}
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: somethingverywrong
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: 'Docker auth'
         run: |-
