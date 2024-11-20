@@ -43,7 +43,7 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
         with:
-          project_id: ${{ env.PROJECT_ID }}
+          project: ${{ env.PROJECT_ID }}
 
       - name: 'Docker auth'
         run: |-
