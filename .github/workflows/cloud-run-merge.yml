@@ -3,8 +3,6 @@ name: Build Callisto Rust backend and run on Cloud Run
 on:
   push:
     branches:
-      - main
-      - dev-hosting
       - test-dev-hostin
     paths:
       - 'callisto/**'
@@ -14,11 +12,9 @@ env:
   PROJECT_ID: callisto-1731280702227
   GAR_LOCATION: gcr.io
   REGION: us-central1
-  APP: callisto-be
 
 jobs:
   deploy:
-    # Add 'id-token' with the intended permissions for workload identity federation
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -34,21 +30,6 @@ jobs:
         with:
           workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
           service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
-
-      - name: 'Debug project_id'
-        run: |-
-            echo "Project ID: ${{ env.PROJECT_ID }}"
-            ls /home/runner/work/callisto/callisto/gha-creds-*.json
-            CLOUDSDK_CORE_PROJECT=${{ env.PROJECT_ID }}
-            gcloud auth login --quiet --force --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
-
-      - name: 'Debug try to set project'
-        run: |-
-            CLOUDSDK_CORE_PROJECT=${{ env.PROJECT_ID }}
-            gcloud auth login --quiet --force --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
-            gcloud config set project ${{ env.PROJECT_ID }}
-            gcloud builds submit --config cloudbuild.yaml
-            gcloud run deploy callisto-be --port=30000 --image gcr.io/${{ env.PROJECT_ID }}/${{ env.APP }} --region=${{ env.REGION }} --update-secrets=/secrets/google_credentials=google_credentials:latest --args=--secret,/secrets/google_credentials,--web-server,https://callisto-1731280702227.web.app
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
