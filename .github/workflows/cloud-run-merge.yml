@@ -15,7 +15,6 @@ env:
   GAR_LOCATION: gcr.io
   REGION: us-central1
   APP: app
-  CLOUDSDK_CORE_PROJECT: $PROJECT_ID
 
 jobs:
   deploy:
@@ -47,6 +46,8 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
 
       - name: 'Docker auth'
         run: |-
