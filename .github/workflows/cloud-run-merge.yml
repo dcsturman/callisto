@@ -42,12 +42,12 @@ jobs:
             CLOUDSDK_CORE_PROJECT=${{ env.PROJECT_ID }}
             gcloud auth login --quiet --force --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
 
-#      - name: 'Set up Cloud SDK'
-#        uses: google-github-actions/setup-gcloud@v1
-#        with:
-#          project_id: ${{ env.PROJECT_ID }}
-#          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
-#          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+      - name: 'Set up Cloud SDK'
+        uses: google-github-actions/setup-gcloud@v0.3.0
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
 
       - name: 'Docker auth'
         run: |-
