@@ -42,6 +42,10 @@ jobs:
             CLOUDSDK_CORE_PROJECT=${{ env.PROJECT_ID }}
             gcloud auth login --quiet --force --cred-file ${{ env.GOOGLE_GHA_CREDS_PATH }}
 
+      - name: 'Debug try to set project'
+        run: |-
+            gcloud config set project ${{ env.PROJECT_ID }}
+
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
         with:
