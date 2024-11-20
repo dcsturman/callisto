@@ -38,6 +38,7 @@ jobs:
         run: |-
             echo "Project ID: ${{ env.PROJECT_ID }}"
             ls /home/runner/work/callisto/callisto/gha-creds-*.json
+            gcloud auth login --force --cred-file /home/runner/work/callisto/callisto/gha-creds-5ee7128ecfe3061d.json
 
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
