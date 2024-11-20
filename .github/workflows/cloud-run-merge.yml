@@ -31,14 +31,10 @@ jobs:
           workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
           service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
 
-      - name: 'Debug if PROJECT_ID is properly set'
-        run: |-
-          echo "PROJECT_ID is ${{ env.PROJECT_ID }}"
-
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ env.PROJECT_ID }}
+          version: '>= 501.0.0'
 
       - name: 'Docker auth'
         run: |-
