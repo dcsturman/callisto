@@ -35,9 +35,12 @@ EXPOSE 30000
 # RUN apk add --no-cache libgcc
 # copy the binary into the final image
 COPY --from=release /app/target/release/callisto /callisto
-COPY --from=build /app/scenarios /scenarios
-COPY --from=build /app/config /config
+# A little bit of a hack to copy these directories only if they exists (config won't exist with github actions)
+COPY --from=build /app/scenarios* /scenarios
+COPY --from=build /app/config* /config
 
 ENV RUST_LOG=info
 # set the binary as entrypoint
 ENTRYPOINT ["/callisto", "-s", "/scenarios/scenario2.json", "-p", "30000"]
+# Used for debugging the image
+# ENTRYPOINT ["tail", "-f", "dev/null"]

@@ -1,4 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
+use google_cloud_storage::client::{Client, ClientConfig};
+use google_cloud_storage::http::objects::download::Range;
+use google_cloud_storage::http::objects::get::GetObjectRequest;
 use hyper::body::Incoming;
 use hyper::Request;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
@@ -14,7 +17,9 @@ use crate::{debug, error, info};
 type GoogleProfile = String;
 
 const GOOGLE_CREDENTIALS_FILE: &str = "google_credentials.json";
-const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
+const DEFAULT_CONFIG_DIRECTORY: &str = "./config";
+
+const DEFAULT_AUTHORIZED_USERS_FILE: &str = "authorized_users.json";
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
 #[allow(dead_code)]
@@ -27,7 +32,7 @@ pub struct Authenticator {
 }
 
 impl Authenticator {
-    pub fn new(url: &str, secret: String) -> Self {
+    pub async fn new(url: &str, secret: String, gcs_bucket: Option<String>) -> Self {
         let credentials = load_google_credentials_from_file(&secret)
             .unwrap_or_else(|e| {
                 panic!(
@@ -35,7 +40,8 @@ impl Authenticator {
                     e, GOOGLE_CREDENTIALS_FILE
                 )
             });
-        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE)
+        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, gcs_bucket)
+            .await
             .expect("Unable to load authorized users file.");
         Authenticator {
             credentials,
@@ -85,13 +91,16 @@ impl Authenticator {
 
         debug!("(authenticate_google_user) Fetched token response.");
         let body = token_response.text().await.unwrap_or_else(|e| {
-                panic!(
-                    "(authenticate_google_user) Unable to get text from token response: {:?}",
-                    e
-                )
-            });
+            panic!(
+                "(authenticate_google_user) Unable to get text from token response: {:?}",
+                e
+            )
+        });
 
-        debug!("(authenticate_google_user) **** NOT SAFE **** Body of token response is :{:?}", body);
+        debug!(
+            "(authenticate_google_user) **** NOT SAFE **** Body of token response is :{:?}",
+            body
+        );
 
         let token_response_json: GoogleTokenResponse =
             serde_json::from_str(&body).unwrap_or_else(|e| {
@@ -272,15 +281,54 @@ fn load_google_credentials_from_file(file_name: &str) -> Result<GoogleCredential
     Ok(credentials.web)
 }
 
-pub fn load_authorized_users_from_file(
+pub async fn load_authorized_users_from_file(
     file_name: &str,
+    gcs_bucket: Option<String>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(file_name)?;
-    let reader = std::io::BufReader::new(file);
-    let mut templates: Vec<String> = serde_json::from_reader(reader)?;
-    templates.sort();
+    if let Some(bucket) = gcs_bucket {
+        let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
+            panic!(
+                "Error {:?} authenticating with Google Cloud Storage. Did you do `gcloud auth application-default login` before running?",
+                e
+            )
+        });
+        let client = Client::new(config);
 
-    Ok(templates)
+        debug!("(load_authorized_users_from_file) Attempting to load authorized users file \"{}\" from GCS bucket {}.", file_name, bucket);
+        let data = client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: bucket.clone(),
+                    object: file_name.to_string(),
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await.unwrap_or_else(|e| {
+                panic!(
+                    "Error {:?} downloading authorized users file {} from GCS bucket {}",
+                    e, file_name, bucket
+                )
+            });
+
+        debug!("(load_authorized_users_from_file) Loaded authorized users file \"{}\" from GCS bucket {}.", file_name, bucket);
+        Ok(
+            serde_json::from_slice::<Vec<String>>(&data).unwrap_or_else(|e| {
+                panic!(
+                    "Error {:?} parsing Google credentials file in GCS {}",
+                    e, file_name
+                )
+            }),
+        )
+    } else {
+        let file = std::fs::File::open(format!("{}/{}", DEFAULT_CONFIG_DIRECTORY, file_name))?;
+
+        let reader = std::io::BufReader::new(file);
+        let mut templates: Vec<String> = serde_json::from_reader(reader)?;
+        templates.sort();
+
+        Ok(templates)
+    }
 }
 
 // Error types.
@@ -366,4 +414,24 @@ struct GoogleCredentials {
 #[derive(Deserialize)]
 struct GoogleCredsJson {
     web: GoogleCredentials,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    const GCS_TEST_BUCKET: &str = "callisto-be-user-profiles";
+
+    #[test_log::test(tokio::test)]
+    async fn test_load_authorized_users_from_gcs() {
+        let bucket_name = GCS_TEST_BUCKET;
+        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, Some(bucket_name.to_string())).await.unwrap();
+        assert_eq!(authorized_users.len(), 1);
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn test_load_authorized_users_from_file() {
+        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, None).await.unwrap();
+        assert_eq!(authorized_users.len(), 1);
+    }
 }
