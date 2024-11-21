@@ -39,7 +39,7 @@ jobs:
 
       - name: 'Docker auth'
         run: |-
-          gcloud auth configure-docker ${{ env.GAR_LOCATION }}
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }} --project ${{ env.PROJECT_ID }}
 
       - name: 'Build and push container'
         working-directory: ./callisto
