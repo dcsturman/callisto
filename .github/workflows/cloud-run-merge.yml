@@ -44,18 +44,6 @@ jobs:
       - name: Set up Docker buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Checkout actions-oidc-debugger
-        uses: actions/checkout@v4
-        with:
-          repository: github/actions-oidc-debugger
-          ref: main
-          path: ./.github/actions/actions-oidc-debugger
-      
-      - name: Debug OIDC Claims
-        uses: ./.github/actions/actions-oidc-debugger
-        with:
-          audience: '${{ github.server_url }}/${{ github.repository_owner }}'
-
       - name: Build and push container with Docker GHA
         uses: 'docker/build-push-action@v4'
         with:
@@ -65,38 +53,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: 'Build and push container'
-        working-directory: ./callisto
-        run: |-
-          docker build -t "${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}" .
-          docker push "${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}"
-
-      - name: 'Render templatised config manifests'
-        run: |-
-          export PROJECT_ID="${{ env.PROJECT_ID }}"
-          export REGION="${{ env.REGION }}"
-          for template in $(ls config/*.template.yaml); do envsubst < ${template} > ${template%%.*}.yaml ; done
-
-      - name: 'Create Cloud Deploy delivery pipeline'
-        run: |-
-          gcloud deploy apply --file config/clouddeploy.yaml --region ${{ env.GAR_LOCATION }}
-
-      - name: 'Create release name'
-        run: |-
-          echo "RELEASE_NAME=${{ env.APP }}-${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> ${GITHUB_ENV}
-
-      - name: 'Create Cloud Deploy release'
-        id: 'release'
-        uses: 'google-github-actions/create-cloud-deploy-release@v0'
-        with:
-          delivery_pipeline: '${{ env.APP }}'
-          name: '${{ env.RELEASE_NAME }}'
-          region: '${{ env.REGION }}'
-          description: '${{ env.GITHUB_COMMIT_MSG }}'
-          skaffold_file: 'config/skaffold.yaml'
-          images: 'app=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}'
-
-      - name: 'Report Cloud Deploy release'
-        run: |-
-          echo "Created release ${{ steps.release.outputs.name }} "
-          echo "Release link ${{ steps.release.outputs.link }} "
