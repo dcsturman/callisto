@@ -13,9 +13,11 @@ services:
       context: callisto
     secrets:
       - google_credentials
-    command: --secret /run/secrets/google_credentials
+      - gcs_credentials
+    command: --secret /run/secrets/google_credentials --gcs-bucket callisto-be-user-profiles
     environment:
       RUST_LOG: debug
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
     expose:
       - 30000
     ports:
@@ -33,6 +35,8 @@ services:
 secrets:
   google_credentials:
     file: callisto/secrets/google_credentials.json
+  gcs_credentials:
+    file: ~/.config/gcloud/application_default_credentials.json
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to

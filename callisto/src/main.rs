@@ -45,6 +45,10 @@ struct Args {
     // Location of the secrets directory.  Important, for example, if using Docker secrets
     #[arg(long, default_value = "./secrets/google_credentials.json")]
     secret: String,
+
+    // Google Cloud Storage bucket to use in lieu of config directory
+    #[arg(long)]
+    gcs_bucket: Option<String>,
 }
 
 #[tokio::main]
@@ -77,7 +81,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
     // Build the authenticator
-    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server, args.secret);
+    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server, args.secret, args.gcs_bucket.clone())
+        .await;
 
     debug!("(main) Get Google public keys.");
     authenticator.fetch_google_public_keys().await;
