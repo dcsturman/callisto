@@ -57,11 +57,6 @@ jobs:
           audience: '${{ github.server_url }}/${{ github.repository_owner }}'
 
       - name: Build and push container with Docker GHA
-        uses: 'google-github-actions/auth@v2'
-        with:
-          project_id: ${{ env.PROJECT_ID }}
-          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
-          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
         uses: 'docker/build-push-action@v4'
         with:
           context: ./callisto
