@@ -39,10 +39,22 @@ jobs:
 
       - name: 'Docker auth'
         run: |-
-          gcloud auth configure-docker ${{ env.GAR_LOCATION }} --project ${{ env.PROJECT_ID }}
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}
 
       - name: Set up Docker buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Checkout actions-oidc-debugger
+        uses: actions/checkout@v4
+        with:
+          repository: github/actions-oidc-debugger
+          ref: main
+          path: ./.github/actions/actions-oidc-debugger
+      
+      - name: Debug OIDC Claims
+        uses: ./.github/actions/actions-oidc-debugger
+        with:
+          audience: '${{ github.server_url }}/${{ github.repository_owner }}'
 
       - name: Build and push container with Docker GHA
         uses: 'docker/build-push-action@v4'
