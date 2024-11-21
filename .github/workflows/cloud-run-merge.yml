@@ -58,17 +58,17 @@ jobs:
 
       - name: Build and push container with Docker GHA
         uses: 'google-github-actions/auth@v2'
-          with:
-            project_id: ${{ env.PROJECT_ID }}
-            workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
-            service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
         uses: 'docker/build-push-action@v4'
-          with:
-            context: ./callisto
-            push: true
-            tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
+        with:
+          context: ./callisto
+          push: true
+          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: 'Build and push container'
         working-directory: ./callisto
