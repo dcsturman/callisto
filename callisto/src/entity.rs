@@ -480,17 +480,14 @@ impl Entities {
         for planet in self.planets.values() {
             let mut planet = planet.write().unwrap();
             let name = planet.get_name().to_string();
-            match &mut planet.primary {
-                Some(primary) => {
-                    let looked_up = self.planets.get(primary).ok_or_else(|| {
-                        format!(
-                            "Unable to find entity named {} as primary for {}",
-                            primary, &name
-                        )
-                    })?;
-                    planet.primary_ptr.replace(looked_up.clone());
-                }
-                None => {}
+            if let Some(primary) = &mut planet.primary {
+                let looked_up = self.planets.get(primary).ok_or_else(|| {
+                    format!(
+                        "Unable to find entity named {} as primary for {}",
+                        primary, &name
+                    )
+                })?;
+                planet.primary_ptr.replace(looked_up.clone());
             }
         }
 
