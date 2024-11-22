@@ -32,7 +32,13 @@ import "./index.css";
 function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
-  console.log(`Connecting to Callisto backend at http://${CALLISTO_BACKEND}`);
+  if (process.env.REACT_APP_C_BACKEND) {
+    console.log("REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND);
+  } else {
+    console.log("REACT_APP_C_BACKEND is not set.");
+    console.log("ENV is set to: " + JSON.stringify(process.env));
+  }
+  console.log(`Connecting to Callisto backend at ${CALLISTO_BACKEND}`);
   return (
     <div >
       {authToken ? (<>

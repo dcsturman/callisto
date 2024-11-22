@@ -19,11 +19,10 @@ use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIM
 use callisto::payloads::{FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
 use callisto::ship::ShipDesignTemplate;
 use cgmath::{assert_ulps_eq, Zero};
-use pretty_env_logger;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "./target/debug/callisto";
-const GET_ENTITIES_PATH: &str = "";
+const GET_ENTITIES_PATH: &str = "entities";
 const GET_DESIGNS_PATH: &str = "designs";
 const UPDATE_ENTITIES_PATH: &str = "update";
 const COMPUTE_PATH_PATH: &str = "compute_path";
@@ -74,7 +73,7 @@ async fn integration_get_designs() {
         .await
         .unwrap();
 
-    assert!(body.len() > 0);
+    assert!(!body.is_empty());
     let result = serde_json::from_str::<HashMap<String, ShipDesignTemplate>>(body.as_str());
     assert!(
         result.is_ok(),
@@ -83,7 +82,7 @@ async fn integration_get_designs() {
         result.unwrap_err()
     );
     let designs = result.unwrap();
-    assert!(designs.len() > 0, "Received empty design list.");
+    assert!(!designs.is_empty(), "Received empty design list.");
     assert!(
         designs.contains_key("Buccaneer"),
         "Buccaneer not found in designs."
@@ -144,7 +143,7 @@ async fn integration_add_ship() {
         .body(ship)
         .send()
         .await
-        .unwrap()
+        .unwrap_or_else(|e| panic!("Unable to get response from server: {:?}", e))
         .text()
         .await
         .unwrap();
@@ -580,11 +579,13 @@ async fn integration_set_acceleration() {
     callisto::ship::config_test_ship_templates();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-    let ship = entities.ships.get("ship1").unwrap().read().unwrap();
-    let flight_plan = &ship.plan;
-    assert_eq!(flight_plan.0 .0, [0.0, 0.0, 0.0].into());
-    assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
-    assert!(!flight_plan.has_second());
+    {
+        let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+        let flight_plan = &ship.plan;
+        assert_eq!(flight_plan.0 .0, [0.0, 0.0, 0.0].into());
+        assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
+        assert!(!flight_plan.has_second());
+    }
 
     let response = reqwest::Client::new()
         .post(path(PORT, SET_ACCELERATION_PATH))
@@ -599,6 +600,7 @@ async fn integration_set_acceleration() {
         response,
         r#"{ "msg" : "Set acceleration action executed" }"#
     );
+
     let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
         .unwrap()

@@ -8,7 +8,7 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 
 use clap::Parser;
-use log::info;
+use log::{debug, info};
 
 extern crate callisto;
 
@@ -41,6 +41,14 @@ struct Args {
     // Name of the web server hosting the react app.
     #[arg(short, long, default_value = "http://localhost:50001")]
     web_server: String,
+
+    // Location of the secrets directory.  Important, for example, if using Docker secrets
+    #[arg(long, default_value = "./secrets/google_credentials.json")]
+    secret: String,
+
+    // Google Cloud Storage bucket to use in lieu of config directory
+    #[arg(long)]
+    gcs_bucket: Option<String>,
 }
 
 #[tokio::main]
@@ -50,6 +58,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
     let port = args.port;
+    debug!("Using port: {port}");
+
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     let test_mode = args.test;
@@ -71,15 +81,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
     // Build the authenticator
-    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server);
+    let authenticator = if test_mode {
+        debug!("(main) Server in test mode. No authenticator.");
+        None
+    } else {
+        let mut authenticator = callisto::authentication::Authenticator::new(
+            &args.web_server,
+            args.secret,
+            args.gcs_bucket.clone(),
+        )
+        .await;
+        debug!("(main) Get Google public keys.");
+        authenticator.fetch_google_public_keys().await;
+        Some(authenticator)
+    };
 
-    authenticator.fetch_google_public_keys().await;
-
+    debug!("(main) Creating authenticator.");
     let authenticator = Arc::new(authenticator);
-
+    debug!("(main) Created authenticator.");
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
-        println!("Loading scenario file: {}", file_name);
         Entities::load_from_file(&file_name)
             .unwrap_or_else(|e| panic!("Issue loading scenario file {}: {}", file_name, e))
     } else {
@@ -91,9 +112,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         entities.lock().unwrap()
     );
 
-    println!("Starting Callisto server listening on address: {}", addr);
+    info!("Starting Callisto server listening on address: {}", addr);
 
-    // We create a TcpListener and bind it to 127.0.0.1:3000
+    // We create a TcpListener and bind it to 127.0.0.1:PORT
     let listener = TcpListener::bind(addr).await?;
 
     // We start a loop to continuously accept incoming connections

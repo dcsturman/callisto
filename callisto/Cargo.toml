@@ -5,6 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+ci = []
+
 [dependencies]
 cgmath = { version = "0.18", features = ["swizzle", "serde", "rand", "mint"] }
 hyper = { version = "1.2", features = ["full"] }
@@ -24,12 +27,10 @@ assert-json-diff = "2.0.2"
 approx = "0.5.1"
 once_cell = "1.20.2"
 strum_macros = "0.26.4"
-atomic-counter = "1.0.1"
 jsonwebtoken = "9.3.0"
 reqwest = { version = "0.12.4", features = ["json"] }
-futures = "0.3.31"
-oauth2 = {  version = "4.4.2", features = ["reqwest"] }
 base64 = "0.22.1"
+google-cloud-storage = "0.22.1"
 
 [dev-dependencies]
 mockstream = "0.0.3"
@@ -37,6 +38,8 @@ lazy_static = "1.4.0"
 test-log="*"
 duct = "0.13.7"
 reqwest = { version = "0.12.4", features = ["json"] }
+mockall = "0.13.1"
+async-trait = "0.1.83"
 
 [[bin]]
 name = "callisto"
@@ -45,3 +48,6 @@ path = "src/main.rs"
 [lib]
 name = "callisto"
 path = "src/lib.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }

@@ -1,0 +1,7 @@
+# GCLoud ignore for cloud build
+
+/target
+/tests
+node_modules/
+.vscode
+/secrets/**

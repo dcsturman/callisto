@@ -324,7 +324,13 @@ impl Entities {
                 let update = missile.update();
                 let missile_name = missile.get_name();
                 let missile_pos = missile.get_position();
-                let missile_source = ship_snapshot.get(&missile.source).unwrap();
+                let missile_source = match ship_snapshot.get(&missile.source) {
+                    None => {
+                        warn!("Cannot find source {} for missile. It may have been destroyed.", &missile.source);
+                        return None;
+                    }
+                    Some(ship) => ship,
+                };
 
                 // We use UpdateAction vs just returning the effect so that the call to attack() stays at this level rather than
                 // being embedded in the missile update code.  Also enables elimination of missiles.
@@ -474,17 +480,14 @@ impl Entities {
         for planet in self.planets.values() {
             let mut planet = planet.write().unwrap();
             let name = planet.get_name().to_string();
-            match &mut planet.primary {
-                Some(primary) => {
-                    let looked_up = self.planets.get(primary).ok_or_else(|| {
-                        format!(
-                            "Unable to find entity named {} as primary for {}",
-                            primary, &name
-                        )
-                    })?;
-                    planet.primary_ptr.replace(looked_up.clone());
-                }
-                None => {}
+            if let Some(primary) = &mut planet.primary {
+                let looked_up = self.planets.get(primary).ok_or_else(|| {
+                    format!(
+                        "Unable to find entity named {} as primary for {}",
+                        primary, &name
+                    )
+                })?;
+                planet.primary_ptr.replace(looked_up.clone());
             }
         }
 
@@ -632,6 +635,14 @@ impl<'de> Deserialize<'de> for Entities {
             next_missile_id: 0,
         })
     }
+}
+
+// Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
+pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<String, Ship> {
+    ships
+        .iter()
+        .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -1116,10 +1127,10 @@ mod tests {
                 radius_2d.magnitude(),
                 expected_mag
             );
-            return (
+            (
                 (radius_2d.magnitude() - expected_mag).abs() / expected_mag < TOLERANCE,
                 radius.y == expected_y,
-            );
+            )
         }
 
         let mut entities = Entities::new();
@@ -1145,9 +1156,9 @@ mod tests {
         entities.add_planet(
             String::from("Planet3"),
             Vec3::new(
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
                 8000.0,
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
             ),
             String::from("green"),
             None,
@@ -1300,9 +1311,9 @@ mod tests {
         entities.add_planet(
             String::from("Planet3"),
             Vec3::new(
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
                 8000.0,
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
             ),
             String::from("green"),
             None,
@@ -1715,12 +1726,4 @@ mod tests {
             "Setting flight plan for non-existent ship should fail"
         );
     }
-}
-
-// Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
-pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<String, Ship> {
-    ships
-        .iter()
-        .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
-        .collect()
 }

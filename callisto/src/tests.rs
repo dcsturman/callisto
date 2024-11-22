@@ -382,7 +382,7 @@ fn test_compute_path_basic() {
 
     let path_request = r#"{"entity_name":"ship1","end_pos":[29430000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#;
     let response = server
-        .compute_path(serde_json::from_str(&path_request).unwrap())
+        .compute_path(serde_json::from_str(path_request).unwrap())
         .unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
@@ -819,7 +819,7 @@ fn test_get_designs() {
     let result = server.get_designs();
     assert!(result.is_ok());
     let designs = result.unwrap();
-    assert!(designs.len() > 0);
+    assert!(!designs.is_empty());
     assert!(designs.contains("Buccaneer"));
 }
 

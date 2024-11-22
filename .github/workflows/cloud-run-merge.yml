@@ -1,0 +1,61 @@
+name: Build Callisto Rust backend and run on Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+      - canary-**
+    paths:
+      - 'callisto/**'
+      - '.github/workflows/cloud-run-merge.yml'
+
+env:
+  PROJECT_ID: callisto-1731280702227
+  GAR_LOCATION: gcr.io
+  REGION: us-central1
+  APP: callisto-be
+  APP_ARGS: --secret,/secrets/google_credentials,--web-server,https://callisto-1731280702227.web.app,--gcs-bucket,callisto-be-user-profiles
+  PORT: 30000
+
+jobs:
+  deploy:
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout'
+        uses: 'actions/checkout@v4'
+
+      - name: 'Google auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+
+      - name: 'Set up Cloud SDK'
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '>= 501.0.0'
+
+      - name: 'Docker auth'
+        run: |-
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push container with Docker GHA
+        uses: 'docker/build-push-action@v4'
+        with:
+          context: ./callisto
+          push: true
+          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 'Deploy to Cloud Run'
+        run:
+          gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.APP_ARGS }}
