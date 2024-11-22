@@ -637,6 +637,14 @@ impl<'de> Deserialize<'de> for Entities {
     }
 }
 
+// Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
+pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<String, Ship> {
+    ships
+        .iter()
+        .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1119,10 +1127,10 @@ mod tests {
                 radius_2d.magnitude(),
                 expected_mag
             );
-            return (
+            (
                 (radius_2d.magnitude() - expected_mag).abs() / expected_mag < TOLERANCE,
                 radius.y == expected_y,
-            );
+            )
         }
 
         let mut entities = Entities::new();
@@ -1148,9 +1156,9 @@ mod tests {
         entities.add_planet(
             String::from("Planet3"),
             Vec3::new(
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
                 8000.0,
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
             ),
             String::from("green"),
             None,
@@ -1303,9 +1311,9 @@ mod tests {
         entities.add_planet(
             String::from("Planet3"),
             Vec3::new(
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
                 8000.0,
-                EARTH_RADIUS / (2.0 as f64).sqrt(),
+                EARTH_RADIUS / 2.0_f64.sqrt(),
             ),
             String::from("green"),
             None,
@@ -1718,12 +1726,4 @@ mod tests {
             "Setting flight plan for non-existent ship should fail"
         );
     }
-}
-
-// Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
-pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<String, Ship> {
-    ships
-        .iter()
-        .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
-        .collect()
 }

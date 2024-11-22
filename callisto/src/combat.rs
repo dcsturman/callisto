@@ -784,7 +784,7 @@ mod tests {
 
         // Check that we have the expected number of effects
         // 1 for beam plus any potential damage messages
-        assert!(effects.len() >= 1);
+        assert!(!effects.is_empty());
 
         // You might want to add more specific checks based on your exact implementation
         // For example, checking for specific damage amounts or other effect details
@@ -905,7 +905,7 @@ mod tests {
                         "Power should be reduced by 50% for level 3"
                     );
                 }
-                4 | 5 | 6 => {
+                4..=6 => {
                     assert_eq!(
                         ship.current_power, 0,
                         "Power should be reduced to 0 for level 4-6"
@@ -949,7 +949,7 @@ mod tests {
                 .any(|e| matches!(e, EffectMsg::Message { .. })));
 
             match level {
-                1 | 2 | 3 => {
+                1..=3 => {
                     assert!(
                         ship.current_fuel < 100,
                         "Fuel should be reduced for level 1-3"
@@ -959,7 +959,7 @@ mod tests {
                         "Hull should not be affected for level 1-3"
                     );
                 }
-                4 | 5 | 6 => {
+                4..=6 => {
                     assert_eq!(
                         ship.current_fuel, 0,
                         "Fuel should be reduced to 0 for level 4-6"
@@ -1138,11 +1138,9 @@ mod tests {
             // This is a hack but since the random seed is known, we map which should hit and which should miss.
             if !should_hit {
                 assert!(
-                    effects
+                    !effects
                         .iter()
-                        .filter(|e| !matches!(e, EffectMsg::Message { .. }))
-                        .next()
-                        .is_none(),
+                        .any(|e| !matches!(e, EffectMsg::Message { .. })),
                     "Miss should produce no effects"
                 );
                 break;
@@ -1150,9 +1148,7 @@ mod tests {
                 assert!(
                     effects
                         .iter()
-                        .filter(|e| !matches!(e, EffectMsg::Message { .. }))
-                        .next()
-                        .is_some(),
+                        .any(|e| !matches!(e, EffectMsg::Message { .. })),
                     "Hit should produce effects"
                 );
             }
@@ -1202,11 +1198,9 @@ mod tests {
             &mut rng,
         );
         assert!(
-            miss_effects
+            !miss_effects
                 .iter()
-                .filter(|e| !matches!(e, EffectMsg::Message { .. }))
-                .next()
-                .is_none(),
+                .any(|e| !matches!(e, EffectMsg::Message { .. })),
             "Miss should produce no effects"
         );
 
@@ -1227,14 +1221,12 @@ mod tests {
             .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("critical"))));
 
         // Test scenario for non-missile weapons in medium or large bays
-        for size in vec![BaySize::Medium, BaySize::Large] {
+        for size in [BaySize::Medium, BaySize::Large] {
             let mut effects = vec![];
 
             while effects
                 .iter()
-                .filter(|e| !matches!(e, EffectMsg::Message { .. }))
-                .next()
-                .is_none()
+                .any(|e| !matches!(e, EffectMsg::Message { .. }))
             {
                 defender.current_hull = 200;
                 effects = attack(
