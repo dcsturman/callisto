@@ -423,6 +423,7 @@ mod tests {
 
     const GCS_TEST_BUCKET: &str = "callisto-be-user-profiles";
 
+    // This test cannot work in the GitHub Actions CI environment, so skip in that case.
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_authorized_users_from_gcs() {
@@ -436,6 +437,7 @@ mod tests {
         assert_eq!(authorized_users.len(), 1);
     }
 
+    // This test cannot work in the GitHub Actions CI environment, so skip in that case.
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_authorized_users_from_file() {
