@@ -424,7 +424,7 @@ mod tests {
     const GCS_TEST_BUCKET: &str = "callisto-be-user-profiles";
 
     #[test_log::test(tokio::test)]
-    #[cfg_attr(feature = "ci",ignore)]
+    #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_authorized_users_from_gcs() {
         let bucket_name = GCS_TEST_BUCKET;
         let authorized_users = load_authorized_users_from_file(
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    #[cfg_attr(feature = "ci",ignore)]
+    #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_authorized_users_from_file() {
         let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, None)
             .await
