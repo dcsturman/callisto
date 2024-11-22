@@ -3,7 +3,8 @@ name: Build Callisto Rust backend and run on Cloud Run
 on:
   push:
     branches:
-      - test-dev-hostin
+      - main
+      - canary-**
     paths:
       - 'callisto/**'
       - '.github/workflows/cloud-run-merge.yml'

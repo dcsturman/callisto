@@ -6,39 +6,39 @@ on:
   pull_request:
     branches:
       - main
+      - dev-hosting
     paths:
       - 'callisto/**'
-permissions:
-  checks: write
-  contents: read
-  pull-requests: write
+      - 'be-testing-pull-request.yml'
 jobs:
-  build_and_preview_fe:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build node.js
-        env:
-           CI: false
-        working-directory: ./fe/callisto
-        run: npm ci && npm run build
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_1731280702227 }}
-          projectId: callisto-1731280702227
+  validate_pr:
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
 
-  build_and_preview_be:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Build Rust Backend
-        working-directory: ./
-        run: npm ci && npm run build
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_1731280702227 }}
-          projectId: callisto-1731280702227          
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update local toolchain
+        run: |
+          rustup update
+          rustup component add clippy
+          
+      - name: Lint
+        working-directory: ./callisto
+        run: |
+          cargo fmt -- --check
+          cargo clippy --all-targets --all-features -- -D warnings
+        
+      - name: Test
+        working-directory: ./callisto
+        run: |
+          cargo test --all
+
+      - name: Build
+        working-directory: ./callisto
+        run: |
+          cargo build --all
