@@ -11,7 +11,7 @@ on:
       - 'callisto/**'
       - 'be-testing-pull-request.yml'
 jobs:
-  validate_pr:
+  validate_rust_pr:
     permissions:
       checks: write
       contents: read
