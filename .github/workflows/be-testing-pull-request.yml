@@ -47,9 +47,9 @@ jobs:
       - name: Test
         working-directory: ./callisto
         run: |
-          cargo test --all
+          cargo test --all --features ci
 
       - name: Build
         working-directory: ./callisto
         run: |
-          cargo build --all
+          cargo build --all --features ci
