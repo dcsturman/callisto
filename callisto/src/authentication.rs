@@ -33,16 +33,16 @@ pub struct Authenticator {
 
 impl Authenticator {
     pub async fn new(url: &str, secret: String, gcs_bucket: Option<String>) -> Self {
-        let credentials = load_google_credentials_from_file(&secret)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Error {:?} loading Google credentials file {}",
-                    e, GOOGLE_CREDENTIALS_FILE
-                )
-            });
-        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, gcs_bucket)
-            .await
-            .expect("Unable to load authorized users file.");
+        let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
+            panic!(
+                "Error {:?} loading Google credentials file {}",
+                e, GOOGLE_CREDENTIALS_FILE
+            )
+        });
+        let authorized_users =
+            load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, gcs_bucket)
+                .await
+                .expect("Unable to load authorized users file.");
         Authenticator {
             credentials,
             session_keys: RwLock::new(HashMap::new()),
@@ -60,8 +60,6 @@ impl Authenticator {
             "(authenticate_google_user) Received and processing login request. {:?}",
             code
         );
-
-        debug!("(authenticate_google_user) REMOVE ME Fetching Google public keys.");
 
         // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
         // Look up the profile.  Then return the session key and profile.
@@ -306,7 +304,8 @@ pub async fn load_authorized_users_from_file(
                 },
                 &Range::default(),
             )
-            .await.unwrap_or_else(|e| {
+            .await
+            .unwrap_or_else(|e| {
                 panic!(
                     "Error {:?} downloading authorized users file {} from GCS bucket {}",
                     e, file_name, bucket
@@ -421,19 +420,26 @@ struct GoogleCredsJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     const GCS_TEST_BUCKET: &str = "callisto-be-user-profiles";
 
     #[test_log::test(tokio::test)]
     async fn test_load_authorized_users_from_gcs() {
         let bucket_name = GCS_TEST_BUCKET;
-        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, Some(bucket_name.to_string())).await.unwrap();
+        let authorized_users = load_authorized_users_from_file(
+            DEFAULT_AUTHORIZED_USERS_FILE,
+            Some(bucket_name.to_string()),
+        )
+        .await
+        .unwrap();
         assert_eq!(authorized_users.len(), 1);
     }
 
     #[test_log::test(tokio::test)]
     async fn test_load_authorized_users_from_file() {
-        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, None).await.unwrap();
+        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, None)
+            .await
+            .unwrap();
         assert_eq!(authorized_users.len(), 1);
     }
 }

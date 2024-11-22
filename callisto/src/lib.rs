@@ -133,7 +133,10 @@ pub async fn handle_request(
 
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, curious) => {
-            debug!("(lib.handleRequest) Received and processing OPTIONS request with uri: {}", curious);
+            debug!(
+                "(lib.handleRequest) Received and processing OPTIONS request with uri: {}",
+                curious
+            );
             let mut resp = Response::new("".as_bytes().into());
             resp.headers_mut()
                 .insert("Access-Control-Allow-Origin", "*".parse().unwrap());

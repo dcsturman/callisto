@@ -81,8 +81,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
     // Build the authenticator
-    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server, args.secret, args.gcs_bucket.clone())
-        .await;
+    let mut authenticator = callisto::authentication::Authenticator::new(
+        &args.web_server,
+        args.secret,
+        args.gcs_bucket.clone(),
+    )
+    .await;
 
     debug!("(main) Get Google public keys.");
     authenticator.fetch_google_public_keys().await;

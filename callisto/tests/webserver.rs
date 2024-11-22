@@ -144,9 +144,7 @@ async fn integration_add_ship() {
         .body(ship)
         .send()
         .await
-        .unwrap_or_else(|e| {
-            panic!("Unable to get response from server: {:?}", e)
-        })
+        .unwrap_or_else(|e| panic!("Unable to get response from server: {:?}", e))
         .text()
         .await
         .unwrap();
