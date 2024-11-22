@@ -34,7 +34,7 @@ impl Server {
     pub async fn login(
         &self,
         login: LoginMsg,
-        authenticator: Arc<Authenticator>,
+        authenticator: Arc<Option<Authenticator>>,
     ) -> Result<String, String> {
         info!(
             "(Server.login) Received and processing login request. {:?}",
@@ -42,6 +42,19 @@ impl Server {
         );
 
         let code = login.code;
+
+        if authenticator.is_none() {
+            let test_auth_response = crate::payloads::AuthResponse {
+                email: "test@test.com".to_string(),
+                key: "test_key".to_string(),
+            };
+            return Ok(serde_json::to_string(&test_auth_response).unwrap());
+        }
+
+        // This is a bit weird so explaining:
+        // First as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
+        // is for the Option.
+        let authenticator = authenticator.as_ref().as_ref().unwrap();
 
         let (session_key, email) = authenticator
             .authenticate_google_user(&code)

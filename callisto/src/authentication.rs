@@ -33,16 +33,16 @@ pub struct Authenticator {
 
 impl Authenticator {
     pub async fn new(url: &str, secret: String, gcs_bucket: Option<String>) -> Self {
-        let credentials = load_google_credentials_from_file(&secret)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Error {:?} loading Google credentials file {}",
-                    e, GOOGLE_CREDENTIALS_FILE
-                )
-            });
-        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, gcs_bucket)
-            .await
-            .expect("Unable to load authorized users file.");
+        let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
+            panic!(
+                "Error {:?} loading Google credentials file {}",
+                e, GOOGLE_CREDENTIALS_FILE
+            )
+        });
+        let authorized_users =
+            load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, gcs_bucket)
+                .await
+                .expect("Unable to load authorized users file.");
         Authenticator {
             credentials,
             session_keys: RwLock::new(HashMap::new()),
@@ -304,7 +304,8 @@ pub async fn load_authorized_users_from_file(
                 },
                 &Range::default(),
             )
-            .await.unwrap_or_else(|e| {
+            .await
+            .unwrap_or_else(|e| {
                 panic!(
                     "Error {:?} downloading authorized users file {} from GCS bucket {}",
                     e, file_name, bucket
@@ -419,19 +420,30 @@ struct GoogleCredsJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     const GCS_TEST_BUCKET: &str = "callisto-be-user-profiles";
 
+    // This test cannot work in the GitHub Actions CI environment, so skip in that case.
     #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_authorized_users_from_gcs() {
         let bucket_name = GCS_TEST_BUCKET;
-        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, Some(bucket_name.to_string())).await.unwrap();
+        let authorized_users = load_authorized_users_from_file(
+            DEFAULT_AUTHORIZED_USERS_FILE,
+            Some(bucket_name.to_string()),
+        )
+        .await
+        .unwrap();
         assert_eq!(authorized_users.len(), 1);
     }
 
+    // This test cannot work in the GitHub Actions CI environment, so skip in that case.
     #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_authorized_users_from_file() {
-        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, None).await.unwrap();
+        let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, None)
+            .await
+            .unwrap();
         assert_eq!(authorized_users.len(), 1);
     }
 }

@@ -620,7 +620,7 @@ mod tests {
         let p_error = pos_error(
             &params.start_pos,
             &params.end_pos,
-            &plan.path.last().unwrap(),
+            plan.path.last().unwrap(),
         );
         info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
         // Add assertions here to validate the computed flight path and velocity
@@ -676,7 +676,7 @@ mod tests {
         let p_error = pos_error(
             &params.start_pos,
             &params.end_pos,
-            &plan.path.last().unwrap(),
+            plan.path.last().unwrap(),
         );
         info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
 

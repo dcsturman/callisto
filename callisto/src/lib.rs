@@ -95,7 +95,7 @@ pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
     test_mode: bool,
-    authenticator: Arc<crate::authentication::Authenticator>,
+    authenticator: Arc<Option<crate::authentication::Authenticator>>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     info!(
         "Request: {:?}\n\tmethod: {}\n\turi: {}",
@@ -104,10 +104,25 @@ pub async fn handle_request(
         req.uri().path()
     );
 
+    // Authenticator can only be None if we are in test mode.
+    assert!(
+        test_mode || authenticator.is_some(),
+        "Test mode is {} but authenticator  is_some = {:?}",
+        test_mode,
+        authenticator.is_some()
+    );
+
     // Check authorization (session key) except in a few very specific cases.  We call that out
     // here as its easier to see what we aren't authenticating.
     if !(test_mode || req.method() == Method::OPTIONS || req.uri().path() == "/login") {
-        match authenticator.clone().check_authorization(&req).await {
+        match authenticator
+            .clone()
+            .as_ref()
+            .as_ref()
+            .unwrap()
+            .check_authorization(&req)
+            .await
+        {
             Ok(email) => {
                 debug!("(lib.handleRequest) User {} authorized.", email);
             }
@@ -133,7 +148,10 @@ pub async fn handle_request(
 
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, curious) => {
-            debug!("(lib.handleRequest) Received and processing OPTIONS request with uri: {}", curious);
+            debug!(
+                "(lib.handleRequest) Received and processing OPTIONS request with uri: {}",
+                curious
+            );
             let mut resp = Response::new("".as_bytes().into());
             resp.headers_mut()
                 .insert("Access-Control-Allow-Origin", "*".parse().unwrap());
@@ -150,7 +168,7 @@ pub async fn handle_request(
         (&Method::POST, "/login") => {
             let login_msg = deserialize_body_or_respond!(req, LoginMsg);
 
-            match server.login(login_msg, authenticator.clone()).await {
+            match server.login(login_msg, authenticator).await {
                 Ok(msg) => {
                     debug!(
                         "(lib.handleRequest/login) Received and processing login request. {:?}",

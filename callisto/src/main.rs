@@ -81,11 +81,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
     // Build the authenticator
-    let mut authenticator = callisto::authentication::Authenticator::new(&args.web_server, args.secret, args.gcs_bucket.clone())
+    let authenticator = if test_mode {
+        debug!("(main) Server in test mode. No authenticator.");
+        None
+    } else {
+        let mut authenticator = callisto::authentication::Authenticator::new(
+            &args.web_server,
+            args.secret,
+            args.gcs_bucket.clone(),
+        )
         .await;
-
-    debug!("(main) Get Google public keys.");
-    authenticator.fetch_google_public_keys().await;
+        debug!("(main) Get Google public keys.");
+        authenticator.fetch_google_public_keys().await;
+        Some(authenticator)
+    };
 
     debug!("(main) Creating authenticator.");
     let authenticator = Arc::new(authenticator);
