@@ -61,6 +61,8 @@ impl Authenticator {
             code
         );
 
+        debug!("(authenticate_google_user) REMOVE ME Fetching Google public keys.");
+
         // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
         // Look up the profile.  Then return the session key and profile.
         const GRANT_TYPE: &str = "authorization_code";
