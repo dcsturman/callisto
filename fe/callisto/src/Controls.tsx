@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect, useRef } from "react";
-import { Tooltip } from 'react-tooltip'
+import { Tooltip } from "react-tooltip";
 import * as THREE from "three";
 import {
   EntitiesServerContext,
@@ -115,7 +115,6 @@ function ShipDesignList(args: {
   setShipDesignName: (designName: string) => void;
   shipDesigns: ShipDesignTemplates;
 }) {
-  
   const selectRef = useRef<HTMLSelectElement>(null);
   useEffect(() => {
     if (selectRef.current != null) {
@@ -132,28 +131,29 @@ function ShipDesignList(args: {
   }
 
   return (
+    <>
     <div className="control-launch-div">
-        <div className="control-label"> 
-          <div className="control-label label-with-tooltip">Design
-          <CiCircleQuestion data-tooltip-id="design-help-tooltip" data-tooltip-variant="info" data-tooltip-place="bottom" data-tooltip-position-strategy="absolute"/>
-          <Tooltip id="design-help-tooltip" className="info-tooltip"
-          render = {() => (
-            <span className="tooltip-content">
-              Designs are loaded from the server.
-            </span >)}/>
+      <div className="control-label">
+        <div className="control-label label-with-tooltip">
+          Design
+          <CiCircleQuestion
+            className="info-icon"
+          />
         </div>
-        </div>
-        <select
-          className="select-dropdown control-name-input control-input"
-          name="ship_list_choice"
-          ref={selectRef}
-          defaultValue={args.shipDesignName || ""}
-          onChange={handleDesignListSelectChange}>
-          {Object.keys(args.shipDesigns).map((ship_name: string) => (
-            <option key={ship_name + "-ship_list"}>{ship_name}</option>
-          ))}
-        </select>
+      </div>
+      <select
+        className="select-dropdown control-name-input control-input"
+        name="ship_list_choice"
+        ref={selectRef}
+        defaultValue={args.shipDesignName || ""}
+        onChange={handleDesignListSelectChange}>
+        {Object.keys(args.shipDesigns).map((ship_name: string) => (
+          <option key={ship_name + "-ship_list"}>{ship_name}</option>
+        ))}
+      </select>
     </div>
+    <Tooltip id="design-tooltip" anchorSelect=".info-icon" content="Designs are loaded from the server." />
+    </>
   );
 }
 
@@ -163,11 +163,10 @@ function AddShip(args: {
     position: [number, number, number],
     velocity: [number, number, number],
     acceleration: [number, number, number],
-    design: string,
+    design: string
   ) => void;
-  shipDesignTemplates: ShipDesignTemplates,
+  shipDesignTemplates: ShipDesignTemplates;
 }) {
-
   let designRef = useRef<HTMLInputElement>(null);
 
   const initialShip = {
@@ -284,7 +283,9 @@ function AddShip(args: {
       </label>
       <ShipDesignList
         shipDesignName={addShip.design}
-        setShipDesignName={(design) => addShipUpdate({ ...addShip, design: design })}
+        setShipDesignName={(design) =>
+          addShipUpdate({ ...addShip, design: design })
+        }
         shipDesigns={args.shipDesignTemplates}
       />
       <input
@@ -316,7 +317,21 @@ export function Controls(args: {
   token: string;
   setToken: (token: string | null) => void;
 }) {
-  const [fire_actions, setFireActions] = useState({} as { [actor: string]: { weapons: { [weapon: string]:{ kind: string; mount: WeaponMount; used: number; total: number }}; state: FireState} });
+  const [fire_actions, setFireActions] = useState(
+    {} as {
+      [actor: string]: {
+        weapons: {
+          [weapon: string]: {
+            kind: string;
+            mount: WeaponMount;
+            used: number;
+            total: number;
+          };
+        };
+        state: FireState;
+      };
+    }
+  );
 
   const serverEntities = useContext(EntitiesServerContext);
 
@@ -324,39 +339,85 @@ export function Controls(args: {
     (ship) => ship.name === args.computerShipName
   );
 
-  const computerShipDesign = computerShip ? args.shipDesignTemplates[computerShip.design] : null;
+  const computerShipDesign = computerShip
+    ? args.shipDesignTemplates[computerShip.design]
+    : null;
 
-  if (computerShipDesign && args.computerShipName && !fire_actions[args.computerShipName]) {
+  if (
+    computerShipDesign &&
+    args.computerShipName &&
+    !fire_actions[args.computerShipName]
+  ) {
     // Reduce the list of weapons so that we have a count of each unique kind of weapon.
-    let initial_acc: { [weapon: string]: { kind: string; mount: WeaponMount; used: number; total: number; }} = {};
-    const compressed_weapons = computerShipDesign.weapons.reduce((accumulator, weapon) => {
-      if (accumulator[weapon.toString()]) {
+    let initial_acc: {
+      [weapon: string]: {
+        kind: string;
+        mount: WeaponMount;
+        used: number;
+        total: number;
+      };
+    } = {};
+    const compressed_weapons = computerShipDesign.weapons.reduce(
+      (accumulator, weapon) => {
+        if (accumulator[weapon.toString()]) {
           accumulator[weapon.toString()].total += 1;
-      } else {
-        accumulator[weapon.toString()] = { kind: weapon.kind, mount: weapon.mount, used: 0, total: 1 };
-      }
+        } else {
+          accumulator[weapon.toString()] = {
+            kind: weapon.kind,
+            mount: weapon.mount,
+            used: 0,
+            total: 1,
+          };
+        }
         return accumulator;
-      }, initial_acc);
+      },
+      initial_acc
+    );
 
-    setFireActions({ ...fire_actions, [args.computerShipName]: { weapons: compressed_weapons, state: [] }});
+    setFireActions({
+      ...fire_actions,
+      [args.computerShipName]: { weapons: compressed_weapons, state: [] },
+    });
   }
 
   function handleFireCommand(attacker: string, target: string, weapon: string) {
     if (!computerShipDesign) {
-      console.error("(Controls.handleFireCommand) No computer ship design for " + attacker + ".")
+      console.error(
+        "(Controls.handleFireCommand) No computer ship design for " +
+          attacker +
+          "."
+      );
       return;
     }
 
-    if (fire_actions[attacker]?.weapons[weapon]?.used === fire_actions[attacker]?.weapons[weapon]?.total) {
-      console.log("(Controls.handleFireCommand) No more weapons of type " + weapon + " for " + attacker + ".")
+    if (
+      fire_actions[attacker]?.weapons[weapon]?.used ===
+      fire_actions[attacker]?.weapons[weapon]?.total
+    ) {
+      console.log(
+        "(Controls.handleFireCommand) No more weapons of type " +
+          weapon +
+          " for " +
+          attacker +
+          "."
+      );
       return;
     }
     fire_actions[attacker].weapons[weapon].used += 1;
 
-    let nth_weapon  = fire_actions[attacker].weapons[weapon].used;
+    let nth_weapon = fire_actions[attacker].weapons[weapon].used;
     let weapon_position = 0;
-    for (; weapon_position < args.shipDesignTemplates[computerShipDesign.name].weapons.length; weapon_position++) {
-      if (args.shipDesignTemplates[computerShipDesign.name].weapons[weapon_position].toString() === weapon) {
+    for (
+      ;
+      weapon_position <
+      args.shipDesignTemplates[computerShipDesign.name].weapons.length;
+      weapon_position++
+    ) {
+      if (
+        args.shipDesignTemplates[computerShipDesign.name].weapons[
+          weapon_position
+        ].toString() === weapon
+      ) {
         nth_weapon -= 1;
         if (nth_weapon === 0) {
           break;
@@ -365,39 +426,60 @@ export function Controls(args: {
     }
 
     // Check error conditions out of that loop.
-    if (weapon_position === args.shipDesignTemplates[computerShipDesign.name].weapons.length || nth_weapon !== 0) {
-      console.error("(Controls.handleFireCommand) Could not find " + fire_actions[attacker].weapons[weapon].used + "th weapon " + weapon + " for " + attacker + ".")
+    if (
+      weapon_position ===
+        args.shipDesignTemplates[computerShipDesign.name].weapons.length ||
+      nth_weapon !== 0
+    ) {
+      console.error(
+        "(Controls.handleFireCommand) Could not find " +
+          fire_actions[attacker].weapons[weapon].used +
+          "th weapon " +
+          weapon +
+          " for " +
+          attacker +
+          "."
+      );
       return;
     }
 
     let new_fire_action = new FireAction(target, weapon_position);
-    setFireActions({ ...fire_actions, [attacker]: { ...fire_actions[attacker], state: [...fire_actions[attacker].state, new_fire_action] } });
+    setFireActions({
+      ...fire_actions,
+      [attacker]: {
+        ...fire_actions[attacker],
+        state: [...fire_actions[attacker].state, new_fire_action],
+      },
+    });
   }
 
   return (
     <div className="controls-pane">
       <h1>Controls</h1>
-      { args.shipDesignTemplates && Object.keys(args.shipDesignTemplates).length > 0 &&  <AddShip
-        submitHandler={(
-          name: string,
-          position: [number, number, number],
-          velocity: [number, number, number],
-          acceleration: [number, number, number],
-          designName: string
-        ) =>
-          addShip(
-            name,
-            position,
-            velocity,
-            acceleration,
-            designName,
-            serverEntities.handler,
-            args.token,
-            args.setToken
-          )
-        }
-        shipDesignTemplates={args.shipDesignTemplates}
-      />}
+      {args.shipDesignTemplates &&
+        Object.keys(args.shipDesignTemplates).length > 0 && (
+          <AddShip
+            submitHandler={(
+              name: string,
+              position: [number, number, number],
+              velocity: [number, number, number],
+              acceleration: [number, number, number],
+              designName: string
+            ) =>
+              addShip(
+                name,
+                position,
+                velocity,
+                acceleration,
+                designName,
+                serverEntities.handler,
+                args.token,
+                args.setToken
+              )
+            }
+            shipDesignTemplates={args.shipDesignTemplates}
+          />
+        )}
       <hr />
       <ShipList
         computerShipName={args.computerShipName}
@@ -409,34 +491,48 @@ export function Controls(args: {
         <>
           <div className="vital-stats-bloc">
             <div className="stats-bloc-entry">
-            <h2>Design</h2>
-            <pre className="plan-accel-text">{computerShip.design}</pre>
+              <h2>Design</h2>
+              <pre className="plan-accel-text">{computerShip.design}</pre>
             </div>
             <div className="stats-bloc-entry">
-            <h2>Hull</h2>
-            <pre className="plan-accel-text">{`${computerShip.current_hull}(${args.shipDesignTemplates[computerShip.design].hull})`}</pre>
+              <h2>Hull</h2>
+              <pre className="plan-accel-text">{`${computerShip.current_hull}(${
+                args.shipDesignTemplates[computerShip.design].hull
+              })`}</pre>
             </div>
             <div className="stats-bloc-entry">
-            <h2>Armor</h2>
-            <pre className="plan-accel-text">{`${computerShip.current_armor}(${args.shipDesignTemplates[computerShip.design].armor})`}</pre>
+              <h2>Armor</h2>
+              <pre className="plan-accel-text">{`${
+                computerShip.current_armor
+              }(${args.shipDesignTemplates[computerShip.design].armor})`}</pre>
             </div>
           </div>
           <div className="vital-stats-bloc">
             <div className="stats-bloc-entry">
-            <h2>Man</h2>
-            <pre className="plan-accel-text">{`${computerShip.current_maneuver}(${args.shipDesignTemplates[computerShip.design].maneuver})`}</pre>
+              <h2>Man</h2>
+              <pre className="plan-accel-text">{`${
+                computerShip.current_maneuver
+              }(${
+                args.shipDesignTemplates[computerShip.design].maneuver
+              })`}</pre>
             </div>
             <div className="stats-bloc-entry">
-            <h2>Jmp</h2>
-            <pre className="plan-accel-text">{`${computerShip.current_jump}(${args.shipDesignTemplates[computerShip.design].jump})`}</pre>
+              <h2>Jmp</h2>
+              <pre className="plan-accel-text">{`${computerShip.current_jump}(${
+                args.shipDesignTemplates[computerShip.design].jump
+              })`}</pre>
             </div>
             <div className="stats-bloc-entry">
-            <h2>Power</h2>
-            <pre className="plan-accel-text">{`${computerShip.current_power}(${args.shipDesignTemplates[computerShip.design].power})`}</pre>
+              <h2>Power</h2>
+              <pre className="plan-accel-text">{`${
+                computerShip.current_power
+              }(${args.shipDesignTemplates[computerShip.design].power})`}</pre>
             </div>
             <div className="stats-bloc-entry">
-            <h2>Sensors</h2>
-            <pre className="plan-accel-text">{computerShip.current_sensors}</pre>
+              <h2>Sensors</h2>
+              <pre className="plan-accel-text">
+                {computerShip.current_sensors}
+              </pre>
             </div>
           </div>
           <h2 className="control-form">Current Position</h2>
@@ -457,8 +553,8 @@ export function Controls(args: {
           <div className="control-form">
             <label className="control-label">
               <h2>Fire Control</h2>
-                <div className="control-launch-div">
-                Target:                 
+              <div className="control-launch-div">
+                Target:
                 <select
                   className="control-name-input control-input"
                   name="fire_target"
@@ -471,19 +567,43 @@ export function Controls(args: {
                       </option>
                     ))}
                 </select>
-                </div>
-                <div className="weapon-list">
-                {fire_actions[computerShip.name] 
-                && (Object.values(fire_actions[computerShip.name].weapons).map((weapon, id) => 
-                    weapon.kind !== "Sand" && <WeaponButton key={"weapon-" + computerShip.name + "-" + id} weapon={weapon.kind} mount={weapon.mount} count={weapon.total - weapon.used} onClick={() => handleFireCommand(computerShip.name, (document.getElementById("fire_target") as HTMLInputElement)?.value || "", `${weapon.kind} ${weapon.mount}`)}/>)) }
-                </div>
+              </div>
+              <div className="weapon-list">
+                {fire_actions[computerShip.name] &&
+                  Object.values(fire_actions[computerShip.name].weapons).map(
+                    (weapon, id) =>
+                      weapon.kind !== "Sand" && (
+                        <WeaponButton
+                          key={"weapon-" + computerShip.name + "-" + id}
+                          weapon={weapon.kind}
+                          mount={weapon.mount}
+                          count={weapon.total - weapon.used}
+                          onClick={() =>
+                            handleFireCommand(
+                              computerShip.name,
+                              (
+                                document.getElementById(
+                                  "fire_target"
+                                ) as HTMLInputElement
+                              )?.value || "",
+                              `${weapon.kind} ${weapon.mount}`
+                            )
+                          }
+                        />
+                      )
+                  )}
+              </div>
             </label>
-          </div>  
+          </div>
         </>
       )}
-      {computerShip && computerShipDesign &&
+      {computerShip &&
+        computerShipDesign &&
         (fire_actions[computerShip.name]?.state || []).length > 0 && (
-          <FireActions actions={fire_actions[computerShip?.name].state || []} design={computerShipDesign} />
+          <FireActions
+            actions={fire_actions[computerShip?.name].state || []}
+            design={computerShipDesign}
+          />
         )}
       <button
         className="control-input control-button blue-button button-next-round"
@@ -493,9 +613,12 @@ export function Controls(args: {
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
           // Strip out the details on the weapons and provide an object with just
           // the name of each possible actor and the FireState they produced during the round.
-          args.nextRound(Object.entries(fire_actions).reduce((acc, [key, value]) => {
-            return { ...acc, [key]: value.state };
-          }, {} as { [key: string]: FireState }), serverEntities.handler);
+          args.nextRound(
+            Object.entries(fire_actions).reduce((acc, [key, value]) => {
+              return { ...acc, [key]: value.state };
+            }, {} as { [key: string]: FireState }),
+            serverEntities.handler
+          );
           setFireActions({});
           args.setComputerShipName(null);
         }}>
@@ -519,7 +642,8 @@ export function ViewControls(args: {
           checked={args.viewControls.gravityWells}
           onChange={() =>
             args.setViewControls({
-              ...args.viewControls, gravityWells: !args.viewControls.gravityWells
+              ...args.viewControls,
+              gravityWells: !args.viewControls.gravityWells,
             })
           }
         />{" "}
@@ -532,7 +656,8 @@ export function ViewControls(args: {
           checked={args.viewControls.jumpDistance}
           onChange={() =>
             args.setViewControls({
-              ...args.viewControls, jumpDistance: !args.viewControls.jumpDistance
+              ...args.viewControls,
+              jumpDistance: !args.viewControls.jumpDistance,
             })
           }
         />{" "}
@@ -557,11 +682,18 @@ export function EntityInfoWindow(args: { entity: Entity }) {
     design = "(" + args.entity.design + " class)";
   }
 
-  console.log("(EntityInfoWindow) isPlanet = ", isPlanet, " Entity = ", JSON.stringify(args.entity), " classname = ", args.entity.constructor.name);
+  console.log(
+    "(EntityInfoWindow) isPlanet = ",
+    isPlanet,
+    " Entity = ",
+    JSON.stringify(args.entity),
+    " classname = ",
+    args.entity.constructor.name
+  );
 
   return (
     <div id="ship-info-window" className="ship-info-window">
-      <h2 className="ship-info-title">{args.entity.name + " " + design }</h2>
+      <h2 className="ship-info-title">{args.entity.name + " " + design}</h2>
       <div className="ship-info-content">
         <p>
           Position (km):{" "}
