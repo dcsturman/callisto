@@ -73,6 +73,7 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
     jumpDistance: false
   });
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
+  const [showRange, setShowRange] = useState<string | null>(null);
 
   const getAndShowPlan = (
     entity_name: string | null,
@@ -150,6 +151,8 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
               camera={camera}
               token={args.token}
               setToken={args.setToken}
+              showRange={showRange}
+              setShowRange={setShowRange}
             />
             <div className="mainscreen-container">
               <ViewControls
@@ -208,7 +211,7 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
                   setCamera={setCamera}
                 />
                 <SpaceView controlGravityWell={viewControls.gravityWells} controlJumpDistance={viewControls.jumpDistance} />
-                <Ships setComputerShipName={setComputerShipName} />
+                <Ships setComputerShipName={setComputerShipName} showRange={showRange} />
                 <Missiles />
                 {events && events.length > 0 && (
                   <Explosions effects={events} setEffects={setEvents} />

@@ -322,8 +322,8 @@ input {
 
 .tooltip-body {
   z-index: 100;
-  color: rgb(0, 233, 20);
-  background-color: rgb(0, 247, 255);
+  padding: 2px !important;
+  color: #3dfc32 !important;
   font-size: 2pt;
 }
 
@@ -415,4 +415,8 @@ input {
 .authentication-blurb {
   font-size: 12pt;
   width: 40%
+}
+
+.ship-design-description-tooltip {
+  max-width: 250px
 }

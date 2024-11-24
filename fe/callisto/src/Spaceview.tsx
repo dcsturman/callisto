@@ -16,6 +16,8 @@ import {
   EntityToShowContext,
 } from "./Universal";
 
+import { RangeSphere } from "./Util";
+
 function Planet(args: {
   planet: PlanetType;
   controlGravityWell: boolean;
@@ -25,29 +27,6 @@ function Planet(args: {
   const radiusMeters = args.planet.radius;
   const radiusUnits = radiusMeters * SCALE;
   const pos = scaleVector(args.planet.position, SCALE);
-
-  const GRAVITY_WELL_OPACITY = 0.15;
-
-  // Render the gravity wells at the given distance from the planet.
-  // The order is the render order which is ugly but is critical to avoid some of the transparent
-  // gravity wells from not being rendered.
-  function gravityWell(distance: number, order: number) {
-    return (
-      <>
-        <mesh position={pos} renderOrder={order}>
-          <sphereGeometry args={[distance * SCALE, 15, 15]} />
-          <meshLambertMaterial
-            color="#ffffff"
-            opacity={GRAVITY_WELL_OPACITY}
-            alphaToCoverage={true}
-            shadowSide={THREE.FrontSide}
-            transparent={true}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      </>
-    );
-  }
 
   function allViewChanges() {
     return (
@@ -63,16 +42,16 @@ function Planet(args: {
         </mesh>)}
         {args.controlGravityWell &&
           args.planet.gravity_radius_025 &&
-          gravityWell(args.planet.gravity_radius_025, 10)}
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_025} order={10}/>}
         {args.controlGravityWell &&
           args.planet.gravity_radius_05 &&
-          gravityWell(args.planet.gravity_radius_05, 8)}
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_05} order={8}/>}
         {args.controlGravityWell &&
           args.planet.gravity_radius_1 &&
-          gravityWell(args.planet.gravity_radius_1, 6)}
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_1} order={6}/>}
         {args.controlGravityWell &&
           args.planet.gravity_radius_2 &&
-          gravityWell(args.planet.gravity_radius_2, 4)}
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_2} order={4}/>}
       </>
     );
   }

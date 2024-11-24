@@ -1,6 +1,6 @@
 import { useContext, useRef } from "react";
 
-import { Group, Mesh, SphereGeometry, } from "three";
+import { Group, Mesh, SphereGeometry } from "three";
 import {
   extend,
   ReactThreeFiber,
@@ -20,10 +20,14 @@ import {
   FlightPathResult,
   Ship as ShipType,
   Missile as MissileType,
+  SCALE,
+  TURN_IN_SECONDS,
+  EntityToShowContext,
+  RANGE_BANDS
 } from "./Universal";
 
-import { SCALE, TURN_IN_SECONDS, EntityToShowContext } from "./Universal";
-import { addVector, scaleVector } from "./Util";
+import { addVector, scaleVector, RangeSphere } from "./Util";
+
 
 extend({ TextGeometry });
 
@@ -52,12 +56,11 @@ new FontLoader().load(
   }
 );
 
-//TODO: Move this somewhere else - maybe Controls.tsx
-
 function Ship(args: {
   ship: ShipType;
   index: number;
   setComputerShipName: (shipName: string | null) => void;
+  showRange: string | null;
 }) {
   const entityToShow = useContext(EntityToShowContext);
   const { camera } = useThree();
@@ -73,8 +76,22 @@ function Ship(args: {
     args.setComputerShipName(args.ship.name);
   }
 
+  const showRange = args.showRange && args.showRange === args.ship.name;
+
   return (
     <>
+      {showRange && RANGE_BANDS.map(
+          (distance, index) => (
+              <RangeSphere
+                pos={scaleVector(args.ship.position, SCALE)}
+                distance={distance}
+                order={2*index}
+                key={showRange + "range" + index}
+                color={"#5ba0ff"}
+                opacity={0.18}
+              />
+          )
+        )}
       {
         <EffectComposer>
           <Bloom
@@ -85,8 +102,7 @@ function Ship(args: {
           />
         </EffectComposer>
       }
-      <group
-        position={scaleVector(args.ship.position, SCALE) as Vector3}>
+      <group position={scaleVector(args.ship.position, SCALE) as Vector3}>
         <mesh
           ref={shipRef}
           position={[0, 0, 0]}
@@ -133,6 +149,7 @@ function Ship(args: {
 
 export function Ships(args: {
   setComputerShipName: (shipName: string | null) => void;
+  showRange: string | null;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
   return (
@@ -143,6 +160,7 @@ export function Ships(args: {
           ship={ship}
           index={index}
           setComputerShipName={args.setComputerShipName}
+          showRange={args.showRange}
         />
       ))}
     </>

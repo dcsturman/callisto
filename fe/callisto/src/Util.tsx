@@ -1,9 +1,9 @@
 import * as THREE from "three";
 import { useLayoutEffect, useRef } from "react";
 import { extend } from "@react-three/fiber";
+import { SCALE, RANGE_BANDS } from "./Universal";
 
 extend({ Line_: THREE.Line });
-
 
 /* Entities come in from the server with all units in meters (m). Convert them to the units we can use on screen. */
 export function scaleVector(
@@ -19,6 +19,14 @@ export function addVector(a: [number, number, number], b: [number, number, numbe
 
 export function vectorToString(v: [number, number, number]) {
   return `${v[0].toFixed(0)}, ${v[1].toFixed(0)}, ${v[2].toFixed(0)}`;
+}
+
+export function vectorDistance(a: [number, number, number], b: [number, number, number]) {
+  return Math.sqrt(
+    (a[0] - b[0]) * (a[0] - b[0]) +
+      (a[1] - b[1]) * (a[1] - b[1]) +
+      (a[2] - b[2]) * (a[2] - b[2])
+  );
 }
 
 export function Line({
@@ -96,4 +104,46 @@ export function GrowLine({
       <lineBasicMaterial color={color} />
     </line_>
   );
+}
+
+const DEFAULT_RANGE_SPHERE_OPACITY = 0.15;
+const DEFAULT_RANGE_SPHERE_COLOR = "#ffffff";
+
+export function RangeSphere({
+  pos,
+  distance,
+  order,
+  color = DEFAULT_RANGE_SPHERE_COLOR,
+  opacity = DEFAULT_RANGE_SPHERE_OPACITY
+}: {
+  pos: [number, number, number];
+  distance: number;
+  order: number;
+  color?: string;
+  opacity?: number;
+}) {
+  return (
+    <>
+      <mesh position={pos} renderOrder={order}>
+        <sphereGeometry args={[distance * SCALE, 15, 15]} />
+        <meshLambertMaterial
+          color={color}
+          opacity={opacity}
+          alphaToCoverage={true}
+          shadowSide={THREE.FrontSide}
+          transparent={true}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+    </>
+  );
+}
+
+const rangeBandNames = ["Short", "Medium", "Long", "Very Long", "Distant"];
+export function findRangeBand(distance: number) {
+  let range =RANGE_BANDS.findIndex((x) => x >= distance);
+  if (range < 0) {
+    range = rangeBandNames.length - 1;
+  }
+  return rangeBandNames[range];
 }

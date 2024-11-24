@@ -9,13 +9,19 @@ import {
   Entity,
   Planet,
   ShipDesignTemplates,
+  Weapon,
   WeaponMount,
   POSITION_SCALE,
   SCALE,
 } from "./Universal";
 
 import { addShip } from "./ServerManager";
-import { scaleVector, vectorToString } from "./Util";
+import {
+  scaleVector,
+  vectorToString,
+  findRangeBand,
+  vectorDistance,
+} from "./Util";
 import { NavigationPlan } from "./ShipComputer";
 import { WeaponButton, FireActions } from "./WeaponUse";
 
@@ -130,29 +136,92 @@ function ShipDesignList(args: {
     args.setShipDesignName(value);
   }
 
+  function shipDesignDetails(render: {
+    content: string | null;
+    activeAnchor: HTMLElement | null;
+  }) {
+    if (render.content == null) {
+      return <></>;
+    }
+    const design = args.shipDesigns[render.content];
+    if (design == null) {
+      return <>Select a ship design.</>;
+    }
+
+    let compressed = Object.values(design.compressedWeapons());
+    let describeWeapon = (weapon: {
+      kind: string;
+      mount: WeaponMount;
+      used: number;
+      total: number;
+    }) => {
+      let w = new Weapon();
+      w.kind = weapon.kind;
+      w.mount = weapon.mount;
+
+      let [quant, suffix] = weapon.total == 1 ? ["a", ""] : [weapon.total, "s"];
+      return `${quant} ${w.toString()}${suffix}`;
+    };
+
+    let weaponDesc = compressed.slice(0, -1).map((weapon, index) => {
+      return describeWeapon(weapon) + ", ";
+    });
+
+    if (compressed.length === 0) {
+      weaponDesc = ["This ship is unarmed."];
+    } else if (compressed.length === 1) {
+      weaponDesc =  ["Weapons are ",describeWeapon(compressed[0])];
+    } else {
+      weaponDesc.push("and " + describeWeapon(compressed[compressed.length - 1]));
+      weaponDesc = ["Weapons are "].concat(weaponDesc);
+    }
+    return (
+      <>
+        <h3>{design.name}</h3>
+        <div className="ship-design-description-tooltip">
+          {design.displacement} tons with {design.hull} hullpoints and{" "}
+          {design.armor} armor.&nbsp;
+          {design.power} power back {design.maneuver}G thrust and jump{" "}
+          {design.jump}. {weaponDesc}.
+        </div>
+      </>
+    );
+  }
   return (
     <>
-    <div className="control-launch-div">
-      <div className="control-label">
-        <div className="control-label label-with-tooltip">
-          Design
-          <CiCircleQuestion
-            className="info-icon"
-          />
+      <div className="control-launch-div">
+        <div className="control-label">
+          <div className="control-label label-with-tooltip">
+            Design
+            <CiCircleQuestion className="info-icon" />
+          </div>
         </div>
+        <select
+          className="select-dropdown control-name-input control-input"
+          name="ship_list_choice"
+          ref={selectRef}
+          defaultValue={args.shipDesignName || ""}
+          onChange={handleDesignListSelectChange}
+          data-tooltip-id={args.shipDesignName || "" + "ship-description-tip"}
+          data-tooltip-content={args.shipDesignName}
+          data-tooltip-delay-show={700}>
+          {Object.keys(args.shipDesigns)
+            .sort()
+            .map((ship_name: string) => (
+              <option key={ship_name + "-ship_list"}>{ship_name}</option>
+            ))}
+        </select>
+        <Tooltip
+          id={args.shipDesignName || "" + "ship-description-tip"}
+          className="tooltip-body"
+          render={shipDesignDetails}
+        />
       </div>
-      <select
-        className="select-dropdown control-name-input control-input"
-        name="ship_list_choice"
-        ref={selectRef}
-        defaultValue={args.shipDesignName || ""}
-        onChange={handleDesignListSelectChange}>
-        {Object.keys(args.shipDesigns).map((ship_name: string) => (
-          <option key={ship_name + "-ship_list"}>{ship_name}</option>
-        ))}
-      </select>
-    </div>
-    <Tooltip id="design-tooltip" anchorSelect=".info-icon" content="Designs are loaded from the server." />
+      <Tooltip
+        id="design-tooltip"
+        anchorSelect=".info-icon"
+        content="Select the design of the ship you wish to add to the scenario."
+      />
     </>
   );
 }
@@ -316,6 +385,8 @@ export function Controls(args: {
   camera: THREE.Camera | null;
   token: string;
   setToken: (token: string | null) => void;
+  showRange: string | null;
+  setShowRange: (target: string | null) => void;
 }) {
   const [fire_actions, setFireActions] = useState(
     {} as {
@@ -348,31 +419,7 @@ export function Controls(args: {
     args.computerShipName &&
     !fire_actions[args.computerShipName]
   ) {
-    // Reduce the list of weapons so that we have a count of each unique kind of weapon.
-    let initial_acc: {
-      [weapon: string]: {
-        kind: string;
-        mount: WeaponMount;
-        used: number;
-        total: number;
-      };
-    } = {};
-    const compressed_weapons = computerShipDesign.weapons.reduce(
-      (accumulator, weapon) => {
-        if (accumulator[weapon.toString()]) {
-          accumulator[weapon.toString()].total += 1;
-        } else {
-          accumulator[weapon.toString()] = {
-            kind: weapon.kind,
-            mount: weapon.mount,
-            used: 0,
-            total: 1,
-          };
-        }
-        return accumulator;
-      },
-      initial_acc
-    );
+    const compressed_weapons = computerShipDesign.compressedWeapons();
 
     setFireActions({
       ...fire_actions,
@@ -483,7 +530,10 @@ export function Controls(args: {
       <hr />
       <ShipList
         computerShipName={args.computerShipName}
-        setComputerShipName={args.setComputerShipName}
+        setComputerShipName={(ship) => {
+          args.setShowRange(ship);
+          args.setComputerShipName(ship);
+        }}
         setCameraPos={args.setCameraPos}
         camera={args.camera}
       />
@@ -536,15 +586,31 @@ export function Controls(args: {
             </div>
           </div>
           <h2 className="control-form">Current Position</h2>
-          <pre className="plan-accel-text">
-            {"(" +
-              (computerShip.position[0] / POSITION_SCALE).toFixed(0) +
-              ", " +
-              (computerShip.position[1] / POSITION_SCALE).toFixed(0) +
-              ", " +
-              (computerShip.position[2] / POSITION_SCALE).toFixed(0) +
-              ")"}
-          </pre>
+          <div style={{ display: "flex", justifyContent: "space-around" }}>
+            <pre className="plan-accel-text">
+              {"(" +
+                (computerShip.position[0] / POSITION_SCALE).toFixed(0) +
+                ", " +
+                (computerShip.position[1] / POSITION_SCALE).toFixed(0) +
+                ", " +
+                (computerShip.position[2] / POSITION_SCALE).toFixed(0) +
+                ")"}
+            </pre>
+            <span>
+              <input
+                type="checkbox"
+                checked={args.showRange !== null}
+                onChange={(e) => {
+                  if (args.showRange === null) {
+                    args.setShowRange(computerShip.name);
+                  } else {
+                    args.setShowRange(null);
+                  }
+                }}
+              />
+              &nbsp;Ranges
+            </span>
+          </div>
           <h2 className="control-form">
             Current Plan (s @ m/s<sup>2</sup>)
           </h2>
@@ -563,7 +629,14 @@ export function Controls(args: {
                     .filter((candidate) => candidate.name !== computerShip.name)
                     .map((notMeShip) => (
                       <option key={notMeShip.name} value={notMeShip.name}>
-                        {notMeShip.name}
+                        {notMeShip.name}&nbsp;(
+                        {findRangeBand(
+                          vectorDistance(
+                            computerShip.position,
+                            notMeShip.position
+                          )
+                        )}
+                        )
                       </option>
                     ))}
                 </select>
@@ -620,6 +693,7 @@ export function Controls(args: {
             serverEntities.handler
           );
           setFireActions({});
+          args.setShowRange(null);
           args.setComputerShipName(null);
         }}>
         Next Round
