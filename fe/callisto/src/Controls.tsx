@@ -155,12 +155,10 @@ function ShipDesignList(args: {
       used: number;
       total: number;
     }) => {
-      let w = new Weapon();
-      w.kind = weapon.kind;
-      w.mount = weapon.mount;
+      let weapon_name = new Weapon(weapon.kind, weapon.mount).toString();
 
       let [quant, suffix] = weapon.total == 1 ? ["a", ""] : [weapon.total, "s"];
-      return `${quant} ${w.toString()}${suffix}`;
+      return `${quant} ${weapon_name}${suffix}`;
     };
 
     let weaponDesc = compressed.slice(0, -1).map((weapon, index) => {
@@ -420,7 +418,7 @@ export function Controls(args: {
     !fire_actions[args.computerShipName]
   ) {
     const compressed_weapons = computerShipDesign.compressedWeapons();
-
+    console.log("*** Compressed weapons = " + JSON.stringify(compressed_weapons));
     setFireActions({
       ...fire_actions,
       [args.computerShipName]: { weapons: compressed_weapons, state: [] },
@@ -531,7 +529,7 @@ export function Controls(args: {
       <ShipList
         computerShipName={args.computerShipName}
         setComputerShipName={(ship) => {
-          args.setShowRange(ship);
+          args.setShowRange(null);
           args.setComputerShipName(ship);
         }}
         setCameraPos={args.setCameraPos}
@@ -645,13 +643,13 @@ export function Controls(args: {
                 {fire_actions[computerShip.name] &&
                   Object.values(fire_actions[computerShip.name].weapons).map(
                     (weapon, id) =>
-                      weapon.kind !== "Sand" && (
+                      weapon.kind !== "Sand" &&(
                         <WeaponButton
                           key={"weapon-" + computerShip.name + "-" + id}
                           weapon={weapon.kind}
                           mount={weapon.mount}
                           count={weapon.total - weapon.used}
-                          onClick={() =>
+                          onClick={() => {
                             handleFireCommand(
                               computerShip.name,
                               (
@@ -659,8 +657,9 @@ export function Controls(args: {
                                   "fire_target"
                                 ) as HTMLInputElement
                               )?.value || "",
-                              `${weapon.kind} ${weapon.mount}`
-                            )
+                              new Weapon(weapon.kind, weapon.mount).toString()
+                            );
+                          }
                           }
                         />
                       )

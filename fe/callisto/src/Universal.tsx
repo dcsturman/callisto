@@ -226,13 +226,15 @@ export class Weapon {
     } else if ("Bay" in this.mount) {
       return `${this.mount.Bay} ${this.kind} Bay`;
     }
-    return JSON.stringify(this.mount);
+    console.error("Unknown weapon mount type: " + this.mount);
+    return "ERROR in Weapon.toString()";
   }
 
-  constructor() {
-    this.kind = "Beam";
-    this.mount = { Turret: 0 };
+  constructor(kind: string = "Beam", mount: WeaponMount = { Turret: 0 }) {
+    this.kind = kind;
+    this.mount = mount;
   }
+
 }
 
 export class ShipDesignTemplate {
