@@ -75,6 +75,13 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
   const [showRange, setShowRange] = useState<string | null>(null);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      getEntities(setEntities, args.token, args.setToken);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [entities, args.token, args.setToken]);
+
   const getAndShowPlan = (
     entity_name: string | null,
     end_pos: [number, number, number],
