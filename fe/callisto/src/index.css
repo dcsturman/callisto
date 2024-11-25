@@ -316,29 +316,46 @@ input {
   fill: green;
 }
 
-.info-tooltip {
-  z-index: 100;
+.info-icon {
+  font-size: 9pt;
 }
-.tooltip-content {
-  font-size: 9pt
+
+.tooltip-body {
+  z-index: 100;
+  padding: 2px !important;
+  color: #3dfc32 !important;
+  font-size: 2pt;
+}
+
+#design-tooltip {
+  z-index: 100;
+  color: #fff;
+  background-color: rgb(55, 55, 55);
+  font-size: 8pt;
+  padding: 2px;
+  padding-left: 6px;
+  
 }
 
 .label-with-tooltip {
   flex-direction: row;
 }
 
-.weapon-button {
+.weapon-symbol {
+  background-color:transparent;
   width: 40px;
   height: auto;
   grid-column: 1;
   grid-row: 1;
+  align-self: flex-end;
 }
 
 .barbette-button {
-  padding-bottom: 0px;
+  bottom: 0;
 }
 
-.weapon-button-count {
+.weapon-symbol-count {
+  background-color:transparent;
   font-size: 10pt;
   font-weight: bold;
   color: white;
@@ -354,9 +371,59 @@ input {
   align-items: center;
 }
 
-.weapon-button-container {
+.weapon-button {
   display: flex;
+  background-image: linear-gradient(#b0b0b0, #525253);
+  border: 1px solid #545454;
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: #FFFFFF;
+  cursor: pointer;
+  direction: ltr;
+  letter-spacing: -.022em;
+  line-height: 1.47059;
+  overflow: visible;
+  margin: 2px;
+  text-align: center;
+  vertical-align: baseline;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  white-space: nowrap;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 600;
+  font-size: 12pt;
+  height: 35px;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
  }
+
+ .weapon-button-tooltip {
+  padding-left: 6px !important;
+ }
+
+ .weapon-button:disabled {
+  cursor: default;
+  opacity: .3;
+}
+
+.weapon-button:hover {
+  background-image: linear-gradient(#d0d0d0, #727272);
+  border-color: #777777;
+  text-decoration: none;
+}
+
+.weapon-button:active {
+  background-image: linear-gradient(#a0a0a0, #424243);
+  border-color: #646464;
+  outline: none;
+}
+
+.weapon-button:focus {
+  box-shadow: rgba(131, 192, 253, 0.5) 0 0 0 3px;
+  outline: none;
+}
 
  .button-next-round {
   margin-top: auto
@@ -401,4 +468,8 @@ input {
 .authentication-blurb {
   font-size: 12pt;
   width: 40%
+}
+
+.ship-design-description-tooltip {
+  max-width: 250px
 }

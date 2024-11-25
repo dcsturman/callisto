@@ -13,6 +13,7 @@ import { ReactComponent as LargeBay } from "./icons/bay-l.svg";
 // Icons to show fire states.
 import { ReactComponent as RayIcon } from "./icons/laser.svg";
 import { ReactComponent as MissileIcon } from "./icons/missile.svg";
+import { Tooltip } from "react-tooltip";
 
 // Consistent set of colors for both type of weapons and fire states.
 const WEAPON_COLORS: { [key: string]: string } = {
@@ -22,118 +23,225 @@ const WEAPON_COLORS: { [key: string]: string } = {
   Particle: "yellow",
 };
 
-export const WeaponButton = (props: { weapon: string; mount: WeaponMount; count: number; onClick: () => void }) => {
+export const WeaponButton = (props: {
+  weapon: string;
+  mount: WeaponMount;
+  count: number;
+  onClick: () => void;
+  disable: boolean;
+}) => {
   if (typeof props.mount === "string") {
     return (
-      <div className="weapon-button-container">
-      <Barbette
-        className="weapon-button barbette-button"
-        style={{
-          fill: WEAPON_COLORS[props.weapon],
-        }}
-        onClick={props.onClick}
-      />
-      <span className="weapon-button-count">{props.count}</span>
-      </div>
+      <>
+        <button
+          className="weapon-button"
+          data-tooltip-id={props.weapon + props.mount}
+          data-tooltip-content={`${props.weapon} Barbette`}
+          data-tooltip-delay-show={700}
+          onClick={props.onClick}
+          disabled={props.disable}
+          >
+          <Barbette
+            className="weapon-symbol barbette-button"
+            style={{
+              fill: WEAPON_COLORS[props.weapon],
+            }}
+          />
+          <span className="weapon-symbol-count">{props.count}</span>
+        </button>
+        <Tooltip
+          id={props.weapon + props.mount}
+          className="tooltip-body weapon-button-tooltip"
+        />
+      </>
     );
   }
   if ("Bay" in props.mount) {
     let size = props.mount.Bay;
     if (size === "Small") {
       return (
-        <div className="weapon-button-container"><SmallBay
-          className="weapon-button bay-button"
-          style={{
-            fill: WEAPON_COLORS[props.weapon],
-          }}
-          onClick={props.onClick}
-        />
-        <span className="weapon-button-count">{props.count}</span>
-        </div>
+        <>
+          <button
+            className="weapon-button"
+            onClick={props.onClick}
+            data-tooltip-id={props.weapon + "small-bay"}
+            data-tooltip-content={`Small ${props.weapon} Bay`}
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
+            <SmallBay
+              className="weapon-symbol bay-button"
+              style={{
+                fill: WEAPON_COLORS[props.weapon],
+              }}
+            />
+            <span className="weapon-symbol-count">{props.count}</span>
+          </button>
+          <Tooltip
+            id={props.weapon + "small-bay"}
+            className="tooltip-body  weapon-button-tooltip"
+          />
+        </>
       );
     } else if (size === "Medium") {
       return (
-        <div className="weapon-button-container"><MediumBay
-          className="weapon-button bay-button"
-          style={{
-            fill: WEAPON_COLORS[props.weapon],
-          }}
-          onClick={props.onClick}
-        />
-        <span className="weapon-button-count">{props.count}</span>
-        </div>
+        <>
+          <button
+            className="weapon-button"
+            onClick={props.onClick}
+            data-tooltip-id={props.weapon + "med-bay"}
+            data-tooltip-content={`Medium ${props.weapon} Bay`}
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
+            <MediumBay
+              className="weapon-symbol bay-button"
+              style={{
+                fill: WEAPON_COLORS[props.weapon],
+              }}
+            />
+            <span className="weapon-symbol-count">{props.count}</span>
+          </button>
+          <Tooltip
+            id={props.weapon + "med-bay"}
+            className="tooltip-body  weapon-button-tooltip"
+          />
+        </>
       );
     } else {
       return (
-        <div className="weapon-button-container"><LargeBay
-          className="weapon-button bay-button"
-          style={{
-            fill: WEAPON_COLORS[props.weapon],
-          }}
-          onClick={props.onClick}
-        />
-        <span className="weapon-button-count">{props.count}</span>
-        </div>
+        <>
+          <button
+            className="weapon-button"
+            onClick={props.onClick}
+            data-tooltip-id={props.weapon + "large-bay"}
+            data-tooltip-content={`Large ${props.weapon} Bay`}
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
+            <LargeBay
+              className="weapon-symbol bay-button"
+              style={{
+                fill: WEAPON_COLORS[props.weapon],
+              }}
+            />
+            <span className="weapon-symbol-count">{props.count}</span>
+          </button>
+          <Tooltip
+            id={props.weapon + "large-bay"}
+            className="tooltip-body  weapon-button-tooltip"
+          />
+        </>
       );
     }
   } else if ("Turret" in props.mount) {
     let num = props.mount.Turret;
     if (num === 1) {
       return (
-        <div className="weapon-button-container"><Turret1
-          className="weapon-button turret-button"
-          style={{
-            fill: WEAPON_COLORS[props.weapon],
-          }}
-          onClick={props.onClick}
-        />
-        <span className="weapon-button-count">{props.count}</span>
-        </div>
+        <>
+          <button
+            className="weapon-button"
+            onClick={props.onClick}
+            data-tooltip-id={props.weapon + num + "turret"}
+            data-tooltip-content={`Single ${props.weapon} Turret`}
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
+            <Turret1
+              className="weapon-symbol turret-button"
+              style={{
+                fill: WEAPON_COLORS[props.weapon],
+              }}
+            />
+            <span className="weapon-symbol-count">{props.count}</span>
+          </button>
+          <Tooltip
+            id={props.weapon + num + "turret"}
+            className="tooltip-body  weapon-button-tooltip"
+          />
+        </>
       );
     }
     if (num === 2) {
       return (
-        <div className="weapon-button-container"><Turret2
-          className="weapon-button turret-button"
-          style={{
-            fill: WEAPON_COLORS[props.weapon],
-          }}
-          onClick={props.onClick}
-        />
-        <span className="weapon-button-count">{props.count}</span>
-        </div>
+        <>
+          <button
+            className="weapon-button"
+            onClick={props.onClick}
+            data-tooltip-id={props.weapon + num + "turret"}
+            data-tooltip-content={`Double ${props.weapon} Turret`}
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
+            <Turret2
+              className="weapon-symbol turret-button"
+              style={{
+                fill: WEAPON_COLORS[props.weapon],
+              }}
+            />
+            <span className="weapon-symbol-count">{props.count}</span>
+          </button>
+          <Tooltip
+            id={props.weapon + num + "turret"}
+            className="tooltip-body  weapon-button-tooltip"
+          />
+        </>
       );
     }
     return (
-      <div className="weapon-button-container"><Turret3
-        className="weapon-button turret-button"
-        style={{
-          fill: WEAPON_COLORS[props.weapon],
-        }}
-        onClick={props.onClick}
-      />
-      <span className="weapon-button-count">{props.count}</span>
-      </div>
+      <>
+        <button
+          className="weapon-button"
+          onClick={props.onClick}
+          data-tooltip-id={props.weapon + num + "turret"}
+          data-tooltip-content={`Triple ${props.weapon} Turret`}
+          data-tooltip-delay-show={700}
+          disabled={props.disable}>
+          <Turret3
+            className="weapon-symbol turret-button"
+            style={{
+              fill: WEAPON_COLORS[props.weapon],
+            }}
+          />
+          <span className="weapon-symbol-count">{props.count}</span>
+        </button>
+        <Tooltip
+          id={props.weapon + num + "turret"}
+          className="tooltip-body weapon-button-tooltip"
+        />
+      </>
     );
   }
   return <></>;
 };
 
-
-export function FireActions(args: { actions: FireState, design: ShipDesignTemplate }) {
-    return (
-      <div className="control-form">
-        <h2>Fire Actions</h2>
-        {args.actions.map((action, index) =>
-          ["Beam", "Pulse", "Particle"].includes(args.design.weapons[action.weapon_id].kind) ?
-            <p key={index + "_fire_img"}>
-              <RayIcon className="beam-type-icon" style={{fill: WEAPON_COLORS[args.design.weapons[action.weapon_id].kind]}}/> to {action.target}
-            </p>
-          : <p key={index + "_fire_img"}>
-              <MissileIcon className="missile-type-icon" style={{fill: WEAPON_COLORS[args.design.weapons[action.weapon_id].kind]}}/> to {action.target}
-            </p>
-          
-        )}
-      </div>
-    );
-  }
+export function FireActions(args: {
+  actions: FireState;
+  design: ShipDesignTemplate;
+}) {
+  return (
+    <div className="control-form">
+      <h2>Fire Actions</h2>
+      {args.actions.map((action, index) =>
+        ["Beam", "Pulse", "Particle"].includes(
+          args.design.weapons[action.weapon_id].kind
+        ) ? (
+          <p key={index + "_fire_img"}>
+            <RayIcon
+              className="beam-type-icon"
+              style={{
+                fill: WEAPON_COLORS[args.design.weapons[action.weapon_id].kind],
+              }}
+            />{" "}
+            to {action.target}
+          </p>
+        ) : (
+          <p key={index + "_fire_img"}>
+            <MissileIcon
+              className="missile-type-icon"
+              style={{
+                fill: WEAPON_COLORS[args.design.weapons[action.weapon_id].kind],
+              }}
+            />{" "}
+            to {action.target}
+          </p>
+        )
+      )}
+    </div>
+  );
+}

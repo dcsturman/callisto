@@ -213,13 +213,28 @@ export class Weapon {
   }
 
   toString(): string {
-    return `${this.kind} ${this.mount}`;
+    if (typeof this.mount === "string") {
+      return `${this.kind} Barbette`;
+    } else if ("Turret" in this.mount) {
+      if (this.mount.Turret === 1) {
+        return `Single ${this.kind} Turret`;
+      } else if (this.mount.Turret === 2) {
+        return `Double ${this.kind} Turret`;
+      } else if (this.mount.Turret === 3) {
+        return `Triple ${this.kind} Turret`;
+      }
+    } else if ("Bay" in this.mount) {
+      return `${this.mount.Bay} ${this.kind} Bay`;
+    }
+    console.error("Unknown weapon mount type: " + this.mount);
+    return "ERROR in Weapon.toString()";
   }
 
-  constructor() {
-    this.kind = "Beam";
-    this.mount = { Turret: 0 };
+  constructor(kind: string = "Beam", mount: WeaponMount = { Turret: 0 }) {
+    this.kind = kind;
+    this.mount = mount;
   }
+
 }
 
 export class ShipDesignTemplate {
@@ -270,7 +285,36 @@ export class ShipDesignTemplate {
     this.weapons = [];
     this.tl = 0;
   }
+
+  compressedWeapons() {
+    let initial_acc: {
+      [weapon: string]: {
+        kind: string;
+        mount: WeaponMount;
+        used: number;
+        total: number;
+      };
+    } = {};
+
+    return this.weapons.reduce(
+      (accumulator, weapon) => {
+        if (accumulator[weapon.toString()]) {
+          accumulator[weapon.toString()].total += 1;
+        } else {
+          accumulator[weapon.toString()] = {
+            kind: weapon.kind,
+            mount: weapon.mount,
+            used: 0,
+            total: 1,
+          };
+        }
+        return accumulator;
+      },
+      initial_acc
+    );
+  }
 }
+
 
 export type ShipDesignTemplates = { [key: string] : ShipDesignTemplate };
 
@@ -287,3 +331,11 @@ export const DEFAULT_ACCEL_DURATION = 10000;
 // Not to be confused with SCALE, POSITION_SCALE is the degree vector values for position should be scaled.
 // i.e. rather than having users enter meters, they enter position in kilometers.  Thus a 1000.0 scale.
 export const POSITION_SCALE = 1000.0;
+
+// Range bands for Short, Medium, Long, Very Long
+export const RANGE_BANDS = [
+  1250000,
+  10000000,
+  25000000, 
+  50000000
+];
