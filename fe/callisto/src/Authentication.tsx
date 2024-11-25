@@ -41,19 +41,19 @@ export function Authentication(args: {
     ux_mode: "popup",
   });
 
-  function loginToCallisto(
-    code: string
-  ) {
-    console.log("Logging in to Callisto");
-    login(googleAuthResponse.code, args.setEmail, args.setAuthToken);
-  }
-
   useEffect(() => {
     // I don't like doing this is a effect hook.
     if (secureState) googleLogin();
   }, [googleLogin, secureState]);
 
   useEffect(() => {
+    function loginToCallisto(
+      code: string
+    ) {
+      console.log("Logging in to Callisto");
+      login(googleAuthResponse.code, args.setEmail, args.setAuthToken);
+    }
+
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
         console.error(
@@ -67,7 +67,7 @@ export function Authentication(args: {
 
       loginToCallisto(googleAuthResponse.code);
     }
-  }, [args, googleAuthResponse]);
+  }, [args, googleAuthResponse, secureState]);
 
   return (
     <div className="authentication-container">

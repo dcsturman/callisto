@@ -157,7 +157,7 @@ function ShipDesignList(args: {
     }) => {
       let weapon_name = new Weapon(weapon.kind, weapon.mount).toString();
 
-      let [quant, suffix] = weapon.total == 1 ? ["a", ""] : [weapon.total, "s"];
+      let [quant, suffix] = weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
       return `${quant} ${weapon_name}${suffix}`;
     };
 
@@ -200,7 +200,7 @@ function ShipDesignList(args: {
           ref={selectRef}
           defaultValue={args.shipDesignName || ""}
           onChange={handleDesignListSelectChange}
-          data-tooltip-id={args.shipDesignName || "" + "ship-description-tip"}
+          data-tooltip-id={args.shipDesignName + "ship-description-tip"}
           data-tooltip-content={args.shipDesignName}
           data-tooltip-delay-show={700}>
           {Object.keys(args.shipDesigns)
@@ -210,7 +210,7 @@ function ShipDesignList(args: {
             ))}
         </select>
         <Tooltip
-          id={args.shipDesignName || "" + "ship-description-tip"}
+          id={args.shipDesignName + "ship-description-tip"}
           className="tooltip-body"
           render={shipDesignDetails}
         />
