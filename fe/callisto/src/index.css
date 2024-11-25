@@ -387,6 +387,7 @@ input {
   text-align: center;
   vertical-align: baseline;
   -webkit-user-select: none;
+  user-select: none;
   touch-action: manipulation;
   white-space: nowrap;
   font-family: "Orbitron", sans-serif;
