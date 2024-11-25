@@ -46,6 +46,7 @@ RUN --mount=type=bind,source=package.json,target=package.json \
 # Copy the rest of the source files into the image.
 COPY . .
 COPY ./public ./public
+COPY ./env* .
 
 # Run the build script.
 RUN npm run build

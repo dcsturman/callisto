@@ -402,6 +402,8 @@ export function Controls(args: {
     }
   );
 
+  const [fire_target, setFireTarget] = useState("");
+
   const serverEntities = useContext(EntitiesServerContext);
 
   const computerShip = serverEntities.entities.ships.find(
@@ -418,12 +420,12 @@ export function Controls(args: {
     !fire_actions[args.computerShipName]
   ) {
     const compressed_weapons = computerShipDesign.compressedWeapons();
-    console.log("*** Compressed weapons = " + JSON.stringify(compressed_weapons));
     setFireActions({
       ...fire_actions,
       [args.computerShipName]: { weapons: compressed_weapons, state: [] },
     });
   }
+
 
   function handleFireCommand(attacker: string, target: string, weapon: string) {
     if (!computerShipDesign) {
@@ -531,6 +533,7 @@ export function Controls(args: {
         setComputerShipName={(ship) => {
           args.setShowRange(null);
           args.setComputerShipName(ship);
+          setFireTarget("");
         }}
         setCameraPos={args.setCameraPos}
         camera={args.camera}
@@ -622,7 +625,10 @@ export function Controls(args: {
                 <select
                   className="control-name-input control-input"
                   name="fire_target"
-                  id="fire_target">
+                  id="fire_target"
+                  value={fire_target}
+                  onChange={(e) => setFireTarget(e.target.value)}>
+                  <option key="none" value=""></option>
                   {serverEntities.entities.ships
                     .filter((candidate) => candidate.name !== computerShip.name)
                     .map((notMeShip) => (
@@ -652,15 +658,11 @@ export function Controls(args: {
                           onClick={() => {
                             handleFireCommand(
                               computerShip.name,
-                              (
-                                document.getElementById(
-                                  "fire_target"
-                                ) as HTMLInputElement
-                              )?.value || "",
+                              fire_target,
                               new Weapon(weapon.kind, weapon.mount).toString()
                             );
-                          }
-                          }
+                          }}
+                          disable={fire_target.length === 0}
                         />
                       )
                   )}

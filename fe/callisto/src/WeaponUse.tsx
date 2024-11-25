@@ -28,24 +28,27 @@ export const WeaponButton = (props: {
   mount: WeaponMount;
   count: number;
   onClick: () => void;
+  disable: boolean;
 }) => {
   if (typeof props.mount === "string") {
     return (
       <>
-        <div
+        <button
           className="weapon-button"
           data-tooltip-id={props.weapon + props.mount}
           data-tooltip-content={`${props.weapon} Barbette`}
-          data-tooltip-delay-show={700}>
+          data-tooltip-delay-show={700}
+          onClick={props.onClick}
+          disabled={props.disable}
+          >
           <Barbette
             className="weapon-symbol barbette-button"
             style={{
               fill: WEAPON_COLORS[props.weapon],
             }}
-            onClick={props.onClick}
           />
           <span className="weapon-symbol-count">{props.count}</span>
-        </div>
+        </button>
         <Tooltip
           id={props.weapon + props.mount}
           className="tooltip-body weapon-button-tooltip"
@@ -58,12 +61,13 @@ export const WeaponButton = (props: {
     if (size === "Small") {
       return (
         <>
-          <div
+          <button
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "small-bay"}
             data-tooltip-content={`Small ${props.weapon} Bay`}
-            data-tooltip-delay-show={700}>
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
             <SmallBay
               className="weapon-symbol bay-button"
               style={{
@@ -71,7 +75,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          </div>
+          </button>
           <Tooltip
             id={props.weapon + "small-bay"}
             className="tooltip-body  weapon-button-tooltip"
@@ -81,12 +85,13 @@ export const WeaponButton = (props: {
     } else if (size === "Medium") {
       return (
         <>
-          <div
+          <button
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "med-bay"}
             data-tooltip-content={`Medium ${props.weapon} Bay`}
-            data-tooltip-delay-show={700}>
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
             <MediumBay
               className="weapon-symbol bay-button"
               style={{
@@ -94,7 +99,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          </div>
+          </button>
           <Tooltip
             id={props.weapon + "med-bay"}
             className="tooltip-body  weapon-button-tooltip"
@@ -104,12 +109,13 @@ export const WeaponButton = (props: {
     } else {
       return (
         <>
-          <div
+          <button
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "large-bay"}
             data-tooltip-content={`Large ${props.weapon} Bay`}
-            data-tooltip-delay-show={700}>
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
             <LargeBay
               className="weapon-symbol bay-button"
               style={{
@@ -117,7 +123,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          </div>
+          </button>
           <Tooltip
             id={props.weapon + "large-bay"}
             className="tooltip-body  weapon-button-tooltip"
@@ -130,12 +136,13 @@ export const WeaponButton = (props: {
     if (num === 1) {
       return (
         <>
-          <div
+          <button
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
             data-tooltip-content={`Single ${props.weapon} Turret`}
-            data-tooltip-delay-show={700}>
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
             <Turret1
               className="weapon-symbol turret-button"
               style={{
@@ -143,7 +150,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          </div>
+          </button>
           <Tooltip
             id={props.weapon + num + "turret"}
             className="tooltip-body  weapon-button-tooltip"
@@ -154,12 +161,13 @@ export const WeaponButton = (props: {
     if (num === 2) {
       return (
         <>
-          <div
+          <button
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
             data-tooltip-content={`Double ${props.weapon} Turret`}
-            data-tooltip-delay-show={700}>
+            data-tooltip-delay-show={700}
+            disabled={props.disable}>
             <Turret2
               className="weapon-symbol turret-button"
               style={{
@@ -167,7 +175,7 @@ export const WeaponButton = (props: {
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
-          </div>
+          </button>
           <Tooltip
             id={props.weapon + num + "turret"}
             className="tooltip-body  weapon-button-tooltip"
@@ -177,12 +185,13 @@ export const WeaponButton = (props: {
     }
     return (
       <>
-        <div
+        <button
           className="weapon-button"
           onClick={props.onClick}
           data-tooltip-id={props.weapon + num + "turret"}
           data-tooltip-content={`Triple ${props.weapon} Turret`}
-          data-tooltip-delay-show={700}>
+          data-tooltip-delay-show={700}
+          disabled={props.disable}>
           <Turret3
             className="weapon-symbol turret-button"
             style={{
@@ -190,7 +199,7 @@ export const WeaponButton = (props: {
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
-        </div>
+        </button>
         <Tooltip
           id={props.weapon + num + "turret"}
           className="tooltip-body weapon-button-tooltip"
