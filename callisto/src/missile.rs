@@ -225,6 +225,7 @@ mod tests {
                 Vec3::zero(),
                 FlightPlan::default(),
                 Arc::new(ShipDesignTemplate::default()),
+                None,
             ))),
             Vec3::zero(),
             Vec3::zero(),

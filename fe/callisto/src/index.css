@@ -22,10 +22,14 @@ body {
 }
 
 h1 {
-  font-size: 20pt;
+  font-size: 18pt;
 }
 h2 {
-  font-size: 14pt;
+  font-size: 12pt;
+}
+
+h3 {
+  font-size: 10pt;
 }
 
 .ship-list-label {
@@ -65,6 +69,7 @@ input {
   flex-shrink: 0;
   flex-basis: 250px;
   border: 1px solid #b6bcae;
+  overflow: auto;
 }
 
 .control-input {
@@ -120,9 +125,14 @@ input {
   flex-direction: column;
   font-size:12pt;
   margin: 0px;
-  padding: 0px;
+  padding: 2px;
   color: white;
   height: unset
+}
+
+.control-label.h2 {
+  font-size: 12pt;
+  font-weight: bold;
 }
 
 .as-form {
@@ -228,7 +238,7 @@ input {
   font-optical-sizing: auto;
   font-weight: 400;
   font-style: normal;
-  font-size: 14px;
+  font-size: 10pt;
   font-variation-settings:
     "MONO" 1;
 
@@ -250,6 +260,7 @@ input {
   padding-right: 4px;
   border: 1px solid #b6bcae;
   z-index: 10;
+  overflow: scroll;
 }
 
 .view-controls-window {
@@ -473,4 +484,50 @@ input {
 
 .ship-design-description-tooltip {
   max-width: 250px
+}
+
+.crew-builder-window {
+  top: 0;
+  left: 0px;
+  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.crew-builder-input {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.crew-builder-gun-selector {
+  width: 40px;
+}
+
+.chevron {
+  transition: transform .2s ease-in-out;
+}
+
+.chevron.closed {
+  transform: rotate(0deg);
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.accordion-header {
+  font-size: 14pt;
+  font-weight: bold;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding-left: 0px;
+  padding-right: 4px;
+}
+
+#results-window {
+  overflow: scroll;
 }

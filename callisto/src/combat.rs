@@ -730,6 +730,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(attacker_design),
+            None,
         );
         let target = Ship::new(
             "Target".to_string(),
@@ -737,6 +738,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(target_design),
+            None,
         );
 
         let mut ships = HashMap::new();
@@ -805,6 +807,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Test Hull critical hits
@@ -857,6 +860,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(design),
+            None,
         );
 
         // Test Armor critical hits
@@ -1081,6 +1085,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             attacker_design.clone(),
+            None,
         );
 
         let mut defender = Ship::new(
@@ -1089,6 +1094,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             defender_design.clone(),
+            None,
         );
 
         // Test cases
@@ -1194,6 +1200,7 @@ mod tests {
                 Vec3::zero(),
                 FlightPlan::default(),
                 defender_design.clone(),
+                None
             );
         }
 
@@ -1247,6 +1254,7 @@ mod tests {
                 Vec3::zero(),
                 FlightPlan::default(),
                 defender_design.clone(),
+                None,
             );
 
             let mut effects = vec![];

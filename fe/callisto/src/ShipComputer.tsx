@@ -284,11 +284,22 @@ export function ShipComputer(args: {
       );
     }
   
+    function reserveAgility(): JSX.Element {
+      return (
+          <form className="control-form">
+            <label className="control-label h2">Reserved Agility</label>
+            <input className="control-input" type="text" value={0}/>
+          </form>
+      )
+    }
+
+
     let title = ship.name + " Nav";
   
     return (
       <div id="computer-window" className="computer-window">
         <h1>{title}</h1>
+        {reserveAgility()}
         {accelerationManager()}
         <hr />
         <button

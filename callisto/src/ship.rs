@@ -10,6 +10,7 @@ use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, G};
+use crate::crew::Crew;
 use crate::payloads::Vec3asVec;
 use crate::{debug, info};
 
@@ -50,6 +51,10 @@ pub struct Ship {
     pub current_sensors: Sensors,
     #[serde(default)]
     pub active_weapons: Vec<bool>,
+
+    #[derivative(PartialEq = "ignore")]
+    #[serde(default)]
+    crew: Crew,
 
     // Index by turning ShipSystem enum into usize.
     // Skip these in both serializing and deserializing
@@ -149,6 +154,7 @@ impl Ship {
         velocity: Vec3,
         plan: FlightPlan,
         design: Arc<ShipDesignTemplate>,
+        crew: Option<Crew>
     ) -> Self {
         Ship {
             name,
@@ -167,6 +173,7 @@ impl Ship {
             active_weapons: vec![true; design.weapons.len()],
             crit_level: [0; 11],
             attack_dm: 0,
+            crew: crew.unwrap_or_default()
         }
     }
 
@@ -234,6 +241,15 @@ impl Ship {
     pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
         &self.design.weapons[weapon_id as usize]
     }
+
+    pub fn get_crew(&self) -> &Crew {
+        &self.crew
+    }
+
+    pub fn get_crew_mut(&mut self) -> &mut Crew {
+        &mut self.crew
+    }
+
 }
 
 impl PartialOrd for Ship {
@@ -844,6 +860,7 @@ mod tests {
             initial_velocity,
             initial_plan.clone(),
             Arc::new(ShipDesignTemplate::default()),
+            None
         );
 
         // Test initial values
@@ -1035,6 +1052,7 @@ mod tests {
             initial_velocity,
             initial_plan.clone(),
             Arc::new(ShipDesignTemplate::default()),
+            None
         );
 
         // Test case 1: Set a valid flight plan
@@ -1089,6 +1107,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
+            None
         );
         let ship2 = Ship::new(
             "ship2".to_string(),
@@ -1096,6 +1115,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
+            None
         );
         assert!(ship1 < ship2);
         assert!(ship2 > ship1);

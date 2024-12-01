@@ -92,6 +92,7 @@ impl Server {
             ship.velocity,
             ship.acceleration,
             design.clone(),
+            ship.crew,
         );
 
         Ok("Add ship action executed".to_string())

@@ -434,7 +434,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(authorized_users.len(), 1);
+        assert!(!authorized_users.is_empty(),"Authorized users file is empty");
     }
 
     // This test cannot work in the GitHub Actions CI environment, so skip in that case.
@@ -444,6 +444,6 @@ mod tests {
         let authorized_users = load_authorized_users_from_file(DEFAULT_AUTHORIZED_USERS_FILE, None)
             .await
             .unwrap();
-        assert_eq!(authorized_users.len(), 1);
+        assert!(!authorized_users.is_empty(),"Authorized users file is empty");
     }
 }

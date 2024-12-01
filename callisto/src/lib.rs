@@ -3,6 +3,7 @@ pub mod combat;
 mod combat_tables;
 mod computer;
 pub mod entity;
+pub mod crew;
 pub mod missile;
 pub mod payloads;
 pub mod planet;

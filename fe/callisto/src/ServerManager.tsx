@@ -9,6 +9,7 @@ import {
 import { FireActionMsg } from "./Controls";
 import { Effect } from "./Effects";
 import { StatusCodes, getReasonPhrase } from "http-status-codes";
+import { Crew } from "./CrewBuilder";
 
 export const CALLISTO_BACKEND = process.env.REACT_APP_C_BACKEND || "http://localhost:30000";
 
@@ -77,6 +78,7 @@ export function addShip(
   velocity: [number, number, number],
   acceleration: [number, number, number],
   design: string,
+  crew: Crew,
   callBack: EntityRefreshCallback,
   token: string,
   setToken: (token: string | null) => void
@@ -91,6 +93,7 @@ export function addShip(
     velocity: velocity,
     acceleration: acceleration,
     design: design,
+    crew: crew,
   };
 
   fetch(`${CALLISTO_BACKEND}/add_ship`, {

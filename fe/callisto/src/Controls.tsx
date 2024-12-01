@@ -1,6 +1,9 @@
 import { useContext, useState, useEffect, useRef } from "react";
 import { Tooltip } from "react-tooltip";
 import * as THREE from "three";
+import { Crew } from "./CrewBuilder";
+import { Accordion } from "./Accordion";
+
 import {
   EntitiesServerContext,
   EntityRefreshCallback,
@@ -15,6 +18,7 @@ import {
   SCALE,
 } from "./Universal";
 
+import { CrewBuilder } from "./CrewBuilder";
 import { addShip } from "./ServerManager";
 import {
   scaleVector,
@@ -230,7 +234,8 @@ function AddShip(args: {
     position: [number, number, number],
     velocity: [number, number, number],
     acceleration: [number, number, number],
-    design: string
+    design: string,
+    crew: Crew
   ) => void;
   shipDesignTemplates: ShipDesignTemplates;
 }) {
@@ -245,6 +250,7 @@ function AddShip(args: {
     yvel: "0",
     zvel: "0",
     design: Object.values(args.shipDesignTemplates)[0].name,
+    crew: new Crew(),
   };
 
   const [addShip, addShipUpdate] = useState(initialShip);
@@ -275,17 +281,19 @@ function AddShip(args: {
     let design: string = addShip.design;
     addShipUpdate({ ...addShip, design: design });
 
+    let crew = addShip.crew;
     console.log(
       `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Design ${design}`
     );
 
-    args.submitHandler(name, position, velocity, [0, 0, 0], design);
+    console.log("(Controls.AddShip) ********* New crew is " + JSON.stringify(crew));
+    args.submitHandler(name, position, velocity, [0, 0, 0], design, crew);
     addShipUpdate(initialShip);
   }
 
   return (
+    <Accordion title="Add Ship" initialOpen={false}>
     <form className="control-form" onSubmit={handleSubmit}>
-      <h2>Add Ship</h2>
       <label className="control-label">
         Name
         <input
@@ -355,12 +363,15 @@ function AddShip(args: {
         }
         shipDesigns={args.shipDesignTemplates}
       />
+      <hr />
+      <CrewBuilder shipName={addShip.name} updateCrew={(crew: Crew) => addShipUpdate({ ...addShip, crew: crew })} shipDesign={args.shipDesignTemplates[addShip.design]}/>
       <input
         className="control-input control-button blue-button"
         type="submit"
         value="Add"
       />
     </form>
+    </Accordion>
   );
 }
 
@@ -503,6 +514,7 @@ export function Controls(args: {
   return (
     <div className="controls-pane">
       <h1>Controls</h1>
+      <hr />
       {args.shipDesignTemplates &&
         Object.keys(args.shipDesignTemplates).length > 0 && (
           <AddShip
@@ -511,7 +523,8 @@ export function Controls(args: {
               position: [number, number, number],
               velocity: [number, number, number],
               acceleration: [number, number, number],
-              designName: string
+              designName: string,
+              crew: Crew
             ) =>
               addShip(
                 name,
@@ -519,6 +532,7 @@ export function Controls(args: {
                 velocity,
                 acceleration,
                 designName,
+                crew,
                 serverEntities.handler,
                 args.token,
                 args.setToken
@@ -528,7 +542,8 @@ export function Controls(args: {
           />
         )}
       <hr />
-      <ShipList
+      <Accordion title="Ship's Computer" initialOpen={true}>
+        <ShipList 
         computerShipName={args.computerShipName}
         setComputerShipName={(ship) => {
           args.setShowRange(null);
@@ -679,6 +694,7 @@ export function Controls(args: {
             design={computerShipDesign}
           />
         )}
+      </Accordion>
       <button
         className="control-input control-button blue-button button-next-round"
         // Reset the computer and route on the next round.  If this gets any more complex move it into its

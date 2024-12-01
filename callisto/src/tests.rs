@@ -59,7 +59,12 @@ fn test_add_ship() {
 
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-    let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, "current_sensors": "Improved", "active_weapons": [true, true, true, true]}],"missiles":[],"planets":[]});
+    let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],
+        "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, 
+        "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, 
+        "current_sensors": "Improved", "active_weapons": [true, true, true, true],
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}],
+        "missiles":[],"planets":[]});
 
     assert_json_eq!(entities, compare);
 }
@@ -97,7 +102,8 @@ fn test_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -109,7 +115,8 @@ fn test_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
         }],
           "missiles":[],
           "planets":[]});
@@ -145,7 +152,8 @@ fn test_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -157,7 +165,8 @@ fn test_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
         }]});
 
     assert_json_eq!(result, compare);
@@ -193,7 +202,8 @@ fn test_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -205,7 +215,8 @@ fn test_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
         }]});
 
     assert_json_eq!(&start, &compare);
@@ -288,7 +299,9 @@ fn test_update_missile() {
              "current_fuel":6,
              "current_crew":13,
              "current_sensors": "Improved",
-             "active_weapons": [true, true]},
+             "active_weapons": [true, true],
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+            },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
              "current_hull":82,
@@ -299,7 +312,9 @@ fn test_update_missile() {
              "current_fuel":6,
              "current_crew":13,
              "current_sensors": "Improved",
-             "active_weapons": [true, true]}],
+             "active_weapons": [true, true],
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+            }],
              "missiles":[],"planets":[]});
 
     assert_json_eq!(
@@ -657,15 +672,18 @@ fn test_big_fight() {
          "current_power":540,"current_maneuver":4,
          "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
-         "active_weapons":[true,true,true,true]},
+         "active_weapons":[true,true,true,true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+        },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
          "current_hull":135,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
-         "active_weapons":[true,true,true,true]},
-         ],
+         "active_weapons":[true,true,true,true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+        }],
           "missiles":[],
           "planets":[]});
     assert_json_eq!(
@@ -771,6 +789,7 @@ fn test_get_entities() {
             velocity: ship_velocity,
             acceleration: ship_acceleration,
             design: ShipDesignTemplate::default().name.to_string(),
+            crew: None,
         })
         .unwrap();
 
