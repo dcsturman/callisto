@@ -28,6 +28,7 @@ import {
 
 import "./index.css";
 
+const POLL_ENTITIES_INTERVAL = 0;
 
 function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -76,10 +77,12 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
   const [showRange, setShowRange] = useState<string | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      getEntities(setEntities, args.token, args.setToken);
-    }, 2000);
-    return () => clearInterval(interval);
+    if (POLL_ENTITIES_INTERVAL > 0) {
+      const interval = setInterval(() => {
+        getEntities(setEntities, args.token, args.setToken);
+      }, POLL_ENTITIES_INTERVAL);
+      return () => clearInterval(interval);
+    }
   }, [entities, args.token, args.setToken]);
 
   const getAndShowPlan = (

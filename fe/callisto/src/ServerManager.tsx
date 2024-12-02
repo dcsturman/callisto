@@ -11,44 +11,71 @@ import { Effect } from "./Effects";
 import { StatusCodes, getReasonPhrase } from "http-status-codes";
 import { Crew } from "./CrewBuilder";
 
-export const CALLISTO_BACKEND = process.env.REACT_APP_C_BACKEND || "http://localhost:30000";
+export const CALLISTO_BACKEND =
+  process.env.REACT_APP_C_BACKEND || "http://localhost:30000";
 
 type AuthResponse = {
   email: string;
   key: string;
 };
 
-function validate_response(
+async function validate_response(
   response: Response,
   setToken: (token: string | null) => void
-): Response {
+): Promise<Response> {
   if (response.ok) {
     return response;
-  } else {
-    if (
-      response.status === StatusCodes.UNAUTHORIZED ||
-      response.status === StatusCodes.FORBIDDEN
-    ) {
-      console.log(
-        "(ServerManager.validate_response) Clearing token: " +
-          getReasonPhrase(response.status)
-      );
-      setToken(null);
-    }
+  } else if (
+    response.status === StatusCodes.UNAUTHORIZED ||
+    response.status === StatusCodes.FORBIDDEN
+  ) {
     console.log(
-      "(ServerManager.validate_response) Response not ok: " +
-        response.statusText
+      "(ServerManager.validate_response) Clearing token: " +
+        getReasonPhrase(response.status)
     );
-    throw new Error(response.statusText);
+    setToken(null);
+    throw new NetworkError(
+      response.status,
+      "Authorization error received from server."
+    );
+  } else {
+    return response.json().then((json) => {
+      if (response.status === StatusCodes.BAD_REQUEST) {
+        console.log(
+          "(ServerManager.validate_response) Response not ok: " +
+            JSON.stringify(json)
+        );
+        throw new ApplicationError(json.msg);
+      } else {
+        throw new NetworkError(response.status, json.msg);
+      }
+    });
   }
 }
 
 function handle_network_error(
-  error: Error,
+  error: NetworkError,
   setToken: (token: string | null) => void
 ) {
   setToken(null);
   console.error("(ServerManager.handle_network_error) Network Error: " + error);
+  alert(`Network Error: (Status ${error.status}) ${error.message}`);
+}
+
+class NetworkError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "NetworkError";
+  }
+}
+
+class ApplicationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ApplicationError";
+  }
 }
 
 export function login(
@@ -63,7 +90,8 @@ export function login(
     },
     body: JSON.stringify({ code: code }),
   })
-    .then((response) => validate_response(response, setToken).text())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.text())
     .then((body) => JSON.parse(body) as AuthResponse)
     .then((authResponse: AuthResponse) => {
       setEmail(authResponse.email);
@@ -105,9 +133,48 @@ export function addShip(
     mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => validate_response(response, setToken).json())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
     .then(() => getEntities(callBack, token, setToken))
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
+}
+
+export function setAgility(
+  target: string,
+  thrust: number,
+  callBack: EntityRefreshCallback,
+  token: string,
+  setToken: (token: string | null) => void
+) {
+  fetch(`${CALLISTO_BACKEND}/set_agility`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: token,
+    },
+    mode: "cors",
+    body: JSON.stringify({ ship_name: target, thrust: thrust }),
+  })
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
+    .then(() => getEntities(callBack, token, setToken))
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }
 
 export function removeEntity(
@@ -125,9 +192,18 @@ export function removeEntity(
     mode: "cors",
     body: JSON.stringify(target),
   })
-    .then((response) => validate_response(response, setToken).json())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
     .then(() => getEntities(callBack, token, setToken))
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }
 
 export async function setPlan(
@@ -157,23 +233,20 @@ export async function setPlan(
     mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => {
-      if (response.status === StatusCodes.BAD_REQUEST) {
-        let msg = response.text();
-        alert(
-          `Proposed plan cannot be assigned: ${JSON.stringify(
-            payload
-          )} because ${msg}`
-        );
-        console.log(
-          `Invalid plan provided: ${JSON.stringify(payload)} because ${msg}`
-        );
-      } else {
-        validate_response(response, setToken).json();
-        getEntities(callBack, token, setToken);
-      }
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
+    .then(() => {
+      getEntities(callBack, token, setToken);
     })
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }
 
 export function nextRound(
@@ -192,10 +265,19 @@ export function nextRound(
     body: JSON.stringify(Object.entries(fireActions)),
     mode: "cors",
   })
-    .then((response) => validate_response(response, setToken).json())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
     .then((events) => setEvents(events))
     .then(() => getEntities(callBack, token, setToken))
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }
 
 export function computeFlightPath(
@@ -229,9 +311,18 @@ export function computeFlightPath(
     mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => validate_response(response, setToken).json())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
     .then((plan) => setProposedPlan(plan))
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }
 
 export function launchMissile(
@@ -255,9 +346,18 @@ export function launchMissile(
     mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => validate_response(response, setToken).json())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
     .then(() => getEntities(callback, token, setToken))
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }
 
 export function getEntities(
@@ -270,13 +370,22 @@ export function getEntities(
       Authorization: token,
     },
   })
-    .then((response) => validate_response(response, setToken).json())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
     .then((json) => EntityList.parse(json))
     .then((entities) => {
       console.log(`Received Entities: ${JSON.stringify(entities)}`);
       callback(entities);
     })
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }
 
 export async function getTemplates(
@@ -289,7 +398,8 @@ export async function getTemplates(
       Authorization: token,
     },
   })
-    .then((response) => validate_response(response, setToken).json())
+    .then((response) => validate_response(response, setToken))
+    .then((response) => response.json())
     .then((json: any) => {
       let templates: { [key: string]: ShipDesignTemplate } = {};
       Object.entries(json).forEach((entry: [string, any]) => {
@@ -307,5 +417,13 @@ export async function getTemplates(
       }
       callBack(templates);
     })
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setToken);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
 }

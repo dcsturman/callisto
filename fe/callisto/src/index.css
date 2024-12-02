@@ -260,7 +260,7 @@ input {
   padding-right: 4px;
   border: 1px solid #b6bcae;
   z-index: 10;
-  overflow: scroll;
+  overflow: auto;
 }
 
 .view-controls-window {

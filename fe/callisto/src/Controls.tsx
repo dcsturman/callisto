@@ -286,7 +286,6 @@ function AddShip(args: {
       `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Design ${design}`
     );
 
-    console.log("(Controls.AddShip) ********* New crew is " + JSON.stringify(crew));
     args.submitHandler(name, position, velocity, [0, 0, 0], design, crew);
     addShipUpdate(initialShip);
   }
@@ -772,15 +771,6 @@ export function EntityInfoWindow(args: { entity: Entity }) {
     ship_next_accel = args.entity.plan[0][0];
     design = "(" + args.entity.design + " class)";
   }
-
-  console.log(
-    "(EntityInfoWindow) isPlanet = ",
-    isPlanet,
-    " Entity = ",
-    JSON.stringify(args.entity),
-    " classname = ",
-    args.entity.constructor.name
-  );
 
   return (
     <div id="ship-info-window" className="ship-info-window">

@@ -262,12 +262,15 @@ impl Ship {
     }
 
     pub fn set_agility_thrust(&mut self, thrust: u8) -> Result<(), InvalidAgilityError> {
+        let old_agility = self.agility_thrust;
+        self.agility_thrust = 0;
         if thrust > self.max_acceleration() as u8 {
             warn!(
                 "(Ship.set_agility_thrust) thrust {} exceeds max acceleration {}",
                 thrust,
                 self.max_acceleration()
             );
+            self.agility_thrust = old_agility;
             Err(InvalidAgilityError {})
         } else {
             self.agility_thrust = thrust;

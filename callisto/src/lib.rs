@@ -55,6 +55,17 @@ fn build_ok_response(body: &str) -> Response<Full<Bytes>> {
     resp.clone()
 }
 
+fn build_err_response(status: StatusCode, body: &str) -> Response<Full<Bytes>> {
+    let msg = Bytes::copy_from_slice(format!("{{ \"msg\" : \"{body}\" }}").as_bytes());
+    let resp = Response::builder()
+        .status(status)
+        .header("Access-Control-Allow-Origin", "*")
+        .body(msg.into())
+        .unwrap();
+
+    resp.clone()
+}
+
 // Read a body while also protecting our server from massive bodies.
 async fn get_body_size_check(req: Request<Incoming>) -> Result<Bytes, SizeCheckError> {
     let upper = req.body().size_hint().upper().unwrap_or(u64::MAX);
@@ -191,12 +202,7 @@ pub async fn handle_request(
                         "(lib.handleRequest/login) Error logging in so returning UNAUTHORIZED: {}",
                         err
                     );
-                    let resp: Response<Full<Bytes>> = Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(Bytes::copy_from_slice(err.as_bytes()).into())
-                        .unwrap();
-                    Ok(resp)
+                    Ok(build_err_response(StatusCode::UNAUTHORIZED, &err))
                 }
             }
         }
@@ -205,7 +211,7 @@ pub async fn handle_request(
 
             match server.add_ship(ship) {
                 Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
         (&Method::POST, "/set_agility") => {
@@ -213,15 +219,15 @@ pub async fn handle_request(
 
             match server.set_agility(agility_request) {
                 Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
         (&Method::POST, "/add_planet") => {
             let planet = deserialize_body_or_respond!(req, AddPlanetMsg);
 
             match server.add_planet(planet) {
-                Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Ok(msg) => Ok(build_ok_response(&msg)),                
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
         
@@ -230,7 +236,7 @@ pub async fn handle_request(
 
             match server.remove(name) {
                 Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
         (&Method::POST, "/set_plan") => {
@@ -241,12 +247,7 @@ pub async fn handle_request(
                 Ok(_) => Ok(build_ok_response("Set acceleration action executed")),
                 Err(err) => {
                     warn!("(/set_plan)) Error setting plan: {}", err);
-                    let resp: Response<Full<Bytes>> = Response::builder()
-                        .status(StatusCode::BAD_REQUEST)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(Bytes::copy_from_slice(err.as_bytes()).into())
-                        .unwrap();
-                    Ok(resp)
+                    Ok(build_err_response(StatusCode::BAD_REQUEST, &err))
                 }
             }
         }
@@ -267,7 +268,7 @@ pub async fn handle_request(
                         .unwrap();
                     Ok(resp)
                 }
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
 
@@ -283,7 +284,7 @@ pub async fn handle_request(
                         .unwrap();
                     Ok(resp)
                 }
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
 
@@ -298,7 +299,7 @@ pub async fn handle_request(
                         .unwrap();
                     Ok(resp)
                 }
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
 
@@ -313,17 +314,14 @@ pub async fn handle_request(
                         .unwrap();
                     Ok(resp)
                 }
-                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
 
         (method, uri) => {
             info!("Unknown method {method} or URI {uri} on this request.  Returning 404.");
             // Return a 404 Not Found response for any other requests
-            Ok(Response::builder()
-                .status(404)
-                .body("Not Found".as_bytes().into())
-                .unwrap())
+            Ok(build_err_response(StatusCode::NOT_FOUND, "Not Found"))
         }
     }
 }
