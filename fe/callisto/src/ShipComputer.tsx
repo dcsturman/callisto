@@ -308,8 +308,11 @@ export function ShipComputer(args: {
     }
 
     return (
-      <form className="control-form" onSubmit={handleSubmit}>
-        <label className="control-label h2">Reserved Agility</label>
+      <>
+      <h2 className="control-form">
+        Reserve Agility
+      </h2>
+      <form className="as-form" onSubmit={handleSubmit}>
         <input
           className="control-input"
           type="text"
@@ -322,6 +325,7 @@ export function ShipComputer(args: {
           value="Set"
         />
       </form>
+      </>
     );
   }
 
