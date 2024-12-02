@@ -65,11 +65,12 @@ input {
   flex-direction: column;
   justify-content: flex-start;
   height: 100vh;
+  padding-right: 4px;
   flex-grow: 0;
   flex-shrink: 0;
   flex-basis: 250px;
   border: 1px solid #b6bcae;
-  overflow: auto;
+  overflow: hidden auto;
 }
 
 .control-input {
