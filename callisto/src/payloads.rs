@@ -35,6 +35,12 @@ pub struct AddShipMsg {
     pub crew: Option<Crew>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetAgilityMsg {
+    pub ship_name: String,
+    pub thrust: u8,
+}
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LaunchMissileMsg {

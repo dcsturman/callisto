@@ -15,7 +15,7 @@ use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
-use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
+use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG, SetAgilityMsg};
 use crate::server::Server;
 use crate::ship::ShipDesignTemplate;
 
@@ -63,7 +63,9 @@ fn test_add_ship() {
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, 
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, 
         "current_sensors": "Improved", "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}],
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "agility_thrust":0,
+        }],
         "missiles":[],"planets":[]});
 
     assert_json_eq!(entities, compare);
@@ -103,7 +105,8 @@ fn test_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -116,7 +119,8 @@ fn test_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }],
           "missiles":[],
           "planets":[]});
@@ -153,7 +157,8 @@ fn test_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -166,7 +171,8 @@ fn test_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }]});
 
     assert_json_eq!(result, compare);
@@ -203,7 +209,8 @@ fn test_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -216,7 +223,8 @@ fn test_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }]});
 
     assert_json_eq!(&start, &compare);
@@ -300,7 +308,8 @@ fn test_update_missile() {
              "current_crew":13,
              "current_sensors": "Improved",
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "agility_thrust":0,
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
@@ -313,7 +322,8 @@ fn test_update_missile() {
              "current_crew":13,
              "current_sensors": "Improved",
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "agility_thrust":0,
             }],
              "missiles":[],"planets":[]});
 
@@ -673,7 +683,8 @@ fn test_big_fight() {
          "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
          "active_weapons":[true,true,true,true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
@@ -682,7 +693,8 @@ fn test_big_fight() {
          "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
          "active_weapons":[true,true,true,true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }],
           "missiles":[],
           "planets":[]});
@@ -932,4 +944,53 @@ fn test_missile_impact_close() {
         target_ship.get_current_hull_points() < target_ship.get_max_hull_points(),
         "Target ship should have taken damage"
     );
+}
+
+#[test_log::test]
+fn test_set_agility() {
+    let server = setup_test_with_server();
+
+    // Add a ship to the server
+    let ship = r#"{"name":"agile_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(ship).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    // Set agility for the ship
+    let agility_request = SetAgilityMsg {
+        ship_name: "agile_ship".to_string(),
+        thrust: 1,
+    };
+    let result = server.set_agility(agility_request);
+    assert!(result.is_ok());
+    assert_eq!(
+        result.unwrap(),
+        "Agility for agile_ship set to 1.".to_string()
+    );
+
+    // Verify the ship's agility has been updated
+    let entities = server.get_entities().unwrap();
+    let ship = entities.ships.get("agile_ship").unwrap().read().unwrap();
+    assert_eq!(ship.get_agility_thrust(), 1);
+
+    // Test setting agility with an invalid (too high) value
+    let invalid_agility_request = SetAgilityMsg {
+        ship_name: "agile_ship".to_string(),
+        thrust: 11, // Assuming this is an invalid value
+    };
+    let result = server.set_agility(invalid_agility_request);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        "Invalid amount of thrust to reserver for agility (likely too high).".to_string()
+    );
+
+    // Test setting agility for a non-existent ship
+    let non_existent_ship_request = SetAgilityMsg {
+        ship_name: "non_existent_ship".to_string(),
+        thrust: 1,
+    };
+    let result = server.set_agility(non_existent_ship_request);
+    assert!(result.is_err());
 }

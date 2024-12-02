@@ -28,7 +28,7 @@ use serde_json::from_slice;
 
 use entity::Entities;
 use payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetAgilityMsg, SetPlanMsg,
 };
 use server::Server;
 
@@ -208,6 +208,14 @@ pub async fn handle_request(
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
             }
         }
+        (&Method::POST, "/set_agility") => {
+            let agility_request = deserialize_body_or_respond!(req, SetAgilityMsg);
+
+            match server.set_agility(agility_request) {
+                Ok(msg) => Ok(build_ok_response(&msg)),
+                Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
+            }
+        }
         (&Method::POST, "/add_planet") => {
             let planet = deserialize_body_or_respond!(req, AddPlanetMsg);
 
@@ -216,6 +224,7 @@ pub async fn handle_request(
                 Err(err) => Ok(Response::new(Bytes::copy_from_slice(err.as_bytes()).into())),
             }
         }
+        
         (&Method::POST, "/remove") => {
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
 

@@ -1374,6 +1374,7 @@ mod tests {
             "current_sensors": "Improved",
             "active_weapons": [true, true, true, true],
             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+            "agility_thrust":0,
             },
             {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
             "current_hull":160,
@@ -1386,6 +1387,7 @@ mod tests {
             "current_sensors": "Improved",
             "active_weapons": [true, true, true, true],
             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+            "agility_thrust":0,
             },
             {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
             "current_hull":160,
@@ -1398,6 +1400,7 @@ mod tests {
             "current_sensors": "Improved",
             "active_weapons": [true, true, true, true],
             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+            "agility_thrust":0,
             }],
         "missiles":[],
         "planets":[

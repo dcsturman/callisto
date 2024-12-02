@@ -171,7 +171,8 @@ async fn integration_add_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }],
         "missiles":[],
         "planets":[]});
@@ -235,7 +236,8 @@ async fn integration_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -248,7 +250,8 @@ async fn integration_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }],
           "missiles":[],
           "planets":[]});
@@ -296,7 +299,8 @@ async fn integration_add_planet_ship() {
              "current_crew":11,
              "current_sensors": "Improved",
              "active_weapons": [true, true, true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "agility_thrust":0,
             },
             {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -309,7 +313,8 @@ async fn integration_add_planet_ship() {
              "current_crew":11,
              "current_sensors": "Improved",
              "active_weapons": [true, true, true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "agility_thrust":0,
             }]});
 
     assert_json_eq!(result, compare);
@@ -357,7 +362,8 @@ async fn integration_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -370,7 +376,8 @@ async fn integration_add_planet_ship() {
          "current_crew":11,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "agility_thrust":0,
         }]});
 
     assert_json_eq!(&start, &compare);
@@ -505,6 +512,7 @@ async fn integration_update_missile() {
                  "current_sensors": "Improved",
                  "active_weapons": [true, true],
                  "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+                 "agility_thrust":0,
                 },
                 {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
                  "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
@@ -517,7 +525,8 @@ async fn integration_update_missile() {
                  "current_crew":13,
                  "current_sensors": "Improved",
                  "active_weapons": [true, true],
-                 "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}
+                 "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+                 "agility_thrust":0,
                 }],
                  "missiles":[],"planets":[]});
 

@@ -10,7 +10,7 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetPlanMsg, SetAgilityMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -96,6 +96,25 @@ impl Server {
         );
 
         Ok("Add ship action executed".to_string())
+    }
+
+    pub fn set_agility(&self, agility_request: SetAgilityMsg) -> Result<String, String> {
+
+        match self.entities
+            .lock()
+            .unwrap()
+            .ships
+            .get(&agility_request.ship_name) {
+                Some(ship) => {
+                    match ship.write()
+                    .unwrap()
+                    .set_agility_thrust(agility_request.thrust) {
+                        Ok(_) => Ok(format!("Agility for {} set to {}.", agility_request.ship_name, agility_request.thrust)),
+                        Err(_) => Err("Invalid amount of thrust to reserver for agility (likely too high).".to_string()),
+                    }
+                }
+                None => return Err("Unable to find ship to set agility for.".to_string()),
+            }
     }
 
     pub fn get_entities(&self) -> Result<Entities, String> {
@@ -184,6 +203,11 @@ impl Server {
             Ok(json) => json,
             Err(_) => return Err("Error converting update actions to JSON".to_string()),
         };
+
+        // 6. Reset all ship agility setting as the round is over.
+        for ship in entities.ships.values() {
+            ship.write().unwrap().reset_agility();
+        }
 
         Ok(json)
     }
