@@ -532,3 +532,11 @@ input {
 #results-window {
   overflow: scroll;
 }
+
+.crew-actions-form-container {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+  justify-items: left;
+  align-items: center;
+}

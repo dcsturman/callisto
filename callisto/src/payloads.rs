@@ -35,10 +35,22 @@ pub struct AddShipMsg {
     pub crew: Option<Crew>,
 }
 
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct SetAgilityMsg {
+pub struct SetCrewActions {
     pub ship_name: String,
-    pub thrust: u8,
+    pub dodge_thrust: Option<u8>,
+    pub assist_gunners: Option<bool>,
+}
+
+impl SetCrewActions {
+    pub fn new(ship_name: &str) -> Self {
+        SetCrewActions {
+            ship_name: ship_name.to_string(),
+            dodge_thrust: None,
+            assist_gunners: None,
+        }
+    }
 }
 
 #[serde_as]
@@ -156,9 +168,9 @@ mod tests {
     use crate::ship::ShipDesignTemplate;
 
     use super::*;
+    use crate::crew::Skills;
     use cgmath::Zero;
     use serde_json::json;
-    use crate::crew::Skills;
 
     #[test]
     fn test_add_ship_msg() {
@@ -196,7 +208,7 @@ mod tests {
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
             design: default_template_name.clone(),
-            crew: Some(crew)
+            crew: Some(crew),
         };
         let json = json!({
             "name": "ship1",
@@ -217,7 +229,6 @@ mod tests {
         let json_str = serde_json::to_string(&msg).unwrap();
         assert_eq!(json_str, json.to_string());
     }
-
 
     #[test_log::test]
     fn test_compute_path_msg() {

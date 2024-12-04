@@ -31,7 +31,8 @@ export class Ship extends Entity {
   current_crew: number = 0;
   current_sensors: string = "";
   active_weapons: boolean[] = [];
-  agility_thrust: number = 0;
+  dodge_thrust: number = 0;
+  assist_gunners: boolean = false;
 
   constructor(
     name: string,
@@ -48,7 +49,8 @@ export class Ship extends Entity {
     current_crew: number,
     current_sensors: string,
     active_weapons: boolean[],
-    agility_thrust: number
+    dodge_thrust: number,
+    assist_gunners: boolean
   ) {
     super(name, position, velocity);
     this.plan = plan;
@@ -62,7 +64,8 @@ export class Ship extends Entity {
     this.current_crew = current_crew;
     this.current_sensors = current_sensors;
     this.active_weapons = active_weapons;
-    this.agility_thrust = agility_thrust;
+    this.dodge_thrust = dodge_thrust;
+    this.assist_gunners = assist_gunners;
   }
 
   static parse(json: any): Ship {
@@ -81,7 +84,8 @@ export class Ship extends Entity {
       json.current_crew,
       json.current_sensors,
       json.active_weapons,
-      json.agility_thrust
+      json.dodge_thrust,
+      json.assist_gunners
     );
   }
 }

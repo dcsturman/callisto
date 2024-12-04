@@ -2,8 +2,8 @@ pub mod authentication;
 pub mod combat;
 mod combat_tables;
 mod computer;
-pub mod entity;
 pub mod crew;
+pub mod entity;
 pub mod missile;
 pub mod payloads;
 pub mod planet;
@@ -28,7 +28,8 @@ use serde_json::from_slice;
 
 use entity::Entities;
 use payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg, SetAgilityMsg, SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg,
+    SetCrewActions, SetPlanMsg,
 };
 use server::Server;
 
@@ -214,10 +215,10 @@ pub async fn handle_request(
                 Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
-        (&Method::POST, "/set_agility") => {
-            let agility_request = deserialize_body_or_respond!(req, SetAgilityMsg);
+        (&Method::POST, "/set_crew_actions") => {
+            let request = deserialize_body_or_respond!(req, SetCrewActions);
 
-            match server.set_agility(agility_request) {
+            match server.set_crew_actions(request) {
                 Ok(msg) => Ok(build_ok_response(&msg)),
                 Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
@@ -226,11 +227,11 @@ pub async fn handle_request(
             let planet = deserialize_body_or_respond!(req, AddPlanetMsg);
 
             match server.add_planet(planet) {
-                Ok(msg) => Ok(build_ok_response(&msg)),                
+                Ok(msg) => Ok(build_ok_response(&msg)),
                 Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
             }
         }
-        
+
         (&Method::POST, "/remove") => {
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
 

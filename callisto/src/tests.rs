@@ -15,7 +15,9 @@ use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
-use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG, SetAgilityMsg};
+use crate::payloads::{
+    AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, SetCrewActions, EMPTY_FIRE_ACTIONS_MSG,
+};
 use crate::server::Server;
 use crate::ship::ShipDesignTemplate;
 
@@ -64,7 +66,8 @@ fn test_add_ship() {
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, 
         "current_sensors": "Improved", "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-        "agility_thrust":0,
+        "dodge_thrust":0,
+        "assist_gunners":false,
         }],
         "missiles":[],"planets":[]});
 
@@ -106,7 +109,8 @@ fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -120,7 +124,8 @@ fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }],
           "missiles":[],
           "planets":[]});
@@ -158,7 +163,8 @@ fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -172,7 +178,8 @@ fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }]});
 
     assert_json_eq!(result, compare);
@@ -210,7 +217,8 @@ fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -224,7 +232,8 @@ fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }]});
 
     assert_json_eq!(&start, &compare);
@@ -309,7 +318,8 @@ fn test_update_missile() {
              "current_sensors": "Improved",
              "active_weapons": [true, true],
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-             "agility_thrust":0,
+             "dodge_thrust":0,
+             "assist_gunners":false,
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
@@ -323,7 +333,8 @@ fn test_update_missile() {
              "current_sensors": "Improved",
              "active_weapons": [true, true],
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-             "agility_thrust":0,
+             "dodge_thrust":0,
+             "assist_gunners":false,
             }],
              "missiles":[],"planets":[]});
 
@@ -684,7 +695,8 @@ fn test_big_fight() {
          "current_crew":21,"current_sensors":"Military",
          "active_weapons":[true,true,true,true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
@@ -694,7 +706,117 @@ fn test_big_fight() {
          "current_crew":21,"current_sensors":"Military",
          "active_weapons":[true,true,true,true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "agility_thrust":0,
+         "dodge_thrust":0,
+         "assist_gunners":false,
+        }],
+          "missiles":[],
+          "planets":[]});
+    assert_json_eq!(
+        serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
+        compare
+    );
+}
+
+#[test_log::test]
+fn test_fight_with_crew() {
+    let mut server = setup_test_with_server();
+
+    // Ship 1 has a capable crew.
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", 
+        "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]}}"#;
+
+    let response = server
+        .add_ship(serde_json::from_str(ship).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    // Now have that capable crew do something.
+    let crew_actions = r#"{"ship_name":"ship1","dodge_thrust":3,"assist_gunners":true}"#;
+    let response = server.set_crew_actions(serde_json::from_str(crew_actions).unwrap()).unwrap();
+
+    assert_eq!(response, "Set crew action executed");
+
+    // Ship 2 has no crew skills
+    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(ship2).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    let fire_actions = json!([["ship1", [
+        {"weapon_id": 0, "target": "ship2"},
+        {"weapon_id": 1, "target": "ship2"},
+        {"weapon_id": 2, "target": "ship2"},
+        {"weapon_id": 3, "target": "ship2"},
+    ]],
+    ["ship2", [
+        {"weapon_id": 0, "target": "ship1"},
+        {"weapon_id": 1, "target": "ship1"},
+        {"weapon_id": 2, "target": "ship1"},
+        {"weapon_id": 3, "target": "ship1"},
+    ]]]);
+
+    let response = server
+        .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
+        .unwrap();
+
+    let compare = json!([
+        {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+        {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
+        {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]}
+    ]);
+    let mut effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+    effects = effects
+        .iter()
+        .filter_map(|e| {
+            if matches!(e, EffectMsg::Message { .. }) {
+                None
+            } else {
+                Some(e.clone())
+            }
+        })
+        .collect::<Vec<EffectMsg>>();
+
+    effects.sort_by(|a, b| {
+        serde_json::to_string(a)
+            .unwrap()
+            .cmp(&serde_json::to_string(b).unwrap())
+    });
+
+    assert_json_eq!(
+        effects
+            .iter()
+            .filter(|e| !matches!(e, EffectMsg::Message { .. }))
+            .collect::<Vec<_>>(),
+        compare
+    );
+
+    let entities = server.get().unwrap();
+    let compare = json!({"ships":[
+        {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "current_hull":161,"current_armor":3,
+         "current_power":540,"current_maneuver":6,
+         "current_jump":5,"current_fuel":128,
+         "current_crew":21,"current_sensors":"Military",
+         "active_weapons":[true,true,true,true],
+         "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]},
+         "dodge_thrust":0,
+         "assist_gunners":false,
+        },
+        {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "current_hull":124,"current_armor":3,
+         "current_power":540,"current_maneuver":6,
+         "current_jump":5,"current_fuel":128,
+         "current_crew":21,"current_sensors":"Military",
+         "active_weapons":[true,true,true,true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }],
           "missiles":[],
           "planets":[]});
@@ -708,61 +830,70 @@ fn test_big_fight() {
 fn test_slugfest() {
     let mut server = setup_test_with_server();
 
-    let destroyer = r#"{"name":"destroyer","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham"}"#;
+    // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
+    // Boost weapon #10 as its firing a pules laser at the harrier.
+    let destroyer = r#"{"name":"Evil Destroyer","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham",
+        "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1]}}"#;
+
     let response = server
         .add_ship(serde_json::from_str(destroyer).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let harrier = r#"{"name":"harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
+    // Destroyer pilot will aid gunners
+    let crew_actions = r#"{"ship_name":"Evil Destroyer","assist_gunners":true}"#;
+    let response = server.set_crew_actions(serde_json::from_str(crew_actions).unwrap()).unwrap();
+    assert_eq!(response, "Set crew action executed");
+
+    let harrier = r#"{"name":"Harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
     let response = server
         .add_ship(serde_json::from_str(harrier).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let buc1 = r#"{"name":"buc1","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let buc1 = r#"{"name":"Buc1","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(buc1).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let buc2 = r#"{"name":"buc2","position":[4000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let buc2 = r#"{"name":"Buc2","position":[4000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(buc2).unwrap())
         .unwrap();
     assert_eq!(response, "Add ship action executed");
 
-    let fire_actions = json!([["destroyer", [
-        {"weapon_id": 0, "target": "harrier"},
-        {"weapon_id": 1, "target": "buc1"},
-        {"weapon_id": 2, "target": "buc1"},
-        {"weapon_id": 3, "target": "buc1"},
-        {"weapon_id": 4, "target": "buc2"},
-        {"weapon_id": 5, "target": "buc2"},
-        {"weapon_id": 6, "target": "buc2"},
-        {"weapon_id": 7, "target": "buc1"},
-        {"weapon_id": 8, "target": "buc1"},
-        {"weapon_id": 9, "target": "buc1"},
-        {"weapon_id": 10, "target": "harrier"},
-        {"weapon_id": 11, "target": "buc2"},
-        {"weapon_id": 12, "target": "buc2"},
-        {"weapon_id": 13, "target": "buc2"},
-        {"weapon_id": 14, "target": "harrier"},
+    let fire_actions = json!([["Evil Destroyer", [
+        {"weapon_id": 0, "target": "Harrier"},
+        {"weapon_id": 1, "target": "Harrier"},
+        {"weapon_id": 2, "target": "Buc1"},
+        {"weapon_id": 3, "target": "Buc1"},
+        {"weapon_id": 4, "target": "Buc2"},
+        {"weapon_id": 5, "target": "Buc2"},
+        {"weapon_id": 6, "target": "Buc2"},
+        {"weapon_id": 7, "target": "Buc1"},
+        {"weapon_id": 8, "target": "Buc1"},
+        {"weapon_id": 9, "target": "Buc1"},
+        {"weapon_id": 10, "target": "Harrier"},
+        {"weapon_id": 11, "target": "Buc2"},
+        {"weapon_id": 12, "target": "Buc2"},
+        {"weapon_id": 13, "target": "Buc2"},
+        {"weapon_id": 14, "target": "Harrier"},
         ]],
-    ["harrier", [
-        {"weapon_id": 0, "target": "destroyer"},
-        {"weapon_id": 1, "target": "destroyer"}]],
-    ["buc1", [
-        {"weapon_id": 0, "target": "destroyer"},
-        {"weapon_id": 1, "target": "destroyer"},
-        {"weapon_id": 2, "target": "destroyer"},
-        {"weapon_id": 3, "target": "destroyer"},
+    ["Harrier", [
+        {"weapon_id": 0, "target": "Evil Destroyer"},
+        {"weapon_id": 1, "target": "Evil Destroyer"}]],
+    ["Buc1", [
+        {"weapon_id": 0, "target": "Evil Destroyer"},
+        {"weapon_id": 1, "target": "Evil Destroyer"},
+        {"weapon_id": 2, "target": "Evil Destroyer"},
+        {"weapon_id": 3, "target": "Evil Destroyer"},
         ]],
-    ["buc2", [
-        {"weapon_id": 0, "target": "destroyer"},
-        {"weapon_id": 1, "target": "destroyer"},
-        {"weapon_id": 2, "target": "destroyer"},
-        {"weapon_id": 3, "target": "destroyer"},
+    ["Buc2", [
+        {"weapon_id": 0, "target": "Evil Destroyer"},
+        {"weapon_id": 1, "target": "Evil Destroyer"},
+        {"weapon_id": 2, "target": "Evil Destroyer"},
+        {"weapon_id": 3, "target": "Evil Destroyer"},
         ]]
     ]);
 
@@ -774,7 +905,8 @@ fn test_slugfest() {
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     // Should only have 3 ships now as the Harrier should have been destroyed
-    assert_eq!(entities.ships.len(), 3);
+    assert_eq!(entities.ships.len(), 3, "Was expecting only 3 ships to surive instead of {}", entities.ships.len());
+    assert!(entities.ships.get("Harrier").is_none(), "Harrier should have been destroyed.");
 }
 
 #[test]
@@ -958,39 +1090,96 @@ fn test_set_agility() {
     assert_eq!(response, "Add ship action executed");
 
     // Set agility for the ship
-    let agility_request = SetAgilityMsg {
-        ship_name: "agile_ship".to_string(),
-        thrust: 1,
-    };
-    let result = server.set_agility(agility_request);
+    let mut agility_request = SetCrewActions::new("agile_ship");
+    agility_request.dodge_thrust = Some(1);
+
+    let result = server.set_crew_actions(agility_request);
     assert!(result.is_ok());
-    assert_eq!(
-        result.unwrap(),
-        "Agility for agile_ship set to 1.".to_string()
-    );
+    assert_eq!(result.unwrap(), "Set crew action executed".to_string());
 
     // Verify the ship's agility has been updated
     let entities = server.get_entities().unwrap();
     let ship = entities.ships.get("agile_ship").unwrap().read().unwrap();
-    assert_eq!(ship.get_agility_thrust(), 1);
+    assert_eq!(ship.get_dodge_thrust(), 1);
 
     // Test setting agility with an invalid (too high) value
-    let invalid_agility_request = SetAgilityMsg {
-        ship_name: "agile_ship".to_string(),
-        thrust: 11, // Assuming this is an invalid value
-    };
-    let result = server.set_agility(invalid_agility_request);
+    let mut invalid_agility_request = SetCrewActions::new("agile_ship");
+    invalid_agility_request.dodge_thrust = Some(11);
+
+    let result = server.set_crew_actions(invalid_agility_request);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        "Invalid amount of thrust to reserver for agility (likely too high).".to_string()
+        "Thrust 11 exceeds max acceleration 3.".to_string()
     );
 
     // Test setting agility for a non-existent ship
-    let non_existent_ship_request = SetAgilityMsg {
-        ship_name: "non_existent_ship".to_string(),
-        thrust: 1,
-    };
-    let result = server.set_agility(non_existent_ship_request);
+    let mut non_existent_ship_request = SetCrewActions::new("non_existent_ship");
+    non_existent_ship_request.dodge_thrust = Some(1);
+
+    let result = server.set_crew_actions(non_existent_ship_request);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_set_crew_actions_aid_gunner() {
+    let server = setup_test_with_server();
+
+    // Add a ship to the server
+    let ship = r#"{"name":"test_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(ship).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    // Set crew actions for the ship, enabling aid_gunner
+    let mut crew_actions = SetCrewActions::new("test_ship");
+    crew_actions.assist_gunners = Some(true);
+
+    let result = server.set_crew_actions(crew_actions);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), "Set crew action executed".to_string());
+
+    // Verify the ship's crew actions have been updated
+    let entities = server.get_entities().unwrap();
+    let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
+    assert!(ship.get_assist_gunners());
+
+    // Now disable aid_gunner
+    let mut crew_actions = SetCrewActions::new("test_ship");
+    crew_actions.assist_gunners = Some(false);
+
+    let result = server.set_crew_actions(crew_actions);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), "Set crew action executed".to_string());
+
+    // Verify the ship's crew actions have been updated
+    let entities = server.get_entities().unwrap();
+    let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
+    assert!(!ship.get_assist_gunners());
+
+    // Verify you cannot assist_gunner if there isn't enough thrust
+    let ship = r#"{"name":"slow_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Free Trader"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(ship).unwrap())
+        .unwrap();
+    assert_eq!(response, "Add ship action executed");
+
+    let mut crew_actions = SetCrewActions::new("slow_ship");
+    crew_actions.assist_gunners = Some(true);
+    crew_actions.dodge_thrust = Some(1);
+
+    let result = server.set_crew_actions(crew_actions);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        "No thrust available to reserve for assisting gunners".to_string()
+    );
+
+    // Test setting crew actions for a non-existent ship
+    let mut non_existent_ship_actions = SetCrewActions::new("non_existent_ship");
+    non_existent_ship_actions.assist_gunners = Some(true);
+
+    let result = server.set_crew_actions(non_existent_ship_actions);
     assert!(result.is_err());
 }

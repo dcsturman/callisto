@@ -8,7 +8,7 @@ import {
   POSITION_SCALE,
 } from "./Universal";
 
-import { setPlan, setAgility } from "./ServerManager";
+import { setPlan, setCrewActions } from "./ServerManager";
 
 export function ShipComputer(args: {
   shipName: string;
@@ -45,7 +45,8 @@ export function ShipComputer(args: {
       0,
       "",
       [],
-      0
+      0,
+      false
     );
 
   if (ship == null) {
@@ -56,7 +57,8 @@ export function ShipComputer(args: {
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.
-  const [currentAgility, setCurrentAgility] = useState(ship.agility_thrust);
+  const [agility, setDodge] = useState(ship.dodge_thrust);
+  const [assistGunners, setAssistGunners] = useState(ship.assist_gunners);
 
   const selectRef = useRef<HTMLSelectElement>(null);
 
@@ -290,41 +292,50 @@ export function ShipComputer(args: {
     );
   }
 
-  function reserveAgility(): JSX.Element {
+  function crewActions(): JSX.Element {
     function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
-      ship.agility_thrust = currentAgility;
-      setAgility(
+      ship.dodge_thrust = agility;
+      setCrewActions(
         ship.name,
-        currentAgility,
+        agility,
+        assistGunners,
         serverEntities.handler,
         args.token,
         args.setToken
       );
     }
 
-    function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-      setCurrentAgility(Number(event.target.value));
-    }
-
     return (
       <>
-      <h2 className="control-form">
-        Reserve Agility
-      </h2>
-      <form className="as-form" onSubmit={handleSubmit}>
-        <input
-          className="control-input"
-          type="text"
-          value={currentAgility.toString()}
-          onChange={handleChange}
-        />
-        <input
-          className="control-input control-button blue-button"
-          type="submit"
-          value="Set"
-        />
-      </form>
+        <h2 className="control-form">Crew Actions</h2>
+        <form className="control-form" onSubmit={handleSubmit}>
+          <div className="crew-actions-form-container">
+          <label className="control-label" >          
+              Dodge
+              </label>
+              <input
+                className="control-input"
+                type="text"
+                value={agility.toString()}
+                onChange={(event) => setDodge(Number(event.target.value))}
+              />
+
+          <label className="control-label">
+              Assist Gunner
+            </label>
+              <input
+                type="checkbox"
+                checked={assistGunners}
+                onChange={() => setAssistGunners(!assistGunners)}
+              />
+          </div>
+          <input
+            className="control-input control-button blue-button"
+            type="submit"
+            value="Set"
+          />
+        </form>
       </>
     );
   }
@@ -334,7 +345,8 @@ export function ShipComputer(args: {
   return (
     <div id="computer-window" className="computer-window">
       <h1>{title}</h1>
-      {reserveAgility()}
+      {crewActions()}
+      <hr />
       {accelerationManager()}
       <hr />
       <button

@@ -57,8 +57,13 @@ pub struct Ship {
     #[serde(default)]
     crew: Crew,
 
+    #[derivative(PartialEq = "ignore")]
     #[serde(default)]
-    pub agility_thrust: u8,
+    dodge_thrust: u8,
+
+    #[derivative(PartialEq = "ignore")]
+    #[serde(default)]
+    assist_gunners: bool,
 
     // Index by turning ShipSystem enum into usize.
     // Skip these in both serializing and deserializing
@@ -178,7 +183,8 @@ impl Ship {
             crit_level: [0; 11],
             attack_dm: 0,
             crew: crew.unwrap_or_default(),
-            agility_thrust: 0,
+            dodge_thrust: 0,
+            assist_gunners: false,
         }
     }
 
@@ -194,7 +200,7 @@ impl Ship {
         self.active_weapons = vec![true; self.design.weapons.len()];
         self.crit_level = [0; 11];
         self.attack_dm = 0;
-        self.agility_thrust = 0;
+        self.dodge_thrust = 0;
     }
 
     pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> Result<(), String> {
@@ -228,7 +234,9 @@ impl Ship {
         let power_limit = self.design.best_thrust(self.current_power) as f64;
         let maneuver_limit = self.current_maneuver as f64;
         f64::max(
-            f64::min(power_limit, maneuver_limit) - self.agility_thrust as f64,
+            f64::min(power_limit, maneuver_limit)
+                - self.dodge_thrust as f64
+                - if self.assist_gunners { 1.0 } else { 0.0 },
             0.0,
         )
     }
@@ -261,29 +269,73 @@ impl Ship {
         &mut self.crew
     }
 
-    pub fn set_agility_thrust(&mut self, thrust: u8) -> Result<(), InvalidAgilityError> {
-        let old_agility = self.agility_thrust;
-        self.agility_thrust = 0;
-        if thrust > self.max_acceleration() as u8 {
+    pub fn set_pilot_actions(
+        &mut self,
+        thrust: Option<u8>,
+        assist: Option<bool>,
+    ) -> Result<(), InvalidThrustError> {
+        let old_agility = self.dodge_thrust;
+        let old_assist = self.assist_gunners;
+
+        self.dodge_thrust = 0;
+        self.assist_gunners = false;
+
+        // First see if we can set the dodge thrust
+        if thrust.is_some_and(|thrust| thrust > self.max_acceleration() as u8) {
+            let thrust = thrust.unwrap();
+            let old_max_acceleration = self.max_acceleration();
             warn!(
                 "(Ship.set_agility_thrust) thrust {} exceeds max acceleration {}",
-                thrust,
-                self.max_acceleration()
+                thrust, old_max_acceleration
             );
-            self.agility_thrust = old_agility;
-            Err(InvalidAgilityError {})
+            self.dodge_thrust = old_agility;
+            self.assist_gunners = old_assist;
+            Err(InvalidThrustError(format!(
+                "Thrust {} exceeds max acceleration {}.",
+                thrust, old_max_acceleration
+            )))
         } else {
-            self.agility_thrust = thrust;
-            Ok(())
+            if let Some(thrust) = thrust {
+                self.dodge_thrust = thrust;
+            }
+
+            // Second see if we can accommodate assist gunner
+            if let Some(assist) = assist {
+                if assist && self.max_acceleration() < 1.0 {
+                    warn!("(Ship.set_agility_thrust) No thrust available to reserve for assisting gunners.");
+                    self.dodge_thrust = old_agility;
+                    self.assist_gunners = old_assist;
+
+                    Err(InvalidThrustError(
+                        "No thrust available to reserve for assisting gunners".to_string(),
+                    ))
+                } else {
+                    self.assist_gunners = assist;
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            }
         }
     }
 
-    pub fn get_agility_thrust(&self) -> u8 {
-        self.agility_thrust
+    pub fn decrement_dodge_thrust(&mut self) {
+        if self.dodge_thrust == 0 {
+            warn!("(Ship.decrement_dodge_thrust) Attempting to decrement a 0 dodge thrust; should never happen.");
+        }
+        self.dodge_thrust = u8::saturating_sub(self.dodge_thrust, 1);
     }
 
-    pub fn reset_agility(&mut self) {
-        self.agility_thrust = 0;
+    pub fn get_assist_gunners(&self) -> bool {
+        self.assist_gunners
+    }
+    pub fn reset_crew_actions(&mut self) {
+        self.dodge_thrust = 0;
+        self.assist_gunners = false;
+    }
+
+    pub fn get_dodge_thrust(&self) -> u8 {
+        self.dodge_thrust
     }
 }
 
@@ -387,11 +439,11 @@ pub fn load_ship_templates_from_file(
     let reader = std::io::BufReader::new(file);
     let templates: Vec<ShipDesignTemplate> = serde_json::from_reader(reader)?;
 
-    // Sort the weapons in each template as loaded to ensure they are in order.  This is a dependency the UX depends on.
+    // From the list of templates, create a hash table and wrap each in an Arc.
     let table = templates
         .into_iter()
-        .map(|mut template| {
-            template.weapons.sort();
+        .map(|template| {
+            //template.weapons.sort();
             (template.name.clone(), Arc::new(template))
         })
         .collect();
@@ -604,17 +656,23 @@ impl From<ShipSystem> for String {
 }
 
 #[derive(Debug)]
-pub struct InvalidAgilityError {}
+pub struct InvalidThrustError(String);
 
-impl Error for InvalidAgilityError {
+impl InvalidThrustError {
+    pub fn get_msg(&self) -> String {
+        self.0.clone()
+    }
+}
+
+impl Error for InvalidThrustError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
 }
 
-impl std::fmt::Display for InvalidAgilityError {
+impl std::fmt::Display for InvalidThrustError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Invalid agility attempted to be set.")
+        write!(f, "Invalid thrust attempted: {}", self.0)
     }
 }
 
@@ -846,8 +904,8 @@ fn int_to_digit(code: u8) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cgmath::assert_ulps_eq;
     use crate::crew::Skills;
+    use cgmath::assert_ulps_eq;
 
     #[test]
     fn test_digit_to_int() {
@@ -1242,39 +1300,32 @@ mod tests {
         );
 
         // Test setting a valid agility thrust
-        assert!(ship.set_agility_thrust(1).is_ok());
-        assert_eq!(ship.get_agility_thrust(), 1);
+        assert!(ship.set_pilot_actions(Some(1), None).is_ok());
+        assert_eq!(ship.get_dodge_thrust(), 1);
 
         // Test setting agility thrust to 0
-        assert!(ship.set_agility_thrust(0).is_ok());
-        assert_eq!(ship.get_agility_thrust(), 0);
+        assert!(ship.set_pilot_actions(Some(0), None).is_ok());
+        assert_eq!(ship.get_dodge_thrust(), 0);
 
         // Test setting agility thrust to max acceleration
-        assert!(ship.set_agility_thrust(3).is_ok());
-        assert_eq!(ship.get_agility_thrust(), 3);
+        assert!(ship.set_pilot_actions(Some(3), None).is_ok());
+        assert_eq!(ship.get_dodge_thrust(), 3);
 
         // Test setting agility thrust above max acceleration
-        let result = ship.set_agility_thrust(11);
+        let result = ship.set_pilot_actions(Some(11), None);
         assert!(result.is_err());
-        assert_eq!(ship.get_agility_thrust(), 3); // Should remain unchanged
+        assert_eq!(ship.get_dodge_thrust(), 3); // Should remain unchanged
 
         // Test that the error returned is of type InvalidAgilityError
-        assert!(matches!(result, Err(InvalidAgilityError {})));
+        assert!(matches!(result, Err(InvalidThrustError(_))));
         let err = result.unwrap_err();
         assert!(err.source().is_none());
-        assert!(format!("{}", err).contains("Invalid agility attempted to be set."));
+        assert!(format!("{}", err).contains("Invalid thrust attempted:"));
 
         // Test resetting agility
-        ship.reset_agility();
-        assert_eq!(ship.get_agility_thrust(), 0);
+        ship.reset_crew_actions();
+        assert_eq!(ship.get_dodge_thrust(), 0);
     }
-
-    #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-
-    // ... (other existing tests)
 
     #[test]
     fn test_get_crew() {
@@ -1284,7 +1335,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
-            Some(Crew::new())
+            Some(Crew::new()),
         );
 
         // Test get_crew
@@ -1305,7 +1356,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
-            Some(Crew::new())
+            Some(Crew::new()),
         );
 
         // Test get_crew_mut
@@ -1328,5 +1379,4 @@ mod tests {
         assert_eq!(crew.get_sensors(), 5);
         assert_eq!(crew.get_gunnery(0), 2);
     }
-}
 }

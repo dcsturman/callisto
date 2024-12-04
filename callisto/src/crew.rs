@@ -22,7 +22,7 @@ pub struct Crew {
     #[serde(default)]
     sensors: u8,
     #[serde(default = "default_gunnery")]
-    gunnery: Vec<u8>
+    gunnery: Vec<u8>,
 }
 
 // Function just to provide a default value for gunnery deserialization
@@ -38,7 +38,7 @@ impl Crew {
             engineering_power: 0,
             engineering_maneuver: 0,
             sensors: 0,
-            gunnery: vec![]
+            gunnery: vec![],
         }
     }
 
@@ -49,10 +49,10 @@ impl Crew {
             Skills::EngineeringPower => self.engineering_power,
             Skills::EngineeringManeuver => self.engineering_maneuver,
             Skills::Sensors => self.sensors,
-            Skills::Gunnery => panic!("(Crew.getSkill) Multiple gunners possible.")
+            Skills::Gunnery => panic!("(Crew.getSkill) Multiple gunners possible."),
         }
     }
-    
+
     pub fn get_pilot(&self) -> u8 {
         self.pilot
     }
@@ -77,7 +77,7 @@ impl Crew {
         if gun >= self.gunnery.len() {
             return 0;
         }
-        self.gunnery[gun as usize]
+        self.gunnery[gun]
     }
 
     pub fn set_skill(&mut self, skill: Skills, value: u8) {
@@ -87,12 +87,11 @@ impl Crew {
             Skills::EngineeringPower => self.engineering_power = value,
             Skills::EngineeringManeuver => self.engineering_maneuver = value,
             Skills::Sensors => self.sensors = value,
-            Skills::Gunnery => panic!("Cannot use set_skill for gunnery. Use add_gunnery instead.")
+            Skills::Gunnery => panic!("Cannot use set_skill for gunnery. Use add_gunnery instead."),
         }
     }
 
     pub fn add_gunnery(&mut self, value: u8) {
-        
         self.gunnery.push(value);
     }
 }

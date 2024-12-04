@@ -147,21 +147,22 @@ export function addShip(
     });
 }
 
-export function setAgility(
+export function setCrewActions(
   target: string,
-  thrust: number,
+  dodge: number,
+  assist_gunners: boolean,
   callBack: EntityRefreshCallback,
   token: string,
   setToken: (token: string | null) => void
 ) {
-  fetch(`${CALLISTO_BACKEND}/set_agility`, {
+  fetch(`${CALLISTO_BACKEND}/set_crew_actions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: token,
     },
     mode: "cors",
-    body: JSON.stringify({ ship_name: target, thrust: thrust }),
+    body: JSON.stringify({ ship_name: target, dodge_thrust: dodge, assist_gunners: assist_gunners }),
   })
     .then((response) => validate_response(response, setToken))
     .then((response) => response.json())

@@ -51,7 +51,12 @@
         "crew": 3,
         "sensors": "Military",
         "computer": 5,
-        "weapons": [],
+        "weapons": [
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 2 }
+            }
+        ],
         "tl": 12
     },
     {
@@ -66,7 +71,16 @@
         "crew": 5,
         "sensors": "Civilian",
         "computer": 5,
-        "weapons": [],
+        "weapons": [
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 2 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 2 }
+            }
+        ],
         "tl": 12
     },
     {
