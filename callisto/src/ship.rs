@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -9,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
+use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
-use crate::{debug, info};
+use crate::{debug, info, warn};
 
 pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
 
@@ -50,6 +52,18 @@ pub struct Ship {
     pub current_sensors: Sensors,
     #[serde(default)]
     pub active_weapons: Vec<bool>,
+
+    #[derivative(PartialEq = "ignore")]
+    #[serde(default)]
+    crew: Crew,
+
+    #[derivative(PartialEq = "ignore")]
+    #[serde(default)]
+    dodge_thrust: u8,
+
+    #[derivative(PartialEq = "ignore")]
+    #[serde(default)]
+    assist_gunners: bool,
 
     // Index by turning ShipSystem enum into usize.
     // Skip these in both serializing and deserializing
@@ -149,6 +163,7 @@ impl Ship {
         velocity: Vec3,
         plan: FlightPlan,
         design: Arc<ShipDesignTemplate>,
+        crew: Option<Crew>,
     ) -> Self {
         Ship {
             name,
@@ -167,6 +182,9 @@ impl Ship {
             active_weapons: vec![true; design.weapons.len()],
             crit_level: [0; 11],
             attack_dm: 0,
+            crew: crew.unwrap_or_default(),
+            dodge_thrust: 0,
+            assist_gunners: false,
         }
     }
 
@@ -182,6 +200,7 @@ impl Ship {
         self.active_weapons = vec![true; self.design.weapons.len()];
         self.crit_level = [0; 11];
         self.attack_dm = 0;
+        self.dodge_thrust = 0;
     }
 
     pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> Result<(), String> {
@@ -212,7 +231,14 @@ impl Ship {
     }
 
     pub fn max_acceleration(&self) -> f64 {
-        self.design.best_thrust(self.current_power) as f64
+        let power_limit = self.design.best_thrust(self.current_power) as f64;
+        let maneuver_limit = self.current_maneuver as f64;
+        f64::max(
+            f64::min(power_limit, maneuver_limit)
+                - self.dodge_thrust as f64
+                - if self.assist_gunners { 1.0 } else { 0.0 },
+            0.0,
+        )
     }
 
     pub fn get_current_hull_points(&self) -> u32 {
@@ -233,6 +259,83 @@ impl Ship {
 
     pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
         &self.design.weapons[weapon_id as usize]
+    }
+
+    pub fn get_crew(&self) -> &Crew {
+        &self.crew
+    }
+
+    pub fn get_crew_mut(&mut self) -> &mut Crew {
+        &mut self.crew
+    }
+
+    pub fn set_pilot_actions(
+        &mut self,
+        thrust: Option<u8>,
+        assist: Option<bool>,
+    ) -> Result<(), InvalidThrustError> {
+        let old_agility = self.dodge_thrust;
+        let old_assist = self.assist_gunners;
+
+        self.dodge_thrust = 0;
+        self.assist_gunners = false;
+
+        // First see if we can set the dodge thrust
+        if thrust.is_some_and(|thrust| thrust > self.max_acceleration() as u8) {
+            let thrust = thrust.unwrap();
+            let old_max_acceleration = self.max_acceleration();
+            warn!(
+                "(Ship.set_agility_thrust) thrust {} exceeds max acceleration {}",
+                thrust, old_max_acceleration
+            );
+            self.dodge_thrust = old_agility;
+            self.assist_gunners = old_assist;
+            Err(InvalidThrustError(format!(
+                "Thrust {} exceeds max acceleration {}.",
+                thrust, old_max_acceleration
+            )))
+        } else {
+            if let Some(thrust) = thrust {
+                self.dodge_thrust = thrust;
+            }
+
+            // Second see if we can accommodate assist gunner
+            if let Some(assist) = assist {
+                if assist && self.max_acceleration() < 1.0 {
+                    warn!("(Ship.set_agility_thrust) No thrust available to reserve for assisting gunners.");
+                    self.dodge_thrust = old_agility;
+                    self.assist_gunners = old_assist;
+
+                    Err(InvalidThrustError(
+                        "No thrust available to reserve for assisting gunners".to_string(),
+                    ))
+                } else {
+                    self.assist_gunners = assist;
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    pub fn decrement_dodge_thrust(&mut self) {
+        if self.dodge_thrust == 0 {
+            warn!("(Ship.decrement_dodge_thrust) Attempting to decrement a 0 dodge thrust; should never happen.");
+        }
+        self.dodge_thrust = u8::saturating_sub(self.dodge_thrust, 1);
+    }
+
+    pub fn get_assist_gunners(&self) -> bool {
+        self.assist_gunners
+    }
+    pub fn reset_crew_actions(&mut self) {
+        self.dodge_thrust = 0;
+        self.assist_gunners = false;
+    }
+
+    pub fn get_dodge_thrust(&self) -> u8 {
+        self.dodge_thrust
     }
 }
 
@@ -336,11 +439,11 @@ pub fn load_ship_templates_from_file(
     let reader = std::io::BufReader::new(file);
     let templates: Vec<ShipDesignTemplate> = serde_json::from_reader(reader)?;
 
-    // Sort the weapons in each template as loaded to ensure they are in order.  This is a dependency the UX depends on.
+    // From the list of templates, create a hash table and wrap each in an Arc.
     let table = templates
         .into_iter()
-        .map(|mut template| {
-            template.weapons.sort();
+        .map(|template| {
+            //template.weapons.sort();
             (template.name.clone(), Arc::new(template))
         })
         .collect();
@@ -549,6 +652,27 @@ impl From<ShipSystem> for String {
             ShipSystem::Bridge => "bridge".to_string(),
             ShipSystem::Cargo => "cargo".to_string(),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct InvalidThrustError(String);
+
+impl InvalidThrustError {
+    pub fn get_msg(&self) -> String {
+        self.0.clone()
+    }
+}
+
+impl Error for InvalidThrustError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl std::fmt::Display for InvalidThrustError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid thrust attempted: {}", self.0)
     }
 }
 
@@ -780,6 +904,7 @@ fn int_to_digit(code: u8) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crew::Skills;
     use cgmath::assert_ulps_eq;
 
     #[test]
@@ -844,6 +969,7 @@ mod tests {
             initial_velocity,
             initial_plan.clone(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Test initial values
@@ -1035,6 +1161,7 @@ mod tests {
             initial_velocity,
             initial_plan.clone(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Test case 1: Set a valid flight plan
@@ -1089,6 +1216,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
         let ship2 = Ship::new(
             "ship2".to_string(),
@@ -1096,6 +1224,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
         assert!(ship1 < ship2);
         assert!(ship2 > ship1);
@@ -1157,5 +1286,97 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_set_agility_thrust() {
+        let mut ship = Ship::new(
+            "TestShip".to_string(),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            FlightPlan::default(),
+            Arc::new(ShipDesignTemplate::default()),
+            None,
+        );
+
+        // Test setting a valid agility thrust
+        assert!(ship.set_pilot_actions(Some(1), None).is_ok());
+        assert_eq!(ship.get_dodge_thrust(), 1);
+
+        // Test setting agility thrust to 0
+        assert!(ship.set_pilot_actions(Some(0), None).is_ok());
+        assert_eq!(ship.get_dodge_thrust(), 0);
+
+        // Test setting agility thrust to max acceleration
+        assert!(ship.set_pilot_actions(Some(3), None).is_ok());
+        assert_eq!(ship.get_dodge_thrust(), 3);
+
+        // Test setting agility thrust above max acceleration
+        let result = ship.set_pilot_actions(Some(11), None);
+        assert!(result.is_err());
+        assert_eq!(ship.get_dodge_thrust(), 3); // Should remain unchanged
+
+        // Test that the error returned is of type InvalidAgilityError
+        assert!(matches!(result, Err(InvalidThrustError(_))));
+        let err = result.unwrap_err();
+        assert!(err.source().is_none());
+        assert!(format!("{}", err).contains("Invalid thrust attempted:"));
+
+        // Test resetting agility
+        ship.reset_crew_actions();
+        assert_eq!(ship.get_dodge_thrust(), 0);
+    }
+
+    #[test]
+    fn test_get_crew() {
+        let ship = Ship::new(
+            "TestShip".to_string(),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            FlightPlan::default(),
+            Arc::new(ShipDesignTemplate::default()),
+            Some(Crew::new()),
+        );
+
+        // Test get_crew
+        let crew = ship.get_crew();
+        assert_eq!(crew.get_pilot(), 0);
+        assert_eq!(crew.get_engineering_jump(), 0);
+        assert_eq!(crew.get_engineering_power(), 0);
+        assert_eq!(crew.get_engineering_maneuver(), 0);
+        assert_eq!(crew.get_sensors(), 0);
+        assert_eq!(crew.get_gunnery(0), 0);
+    }
+
+    #[test]
+    fn test_get_crew_mut() {
+        let mut ship = Ship::new(
+            "TestShip".to_string(),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            FlightPlan::default(),
+            Arc::new(ShipDesignTemplate::default()),
+            Some(Crew::new()),
+        );
+
+        // Test get_crew_mut
+        {
+            let crew_mut = ship.get_crew_mut();
+            crew_mut.set_skill(Skills::Pilot, 3);
+            crew_mut.set_skill(Skills::EngineeringJump, 2);
+            crew_mut.set_skill(Skills::EngineeringPower, 1);
+            crew_mut.set_skill(Skills::EngineeringManeuver, 4);
+            crew_mut.set_skill(Skills::Sensors, 5);
+            crew_mut.add_gunnery(2);
+        }
+
+        // Verify changes
+        let crew = ship.get_crew();
+        assert_eq!(crew.get_pilot(), 3);
+        assert_eq!(crew.get_engineering_jump(), 2);
+        assert_eq!(crew.get_engineering_power(), 1);
+        assert_eq!(crew.get_engineering_maneuver(), 4);
+        assert_eq!(crew.get_sensors(), 5);
+        assert_eq!(crew.get_gunnery(0), 2);
     }
 }

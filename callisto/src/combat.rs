@@ -22,6 +22,17 @@ pub fn roll_dice(dice: usize, rng: &mut dyn RngCore) -> u32 {
     (0..dice).map(|_| roll(rng)).sum()
 }
 
+pub fn task_chain_impact(effect: i32) -> i32 {
+    match effect {
+        x if x <= -6 => -3,
+        -5..=-2 => -2,
+        -1 => -1,
+        0 => 1,
+        1..=5 => 2,
+        _ => 3,
+    }
+}
+
 pub fn attack(
     hit_mod: i32,
     damage_mod: i32,
@@ -35,30 +46,47 @@ pub fn attack(
     debug!("(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}", attacker.get_name(), attacker.get_position(), defender.get_name(), defender.get_position(), (defender.get_position() - attacker.get_position()).magnitude(), find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize),RANGE_MOD[find_range_band(
             (defender.get_position() - attacker.get_position()).magnitude() as usize,
         )]);
+
+    let defensive_modifier = if defender.get_dodge_thrust() > 0 {
+        debug!(
+            "(Combat.attack) {} has dodge thrust {}, so defensive modifier is -{}.",
+            defender.get_name(),
+            defender.get_dodge_thrust(),
+            defender.get_crew().get_pilot()
+        );
+        defender.decrement_dodge_thrust();
+        -(defender.get_crew().get_pilot() as i32)
+    } else {
+        0
+    };
+
+    let range_mod = if weapon.kind != WeaponType::Missile {
+        RANGE_MOD[find_range_band(
+            (defender.get_position() - attacker.get_position()).magnitude() as usize,
+        )]
+    } else {
+        0
+    };
+
     debug!(
-        "(Combat.attack) Ship {} attacking with {:?} against {} with hit mod {}, weapon hit mod {}, range mod{}",
+        "(Combat.attack) Ship {} attacking with {:?} against {} with hit mod {}, weapon hit mod {}, range mod {}, defense mod {}",
         attacker_name,
         weapon,
         defender.get_name(),
         hit_mod,
         HIT_WEAPON_MOD[weapon.kind as usize],
-        RANGE_MOD[find_range_band(
-            (defender.get_position() - attacker.get_position()).magnitude() as usize,
-        )]
+        range_mod,
+        defensive_modifier
     );
 
     let roll = roll_dice(2, rng) as i32;
-    let hit_roll = roll
-        + hit_mod
-        + HIT_WEAPON_MOD[weapon.kind as usize]
-        + RANGE_MOD[find_range_band(
-            (defender.get_position() - attacker.get_position()).magnitude() as usize,
-        )];
+    let hit_roll =
+        roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + defensive_modifier;
 
     if hit_roll < STANDARD_ROLL_THRESHOLD {
         debug!(
-            "(Combat.attack) {}'s attack roll is {} ({}) and misses.",
-            attacker_name, hit_roll, roll
+            "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and misses.",
+            attacker_name, roll, hit_roll
         );
         return vec![EffectMsg::message(format!(
             "{}'s {} attack misses {}.",
@@ -69,28 +97,29 @@ pub fn attack(
     }
 
     debug!(
-        "(Combat.attack) {}'s attack roll is {} ({}) and hits {}.",
+        "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and hits {}.",
         attacker_name,
-        hit_roll,
         roll,
+        hit_roll,
         defender.get_name()
     );
 
     // Damage is compute as the weapon dice for the given weapon
     // + the effect of the hit roll
+    let roll = roll_dice(DAMAGE_WEAPON_DICE[weapon.kind as usize] as usize, rng) as i32;
     let mut damage = u32::try_from(
-        roll_dice(DAMAGE_WEAPON_DICE[weapon.kind as usize] as usize, rng) as i32 + hit_roll
-            - STANDARD_ROLL_THRESHOLD
-            - defender.get_current_armor() as i32
+        roll + hit_roll - STANDARD_ROLL_THRESHOLD - defender.get_current_armor() as i32
             + damage_mod,
     )
     .unwrap_or(0);
 
     debug!(
-        "(Combat.attack) {} does {} damage to {}: hit effect {}, defender armor {}",
+        "(Combat.attack) {} does {} damage to {} after rolling {}, adjustment with damage modifier {}, hit effect {}, and defender armor -{}.",
         attacker_name,
         damage,
         defender.get_name(),
+        roll,
+        damage_mod,
         (hit_roll - STANDARD_ROLL_THRESHOLD),
         defender.get_current_armor()
     );
@@ -500,17 +529,45 @@ fn find_range_band(distance: usize) -> usize {
 pub fn do_fire_actions(
     attacker: &Ship,
     ships: &mut HashMap<String, Arc<RwLock<Ship>>>,
-    sand_counts: &mut HashMap<String, u32>,
+    sand_counts: &mut HashMap<String, Vec<i32>>,
     actions: &[FireAction],
     rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
     let mut new_missiles = vec![];
+
+    let assist_bonus = if attacker.get_assist_gunners() {
+        let effect = roll_dice(2, rng) as i32 - STANDARD_ROLL_THRESHOLD
+            + attacker.get_crew().get_pilot() as i32;
+        debug!("(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so result is {}.", attacker.get_name(), attacker.get_crew().get_pilot(), effect, task_chain_impact(effect));
+        task_chain_impact(effect)
+    } else {
+        0
+    };
+
     let effects = actions
         .iter()
         .flat_map(|action| {
-            debug!("(Combat.do_fire_actions) Process fire action {:?}.", action);
+            debug!("(Combat.do_fire_actions) Process fire action for {}: {:?}.", attacker.get_name(), action);
+
+            if !attacker.active_weapons[action.weapon_id as usize] {
+                debug!(
+                    "(Combat.do_fire_actions) Weapon {} is disabled.",
+                    action.weapon_id
+                );
+                return vec![];
+            }
+
+            let weapon = attacker.get_weapon(action.weapon_id);
+            let gunnery_skill = attacker.get_crew().get_gunnery(action.weapon_id as usize) as i32;
+            debug!(
+                "(Combat.do_fire_actions) Gunnery skill for weapon #{} is {}.",
+                action.weapon_id,
+                gunnery_skill
+            );
+
 
             let target = ships.get(&action.target);
+
             if target.is_none() {
                 debug!(
                     "(Combat.do_fire_actions) No such target {} for fire action.",
@@ -521,19 +578,7 @@ pub fn do_fire_actions(
 
             let mut target = target.unwrap().write().unwrap();
 
-            let weapon = attacker.get_weapon(action.weapon_id);
-            debug!("(Combat.do_fire_actions) {:?}.", weapon);
-            debug!(
-                "(Combat.do_fire_actions) active_weapons={:?}.",
-                attacker.active_weapons
-            );
-            if !attacker.active_weapons[action.weapon_id as usize] {
-                debug!(
-                    "(Combat.do_fire_actions) Weapon {} is disabled.",
-                    action.weapon_id
-                );
-                return vec![];
-            }
+            debug!("(Combat.do_fire_actions) {} attacking {} with {:?}.", attacker.get_name(), target.get_name(), weapon);
 
             match weapon.kind {
                 WeaponType::Missile => {
@@ -574,28 +619,32 @@ pub fn do_fire_actions(
                         String::from(&weapon.kind),
                         target.get_name()
                     );
-                    let (sand_mod, mut effects) = match sand_counts.get(target.get_name()) {
-                        Some(sand_count) if *sand_count > 0 => {
-                            sand_counts.insert(target.get_name().to_string(), *sand_count - 1);
-                            let effect = roll_dice(2, rng) as i32 - STANDARD_ROLL_THRESHOLD;
+                    let (sand_mod, mut effects) = match sand_counts.get_mut(target.get_name()) {
+                        Some(sand_casters) if !sand_casters.is_empty() => {
+                            // There is a serious error if after checking if the sand_casters list isn't empty
+                            // it then cannot pop an element. So unwrap() is safe here.
+                            let modifier = sand_casters.pop().unwrap();
+                            let effect = roll_dice(2, rng) as i32 - STANDARD_ROLL_THRESHOLD + modifier;
                             if effect >= 0 {
                                 debug!(
-                                    "(Combat.do_fire_actions) {}'s sand successfully deployed against {} with effect {}.",
+                                    "(Combat.do_fire_actions) {}'s sand (modifier = {})successfully deployed against {} with effect {}.",
                                     target.get_name(),
+                                    modifier,
                                     attacker.get_name(),
                                     effect
                                 );
                                 let sand_mod = effect + roll(rng) as i32;
                                 (sand_mod, vec![EffectMsg::message(format!(
-                                    "{}'s sand successfully deployed against {} with mod {}.",
+                                    "{}'s sand successfully deployed against {} reducing damage by {}.",
                                     target.get_name(),
                                     attacker.get_name(),
                                     sand_mod
                                 ))])
                             } else {
                                 debug!(
-                                    "(Combat.do_fire_actions) {}'s sand failed to deploy against {} with effect {}.",
+                                    "(Combat.do_fire_actions) {}'s sand (modifier = {}) failed to deploy against {} with effect {}.",
                                     target.get_name(),
+                                    modifier,
                                     attacker.get_name(),
                                     effect
                                 );
@@ -617,7 +666,7 @@ pub fn do_fire_actions(
                         }
                     };
 
-                    effects.append(&mut attack(0, -sand_mod, attacker, &mut target, weapon, rng));
+                    effects.append(&mut attack(assist_bonus + gunnery_skill, -sand_mod, attacker, &mut target, weapon, rng));
                     effects
                 }
                 _ => {
@@ -628,7 +677,7 @@ pub fn do_fire_actions(
                         target.get_name()
                     );
 
-                    attack(0, 0, attacker, &mut target, weapon, rng)
+                    attack(assist_bonus + gunnery_skill, 0, attacker, &mut target, weapon, rng)
                 }
             }
         })
@@ -637,7 +686,7 @@ pub fn do_fire_actions(
     (new_missiles, effects)
 }
 
-pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, u32> {
+pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, Vec<i32>> {
     ship_snapshot
         .iter()
         .map(|(name, ship)| {
@@ -647,20 +696,26 @@ pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<Stri
                     .weapons
                     .iter()
                     .enumerate()
-                    .filter(|(index, weapon)| {
-                        weapon.kind == WeaponType::Sand && ship.active_weapons[*index]
+                    .filter_map(|(index, weapon)| {
+                        if weapon.kind == WeaponType::Sand && ship.active_weapons[index] {
+                            match weapon.mount {
+                                WeaponMount::Turret(n) => {
+                                    Some(n as i32 - 1 + ship.get_crew().get_gunnery(index) as i32)
+                                }
+                                WeaponMount::Barbette => {
+                                    error!("Barbette sand mount not supported.");
+                                    None
+                                }
+                                WeaponMount::Bay(_) => {
+                                    error!("Bay sand mount not supported.");
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        }
                     })
-                    .fold(0_u32, |total, (_, weapon)| match weapon.mount {
-                        WeaponMount::Turret(n) => total + n as u32,
-                        WeaponMount::Barbette => {
-                            error!("Barbette sand mount not supported.");
-                            total
-                        }
-                        WeaponMount::Bay(_) => {
-                            error!("Bay sand mount not supported.");
-                            total
-                        }
-                    }),
+                    .collect::<Vec<i32>>(),
             )
         })
         .collect()
@@ -730,6 +785,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(attacker_design),
+            None,
         );
         let target = Ship::new(
             "Target".to_string(),
@@ -737,6 +793,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(target_design),
+            None,
         );
 
         let mut ships = HashMap::new();
@@ -805,6 +862,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Test Hull critical hits
@@ -857,6 +915,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             Arc::new(design),
+            None,
         );
 
         // Test Armor critical hits
@@ -1081,6 +1140,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             attacker_design.clone(),
+            None,
         );
 
         let mut defender = Ship::new(
@@ -1089,6 +1149,7 @@ mod tests {
             Vec3::zero(),
             FlightPlan::default(),
             defender_design.clone(),
+            None,
         );
 
         // Test cases
@@ -1109,24 +1170,25 @@ mod tests {
                 0,
                 WeaponType::Missile,
                 WeaponMount::Bay(BaySize::Medium),
-                true,
+                false,
             ),
             (
                 1,
                 0,
                 WeaponType::Missile,
                 WeaponMount::Bay(BaySize::Large),
-                true,
+                false,
             ),
             (10, 0, WeaponType::Beam, WeaponMount::Turret(1), true), // High hit mod
             (0, 10, WeaponType::Beam, WeaponMount::Turret(1), true), // High damage mod
         ];
 
         for (hit_mod, damage_mod, weapon_type, weapon_mount, should_hit) in test_cases {
+            debug!("\n\n");
             info!("(test.test_attack) Test case: hit_mod {}, damage_mod {}, weapon_type {:?}, weapon_mount {:?}", hit_mod, damage_mod, weapon_type, weapon_mount);
             let weapon = Weapon {
                 kind: weapon_type,
-                mount: weapon_mount,
+                mount: weapon_mount.clone(),
             };
 
             let starting_hull = defender.get_current_hull_points();
@@ -1154,7 +1216,12 @@ mod tests {
                     effects
                         .iter()
                         .any(|e| !matches!(e, EffectMsg::Message { .. })),
-                    "Hit should produce effects"
+                    "Expected hit in test case [hit_mod: {}, damage_mod: {}, weapon_type: {:?}, weapon_mount: {:?}] and should produce effects: {:?}",
+                    hit_mod,
+                    damage_mod,
+                    weapon_type,
+                    weapon_mount,
+                    effects
                 );
             }
             // Check for specific effect types based on weapon type
@@ -1194,6 +1261,7 @@ mod tests {
                 Vec3::zero(),
                 FlightPlan::default(),
                 defender_design.clone(),
+                None,
             );
         }
 
@@ -1247,6 +1315,7 @@ mod tests {
                 Vec3::zero(),
                 FlightPlan::default(),
                 defender_design.clone(),
+                None,
             );
 
             let mut effects = vec![];

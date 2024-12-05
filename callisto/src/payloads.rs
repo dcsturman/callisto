@@ -2,8 +2,9 @@
  * here for completeness.
  */
 use super::computer::FlightPathResult;
+use super::crew::Crew;
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+use serde_with::{serde_as, skip_serializing_none};
 
 use super::entity::Vec3;
 use super::ship::FlightPlan;
@@ -20,6 +21,7 @@ pub struct AuthResponse {
 }
 
 #[serde_as]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AddShipMsg {
     pub name: String,
@@ -30,6 +32,25 @@ pub struct AddShipMsg {
     #[serde_as(as = "Vec3asVec")]
     pub acceleration: Vec3,
     pub design: String,
+    pub crew: Option<Crew>,
+}
+
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetCrewActions {
+    pub ship_name: String,
+    pub dodge_thrust: Option<u8>,
+    pub assist_gunners: Option<bool>,
+}
+
+impl SetCrewActions {
+    pub fn new(ship_name: &str) -> Self {
+        SetCrewActions {
+            ship_name: ship_name.to_string(),
+            dodge_thrust: None,
+            assist_gunners: None,
+        }
+    }
 }
 
 #[serde_as]
@@ -147,6 +168,7 @@ mod tests {
     use crate::ship::ShipDesignTemplate;
 
     use super::*;
+    use crate::crew::Skills;
     use cgmath::Zero;
     use serde_json::json;
 
@@ -160,6 +182,7 @@ mod tests {
             velocity: Vec3::zero(),
             acceleration: Vec3::zero(),
             design: default_template_name.clone(),
+            crew: None,
         };
         let json = json!({
             "name": "ship1",
@@ -167,6 +190,40 @@ mod tests {
             "velocity": [0.0, 0.0, 0.0],
             "acceleration": [0.0, 0.0, 0.0],
             "design": "Buccaneer"
+        });
+
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert_eq!(json_str, json.to_string());
+    }
+
+    #[test]
+    fn test_add_ship_with_crew_msg() {
+        let default_template_name = ShipDesignTemplate::default().name;
+        let mut crew = Crew::new();
+        crew.set_skill(Skills::Pilot, 2);
+        crew.set_skill(Skills::EngineeringJump, 3);
+        let msg = AddShipMsg {
+            name: "ship1".to_string(),
+            position: Vec3::zero(),
+            velocity: Vec3::zero(),
+            acceleration: Vec3::zero(),
+            design: default_template_name.clone(),
+            crew: Some(crew),
+        };
+        let json = json!({
+            "name": "ship1",
+            "position": [0.0, 0.0, 0.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "acceleration": [0.0, 0.0, 0.0],
+            "design": "Buccaneer",
+            "crew": {
+                "pilot": 2,
+                "engineering_jump": 3,
+                "engineering_power": 0,
+                "engineering_maneuver": 0,
+                "sensors": 0,
+                "gunnery": []
+            }
         });
 
         let json_str = serde_json::to_string(&msg).unwrap();

@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
-use crate::combat::attack;
-use crate::combat::{create_sand_counts, do_fire_actions};
+use crate::combat::{attack, create_sand_counts, do_fire_actions};
+use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
@@ -138,6 +138,7 @@ impl Entities {
         velocity: Vec3,
         acceleration: Vec3,
         design: Arc<ShipDesignTemplate>,
+        crew: Option<Crew>,
     ) {
         let ship = Ship::new(
             name.clone(),
@@ -145,6 +146,7 @@ impl Entities {
             velocity,
             FlightPlan::acceleration(acceleration),
             design,
+            crew,
         );
         self.ships.insert(name, Arc::new(RwLock::new(ship)));
     }
@@ -668,6 +670,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Add another ship
@@ -677,6 +680,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Add a planet
@@ -731,6 +735,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         entities.add_ship(
             String::from("Ship2"),
@@ -738,6 +743,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         entities.add_ship(
             String::from("Ship3"),
@@ -745,6 +751,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
 
         assert_eq!(
@@ -794,6 +801,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         entities.add_ship(
             String::from("Ship2"),
@@ -801,6 +809,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         entities.add_ship(
             String::from("Ship3"),
@@ -808,6 +817,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
 
         // Assign random accelerations to entities
@@ -900,6 +910,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         assert!(
             entities.validate(),
@@ -913,6 +924,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         assert!(
             entities.validate(),
@@ -1027,6 +1039,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
 
         entities.add_ship(
@@ -1035,6 +1048,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         entities.launch_missile("Ship1", "Ship2").unwrap();
         // Test 9: Create a missile with no target_ptr
@@ -1328,6 +1342,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         entities.add_ship(
             String::from("Ship2"),
@@ -1335,6 +1350,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
         entities.add_ship(
             String::from("Ship3"),
@@ -1342,6 +1358,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
 
         let cmp = json!({
@@ -1355,7 +1372,10 @@ mod tests {
             "current_fuel":81,
             "current_crew":11,
             "current_sensors": "Improved",
-            "active_weapons": [true, true, true, true]
+            "active_weapons": [true, true, true, true],
+            "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+            "dodge_thrust":0,
+            "assist_gunners":false,
             },
             {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
             "current_hull":160,
@@ -1366,7 +1386,10 @@ mod tests {
             "current_fuel":81,
             "current_crew":11,
             "current_sensors": "Improved",
-            "active_weapons": [true, true, true, true]
+            "active_weapons": [true, true, true, true],
+            "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+            "dodge_thrust":0,
+            "assist_gunners":false,
             },
             {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
             "current_hull":160,
@@ -1377,7 +1400,10 @@ mod tests {
             "current_fuel":81,
             "current_crew":11,
             "current_sensors": "Improved",
-            "active_weapons": [true, true, true, true]
+            "active_weapons": [true, true, true, true],
+            "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+            "dodge_thrust":0,
+            "assist_gunners":false,
             }],
         "missiles":[],
         "planets":[
@@ -1413,6 +1439,7 @@ mod tests {
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
             design.clone(),
+            None,
         );
         entities2.add_ship(
             "Ship1".to_string(),
@@ -1420,6 +1447,7 @@ mod tests {
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
             design.clone(),
+            None,
         );
 
         // Add some planets
@@ -1472,6 +1500,7 @@ mod tests {
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
             design.clone(),
+            None,
         );
         assert_ne!(
             entities1, entities2,
@@ -1485,6 +1514,7 @@ mod tests {
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
             design.clone(),
+            None,
         );
         assert_eq!(entities1, entities2, "Entities should be equal again");
 
@@ -1569,6 +1599,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Test entities with one ship
@@ -1605,6 +1636,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             design.clone(),
+            None,
         );
 
         // Test launching a missile with an invalid target
@@ -1696,6 +1728,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             Arc::new(ShipDesignTemplate::default()),
+            None,
         );
 
         // Create a flight plan

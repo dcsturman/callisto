@@ -137,7 +137,8 @@ async fn integration_add_ship() {
     // Need this only because we are going to deserialize ships.
     callisto::ship::config_test_ship_templates();
 
-    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer"}"#;
+    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer",
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -169,7 +170,10 @@ async fn integration_add_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }],
         "missiles":[],
         "planets":[]});
@@ -187,7 +191,8 @@ async fn integration_add_planet_ship() {
     // Need this only because we are going to deserialize ships.
     callisto::ship::config_test_ship_templates();
 
-    let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer",
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -199,7 +204,8 @@ async fn integration_add_planet_ship() {
         .unwrap();
     assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
 
-    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "design":"Buccaneer",
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
     let response = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
@@ -230,7 +236,10 @@ async fn integration_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -242,7 +251,10 @@ async fn integration_add_planet_ship() {
          "current_fuel":81,
          "current_crew":11,
          "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "dodge_thrust":0,
+         "assist_gunners":false,
         }],
           "missiles":[],
           "planets":[]});
@@ -271,36 +283,44 @@ async fn integration_add_planet_ship() {
     let result = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
 
     let compare = json!({"planets":[
-        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-          "color":"red","radius":1.5e6,"mass":3e24,
-          "gravity_radius_1":4518410.048543495,
-          "gravity_radius_05":6389996.771013086,
-          "gravity_radius_025": 9036820.09708699,
-          "gravity_radius_2": 3194998.385506543}],
-        "missiles":[],
-        "ships":[
-            {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
-             "current_hull":160,
-             "current_armor":5,
-             "current_power":300,
-             "current_maneuver":3,
-             "current_jump":2,
-             "current_fuel":81,
-             "current_crew":11,
-             "current_sensors": "Improved",
-             "active_weapons": [true, true, true, true]},
-            {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
-             "current_hull":160,
-             "current_armor":5,
-             "current_power":300,
-             "current_maneuver":3,
-             "current_jump":2,
-             "current_fuel":81,
-             "current_crew":11,
-             "current_sensors": "Improved",
-             "active_weapons": [true, true, true, true]}]});
+    {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+      "color":"red","radius":1.5e6,"mass":3e24,
+      "gravity_radius_1":4518410.048543495,
+      "gravity_radius_05":6389996.771013086,
+      "gravity_radius_025": 9036820.09708699,
+      "gravity_radius_2": 3194998.385506543}],
+    "missiles":[],
+    "ships":[
+        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "dodge_thrust":0,
+         "assist_gunners":false,
+        },
+        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "current_hull":160,
+         "current_armor":5,
+         "current_power":300,
+         "current_maneuver":3,
+         "current_jump":2,
+         "current_fuel":81,
+         "current_crew":11,
+         "current_sensors": "Improved",
+         "active_weapons": [true, true, true, true],
+         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "dodge_thrust":0,
+         "assist_gunners":false,
+        }]});
 
     assert_json_eq!(result, compare);
 
@@ -325,39 +345,47 @@ async fn integration_add_planet_ship() {
 
     let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
     let compare = json!({"missiles":[],
-        "planets":[
-        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-            "color":"red","radius":1.5e6,"mass":3e24,
-            "gravity_radius_1":4518410.048543495,
-            "gravity_radius_05":6389996.771013086,
-            "gravity_radius_025": 9036820.09708699,
-            "gravity_radius_2": 3194998.385506543},
-        {"name":"planet2","position":[1000000.0,0.0,0.0],"velocity":[0.0,0.0,14148.851543499915],
-            "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
-            "gravity_radius_025":1649890.0717635232}],
-        "ships":[
-        {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
-         "current_hull":160,
-         "current_armor":5,
-         "current_power":300,
-         "current_maneuver":3,
-         "current_jump":2,
-         "current_fuel":81,
-         "current_crew":11,
-         "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]},
-        {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
-         "current_hull":160,
-         "current_armor":5,
-         "current_power":300,
-         "current_maneuver":3,
-         "current_jump":2,
-         "current_fuel":81,
-         "current_crew":11,
-         "current_sensors": "Improved",
-         "active_weapons": [true, true, true, true]}]});
+    "planets":[
+    {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+        "color":"red","radius":1.5e6,"mass":3e24,
+        "gravity_radius_1":4518410.048543495,
+        "gravity_radius_05":6389996.771013086,
+        "gravity_radius_025": 9036820.09708699,
+        "gravity_radius_2": 3194998.385506543},
+    {"name":"planet2","position":[1000000.0,0.0,0.0],"velocity":[0.0,0.0,14148.851543499915],
+        "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+        "gravity_radius_025":1649890.0717635232}],
+    "ships":[
+    {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
+     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+     "current_hull":160,
+     "current_armor":5,
+     "current_power":300,
+     "current_maneuver":3,
+     "current_jump":2,
+     "current_fuel":81,
+     "current_crew":11,
+     "current_sensors": "Improved",
+     "active_weapons": [true, true, true, true],
+     "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+     "dodge_thrust":0,
+     "assist_gunners":false,
+    },
+    {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
+     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+     "current_hull":160,
+     "current_armor":5,
+     "current_power":300,
+     "current_maneuver":3,
+     "current_jump":2,
+     "current_fuel":81,
+     "current_crew":11,
+     "current_sensors": "Improved",
+     "active_weapons": [true, true, true, true],
+     "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+     "dodge_thrust":0,
+     "assist_gunners":false,
+    }]});
 
     assert_json_eq!(&start, &compare);
 }
@@ -489,10 +517,14 @@ async fn integration_update_missile() {
                  "current_fuel":6,
                  "current_crew":13,
                  "current_sensors": "Improved",
-                 "active_weapons": [true, true]},
+                 "active_weapons": [true, true],
+                 "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+                 "dodge_thrust":0,
+                 "assist_gunners":false,
+                },
                 {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
                  "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
-                 "current_hull":82,
+                 "current_hull":83,
                  "current_armor":13,
                  "current_power":240,
                  "current_maneuver":9,
@@ -500,7 +532,11 @@ async fn integration_update_missile() {
                  "current_fuel":6,
                  "current_crew":13,
                  "current_sensors": "Improved",
-                 "active_weapons": [true, true]}],
+                 "active_weapons": [true, true],
+                 "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+                 "dodge_thrust":0,
+                 "assist_gunners":false,
+                }],
                  "missiles":[],"planets":[]});
 
     assert_json_eq!(
