@@ -323,7 +323,7 @@ fn test_update_missile() {
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
-             "current_hull":82,
+             "current_hull":83,
              "current_armor":13,
              "current_power":240,
              "current_maneuver":9,
@@ -732,7 +732,9 @@ fn test_fight_with_crew() {
 
     // Now have that capable crew do something.
     let crew_actions = r#"{"ship_name":"ship1","dodge_thrust":3,"assist_gunners":true}"#;
-    let response = server.set_crew_actions(serde_json::from_str(crew_actions).unwrap()).unwrap();
+    let response = server
+        .set_crew_actions(serde_json::from_str(crew_actions).unwrap())
+        .unwrap();
 
     assert_eq!(response, "Set crew action executed");
 
@@ -765,7 +767,6 @@ fn test_fight_with_crew() {
         {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
         {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
         {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
-        {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
         {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]}
     ]);
     let mut effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
@@ -798,7 +799,7 @@ fn test_fight_with_crew() {
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
-         "current_hull":161,"current_armor":3,
+         "current_hull":169,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
@@ -809,11 +810,11 @@ fn test_fight_with_crew() {
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
-         "current_hull":124,"current_armor":3,
-         "current_power":540,"current_maneuver":6,
-         "current_jump":5,"current_fuel":128,
+         "current_hull":47,"current_armor":3,
+         "current_power":540,"current_maneuver":5,
+         "current_jump":4,"current_fuel":126,
          "current_crew":21,"current_sensors":"Military",
-         "active_weapons":[true,true,true,true],
+         "active_weapons":[true,true,false,false],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
@@ -842,7 +843,9 @@ fn test_slugfest() {
 
     // Destroyer pilot will aid gunners
     let crew_actions = r#"{"ship_name":"Evil Destroyer","assist_gunners":true}"#;
-    let response = server.set_crew_actions(serde_json::from_str(crew_actions).unwrap()).unwrap();
+    let response = server
+        .set_crew_actions(serde_json::from_str(crew_actions).unwrap())
+        .unwrap();
     assert_eq!(response, "Set crew action executed");
 
     let harrier = r#"{"name":"Harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
@@ -905,8 +908,16 @@ fn test_slugfest() {
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     // Should only have 3 ships now as the Harrier should have been destroyed
-    assert_eq!(entities.ships.len(), 3, "Was expecting only 3 ships to surive instead of {}", entities.ships.len());
-    assert!(entities.ships.get("Harrier").is_none(), "Harrier should have been destroyed.");
+    assert_eq!(
+        entities.ships.len(),
+        3,
+        "Was expecting only 3 ships to surive instead of {}",
+        entities.ships.len()
+    );
+    assert!(
+        !entities.ships.contains_key("Harrier"),
+        "Harrier should have been destroyed."
+    );
 }
 
 #[test]

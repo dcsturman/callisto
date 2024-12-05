@@ -48,7 +48,12 @@ pub fn attack(
         )]);
 
     let defensive_modifier = if defender.get_dodge_thrust() > 0 {
-        debug!("(Combat.attack) {} has dodge thrust {}, so defensive modifier is -{}.", attacker_name, defender.get_dodge_thrust(), defender.get_crew().get_pilot());
+        debug!(
+            "(Combat.attack) {} has dodge thrust {}, so defensive modifier is -{}.",
+            defender.get_name(),
+            defender.get_dodge_thrust(),
+            defender.get_crew().get_pilot()
+        );
         defender.decrement_dodge_thrust();
         -(defender.get_crew().get_pilot() as i32)
     } else {
@@ -75,11 +80,8 @@ pub fn attack(
     );
 
     let roll = roll_dice(2, rng) as i32;
-    let hit_roll = roll
-        + hit_mod
-        + HIT_WEAPON_MOD[weapon.kind as usize]
-        + range_mod
-        + defensive_modifier;
+    let hit_roll =
+        roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + defensive_modifier;
 
     if hit_roll < STANDARD_ROLL_THRESHOLD {
         debug!(
@@ -104,9 +106,10 @@ pub fn attack(
 
     // Damage is compute as the weapon dice for the given weapon
     // + the effect of the hit roll
-    let roll = roll_dice(2, rng) as i32;
+    let roll = roll_dice(DAMAGE_WEAPON_DICE[weapon.kind as usize] as usize, rng) as i32;
     let mut damage = u32::try_from(
-        roll + hit_roll - STANDARD_ROLL_THRESHOLD - defender.get_current_armor() as i32 + damage_mod,
+        roll + hit_roll - STANDARD_ROLL_THRESHOLD - defender.get_current_armor() as i32
+            + damage_mod,
     )
     .unwrap_or(0);
 
@@ -1167,24 +1170,25 @@ mod tests {
                 0,
                 WeaponType::Missile,
                 WeaponMount::Bay(BaySize::Medium),
-                true,
+                false,
             ),
             (
                 1,
                 0,
                 WeaponType::Missile,
                 WeaponMount::Bay(BaySize::Large),
-                true,
+                false,
             ),
             (10, 0, WeaponType::Beam, WeaponMount::Turret(1), true), // High hit mod
             (0, 10, WeaponType::Beam, WeaponMount::Turret(1), true), // High damage mod
         ];
 
         for (hit_mod, damage_mod, weapon_type, weapon_mount, should_hit) in test_cases {
+            debug!("\n\n");
             info!("(test.test_attack) Test case: hit_mod {}, damage_mod {}, weapon_type {:?}, weapon_mount {:?}", hit_mod, damage_mod, weapon_type, weapon_mount);
             let weapon = Weapon {
                 kind: weapon_type,
-                mount: weapon_mount,
+                mount: weapon_mount.clone(),
             };
 
             let starting_hull = defender.get_current_hull_points();
@@ -1212,7 +1216,12 @@ mod tests {
                     effects
                         .iter()
                         .any(|e| !matches!(e, EffectMsg::Message { .. })),
-                    "Hit should produce effects"
+                    "Expected hit in test case [hit_mod: {}, damage_mod: {}, weapon_type: {:?}, weapon_mount: {:?}] and should produce effects: {:?}",
+                    hit_mod,
+                    damage_mod,
+                    weapon_type,
+                    weapon_mount,
+                    effects
                 );
             }
             // Check for specific effect types based on weapon type

@@ -6,6 +6,7 @@
   margin: 0;
   padding: 0;
   background-color: black;
+  color-scheme: dark;
 }
 
 body {
@@ -530,7 +531,7 @@ input {
 }
 
 #results-window {
-  overflow: scroll;
+  overflow: auto;
 }
 
 .crew-actions-form-container {
