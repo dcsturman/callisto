@@ -2,11 +2,9 @@
   height: 100%;
   overflow: hidden;
 }
+
 * {
   margin: 0;
-  padding: 0;
-  background-color: black;
-  color-scheme: dark;
 }
 
 body {
@@ -58,6 +56,8 @@ input {
 
 .spaceview-canvas {
   position: absolute;
+  background-color:black;
+  color-scheme: dark;
   z-index: 1;
 }
 
@@ -71,6 +71,8 @@ input {
   flex-shrink: 0;
   flex-basis: 250px;
   border: 1px solid #b6bcae;
+  background-color: black;
+  color-scheme: dark;
   overflow: hidden auto;
 }
 
@@ -81,7 +83,7 @@ input {
   height: 30px;
   border-radius: 5px;
   color: black;
-  background-color: #eeebeb;
+  background-color: whitesmoke;
   border: 1px solid #333;
   font-size: 9pt;
 }
@@ -247,11 +249,12 @@ input {
 }
 .ship-info-window {
   position: fixed;
-  bottom: 0;
+  bottom: 0px;
+  background-color: rgba(0, 0, 0, 0.85);
   right: 0;
   width: 400px;
   border: 3px solid #b6bcae;
-  z-index: 5;
+  z-index: 10;
   color: whitesmoke;
 }
 
@@ -470,7 +473,8 @@ input {
   background-color: transparent
 }
 
-.logout-window {
+.admin-button-window{
+  display: flex;
   position: fixed;
   bottom: 0;
   right: 0px;
@@ -540,4 +544,8 @@ input {
   justify-content: space-between;
   justify-items: left;
   align-items: center;
+}
+
+.tutorial-instruction-text {
+  color: red;
 }

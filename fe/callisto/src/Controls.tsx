@@ -103,6 +103,7 @@ function ShipList(args: {
     <div className="control-launch-div">
       <h2 className="ship-list-label">Ship: </h2>
       <select
+        id="ship-list-dropdown"
         className="select-dropdown control-name-input control-input"
         name="ship_list_choice"
         ref={selectRef}
@@ -291,8 +292,8 @@ function AddShip(args: {
   }
 
   return (
-    <Accordion title="Add Ship" initialOpen={false}>
-    <form className="control-form" onSubmit={handleSubmit}>
+    <Accordion id="add-ship-header" title="Add Ship" initialOpen={false}>
+    <form id="add-ship" className="control-form" onSubmit={handleSubmit}>
       <label className="control-label">
         Name
         <input
@@ -541,7 +542,7 @@ export function Controls(args: {
           />
         )}
       <hr />
-      <Accordion title="Ship's Computer" initialOpen={true}>
+      <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
         <ShipList 
         computerShipName={args.computerShipName}
         setComputerShipName={(ship) => {
@@ -639,7 +640,7 @@ export function Controls(args: {
                 <select
                   className="control-name-input control-input"
                   name="fire_target"
-                  id="fire_target"
+                  id="fire-target"
                   value={fire_target}
                   onChange={(e) => setFireTarget(e.target.value)}>
                   <option key="none" value=""></option>
