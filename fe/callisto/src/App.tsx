@@ -6,13 +6,15 @@ import { FlyControls } from "@react-three/drei";
 import { Authentication, Logout } from "./Authentication";
 import SpaceView from "./Spaceview";
 import { Ships, Missiles, Route } from "./Ships";
-import {
-  EntityInfoWindow,
-  Controls,
-  ViewControls,
-} from "./Controls";
+import { EntityInfoWindow, Controls, ViewControls } from "./Controls";
 import { Effect, Explosions, ResultsWindow } from "./Effects";
-import { nextRound, getEntities, getTemplates, computeFlightPath, CALLISTO_BACKEND } from "./ServerManager";
+import {
+  nextRound,
+  getEntities,
+  getTemplates,
+  computeFlightPath,
+  CALLISTO_BACKEND,
+} from "./ServerManager";
 
 import { ShipComputer } from "./ShipComputer";
 
@@ -27,23 +29,43 @@ import {
 } from "./Universal";
 
 import "./index.css";
+import { RunTutorial, Tutorial } from "./Tutorial";
 
 const POLL_ENTITIES_INTERVAL = 0;
 
 function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [runTutorial, setRunTutorial] = useState(true);
+  const [computerShipName, setComputerShipName] = useState<string | null>(null);
+
   if (process.env.REACT_APP_C_BACKEND) {
-    console.log("REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND);
+    console.log(
+      "REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND
+    );
   } else {
     console.log("REACT_APP_C_BACKEND is not set.");
     console.log("ENV is set to: " + JSON.stringify(process.env));
   }
   console.log(`Connecting to Callisto backend at ${CALLISTO_BACKEND}`);
   return (
-    <div >
-      {authToken ? (<>
-        <Simulator token={authToken} setToken={setAuthToken} email={email} setEmail={setEmail} />
+    <div>
+      {authToken ? (
+        <>
+          <Tutorial
+            runTutorial={runTutorial}
+            setRunTutorial={setRunTutorial}
+            selectAShip={() => setComputerShipName("Killer")}
+          />
+          <Simulator
+            token={authToken}
+            setToken={setAuthToken}
+            email={email}
+            setEmail={setEmail}
+            restartTutorial={() => setRunTutorial(true)}
+            computerShipName={computerShipName}
+            setComputerShipName={setComputerShipName}
+          />
         </>
       ) : (
         <Authentication setAuthToken={setAuthToken} setEmail={setEmail} />
@@ -52,14 +74,29 @@ function App() {
   );
 }
 
-function Simulator(args: { token: string, setToken: (token: string | null) => void, email: string | null, setEmail: (email: string | null) => void }) {
+function Simulator({
+  token,
+  setToken,
+  email,
+  setEmail,
+  restartTutorial,
+  computerShipName,
+  setComputerShipName,
+}: {
+  token: string;
+  setToken: (token: string | null) => void;
+  email: string | null;
+  setEmail: (email: string | null) => void;
+  restartTutorial: () => void;
+  computerShipName: string | null;
+  setComputerShipName: (ship: string | null) => void;
+}) {
   const [entities, setEntities] = useState<EntityList>({
     ships: [],
     planets: [],
     missiles: [],
   });
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
-  const [computerShipName, setComputerShipName] = useState<string | null>(null);
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(
     null
   );
@@ -71,7 +108,7 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
   const [camera, setCamera] = useState<THREE.Camera | null>(null);
   const [viewControls, setViewControls] = useState<ViewControlParams>({
     gravityWells: false,
-    jumpDistance: false
+    jumpDistance: false,
   });
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
   const [showRange, setShowRange] = useState<string | null>(null);
@@ -79,11 +116,11 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
   useEffect(() => {
     if (POLL_ENTITIES_INTERVAL > 0) {
       const interval = setInterval(() => {
-        getEntities(setEntities, args.token, args.setToken);
+        getEntities(setEntities, token, setToken);
       }, POLL_ENTITIES_INTERVAL);
       return () => clearInterval(interval);
     }
-  }, [entities, args.token, args.setToken]);
+  }, [entities, token, setToken]);
 
   const getAndShowPlan = (
     entity_name: string | null,
@@ -99,8 +136,8 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
       setProposedPlan,
       target_vel,
       standoff,
-      args.token,
-      args.setToken
+      token,
+      setToken
     );
   };
 
@@ -123,9 +160,9 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
   }
 
   useEffect(() => {
-    getTemplates(setTemplates, args.token, args.setToken);
-    getEntities(setEntities, args.token, args.setToken);
-  }, [args.token, args.setToken]);
+    getTemplates(setTemplates, token, setToken);
+    getEntities(setEntities, token, setToken);
+  }, [token, setToken]);
 
   useEffect(() => {
     window.addEventListener("keydown", downHandler);
@@ -148,10 +185,16 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
           <div className="mainscreen-container">
             <Controls
               nextRound={(fireActions, callback) =>
-                nextRound(fireActions, setEvents, (es: EntityList) => {
-                  setShowResults(true);
-                  callback(es);
-                }, args.token, args.setToken)
+                nextRound(
+                  fireActions,
+                  setEvents,
+                  (es: EntityList) => {
+                    setShowResults(true);
+                    callback(es);
+                  },
+                  token,
+                  setToken
+                )
               }
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
@@ -159,8 +202,8 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
               getAndShowPlan={getAndShowPlan}
               setCameraPos={setCameraPos}
               camera={camera}
-              token={args.token}
-              setToken={args.setToken}
+              token={token}
+              setToken={setToken}
               showRange={showRange}
               setShowRange={setShowRange}
             />
@@ -169,11 +212,14 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
                 viewControls={viewControls}
                 setViewControls={setViewControls}
               />
-              <Logout
-                setAuthToken={args.setToken}
-                email={args.email}
-                setEmail={args.setEmail}
-              />
+              <div className="admin-button-window">
+                <RunTutorial restartTutorial={restartTutorial} />
+                <Logout
+                  setAuthToken={setToken}
+                  email={email}
+                  setEmail={setEmail}
+                />
+              </div>
               {computerShipName && (
                 <ShipComputer
                   shipName={computerShipName}
@@ -181,8 +227,8 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
-                  token={args.token}
-                  setToken={args.setToken}
+                  token={token}
+                  setToken={setToken}
                 />
               )}
               {showResults && (
@@ -220,8 +266,14 @@ function Simulator(args: { token: string, setToken: (token: string | null) => vo
                   setCameraPos={setCameraPos}
                   setCamera={setCamera}
                 />
-                <SpaceView controlGravityWell={viewControls.gravityWells} controlJumpDistance={viewControls.jumpDistance} />
-                <Ships setComputerShipName={setComputerShipName} showRange={showRange} />
+                <SpaceView
+                  controlGravityWell={viewControls.gravityWells}
+                  controlJumpDistance={viewControls.jumpDistance}
+                />
+                <Ships
+                  setComputerShipName={setComputerShipName}
+                  showRange={showRange}
+                />
                 <Missiles />
                 {events && events.length > 0 && (
                   <Explosions effects={events} setEffects={setEvents} />

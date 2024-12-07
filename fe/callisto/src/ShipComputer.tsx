@@ -309,7 +309,7 @@ export function ShipComputer(args: {
     return (
       <>
         <h2 className="control-form">Crew Actions</h2>
-        <form className="control-form" onSubmit={handleSubmit}>
+        <form id="crew-actions-form" className="control-form" onSubmit={handleSubmit}>
           <div className="crew-actions-form-container">
           <label className="control-label" >          
               Dodge
