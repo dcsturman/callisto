@@ -10,8 +10,8 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg,
-    SetCrewActions, SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, FireActionsMsg, LoginMsg,
+    RemoveEntityMsg, SetCrewActions, SetPlanMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -35,44 +35,54 @@ impl Server {
     pub async fn login(
         &self,
         login: LoginMsg,
+        valid_email: &Option<String>,
         authenticator: Arc<Option<Authenticator>>,
-    ) -> Result<String, String> {
+    ) -> Result<(String, Option<String>), String> {
         info!(
             "(Server.login) Received and processing login request. {:?}",
             &login
         );
 
-        let code = login.code;
-
+        // Authenticator can only legally be None if we are in test mode.
         if authenticator.is_none() {
             let test_auth_response = crate::payloads::AuthResponse {
                 email: "test@test.com".to_string(),
-                key: "test_key".to_string(),
             };
-            return Ok(serde_json::to_string(&test_auth_response).unwrap());
+            return Ok((serde_json::to_string(&test_auth_response).unwrap(), None));
         }
 
-        // This is a bit weird so explaining:
-        // First as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
-        // is for the Option.
-        let authenticator = authenticator.as_ref().as_ref().unwrap();
+        // Three cases. 1) if there's a valid email, just let the client know what it is.
+        // 2) If there is a code then we do authentication via Google OAuth2.
+        // 3) this isn't authenticated and we need to force reauthentication.  We do that
+        // by returning an error and eventually a 401 to the client.
+        if let Some(email) = valid_email {
+            let auth_response = AuthResponse {
+                email: email.clone(),
+            };
+            Ok((serde_json::to_string(&auth_response).unwrap(), None))
+        } else if let Some(code) = login.code {
+            // This is a bit weird so explaining:
+            // First as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
+            // is for the Option.
+            let authenticator = authenticator.as_ref().as_ref().unwrap();
 
-        let (session_key, email) = authenticator
-            .authenticate_google_user(&code)
-            .await
-            .unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
-        debug!(
-            "(Server.login) Authenticated user {} with session key  {}.",
-            email, session_key
-        );
+            let (session_key, email) = authenticator
+                .authenticate_google_user(&code)
+                .await
+                .unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
+            debug!(
+                "(Server.login) Authenticated user {} with session key  {}.",
+                email, session_key
+            );
 
-        let auth_response = crate::payloads::AuthResponse {
-            email,
-            key: session_key,
-        };
-        Ok(serde_json::to_string(&auth_response).unwrap_or_else(|e| {
-            panic!("(Server.login) Unable to serialize auth response: {:?}", e)
-        }))
+            let auth_response = AuthResponse { email };
+            Ok((
+                serde_json::to_string(&auth_response).unwrap(),
+                Some(session_key),
+            ))
+        } else {
+            Err("Must reauthenticate.".to_string())
+        }
     }
 
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {

@@ -20,11 +20,16 @@ extern crate pretty_env_logger;
 
 use std::sync::{Arc, Mutex};
 
+use headers::{
+    AccessControlAllowCredentials, AccessControlAllowHeaders, AccessControlAllowMethods,
+    AccessControlAllowOrigin, Cookie, HeaderMapExt,
+};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use hyper::body::{Body, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 use serde_json::from_slice;
+use std::convert::TryFrom;
 
 use entity::Entities;
 use payloads::{
@@ -47,23 +52,26 @@ impl From<hyper::Error> for SizeCheckError {
 
 fn build_ok_response(body: &str) -> Response<Full<Bytes>> {
     let msg = Bytes::copy_from_slice(format!("{{ \"msg\" : \"{body}\" }}").as_bytes());
-    let resp = Response::builder()
+
+    let mut resp = Response::builder()
         .status(StatusCode::OK)
-        .header("Access-Control-Allow-Origin", "*")
         .body(msg.into())
         .unwrap();
+
+    let allow_origin = AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
+    let allow_credentials = AccessControlAllowCredentials;
+    resp.headers_mut().typed_insert(allow_origin);
+    resp.headers_mut().typed_insert(allow_credentials);
 
     resp.clone()
 }
 
 fn build_err_response(status: StatusCode, body: &str) -> Response<Full<Bytes>> {
     let msg = Bytes::copy_from_slice(format!("{{ \"msg\" : \"{body}\" }}").as_bytes());
-    let resp = Response::builder()
-        .status(status)
-        .header("Access-Control-Allow-Origin", "*")
-        .body(msg.into())
-        .unwrap();
+    let mut resp = Response::builder().status(status).body(msg.into()).unwrap();
 
+    let allow_origin = AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
+    resp.headers_mut().typed_insert(allow_origin);
     resp.clone()
 }
 
@@ -125,32 +133,42 @@ pub async fn handle_request(
         authenticator.is_some()
     );
 
-    // Check authorization (session key) except in a few very specific cases.  We call that out
-    // here as its easier to see what we aren't authenticating.
-    if !(test_mode || req.method() == Method::OPTIONS || req.uri().path() == "/login") {
-        match authenticator
-            .clone()
-            .as_ref()
-            .as_ref()
-            .unwrap()
-            .check_authorization(&req)
-            .await
-        {
-            Ok(email) => {
-                debug!("(lib.handleRequest) User {} authorized.", email);
-            }
-            Err((status, msg)) => {
-                warn!(
-                    "(lib.handleRequest) User not authorized with status {} and message {}.",
-                    status, msg
-                );
-                //
-                return Ok(Response::builder()
-                    .status(status)
-                    .body(Bytes::copy_from_slice(msg.as_bytes()).into())
-                    .unwrap());
-            }
-        }
+    // See if we have a proper session authorization cookie and from that generate a valid email.
+    // This is a chain of events all of which have to be okay.
+    // We need to have a cookie in the headers; then that cookie needs to be a callisto session key, and then it has to be one we know about it in our local table.
+    // In the end though we just need to know if we have it or not.
+    let valid_email = req
+        .headers()
+        .typed_get::<Cookie>()
+        .and_then(|cookies| {
+            cookies
+                .get("callisto-session-key")
+                .map(|cookie| cookie.to_string())
+        })
+        .and_then(|cookie| {
+            // A bit unusual but the first .as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
+            // gets a reference to the Authenticator in the Option.
+            authenticator
+                .clone()
+                .as_ref()
+                .as_ref()
+                .unwrap()
+                .validate_session_key(&cookie)
+                .ok()
+        });
+
+    // If we don't have a valid email, we reply with an Authorization error to the client.
+    // The exceptions to doing that are 1) if we're in test mode (not authenticating),
+    // and 2) if we're doing an OPTIONS request (to get CORS headers) and 3) if we're doing a login request.  Login will
+    // have its own custom logic to test here.
+    if valid_email.is_none()
+        && !(test_mode || req.method() == Method::OPTIONS || req.uri().path() == "/login")
+    {
+        debug!("(lib.handleRequest) No valid email.  Returning 401.");
+        return Ok(Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Bytes::copy_from_slice("Unauthorized".as_bytes()).into())
+            .unwrap());
     } else if test_mode {
         warn!("(lib.handleRequest) Server in test mode.  All users authorized.");
     } else {
@@ -166,39 +184,74 @@ pub async fn handle_request(
                 curious
             );
             let mut resp = Response::new("".as_bytes().into());
-            resp.headers_mut()
-                .insert("Access-Control-Allow-Origin", "*".parse().unwrap());
-            resp.headers_mut().insert(
-                "Access-Control-Allow-Methods",
-                "POST, GET, OPTIONS".parse().unwrap(),
-            );
-            resp.headers_mut().insert(
-                "Access-Control-Allow-Headers",
-                "Content-Type, Authorization".parse().unwrap(),
-            );
+            let allow_origin =
+                AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
+            let allow_credentials = AccessControlAllowCredentials;
+            let allow_methods = vec![
+                hyper::http::Method::POST,
+                hyper::http::Method::GET,
+                hyper::http::Method::OPTIONS,
+            ]
+            .into_iter()
+            .collect::<AccessControlAllowMethods>();
+            let allow_headers = vec![
+                hyper::http::header::CONTENT_TYPE,
+                hyper::http::header::AUTHORIZATION,
+                hyper::http::header::COOKIE,
+                hyper::http::header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+            ]
+            .into_iter()
+            .collect::<AccessControlAllowHeaders>();
+
+            resp.headers_mut().typed_insert(allow_origin);
+            resp.headers_mut().typed_insert(allow_credentials);
+            resp.headers_mut().typed_insert(allow_methods);
+            resp.headers_mut().typed_insert(allow_headers);
+
             Ok(resp)
         }
         (&Method::POST, "/login") => {
             let login_msg = deserialize_body_or_respond!(req, LoginMsg);
 
-            match server.login(login_msg, authenticator).await {
-                Ok(msg) => {
+            match server.login(login_msg, &valid_email, authenticator).await {
+                Ok((msg, session_key)) => {
                     debug!(
-                        "(lib.handleRequest/login) Received and processing login request. {:?}",
+                        "(lib.handleRequest/login) Login request successful for user: {:?}",
                         msg
                     );
-                    let resp = Response::builder()
+                    let mut resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(Bytes::copy_from_slice(msg.as_bytes()).into())
+                        .body(
+                            Bytes::copy_from_slice(serde_json::to_string(&msg).unwrap().as_bytes())
+                                .into(),
+                        )
                         .unwrap();
+
+                    let allow_origin =
+                        AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
+                    let allow_credentials = AccessControlAllowCredentials;
+                    resp.headers_mut().typed_insert(allow_origin);
+                    resp.headers_mut().typed_insert(allow_credentials);
+
+                    // Add the set-cookie header only when we didn't have a valid cookie before.
+                    if valid_email.is_none() && session_key.is_some() {
+                        // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
+                        let cookie_str = format!(
+                            "{}={}; HttpOnly; Secure",
+                            "callisto-session-key",
+                            session_key.unwrap()
+                        );
+
+                        resp.headers_mut()
+                            .append("Set-Cookie", cookie_str.parse().unwrap());
+                    }
                     Ok(resp)
                 }
                 Err(err) => {
-                    // When authentication via Google fails, we return UNAUTHORIZED.
-                    // May want to consider a special case for a TokenTimeoutError but the only way that
-                    // could really happen is if something is very wrong at Google or a stale auth code
-                    // was delivered later (and that would imply an attack).
+                    // A few cases where we can end up here.
+                    // 1) When authentication via Google fails
+                    // 2) When a client first loads and it doesn't know if it has a valid session key.
+                    // 3) If the cookie times out and needs to be refreshed.
                     warn!(
                         "(lib.handleRequest/login) Error logging in so returning UNAUTHORIZED: {}",
                         err
@@ -264,7 +317,8 @@ pub async fn handle_request(
                 Ok(msg) => {
                     let resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
+                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(msg.as_bytes()).into())
                         .unwrap();
                     Ok(resp)
@@ -280,7 +334,8 @@ pub async fn handle_request(
                 Ok(json) => {
                     let resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
+                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(json.as_bytes()).into())
                         .unwrap();
                     Ok(resp)
@@ -295,7 +350,8 @@ pub async fn handle_request(
                 Ok(json) => {
                     let resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
+                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(json.as_bytes()).into())
                         .unwrap();
                     Ok(resp)
@@ -310,7 +366,8 @@ pub async fn handle_request(
                 Ok(json) => {
                     let resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
+                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(json.as_bytes()).into())
                         .unwrap();
                     Ok(resp)

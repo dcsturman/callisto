@@ -2,6 +2,7 @@ use base64::{engine::general_purpose, Engine as _};
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::download::Range;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
+use headers::{Cookie, HeaderMapExt};
 use hyper::body::Incoming;
 use hyper::Request;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
@@ -166,8 +167,8 @@ impl Authenticator {
         // Then return the session key and the email.
 
         // Generate a cryptographically secure session key.
-        let mut session_key: String = "Bearer ".to_string();
-
+        //let mut session_key: String = "Bearer ".to_string();
+        let mut session_key: String = "".to_string();
         session_key.push_str(
             &general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()),
         );
@@ -185,6 +186,10 @@ impl Authenticator {
         Ok((session_key, email))
     }
 
+    // Given a session key, make sure we have it in our table and thus
+    // there is a corresponding email address.  Lack of an entry
+    // means this cookie is old or made up.
+    // Return Ok(the email address) or an InvalidKeyError.
     pub fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
         if let Some(email) = self.session_keys.read().unwrap().get(session_key) {
             Ok(email.to_string())
@@ -197,44 +202,38 @@ impl Authenticator {
         &self,
         req: &Request<Incoming>,
     ) -> Result<String, (hyper::StatusCode, String)> {
-        let auth_header = req.headers().get("Authorization");
-        debug!("(Authenticator.check_authorization) Authorization header found.",);
+        if let Some(cookies) = req.headers().typed_get::<Cookie>() {
+            match cookies.get("callisto-session-key") {
+                Some(cookie) => {
+                    debug!(
+                        "(Authenticator.check_authorization) Found session key cookie: {:?}",
+                        cookie
+                    );
 
-        // Need to check if email address is valid and if it on our list of accepted users
-        match auth_header {
-            Some(header) => {
-                let token = header.to_str().unwrap();
-                let valid = self.validate_session_key(token);
-
-                match valid {
-                    Ok(email) => {
-                        if self.authorized_users.contains(&email) {
-                            Ok(email)
-                        } else {
-                            Err((
-                                hyper::StatusCode::FORBIDDEN,
-                                "Unauthorized user".to_string(),
-                            ))
-                        }
-                    }
-                    Err(e) => {
+                    self.validate_session_key(cookie).map_err(|e| {
                         error!(
                             "(Authenticator.check_authorization) Invalid session key: {:?}",
                             e
                         );
-                        Err((
+                        (
                             hyper::StatusCode::UNAUTHORIZED,
                             "Invalid session key".to_string(),
-                        ))
-                    }
+                        )
+                    })
                 }
+                None => Err((
+                    hyper::StatusCode::UNAUTHORIZED,
+                    "No session key cookie".to_string(),
+                )),
             }
-            None => Err((
+        } else {
+            Err((
                 hyper::StatusCode::UNAUTHORIZED,
-                "No Authorization header".to_string(),
-            )),
+                "No session key cookie".to_string(),
+            ))
         }
     }
+
     pub async fn fetch_google_public_keys(&mut self) {
         // Fetch Google's public keys
         let client = reqwest::Client::new();

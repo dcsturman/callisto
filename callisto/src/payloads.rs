@@ -9,15 +9,15 @@ use serde_with::{serde_as, skip_serializing_none};
 use super::entity::Vec3;
 use super::ship::FlightPlan;
 
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LoginMsg {
-    pub code: String,
+    pub code: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AuthResponse {
     pub email: String,
-    pub key: String,
 }
 
 #[serde_as]
