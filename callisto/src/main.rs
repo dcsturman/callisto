@@ -39,6 +39,7 @@ struct Args {
     test: bool,
 
     // Name of the web server hosting the react app.
+    // Must be used correct to make CORS work.
     #[arg(short, long, default_value = "http://localhost:50001")]
     web_server: String,
 
@@ -89,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             &args.web_server,
             args.secret,
             args.gcs_bucket.clone(),
+            args.web_server.clone(),
         )
         .await;
         debug!("(main) Get Google public keys.");

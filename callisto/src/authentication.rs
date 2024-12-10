@@ -30,10 +30,16 @@ pub struct Authenticator {
     authorized_users: Vec<String>,
     node_server_url: String,
     public_keys: Option<GooglePublicKeys>,
+    web_server: String,
 }
 
 impl Authenticator {
-    pub async fn new(url: &str, secret: String, gcs_bucket: Option<String>) -> Self {
+    pub async fn new(
+        url: &str,
+        secret: String,
+        gcs_bucket: Option<String>,
+        web_server: String,
+    ) -> Self {
         let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
             panic!(
                 "Error {:?} loading Google credentials file {}",
@@ -50,7 +56,12 @@ impl Authenticator {
             authorized_users,
             node_server_url: url.to_string(),
             public_keys: None,
+            web_server,
         }
+    }
+
+    pub fn get_web_server(&self) -> String {
+        self.web_server.clone()
     }
 
     pub async fn authenticate_google_user(

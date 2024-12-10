@@ -19,6 +19,17 @@ type AuthResponse = {
   key: string;
 };
 
+// Standard headers for all fetch calls
+const standard_headers: RequestInit = {
+  method: "GET",
+  credentials: "include",
+  mode: "cors",
+  headers: {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Credentials": "true",
+  },
+};
+
 async function validate_response(
   response: Response,
   setAuthenticated: (authenticated: boolean) => void,
@@ -58,7 +69,10 @@ function handle_network_error(
   setAuthenticated: (authenticated: boolean) => void,
 ) {
   setAuthenticated(false);
+  console.group("(ServerManager.handle_network_error) Network Error");
   console.error("(ServerManager.handle_network_error) Network Error: " + error);
+  console.error(error.stack);
+  console.groupEnd();
   alert(`Network Error: (Status ${error.status}) ${error.message}`);
 }
 
@@ -83,15 +97,13 @@ export function login(
   setEmail: (email: string) => void,
   setAuthenticated: (authenticated: boolean) => void
 ) {
-  fetch(`${CALLISTO_BACKEND}/login`, {
+  let fetch_params = {
+    ...standard_headers,
     method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
     body: JSON.stringify({ code: code }),
-  })
+  };
+
+  fetch(`${CALLISTO_BACKEND}/login`, fetch_params)
     .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.text())
     .then((body) => JSON.parse(body) as AuthResponse)
@@ -126,13 +138,8 @@ export function addShip(
   };
 
   fetch(`${CALLISTO_BACKEND}/add_ship`, {
+    ...standard_headers,
     method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
     .then((response) => validate_response(response, setAuthenticated))
@@ -157,13 +164,8 @@ export function setCrewActions(
   setAuthenticated: (authenticated: boolean) => void
 ) {
   fetch(`${CALLISTO_BACKEND}/set_crew_actions`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
-    mode: "cors",
+    ...standard_headers,
+    method: "POST",    
     body: JSON.stringify({ ship_name: target, dodge_thrust: dodge, assist_gunners: assist_gunners }),
   })
     .then((response) => validate_response(response, setAuthenticated))
@@ -186,13 +188,8 @@ export function removeEntity(
   setAuthenticated: (authenticated: boolean) => void
 ) {
   fetch(`${CALLISTO_BACKEND}/remove`, {
+    ...standard_headers,
     method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
-    mode: "cors",
     body: JSON.stringify(target),
   })
     .then((response) => validate_response(response, setAuthenticated))
@@ -227,13 +224,8 @@ export async function setPlan(
   let payload = { name: target, plan: plan_arr };
 
   fetch(`${CALLISTO_BACKEND}/set_plan`, {
+    ...standard_headers,
     method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
     .then((response) => validate_response(response, setAuthenticated))
@@ -259,14 +251,9 @@ export function nextRound(
   setAuthenticated: (authenticated: boolean) => void
 ) {
   fetch(`${CALLISTO_BACKEND}/update`, {
+    ...standard_headers,
     method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
     body: JSON.stringify(Object.entries(fireActions)),
-    mode: "cors",
   })
     .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
@@ -305,13 +292,8 @@ export function computeFlightPath(
   };
 
   fetch(`${CALLISTO_BACKEND}/compute_path`, {
+    ...standard_headers,
     method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
     .then((response) => validate_response(response, setAuthenticated))
@@ -340,13 +322,8 @@ export function launchMissile(
   };
 
   fetch(`${CALLISTO_BACKEND}/launch_missile`, {
+    ...standard_headers,
     method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Credentials": "true",
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
     .then((response) => validate_response(response, setAuthenticated))
@@ -368,11 +345,7 @@ export function getEntities(
   setAuthenticated: (authenticated: boolean) => void
 ) {
   return fetch(`${CALLISTO_BACKEND}/entities`, {
-    credentials: "include",
-    mode: "cors",
-    headers: {
-      "Access-Control-Allow-Credentials": "true",
-    },
+    ...standard_headers,
   })
     .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
@@ -383,6 +356,7 @@ export function getEntities(
     })
     .catch((error) => {
       if (error instanceof NetworkError || error instanceof TypeError) {
+        // It seems that 401's get turned into TypeErrors vs a network error?
         if (error instanceof TypeError) {
           error = new NetworkError(0, error.message);
         }
@@ -400,12 +374,7 @@ export async function getTemplates(
   setAuthenticated: (authenticated: boolean) => void
 ) {
   return fetch(`${CALLISTO_BACKEND}/designs`, {
-    method: "GET",
-    credentials: "include",
-    mode: "cors",
-    headers: {
-      "Access-Control-Allow-Credentials": "true",
-    }
+    ...standard_headers,
   })
     .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
@@ -427,19 +396,15 @@ export async function getTemplates(
       callBack(templates);
     })
     .catch((error) => {
-      console.log("***************** (ServerManager.getTemplates) Error: " + error);
-      if (error instanceof NetworkError) {
-        console.log("A");
+      if (error instanceof NetworkError || error instanceof TypeError) {
+        if (error instanceof TypeError) {
+          // It seems that 401's get turned into TypeErrors vs a network error?
+          error = new NetworkError(0, error.message);
+        }
         handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
-        console.log("B");
         alert(error.message);
-      } else if (error instanceof TypeError) {
-        console.log("D");
-        alert("Type Error: (Status 0) " + error.message);
-        handle_network_error(new NetworkError(0, error.message), setAuthenticated);
       } else {
-        console.log("C");
         throw error;
       }
     });

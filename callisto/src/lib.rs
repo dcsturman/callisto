@@ -50,28 +50,41 @@ impl From<hyper::Error> for SizeCheckError {
     }
 }
 
-fn build_ok_response(body: &str) -> Response<Full<Bytes>> {
-    let msg = Bytes::copy_from_slice(format!("{{ \"msg\" : \"{body}\" }}").as_bytes());
+// Add the standard authention errors to a response.
+// We use these all over the place so adding to this util function so there is one
+// place to check and modify these.
+fn add_auth_headers(resp: &mut Response<Full<Bytes>>, web_backend: &Option<String>) {
+    if let Some(web_backend) = web_backend {
+        let allow_origin = AccessControlAllowOrigin::try_from(web_backend.as_str()).unwrap();
+        resp.headers_mut().typed_insert(allow_origin);
+    }
+    let allow_credentials = AccessControlAllowCredentials;
+
+    resp.headers_mut().typed_insert(allow_credentials);
+}
+
+fn build_ok_response(body: &str, web_backend: &Option<String>) -> Response<Full<Bytes>> {
+    let msg = Bytes::copy_from_slice(body.as_bytes());
 
     let mut resp = Response::builder()
         .status(StatusCode::OK)
         .body(msg.into())
         .unwrap();
 
-    let allow_origin = AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
-    let allow_credentials = AccessControlAllowCredentials;
-    resp.headers_mut().typed_insert(allow_origin);
-    resp.headers_mut().typed_insert(allow_credentials);
+    add_auth_headers(&mut resp, web_backend);
 
     resp.clone()
 }
 
-fn build_err_response(status: StatusCode, body: &str) -> Response<Full<Bytes>> {
+fn build_err_response(
+    status: StatusCode,
+    body: &str,
+    web_backend: &Option<String>,
+) -> Response<Full<Bytes>> {
     let msg = Bytes::copy_from_slice(format!("{{ \"msg\" : \"{body}\" }}").as_bytes());
     let mut resp = Response::builder().status(status).body(msg.into()).unwrap();
 
-    let allow_origin = AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
-    resp.headers_mut().typed_insert(allow_origin);
+    add_auth_headers(&mut resp, web_backend);
     resp.clone()
 }
 
@@ -176,6 +189,10 @@ pub async fn handle_request(
     }
 
     let mut server = Server::new(entities, test_mode);
+    let web_server = authenticator
+        .as_ref()
+        .as_ref()
+        .and_then(|auth| Some(auth.get_web_server()));
 
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, curious) => {
@@ -184,9 +201,7 @@ pub async fn handle_request(
                 curious
             );
             let mut resp = Response::new("".as_bytes().into());
-            let allow_origin =
-                AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
-            let allow_credentials = AccessControlAllowCredentials;
+            add_auth_headers(&mut resp, &web_server);
             let allow_methods = vec![
                 hyper::http::Method::POST,
                 hyper::http::Method::GET,
@@ -203,8 +218,6 @@ pub async fn handle_request(
             .into_iter()
             .collect::<AccessControlAllowHeaders>();
 
-            resp.headers_mut().typed_insert(allow_origin);
-            resp.headers_mut().typed_insert(allow_credentials);
             resp.headers_mut().typed_insert(allow_methods);
             resp.headers_mut().typed_insert(allow_headers);
 
@@ -219,20 +232,8 @@ pub async fn handle_request(
                         "(lib.handleRequest/login) Login request successful for user: {:?}",
                         msg
                     );
-                    let mut resp = Response::builder()
-                        .status(StatusCode::OK)
-                        .body(
-                            Bytes::copy_from_slice(serde_json::to_string(&msg).unwrap().as_bytes())
-                                .into(),
-                        )
-                        .unwrap();
 
-                    let allow_origin =
-                        AccessControlAllowOrigin::try_from("http://localhost:50001").unwrap();
-                    let allow_credentials = AccessControlAllowCredentials;
-                    resp.headers_mut().typed_insert(allow_origin);
-                    resp.headers_mut().typed_insert(allow_credentials);
-
+                    let mut resp = build_ok_response(&msg, &web_server);
                     // Add the set-cookie header only when we didn't have a valid cookie before.
                     if valid_email.is_none() && session_key.is_some() {
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
@@ -256,7 +257,11 @@ pub async fn handle_request(
                         "(lib.handleRequest/login) Error logging in so returning UNAUTHORIZED: {}",
                         err
                     );
-                    Ok(build_err_response(StatusCode::UNAUTHORIZED, &err))
+                    Ok(build_err_response(
+                        StatusCode::UNAUTHORIZED,
+                        &err,
+                        &web_server,
+                    ))
                 }
             }
         }
@@ -264,24 +269,36 @@ pub async fn handle_request(
             let ship = deserialize_body_or_respond!(req, AddShipMsg);
 
             match server.add_ship(ship) {
-                Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
         (&Method::POST, "/set_crew_actions") => {
             let request = deserialize_body_or_respond!(req, SetCrewActions);
 
             match server.set_crew_actions(request) {
-                Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
         (&Method::POST, "/add_planet") => {
             let planet = deserialize_body_or_respond!(req, AddPlanetMsg);
 
             match server.add_planet(planet) {
-                Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
 
@@ -289,8 +306,12 @@ pub async fn handle_request(
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
 
             match server.remove(name) {
-                Ok(msg) => Ok(build_ok_response(&msg)),
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
         (&Method::POST, "/set_plan") => {
@@ -298,10 +319,14 @@ pub async fn handle_request(
             let plan_msg = deserialize_body_or_respond!(req, SetPlanMsg);
 
             match server.set_plan(plan_msg) {
-                Ok(_) => Ok(build_ok_response("Set acceleration action executed")),
+                Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
                 Err(err) => {
                     warn!("(/set_plan)) Error setting plan: {}", err);
-                    Ok(build_err_response(StatusCode::BAD_REQUEST, &err))
+                    Ok(build_err_response(
+                        StatusCode::BAD_REQUEST,
+                        &err,
+                        &web_server,
+                    ))
                 }
             }
         }
@@ -315,15 +340,18 @@ pub async fn handle_request(
 
             match server.update(fire_actions) {
                 Ok(msg) => {
-                    let resp = Response::builder()
+                    let mut resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
-                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(msg.as_bytes()).into())
                         .unwrap();
+                    add_auth_headers(&mut resp, &web_server);
                     Ok(resp)
                 }
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
 
@@ -332,15 +360,18 @@ pub async fn handle_request(
 
             match server.compute_path(msg) {
                 Ok(json) => {
-                    let resp = Response::builder()
+                    let mut resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
-                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(json.as_bytes()).into())
                         .unwrap();
+                    add_auth_headers(&mut resp, &web_server);
                     Ok(resp)
                 }
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
 
@@ -348,15 +379,18 @@ pub async fn handle_request(
             info!("Received and processing get request.");
             match server.get() {
                 Ok(json) => {
-                    let resp = Response::builder()
+                    let mut resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
-                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(json.as_bytes()).into())
                         .unwrap();
+                    add_auth_headers(&mut resp, &web_server);
                     Ok(resp)
                 }
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
 
@@ -364,22 +398,29 @@ pub async fn handle_request(
             info!("Received and processing get designs request.");
             match server.get_designs() {
                 Ok(json) => {
-                    let resp = Response::builder()
+                    let mut resp = Response::builder()
                         .status(StatusCode::OK)
-                        .header("Access-Control-Allow-Origin", "http://localhost:50001")
-                        .header("Access-Control-Allow-Credentials", "true")
                         .body(Bytes::copy_from_slice(json.as_bytes()).into())
                         .unwrap();
+                    add_auth_headers(&mut resp, &web_server);
                     Ok(resp)
                 }
-                Err(err) => Ok(build_err_response(StatusCode::BAD_REQUEST, &err)),
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
             }
         }
 
         (method, uri) => {
             info!("Unknown method {method} or URI {uri} on this request.  Returning 404.");
             // Return a 404 Not Found response for any other requests
-            Ok(build_err_response(StatusCode::NOT_FOUND, "Not Found"))
+            Ok(build_err_response(
+                StatusCode::NOT_FOUND,
+                "Not Found",
+                &web_server,
+            ))
         }
     }
 }

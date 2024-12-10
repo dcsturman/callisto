@@ -11,7 +11,7 @@ use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
     AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, FireActionsMsg, LoginMsg,
-    RemoveEntityMsg, SetCrewActions, SetPlanMsg,
+    RemoveEntityMsg, SetCrewActions, SetPlanMsg, SimpleMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -106,7 +106,7 @@ impl Server {
             ship.crew,
         );
 
-        Ok("Add ship action executed".to_string())
+        Ok(msg_json("Add ship action executed"))
     }
 
     pub fn set_crew_actions(&self, request: SetCrewActions) -> Result<String, String> {
@@ -127,7 +127,7 @@ impl Server {
             ship.set_pilot_actions(request.dodge_thrust, request.assist_gunners)
                 .map_err(|e| e.get_msg())?;
         }
-        Ok("Set crew action executed".to_string())
+        Ok(msg_json("Set crew action executed"))
     }
 
     pub fn get_entities(&self) -> Result<Entities, String> {
@@ -157,7 +157,7 @@ impl Server {
             planet.mass,
         );
 
-        Ok("Add planet action executed".to_string())
+        Ok(msg_json("Add planet action executed"))
     }
 
     pub fn remove(&self, name: RemoveEntityMsg) -> Result<String, String> {
@@ -172,15 +172,15 @@ impl Server {
             return Err(err_msg);
         }
 
-        Ok("Remove action executed".to_string())
+        Ok(msg_json("Remove action executed"))
     }
 
-    pub fn set_plan(&self, plan_msg: SetPlanMsg) -> Result<(), String> {
+    pub fn set_plan(&self, plan_msg: SetPlanMsg) -> Result<String, String> {
         // Change the acceleration of the entity
         self.entities
             .lock()
             .unwrap()
-            .set_flight_plan(&plan_msg.name, &plan_msg.plan)
+            .set_flight_plan(&plan_msg.name, &plan_msg.plan).map(|_| msg_json("Set acceleration action executed"))
     }
 
     pub fn update(&mut self, fire_actions: FireActionsMsg) -> Result<String, String> {
@@ -317,4 +317,8 @@ fn get_rng(test_mode: bool) -> Box<SmallRng> {
         debug!("(lib.get_rng) Server in standard mode for random numbers.");
         Box::new(SmallRng::from_entropy())
     }
+}
+
+pub(crate) fn msg_json(msg: &str) -> String {
+    serde_json::to_string(&SimpleMsg { msg: msg.to_string() }).unwrap()
 }

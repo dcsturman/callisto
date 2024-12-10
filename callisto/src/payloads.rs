@@ -9,6 +9,11 @@ use serde_with::{serde_as, skip_serializing_none};
 use super::entity::Vec3;
 use super::ship::FlightPlan;
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SimpleMsg {
+    pub msg: String,
+}
+
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LoginMsg {
