@@ -39,6 +39,7 @@ function App() {
   const [runTutorial, setRunTutorial] = useState(true);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
 
+  console.group("App startup");
   if (process.env.REACT_APP_C_BACKEND) {
     console.log(
       "REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND
@@ -48,6 +49,8 @@ function App() {
     console.log("ENV is set to: " + JSON.stringify(process.env));
   }
   console.log(`Connecting to Callisto backend at ${CALLISTO_BACKEND}`);
+  console.groupEnd();
+
   return (
     <div>
       {authenticated ? (

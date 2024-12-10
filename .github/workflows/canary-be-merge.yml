@@ -3,17 +3,18 @@ name: Build Callisto Rust backend and run on Cloud Run
 on:
   push:
     branches:
-      - main
+      - canary
+      - dev-cookies
     paths:
       - 'callisto/**'
-      - '.github/workflows/cloud-run-merge.yml'
+      - '.github/workflows/canary-be-merge.yml'
 
 env:
   PROJECT_ID: callisto-1731280702227
   GAR_LOCATION: gcr.io
   REGION: us-central1
-  APP: callisto-be
-  APP_ARGS: --secret,/secrets/google_credentials,--web-server,https://callistoflight.com,--gcs-bucket,callisto-be-user-profiles
+  APP: callisto-canary-be
+  APP_ARGS: --secret,/secrets/google_credentials,--web-server,https://canary.callistoflight.com,--gcs-bucket,callisto-be-user-profiles
   PORT: 30000
 
 jobs:

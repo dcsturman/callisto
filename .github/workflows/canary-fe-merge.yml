@@ -1,0 +1,32 @@
+name: Deploy React FE application to canary Firebase hosting
+on:
+  push:
+    branches:
+      - canary
+      - dev-cookies
+    paths:
+      - 'fe/**'
+      - '.firebaserc'
+      - 'firebase.json'
+      - 'firebase.rules'
+      - 'firebase.storage.rules'
+      - 'firestore.indexes.json'
+      - 'firestore.rules'
+      - 'storage.rules'
+jobs:
+  build_and_deploy_fe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build node.js
+        env:
+           CI: false
+           REACT_APP_C_BACKEND: https://canary.callistoflight.com
+        working-directory: ./fe/callisto
+        run: npm ci && npm run build
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_1731280702227 }}
+          channelId: live
+          projectId: callisto-canary-1731280702227
