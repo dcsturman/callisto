@@ -28,5 +28,5 @@ jobs:
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_1731280702227 }}
-          channelId: live
-          projectId: callisto-canary-1731280702227
+          channelId: canary
+          projectId: callisto-1731280702227
