@@ -159,9 +159,6 @@ pub async fn handle_request(
 
     let mut server = Server::new(entities, test_mode);
 
-    //TODO: Delete this.
-    debug!("(lib.handleRequest) Received and processing method {} and uri {} request.", req.method(), req.uri().path());
-
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, curious) => {
             debug!(
