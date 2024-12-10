@@ -54,6 +54,7 @@ export function Authentication(args: {
       login(googleAuthResponse.code, args.setEmail, args.setAuthenticated);
     }
 
+    console.log("(Authentication) Redirect URI (REACT_APP_C_BACKEND) is set to: " + process.env.REACT_APP_C_BACKEND);
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
         console.error(

@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if test_mode {
         info!("(main) Server in TEST mode.");
     } else {
-        info!("(main) Server in standard mode.");
+        info!("(main) Server in standard mode.  Referring frontend = {}", args.web_server);
     }
 
     let templates = load_ship_templates_from_file(&args.design_file).unwrap_or_else(|e| {
