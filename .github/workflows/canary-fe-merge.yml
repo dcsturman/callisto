@@ -1,5 +1,6 @@
 name: Deploy React FE application to canary Firebase hosting
 on:
+  workflow_dispatch:
   push:
     branches:
       - canary

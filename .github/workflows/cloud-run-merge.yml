@@ -1,6 +1,7 @@
 name: Build Callisto Rust backend and run on Cloud Run
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
