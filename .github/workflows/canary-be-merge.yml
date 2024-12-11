@@ -13,7 +13,7 @@ env:
   PROJECT_ID: callisto-canary
   GAR_LOCATION: gcr.io
   REGION: us-central1
-  APP: callisto--be
+  APP: callisto-be
   APP_ARGS: --secret,/secrets/google_credentials,--web-server,https://canary.callistoflight.com,--gcs-bucket,callisto-be-user-profiles
   PORT: 30000
 
