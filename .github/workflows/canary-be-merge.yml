@@ -43,6 +43,7 @@ jobs:
       - name: 'Docker auth'
         run: |-
           gcloud auth configure-docker ${{ env.GAR_LOCATION }}
+          gcloud config get-value project
 
       - name: Set up Docker buildx
         uses: docker/setup-buildx-action@v3
