@@ -10,10 +10,10 @@ on:
       - '.github/workflows/canary-be-merge.yml'
 
 env:
-  PROJECT_ID: callisto-1731280702227
+  PROJECT_ID: callisto-canary
   GAR_LOCATION: gcr.io
   REGION: us-central1
-  APP: callisto-canary-be
+  APP: callisto--be
   APP_ARGS: --secret,/secrets/google_credentials,--web-server,https://canary.callistoflight.com,--gcs-bucket,callisto-be-user-profiles
   PORT: 30000
 
