@@ -1,6 +1,7 @@
-name: Build Callisto Rust backend and run on Cloud Run
+name: Build Canary Callisto Rust backend and run on Cloud Run
 
 on:
+  workflow_dispatch:  
   push:
     branches:
       - canary
@@ -32,8 +33,8 @@ jobs:
         uses: 'google-github-actions/auth@v2'
         with:
           project_id: ${{ env.PROJECT_ID }}
-          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
-          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+          workload_identity_provider: '${{ secrets.WIF_CANARY_PROVIDER }}' 
+          service_account: '${{ secrets.CANARY_WIF_CANARY_SERVICE_ACCOUNT }}'
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
