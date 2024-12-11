@@ -13,6 +13,9 @@ on:
       - 'firestore.indexes.json'
       - 'firestore.rules'
       - 'storage.rules'
+env:
+  BACKEND_SERVER_URL: https://backend.canary.callistoflight.com
+  GOOGLE_CLIENT_ID: ${{ secrets.CANARY_GOOGLE_CLIENT_ID }}
 jobs:
   build_and_deploy_fe:
     runs-on: ubuntu-latest
@@ -25,6 +28,9 @@ jobs:
         working-directory: ./fe/callisto
         run: npm ci && npm run build
       - uses: FirebaseExtended/action-hosting-deploy@v0
+        env:
+          REACT_APP_C_BACKEND: ${{ env.BACKEND_SERVER_URL }}
+          REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_CANARY }}
