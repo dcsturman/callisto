@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import './index.css';
-import App from './App';
+import { GOOGLE_OAUTH_CLIENT_ID, App} from './App';
 import reportWebVitals from './reportWebVitals';
 
 
@@ -12,9 +12,8 @@ const root = ReactDOM.createRoot(
 
 document.body.style.overflow = "hidden";
 
-// Awkward adn brittle to hardcode the clientID in here but its not a secret.
 root.render(
-  <GoogleOAuthProvider clientId="402344016908-a6k9ekcrnmcaki9bl32io9cjp2jtanv5.apps.googleusercontent.com">
+    <GoogleOAuthProvider clientId={GOOGLE_OAUTH_CLIENT_ID}>
   <React.StrictMode>
     <App />    
   </React.StrictMode>

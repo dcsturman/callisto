@@ -73,7 +73,6 @@ function handle_network_error(
   console.error("(ServerManager.handle_network_error) Network Error: " + error);
   console.error(error.stack);
   console.groupEnd();
-  alert(`Network Error: (Status ${error.status}) ${error.message}`);
 }
 
 class NetworkError extends Error {

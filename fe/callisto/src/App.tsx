@@ -33,13 +33,15 @@ import { RunTutorial, Tutorial } from "./Tutorial";
 
 const POLL_ENTITIES_INTERVAL = 0;
 
-function App() {
+export const GOOGLE_OAUTH_CLIENT_ID: string = process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
+
+export function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(true);
   const [email, setEmail] = useState<string | null>(null);
   const [runTutorial, setRunTutorial] = useState(true);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
 
-  console.group("App startup");
+  console.group("App startup. GOOGLE_OAUTH_CLIENT_ID = ", GOOGLE_OAUTH_CLIENT_ID);
   if (process.env.REACT_APP_C_BACKEND) {
     console.log(
       "REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND

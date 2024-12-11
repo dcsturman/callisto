@@ -170,7 +170,14 @@ pub async fn handle_request(
                 .ok()
         });
 
-    // If we don't have a valid email, we reply with an Authorization error to the client.
+        let cookies = req.headers().typed_get::<Cookie>();
+        if let Some(cookies) = cookies {
+            debug!("***************** VERY INSECURE ********************** Cookies: {:?}", cookies);
+        } else { 
+            debug!("**************************** NO COOKIES FOUND");
+        }
+        
+    // If we don't have a valid email, we reply with an Authorization error to the client.    
     // The exceptions to doing that are 1) if we're in test mode (not authenticating),
     // and 2) if we're doing an OPTIONS request (to get CORS headers) and 3) if we're doing a login request.  Login will
     // have its own custom logic to test here.
@@ -236,9 +243,11 @@ pub async fn handle_request(
                     let mut resp = build_ok_response(&msg, &web_server);
                     // Add the set-cookie header only when we didn't have a valid cookie before.
                     if valid_email.is_none() && session_key.is_some() {
+                        info!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
+                        // Should be "{}={}; HttpOnly; Secure",
                         let cookie_str = format!(
-                            "{}={}; HttpOnly; Secure",
+                            "{}={}; HttpOnly",
                             "callisto-session-key",
                             session_key.unwrap()
                         );
