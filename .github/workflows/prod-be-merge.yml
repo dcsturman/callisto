@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'callisto/**'
-      - '.github/workflows/cloud-run-merge.yml'
+      - '.github/workflows/prod-be-merge.yml'
   workflow_dispatch:
 
 env:
