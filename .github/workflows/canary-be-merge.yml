@@ -3,7 +3,6 @@ name: Canary Env -- Build Canary Callisto Rust backend and run on Cloud Run
 on:
   push:
     branches:
-      - canary
       - dev-cookies
     paths:
       - 'callisto/**'
