@@ -31,6 +31,13 @@ use hyper::{Method, Request, Response, StatusCode};
 use serde_json::from_slice;
 use std::convert::TryFrom;
 
+use google_cloud_storage::client::{Client, ClientConfig};
+use google_cloud_storage::http::objects::download::Range;
+use google_cloud_storage::http::objects::get::GetObjectRequest;
+
+use std::fs::File;
+use std::io::{BufReader, Read};
+
 use entity::Entities;
 use payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg,
@@ -50,7 +57,7 @@ impl From<hyper::Error> for SizeCheckError {
     }
 }
 
-// Add the standard authention errors to a response.
+// Add the standard authentication errors to a response.
 // We use these all over the place so adding to this util function so there is one
 // place to check and modify these.
 fn add_auth_headers(resp: &mut Response<Full<Bytes>>, web_backend: &Option<String>) {
@@ -424,5 +431,59 @@ pub async fn handle_request(
                 &web_server,
             ))
         }
+    }
+}
+
+/**
+ * Read a file from the local filesystem or GCS.
+ * Given this function returns all the content in the file, its not great for large files, but 100% okay
+ * for config files and scenarios (as is our case).
+ * General utility routine to be used in a few places.
+ */
+pub async fn read_local_or_cloud_file(
+    filename: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // Check if the filename is a GCS path
+    if filename.starts_with("gs://") {
+        // Extract bucket name from the GCS URI
+        let parts: Vec<&str> = filename.split('/').collect();
+        let bucket_name = parts[2];
+        let file_name = parts[3..].join("/");
+
+        // Create a GCS client
+        let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
+            panic!(
+                "Error {:?} authenticating with Google Cloud Storage. Did you do `gcloud auth application-default login` before running?",
+                e
+            )
+        });
+
+        let client = Client::new(config);
+
+        // Read the file from GCS
+        let data = client
+            .download_object(
+                &GetObjectRequest {
+                    bucket: bucket_name.to_string(),
+                    object: file_name.to_string(),
+                    ..Default::default()
+                },
+                &Range::default(),
+            )
+            .await
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Error {:?} downloading authorized users file {} from GCS bucket {}",
+                    e, file_name, bucket_name
+                )
+            });
+        Ok(data)
+    } else {
+        // Read the file locally
+        let file = File::open(filename)?;
+        let mut buf_reader = BufReader::new(file);
+        let mut content: Vec<u8> = Vec::with_capacity(1024);
+        buf_reader.read_to_end(&mut content)?;
+        Ok(content)
     }
 }

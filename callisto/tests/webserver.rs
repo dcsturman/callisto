@@ -135,7 +135,7 @@ async fn integration_add_ship() {
     const PORT: u16 = 3013;
     let _server = spawn_test_server(PORT).await;
     // Need this only because we are going to deserialize ships.
-    callisto::ship::config_test_ship_templates();
+    callisto::ship::config_test_ship_templates().await;
 
     let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer",
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
@@ -194,7 +194,7 @@ async fn integration_add_planet_ship() {
     const PORT: u16 = 3014;
     let _server = spawn_test_server(PORT).await;
     // Need this only because we are going to deserialize ships.
-    callisto::ship::config_test_ship_templates();
+    callisto::ship::config_test_ship_templates().await;
 
     let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer",
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
@@ -422,7 +422,7 @@ async fn integration_add_planet_ship() {
 async fn integration_update_ship() {
     const PORT: u16 = 3015;
     let _server = spawn_test_server(PORT).await;
-    callisto::ship::config_test_ship_templates();
+    callisto::ship::config_test_ship_templates().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response: SimpleMsg = reqwest::Client::new()
@@ -476,7 +476,7 @@ async fn integration_update_ship() {
 async fn integration_update_missile() {
     const PORT: u16 = 3016;
     let _server = spawn_test_server(PORT).await;
-    callisto::ship::config_test_ship_templates();
+    callisto::ship::config_test_ship_templates().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response: SimpleMsg = reqwest::Client::new()
@@ -667,7 +667,7 @@ async fn integration_set_acceleration() {
         .await
         .unwrap();
 
-    callisto::ship::config_test_ship_templates();
+    callisto::ship::config_test_ship_templates().await;
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     {

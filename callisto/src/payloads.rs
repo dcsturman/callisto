@@ -176,9 +176,10 @@ mod tests {
     use crate::crew::Skills;
     use cgmath::Zero;
     use serde_json::json;
+    use test_log::test;
 
-    #[test]
-    fn test_add_ship_msg() {
+    #[test(tokio::test)]
+    async fn test_add_ship_msg() {
         let default_template_name = ShipDesignTemplate::default().name;
 
         let msg = AddShipMsg {
@@ -201,8 +202,8 @@ mod tests {
         assert_eq!(json_str, json.to_string());
     }
 
-    #[test]
-    fn test_add_ship_with_crew_msg() {
+    #[test(tokio::test)]
+    async fn test_add_ship_with_crew_msg() {
         let default_template_name = ShipDesignTemplate::default().name;
         let mut crew = Crew::new();
         crew.set_skill(Skills::Pilot, 2);
