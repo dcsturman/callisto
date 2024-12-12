@@ -1,9 +1,9 @@
 name: Prod Env -- Build Callisto Rust backend and run on Cloud Run
-
 on:
   push:
     branches:
       - main
+      - dev-tutorial-deploy
     paths:
       - 'callisto/**'
       - '.github/workflows/prod-be-merge.yml'

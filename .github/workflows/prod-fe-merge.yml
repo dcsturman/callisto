@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev-tutorial-deploy
     paths:
       - 'fe/**'
       - '.firebaserc'
@@ -16,6 +17,7 @@ on:
       - '.github/workflows/prod-fe-merge.yml'
 env:
   BACKEND_SERVER_URL: https://backend.callistoflight.com
+  BACKEND_TUTORIAL_SERVER_URL: https://backend.tutorial.callistoflight.com
   GOOGLE_CLIENT_ID: ${{ secrets.PROD_GOOGLE_CLIENT_ID }}
 jobs:
   build_and_deploy_fe:
@@ -42,7 +44,7 @@ jobs:
       - name: Build node.js
         env:
            CI: false
-           REACT_APP_C_BACKEND: backend.tutorial.callistoflight.com
+           REACT_APP_C_BACKEND: ${{ env.BACKEND_TUTORIAL_SERVER_URL }}
            REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
            REACT_APP_RUN_TUTORIAL: true
         working-directory: ./fe/callisto
@@ -52,5 +54,5 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_CANARY }}
           channelId: live
-          projectId: callisto-canary
+          projectId: callisto-1731280702227
           target: tutorial

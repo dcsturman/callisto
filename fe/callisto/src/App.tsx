@@ -41,6 +41,7 @@ export function App() {
   const [runTutorial, setRunTutorial] = useState(true);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
 
+  console.group("Callisto Config parameters");
   if (process.env.REACT_APP_C_BACKEND) {
     console.log(
       "REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND
@@ -49,14 +50,19 @@ export function App() {
     console.log("REACT_APP_C_BACKEND is not set.");
     console.log("ENV is set to: " + JSON.stringify(process.env));
   }
-  console.log(`Connecting to Callisto backend at ${CALLISTO_BACKEND}`);
+
+  if (process.env.REACT_APP_RUN_TUTORIAL) {
+    console.log("Tutorial is set to run.");
+  } else {
+    console.log("Tutorial is not set to run.");
+  }
   console.groupEnd();
 
   return (
     <div>
       {authenticated ? (
         <>
-          {process.env.REACT_APP_RUN_TUTORIAL && <Tutorial
+          {!process.env.REACT_APP_RUN_TUTORIAL || <Tutorial
             runTutorial={runTutorial}
             setRunTutorial={setRunTutorial}
             selectAShip={() => setComputerShipName("Killer")}
