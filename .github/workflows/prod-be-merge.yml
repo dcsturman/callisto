@@ -1,6 +1,6 @@
 name: Prod Env -- Build Callisto Rust backend and run on Cloud Run
 
-on: 
+on:
   push:
     branches:
       - main
