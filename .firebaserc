@@ -13,6 +13,16 @@
           "callisto-1731280702227"
         ]
       }
+    },
+    "callisto-canary": {
+      "hosting": {
+        "tutorial": [
+          "callisto-tutorial"
+        ],
+        "canary": [
+          "callisto-canary"
+        ]
+      }
     }
   },
   "etags": {}

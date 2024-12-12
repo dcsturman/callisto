@@ -16,5 +16,14 @@
       "**/.*",
       "**/node_modules/**"
     ]
+  },
+  {
+    "target": "canary",
+    "public": "fe/callisto/build",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
   }]
 }
