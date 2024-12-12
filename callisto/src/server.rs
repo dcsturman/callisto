@@ -38,9 +38,7 @@ impl Server {
         valid_email: &Option<String>,
         authenticator: Arc<Option<Authenticator>>,
     ) -> Result<(String, Option<String>), String> {
-        info!(
-            "(Server.login) Received and processing login request.",
-        );
+        info!("(Server.login) Received and processing login request.",);
 
         // Authenticator can only legally be None if we are in test mode.
         if authenticator.is_none() {
@@ -69,7 +67,10 @@ impl Server {
                 .authenticate_google_user(&code)
                 .await
                 .unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
-            debug!("(Server.login) Authenticated user {} with session key.",  email);
+            debug!(
+                "(Server.login) Authenticated user {} with session key.",
+                email
+            );
 
             let auth_response = AuthResponse { email };
             Ok((
@@ -176,7 +177,8 @@ impl Server {
         self.entities
             .lock()
             .unwrap()
-            .set_flight_plan(&plan_msg.name, &plan_msg.plan).map(|_| msg_json("Set acceleration action executed"))
+            .set_flight_plan(&plan_msg.name, &plan_msg.plan)
+            .map(|_| msg_json("Set acceleration action executed"))
     }
 
     pub fn update(&mut self, fire_actions: FireActionsMsg) -> Result<String, String> {
@@ -316,5 +318,8 @@ fn get_rng(test_mode: bool) -> Box<SmallRng> {
 }
 
 pub(crate) fn msg_json(msg: &str) -> String {
-    serde_json::to_string(&SimpleMsg { msg: msg.to_string() }).unwrap()
+    serde_json::to_string(&SimpleMsg {
+        msg: msg.to_string(),
+    })
+    .unwrap()
 }

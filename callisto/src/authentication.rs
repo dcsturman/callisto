@@ -252,7 +252,7 @@ impl Authenticator {
         debug!("(validate_google_token) Fetched Google public keys.",);
 
         let text = public_keys_response.text().await.unwrap();
-        
+
         debug!("(validate_google_token) Fetched Google public keys okay.");
 
         let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
