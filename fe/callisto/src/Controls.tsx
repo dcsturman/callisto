@@ -392,8 +392,7 @@ export function Controls(args: {
   ) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
-  token: string;
-  setToken: (token: string | null) => void;
+  setAuthenticated: (authenticated: boolean) => void;
   showRange: string | null;
   setShowRange: (target: string | null) => void;
 }) {
@@ -534,8 +533,7 @@ export function Controls(args: {
                 designName,
                 crew,
                 serverEntities.handler,
-                args.token,
-                args.setToken
+                args.setAuthenticated
               )
             }
             shipDesignTemplates={args.shipDesignTemplates}

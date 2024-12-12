@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+      - canary
 jobs:
   validate_rust_pr:
     permissions:

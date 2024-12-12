@@ -19,9 +19,20 @@ type AuthResponse = {
   key: string;
 };
 
+// Standard headers for all fetch calls
+const standard_headers: RequestInit = {
+  method: "GET",
+  credentials: "include",
+  mode: "cors",
+  headers: {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Credentials": "true",
+  },
+};
+
 async function validate_response(
   response: Response,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void,
 ): Promise<Response> {
   if (response.ok) {
     return response;
@@ -30,10 +41,10 @@ async function validate_response(
     response.status === StatusCodes.FORBIDDEN
   ) {
     console.log(
-      "(ServerManager.validate_response) Clearing token: " +
+      "(ServerManager.validate_response) Setting as not authenticated " +
         getReasonPhrase(response.status)
     );
-    setToken(null);
+    setAuthenticated(false);
     throw new NetworkError(
       response.status,
       "Authorization error received from server."
@@ -55,11 +66,13 @@ async function validate_response(
 
 function handle_network_error(
   error: NetworkError,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void,
 ) {
-  setToken(null);
+  setAuthenticated(false);
+  console.group("(ServerManager.handle_network_error) Network Error");
   console.error("(ServerManager.handle_network_error) Network Error: " + error);
-  alert(`Network Error: (Status ${error.status}) ${error.message}`);
+  console.error(error.stack);
+  console.groupEnd();
 }
 
 class NetworkError extends Error {
@@ -81,23 +94,23 @@ class ApplicationError extends Error {
 export function login(
   code: string,
   setEmail: (email: string) => void,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
-  fetch(`${CALLISTO_BACKEND}/login`, {
+  let fetch_params = {
+    ...standard_headers,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({ code: code }),
-  })
-    .then((response) => validate_response(response, setToken))
+  };
+
+  fetch(`${CALLISTO_BACKEND}/login`, fetch_params)
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.text())
     .then((body) => JSON.parse(body) as AuthResponse)
     .then((authResponse: AuthResponse) => {
       setEmail(authResponse.email);
-      setToken(authResponse.key);
+      setAuthenticated(true);
     })
-    .catch((error) => handle_network_error(error, setToken));
+    .catch((error) => handle_network_error(error, setAuthenticated));
 }
 
 export function addShip(
@@ -108,8 +121,7 @@ export function addShip(
   design: string,
   crew: Crew,
   callBack: EntityRefreshCallback,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   console.log(
     `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
@@ -125,20 +137,16 @@ export function addShip(
   };
 
   fetch(`${CALLISTO_BACKEND}/add_ship`, {
+    ...standard_headers,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
-    .then(() => getEntities(callBack, token, setToken))
+    .then(() => getEntities(callBack, setAuthenticated))
     .catch((error) => {
       if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -152,24 +160,19 @@ export function setCrewActions(
   dodge: number,
   assist_gunners: boolean,
   callBack: EntityRefreshCallback,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   fetch(`${CALLISTO_BACKEND}/set_crew_actions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-    },
-    mode: "cors",
+    ...standard_headers,
+    method: "POST",    
     body: JSON.stringify({ ship_name: target, dodge_thrust: dodge, assist_gunners: assist_gunners }),
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
-    .then(() => getEntities(callBack, token, setToken))
+    .then(() => getEntities(callBack, setAuthenticated))
     .catch((error) => {
       if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -181,24 +184,19 @@ export function setCrewActions(
 export function removeEntity(
   target: string,
   callBack: EntityRefreshCallback,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   fetch(`${CALLISTO_BACKEND}/remove`, {
+    ...standard_headers,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-    },
-    mode: "cors",
     body: JSON.stringify(target),
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
-    .then(() => getEntities(callBack, token, setToken))
+    .then(() => getEntities(callBack, setAuthenticated))
     .catch((error) => {
       if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -211,8 +209,7 @@ export async function setPlan(
   target: string,
   plan: [Acceleration, Acceleration | null],
   callBack: EntityRefreshCallback,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   let plan_arr = [];
 
@@ -226,22 +223,18 @@ export async function setPlan(
   let payload = { name: target, plan: plan_arr };
 
   fetch(`${CALLISTO_BACKEND}/set_plan`, {
+    ...standard_headers,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
     .then(() => {
-      getEntities(callBack, token, setToken);
+      getEntities(callBack, setAuthenticated);
     })
     .catch((error) => {
       if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -254,25 +247,20 @@ export function nextRound(
   fireActions: FireActionMsg,
   setEvents: (events: Effect[] | null) => void,
   callBack: EntityRefreshCallback,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   fetch(`${CALLISTO_BACKEND}/update`, {
+    ...standard_headers,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-    },
     body: JSON.stringify(Object.entries(fireActions)),
-    mode: "cors",
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
     .then((events) => setEvents(events))
-    .then(() => getEntities(callBack, token, setToken))
+    .then(() => getEntities(callBack, setAuthenticated))
     .catch((error) => {
       if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -288,8 +276,7 @@ export function computeFlightPath(
   setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
   standoff: number | null = null,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   if (entity_name == null) {
     setProposedPlan(null);
@@ -304,20 +291,16 @@ export function computeFlightPath(
   };
 
   fetch(`${CALLISTO_BACKEND}/compute_path`, {
+    ...standard_headers,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
     .then((plan) => setProposedPlan(plan))
     .catch((error) => {
       if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -330,8 +313,7 @@ export function launchMissile(
   source: string,
   target: string,
   callback: EntityRefreshCallback,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   let payload = {
     source: source,
@@ -339,20 +321,16 @@ export function launchMissile(
   };
 
   fetch(`${CALLISTO_BACKEND}/launch_missile`, {
+    ...standard_headers,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-    },
-    mode: "cors",
     body: JSON.stringify(payload),
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
-    .then(() => getEntities(callback, token, setToken))
+    .then(() => getEntities(callback, setAuthenticated))
     .catch((error) => {
       if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -363,15 +341,12 @@ export function launchMissile(
 
 export function getEntities(
   callback: EntityRefreshCallback,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   return fetch(`${CALLISTO_BACKEND}/entities`, {
-    headers: {
-      Authorization: token,
-    },
+    ...standard_headers,
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
     .then((json) => EntityList.parse(json))
     .then((entities) => {
@@ -379,8 +354,12 @@ export function getEntities(
       callback(entities);
     })
     .catch((error) => {
-      if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+      if (error instanceof NetworkError || error instanceof TypeError) {
+        // It seems that 401's get turned into TypeErrors vs a network error?
+        if (error instanceof TypeError) {
+          error = new NetworkError(0, error.message);
+        }
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {
@@ -391,15 +370,12 @@ export function getEntities(
 
 export async function getTemplates(
   callBack: (templates: ShipDesignTemplates) => void,
-  token: string,
-  setToken: (token: string | null) => void
+  setAuthenticated: (authenticated: boolean) => void
 ) {
   return fetch(`${CALLISTO_BACKEND}/designs`, {
-    headers: {
-      Authorization: token,
-    },
+    ...standard_headers,
   })
-    .then((response) => validate_response(response, setToken))
+    .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
     .then((json: any) => {
       let templates: { [key: string]: ShipDesignTemplate } = {};
@@ -419,8 +395,12 @@ export async function getTemplates(
       callBack(templates);
     })
     .catch((error) => {
-      if (error instanceof NetworkError) {
-        handle_network_error(error, setToken);
+      if (error instanceof NetworkError || error instanceof TypeError) {
+        if (error instanceof TypeError) {
+          // It seems that 401's get turned into TypeErrors vs a network error?
+          error = new NetworkError(0, error.message);
+        }
+        handle_network_error(error, setAuthenticated);
       } else if (error instanceof ApplicationError) {
         alert(error.message);
       } else {

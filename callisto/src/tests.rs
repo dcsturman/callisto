@@ -18,7 +18,7 @@ use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
 use crate::payloads::{
     AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, SetCrewActions, EMPTY_FIRE_ACTIONS_MSG,
 };
-use crate::server::Server;
+use crate::server::{msg_json, Server};
 use crate::ship::ShipDesignTemplate;
 
 fn setup_test_with_server() -> Server {
@@ -57,7 +57,7 @@ fn test_add_ship() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
@@ -85,13 +85,13 @@ fn test_add_planet_ship() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let response = server.get().unwrap();
 
@@ -137,7 +137,7 @@ fn test_add_planet_ship() {
     let response = server
         .add_planet(serde_json::from_str(planet).unwrap())
         .unwrap();
-    assert_eq!(response, "Add planet action executed");
+    assert_eq!(response, msg_json("Add planet action executed"));
 
     let response = server.get().unwrap();
     let result = serde_json::from_str::<Entities>(response.as_str()).unwrap();
@@ -188,7 +188,7 @@ fn test_add_planet_ship() {
     let response = server
         .add_planet(serde_json::from_str(planet).unwrap())
         .unwrap();
-    assert_eq!(response, "Add planet action executed");
+    assert_eq!(response, msg_json("Add planet action executed"));
 
     let entities = server.get().unwrap();
 
@@ -250,7 +250,7 @@ fn test_update_ship() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
     assert_eq!(response, r#"[]"#);
@@ -277,13 +277,13 @@ fn test_update_missile() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, r"Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]).to_string();
     let response = server
@@ -354,10 +354,10 @@ fn test_remove_ship() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let response = server.remove("ship1".to_string()).unwrap();
-    assert_eq!(response, "Remove action executed");
+    assert_eq!(response, msg_json("Remove action executed"));
 
     let entities = server.get().unwrap();
 
@@ -379,7 +379,7 @@ fn test_set_acceleration() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let response = server.get().unwrap();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
@@ -414,7 +414,7 @@ fn test_compute_path_basic() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let path_request = r#"{"entity_name":"ship1","end_pos":[29430000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#;
     let response = server
@@ -476,7 +476,7 @@ fn test_compute_path_with_standoff() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let response = server.compute_path(serde_json::from_str(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 60000}"#).unwrap()).unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
@@ -536,14 +536,14 @@ fn test_exhausted_missile() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Put second ship far way (out of range of a missile)
     let ship2 = r#"{"name":"ship2","position":[1e10,0,1e10],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Fire a missile
     let fire_actions = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]).to_string();
@@ -583,14 +583,14 @@ fn test_destroy_ship() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Make this a very weak ship
     let ship2 = r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Scout/Courier"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Pummel the weak ship.
     let fire_actions = json!([["ship1", [
@@ -625,13 +625,13 @@ fn test_big_fight() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let fire_actions = json!([["ship1", [
         {"weapon_id": 0, "target": "ship2"},
@@ -728,7 +728,7 @@ fn test_fight_with_crew() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Now have that capable crew do something.
     let crew_actions = r#"{"ship_name":"ship1","dodge_thrust":3,"assist_gunners":true}"#;
@@ -736,14 +736,14 @@ fn test_fight_with_crew() {
         .set_crew_actions(serde_json::from_str(crew_actions).unwrap())
         .unwrap();
 
-    assert_eq!(response, "Set crew action executed");
+    assert_eq!(response, msg_json("Set crew action executed"));
 
     // Ship 2 has no crew skills
     let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship2).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let fire_actions = json!([["ship1", [
         {"weapon_id": 0, "target": "ship2"},
@@ -839,32 +839,32 @@ fn test_slugfest() {
     let response = server
         .add_ship(serde_json::from_str(destroyer).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Destroyer pilot will aid gunners
     let crew_actions = r#"{"ship_name":"Evil Destroyer","assist_gunners":true}"#;
     let response = server
         .set_crew_actions(serde_json::from_str(crew_actions).unwrap())
         .unwrap();
-    assert_eq!(response, "Set crew action executed");
+    assert_eq!(response, msg_json("Set crew action executed"));
 
     let harrier = r#"{"name":"Harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
     let response = server
         .add_ship(serde_json::from_str(harrier).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let buc1 = r#"{"name":"Buc1","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(buc1).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let buc2 = r#"{"name":"Buc2","position":[4000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(buc2).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let fire_actions = json!([["Evil Destroyer", [
         {"weapon_id": 0, "target": "Harrier"},
@@ -1006,14 +1006,14 @@ fn test_missile_impact_close() {
     let response = server
         .add_ship(serde_json::from_str(firing_ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Add the target ship very close to the firing ship
     let target_ship = r#"{"name":"ship2","position":[1000,1000,1000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = server
         .add_ship(serde_json::from_str(target_ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Fire a missile within impact range.
     let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}]]]).to_string();
@@ -1053,7 +1053,7 @@ fn test_missile_impact_close() {
     let response = server
         .add_ship(serde_json::from_str(target_ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Fire a missile that should get there in one round.
     let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}]]]).to_string();
@@ -1098,7 +1098,7 @@ fn test_set_agility() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Set agility for the ship
     let mut agility_request = SetCrewActions::new("agile_ship");
@@ -1106,7 +1106,7 @@ fn test_set_agility() {
 
     let result = server.set_crew_actions(agility_request);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "Set crew action executed".to_string());
+    assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
     // Verify the ship's agility has been updated
     let entities = server.get_entities().unwrap();
@@ -1141,7 +1141,7 @@ fn test_set_crew_actions_aid_gunner() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     // Set crew actions for the ship, enabling aid_gunner
     let mut crew_actions = SetCrewActions::new("test_ship");
@@ -1149,7 +1149,7 @@ fn test_set_crew_actions_aid_gunner() {
 
     let result = server.set_crew_actions(crew_actions);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "Set crew action executed".to_string());
+    assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
     // Verify the ship's crew actions have been updated
     let entities = server.get_entities().unwrap();
@@ -1162,7 +1162,7 @@ fn test_set_crew_actions_aid_gunner() {
 
     let result = server.set_crew_actions(crew_actions);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "Set crew action executed".to_string());
+    assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
     // Verify the ship's crew actions have been updated
     let entities = server.get_entities().unwrap();
@@ -1174,7 +1174,7 @@ fn test_set_crew_actions_aid_gunner() {
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
         .unwrap();
-    assert_eq!(response, "Add ship action executed");
+    assert_eq!(response, msg_json("Add ship action executed"));
 
     let mut crew_actions = SetCrewActions::new("slow_ship");
     crew_actions.assist_gunners = Some(true);

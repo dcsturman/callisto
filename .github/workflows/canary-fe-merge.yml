@@ -1,0 +1,37 @@
+name: Canary Env -- Deploy React FE application to canary Firebase hosting
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - canary
+    paths:
+      - 'fe/**'
+      - '.firebaserc'
+      - 'firebase-canary.json'
+      - 'firebase.rules'
+      - 'firebase.storage.rules'
+      - 'firestore.indexes.json'
+      - 'firestore.rules'
+      - 'storage.rules'
+      - '.github/workflows/canary-fe-merge.yml'
+env:
+  BACKEND_SERVER_URL: https://backend.canary.callistoflight.com
+  GOOGLE_CLIENT_ID: ${{ secrets.CANARY_GOOGLE_CLIENT_ID }}
+jobs:
+  build_and_deploy_fe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build node.js
+        env:
+           CI: false
+           REACT_APP_C_BACKEND: ${{ env.BACKEND_SERVER_URL }}
+           REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+        working-directory: ./fe/callisto
+        run: npm ci && npm run build
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_CANARY }}
+          channelId: live
+          projectId: callisto-canary

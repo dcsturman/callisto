@@ -16,7 +16,7 @@ use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
 use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
-use callisto::payloads::{FlightPathMsg, EMPTY_FIRE_ACTIONS_MSG};
+use callisto::payloads::{FlightPathMsg, SimpleMsg, EMPTY_FIRE_ACTIONS_MSG};
 use callisto::ship::ShipDesignTemplate;
 use cgmath::{assert_ulps_eq, Zero};
 
@@ -139,17 +139,22 @@ async fn integration_add_ship() {
 
     let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer",
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap_or_else(|e| panic!("Unable to get response from server: {:?}", e))
-        .text()
+        .json()
         .await
         .unwrap();
 
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -193,29 +198,39 @@ async fn integration_add_planet_ship() {
 
     let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer",
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "design":"Buccaneer",
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -262,16 +277,21 @@ async fn integration_add_planet_ship() {
 
     let planet =
         r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e6,"mass":3e24}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_PLANET_PATH))
         .body(planet)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add planet action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add planet action executed".to_string()
+        }
+    );
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -325,16 +345,21 @@ async fn integration_add_planet_ship() {
     assert_json_eq!(result, compare);
 
     let planet = r#"{"name":"planet2","position":[1000000,0,0],"primary":"planet1", "color":"red","radius":1.5e6,"mass":1e23}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_PLANET_PATH))
         .body(planet)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add planet action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add planet action executed".to_string()
+        }
+    );
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -400,16 +425,21 @@ async fn integration_update_ship() {
     callisto::ship::config_test_ship_templates();
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let response = reqwest::Client::new()
         .post(path(PORT, UPDATE_ENTITIES_PATH))
@@ -449,28 +479,38 @@ async fn integration_update_missile() {
     callisto::ship::config_test_ship_templates();
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship2)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]);
     let body = serde_json::to_string(&fire_missile).unwrap();
@@ -554,27 +594,37 @@ async fn integration_remove_ship() {
     let _server = spawn_test_server(PORT).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, REMOVE_ENTITY_PATH))
         .body(r#""ship1""#)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Remove action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Remove action executed".to_string()
+        }
+    );
 
     let entities = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -594,16 +644,21 @@ async fn integration_set_acceleration() {
     const PORT: u16 = 3018;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
         .await
@@ -623,18 +678,21 @@ async fn integration_set_acceleration() {
         assert!(!flight_plan.has_second());
     }
 
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, SET_ACCELERATION_PATH))
         .body(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
-    assert_eq!(
+
+    assert_json_eq!(
         response,
-        r#"{ "msg" : "Set acceleration action executed" }"#
+        SimpleMsg {
+            msg: "Set acceleration action executed".to_string()
+        }
     );
 
     let response = reqwest::get(path(PORT, GET_ENTITIES_PATH))
@@ -660,17 +718,22 @@ async fn integration_compute_path_basic() {
     const PORT: u16 = 3019;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
 
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let response = reqwest::Client::new()
         .post(path(PORT, COMPUTE_PATH_PATH))
@@ -735,17 +798,22 @@ async fn integration_compute_path_with_standoff() {
     const PORT: u16 = 3020;
     let _server = spawn_test_server(PORT).await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let response = reqwest::Client::new()
+    let response: SimpleMsg = reqwest::Client::new()
         .post(path(PORT, ADD_SHIP_PATH))
         .body(ship)
         .send()
         .await
         .unwrap()
-        .text()
+        .json()
         .await
         .unwrap();
 
-    assert_eq!(response, r#"{ "msg" : "Add ship action executed" }"#);
+    assert_json_eq!(
+        response,
+        SimpleMsg {
+            msg: "Add ship action executed".to_string()
+        }
+    );
 
     let response = reqwest::Client::new()
         .post(path(PORT, COMPUTE_PATH_PATH))
