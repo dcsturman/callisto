@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - canary
+      - dev-tutorial-deploy
     paths:
       - 'callisto/**'
       - '.github/workflows/canary-be-merge.yml'
@@ -15,7 +16,7 @@ env:
   REGION: us-central1
   APP: callisto-be
   APP_ARGS: --secret,/secrets/google_credentials,--web-server,https://canary.callistoflight.com,--gcs-bucket,callisto-be-user-profiles
-  TUTORIAL_ARGS: --secret,/secrets/google_credentials,--web-server,https://canary.callistoflight.com,--gcs-bucket,callisto-be-user-profiles
+  TUTORIAL_ARGS: --secret,/secrets/google_credentials,--web-server,https://tutorial.canary.callistoflight.com,--gcs-bucket,callisto-be-user-profiles
   TUTORIAL_APP: callisto-be-tutorial
   PORT: 30000
 

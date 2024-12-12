@@ -1,9 +1,10 @@
 name: Prod Env -- Build Callisto Rust backend and run on Cloud Run
+
 on:
   push:
     branches:
       - main
-      - dev-tutorial-deploy
+      - dev-tutoral-deploy
     paths:
       - 'callisto/**'
       - '.github/workflows/prod-be-merge.yml'
@@ -54,13 +55,13 @@ jobs:
         with:
           context: ./callisto
           push: true
-          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}
+          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: 'Deploy to Cloud Run'
         run:
-          gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.APP_ARGS }}
+          gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.APP_ARGS }}
       - name: 'Deploy tutorial to Cloud Run'
         run:
-          gcloud run deploy ${{ env.TUTORIAL_APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.TUTORIAL_ARGS }}
+          gcloud run deploy ${{ env.TUTORIAL_APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.TUTORIAL_ARGS }}
