@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "callisto-canary"
-  }
+  },
+  "targets": {
+    "callisto-canary": {
+      "hosting": {
+        "tutorial": [
+          "callisto-tutorial"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
