@@ -14,6 +14,7 @@ on:
       - 'firestore.indexes.json'
       - 'firestore.rules'
       - 'storage.rules'
+      - '.github/workflows/canary-fe-merge.yml'
 env:
   BACKEND_SERVER_URL: https://backend.canary.callistoflight.com
   GOOGLE_CLIENT_ID: ${{ secrets.CANARY_GOOGLE_CLIENT_ID }}
