@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - canary
-      - dev-cookies
     paths:
       - 'fe/**'
       - '.firebaserc'
