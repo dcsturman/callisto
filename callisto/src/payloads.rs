@@ -10,14 +10,19 @@ use super::entity::Vec3;
 use super::ship::FlightPlan;
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct SimpleMsg {
+    pub msg: String,
+}
+
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct LoginMsg {
-    pub code: String,
+    pub code: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AuthResponse {
     pub email: String,
-    pub key: String,
 }
 
 #[serde_as]

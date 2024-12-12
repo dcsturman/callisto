@@ -7,7 +7,7 @@ import {
 import { login } from "./ServerManager";
 
 export function Authentication(args: {
-  setAuthToken: (token: string | null ) => void;
+  setAuthenticated: (authenticated: boolean) => void;
   setEmail: (email: string | null ) => void;
 }) {
   const [googleAuthResponse, setGoogleAuthResponse] = useState<any>(null);
@@ -51,9 +51,10 @@ export function Authentication(args: {
       code: string
     ) {
       console.log("Logging in to Callisto");
-      login(googleAuthResponse.code, args.setEmail, args.setAuthToken);
+      login(googleAuthResponse.code, args.setEmail, args.setAuthenticated);
     }
 
+    console.log("(Authentication) Redirect URI (REACT_APP_C_BACKEND) is set to: " + process.env.REACT_APP_C_BACKEND);
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
         console.error(
@@ -111,14 +112,14 @@ export function Authentication(args: {
 }
 
 export function Logout(args: {
-  setAuthToken: (token: string | null) => void;
+  setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
 }) {
   const logOut = () => {
     googleLogout();
 
-    args.setAuthToken(null);
+    args.setAuthenticated(false);
     args.setEmail(null);
   };
 

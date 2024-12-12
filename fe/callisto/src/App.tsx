@@ -33,8 +33,10 @@ import { RunTutorial, Tutorial } from "./Tutorial";
 
 const POLL_ENTITIES_INTERVAL = 0;
 
-function App() {
-  const [authToken, setAuthToken] = useState<string | null>(null);
+export const GOOGLE_OAUTH_CLIENT_ID: string = process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
+
+export function App() {
+  const [authenticated, setAuthenticated] = useState<boolean>(true);
   const [email, setEmail] = useState<string | null>(null);
   const [runTutorial, setRunTutorial] = useState(true);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
@@ -48,9 +50,11 @@ function App() {
     console.log("ENV is set to: " + JSON.stringify(process.env));
   }
   console.log(`Connecting to Callisto backend at ${CALLISTO_BACKEND}`);
+  console.groupEnd();
+
   return (
     <div>
-      {authToken ? (
+      {authenticated ? (
         <>
           <Tutorial
             runTutorial={runTutorial}
@@ -58,8 +62,7 @@ function App() {
             selectAShip={() => setComputerShipName("Killer")}
           />
           <Simulator
-            token={authToken}
-            setToken={setAuthToken}
+            setAuthenticated={setAuthenticated}
             email={email}
             setEmail={setEmail}
             restartTutorial={() => setRunTutorial(true)}
@@ -68,23 +71,21 @@ function App() {
           />
         </>
       ) : (
-        <Authentication setAuthToken={setAuthToken} setEmail={setEmail} />
+        <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
       )}
     </div>
   );
 }
 
 function Simulator({
-  token,
-  setToken,
+  setAuthenticated,
   email,
   setEmail,
   restartTutorial,
   computerShipName,
   setComputerShipName,
 }: {
-  token: string;
-  setToken: (token: string | null) => void;
+  setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
   restartTutorial: () => void;
@@ -116,11 +117,11 @@ function Simulator({
   useEffect(() => {
     if (POLL_ENTITIES_INTERVAL > 0) {
       const interval = setInterval(() => {
-        getEntities(setEntities, token, setToken);
+        getEntities(setEntities, setAuthenticated);
       }, POLL_ENTITIES_INTERVAL);
       return () => clearInterval(interval);
     }
-  }, [entities, token, setToken]);
+  }, [entities, setAuthenticated]);
 
   const getAndShowPlan = (
     entity_name: string | null,
@@ -136,8 +137,7 @@ function Simulator({
       setProposedPlan,
       target_vel,
       standoff,
-      token,
-      setToken
+      setAuthenticated
     );
   };
 
@@ -160,9 +160,9 @@ function Simulator({
   }
 
   useEffect(() => {
-    getTemplates(setTemplates, token, setToken);
-    getEntities(setEntities, token, setToken);
-  }, [token, setToken]);
+    getTemplates(setTemplates, setAuthenticated);
+    getEntities(setEntities, setAuthenticated);
+  }, [setAuthenticated]);
 
   useEffect(() => {
     window.addEventListener("keydown", downHandler);
@@ -192,8 +192,8 @@ function Simulator({
                     setShowResults(true);
                     callback(es);
                   },
-                  token,
-                  setToken
+                  setAuthenticated
+
                 )
               }
               computerShipName={computerShipName}
@@ -202,8 +202,7 @@ function Simulator({
               getAndShowPlan={getAndShowPlan}
               setCameraPos={setCameraPos}
               camera={camera}
-              token={token}
-              setToken={setToken}
+              setAuthenticated={setAuthenticated}
               showRange={showRange}
               setShowRange={setShowRange}
             />
@@ -215,7 +214,7 @@ function Simulator({
               <div className="admin-button-window">
                 <RunTutorial restartTutorial={restartTutorial} />
                 <Logout
-                  setAuthToken={setToken}
+                  setAuthenticated={setAuthenticated}
                   email={email}
                   setEmail={setEmail}
                 />
@@ -227,8 +226,7 @@ function Simulator({
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
-                  token={token}
-                  setToken={setToken}
+                  setAuthenticated={setAuthenticated}
                 />
               )}
               {showResults && (

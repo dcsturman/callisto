@@ -39,6 +39,7 @@ struct Args {
     test: bool,
 
     // Name of the web server hosting the react app.
+    // Must be used correct to make CORS work.
     #[arg(short, long, default_value = "http://localhost:50001")]
     web_server: String,
 
@@ -66,7 +67,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if test_mode {
         info!("(main) Server in TEST mode.");
     } else {
-        info!("(main) Server in standard mode. Web Server = {}", args.web_server);
+        info!(
+            "(main) Server in standard mode.  Referring frontend = {}",
+            args.web_server
+        );
     }
 
     let templates = load_ship_templates_from_file(&args.design_file).unwrap_or_else(|e| {
@@ -89,6 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             &args.web_server,
             args.secret,
             args.gcs_bucket.clone(),
+            args.web_server.clone(),
         )
         .await;
         debug!("(main) Get Google public keys.");
