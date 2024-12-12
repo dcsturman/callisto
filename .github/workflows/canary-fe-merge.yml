@@ -1,4 +1,4 @@
-name: Deploy React FE application to canary Firebase hosting
+name: Canary Env -- Deploy React FE application to canary Firebase hosting
 on:
   workflow_dispatch:
   push:

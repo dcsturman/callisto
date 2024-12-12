@@ -39,7 +39,7 @@ COPY --from=release /app/target/release/callisto /callisto
 COPY --from=build /app/scenarios* /scenarios
 COPY --from=build /app/config* /config
 
-ENV RUST_LOG=debug
+ENV RUST_LOG=info
 # set the binary as entrypoint
 ENTRYPOINT ["/callisto", "-s", "/scenarios/scenario2.json", "-p", "30000"]
 # Used for debugging the image

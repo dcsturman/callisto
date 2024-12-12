@@ -170,13 +170,6 @@ pub async fn handle_request(
                 .ok()
         });
 
-        let cookies = req.headers().typed_get::<Cookie>();
-        if let Some(cookies) = cookies {
-            debug!("***************** VERY INSECURE ********************** Cookies: {:?}", cookies);
-        } else { 
-            debug!("**************************** NO COOKIES FOUND");
-        }
-        
     // If we don't have a valid email, we reply with an Authorization error to the client.    
     // The exceptions to doing that are 1) if we're in test mode (not authenticating),
     // and 2) if we're doing an OPTIONS request (to get CORS headers) and 3) if we're doing a login request.  Login will

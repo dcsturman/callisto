@@ -41,7 +41,6 @@ export function App() {
   const [runTutorial, setRunTutorial] = useState(true);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
 
-  console.group("App startup. GOOGLE_OAUTH_CLIENT_ID = ", GOOGLE_OAUTH_CLIENT_ID);
   if (process.env.REACT_APP_C_BACKEND) {
     console.log(
       "REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND
