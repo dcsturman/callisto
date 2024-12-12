@@ -56,11 +56,11 @@ export function App() {
     <div>
       {authenticated ? (
         <>
-          <Tutorial
+          {process.env.REACT_APP_RUN_TUTORIAL && <Tutorial
             runTutorial={runTutorial}
             setRunTutorial={setRunTutorial}
             selectAShip={() => setComputerShipName("Killer")}
-          />
+          />}
           <Simulator
             setAuthenticated={setAuthenticated}
             email={email}

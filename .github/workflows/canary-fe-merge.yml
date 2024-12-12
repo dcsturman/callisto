@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - canary
+      - dev-tutorial-deploy
     paths:
       - 'fe/**'
       - '.firebaserc'
@@ -27,6 +28,24 @@ jobs:
            CI: false
            REACT_APP_C_BACKEND: ${{ env.BACKEND_SERVER_URL }}
            REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+        working-directory: ./fe/callisto
+        run: npm ci && npm run build
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_CANARY }}
+          channelId: live
+          projectId: callisto-canary
+  build_and_deploy_tutorial_fe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build node.js
+        env:
+           CI: false
+           REACT_APP_C_BACKEND: backend.tutorial.callistoflight.com
+           REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+           REACT_APP_RUN_TUTORIAL: true
         working-directory: ./fe/callisto
         run: npm ci && npm run build
       - uses: FirebaseExtended/action-hosting-deploy@v0
