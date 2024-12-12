@@ -17,7 +17,7 @@
     "callisto-canary": {
       "hosting": {
         "tutorial": [
-          "callisto-tutorial"
+          "callisto-tutorial-canary"
         ],
         "canary": [
           "callisto-canary"

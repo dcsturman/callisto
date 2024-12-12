@@ -37,7 +37,7 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_CANARY }}
           channelId: live
           projectId: callisto-canary
-          target: prod
+          target: canary
   build_and_deploy_canary_tutorial_fe:
     runs-on: ubuntu-latest
     steps:
@@ -45,7 +45,7 @@ jobs:
       - name: Build node.js
         env:
            CI: false
-           REACT_APP_C_BACKEND: ${{ env.BACKEND_SERVER_URL }}
+           REACT_APP_C_BACKEND: ${{ env.BACKEND_TUTORIAL_SERVER_URL }}
            REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
            REACT_APP_RUN_TUTORIAL: true
         working-directory: ./fe/callisto
