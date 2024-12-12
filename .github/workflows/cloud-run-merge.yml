@@ -1,13 +1,13 @@
 name: Build Callisto Rust backend and run on Cloud Run
 
-on:
-  workflow_dispatch:
+on: 
   push:
     branches:
       - main
     paths:
       - 'callisto/**'
       - '.github/workflows/cloud-run-merge.yml'
+  workflow_dispatch:
 
 env:
   PROJECT_ID: callisto-1731280702227

@@ -1,7 +1,6 @@
 name: Canary Env -- Build Canary Callisto Rust backend and run on Cloud Run
 
 on:
-  workflow_dispatch:  
   push:
     branches:
       - canary
@@ -9,6 +8,7 @@ on:
     paths:
       - 'callisto/**'
       - '.github/workflows/canary-be-merge.yml'
+  workflow_dispatch:  
 
 env:
   PROJECT_ID: callisto-canary
