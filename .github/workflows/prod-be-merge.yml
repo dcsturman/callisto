@@ -1,4 +1,4 @@
-name: Build Callisto Rust backend and run on Cloud Run
+name: Prod Env -- Build Callisto Rust backend and run on Cloud Run
 
 on: 
   push:
