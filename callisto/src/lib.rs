@@ -192,7 +192,7 @@ pub async fn handle_request(
     let web_server = authenticator
         .as_ref()
         .as_ref()
-        .and_then(|auth| Some(auth.get_web_server()));
+        .map(|auth| auth.get_web_server());
 
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, curious) => {
