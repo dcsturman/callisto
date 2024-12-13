@@ -17,7 +17,8 @@ use serde_json::json;
 
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, SetCrewActions, EMPTY_FIRE_ACTIONS_MSG,
+    AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, SetCrewActions,
+    EMPTY_FIRE_ACTIONS_MSG,
 };
 use crate::server::{msg_json, Server};
 use crate::ship::ShipDesignTemplate;
@@ -1200,7 +1201,7 @@ async fn test_set_crew_actions_aid_gunner() {
 async fn test_load_scenario() {
     // Create server and configure ship templates
     let server = setup_test_with_server().await;
-    
+
     // First add some ships and planets to the server
     let ship = r#"{"name":"test_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -1228,32 +1229,33 @@ async fn test_load_scenario() {
 
     let result = server.load_scenario(load_msg).await;
     assert!(result.is_ok());
-    assert_eq!(
-        result.unwrap(),
-        msg_json("Load scenario action executed")
-    );
+    assert_eq!(result.unwrap(), msg_json("Load scenario action executed"));
 
     // Verify the scenario was loaded correctly and previous entities are gone
     let entities = server.get_entities().unwrap();
-    
+
     // Verify previous entities are gone
     assert!(!entities.ships.contains_key("test_ship"));
     assert!(!entities.planets.contains_key("test_planet"));
-    
+
     // Verify sol scenario planets are present
     assert!(entities.planets.contains_key("Sun"));
     assert!(entities.planets.contains_key("Earth"));
     assert!(entities.planets.contains_key("Mars"));
-    
-    // Check some specific properties of the Sun
-    let sun = entities.planets.get("Sun").unwrap().read().unwrap();
-    assert_eq!(sun.get_name(), "Sun");
-    assert_eq!(sun.get_position(), Vec3::new(-149.6e9, 0.0, 0.0));
 
-    // Check Earth's properties
-    let earth = entities.planets.get("Earth").unwrap().read().unwrap();
-    assert_eq!(earth.get_name(), "Earth");
-    assert_eq!(earth.get_position(), Vec3::new(0.0, 0.0, 0.0));
+    {
+        // Check some specific properties of the Sun
+        let sun = entities.planets.get("Sun").unwrap().read().unwrap();
+        assert_eq!(sun.get_name(), "Sun");
+        assert_eq!(sun.get_position(), Vec3::new(-149.6e9, 0.0, 0.0));
+    }
+
+    {
+        // Check Earth's properties
+        let earth = entities.planets.get("Earth").unwrap().read().unwrap();
+        assert_eq!(earth.get_name(), "Earth");
+        assert_eq!(earth.get_position(), Vec3::new(0.0, 0.0, 0.0));
+    }
 
     // Test loading non-existent scenario
     let invalid_msg = LoadScenarioMsg {

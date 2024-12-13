@@ -10,8 +10,8 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, FireActionsMsg, LoginMsg,
-    LoadScenarioMsg, RemoveEntityMsg, SetCrewActions, SetPlanMsg, SimpleMsg,
+    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, FireActionsMsg, LoadScenarioMsg,
+    LoginMsg, RemoveEntityMsg, SetCrewActions, SetPlanMsg, SimpleMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -295,9 +295,14 @@ impl Server {
     }
 
     pub async fn load_scenario(&self, msg: LoadScenarioMsg) -> Result<String, String> {
-        info!("(/load_scenario) Received and processing load scenario request. {:?}", msg);
+        info!(
+            "(/load_scenario) Received and processing load scenario request. {:?}",
+            msg
+        );
 
-        let entities = Entities::load_from_file(&msg.scenario_name).await.map_err(|e| e.to_string())?;
+        let entities = Entities::load_from_file(&msg.scenario_name)
+            .await
+            .map_err(|e| e.to_string())?;
         *self.entities.lock().unwrap() = entities;
 
         Ok(msg_json("Load scenario action executed"))

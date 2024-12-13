@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - dev-tutorial-deploy
     paths:
       - 'callisto/**'
       - '.github/workflows/prod-be-merge.yml'
