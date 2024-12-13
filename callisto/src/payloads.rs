@@ -151,6 +151,11 @@ impl EffectMsg {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LoadScenarioMsg {
+    pub scenario_name: String,
+}
+
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]

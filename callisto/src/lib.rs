@@ -40,8 +40,8 @@ use std::io::{BufReader, Read};
 
 use entity::Entities;
 use payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoginMsg, RemoveEntityMsg,
-    SetCrewActions, SetPlanMsg,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoadScenarioMsg, LoginMsg,
+    RemoveEntityMsg, SetCrewActions, SetPlanMsg,
 };
 use server::Server;
 
@@ -368,6 +368,26 @@ pub async fn handle_request(
             let msg = deserialize_body_or_respond!(req, ComputePathMsg);
 
             match server.compute_path(msg) {
+                Ok(json) => {
+                    let mut resp = Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                        .unwrap();
+                    add_auth_headers(&mut resp, &web_server);
+                    Ok(resp)
+                }
+                Err(err) => Ok(build_err_response(
+                    StatusCode::BAD_REQUEST,
+                    &err,
+                    &web_server,
+                )),
+            }
+        }
+
+        (&Method::POST, "/load_scenario") => {
+            let msg = deserialize_body_or_respond!(req, LoadScenarioMsg);
+
+            match server.load_scenario(msg).await {
                 Ok(json) => {
                     let mut resp = Response::builder()
                         .status(StatusCode::OK)

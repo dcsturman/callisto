@@ -8,12 +8,12 @@ import { login } from "./ServerManager";
 
 export function Authentication(args: {
   setAuthenticated: (authenticated: boolean) => void;
-  setEmail: (email: string | null ) => void;
+  setEmail: (email: string | null) => void;
 }) {
   const [googleAuthResponse, setGoogleAuthResponse] = useState<any>(null);
   const [secureState, setSecureState] = useState<string | undefined>();
 
-/** 
+  /** 
  * The out of the box version of useGoogleLogin is missing options on the type signature.  So to make this wor
  * I had to "Go to Definition" and modify to look like this:
  interface AuthCodeFlowOptions extends Omit<CodeClientConfig, 'client_id' | 'scope' | 'callback'> {
@@ -29,9 +29,10 @@ export function Authentication(args: {
   }
  */
   const googleLogin = useGoogleLogin({
-    onSuccess: (codeResponse: CodeResponse) => setGoogleAuthResponse(codeResponse),
+    onSuccess: (codeResponse: CodeResponse) =>
+      setGoogleAuthResponse(codeResponse),
     onError: (error: any) => console.log("Login Failed:", error),
-    flow: 'auth-code',
+    flow: "auth-code",
     state: secureState,
     redirect_uri: process.env.REACT_APP_C_BACKEND || "http://localhost:50001",
     accessType: "offline",
@@ -47,19 +48,18 @@ export function Authentication(args: {
   }, [googleLogin, secureState]);
 
   useEffect(() => {
-    function loginToCallisto(
-      code: string
-    ) {
+    function loginToCallisto(code: string) {
       console.log("Logging in to Callisto");
       login(googleAuthResponse.code, args.setEmail, args.setAuthenticated);
     }
 
-    console.log("(Authentication) Redirect URI (REACT_APP_C_BACKEND) is set to: " + process.env.REACT_APP_C_BACKEND);
+    console.log(
+      "(Authentication) Redirect URI (REACT_APP_C_BACKEND) is set to: " +
+        process.env.REACT_APP_C_BACKEND
+    );
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
-        console.error(
-          "(Authentication) State mismatch, ignoring response"
-        );
+        console.error("(Authentication) State mismatch, ignoring response");
         alert(
           "Authentication issue: not getting back pre-provided state.  Serious bug or MitM attack?"
         );
@@ -72,7 +72,9 @@ export function Authentication(args: {
 
   return (
     <div className="authentication-container">
-      <h1 className="authentication-title">Callisto</h1>
+      <h1 className="authentication-title">
+        Callisto{!process.env.REACT_APP_TUTORIAL ? " Tutorial" : ""}
+      </h1>
       <br />
       <br />
       <div className="authentication-blurb">
@@ -86,10 +88,28 @@ export function Authentication(args: {
         Callisto is currently in <em>closed alpha</em>. If you have been
         pre-authorized to trial Callisto please log in with your Google Id.
       </div>
-      <br />
-      <br />
-      <br />
 
+      <br />
+      {!process.env.REACT_APP_RUN_TUTORIAL ? (
+        <>
+          <br />
+          <br />
+          <button
+            className="blue-button"
+            onClick={() =>
+              window.location.replace(`https://tutorial.${window.location.host}`)
+            }>
+            Go to Tutorial
+          </button>
+        </>
+      ) : (
+        <div className="authentication-blurb">
+          Welcome, and sign in to run the tutorial! When you finish the tutorial
+          you will be redirected back to the main server.
+          <br /> <br />
+          <br />
+        </div>
+      )}
       <button
         className="blue-button"
         onClick={() => {

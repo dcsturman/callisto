@@ -42,5 +42,14 @@
                 "primary" : "Earth",
                 "radius": 1.7e6,
                 "mass": 7e21
+    },
+    {
+        "name" : "Mars",
+        "position" : [8.1e10, 0, 0],
+        "velocity" : [0, 0, 0],
+                "color" : "!mars",
+                "primary" : "Sun",
+                "radius" : 3.38e6,
+                "mass" : 6.417e23
     }]
 }
