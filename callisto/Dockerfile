@@ -41,6 +41,6 @@ COPY --from=build /app/config* /config
 
 ENV RUST_LOG=info
 # set the binary as entrypoint
-ENTRYPOINT ["/callisto", "-s", "/scenarios/scenario2.json", "-p", "30000"]
+ENTRYPOINT ["/callisto", "-p", "30000"]
 # Used for debugging the image
 # ENTRYPOINT ["tail", "-f", "dev/null"]

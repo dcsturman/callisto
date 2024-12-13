@@ -1,10 +1,29 @@
 {
-  "hosting": {
+  "hosting": [{
+    "target": "prod",
     "public": "fe/callisto/build",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ]
-  }
+  },
+  {
+    "target": "tutorial",
+    "public": "fe/callisto/build",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  },
+  {
+    "target": "canary",
+    "public": "fe/callisto/build",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }]
 }

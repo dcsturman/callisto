@@ -151,6 +151,11 @@ impl EffectMsg {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LoadScenarioMsg {
+    pub scenario_name: String,
+}
+
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
@@ -176,9 +181,10 @@ mod tests {
     use crate::crew::Skills;
     use cgmath::Zero;
     use serde_json::json;
+    use test_log::test;
 
-    #[test]
-    fn test_add_ship_msg() {
+    #[test(tokio::test)]
+    async fn test_add_ship_msg() {
         let default_template_name = ShipDesignTemplate::default().name;
 
         let msg = AddShipMsg {
@@ -201,8 +207,8 @@ mod tests {
         assert_eq!(json_str, json.to_string());
     }
 
-    #[test]
-    fn test_add_ship_with_crew_msg() {
+    #[test(tokio::test)]
+    async fn test_add_ship_with_crew_msg() {
         let default_template_name = ShipDesignTemplate::default().name;
         let mut crew = Crew::new();
         crew.set_skill(Skills::Pilot, 2);

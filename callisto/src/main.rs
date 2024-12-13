@@ -17,6 +17,7 @@ use callisto::handle_request;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
+const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
 
 /// Server to implement physically pseudo-realistic spaceflight and possibly combat.
 #[derive(Parser, Debug)]
@@ -48,8 +49,8 @@ struct Args {
     secret: String,
 
     // Google Cloud Storage bucket to use in lieu of config directory
-    #[arg(long)]
-    gcs_bucket: Option<String>,
+    #[arg(short, long, default_value = DEFAULT_AUTHORIZED_USERS_FILE)]
+    users_file: String,
 }
 
 #[tokio::main]
@@ -73,12 +74,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     }
 
-    let templates = load_ship_templates_from_file(&args.design_file).unwrap_or_else(|e| {
-        panic!(
-            "Unable to load ship template file {}. Reason {:?}",
-            args.design_file, e
-        )
-    });
+    let templates = load_ship_templates_from_file(&args.design_file)
+        .await
+        .unwrap_or_else(|e| {
+            panic!(
+                "Unable to load ship template file {}. Reason {:?}",
+                args.design_file, e
+            )
+        });
 
     SHIP_TEMPLATES
         .set(templates)
@@ -92,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut authenticator = callisto::authentication::Authenticator::new(
             &args.web_server,
             args.secret,
-            args.gcs_bucket.clone(),
+            &args.users_file,
             args.web_server.clone(),
         )
         .await;
@@ -107,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         Entities::load_from_file(&file_name)
+            .await
             .unwrap_or_else(|e| panic!("Issue loading scenario file {}: {}", file_name, e))
     } else {
         Entities::new()
