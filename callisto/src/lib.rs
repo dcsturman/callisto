@@ -260,7 +260,8 @@ pub async fn handle_request(
                             if local_host {
                                 ""
                             } else {
-                                "Domain=callistoflight.com; "
+                                //"Domain=callistoflight.com; "
+                                ""
                             }
                         );
 
