@@ -117,7 +117,6 @@ function Simulator({
   const [stepIndex, setStepIndex] = useState(0);
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
 
-
   useEffect(() => {
     if (POLL_ENTITIES_INTERVAL > 0) {
       const interval = setInterval(() => {
@@ -225,9 +224,15 @@ function Simulator({
                 setViewControls={setViewControls}
               />
               <div className="admin-button-window">
-                {/* TODO: Eliminate this button if we really don't want it. */}
-                {true || <RunTutorial restartTutorial={(fname: string) => { loadScenario(fname, setEntities, setAuthenticated); setStepIndex(0); setRunTutorial(true); }}/>}
-                <button className="blue-button" onClick={() => window.location.replace("https://callistoflight.com")}>Exit Tutorial</button>
+                {!process.env.REACT_APP_RUN_TUTORIAL || (
+                  <button
+                    className="blue-button"
+                    onClick={() =>
+                      window.location.replace("https://callistoflight.com")
+                    }>
+                    Exit Tutorial
+                  </button>
+                )}
                 <Logout
                   setAuthenticated={setAuthenticated}
                   email={email}
