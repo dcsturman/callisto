@@ -10,20 +10,22 @@ use pretty_env_logger;
 
 use cgmath::{assert_ulps_eq, Zero};
 use std::sync::{Arc, Mutex};
+use test_log::test;
 
 use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, SetCrewActions, EMPTY_FIRE_ACTIONS_MSG,
+    AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, SetCrewActions,
+    EMPTY_FIRE_ACTIONS_MSG,
 };
 use crate::server::{msg_json, Server};
 use crate::ship::ShipDesignTemplate;
 
-fn setup_test_with_server() -> Server {
+async fn setup_test_with_server() -> Server {
     let _ = pretty_env_logger::try_init();
-    crate::ship::config_test_ship_templates();
+    crate::ship::config_test_ship_templates().await;
 
     Server::new(Arc::new(Mutex::new(Entities::new())), true)
 }
@@ -31,9 +33,9 @@ fn setup_test_with_server() -> Server {
 /**
  * Test that we can get a response to a get request when the entities state is empty (so the response is very simple)
  */
-#[test]
-fn test_simple_get() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_simple_get() {
+    let server = setup_test_with_server().await;
     let body = server.get().unwrap();
     assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[]}"#);
 }
@@ -41,9 +43,9 @@ fn test_simple_get() {
 /**
  * Test that we can add a ship to the server and get it back.
  */
-#[test]
-fn test_add_ship() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_add_ship() {
+    let server = setup_test_with_server().await;
     let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer","current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -77,9 +79,9 @@ fn test_add_ship() {
 /*
 * Test that we can add a ship, a planet, and a missile to the server and get them back.
 */
-#[test]
-fn test_add_planet_ship() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_add_planet_ship() {
+    let server = setup_test_with_server().await;
 
     let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -242,9 +244,9 @@ fn test_add_planet_ship() {
 /*
  * Test that creates a ship and then updates its position.
  */
-#[test]
-fn test_update_ship() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_update_ship() {
+    let mut server = setup_test_with_server().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -269,9 +271,9 @@ fn test_update_ship() {
  * Test to create two ships, launch a missile, and advance the round and see the missile move.
  *
  */
-#[test]
-fn test_update_missile() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_update_missile() {
+    let mut server = setup_test_with_server().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = server
@@ -347,9 +349,9 @@ fn test_update_missile() {
 /*
  * Test that we can add a ship, then remove it, and test that the entities list is empty.
  */
-#[test]
-fn test_remove_ship() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_remove_ship() {
+    let server = setup_test_with_server().await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
@@ -371,9 +373,9 @@ fn test_remove_ship() {
 /**
  * Test that creates a ship entity, assigns an acceleration, and then gets all entities to check that the acceleration is properly set.
  */
-#[test]
-fn test_set_acceleration() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_set_acceleration() {
+    let server = setup_test_with_server().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -406,9 +408,9 @@ fn test_set_acceleration() {
 /**
  * Test that will compute a simple path and return it, checking if the simple computation is correct.
  */
-#[test]
-fn test_compute_path_basic() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_compute_path_basic() {
+    let server = setup_test_with_server().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -468,9 +470,9 @@ fn test_compute_path_basic() {
     assert_eq!(t, 1000);
 }
 
-#[test]
-fn test_compute_path_with_standoff() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_compute_path_with_standoff() {
+    let server = setup_test_with_server().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -527,9 +529,9 @@ fn test_compute_path_with_standoff() {
     assert_eq!(t, 1413);
 }
 
-#[test]
-fn test_exhausted_missile() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_exhausted_missile() {
+    let mut server = setup_test_with_server().await;
 
     // Create two ships with one to fire at the other.
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
@@ -576,9 +578,9 @@ fn test_exhausted_missile() {
     );
 }
 
-#[test]
-fn test_destroy_ship() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_destroy_ship() {
+    let mut server = setup_test_with_server().await;
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
         .add_ship(serde_json::from_str(ship).unwrap())
@@ -617,9 +619,9 @@ fn test_destroy_ship() {
     }));
 }
 
-#[test]
-fn test_big_fight() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_big_fight() {
+    let mut server = setup_test_with_server().await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
@@ -717,9 +719,9 @@ fn test_big_fight() {
     );
 }
 
-#[test_log::test]
-fn test_fight_with_crew() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_fight_with_crew() {
+    let mut server = setup_test_with_server().await;
 
     // Ship 1 has a capable crew.
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", 
@@ -827,9 +829,9 @@ fn test_fight_with_crew() {
     );
 }
 
-#[test_log::test]
-fn test_slugfest() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_slugfest() {
+    let mut server = setup_test_with_server().await;
 
     // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
     // Boost weapon #10 as its firing a pules laser at the harrier.
@@ -920,9 +922,9 @@ fn test_slugfest() {
     );
 }
 
-#[test]
-fn test_get_entities() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_get_entities() {
+    let server = setup_test_with_server().await;
 
     // Test getting entities from an empty server
     let result = server.get_entities();
@@ -987,9 +989,9 @@ fn test_get_entities() {
 }
 
 // Test for get_designs in server.
-#[test]
-fn test_get_designs() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_get_designs() {
+    let server = setup_test_with_server().await;
     let result = server.get_designs();
     assert!(result.is_ok());
     let designs = result.unwrap();
@@ -997,9 +999,9 @@ fn test_get_designs() {
     assert!(designs.contains("Buccaneer"));
 }
 
-#[test]
-fn test_missile_impact_close() {
-    let mut server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_missile_impact_close() {
+    let mut server = setup_test_with_server().await;
 
     // Add the firing ship
     let firing_ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
@@ -1089,9 +1091,9 @@ fn test_missile_impact_close() {
     );
 }
 
-#[test_log::test]
-fn test_set_agility() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_set_agility() {
+    let server = setup_test_with_server().await;
 
     // Add a ship to the server
     let ship = r#"{"name":"agile_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
@@ -1132,9 +1134,9 @@ fn test_set_agility() {
     assert!(result.is_err());
 }
 
-#[test]
-fn test_set_crew_actions_aid_gunner() {
-    let server = setup_test_with_server();
+#[test(tokio::test)]
+async fn test_set_crew_actions_aid_gunner() {
+    let server = setup_test_with_server().await;
 
     // Add a ship to the server
     let ship = r#"{"name":"test_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
@@ -1192,5 +1194,73 @@ fn test_set_crew_actions_aid_gunner() {
     non_existent_ship_actions.assist_gunners = Some(true);
 
     let result = server.set_crew_actions(non_existent_ship_actions);
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_load_scenario() {
+    // Create server and configure ship templates
+    let server = setup_test_with_server().await;
+
+    // First add some ships and planets to the server
+    let ship = r#"{"name":"test_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(ship).unwrap())
+        .unwrap();
+    assert_eq!(response, msg_json("Add ship action executed"));
+
+    let planet = r#"{"name":"test_planet","position":[1000000,0,0],"color":"red","radius":1.5e6,"mass":1e23}"#;
+    let response = server
+        .add_planet(serde_json::from_str(planet).unwrap())
+        .unwrap();
+    assert_eq!(response, msg_json("Add planet action executed"));
+
+    // Verify initial entities exist
+    let initial_entities = server.get_entities().unwrap();
+    assert!(initial_entities.ships.contains_key("test_ship"));
+    assert!(initial_entities.planets.contains_key("test_planet"));
+    assert_eq!(initial_entities.ships.len(), 1);
+    assert_eq!(initial_entities.planets.len(), 1);
+
+    // Load the sol scenario
+    let load_msg = LoadScenarioMsg {
+        scenario_name: "./scenarios/sol.json".to_string(),
+    };
+
+    let result = server.load_scenario(load_msg).await;
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), msg_json("Load scenario action executed"));
+
+    // Verify the scenario was loaded correctly and previous entities are gone
+    let entities = server.get_entities().unwrap();
+
+    // Verify previous entities are gone
+    assert!(!entities.ships.contains_key("test_ship"));
+    assert!(!entities.planets.contains_key("test_planet"));
+
+    // Verify sol scenario planets are present
+    assert!(entities.planets.contains_key("Sun"));
+    assert!(entities.planets.contains_key("Earth"));
+    assert!(entities.planets.contains_key("Mars"));
+
+    {
+        // Check some specific properties of the Sun
+        let sun = entities.planets.get("Sun").unwrap().read().unwrap();
+        assert_eq!(sun.get_name(), "Sun");
+        assert_eq!(sun.get_position(), Vec3::new(-149.6e9, 0.0, 0.0));
+    }
+
+    {
+        // Check Earth's properties
+        let earth = entities.planets.get("Earth").unwrap().read().unwrap();
+        assert_eq!(earth.get_name(), "Earth");
+        assert_eq!(earth.get_position(), Vec3::new(0.0, 0.0, 0.0));
+    }
+
+    // Test loading non-existent scenario
+    let invalid_msg = LoadScenarioMsg {
+        scenario_name: "non_existent_scenario.json".to_string(),
+    };
+    let result = server.load_scenario(invalid_msg).await;
     assert!(result.is_err());
 }

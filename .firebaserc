@@ -1,5 +1,29 @@
 {
   "projects": {
-    "default": "callisto-canary"
-  }
+    "default": "callisto-1731280702227",
+    "canary": "callisto-canary"
+  },
+  "targets": {
+    "callisto-1731280702227": {
+      "hosting": {
+        "tutorial": [
+          "callisto-tutorial"
+        ],
+        "prod": [
+          "callisto-1731280702227"
+        ]
+      }
+    },
+    "callisto-canary": {
+      "hosting": {
+        "tutorial": [
+          "callisto-tutorial-canary"
+        ],
+        "canary": [
+          "callisto-canary"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

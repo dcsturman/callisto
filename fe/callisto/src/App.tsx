@@ -9,11 +9,11 @@ import { Ships, Missiles, Route } from "./Ships";
 import { EntityInfoWindow, Controls, ViewControls } from "./Controls";
 import { Effect, Explosions, ResultsWindow } from "./Effects";
 import {
+  loadScenario,
   nextRound,
   getEntities,
   getTemplates,
   computeFlightPath,
-  CALLISTO_BACKEND,
 } from "./ServerManager";
 
 import { ShipComputer } from "./ShipComputer";
@@ -33,14 +33,15 @@ import { RunTutorial, Tutorial } from "./Tutorial";
 
 const POLL_ENTITIES_INTERVAL = 0;
 
-export const GOOGLE_OAUTH_CLIENT_ID: string = process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
+export const GOOGLE_OAUTH_CLIENT_ID: string =
+  process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
 
 export function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(true);
   const [email, setEmail] = useState<string | null>(null);
-  const [runTutorial, setRunTutorial] = useState(true);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
 
+  console.group("Callisto Config parameters");
   if (process.env.REACT_APP_C_BACKEND) {
     console.log(
       "REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND
@@ -49,29 +50,31 @@ export function App() {
     console.log("REACT_APP_C_BACKEND is not set.");
     console.log("ENV is set to: " + JSON.stringify(process.env));
   }
-  console.log(`Connecting to Callisto backend at ${CALLISTO_BACKEND}`);
+
+  if (process.env.REACT_APP_RUN_TUTORIAL) {
+    console.log("Tutorial is set to run.");
+  } else {
+    console.log("Tutorial is not set to run.");
+  }
   console.groupEnd();
 
   return (
     <div>
       {authenticated ? (
         <>
-          <Tutorial
-            runTutorial={runTutorial}
-            setRunTutorial={setRunTutorial}
-            selectAShip={() => setComputerShipName("Killer")}
-          />
           <Simulator
             setAuthenticated={setAuthenticated}
             email={email}
             setEmail={setEmail}
-            restartTutorial={() => setRunTutorial(true)}
             computerShipName={computerShipName}
             setComputerShipName={setComputerShipName}
           />
         </>
       ) : (
-        <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
+        <Authentication
+          setAuthenticated={setAuthenticated}
+          setEmail={setEmail}
+        />
       )}
     </div>
   );
@@ -81,14 +84,12 @@ function Simulator({
   setAuthenticated,
   email,
   setEmail,
-  restartTutorial,
   computerShipName,
   setComputerShipName,
 }: {
   setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
-  restartTutorial: () => void;
   computerShipName: string | null;
   setComputerShipName: (ship: string | null) => void;
 }) {
@@ -113,6 +114,9 @@ function Simulator({
   });
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
   const [showRange, setShowRange] = useState<string | null>(null);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [runTutorial, setRunTutorial] = useState<boolean>(true);
+
 
   useEffect(() => {
     if (POLL_ENTITIES_INTERVAL > 0) {
@@ -183,6 +187,16 @@ function Simulator({
         <EntitiesServerProvider
           value={{ entities: entities, handler: setEntities }}>
           <div className="mainscreen-container">
+            {!process.env.REACT_APP_RUN_TUTORIAL || (
+              <Tutorial
+                runTutorial={runTutorial}
+                setRunTutorial={setRunTutorial}
+                stepIndex={stepIndex}
+                setStepIndex={setStepIndex}
+                selectAShip={() => setComputerShipName("Killer")}
+                setAuthenticated={setAuthenticated}
+              />
+            )}
             <Controls
               nextRound={(fireActions, callback) =>
                 nextRound(
@@ -193,7 +207,6 @@ function Simulator({
                     callback(es);
                   },
                   setAuthenticated
-
                 )
               }
               computerShipName={computerShipName}
@@ -212,7 +225,9 @@ function Simulator({
                 setViewControls={setViewControls}
               />
               <div className="admin-button-window">
-                <RunTutorial restartTutorial={restartTutorial} />
+                {/* TODO: Eliminate this button if we really don't want it. */}
+                {true || <RunTutorial restartTutorial={(fname: string) => { loadScenario(fname, setEntities, setAuthenticated); setStepIndex(0); setRunTutorial(true); }}/>}
+                <button className="blue-button" onClick={() => window.location.replace("https://callistoflight.com")}>Exit Tutorial</button>
                 <Logout
                   setAuthenticated={setAuthenticated}
                   email={email}

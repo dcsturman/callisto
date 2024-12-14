@@ -339,6 +339,29 @@ export function launchMissile(
     });
 }
 
+export function loadScenario(
+  scenario_name: string,
+  callback: EntityRefreshCallback,
+  setAuthenticated: (authenticated: boolean) => void
+) {
+  fetch(`${CALLISTO_BACKEND}/load_scenario`, {
+    ...standard_headers,
+    method: "POST",
+    body: JSON.stringify({ scenario_name: scenario_name }),
+  })
+    .then((response) => response.json())
+    .then(() => getEntities(callback, setAuthenticated))
+    .catch((error) => {
+      if (error instanceof NetworkError) {
+        handle_network_error(error, setAuthenticated);
+      } else if (error instanceof ApplicationError) {
+        alert(error.message);
+      } else {
+        throw error;
+      }
+    });
+}
+
 export function getEntities(
   callback: EntityRefreshCallback,
   setAuthenticated: (authenticated: boolean) => void

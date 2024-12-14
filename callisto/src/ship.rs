@@ -13,6 +13,7 @@ use strum_macros::FromRepr;
 use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
+use crate::read_local_or_cloud_file;
 use crate::{debug, info, warn};
 
 pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
@@ -432,12 +433,11 @@ serde_with::serde_conv!(
 );
 
 // Load ship templates from a file.
-pub fn load_ship_templates_from_file(
+pub async fn load_ship_templates_from_file(
     file_name: &str,
 ) -> Result<HashMap<String, Arc<ShipDesignTemplate>>, Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(file_name)?;
-    let reader = std::io::BufReader::new(file);
-    let templates: Vec<ShipDesignTemplate> = serde_json::from_reader(reader)?;
+    let templates: Vec<ShipDesignTemplate> =
+        serde_json::from_slice(read_local_or_cloud_file(file_name).await?.as_slice())?;
 
     // From the list of templates, create a hash table and wrap each in an Arc.
     let table = templates
@@ -452,9 +452,10 @@ pub fn load_ship_templates_from_file(
 }
 
 // Helper method designed only for use in tests to load templates from a default file.
-pub fn config_test_ship_templates() {
+pub async fn config_test_ship_templates() {
     const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
     let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
+        .await
         .expect("Unable to load ship template file.");
     SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| {
         info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!");
@@ -907,7 +908,7 @@ mod tests {
     use crate::crew::Skills;
     use cgmath::assert_ulps_eq;
 
-    #[test]
+    #[test_log::test]
     fn test_digit_to_int() {
         assert_eq!(digit_to_int('0'), 0);
         assert_eq!(digit_to_int('7'), 7);
@@ -935,13 +936,13 @@ mod tests {
         }
     }
 
-    #[test]
+    #[test_log::test]
     #[should_panic(expected = "Unknown code")]
     fn test_digit_to_int_invalid() {
         digit_to_int('I');
     }
 
-    #[test]
+    #[test_log::test]
     fn test_int_to_digit() {
         assert_eq!(int_to_digit(0), '0');
         assert_eq!(int_to_digit(9), '9');
@@ -951,13 +952,13 @@ mod tests {
         assert_eq!(int_to_digit(33), 'Z');
     }
 
-    #[test]
+    #[test_log::test]
     #[should_panic(expected = "Unknown code")]
     fn test_int_to_digit_invalid() {
         int_to_digit(34);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_ship_setters_and_getters() {
         let initial_position = Vec3::new(0.0, 0.0, 0.0);
         let initial_velocity = Vec3::new(1.0, 1.0, 1.0);
@@ -1003,7 +1004,7 @@ mod tests {
         assert!(ship.set_flight_plan(&invalid_plan).is_err());
         assert_eq!(ship.plan, new_plan); // Plan should not have changed
     }
-    #[test]
+    #[test_log::test]
     fn test_flight_plan_set_first_and_second() {
         let mut flight_plan = FlightPlan::default();
 
@@ -1045,7 +1046,7 @@ mod tests {
         assert_eq!(flight_plan.1, Some(AccelPair(new_accel2, new_time2)));
     }
 
-    #[test]
+    #[test_log::test]
     fn test_flight_plan_ensure_thrust_limit() {
         let mut flight_plan = FlightPlan::default();
 
@@ -1098,7 +1099,7 @@ mod tests {
         assert_eq!(flight_plan.1.as_ref().unwrap().1, 1500);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_flight_plan_advance_time() {
         let mut flight_plan = FlightPlan::default();
         let accel1 = Vec3::new(1.0, 2.0, 3.0);
@@ -1208,7 +1209,7 @@ mod tests {
         assert_eq!(ship.plan, max_accel_plan); // Plan should not have changed
     }
 
-    #[test]
+    #[test_log::test]
     fn test_ship_ordering() {
         let ship1 = Ship::new(
             "ship1".to_string(),
@@ -1233,7 +1234,7 @@ mod tests {
         assert!(ship1 != ship2);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_flight_plan_iterator() {
         // Test case 1: FlightPlan with two accelerations
         let accel1 = Vec3::new(1.0, 2.0, 3.0);
@@ -1288,7 +1289,7 @@ mod tests {
         assert_eq!(count, 2);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_set_agility_thrust() {
         let mut ship = Ship::new(
             "TestShip".to_string(),
@@ -1327,7 +1328,7 @@ mod tests {
         assert_eq!(ship.get_dodge_thrust(), 0);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_get_crew() {
         let ship = Ship::new(
             "TestShip".to_string(),
@@ -1348,7 +1349,7 @@ mod tests {
         assert_eq!(crew.get_gunnery(0), 0);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_get_crew_mut() {
         let mut ship = Ship::new(
             "TestShip".to_string(),

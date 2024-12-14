@@ -13,6 +13,7 @@ use crate::combat::{attack, create_sand_counts, do_fire_actions};
 use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::Planet;
+use crate::read_local_or_cloud_file;
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
 use crate::{debug, error, info, warn};
@@ -97,11 +98,11 @@ impl Entities {
         self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
     }
 
-    pub fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let file = std::fs::File::open(file_name)?;
-        let reader = std::io::BufReader::new(file);
-        let mut entities: Entities = serde_json::from_reader(reader)?;
+    pub async fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
         info!("Load scenario file \"{}\".", file_name);
+
+        let mut entities: Entities =
+            serde_json::from_slice(&read_local_or_cloud_file(file_name).await?)?;
 
         entities.fixup_pointers()?;
         entities.reset_gravity_wells();
@@ -1082,7 +1083,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_sun_update() {
         let _ = pretty_env_logger::try_init();
         let mut rng = SmallRng::seed_from_u64(0);
@@ -1120,7 +1121,7 @@ mod tests {
             expected_position
         );
     }
-    #[test]
+    #[test_log::test]
     // TODO: Add test to add a moon.
     fn test_complex_planet_update() {
         let _ = pretty_env_logger::try_init();
@@ -1235,7 +1236,7 @@ mod tests {
     }
 
     // A test of deserializing a planet string.
-    #[test]
+    #[test_log::test]
     fn test_serialize_planet() {
         let _ = pretty_env_logger::try_init();
 
@@ -1416,17 +1417,19 @@ mod tests {
 
         assert_json_eq!(&entities, &cmp);
     }
-    #[test]
-    fn test_unordered_scenario_file() {
+    #[tokio::test]
+    async fn test_unordered_scenario_file() {
         let _ = pretty_env_logger::try_init();
 
-        let entities = Entities::load_from_file("./tests/test-scenario.json").unwrap();
+        let entities = Entities::load_from_file("./tests/test-scenario.json")
+            .await
+            .unwrap();
         assert!(entities.validate(), "Scenario file failed validation");
     }
 
-    #[test]
-    fn test_entities_equality() {
-        config_test_ship_templates();
+    #[test_log::test(tokio::test)]
+    async fn test_entities_equality() {
+        config_test_ship_templates().await;
 
         let mut entities1 = Entities::new();
         let mut entities2 = Entities::new();
@@ -1625,7 +1628,7 @@ mod tests {
         assert_eq!(entities.len(), 0);
         assert!(entities.is_empty());
     }
-    #[test]
+    #[test_log::test]
     fn test_launch_missile_invalid_target() {
         let mut entities = Entities::new();
         let design = Arc::new(ShipDesignTemplate::default());
@@ -1652,9 +1655,9 @@ mod tests {
         );
     }
 
-    #[test_log::test]
-    fn test_fixup_pointers() {
-        config_test_ship_templates();
+    #[test_log::test(tokio::test)]
+    async fn test_fixup_pointers() {
+        config_test_ship_templates().await;
 
         // The best way to test this to to build a scenario file and then
         // deserialize it into an Entities struct.
@@ -1717,7 +1720,7 @@ mod tests {
             "Scenario file with bad planet should fail fixup_pointers"
         );
     }
-    #[test]
+    #[test_log::test]
     fn test_set_flight_plan() {
         let mut entities = Entities::new();
 

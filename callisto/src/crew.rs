@@ -108,7 +108,7 @@ impl Default for Crew {
 mod tests {
     use super::*;
 
-    #[test]
+    #[test_log::test]
     fn test_crew_new() {
         let crew = Crew::new();
         assert_eq!(crew.pilot, 0);
@@ -119,7 +119,7 @@ mod tests {
         assert_eq!(crew.gunnery, Vec::<u8>::new());
     }
 
-    #[test]
+    #[test_log::test]
     fn test_get_skill() {
         let mut crew = Crew::new();
         crew.pilot = 3;
@@ -135,14 +135,14 @@ mod tests {
         assert_eq!(crew.get_skill(Skills::Sensors), 5);
     }
 
-    #[test]
+    #[test_log::test]
     #[should_panic(expected = "(Crew.getSkill) Multiple gunners possible.")]
     fn test_get_skill_gunnery_panic() {
         let crew = Crew::new();
         crew.get_skill(Skills::Gunnery);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_get_individual_skills() {
         let mut crew = Crew::new();
         crew.pilot = 3;
@@ -158,7 +158,7 @@ mod tests {
         assert_eq!(crew.get_sensors(), 5);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_get_gunnery() {
         let mut crew = Crew::new();
         crew.gunnery = vec![1, 2, 3];
@@ -169,7 +169,7 @@ mod tests {
         assert_eq!(crew.get_gunnery(3), 0); // Out of range
     }
 
-    #[test]
+    #[test_log::test]
     fn test_set_skill() {
         let mut crew = Crew::new();
 
@@ -186,14 +186,14 @@ mod tests {
         assert_eq!(crew.sensors, 5);
     }
 
-    #[test]
+    #[test_log::test]
     #[should_panic(expected = "Cannot use set_skill for gunnery. Use add_gunnery instead.")]
     fn test_set_skill_gunnery_panic() {
         let mut crew = Crew::new();
         crew.set_skill(Skills::Gunnery, 1);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_add_gunnery() {
         let mut crew = Crew::new();
 
@@ -204,13 +204,13 @@ mod tests {
         assert_eq!(crew.gunnery, vec![1, 2, 3]);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_default_gunnery() {
         let default_gunnery = default_gunnery();
         assert_eq!(default_gunnery, Vec::<u8>::new());
     }
 
-    #[test]
+    #[test_log::test]
     fn test_crew_serialization_deserialization() {
         let mut crew = Crew::new();
         crew.pilot = 3;
