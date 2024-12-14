@@ -248,11 +248,6 @@ pub async fn handle_request(
                     if valid_email.is_none() && session_key.is_some() {
                         info!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
 
-                        // We are on our local host if either the web_server isn't set or it starts with localhost.
-                        // Need to know this as we cannot include Domain in the cookie if we're running local.
-                        let local_host =
-                            web_server.is_none_or(|s| s.starts_with("http://localhost:"));
-
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
                         // Should be "{}={}; HttpOnly; Secure",
                         let cookie_str = format!(
