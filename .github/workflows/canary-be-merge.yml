@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - canary
-      - dev-tutorial-deploy
     paths:
       - 'callisto/**'
       - '.github/workflows/canary-be-merge.yml'

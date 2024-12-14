@@ -46,6 +46,7 @@ use payloads::{
 use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
+pub const SESSION_COOKIE_NAME: &str = "callisto-session-key";
 enum SizeCheckError {
     SizeErr(Response<Full<Bytes>>),
     HyperErr(hyper::Error),
@@ -162,7 +163,7 @@ pub async fn handle_request(
         .typed_get::<Cookie>()
         .and_then(|cookies| {
             cookies
-                .get("callisto-session-key")
+                .get(SESSION_COOKIE_NAME)
                 .map(|cookie| cookie.to_string())
         })
         .and_then(|cookie| {
@@ -244,12 +245,23 @@ pub async fn handle_request(
                     // Add the set-cookie header only when we didn't have a valid cookie before.
                     if valid_email.is_none() && session_key.is_some() {
                         info!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
+
+                        // We are on our local host if either the web_server isn't set or it starts with localhost.
+                        // Need to know this as we cannot include Domain in the cookie if we're running local.
+                        let local_host =
+                            web_server.is_none_or(|s| s.starts_with("http://localhost:"));
+
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
                         // Should be "{}={}; HttpOnly; Secure",
                         let cookie_str = format!(
-                            "{}={}; HttpOnly",
-                            "callisto-session-key",
-                            session_key.unwrap()
+                            "{}={}; HttpOnly; {}Secure; SameSite=Strict",
+                            SESSION_COOKIE_NAME,
+                            session_key.unwrap(),
+                            if local_host {
+                                ""
+                            } else {
+                                "Domain=callistoflight.com; "
+                            }
                         );
 
                         resp.headers_mut()
