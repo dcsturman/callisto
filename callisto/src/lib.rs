@@ -46,6 +46,7 @@ use payloads::{
 use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
+pub const SESSION_COOKIE_NAME: &str = "callisto-session-key";
 enum SizeCheckError {
     SizeErr(Response<Full<Bytes>>),
     HyperErr(hyper::Error),
@@ -162,7 +163,7 @@ pub async fn handle_request(
         .typed_get::<Cookie>()
         .and_then(|cookies| {
             cookies
-                .get("callisto-session-key")
+                .get(SESSION_COOKIE_NAME)
                 .map(|cookie| cookie.to_string())
         })
         .and_then(|cookie| {
@@ -181,7 +182,9 @@ pub async fn handle_request(
     // The exceptions to doing that are 1) if we're in test mode (not authenticating),
     // and 2) if we're doing an OPTIONS request (to get CORS headers) and 3) if we're doing a login request.  Login will
     // have its own custom logic to test here.
-    if valid_email.is_none()
+    if let Some(email) = valid_email.clone() {
+        debug!("(lib.handleRequest) User {} is authorized.", email);
+    } else if valid_email.is_none()
         && !(test_mode || req.method() == Method::OPTIONS || req.uri().path() == "/login")
     {
         debug!("(lib.handleRequest) No valid email.  Returning 401.");
@@ -244,11 +247,12 @@ pub async fn handle_request(
                     // Add the set-cookie header only when we didn't have a valid cookie before.
                     if valid_email.is_none() && session_key.is_some() {
                         info!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
+
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
                         // Should be "{}={}; HttpOnly; Secure",
                         let cookie_str = format!(
-                            "{}={}; HttpOnly",
-                            "callisto-session-key",
+                            "{}={}; HttpOnly; Secure; SameSite=Strict",
+                            SESSION_COOKIE_NAME,
                             session_key.unwrap()
                         );
 
