@@ -182,7 +182,9 @@ pub async fn handle_request(
     // The exceptions to doing that are 1) if we're in test mode (not authenticating),
     // and 2) if we're doing an OPTIONS request (to get CORS headers) and 3) if we're doing a login request.  Login will
     // have its own custom logic to test here.
-    if valid_email.is_none()
+    if let Some(email) = valid_email.clone() {
+        debug!("(lib.handleRequest) User {} is authorized.", email);
+    } else if valid_email.is_none()
         && !(test_mode || req.method() == Method::OPTIONS || req.uri().path() == "/login")
     {
         debug!("(lib.handleRequest) No valid email.  Returning 401.");
