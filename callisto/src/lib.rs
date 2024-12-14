@@ -254,7 +254,8 @@ pub async fn handle_request(
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
                         // Should be "{}={}; HttpOnly; Secure",
                         let cookie_str = format!(
-                            "{}={}; HttpOnly; {}Secure; SameSite=Strict",
+                            //"{}={}; HttpOnly; {}Secure; SameSite=Strict",
+                            "{}={}; HttpOnly; {}",
                             SESSION_COOKIE_NAME,
                             session_key.unwrap(),
                             if local_host {
