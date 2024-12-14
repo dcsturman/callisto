@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - canary
-      - dev-tutorial-deploy
     paths:
       - 'fe/**'
       - '.firebaserc'
