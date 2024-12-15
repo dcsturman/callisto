@@ -38,6 +38,7 @@ use google_cloud_storage::http::objects::get::GetObjectRequest;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
+use authentication::Authenticator;
 use entity::Entities;
 use payloads::{
     AddPlanetMsg, AddShipMsg, ComputePathMsg, FireActionsMsg, LoadScenarioMsg, LoginMsg,
@@ -137,7 +138,7 @@ pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
     test_mode: bool,
-    authenticator: Arc<Option<crate::authentication::Authenticator>>,
+    authenticator: Arc<Option<Box<dyn Authenticator>>>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     info!(
         "Request: {:?}\n\tmethod: {}\n\turi: {}",

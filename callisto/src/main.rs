@@ -12,6 +12,7 @@ use log::{debug, info};
 
 extern crate callisto;
 
+use callisto::authentication::Authenticator;
 use callisto::entity::Entities;
 use callisto::handle_request;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
@@ -88,20 +89,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
     // Build the authenticator
-    let authenticator = if test_mode {
+    let authenticator: Option<Box<dyn Authenticator>> = if test_mode {
         debug!("(main) Server in test mode. No authenticator.");
         None
     } else {
-        let mut authenticator = callisto::authentication::Authenticator::new(
+        let authenticator = callisto::authentication::GoogleAuthenticator::new(
             &args.web_server,
             args.secret,
             &args.users_file,
             args.web_server.clone(),
         )
         .await;
-        debug!("(main) Get Google public keys.");
-        authenticator.fetch_google_public_keys().await;
-        Some(authenticator)
+        Some(Box::new(authenticator))
     };
 
     debug!("(main) Creating authenticator.");
