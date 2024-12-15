@@ -59,7 +59,7 @@ impl SetCrewActions {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 pub struct LaunchMissileMsg {
     pub source: String,
     pub target: String,
@@ -364,5 +364,68 @@ mod tests {
 
         let json_str = serde_json::to_string(&msg).unwrap();
         assert_eq!(json_str, json.to_string());
+    }
+
+    #[test]
+    fn test_load_scenario_msg() {
+        // Test serialization
+        let msg = LoadScenarioMsg {
+            scenario_name: "./scenarios/sol.json".to_string(),
+        };
+
+        let expected_json = json!({
+            "scenario_name": "./scenarios/sol.json"
+        });
+
+        let serialized = serde_json::to_string(&msg).unwrap();
+        assert_eq!(serialized, expected_json.to_string());
+
+        // Test deserialization
+        let json_str = r#"{"scenario_name": "./scenarios/sol.json"}"#;
+        let deserialized: LoadScenarioMsg = serde_json::from_str(json_str).unwrap();
+        assert_eq!(deserialized.scenario_name, "./scenarios/sol.json");
+
+        // Test deserialization with invalid JSON
+        let invalid_json = r#"{"wrong_field": "value"}"#;
+        let result = serde_json::from_str::<LoadScenarioMsg>(invalid_json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_login_msg() {
+        // Test with code present
+        let msg_with_code = LoginMsg {
+            code: Some("auth_code_123".to_string()),
+        };
+
+        let expected_json_with_code = json!({
+            "code": "auth_code_123"
+        });
+
+        let serialized = serde_json::to_string(&msg_with_code).unwrap();
+        assert_eq!(serialized, expected_json_with_code.to_string());
+
+        // Test deserialization with code
+        let json_str = r#"{"code": "auth_code_123"}"#;
+        let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
+        assert_eq!(deserialized.code, Some("auth_code_123".to_string()));
+
+        // Test without code
+        let msg_without_code = LoginMsg { code: None };
+
+        let expected_json_without_code = json!({});
+
+        let serialized = serde_json::to_string(&msg_without_code).unwrap();
+        assert_eq!(serialized, expected_json_without_code.to_string());
+
+        // Test deserialization without code
+        let json_str = r#"{"code": null}"#;
+        let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
+        assert_eq!(deserialized.code, None);
+
+        // Test deserialization with missing field
+        let json_str = r#"{}"#;
+        let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
+        assert_eq!(deserialized.code, None);
     }
 }

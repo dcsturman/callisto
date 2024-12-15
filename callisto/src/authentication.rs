@@ -1,7 +1,8 @@
+use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
 use headers::{Cookie, HeaderMapExt};
 use hyper::body::Incoming;
-use hyper::Request;
+use hyper::{Request, StatusCode};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -18,8 +19,31 @@ type GoogleProfile = String;
 const GOOGLE_CREDENTIALS_FILE: &str = "google_credentials.json";
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-#[allow(dead_code)]
-pub struct Authenticator {
+/// Trait defining the authentication behavior for the application
+#[async_trait]
+pub trait Authenticator: Send + Sync {
+    /// Returns the web server URL
+    fn get_web_server(&self) -> String;
+
+    /// Authenticates a Google user with the provided code
+    /// Returns a tuple of (session_key, user_profile) on success
+    async fn authenticate_user(
+        &self,
+        code: &str,
+    ) -> Result<(String, GoogleProfile), Box<dyn Error>>;
+
+    /// Validates a session key and returns the associated email if valid, InvalidKeyError otherwise
+    fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError>;
+
+    /// Checks authorization for an incoming request
+    /// Returns the authorized email on success, or an error tuple with status code and message
+    async fn check_authorization(
+        &self,
+        req: &Request<Incoming>,
+    ) -> Result<String, (StatusCode, String)>;
+}
+
+pub struct GoogleAuthenticator {
     credentials: GoogleCredentials,
     session_keys: RwLock<HashMap<String, String>>,
     authorized_users: Vec<String>,
@@ -28,7 +52,7 @@ pub struct Authenticator {
     web_server: String,
 }
 
-impl Authenticator {
+impl GoogleAuthenticator {
     pub async fn new(url: &str, secret: String, users_file: &str, web_server: String) -> Self {
         let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
             panic!(
@@ -39,24 +63,53 @@ impl Authenticator {
         let authorized_users = load_authorized_users_from_file(users_file)
             .await
             .expect("Unable to load authorized users file.");
-        Authenticator {
+        let mut authenticator = GoogleAuthenticator {
             credentials,
             session_keys: RwLock::new(HashMap::new()),
             authorized_users,
             node_server_url: url.to_string(),
             public_keys: None,
             web_server,
-        }
+        };
+
+        authenticator.fetch_google_public_keys().await;
+
+        authenticator
     }
 
-    pub fn get_web_server(&self) -> String {
+    async fn fetch_google_public_keys(&mut self) {
+        // Fetch Google's public keys
+        let client = reqwest::Client::new();
+        let public_keys_response = client
+            .get(GOOGLE_X509_CERT_URL)
+            .send()
+            .await
+            .expect("(validate_google_token) Unable to fetch Google public keys");
+
+        debug!("(validate_google_token) Fetched Google public keys.",);
+
+        let text = public_keys_response.text().await.unwrap();
+
+        debug!("(validate_google_token) Fetched Google public keys okay.");
+
+        let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
+            panic!(
+                "(validate_google_token) Error: Unable to parse Google public keys: {:?}",
+                e
+            )
+        });
+
+        self.public_keys = Some(public_keys);
+    }
+}
+
+#[async_trait]
+impl Authenticator for GoogleAuthenticator {
+    fn get_web_server(&self) -> String {
         self.web_server.clone()
     }
 
-    // Unfortunately have to skip coverage on authenticate_google_user as I'm not
-    // sure how to build a test with a valid code.
-    // TODO: Get Coverage skipping to work.
-    pub async fn authenticate_google_user(
+    async fn authenticate_user(
         &self,
         code: &str,
     ) -> Result<(String, GoogleProfile), Box<dyn Error>> {
@@ -173,6 +226,12 @@ impl Authenticator {
 
         // Record it with the email from token_data.email.
         let email = token_data.claims.email.clone();
+
+        // Check if email is an authorized user
+        if !self.authorized_users.contains(&email) {
+            return Err(Box::new(UnauthorizedUserError {}));
+        }
+
         self.session_keys
             .write()
             .unwrap()
@@ -188,7 +247,7 @@ impl Authenticator {
     // there is a corresponding email address.  Lack of an entry
     // means this cookie is old or made up.
     // Return Ok(the email address) or an InvalidKeyError.
-    pub fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
+    fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
         if let Some(email) = self.session_keys.read().unwrap().get(session_key) {
             Ok(email.to_string())
         } else {
@@ -196,10 +255,10 @@ impl Authenticator {
         }
     }
 
-    pub async fn check_authorization(
+    async fn check_authorization(
         &self,
         req: &Request<Incoming>,
-    ) -> Result<String, (hyper::StatusCode, String)> {
+    ) -> Result<String, (StatusCode, String)> {
         if let Some(cookies) = req.headers().typed_get::<Cookie>() {
             match cookies.get("callisto-session-key") {
                 Some(cookie) => {
@@ -213,48 +272,20 @@ impl Authenticator {
                             "(Authenticator.check_authorization) Invalid session key: {:?}",
                             e
                         );
-                        (
-                            hyper::StatusCode::UNAUTHORIZED,
-                            "Invalid session key".to_string(),
-                        )
+                        (StatusCode::UNAUTHORIZED, "Invalid session key".to_string())
                     })
                 }
                 None => Err((
-                    hyper::StatusCode::UNAUTHORIZED,
+                    StatusCode::UNAUTHORIZED,
                     "No session key cookie".to_string(),
                 )),
             }
         } else {
             Err((
-                hyper::StatusCode::UNAUTHORIZED,
+                StatusCode::UNAUTHORIZED,
                 "No session key cookie".to_string(),
             ))
         }
-    }
-
-    pub async fn fetch_google_public_keys(&mut self) {
-        // Fetch Google's public keys
-        let client = reqwest::Client::new();
-        let public_keys_response = client
-            .get(GOOGLE_X509_CERT_URL)
-            .send()
-            .await
-            .expect("(validate_google_token) Unable to fetch Google public keys");
-
-        debug!("(validate_google_token) Fetched Google public keys.",);
-
-        let text = public_keys_response.text().await.unwrap();
-
-        debug!("(validate_google_token) Fetched Google public keys okay.");
-
-        let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
-            panic!(
-                "(validate_google_token) Error: Unable to parse Google public keys: {:?}",
-                e
-            )
-        });
-
-        self.public_keys = Some(public_keys);
     }
 }
 
@@ -307,6 +338,17 @@ impl std::fmt::Display for InvalidKeyError {
 }
 
 impl Error for InvalidKeyError {}
+
+#[derive(Debug)]
+pub struct UnauthorizedUserError {}
+
+impl std::fmt::Display for UnauthorizedUserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Unauthorized user")
+    }
+}
+
+impl Error for UnauthorizedUserError {}
 
 // These structs are all used as message structures to/from Google
 #[derive(Debug, Serialize, Deserialize)]
@@ -370,8 +412,100 @@ struct GoogleCredsJson {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::RwLock;
+
+    // Mock authenticator for testing
+    pub struct MockAuthenticator {
+        session_keys: RwLock<HashMap<String, String>>,
+        web_server: String,
+    }
+
+    impl MockAuthenticator {
+        pub async fn new(
+            _url: &str,
+            _secret: String,
+            _users_file: &str,
+            web_server: String,
+        ) -> Self {
+            MockAuthenticator {
+                session_keys: RwLock::new(HashMap::new()),
+                web_server,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Authenticator for MockAuthenticator {
+        fn get_web_server(&self) -> String {
+            self.web_server.clone()
+        }
+
+        async fn authenticate_user(
+            &self,
+            _code: &str,
+        ) -> Result<(String, GoogleProfile), Box<dyn Error>> {
+            let session_key = "test_session_key".to_string();
+            let email = "test@example.com".to_string();
+            self.session_keys
+                .write()
+                .unwrap()
+                .insert(session_key.clone(), email.clone());
+            Ok((session_key, email))
+        }
+
+        fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
+            if let Some(email) = self.session_keys.read().unwrap().get(session_key) {
+                Ok(email.to_string())
+            } else {
+                Err(InvalidKeyError {})
+            }
+        }
+
+        async fn check_authorization(
+            &self,
+            req: &Request<Incoming>,
+        ) -> Result<String, (StatusCode, String)> {
+            if let Some(cookies) = req.headers().typed_get::<Cookie>() {
+                if let Some(session_key) = cookies.get("callisto-session-key") {
+                    return self.validate_session_key(session_key).map_err(|_| {
+                        (StatusCode::UNAUTHORIZED, "Invalid session key".to_string())
+                    });
+                }
+            }
+            Err((StatusCode::UNAUTHORIZED, "No session key found".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_authenticator() {
+        let mock_auth = MockAuthenticator::new(
+            "http://test.com",
+            "secret".to_string(),
+            "users.txt",
+            "http://web.test.com".to_string(),
+        )
+        .await;
+
+        // Test authentication flow
+        let (session_key, email) = mock_auth
+            .authenticate_user("test_code")
+            .await
+            .expect("Authentication should succeed");
+
+        assert_eq!(email, "test@example.com");
+
+        // Test session key validation
+        let validated_email = mock_auth
+            .validate_session_key(&session_key)
+            .expect("Session key should be valid");
+        assert_eq!(validated_email, "test@example.com");
+
+        // Test invalid session key
+        assert!(mock_auth.validate_session_key("invalid_key").is_err());
+    }
 
     const LOCAL_SECRETS_DIR: &str = "./secrets";
     const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
@@ -381,7 +515,7 @@ mod tests {
     #[should_panic]
     async fn test_bad_credentials_file() {
         const BAD_FILE: &str = "./not_there_file.json";
-        let authenticator =  Authenticator::new("http://localhost:3000", BAD_FILE.to_string(), "", "http://localhost:3000".to_string()).await; // This should fail.
+        let authenticator =  GoogleAuthenticator::new("http://localhost:3000", BAD_FILE.to_string(), "", "http://localhost:3000".to_string()).await; // This should fail.
         assert!(authenticator.credentials.client_id.is_empty());
     }
 
@@ -422,7 +556,7 @@ mod tests {
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_fetch_google_public_keys() {
-        let mut authenticator = Authenticator::new("http://localhost:3000", format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE), "", "http://localhost:3000").await;
+        let mut authenticator = GoogleAuthenticator::new("http://localhost:3000", format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE), "", "http://localhost:3000".to_string()).await;
         authenticator.fetch_google_public_keys().await;
         assert!(authenticator.public_keys.is_some());
     }

@@ -910,52 +910,112 @@ mod tests {
 
     #[test_log::test]
     fn test_digit_to_int() {
+        // Test digits 0-9
         assert_eq!(digit_to_int('0'), 0);
+        assert_eq!(digit_to_int('1'), 1);
+        assert_eq!(digit_to_int('2'), 2);
+        assert_eq!(digit_to_int('3'), 3);
+        assert_eq!(digit_to_int('4'), 4);
+        assert_eq!(digit_to_int('5'), 5);
+        assert_eq!(digit_to_int('6'), 6);
         assert_eq!(digit_to_int('7'), 7);
+        assert_eq!(digit_to_int('8'), 8);
         assert_eq!(digit_to_int('9'), 9);
+
+        // Test all valid letters A-Z (excluding I, O)
         assert_eq!(digit_to_int('A'), 10);
+        assert_eq!(digit_to_int('B'), 11);
+        assert_eq!(digit_to_int('C'), 12);
         assert_eq!(digit_to_int('D'), 13);
         assert_eq!(digit_to_int('E'), 14);
         assert_eq!(digit_to_int('F'), 15);
         assert_eq!(digit_to_int('G'), 16);
         assert_eq!(digit_to_int('H'), 17);
+        assert_eq!(digit_to_int('J'), 18);
+        assert_eq!(digit_to_int('K'), 19);
+        assert_eq!(digit_to_int('L'), 20);
+        assert_eq!(digit_to_int('M'), 21);
+        assert_eq!(digit_to_int('N'), 22);
+        assert_eq!(digit_to_int('P'), 23);
+        assert_eq!(digit_to_int('Q'), 24);
+        assert_eq!(digit_to_int('R'), 25);
+        assert_eq!(digit_to_int('S'), 26);
+        assert_eq!(digit_to_int('T'), 27);
+        assert_eq!(digit_to_int('U'), 28);
+        assert_eq!(digit_to_int('V'), 29);
+        assert_eq!(digit_to_int('W'), 30);
+        assert_eq!(digit_to_int('X'), 31);
+        assert_eq!(digit_to_int('Y'), 32);
         assert_eq!(digit_to_int('Z'), 33);
-
-        for i in 0..5 {
-            assert_eq!(
-                digit_to_int(char::from_u32((i + b'J') as u32).unwrap()),
-                i + 18
-            );
-        }
-
-        for i in 0..10 {
-            assert_eq!(
-                digit_to_int(char::from_u32((i + b'P') as u32).unwrap()),
-                i + 23
-            );
-        }
-    }
-
-    #[test_log::test]
-    #[should_panic(expected = "Unknown code")]
-    fn test_digit_to_int_invalid() {
-        digit_to_int('I');
     }
 
     #[test_log::test]
     fn test_int_to_digit() {
+        // Test integers 0-9
         assert_eq!(int_to_digit(0), '0');
+        assert_eq!(int_to_digit(1), '1');
+        assert_eq!(int_to_digit(2), '2');
+        assert_eq!(int_to_digit(3), '3');
+        assert_eq!(int_to_digit(4), '4');
+        assert_eq!(int_to_digit(5), '5');
+        assert_eq!(int_to_digit(6), '6');
+        assert_eq!(int_to_digit(7), '7');
+        assert_eq!(int_to_digit(8), '8');
         assert_eq!(int_to_digit(9), '9');
+
+        // Test all valid integers 10-33 (corresponding to A-Z, excluding I, O)
         assert_eq!(int_to_digit(10), 'A');
+        assert_eq!(int_to_digit(11), 'B');
+        assert_eq!(int_to_digit(12), 'C');
+        assert_eq!(int_to_digit(13), 'D');
+        assert_eq!(int_to_digit(14), 'E');
         assert_eq!(int_to_digit(15), 'F');
         assert_eq!(int_to_digit(16), 'G');
+        assert_eq!(int_to_digit(17), 'H');
+        assert_eq!(int_to_digit(18), 'J');
+        assert_eq!(int_to_digit(19), 'K');
+        assert_eq!(int_to_digit(20), 'L');
+        assert_eq!(int_to_digit(21), 'M');
+        assert_eq!(int_to_digit(22), 'N');
+        assert_eq!(int_to_digit(23), 'P');
+        assert_eq!(int_to_digit(24), 'Q');
+        assert_eq!(int_to_digit(25), 'R');
+        assert_eq!(int_to_digit(26), 'S');
+        assert_eq!(int_to_digit(27), 'T');
+        assert_eq!(int_to_digit(28), 'U');
+        assert_eq!(int_to_digit(29), 'V');
+        assert_eq!(int_to_digit(30), 'W');
+        assert_eq!(int_to_digit(31), 'X');
+        assert_eq!(int_to_digit(32), 'Y');
         assert_eq!(int_to_digit(33), 'Z');
     }
 
     #[test_log::test]
-    #[should_panic(expected = "Unknown code")]
-    fn test_int_to_digit_invalid() {
-        int_to_digit(34);
+    fn test_digit_to_int_invalid_cases() {
+        let invalid_chars = ['I', 'O', 'a', 'i', 'o', 'z', '#', ' ', '-'];
+        for &c in &invalid_chars {
+            let result = std::panic::catch_unwind(|| digit_to_int(c));
+            assert!(result.is_err(), "Expected panic for character: {}", c);
+        }
+    }
+
+    #[test_log::test]
+    fn test_int_to_digit_invalid_cases() {
+        let invalid_ints = [34, 35, 99, 255];
+        for &i in &invalid_ints {
+            let result = std::panic::catch_unwind(|| int_to_digit(i));
+            assert!(result.is_err(), "Expected panic for integer: {}", i);
+        }
+    }
+
+    #[test_log::test]
+    fn test_digit_conversion_roundtrip() {
+        // Test roundtrip conversion for all valid values
+        for i in 0..34 {
+            let digit = int_to_digit(i);
+            let num = digit_to_int(digit);
+            assert_eq!(i, num, "Roundtrip failed for number {}", i);
+        }
     }
 
     #[test_log::test]
@@ -1202,7 +1262,7 @@ mod tests {
 
         // Test case 6: Set a flight plan with a second acceleration exceeding ship's capabilities
         let invalid_plan2 = FlightPlan::new(
-            AccelPair(Vec3::new(2.0, 2.0, 2.0), 5000),
+            AccelPair(Vec3::new(2.0, 2.0, 0.0), 5000),
             Some(AccelPair(Vec3::new(100.0, 100.0, 100.0), 3000)),
         );
         assert!(ship.set_flight_plan(&invalid_plan2).is_err());
@@ -1379,5 +1439,324 @@ mod tests {
         assert_eq!(crew.get_engineering_maneuver(), 4);
         assert_eq!(crew.get_sensors(), 5);
         assert_eq!(crew.get_gunnery(0), 2);
+    }
+
+    #[test_log::test]
+    fn test_weapon_ordering() {
+        // Create test weapons with different mounts and types
+        let large_bay_beam = Weapon {
+            kind: WeaponType::Beam,
+            mount: WeaponMount::Bay(BaySize::Large),
+        };
+        let large_bay_pulse = Weapon {
+            kind: WeaponType::Pulse,
+            mount: WeaponMount::Bay(BaySize::Large),
+        };
+        let medium_bay = Weapon {
+            kind: WeaponType::Beam,
+            mount: WeaponMount::Bay(BaySize::Medium),
+        };
+
+        let medium_bay_missile = Weapon {
+            kind: WeaponType::Missile,
+            mount: WeaponMount::Bay(BaySize::Medium),
+        };
+
+        let small_bay = Weapon {
+            kind: WeaponType::Beam,
+            mount: WeaponMount::Bay(BaySize::Small),
+        };
+
+        let small_bay_pulse = Weapon {
+            kind: WeaponType::Pulse,
+            mount: WeaponMount::Bay(BaySize::Small),
+        };
+
+        let barbette = Weapon {
+            kind: WeaponType::Beam,
+            mount: WeaponMount::Barbette,
+        };
+        let turret = Weapon {
+            kind: WeaponType::Beam,
+            mount: WeaponMount::Turret(2),
+        };
+        let turret_pulse = Weapon {
+            kind: WeaponType::Pulse,
+            mount: WeaponMount::Turret(2),
+        };
+
+        // Test ordering between same mount types
+        assert!(large_bay_beam < large_bay_pulse); // Same mount, different types
+
+        // Test ordering between different mount types
+        assert!(large_bay_beam < medium_bay); // Large bay < Medium bay
+        assert!(medium_bay > large_bay_pulse); // Large bay < Medium bay
+        assert!(medium_bay < small_bay); // Medium bay < Small bay
+        assert!(small_bay > medium_bay_missile); // Medium bay < Small bay
+        assert!(medium_bay_missile > medium_bay); // Medium bay < Small bay
+        assert!(small_bay < barbette); // Small bay < Barbette
+        assert!(small_bay_pulse > small_bay); // Small bay < Barbette
+        assert!(small_bay < small_bay_pulse); // Small bay < Barbette
+        assert!(small_bay > large_bay_pulse);
+        assert!(barbette < turret); // Barbette < Turret
+        assert!(turret > barbette); // Barbette < Turret
+        assert!(turret < turret_pulse); // Barbette < Turret
+
+        // Test transitivity
+        assert!(large_bay_beam < small_bay); // Large bay < Small bay
+        assert!(medium_bay < barbette); // Medium bay < Barbette
+        assert!(small_bay < turret); // Small bay < Turret
+
+        // Test turret comparison with bays
+        assert!(turret > large_bay_beam); // Turret > Large bay
+        assert!(turret > medium_bay); // Turret > Medium bay
+        assert!(turret > small_bay); // Turret > Small bay
+    }
+
+    #[test_log::test]
+    fn test_sensors() {
+        // Test Sensors::max
+        assert_eq!(
+            Sensors::max(Sensors::Basic, Sensors::Military),
+            Sensors::Military
+        );
+        assert_eq!(
+            Sensors::max(Sensors::Advanced, Sensors::Civilian),
+            Sensors::Advanced
+        );
+        assert_eq!(
+            Sensors::max(Sensors::Military, Sensors::Military),
+            Sensors::Military
+        );
+
+        // Test conversion to i32
+        assert_eq!(i32::from(Sensors::Basic), -4);
+        assert_eq!(i32::from(Sensors::Civilian), -2);
+        assert_eq!(i32::from(Sensors::Military), 0);
+        assert_eq!(i32::from(Sensors::Improved), 1);
+        assert_eq!(i32::from(Sensors::Advanced), 2);
+
+        // Test ordering
+        assert!(Sensors::Basic < Sensors::Civilian);
+        assert!(Sensors::Civilian < Sensors::Military);
+        assert!(Sensors::Military < Sensors::Improved);
+        assert!(Sensors::Improved < Sensors::Advanced);
+    }
+
+    #[test_log::test]
+    fn test_fixup_current_values() {
+        // Create a ship design template with some values
+        let design = Arc::new(ShipDesignTemplate {
+            name: "Test Ship".to_string(),
+            displacement: 400,
+            hull: 100,
+            armor: 50,
+            maneuver: 4,
+            jump: 2,
+            power: 200,
+            fuel: 1000,
+            crew: 20,
+            sensors: Sensors::Military,
+            stealth: None,
+            computer: 10,
+            weapons: vec![
+                Weapon {
+                    kind: WeaponType::Beam,
+                    mount: WeaponMount::Turret(2),
+                },
+                Weapon {
+                    kind: WeaponType::Pulse,
+                    mount: WeaponMount::Bay(BaySize::Small),
+                },
+            ],
+            tl: 12,
+        });
+
+        // Create a ship with lower current values
+        let mut ship = Ship::new(
+            "TestShip".to_string(),
+            Vec3::zero(),
+            Vec3::zero(),
+            FlightPlan::default(),
+            design.clone(),
+            None,
+        );
+
+        // Manually set current values to be lower than design values
+        ship.current_hull = 50; // Lower than design.hull (100)
+        ship.current_armor = 25; // Lower than design.armor (50)
+        ship.current_power = 100; // Lower than design.power (200)
+        ship.current_maneuver = 2; // Lower than design.maneuver (4)
+        ship.current_jump = 1; // Lower than design.jump (2)
+        ship.current_fuel = 500; // Lower than design.fuel (1000)
+        ship.current_crew = 10; // Lower than design.crew (20)
+        ship.current_sensors = Sensors::Basic; // Lower than design.sensors (Military)
+        ship.active_weapons = vec![false, false]; // All false
+        ship.crit_level = [1; 11]; // All ones
+        ship.attack_dm = -2; // Negative value
+        ship.dodge_thrust = 2; // Non-zero value
+
+        // Call fixup_current_values
+        ship.fixup_current_values();
+
+        // Verify all values are restored to design values
+        assert_eq!(ship.current_hull, design.hull);
+        assert_eq!(ship.current_armor, design.armor);
+        assert_eq!(ship.current_power, design.power);
+        assert_eq!(ship.current_maneuver, design.maneuver);
+        assert_eq!(ship.current_jump, design.jump);
+        assert_eq!(ship.current_fuel, design.fuel);
+        assert_eq!(ship.current_crew, design.crew);
+        assert_eq!(ship.current_sensors, design.sensors);
+        assert_eq!(ship.active_weapons, vec![true, true]);
+        assert_eq!(ship.crit_level, [0; 11]);
+        assert_eq!(ship.attack_dm, 0);
+        assert_eq!(ship.dodge_thrust, 0);
+
+        // Test that values higher than design values are not reduced
+        ship.current_hull = 150; // Higher than design.hull
+        ship.current_armor = 75; // Higher than design.armor
+        ship.current_sensors = Sensors::Advanced; // Higher than design.sensors
+
+        ship.fixup_current_values();
+
+        // Verify higher values are preserved
+        assert_eq!(ship.current_hull, 150);
+        assert_eq!(ship.current_armor, 75);
+        assert_eq!(ship.current_sensors, Sensors::Advanced);
+    }
+
+    #[test]
+    fn test_stealth_to_i32_conversion() {
+        assert_eq!(i32::from(Stealth::Basic), -2);
+        assert_eq!(i32::from(Stealth::Improved), -2);
+        assert_eq!(i32::from(Stealth::Enhanced), -4);
+        assert_eq!(i32::from(Stealth::Advanced), -6);
+    }
+
+    #[test]
+    fn test_stealth_to_string_conversion() {
+        assert_eq!(String::from(Stealth::Basic), "Basic");
+        assert_eq!(String::from(Stealth::Improved), "Improved");
+        assert_eq!(String::from(Stealth::Enhanced), "Enhanced");
+        assert_eq!(String::from(Stealth::Advanced), "Advanced");
+    }
+
+    #[test]
+    fn test_stealth_string_case_sensitivity() {
+        // Verify that the strings match exactly, including case
+        let basic = String::from(Stealth::Basic);
+        assert_ne!(basic, "basic");
+        assert_ne!(basic, "BASIC");
+
+        let improved = String::from(Stealth::Improved);
+        assert_ne!(improved, "improved");
+        assert_ne!(improved, "IMPROVED");
+    }
+
+    #[test]
+    fn test_sensors_to_string_conversion() {
+        assert_eq!(String::from(Sensors::Basic), "Basic");
+        assert_eq!(String::from(Sensors::Civilian), "Civilian");
+        assert_eq!(String::from(Sensors::Military), "Military");
+        assert_eq!(String::from(Sensors::Improved), "Improved");
+        assert_eq!(String::from(Sensors::Advanced), "Advanced");
+    }
+
+    #[test]
+    fn test_sensors_string_case_sensitivity() {
+        // Verify that the strings match exactly, including case
+        let improved = String::from(Sensors::Improved);
+        assert_ne!(improved, "improved");
+        assert_ne!(improved, "IMPROVED");
+
+        let advanced = String::from(Sensors::Advanced);
+        assert_ne!(advanced, "advanced");
+        assert_ne!(advanced, "ADVANCED");
+    }
+
+    #[test]
+    fn test_sensors_to_i32_and_string() {
+        // Test both conversions for each variant
+        let test_cases = vec![
+            (Sensors::Basic, -4, "Basic"),
+            (Sensors::Civilian, -2, "Civilian"),
+            (Sensors::Military, 0, "Military"),
+            (Sensors::Improved, 1, "Improved"),
+            (Sensors::Advanced, 2, "Advanced"),
+        ];
+
+        for (sensor, expected_i32, expected_string) in test_cases {
+            assert_eq!(i32::from(sensor), expected_i32);
+            assert_eq!(String::from(sensor), expected_string);
+        }
+    }
+
+    #[test]
+    fn test_best_thrust() {
+        let design = ShipDesignTemplate {
+            name: "Test Ship".to_string(),
+            displacement: 400,
+            hull: 100,
+            armor: 50,
+            maneuver: 4,
+            jump: 2,
+            power: 250,
+            fuel: 1000,
+            crew: 20,
+            sensors: Sensors::Military,
+            stealth: None,
+            computer: 10,
+            weapons: vec![],
+            tl: 12,
+        };
+
+        // Test normal case
+        assert_eq!(design.best_thrust(250), 4);
+
+        // Test with reduced power
+        assert_eq!(design.best_thrust(180), 2);
+
+        // Test case where power calculation results in <= 0
+        // With displacement 400, basic systems use 80 power (400/5)
+        // Military sensors use 2 more power
+        // Thrust 1 requires 40 more power
+        // So providing 121 or less power should result in 0 thrust
+        assert_eq!(design.best_thrust(122), 1);
+        assert_eq!(design.best_thrust(121), 0);
+        assert_eq!(design.best_thrust(0), 0);
+    }
+
+    #[test]
+    fn test_weapon_type_is_laser() {
+        // Test laser weapons
+        assert!(WeaponType::Beam.is_laser());
+        assert!(WeaponType::Pulse.is_laser());
+
+        // Test non-laser weapons
+        assert!(!WeaponType::Missile.is_laser());
+        assert!(!WeaponType::Sand.is_laser());
+        assert!(!WeaponType::Particle.is_laser());
+    }
+
+    #[test]
+    fn test_ship_system_to_string() {
+        let test_cases = vec![
+            (ShipSystem::Hull, "hull"),
+            (ShipSystem::Armor, "armor"),
+            (ShipSystem::Jump, "jump drive"),
+            (ShipSystem::Manuever, "maneuver drive"),
+            (ShipSystem::Powerplant, "power plant"),
+            (ShipSystem::Crew, "crew"),
+            (ShipSystem::Weapon, "a weapon"),
+            (ShipSystem::Sensors, "sensors"),
+            (ShipSystem::Fuel, "fuel"),
+            (ShipSystem::Bridge, "bridge"),
+            (ShipSystem::Cargo, "cargo"),
+        ];
+
+        for (system, expected) in test_cases {
+            assert_eq!(String::from(system), expected);
+        }
     }
 }
