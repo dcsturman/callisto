@@ -151,7 +151,7 @@ impl EffectMsg {
     }
 }
 
-#[derive(Serialize, Deserialize,Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct LoadScenarioMsg {
     pub scenario_name: String,
 }
@@ -397,7 +397,7 @@ mod tests {
         let msg_with_code = LoginMsg {
             code: Some("auth_code_123".to_string()),
         };
-        
+
         let expected_json_with_code = json!({
             "code": "auth_code_123"
         });
@@ -412,9 +412,8 @@ mod tests {
 
         // Test without code
         let msg_without_code = LoginMsg { code: None };
-        
-        let expected_json_without_code = json!({
-        });
+
+        let expected_json_without_code = json!({});
 
         let serialized = serde_json::to_string(&msg_without_code).unwrap();
         assert_eq!(serialized, expected_json_without_code.to_string());

@@ -1,7 +1,8 @@
+use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
 use headers::{Cookie, HeaderMapExt};
-use hyper::{Request, StatusCode};
 use hyper::body::Incoming;
+use hyper::{Request, StatusCode};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,6 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
-use async_trait::async_trait;
 
 use crate::read_local_or_cloud_file;
 use crate::{debug, error, info};
@@ -18,7 +18,6 @@ type GoogleProfile = String;
 
 const GOOGLE_CREDENTIALS_FILE: &str = "google_credentials.json";
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
-
 
 /// Trait defining the authentication behavior for the application
 #[async_trait]
@@ -42,7 +41,6 @@ pub trait Authenticator: Send + Sync {
         &self,
         req: &Request<Incoming>,
     ) -> Result<String, (StatusCode, String)>;
-
 }
 
 pub struct GoogleAuthenticator {
@@ -233,7 +231,7 @@ impl Authenticator for GoogleAuthenticator {
         if !self.authorized_users.contains(&email) {
             return Err(Box::new(UnauthorizedUserError {}));
         }
-        
+
         self.session_keys
             .write()
             .unwrap()
@@ -274,10 +272,7 @@ impl Authenticator for GoogleAuthenticator {
                             "(Authenticator.check_authorization) Invalid session key: {:?}",
                             e
                         );
-                        (
-                            StatusCode::UNAUTHORIZED,
-                            "Invalid session key".to_string(),
-                        )
+                        (StatusCode::UNAUTHORIZED, "Invalid session key".to_string())
                     })
                 }
                 None => Err((
@@ -292,8 +287,6 @@ impl Authenticator for GoogleAuthenticator {
             ))
         }
     }
-
-    
 }
 
 fn load_google_credentials_from_file(file_name: &str) -> Result<GoogleCredentials, Box<dyn Error>> {
@@ -431,7 +424,12 @@ pub(crate) mod tests {
     }
 
     impl MockAuthenticator {
-        pub async fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
+        pub async fn new(
+            _url: &str,
+            _secret: String,
+            _users_file: &str,
+            web_server: String,
+        ) -> Self {
             MockAuthenticator {
                 session_keys: RwLock::new(HashMap::new()),
                 web_server,
@@ -472,9 +470,9 @@ pub(crate) mod tests {
         ) -> Result<String, (StatusCode, String)> {
             if let Some(cookies) = req.headers().typed_get::<Cookie>() {
                 if let Some(session_key) = cookies.get("callisto-session-key") {
-                    return self
-                        .validate_session_key(session_key)
-                        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid session key".to_string()));
+                    return self.validate_session_key(session_key).map_err(|_| {
+                        (StatusCode::UNAUTHORIZED, "Invalid session key".to_string())
+                    });
                 }
             }
             Err((StatusCode::UNAUTHORIZED, "No session key found".to_string()))
@@ -496,15 +494,15 @@ pub(crate) mod tests {
             .authenticate_user("test_code")
             .await
             .expect("Authentication should succeed");
-        
+
         assert_eq!(email, "test@example.com");
-        
+
         // Test session key validation
         let validated_email = mock_auth
             .validate_session_key(&session_key)
             .expect("Session key should be valid");
         assert_eq!(validated_email, "test@example.com");
-        
+
         // Test invalid session key
         assert!(mock_auth.validate_session_key("invalid_key").is_err());
     }

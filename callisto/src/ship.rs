@@ -1250,7 +1250,7 @@ mod tests {
         );
         assert!(ship.set_flight_plan(&zero_accel_plan).is_ok());
         assert_eq!(ship.plan, zero_accel_plan);
-        
+
         // Test case 5: Set a flight plan with acceleration at the ship's limit
         let max_accel = ship.max_acceleration();
         let max_accel_plan = FlightPlan::new(
@@ -1487,39 +1487,48 @@ mod tests {
 
         // Test ordering between same mount types
         assert!(large_bay_beam < large_bay_pulse); // Same mount, different types
-        
+
         // Test ordering between different mount types
-        assert!(large_bay_beam < medium_bay);      // Large bay < Medium bay
-        assert!(medium_bay > large_bay_pulse);      // Large bay < Medium bay
-        assert!(medium_bay < small_bay);           // Medium bay < Small bay
-        assert!(small_bay > medium_bay_missile);     // Medium bay < Small bay
-        assert!(medium_bay_missile > medium_bay);     // Medium bay < Small bay
-        assert!(small_bay < barbette);             // Small bay < Barbette
-        assert!(small_bay_pulse > small_bay);        // Small bay < Barbette
-        assert!(small_bay < small_bay_pulse);        // Small bay < Barbette
+        assert!(large_bay_beam < medium_bay); // Large bay < Medium bay
+        assert!(medium_bay > large_bay_pulse); // Large bay < Medium bay
+        assert!(medium_bay < small_bay); // Medium bay < Small bay
+        assert!(small_bay > medium_bay_missile); // Medium bay < Small bay
+        assert!(medium_bay_missile > medium_bay); // Medium bay < Small bay
+        assert!(small_bay < barbette); // Small bay < Barbette
+        assert!(small_bay_pulse > small_bay); // Small bay < Barbette
+        assert!(small_bay < small_bay_pulse); // Small bay < Barbette
         assert!(small_bay > large_bay_pulse);
-        assert!(barbette < turret);                // Barbette < Turret
-        assert!(turret > barbette);                // Barbette < Turret
-        assert!(turret < turret_pulse);                // Barbette < Turret
+        assert!(barbette < turret); // Barbette < Turret
+        assert!(turret > barbette); // Barbette < Turret
+        assert!(turret < turret_pulse); // Barbette < Turret
 
         // Test transitivity
-        assert!(large_bay_beam < small_bay);       // Large bay < Small bay
-        assert!(medium_bay < barbette);            // Medium bay < Barbette
-        assert!(small_bay < turret);               // Small bay < Turret
+        assert!(large_bay_beam < small_bay); // Large bay < Small bay
+        assert!(medium_bay < barbette); // Medium bay < Barbette
+        assert!(small_bay < turret); // Small bay < Turret
 
         // Test turret comparison with bays
-        assert!(turret > large_bay_beam);          // Turret > Large bay
-        assert!(turret > medium_bay);              // Turret > Medium bay
-        assert!(turret > small_bay);               // Turret > Small bay
+        assert!(turret > large_bay_beam); // Turret > Large bay
+        assert!(turret > medium_bay); // Turret > Medium bay
+        assert!(turret > small_bay); // Turret > Small bay
     }
 
     #[test_log::test]
     fn test_sensors() {
         // Test Sensors::max
-        assert_eq!(Sensors::max(Sensors::Basic, Sensors::Military), Sensors::Military);
-        assert_eq!(Sensors::max(Sensors::Advanced, Sensors::Civilian), Sensors::Advanced);
-        assert_eq!(Sensors::max(Sensors::Military, Sensors::Military), Sensors::Military);
-        
+        assert_eq!(
+            Sensors::max(Sensors::Basic, Sensors::Military),
+            Sensors::Military
+        );
+        assert_eq!(
+            Sensors::max(Sensors::Advanced, Sensors::Civilian),
+            Sensors::Advanced
+        );
+        assert_eq!(
+            Sensors::max(Sensors::Military, Sensors::Military),
+            Sensors::Military
+        );
+
         // Test conversion to i32
         assert_eq!(i32::from(Sensors::Basic), -4);
         assert_eq!(i32::from(Sensors::Civilian), -2);
@@ -1574,18 +1583,18 @@ mod tests {
         );
 
         // Manually set current values to be lower than design values
-        ship.current_hull = 50;      // Lower than design.hull (100)
-        ship.current_armor = 25;     // Lower than design.armor (50)
-        ship.current_power = 100;    // Lower than design.power (200)
-        ship.current_maneuver = 2;   // Lower than design.maneuver (4)
-        ship.current_jump = 1;       // Lower than design.jump (2)
-        ship.current_fuel = 500;     // Lower than design.fuel (1000)
-        ship.current_crew = 10;      // Lower than design.crew (20)
+        ship.current_hull = 50; // Lower than design.hull (100)
+        ship.current_armor = 25; // Lower than design.armor (50)
+        ship.current_power = 100; // Lower than design.power (200)
+        ship.current_maneuver = 2; // Lower than design.maneuver (4)
+        ship.current_jump = 1; // Lower than design.jump (2)
+        ship.current_fuel = 500; // Lower than design.fuel (1000)
+        ship.current_crew = 10; // Lower than design.crew (20)
         ship.current_sensors = Sensors::Basic; // Lower than design.sensors (Military)
         ship.active_weapons = vec![false, false]; // All false
-        ship.crit_level = [1; 11];  // All ones
-        ship.attack_dm = -2;        // Negative value
-        ship.dodge_thrust = 2;      // Non-zero value
+        ship.crit_level = [1; 11]; // All ones
+        ship.attack_dm = -2; // Negative value
+        ship.dodge_thrust = 2; // Non-zero value
 
         // Call fixup_current_values
         ship.fixup_current_values();
@@ -1605,8 +1614,8 @@ mod tests {
         assert_eq!(ship.dodge_thrust, 0);
 
         // Test that values higher than design values are not reduced
-        ship.current_hull = 150;     // Higher than design.hull
-        ship.current_armor = 75;     // Higher than design.armor
+        ship.current_hull = 150; // Higher than design.hull
+        ship.current_armor = 75; // Higher than design.armor
         ship.current_sensors = Sensors::Advanced; // Higher than design.sensors
 
         ship.fixup_current_values();
@@ -1639,7 +1648,7 @@ mod tests {
         let basic = String::from(Stealth::Basic);
         assert_ne!(basic, "basic");
         assert_ne!(basic, "BASIC");
-        
+
         let improved = String::from(Stealth::Improved);
         assert_ne!(improved, "improved");
         assert_ne!(improved, "IMPROVED");
@@ -1660,7 +1669,7 @@ mod tests {
         let improved = String::from(Sensors::Improved);
         assert_ne!(improved, "improved");
         assert_ne!(improved, "IMPROVED");
-        
+
         let advanced = String::from(Sensors::Advanced);
         assert_ne!(advanced, "advanced");
         assert_ne!(advanced, "ADVANCED");
@@ -1723,7 +1732,7 @@ mod tests {
         // Test laser weapons
         assert!(WeaponType::Beam.is_laser());
         assert!(WeaponType::Pulse.is_laser());
-        
+
         // Test non-laser weapons
         assert!(!WeaponType::Missile.is_laser());
         assert!(!WeaponType::Sand.is_laser());
