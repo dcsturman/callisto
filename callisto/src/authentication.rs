@@ -508,8 +508,8 @@ pub(crate) mod tests {
     }
 
     const LOCAL_SECRETS_DIR: &str = "./secrets";
-    const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
     const LOCAL_TEST_FILE: &str = "./config/authorized_users.json";
+    const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     #[should_panic]
@@ -556,7 +556,7 @@ pub(crate) mod tests {
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_fetch_google_public_keys() {
-        let mut authenticator = GoogleAuthenticator::new("http://localhost:3000", format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE), "", "http://localhost:3000".to_string()).await;
+        let mut authenticator = GoogleAuthenticator::new("http://localhost:3000", format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE), LOCAL_TEST_FILE, "http://localhost:3000".to_string()).await;
         authenticator.fetch_google_public_keys().await;
         assert!(authenticator.public_keys.is_some());
     }
