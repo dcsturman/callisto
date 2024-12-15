@@ -33,6 +33,7 @@ base64 = "0.22.1"
 google-cloud-storage = "0.22.1"
 headers = "0.4.0"
 cookie = "0.18.1"
+async-trait = "0.1.83"
 
 [dev-dependencies]
 mockstream = "0.0.3"

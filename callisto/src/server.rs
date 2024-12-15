@@ -36,7 +36,7 @@ impl Server {
         &self,
         login: LoginMsg,
         valid_email: &Option<String>,
-        authenticator: Arc<Option<Authenticator>>,
+        authenticator: Arc<Option<Box<dyn Authenticator>>>,
     ) -> Result<(String, Option<String>), String> {
         info!("(Server.login) Received and processing login request.",);
 
@@ -64,7 +64,7 @@ impl Server {
             let authenticator = authenticator.as_ref().as_ref().unwrap();
 
             let (session_key, email) = authenticator
-                .authenticate_google_user(&code)
+                .authenticate_user(&code)
                 .await
                 .unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
             debug!(
@@ -336,4 +336,69 @@ pub(crate) fn msg_json(msg: &str) -> String {
         msg: msg.to_string(),
     })
     .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::authentication::tests::MockAuthenticator;
+    use crate::payloads::LoginMsg;
+    use std::sync::Arc;
+
+    #[test_log::test(tokio::test)]
+    async fn test_login() {
+        let server = Server::new(Arc::new(Mutex::new(Entities::new())), false);
+        let mock_auth = MockAuthenticator::new(
+            "http://test.com",
+            "secret".to_string(),
+            "users.txt",
+            "http://web.test.com".to_string(),
+        )
+        .await;
+        let authenticator = Arc::new(Some(Box::new(mock_auth) as Box<dyn Authenticator>));
+
+        // Test case 1: Already valid email
+        let valid_email = Some("existing@example.com".to_string());
+        let login_msg = LoginMsg { code: None };
+        let (response, session_key) = server
+            .login(login_msg, &valid_email, authenticator.clone())
+            .await
+            .expect("Login should succeed with valid email");
+        let auth_response: AuthResponse = serde_json::from_str(&response).unwrap();
+        assert_eq!(auth_response.email, "existing@example.com");
+        assert!(session_key.is_none());
+
+        // Test case 2: New login with auth code
+        let valid_email = None;
+        let login_msg = LoginMsg {
+            code: Some("test_code".to_string()),
+        };
+        let (response, session_key) = server
+            .login(login_msg, &valid_email, authenticator.clone())
+            .await
+            .expect("Login should succeed with auth code");
+        let auth_response: AuthResponse = serde_json::from_str(&response).unwrap();
+        assert_eq!(auth_response.email, "test@example.com");
+        assert_eq!(session_key.unwrap(), "test_session_key");
+
+        // Test case 3: No valid email and no auth code
+        let valid_email = None;
+        let login_msg = LoginMsg { code: None };
+        let result = server
+            .login(login_msg, &valid_email, authenticator.clone())
+            .await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());
+
+        // Test case 4: Test mode (no authenticator)
+        let server = Server::new(Arc::new(Mutex::new(Entities::new())), true);
+        let no_auth: Arc<Option<Box<dyn Authenticator>>> = Arc::new(None);
+        let (response, session_key) = server
+            .login(LoginMsg { code: None }, &None, no_auth)
+            .await
+            .expect("Login should succeed in test mode");
+        let auth_response: AuthResponse = serde_json::from_str(&response).unwrap();
+        assert_eq!(auth_response.email, "test@test.com");
+        assert!(session_key.is_none());
+    }
 }
