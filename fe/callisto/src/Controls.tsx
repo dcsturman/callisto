@@ -396,6 +396,10 @@ export function Controls(args: {
   showRange: string | null;
   setShowRange: (target: string | null) => void;
 }) {
+
+  // fire_actions is, for each ship, all weapons grouped together by kind and mount.
+  // This allows them to be displayed as a single button with a count, and 
+  // track how many are used.
   const [fire_actions, setFireActions] = useState(
     {} as {
       [actor: string]: {

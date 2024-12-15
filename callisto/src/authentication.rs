@@ -53,6 +53,9 @@ impl Authenticator {
         self.web_server.clone()
     }
 
+    // Unfortunately have to skip coverage on authenticate_google_user as I'm not
+    // sure how to build a test with a valid code.
+    // TODO: Get Coverage skipping to work.
     pub async fn authenticate_google_user(
         &self,
         code: &str,
@@ -370,8 +373,18 @@ struct GoogleCredsJson {
 mod tests {
     use super::*;
 
+    const LOCAL_SECRETS_DIR: &str = "./secrets";
     const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
     const LOCAL_TEST_FILE: &str = "./config/authorized_users.json";
+    #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
+    #[should_panic]
+    async fn test_bad_credentials_file() {
+        const BAD_FILE: &str = "./not_there_file.json";
+        let authenticator =  Authenticator::new("http://localhost:3000", BAD_FILE.to_string(), "", "http://localhost:3000".to_string()).await; // This should fail.
+        assert!(authenticator.credentials.client_id.is_empty());
+    }
+
     // This test cannot work in the GitHub Actions CI environment, so skip in that case.
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
@@ -397,4 +410,22 @@ mod tests {
             "Authorized users file is empty"
         );
     }
+    
+    #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
+    async fn test_load_google_credentials_from_file() {
+        let credentials = load_google_credentials_from_file(format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE).as_str()).unwrap();
+        assert!(!credentials.client_id.is_empty());
+        assert!(!credentials.client_secret.is_empty());
+    }
+
+    #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
+    async fn test_fetch_google_public_keys() {
+        let mut authenticator = Authenticator::new("http://localhost:3000", format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE), "", "http://localhost:3000").await;
+        authenticator.fetch_google_public_keys().await;
+        assert!(authenticator.public_keys.is_some());
+    }
+
+    
 }

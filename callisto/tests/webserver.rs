@@ -40,16 +40,21 @@ const INVALID_PATH: &str = "unknown";
  */
 async fn spawn_test_server(port: u16) -> Child {
     let handle = Command::new(SERVER_PATH)
+        //.env("RUST_LOG","info")
+        //.env("RUSTFLAGS", "'-C instrument-coverage --cfg=coverage --cfg=trybuild_no_target'")
+        //.env("CARGO_LLVM_COV", "1")
+        //.env("CARGO_LLVM_COV_SHOW_ENV", "1")
+        //.env("CARGO_LLVM_COV_TARGET_DIR", "/Users/dan/dev/callisto/callisto/target")
         .arg("-t")
         .arg("-p")
         .arg(port.to_string())
         .kill_on_drop(true)
         .spawn()
-        .expect("Daemon failed to start.");
+        .unwrap_or_else(|e| panic!("Unable to spawn test server on port {}: {:?}", port, e));
 
     let _ = pretty_env_logger::try_init();
 
-    sleep(Duration::from_millis(500)).await;
+    sleep(Duration::from_millis(1000)).await;
 
     handle
 }
