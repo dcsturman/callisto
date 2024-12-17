@@ -160,7 +160,7 @@ impl Entities {
         primary: Option<String>,
         radius: f64,
         mass: f64,
-    ) {
+    ) -> Result<(), String> {
         debug!(
             "Add planet {} with position {:?},  color {:?}, primary {}, radius {:?}, mass {:?}, ",
             name,
@@ -172,12 +172,12 @@ impl Entities {
         );
 
         let (primary_ptr, dependency) = if let Some(primary_name) = &primary {
-            let primary = self.planets.get(primary_name).unwrap_or_else(|| {
-                panic!(
+            let primary = self.planets.get(primary_name).ok_or_else(|| {
+                format!(
                     "Primary planet {} not found for planet {}.",
                     primary_name, name
                 )
-            });
+            })?;
 
             (
                 Some(primary.clone()),
@@ -188,10 +188,12 @@ impl Entities {
         };
 
         // A safety check to ensure we never have a pointer without a name of a primary or vis versa.
-        assert!(
-            primary_ptr.is_some() && primary.is_some()
-                || primary_ptr.is_none() && primary.is_none()
-        );
+        if primary_ptr.is_some() ^ primary.is_some() {
+            return Err(format!(
+                "Planet {} has a primary pointer but no primary name or vice versa.",
+                name
+            ));
+        }
 
         let entity = Planet::new(
             name.clone(),
@@ -206,6 +208,7 @@ impl Entities {
 
         debug!("Added planet with fixed gravity wells {:?}", entity);
         self.planets.insert(name, Arc::new(RwLock::new(entity)));
+        Ok(())
     }
 
     pub fn launch_missile(&mut self, source: &str, target: &str) -> Result<(), String> {
@@ -276,9 +279,14 @@ impl Entities {
         let effects = fire_actions
             .iter()
             .flat_map(|(attacker, actions)| {
-                let attack_ship = ship_snapshot.get(attacker).unwrap_or_else(|| {
-                    panic!("Cannot find attacker {} for fire actions.", attacker)
-                });
+                let attack_ship = match ship_snapshot.get(attacker) {
+                    None => {
+                        error!("Cannot find attacker {} for fire actions.", attacker);
+                        return vec![];
+                    }
+                    Some(ship) => ship,
+                };
+
                 let (missiles, effects) =
                     do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, rng);
                 for missile in missiles {
@@ -661,7 +669,7 @@ mod tests {
     use serde_json::json;
 
     #[test_log::test]
-    fn test_entities_display_and_debug() {
+    fn test_entities_display_and_debug() -> Result<(), String> {
         let mut entities = Entities::new();
 
         // Add a ship
@@ -692,7 +700,7 @@ mod tests {
             None,
             6371e3,
             5.97e24,
-        );
+        )?;
 
         // Launch a missile
         entities.launch_missile("Ship1", "Ship2").unwrap();
@@ -723,6 +731,8 @@ mod tests {
             "Entities {}",
             "Empty Entities should debug as 'Entities {{}}'"
         );
+
+        Ok(())
     }
 
     #[test_log::test]
@@ -883,7 +893,7 @@ mod tests {
     }
 
     #[test_log::test]
-    fn test_entities_validate() {
+    fn test_entities_validate() -> Result<(), String> {
         let mut entities = Entities::new();
         let design = Arc::new(ShipDesignTemplate::default());
 
@@ -898,7 +908,7 @@ mod tests {
             None,
             6.96e8,
             1.989e30,
-        );
+        )?;
         assert!(
             entities.validate(),
             "Entities with a single valid planet should be valid"
@@ -1081,10 +1091,12 @@ mod tests {
             entities.validate(),
             "Entities with a missile with fixed target_ptr should be valid"
         );
+
+        Ok(())
     }
 
     #[test_log::test]
-    fn test_sun_update() {
+    fn test_sun_update() -> Result<(), String> {
         let _ = pretty_env_logger::try_init();
         let mut rng = SmallRng::seed_from_u64(0);
 
@@ -1098,7 +1110,7 @@ mod tests {
             None,
             6.371e6,
             6e24,
-        );
+        )?;
 
         // Update the planet a few times
         let ship_snapshot = deep_clone(&entities.ships);
@@ -1120,10 +1132,11 @@ mod tests {
                 .get_position(),
             expected_position
         );
+        Ok(())
     }
     #[test_log::test]
     // TODO: Add test to add a moon.
-    fn test_complex_planet_update() {
+    fn test_complex_planet_update() -> Result<(), String> {
         let _ = pretty_env_logger::try_init();
         let mut rng = SmallRng::seed_from_u64(0);
 
@@ -1159,7 +1172,7 @@ mod tests {
             None,
             6.371e6,
             6e24,
-        );
+        )?;
         entities.add_planet(
             String::from("Planet2"),
             Vec3::new(0.0, 5000000.0, EARTH_RADIUS),
@@ -1167,7 +1180,7 @@ mod tests {
             None,
             3e7,
             3e23,
-        );
+        )?;
         entities.add_planet(
             String::from("Planet3"),
             Vec3::new(
@@ -1179,7 +1192,7 @@ mod tests {
             None,
             4e6,
             1e26,
-        );
+        )?;
 
         // Update the entities a few times
         entities.update_all(&deep_clone(&entities.ships), &mut rng);
@@ -1233,6 +1246,8 @@ mod tests {
                 8000.0
             )
         );
+
+        Ok(())
     }
 
     // A test of deserializing a planet string.
@@ -1299,7 +1314,7 @@ mod tests {
     }
 
     #[test_log::test]
-    fn test_mixed_entities_serialize() {
+    fn test_mixed_entities_serialize() -> Result<(), String> {
         let mut entities = Entities::new();
         let design = Arc::new(ShipDesignTemplate::default());
 
@@ -1314,7 +1329,7 @@ mod tests {
             None,
             6.371e6,
             5.972e24,
-        );
+        )?;
         entities.add_planet(
             String::from("Planet2"),
             Vec3::new(0.0, 5000000.0, EARTH_RADIUS),
@@ -1322,7 +1337,7 @@ mod tests {
             None,
             3e7,
             3.00e23,
-        );
+        )?;
         entities.add_planet(
             String::from("Planet3"),
             Vec3::new(
@@ -1334,7 +1349,7 @@ mod tests {
             None,
             4e6,
             1e26,
-        );
+        )?;
 
         // Create entities with random positions and names
         entities.add_ship(
@@ -1416,6 +1431,8 @@ mod tests {
          ]});
 
         assert_json_eq!(&entities, &cmp);
+
+        Ok(())
     }
     #[tokio::test]
     async fn test_unordered_scenario_file() {
@@ -1428,7 +1445,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn test_entities_equality() {
+    async fn test_entities_equality() -> Result<(), String> {
         config_test_ship_templates().await;
 
         let mut entities1 = Entities::new();
@@ -1461,7 +1478,7 @@ mod tests {
             None,
             6371e3,
             5.97e24,
-        );
+        )?;
         entities2.add_planet(
             "Planet1".to_string(),
             Vec3::new(7.0, 8.0, 9.0),
@@ -1469,7 +1486,7 @@ mod tests {
             None,
             6371e3,
             5.97e24,
-        );
+        )?;
 
         // Test equality
         assert_eq!(entities1, entities2, "Entities should be equal");
@@ -1585,10 +1602,12 @@ mod tests {
             entities1, entities4,
             "Entities should not be equal after velocity change"
         );
+
+        Ok(())
     }
 
     #[test_log::test]
-    fn test_entities_len_and_is_empty() {
+    fn test_entities_len_and_is_empty() -> Result<(), String> {
         let mut entities = Entities::new();
 
         // Test empty entities
@@ -1617,7 +1636,7 @@ mod tests {
             None,
             6371e3,
             5.97e24,
-        );
+        )?;
 
         // Test entities with one ship and one planet
         assert_eq!(entities.len(), 2);
@@ -1627,6 +1646,8 @@ mod tests {
         entities = Entities::new();
         assert_eq!(entities.len(), 0);
         assert!(entities.is_empty());
+
+        Ok(())
     }
     #[test_log::test]
     fn test_launch_missile_invalid_target() {

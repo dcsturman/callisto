@@ -267,6 +267,7 @@ dependencies = [
  "mockstream",
  "once_cell",
  "pretty_env_logger",
+ "quit",
  "rand",
  "reqwest",
  "serde",
@@ -1764,6 +1765,21 @@ checksum = "7c3a7fc5db1e57d5a779a352c8cdb57b29aa4c40cc69c3a68a7fedc815fbf2f9"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "quit"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c090c608233d81bd6b90e718cf34506c60a10e633dff2292c3d1029e798d669b"
+dependencies = [
+ "quit_macros",
+]
+
+[[package]]
+name = "quit_macros"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d4b27a0dd5d08ad7af2d17952fb360ec9c30eeade0b32df7a3c9b099ff37564"
 
 [[package]]
 name = "quote"

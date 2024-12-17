@@ -12,7 +12,7 @@ use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::read_local_or_cloud_file;
-use crate::{debug, error, info};
+use crate::{debug, error, info, warn};
 
 type GoogleProfile = String;
 
@@ -315,6 +315,69 @@ pub async fn load_authorized_users_from_file(
         .map_err(|e| panic!("Error {:?} parsing authorized users file {}", e, file_name))
 }
 
+// Mock authenticator for testing
+pub struct MockAuthenticator {
+    session_keys: RwLock<HashMap<String, String>>,
+    web_server: String,
+}
+
+impl MockAuthenticator {
+    pub async fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
+        MockAuthenticator {
+            session_keys: RwLock::new(HashMap::new()),
+            web_server,
+        }
+    }
+}
+
+#[async_trait]
+impl Authenticator for MockAuthenticator {
+    fn get_web_server(&self) -> String {
+        self.web_server.clone()
+    }
+
+    async fn authenticate_user(
+        &self,
+        _code: &str,
+    ) -> Result<(String, GoogleProfile), Box<dyn Error>> {
+        let session_key = "TeSt_KeY".to_string();
+        let email = "test@example.com".to_string();
+        self.session_keys
+            .write()
+            .unwrap()
+            .insert(session_key.clone(), email.clone());
+        Ok((session_key, email))
+    }
+
+    fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
+        if let Some(email) = self.session_keys.read().unwrap().get(session_key) {
+            debug!(
+                "(MockAuthenticator.validate_session_key) Session key validated: {}",
+                session_key
+            );
+            Ok(email.to_string())
+        } else {
+            warn!("(MockAuthenticator.validate_session_key) Unexpected: MockAuthenticator failing to authenticate key {}",
+                session_key);
+            Err(InvalidKeyError {})
+        }
+    }
+
+    async fn check_authorization(
+        &self,
+        req: &Request<Incoming>,
+    ) -> Result<String, (StatusCode, String)> {
+        if let Some(cookies) = req.headers().typed_get::<Cookie>() {
+            if let Some(session_key) = cookies.get("callisto-session-key") {
+                return self
+                    .validate_session_key(session_key)
+                    .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid session key".to_string()));
+            }
+        }
+        Err((StatusCode::UNAUTHORIZED, "No session key found".to_string()))
+    }
+}
+
 // Error types.
 
 #[derive(Debug)]
@@ -414,70 +477,6 @@ struct GoogleCredsJson {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use std::sync::RwLock;
-
-    // Mock authenticator for testing
-    pub struct MockAuthenticator {
-        session_keys: RwLock<HashMap<String, String>>,
-        web_server: String,
-    }
-
-    impl MockAuthenticator {
-        pub async fn new(
-            _url: &str,
-            _secret: String,
-            _users_file: &str,
-            web_server: String,
-        ) -> Self {
-            MockAuthenticator {
-                session_keys: RwLock::new(HashMap::new()),
-                web_server,
-            }
-        }
-    }
-
-    #[async_trait]
-    impl Authenticator for MockAuthenticator {
-        fn get_web_server(&self) -> String {
-            self.web_server.clone()
-        }
-
-        async fn authenticate_user(
-            &self,
-            _code: &str,
-        ) -> Result<(String, GoogleProfile), Box<dyn Error>> {
-            let session_key = "test_session_key".to_string();
-            let email = "test@example.com".to_string();
-            self.session_keys
-                .write()
-                .unwrap()
-                .insert(session_key.clone(), email.clone());
-            Ok((session_key, email))
-        }
-
-        fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
-            if let Some(email) = self.session_keys.read().unwrap().get(session_key) {
-                Ok(email.to_string())
-            } else {
-                Err(InvalidKeyError {})
-            }
-        }
-
-        async fn check_authorization(
-            &self,
-            req: &Request<Incoming>,
-        ) -> Result<String, (StatusCode, String)> {
-            if let Some(cookies) = req.headers().typed_get::<Cookie>() {
-                if let Some(session_key) = cookies.get("callisto-session-key") {
-                    return self.validate_session_key(session_key).map_err(|_| {
-                        (StatusCode::UNAUTHORIZED, "Invalid session key".to_string())
-                    });
-                }
-            }
-            Err((StatusCode::UNAUTHORIZED, "No session key found".to_string()))
-        }
-    }
 
     #[tokio::test]
     async fn test_mock_authenticator() {
@@ -507,8 +506,24 @@ pub(crate) mod tests {
         assert!(mock_auth.validate_session_key("invalid_key").is_err());
     }
 
-    const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
+    const LOCAL_SECRETS_DIR: &str = "./secrets";
     const LOCAL_TEST_FILE: &str = "./config/authorized_users.json";
+    const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
+    #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
+    #[should_panic]
+    async fn test_bad_credentials_file() {
+        const BAD_FILE: &str = "./not_there_file.json";
+        let authenticator = GoogleAuthenticator::new(
+            "http://localhost:3000",
+            BAD_FILE.to_string(),
+            "",
+            "http://localhost:3000".to_string(),
+        )
+        .await; // This should fail.
+        assert!(authenticator.credentials.client_id.is_empty());
+    }
+
     // This test cannot work in the GitHub Actions CI environment, so skip in that case.
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
@@ -533,5 +548,30 @@ pub(crate) mod tests {
             !authorized_users.is_empty(),
             "Authorized users file is empty"
         );
+    }
+
+    #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
+    async fn test_load_google_credentials_from_file() {
+        let credentials = load_google_credentials_from_file(
+            format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE).as_str(),
+        )
+        .unwrap();
+        assert!(!credentials.client_id.is_empty());
+        assert!(!credentials.client_secret.is_empty());
+    }
+
+    #[test_log::test(tokio::test)]
+    #[cfg_attr(feature = "ci", ignore)]
+    async fn test_fetch_google_public_keys() {
+        let mut authenticator = GoogleAuthenticator::new(
+            "http://localhost:3000",
+            format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE),
+            LOCAL_TEST_FILE,
+            "http://localhost:3000".to_string(),
+        )
+        .await;
+        authenticator.fetch_google_public_keys().await;
+        assert!(authenticator.public_keys.is_some());
     }
 }

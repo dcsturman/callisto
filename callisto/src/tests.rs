@@ -36,7 +36,7 @@ async fn setup_test_with_server() -> Server {
 #[test(tokio::test)]
 async fn test_simple_get() {
     let server = setup_test_with_server().await;
-    let body = server.get().unwrap();
+    let body = server.get_entities_json();
     assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[]}"#);
 }
 
@@ -61,7 +61,7 @@ async fn test_add_ship() {
         .unwrap();
     assert_eq!(response, msg_json("Add ship action executed"));
 
-    let response = server.get().unwrap();
+    let response = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, 
@@ -95,7 +95,7 @@ async fn test_add_planet_ship() {
         .unwrap();
     assert_eq!(response, msg_json("Add ship action executed"));
 
-    let response = server.get().unwrap();
+    let response = server.get_entities_json();
 
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let compare = json!({"ships":[
@@ -141,7 +141,7 @@ async fn test_add_planet_ship() {
         .unwrap();
     assert_eq!(response, msg_json("Add planet action executed"));
 
-    let response = server.get().unwrap();
+    let response = server.get_entities_json();
     let result = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     let compare = json!({"planets":[
@@ -192,7 +192,7 @@ async fn test_add_planet_ship() {
         .unwrap();
     assert_eq!(response, msg_json("Add planet action executed"));
 
-    let entities = server.get().unwrap();
+    let entities = server.get_entities_json();
 
     let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
     let compare = json!({"missiles":[],
@@ -254,10 +254,10 @@ async fn test_update_ship() {
         .unwrap();
     assert_eq!(response, msg_json("Add ship action executed"));
 
-    let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+    let response = server.update(EMPTY_FIRE_ACTIONS_MSG);
     assert_eq!(response, r#"[]"#);
 
-    let response = server.get().unwrap();
+    let response = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     assert_eq!(
@@ -288,9 +288,7 @@ async fn test_update_missile() {
     assert_eq!(response, msg_json("Add ship action executed"));
 
     let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]).to_string();
-    let response = server
-        .update(serde_json::from_str(&fire_missile).unwrap())
-        .unwrap();
+    let response = server.update(serde_json::from_str(&fire_missile).unwrap());
 
     let compare = json!([
         {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
@@ -305,7 +303,7 @@ async fn test_update_missile() {
         compare
     );
 
-    let entities = server.get().unwrap();
+    let entities = server.get_entities_json();
     let compare = json!(
         {"ships":[
             {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
@@ -361,7 +359,7 @@ async fn test_remove_ship() {
     let response = server.remove("ship1".to_string()).unwrap();
     assert_eq!(response, msg_json("Remove action executed"));
 
-    let entities = server.get().unwrap();
+    let entities = server.get_entities_json();
 
     assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[]}"#);
 
@@ -383,7 +381,7 @@ async fn test_set_acceleration() {
         .unwrap();
     assert_eq!(response, msg_json("Add ship action executed"));
 
-    let response = server.get().unwrap();
+    let response = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
@@ -396,7 +394,7 @@ async fn test_set_acceleration() {
         .set_plan(serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#).unwrap());
     assert!(response.is_ok());
 
-    let response = server.get().unwrap();
+    let response = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     let flight_plan = &ship.plan;
@@ -549,9 +547,7 @@ async fn test_exhausted_missile() {
 
     // Fire a missile
     let fire_actions = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]).to_string();
-    let response = server
-        .update(serde_json::from_str(&fire_actions).unwrap())
-        .unwrap();
+    let response = server.update(serde_json::from_str(&fire_actions).unwrap());
 
     // First round 3 missiles are launched due to triple turret
     assert_eq!(
@@ -561,12 +557,12 @@ async fn test_exhausted_missile() {
 
     // Second to 9th round nothing happens.
     for round in 0..9 {
-        let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+        let response = server.update(EMPTY_FIRE_ACTIONS_MSG);
         assert_eq!(response, "[]", "Round {}", round);
     }
 
     // 10th round missile should exhaust itself.
-    let response = server.update(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+    let response = server.update(EMPTY_FIRE_ACTIONS_MSG);
     assert_eq!(
         serde_json::from_str::<Vec<EffectMsg>>(response.as_str())
             .unwrap()
@@ -603,9 +599,7 @@ async fn test_destroy_ship() {
     ]]])
     .to_string();
 
-    let response = server
-        .update(serde_json::from_str(&fire_actions).unwrap())
-        .unwrap();
+    let response = server.update(serde_json::from_str(&fire_actions).unwrap());
 
     // For this test we don't worry about all the specific damage effects, but just check for messages related to
     // ship destruction.
@@ -648,9 +642,7 @@ async fn test_big_fight() {
         {"weapon_id": 3, "target": "ship1"},
     ]]]);
 
-    let response = server
-        .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
-        .unwrap();
+    let response = server.update(serde_json::from_str(&fire_actions.to_string()).unwrap());
 
     let compare = json!([
         {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
@@ -687,7 +679,7 @@ async fn test_big_fight() {
         compare
     );
 
-    let entities = server.get().unwrap();
+    let entities = server.get_entities_json();
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
@@ -760,9 +752,7 @@ async fn test_fight_with_crew() {
         {"weapon_id": 3, "target": "ship1"},
     ]]]);
 
-    let response = server
-        .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
-        .unwrap();
+    let response = server.update(serde_json::from_str(&fire_actions.to_string()).unwrap());
 
     let compare = json!([
         {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
@@ -797,7 +787,7 @@ async fn test_fight_with_crew() {
         compare
     );
 
-    let entities = server.get().unwrap();
+    let entities = server.get_entities_json();
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
@@ -902,11 +892,9 @@ async fn test_slugfest() {
         ]]
     ]);
 
-    let _response = server
-        .update(serde_json::from_str(&fire_actions.to_string()).unwrap())
-        .unwrap();
+    let _response = server.update(serde_json::from_str(&fire_actions.to_string()).unwrap());
 
-    let response = server.get().unwrap();
+    let response = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
     // Should only have 3 ships now as the Harrier should have been destroyed
@@ -992,9 +980,7 @@ async fn test_get_entities() {
 #[test(tokio::test)]
 async fn test_get_designs() {
     let server = setup_test_with_server().await;
-    let result = server.get_designs();
-    assert!(result.is_ok());
-    let designs = result.unwrap();
+    let designs = server.get_designs();
     assert!(!designs.is_empty());
     assert!(designs.contains("Buccaneer"));
 }
@@ -1019,9 +1005,7 @@ async fn test_missile_impact_close() {
 
     // Fire a missile within impact range.
     let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}]]]).to_string();
-    let response = server
-        .update(serde_json::from_str(&fire_missile).unwrap())
-        .unwrap();
+    let response = server.update(serde_json::from_str(&fire_missile).unwrap());
 
     // Check for impact effect
     let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
@@ -1042,7 +1026,7 @@ async fn test_missile_impact_close() {
     );
 
     // Check that the target ship took damage
-    let entities = server.get().unwrap();
+    let entities = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(&entities).unwrap();
     let target_ship = entities.ships.get("ship2").unwrap().read().unwrap();
     assert!(
@@ -1059,9 +1043,7 @@ async fn test_missile_impact_close() {
 
     // Fire a missile that should get there in one round.
     let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}]]]).to_string();
-    let response = server
-        .update(serde_json::from_str(&fire_missile).unwrap())
-        .unwrap();
+    let response = server.update(serde_json::from_str(&fire_missile).unwrap());
 
     // Check for impact effect
     let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
@@ -1082,7 +1064,7 @@ async fn test_missile_impact_close() {
     );
 
     // Check that the target ship took damage
-    let entities = server.get().unwrap();
+    let entities = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(&entities).unwrap();
     let target_ship = entities.ships.get("ship2").unwrap().read().unwrap();
     assert!(
@@ -1227,7 +1209,7 @@ async fn test_load_scenario() {
         scenario_name: "./scenarios/sol.json".to_string(),
     };
 
-    let result = server.load_scenario(load_msg).await;
+    let result = server.load_scenario(&load_msg).await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), msg_json("Load scenario action executed"));
 
@@ -1261,6 +1243,6 @@ async fn test_load_scenario() {
     let invalid_msg = LoadScenarioMsg {
         scenario_name: "non_existent_scenario.json".to_string(),
     };
-    let result = server.load_scenario(invalid_msg).await;
+    let result = server.load_scenario(&invalid_msg).await;
     assert!(result.is_err());
 }
