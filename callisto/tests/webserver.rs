@@ -1466,22 +1466,6 @@ async fn integration_load_scenario() {
         "Expected error when loading non-existent scenario"
     );
 
-    // test loading a non-existing google cloud storage file
-    let invalid_scenario = r#"{"scenario_name": "gs://nobucket/nonexistent.json"}"#;
-    let response = client
-        .post(path(PORT, LOAD_SCENARIO_PATH))
-        .header("Cookie", &cookie)
-        .body(invalid_scenario)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error when loading non-existent scenario"
-    );
-
     // Test malformed request
     let malformed_request = r#"{"wrong_field": "value"}"#;
     let response = client
@@ -1512,6 +1496,32 @@ async fn integration_load_scenario() {
         response.status(),
         StatusCode::BAD_REQUEST,
         "Expected error for empty scenario name"
+    );
+
+    send_quit(PORT, &cookie).await;
+}
+
+#[cfg_attr(feature = "ci", ignore)]
+#[test_log::test(tokio::test)]
+async fn integration_load_cloud_scenario() {
+    const PORT: u16 = 3027;
+    let _server = spawn_test_server(PORT).await;
+    let client = reqwest::Client::new();
+    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+
+    let invalid_scenario = r#"{"scenario_name": "gs://nobucket/nonexistent.json"}"#;
+    let response = client
+        .post(path(PORT, LOAD_SCENARIO_PATH))
+        .header("Cookie", &cookie)
+        .body(invalid_scenario)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Expected error when loading non-existent scenario"
     );
 
     send_quit(PORT, &cookie).await;
