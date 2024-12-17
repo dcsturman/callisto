@@ -27,6 +27,4 @@ callisto/secrets/**
 callisto/config/authorized_users.json
 /.firebase
 *.*~
-oldstuff/.firebase/hosting.ZmUvY2FsbGlzdG8vYnVpbGQ.cache
-oldstuff/.firebaserc
-oldstuff/firebase.json
+callisto/coverage/**

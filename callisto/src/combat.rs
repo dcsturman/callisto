@@ -128,8 +128,8 @@ pub fn attack(
     if damage == 0 {
         return vec![EffectMsg::message(format!(
             "{} hit by {}'s {} but damage absorbed by armor.",
-            attacker.get_name(),
             defender.get_name(),
+            attacker.get_name(),
             String::from(weapon.kind)
         ))];
     }
