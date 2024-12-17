@@ -33,7 +33,7 @@ struct Args {
     port: u16,
 
     /// JSON file for planets in scenario
-    #[arg(short='f', long)]
+    #[arg(short = 'f', long)]
     scenario_file: Option<String>,
 
     /// JSON file for ship templates in scenario
@@ -95,21 +95,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Build the authenticator
     let authenticator: Box<dyn Authenticator> = if test_mode {
-        Box::new(MockAuthenticator::new(
-            &args.web_server,
-            args.secret,
-            &args.users_file,
-            args.web_server.clone(),
+        Box::new(
+            MockAuthenticator::new(
+                &args.web_server,
+                args.secret,
+                &args.users_file,
+                args.web_server.clone(),
+            )
+            .await,
         )
-        .await)
     } else {
-        Box::new(GoogleAuthenticator::new(
-            &args.web_server,
-            args.secret,
-            &args.users_file,
-            args.web_server.clone(),
+        Box::new(
+            GoogleAuthenticator::new(
+                &args.web_server,
+                args.secret,
+                &args.users_file,
+                args.web_server.clone(),
+            )
+            .await,
         )
-        .await)
     };
 
     debug!("(main) Creating authenticator.");

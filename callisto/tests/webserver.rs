@@ -49,7 +49,13 @@ const INVALID_PATH: &str = "unknown";
 const LOAD_SCENARIO_PATH: &str = "load_scenario";
 const QUIT_PATH: &str = "quit";
 
-async fn spawn_server(port: u16, test_mode: bool, scenario: Option<String>, design_file: Option<String>, auto_kill: bool) -> Child {
+async fn spawn_server(
+    port: u16,
+    test_mode: bool,
+    scenario: Option<String>,
+    design_file: Option<String>,
+    auto_kill: bool,
+) -> Child {
     let mut handle = Command::new(SERVER_PATH);
     let mut handle = handle
         .env(
@@ -71,14 +77,14 @@ async fn spawn_server(port: u16, test_mode: bool, scenario: Option<String>, desi
         .env(
             "CARGO_LLVM_COV_TARGET_DIR",
             var("CARGO_LLVM_COV_TARGET_DIR").unwrap_or_else(|_| "".to_string()),
-        )        
+        )
         .arg("-p")
         .arg(port.to_string())
         .kill_on_drop(auto_kill);
 
     if test_mode {
         handle = handle.arg("-t");
-    } 
+    }
 
     if let Some(scenario) = scenario {
         handle = handle.arg("-f").arg(scenario);
@@ -88,7 +94,9 @@ async fn spawn_server(port: u16, test_mode: bool, scenario: Option<String>, desi
         handle = handle.arg("-d").arg(design_file);
     }
 
-    let handle = handle.spawn().unwrap_or_else(|e| panic!("Unable to spawn test server on port {}: {:?}", port, e));
+    let handle = handle
+        .spawn()
+        .unwrap_or_else(|e| panic!("Unable to spawn test server on port {}: {:?}", port, e));
 
     let _ = pretty_env_logger::try_init();
 
@@ -108,7 +116,7 @@ async fn spawn_test_server(port: u16) -> Child {
 /**
  * Send a quit message to cleanly end a test.
  */
-async fn send_quit(port: u16, cookie: &str) -> () {
+async fn send_quit(port: u16, cookie: &str) {
     let client = Client::new();
 
     // We ignore the error back from the reqwest as its expected.
@@ -1604,24 +1612,25 @@ async fn integration_set_crew_actions() {
         .await
         .unwrap();
 
-    let entities_json: Entities = serde_json::from_str(&entities).unwrap();
-    let ship = entities_json
-        .ships
-        .get("test_ship")
-        .unwrap()
-        .read()
-        .unwrap();
-    let crew = ship.get_crew();
-    debug!("(integration_set_crew_actions) Crew: ({:?})", crew);
-    assert_eq!(crew.get_pilot(), 2);
-    assert_eq!(crew.get_engineering_jump(), 1);
-    assert_eq!(crew.get_engineering_power(), 3);
-    assert_eq!(crew.get_engineering_maneuver(), 2);
-    assert_eq!(crew.get_gunnery(0), 0);
-    assert_eq!(crew.get_gunnery(1), 1);
+    {
+        let entities_json: Entities = serde_json::from_str(&entities).unwrap();
+        let ship = entities_json
+            .ships
+            .get("test_ship")
+            .unwrap()
+            .read()
+            .unwrap();
+        let crew = ship.get_crew();
+        debug!("(integration_set_crew_actions) Crew: ({:?})", crew);
+        assert_eq!(crew.get_pilot(), 2);
+        assert_eq!(crew.get_engineering_jump(), 1);
+        assert_eq!(crew.get_engineering_power(), 3);
+        assert_eq!(crew.get_engineering_maneuver(), 2);
+        assert_eq!(crew.get_gunnery(0), 0);
+        assert_eq!(crew.get_gunnery(1), 1);
 
-    assert_eq!(crew.get_gunnery(2), 2);
-
+        assert_eq!(crew.get_gunnery(2), 2);
+    }
     // Test successful crew actions set
     let valid_actions = r#"{
                     "ship_name": "test_ship",
@@ -1726,9 +1735,22 @@ async fn integration_create_regular_server() {
     let _server = spawn_server(PORT_1, false, None, None, true).await;
 
     // Spawn one that loads a scenario
-    let _server = spawn_server(PORT_2, false, Some("./tests/test-scenario.json".to_string()), None, true).await;  
+    let _server = spawn_server(
+        PORT_2,
+        false,
+        Some("./tests/test-scenario.json".to_string()),
+        None,
+        true,
+    )
+    .await;
 
     // Spawn one that loads a design file
-    let _server = spawn_server(PORT_3, false, None, Some("./tests/test-designs.json".to_string()), true).await;
+    let _server = spawn_server(
+        PORT_3,
+        false,
+        None,
+        Some("./tests/test-designs.json".to_string()),
+        true,
+    )
+    .await;
 }
-
