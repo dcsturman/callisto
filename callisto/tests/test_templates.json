@@ -1,0 +1,86 @@
+[
+    {
+        "name": "Buccaneer",
+        "displacement": 400,
+        "hull": 160,
+        "armor": 5,
+        "maneuver": 3,
+        "jump": 2,
+        "power": 300,
+        "fuel": 81,
+        "crew": 11,
+        "sensors": "Improved",
+        "computer": 5,
+        "weapons": [
+            {   
+                "kind": "Pulse",
+                "mount": {
+                    "Turret":  2
+                }
+            },
+            {   
+                "kind": "Pulse",
+                "mount": {
+                    "Turret":  2
+                }
+            },
+            {   
+                "kind": "Sand",
+                "mount": {
+                    "Turret":  2
+                }
+            },
+            {   
+                "kind": "Sand",
+                "mount": {
+                    "Turret":  2
+                }
+            }
+        ],
+        "tl": 15
+    },
+    {
+        "name": "Scout/Courier",
+        "displacement": 100,
+        "hull": 40,
+        "armor": 4,
+        "maneuver": 2,
+        "jump": 2,
+        "power": 60,
+        "fuel": 23,
+        "crew": 3,
+        "sensors": "Military",
+        "computer": 5,
+        "weapons": [
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 2 }
+            }
+        ],
+        "tl": 12
+    },
+    {
+        "name": "Free Trader",
+        "displacement": 200,
+        "hull": 80,
+        "armor": 2,
+        "maneuver": 1,
+        "jump": 1,
+        "power": 75,
+        "fuel": 21,
+        "crew": 5,
+        "sensors": "Civilian",
+        "computer": 5,
+        "weapons": [
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 2 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 2 }
+            }
+        ],
+        "tl": 12
+    }
+]
