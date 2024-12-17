@@ -1,6 +1,8 @@
 use tokio::net::TcpListener;
 
 use std::net::SocketAddr;
+use std::panic;
+use std::process;
 use std::sync::{Arc, Mutex};
 
 use hyper::server::conn::http1;
@@ -8,11 +10,13 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 
 use clap::Parser;
-use log::{debug, info};
+use log::{debug, error, info};
 
 extern crate callisto;
 
 use callisto::authentication::Authenticator;
+use callisto::authentication::GoogleAuthenticator;
+use callisto::authentication::MockAuthenticator;
 use callisto::entity::Entities;
 use callisto::handle_request;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
@@ -29,7 +33,7 @@ struct Args {
     port: u16,
 
     /// JSON file for planets in scenario
-    #[arg(short, long)]
+    #[arg(short = 'f', long)]
     scenario_file: Option<String>,
 
     /// JSON file for ship templates in scenario
@@ -40,8 +44,7 @@ struct Args {
     #[arg(short, long)]
     test: bool,
 
-    // Name of the web server hosting the react app.
-    // Must be used correct to make CORS work.
+    // Name of the web server hosting the react app. This must be used correct to make CORS work.
     #[arg(short, long, default_value = "http://localhost:50001")]
     web_server: String,
 
@@ -55,9 +58,9 @@ struct Args {
 }
 
 #[tokio::main]
+#[quit::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     pretty_env_logger::init();
-
     let args = Args::parse();
 
     let port = args.port;
@@ -84,23 +87,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             )
         });
 
+    info!("(main) Loaded ship templates from {}.", &args.design_file);
+
     SHIP_TEMPLATES
         .set(templates)
         .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
     // Build the authenticator
-    let authenticator: Option<Box<dyn Authenticator>> = if test_mode {
-        debug!("(main) Server in test mode. No authenticator.");
-        None
-    } else {
-        let authenticator = callisto::authentication::GoogleAuthenticator::new(
-            &args.web_server,
-            args.secret,
-            &args.users_file,
-            args.web_server.clone(),
+    let authenticator: Box<dyn Authenticator> = if test_mode {
+        Box::new(
+            MockAuthenticator::new(
+                &args.web_server,
+                args.secret,
+                &args.users_file,
+                args.web_server.clone(),
+            )
+            .await,
         )
-        .await;
-        Some(Box::new(authenticator))
+    } else {
+        Box::new(
+            GoogleAuthenticator::new(
+                &args.web_server,
+                args.secret,
+                &args.users_file,
+                args.web_server.clone(),
+            )
+            .await,
+        )
     };
 
     debug!("(main) Creating authenticator.");
@@ -121,6 +134,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     );
 
     info!("Starting Callisto server listening on address: {}", addr);
+
+    if test_mode {
+        let orig_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
+            if !panic_info
+                .payload()
+                .downcast_ref::<&str>()
+                .unwrap_or(&"")
+                .contains("Time to exit")
+            {
+                orig_hook(panic_info);
+            }
+            process::exit(0);
+        }));
+    }
 
     // We create a TcpListener and bind it to 127.0.0.1:PORT
     let listener = TcpListener::bind(addr).await?;
@@ -143,7 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             // We bind the incoming connection to our service
             let builder = http1::Builder::new();
             if let Err(err) = builder.serve_connection(io, service_fn(handler)).await {
-                eprintln!("Error serving connection: {:?}", err);
+                error!("Error serving connection: {:?}", err);
             }
         });
     }

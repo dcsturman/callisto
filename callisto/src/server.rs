@@ -36,17 +36,9 @@ impl Server {
         &self,
         login: LoginMsg,
         valid_email: &Option<String>,
-        authenticator: Arc<Option<Box<dyn Authenticator>>>,
+        authenticator: Arc<Box<dyn Authenticator>>,
     ) -> Result<(String, Option<String>), String> {
         info!("(Server.login) Received and processing login request.",);
-
-        // Authenticator can only legally be None if we are in test mode.
-        if authenticator.is_none() {
-            let test_auth_response = crate::payloads::AuthResponse {
-                email: "test@test.com".to_string(),
-            };
-            return Ok((serde_json::to_string(&test_auth_response).unwrap(), None));
-        }
 
         // Three cases. 1) if there's a valid email, just let the client know what it is.
         // 2) If there is a code then we do authentication via Google OAuth2.
@@ -58,11 +50,6 @@ impl Server {
             };
             Ok((serde_json::to_string(&auth_response).unwrap(), None))
         } else if let Some(code) = login.code {
-            // This is a bit weird so explaining:
-            // First as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
-            // is for the Option.
-            let authenticator = authenticator.as_ref().as_ref().unwrap();
-
             let (session_key, email) = authenticator
                 .authenticate_user(&code)
                 .await
@@ -93,7 +80,8 @@ impl Server {
             .get()
             .expect("(Server.add_ship) Ship templates not loaded")
             .get(&ship.design)
-            .unwrap_or_else(|| panic!("(Server.add_ship) Could not find design {}.", ship.design));
+            .ok_or_else(|| format!("(Server.add_ship) Could not find design {}.", ship.design))?;
+
         self.entities.lock().unwrap().add_ship(
             ship.name,
             ship.position,
@@ -131,7 +119,7 @@ impl Server {
         Ok(self.entities.lock().unwrap().clone())
     }
 
-    pub fn get_designs(&self) -> Result<String, String> {
+    pub fn get_designs(&self) -> String {
         // Strip the Arc, etc. from the ShipTemplates before marshalling back.
         let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
             .get()
@@ -140,7 +128,7 @@ impl Server {
             .map(|(key, value)| (key.clone(), (*value.clone()).clone()))
             .collect();
 
-        Ok(serde_json::to_string(&clean_templates).unwrap())
+        serde_json::to_string(&clean_templates).unwrap()
     }
 
     pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
@@ -152,7 +140,7 @@ impl Server {
             planet.primary,
             planet.radius,
             planet.mass,
-        );
+        )?;
 
         Ok(msg_json("Add planet action executed"))
     }
@@ -181,7 +169,7 @@ impl Server {
             .map(|_| msg_json("Set acceleration action executed"))
     }
 
-    pub fn update(&mut self, fire_actions: FireActionsMsg) -> Result<String, String> {
+    pub fn update(&mut self, fire_actions: FireActionsMsg) -> String {
         let mut rng = get_rng(self.test_mode);
 
         // Grab the lock on entities
@@ -210,17 +198,15 @@ impl Server {
         debug!("(/update) Effects: {:?}", effects);
 
         // 5. Marshall the events and reply with them back to the user.
-        let json = match serde_json::to_string(&effects) {
-            Ok(json) => json,
-            Err(_) => return Err("Error converting update actions to JSON".to_string()),
-        };
+        let json = serde_json::to_string(&effects)
+            .unwrap_or_else(|_| panic!("Unable to serialize `effects` {:?}.", effects));
 
         // 6. Reset all ship agility setting as the round is over.
         for ship in entities.ships.values() {
             ship.write().unwrap().reset_crew_actions();
         }
 
-        Ok(json)
+        json
     }
 
     pub fn compute_path(&self, msg: ComputePathMsg) -> Result<String, String> {
@@ -275,7 +261,7 @@ impl Server {
             debug!("(/compute_path) Plan: {:?}", plan);
             plan
         } else {
-            return Err("Unable to compute flight path".to_string());
+            return Err(format!("Unable to compute flight path: {:?}", params));
         };
 
         debug!(
@@ -294,7 +280,7 @@ impl Server {
         Ok(json)
     }
 
-    pub async fn load_scenario(&self, msg: LoadScenarioMsg) -> Result<String, String> {
+    pub async fn load_scenario(&self, msg: &LoadScenarioMsg) -> Result<String, String> {
         info!(
             "(/load_scenario) Received and processing load scenario request. {:?}",
             msg
@@ -308,15 +294,13 @@ impl Server {
         Ok(msg_json("Load scenario action executed"))
     }
 
-    pub fn get(&self) -> Result<String, String> {
-        info!("Received and processing get request.");
-        match serde_json::to_string::<Entities>(&self.entities.lock().unwrap()) {
-            Ok(json) => {
-                info!("(/) Entities: {:?}", json);
-                Ok(json)
-            }
-            Err(_) => Err("Error converting entities to JSON".to_string()),
-        }
+    pub fn get_entities_json(&self) -> String {
+        info!("Received and processing get entities request.");
+        let json = serde_json::to_string::<Entities>(&self.entities.lock().unwrap())
+            .expect("(server.get) Unable to serialize entities");
+
+        info!("(/) Entities: {:?}", json);
+        json
     }
 }
 
@@ -341,7 +325,7 @@ pub(crate) fn msg_json(msg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::authentication::tests::MockAuthenticator;
+    use crate::authentication::MockAuthenticator;
     use crate::payloads::LoginMsg;
     use std::sync::Arc;
 
@@ -355,7 +339,7 @@ mod tests {
             "http://web.test.com".to_string(),
         )
         .await;
-        let authenticator = Arc::new(Some(Box::new(mock_auth) as Box<dyn Authenticator>));
+        let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
 
         // Test case 1: Already valid email
         let valid_email = Some("existing@example.com".to_string());
@@ -379,7 +363,7 @@ mod tests {
             .expect("Login should succeed with auth code");
         let auth_response: AuthResponse = serde_json::from_str(&response).unwrap();
         assert_eq!(auth_response.email, "test@example.com");
-        assert_eq!(session_key.unwrap(), "test_session_key");
+        assert_eq!(session_key.unwrap(), "TeSt_KeY");
 
         // Test case 3: No valid email and no auth code
         let valid_email = None;
@@ -389,16 +373,5 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());
-
-        // Test case 4: Test mode (no authenticator)
-        let server = Server::new(Arc::new(Mutex::new(Entities::new())), true);
-        let no_auth: Arc<Option<Box<dyn Authenticator>>> = Arc::new(None);
-        let (response, session_key) = server
-            .login(LoginMsg { code: None }, &None, no_auth)
-            .await
-            .expect("Login should succeed in test mode");
-        let auth_response: AuthResponse = serde_json::from_str(&response).unwrap();
-        assert_eq!(auth_response.email, "test@test.com");
-        assert!(session_key.is_none());
     }
 }

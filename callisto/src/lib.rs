@@ -62,17 +62,15 @@ impl From<hyper::Error> for SizeCheckError {
 // Add the standard authentication errors to a response.
 // We use these all over the place so adding to this util function so there is one
 // place to check and modify these.
-fn add_auth_headers(resp: &mut Response<Full<Bytes>>, web_backend: &Option<String>) {
-    if let Some(web_backend) = web_backend {
-        let allow_origin = AccessControlAllowOrigin::try_from(web_backend.as_str()).unwrap();
-        resp.headers_mut().typed_insert(allow_origin);
-    }
+fn add_auth_headers(resp: &mut Response<Full<Bytes>>, web_backend: &str) {
+    let allow_origin = AccessControlAllowOrigin::try_from(web_backend).unwrap();
+    resp.headers_mut().typed_insert(allow_origin);
     let allow_credentials = AccessControlAllowCredentials;
 
     resp.headers_mut().typed_insert(allow_credentials);
 }
 
-fn build_ok_response(body: &str, web_backend: &Option<String>) -> Response<Full<Bytes>> {
+fn build_ok_response(body: &str, web_backend: &str) -> Response<Full<Bytes>> {
     let msg = Bytes::copy_from_slice(body.as_bytes());
 
     let mut resp = Response::builder()
@@ -85,11 +83,7 @@ fn build_ok_response(body: &str, web_backend: &Option<String>) -> Response<Full<
     resp.clone()
 }
 
-fn build_err_response(
-    status: StatusCode,
-    body: &str,
-    web_backend: &Option<String>,
-) -> Response<Full<Bytes>> {
+fn build_err_response(status: StatusCode, body: &str, web_backend: &str) -> Response<Full<Bytes>> {
     let msg = Bytes::copy_from_slice(format!("{{ \"msg\" : \"{body}\" }}").as_bytes());
     let mut resp = Response::builder().status(status).body(msg.into()).unwrap();
 
@@ -138,21 +132,13 @@ pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
     test_mode: bool,
-    authenticator: Arc<Option<Box<dyn Authenticator>>>,
+    authenticator: Arc<Box<dyn Authenticator>>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     info!(
         "Request: {:?}\n\tmethod: {}\n\turi: {}",
         req,
         req.method(),
         req.uri().path()
-    );
-
-    // Authenticator can only be None if we are in test mode.
-    assert!(
-        test_mode || authenticator.is_some(),
-        "Test mode is {} but authenticator  is_some = {:?}",
-        test_mode,
-        authenticator.is_some()
     );
 
     // See if we have a proper session authorization cookie and from that generate a valid email.
@@ -173,8 +159,6 @@ pub async fn handle_request(
             authenticator
                 .clone()
                 .as_ref()
-                .as_ref()
-                .unwrap()
                 .validate_session_key(&cookie)
                 .ok()
         });
@@ -186,7 +170,7 @@ pub async fn handle_request(
     if let Some(email) = valid_email.clone() {
         debug!("(lib.handleRequest) User {} is authorized.", email);
     } else if valid_email.is_none()
-        && !(test_mode || req.method() == Method::OPTIONS || req.uri().path() == "/login")
+        && !(req.method() == Method::OPTIONS || req.uri().path() == "/login")
     {
         debug!("(lib.handleRequest) No valid email.  Returning 401.");
         return Ok(Response::builder()
@@ -200,10 +184,7 @@ pub async fn handle_request(
     }
 
     let mut server = Server::new(entities, test_mode);
-    let web_server = authenticator
-        .as_ref()
-        .as_ref()
-        .map(|auth| auth.get_web_server());
+    let web_server = authenticator.as_ref().get_web_server();
 
     match (req.method(), req.uri().path()) {
         (&Method::OPTIONS, curious) => {
@@ -240,8 +221,9 @@ pub async fn handle_request(
             match server.login(login_msg, &valid_email, authenticator).await {
                 Ok((msg, session_key)) => {
                     debug!(
-                        "(lib.handleRequest/login) Login request successful for user: {:?}",
-                        msg
+                        "(lib.handleRequest/login) Login request successful for user {:?} with session key {:?}.",
+                        msg,
+                        if session_key.is_none() { "No key".to_string() } else if test_mode { session_key.clone().unwrap() } else { "**********".to_string() }
                     );
 
                     let mut resp = build_ok_response(&msg, &web_server);
@@ -264,7 +246,7 @@ pub async fn handle_request(
                 }
                 Err(err) => {
                     // A few cases where we can end up here.
-                    // 1) When authentication via Google fails
+                    // 1) When authentication fails
                     // 2) When a client first loads and it doesn't know if it has a valid session key.
                     // 3) If the cookie times out and needs to be refreshed.
                     warn!(
@@ -352,26 +334,17 @@ pub async fn handle_request(
             // The first element is the name of the ship. The second element is a vector of FireActions.
             let fire_actions = deserialize_body_or_respond!(req, FireActionsMsg);
 
-            match server.update(fire_actions) {
-                Ok(msg) => {
-                    let mut resp = Response::builder()
-                        .status(StatusCode::OK)
-                        .body(Bytes::copy_from_slice(msg.as_bytes()).into())
-                        .unwrap();
-                    add_auth_headers(&mut resp, &web_server);
-                    Ok(resp)
-                }
-                Err(err) => Ok(build_err_response(
-                    StatusCode::BAD_REQUEST,
-                    &err,
-                    &web_server,
-                )),
-            }
+            let msg = server.update(fire_actions);
+            let mut resp = Response::builder()
+                .status(StatusCode::OK)
+                .body(Bytes::copy_from_slice(msg.as_bytes()).into())
+                .unwrap();
+            add_auth_headers(&mut resp, &web_server);
+            Ok(resp)
         }
 
         (&Method::POST, "/compute_path") => {
             let msg = deserialize_body_or_respond!(req, ComputePathMsg);
-
             match server.compute_path(msg) {
                 Ok(json) => {
                     let mut resp = Response::builder()
@@ -392,8 +365,12 @@ pub async fn handle_request(
         (&Method::POST, "/load_scenario") => {
             let msg = deserialize_body_or_respond!(req, LoadScenarioMsg);
 
-            match server.load_scenario(msg).await {
+            match server.load_scenario(&msg).await {
                 Ok(json) => {
+                    debug!(
+                        "(/lib.handleRequest/load_scenario) Successfully (re)loaded scenario {}.",
+                        &msg.scenario_name
+                    );
                     let mut resp = Response::builder()
                         .status(StatusCode::OK)
                         .body(Bytes::copy_from_slice(json.as_bytes()).into())
@@ -401,50 +378,48 @@ pub async fn handle_request(
                     add_auth_headers(&mut resp, &web_server);
                     Ok(resp)
                 }
-                Err(err) => Ok(build_err_response(
-                    StatusCode::BAD_REQUEST,
-                    &err,
-                    &web_server,
-                )),
+                Err(err) => {
+                    warn!(
+                        "(/lib.handleRequest/load_scenario) Error loading scenario {}: {}",
+                        msg.scenario_name, err
+                    );
+                    Ok(build_err_response(
+                        StatusCode::BAD_REQUEST,
+                        &err,
+                        &web_server,
+                    ))
+                }
             }
+        }
+
+        (&Method::GET, "/quit") => {
+            if !test_mode {
+                warn!("Receiving a quit request in non-test mode.  Ignoring.");
+            }
+            info!("Received and processing quit request.");
+            panic!("Time to exit");
         }
 
         (&Method::GET, "/entities") => {
             info!("Received and processing get request.");
-            match server.get() {
-                Ok(json) => {
-                    let mut resp = Response::builder()
-                        .status(StatusCode::OK)
-                        .body(Bytes::copy_from_slice(json.as_bytes()).into())
-                        .unwrap();
-                    add_auth_headers(&mut resp, &web_server);
-                    Ok(resp)
-                }
-                Err(err) => Ok(build_err_response(
-                    StatusCode::BAD_REQUEST,
-                    &err,
-                    &web_server,
-                )),
-            }
+            let json = server.get_entities_json();
+            let mut resp = Response::builder()
+                .status(StatusCode::OK)
+                .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                .unwrap();
+            add_auth_headers(&mut resp, &web_server);
+            Ok(resp)
         }
 
         (&Method::GET, "/designs") => {
             info!("Received and processing get designs request.");
-            match server.get_designs() {
-                Ok(json) => {
-                    let mut resp = Response::builder()
-                        .status(StatusCode::OK)
-                        .body(Bytes::copy_from_slice(json.as_bytes()).into())
-                        .unwrap();
-                    add_auth_headers(&mut resp, &web_server);
-                    Ok(resp)
-                }
-                Err(err) => Ok(build_err_response(
-                    StatusCode::BAD_REQUEST,
-                    &err,
-                    &web_server,
-                )),
-            }
+            let json = server.get_designs();
+            let mut resp = Response::builder()
+                .status(StatusCode::OK)
+                .body(Bytes::copy_from_slice(json.as_bytes()).into())
+                .unwrap();
+            add_auth_headers(&mut resp, &web_server);
+            Ok(resp)
         }
 
         (method, uri) => {
@@ -477,10 +452,7 @@ pub async fn read_local_or_cloud_file(
 
         // Create a GCS client
         let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
-            panic!(
-                "Error {:?} authenticating with Google Cloud Storage. Did you do `gcloud auth application-default login` before running?",
-                e
-            )
+            panic!("Error {:?} authenticating with GCS. Did you do `gcloud auth application-default login` before running?", e)
         });
 
         let client = Client::new(config);
@@ -495,13 +467,7 @@ pub async fn read_local_or_cloud_file(
                 },
                 &Range::default(),
             )
-            .await
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Error {:?} downloading authorized users file {} from GCS bucket {}",
-                    e, file_name, bucket_name
-                )
-            });
+            .await?;
         Ok(data)
     } else {
         // Read the file locally
