@@ -60,9 +60,6 @@ export function Authentication(args: {
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
         console.error("(Authentication) State mismatch, ignoring response");
-        alert(
-          "Authentication issue: not getting back pre-provided state.  Serious bug or MitM attack?"
-        );
         return;
       }
 

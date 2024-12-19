@@ -219,17 +219,17 @@ pub async fn handle_request(
             let login_msg = deserialize_body_or_respond!(req, LoginMsg);
 
             match server.login(login_msg, &valid_email, authenticator).await {
-                Ok((msg, session_key)) => {
+                Ok((auth_response, session_key)) => {
                     info!(
-                        "(lib.handleRequest/login) Login request successful for user {:?} with session key {:?}.",
-                        msg,
+                        "(lib.handleRequest/login) LOGIN request successful for user {:?} with session key {:?}.",
+                        auth_response.email,
                         if session_key.is_none() { "No key".to_string() } else if test_mode { session_key.clone().unwrap() } else { "**********".to_string() }
                     );
 
-                    let mut resp = build_ok_response(&msg, &web_server);
+                    let mut resp = build_ok_response(&serde_json::to_string(&auth_response).unwrap(), &web_server);
                     // Add the set-cookie header only when we didn't have a valid cookie before.
                     if valid_email.is_none() && session_key.is_some() {
-                        info!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
+                        debug!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
 
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
                         let cookie_str = format!(
@@ -249,8 +249,7 @@ pub async fn handle_request(
                     // 2) When a client first loads and it doesn't know if it has a valid session key.
                     // 3) If the cookie times out and needs to be refreshed.
                     warn!(
-                        "(lib.handleRequest/login) Invalid login attempt: returning UNAUTHORIZED: {}",
-                        err
+                        "(lib.handleRequest/login) LOGIN: Invalid login attempt, returning UNAUTHORIZED.",
                     );
                     Ok(build_err_response(
                         StatusCode::UNAUTHORIZED,
