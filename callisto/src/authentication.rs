@@ -113,11 +113,6 @@ impl Authenticator for GoogleAuthenticator {
         &self,
         code: &str,
     ) -> Result<(String, GoogleProfile), Box<dyn Error>> {
-        info!(
-            "(authenticate_google_user) Received and processing login request. {:?}",
-            code
-        );
-
         // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
         // Look up the profile.  Then return the session key and profile.
         const GRANT_TYPE: &str = "authorization_code";
