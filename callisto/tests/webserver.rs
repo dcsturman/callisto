@@ -9,6 +9,7 @@ extern crate callisto;
 
 use std::collections::HashMap;
 use std::env::var;
+use std::io;
 
 use tokio::process::{Child, Command};
 use tokio::time::{sleep, Duration};
@@ -55,7 +56,7 @@ async fn spawn_server(
     scenario: Option<String>,
     design_file: Option<String>,
     auto_kill: bool,
-) -> Child {
+) -> Result<Child, io::Error> {
     let mut handle = Command::new(SERVER_PATH);
     let mut handle = handle
         .env(
@@ -81,35 +82,29 @@ async fn spawn_server(
         .arg("-p")
         .arg(port.to_string())
         .kill_on_drop(auto_kill);
-
     if test_mode {
         handle = handle.arg("-t");
     }
-
     if let Some(scenario) = scenario {
         handle = handle.arg("-f").arg(scenario);
     }
-
     if let Some(design_file) = design_file {
         handle = handle.arg("-d").arg(design_file);
     }
 
-    let handle = handle
-        .spawn()
-        .unwrap_or_else(|e| panic!("Unable to spawn test server on port {}: {:?}", port, e));
-
+    let handle = handle.spawn()?;
     let _ = pretty_env_logger::try_init();
 
     sleep(Duration::from_millis(1000)).await;
 
-    handle
+    Ok(handle)
 }
 /**
  * Spawns a callisto server and returns a handle to it.  Used across tests to get a server up and running.
  * @param port The port to run the server on.
  * @return A handle to the running server.  This is critical as otherwise with kill_on_drop the server will be killed before the tests complete.
  */
-async fn spawn_test_server(port: u16) -> Child {
+async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
     spawn_server(port, true, None, None, false).await
 }
 
@@ -1737,30 +1732,46 @@ async fn integration_set_crew_actions() {
 
 #[tokio::test]
 async fn integration_create_regular_server() {
-    const PORT_1: u16 = 3027;
-    const PORT_2: u16 = 3027;
-    const PORT_3: u16 = 3027;
+    const PORT_1: u16 = 3028;
+    const PORT_2: u16 = 3029;
+    const PORT_3: u16 = 3030;
 
     // Spawn a regular server
-    let _server = spawn_server(PORT_1, false, None, None, true).await;
+    let exit_status = spawn_server(PORT_1, false, None, None, true)
+        .await
+        .unwrap()
+        .try_wait()
+        .unwrap();
+
+        assert!(exit_status.is_none());
 
     // Spawn one that loads a scenario
-    let _server = spawn_server(
+    let exit_status = spawn_server(
         PORT_2,
         false,
         Some("./tests/test-scenario.json".to_string()),
         None,
         true,
     )
-    .await;
+    .await
+    .unwrap()
+    .try_wait()
+    .unwrap();
+
+    assert!(exit_status.is_none());
 
     // Spawn one that loads a design file
-    let _server = spawn_server(
+    let exit_status = spawn_server(
         PORT_3,
         false,
         None,
-        Some("./tests/test-designs.json".to_string()),
+        Some("./tests/test_templates.json".to_string()),
         true,
     )
-    .await;
+    .await
+    .unwrap()
+    .try_wait()
+    .unwrap();
+
+    assert!(exit_status.is_none());
 }
