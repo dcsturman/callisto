@@ -16,7 +16,6 @@ export const CALLISTO_BACKEND =
 
 type AuthResponse = {
   email: string;
-  key: string;
 };
 
 // Standard headers for all fetch calls

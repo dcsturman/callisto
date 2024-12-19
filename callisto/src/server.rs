@@ -37,7 +37,7 @@ impl Server {
         login: LoginMsg,
         valid_email: &Option<String>,
         authenticator: Arc<Box<dyn Authenticator>>,
-    ) -> Result<(String, Option<String>), String> {
+    ) -> Result<(AuthResponse, Option<String>), String> {
         info!("(Server.login) Received and processing login request.",);
 
         // Three cases. 1) if there's a valid email, just let the client know what it is.
@@ -48,22 +48,19 @@ impl Server {
             let auth_response = AuthResponse {
                 email: email.clone(),
             };
-            Ok((serde_json::to_string(&auth_response).unwrap(), None))
+            Ok((auth_response, None))
         } else if let Some(code) = login.code {
             let (session_key, email) = authenticator
                 .authenticate_user(&code)
                 .await
-                .unwrap_or_else(|e| panic!("(Server.login) Unable to authenticate user: {:?}", e));
+                .map_err(|e| format!("(Server.login) Unable to authenticate user: {:?}", e))?;
             debug!(
                 "(Server.login) Authenticated user {} with session key.",
                 email
             );
 
             let auth_response = AuthResponse { email };
-            Ok((
-                serde_json::to_string(&auth_response).unwrap(),
-                Some(session_key),
-            ))
+            Ok((auth_response, Some(session_key)))
         } else {
             Err("Must reauthenticate.".to_string())
         }
@@ -344,11 +341,11 @@ mod tests {
         // Test case 1: Already valid email
         let valid_email = Some("existing@example.com".to_string());
         let login_msg = LoginMsg { code: None };
-        let (response, session_key) = server
+        let (auth_response, session_key) = server
             .login(login_msg, &valid_email, authenticator.clone())
             .await
             .expect("Login should succeed with valid email");
-        let auth_response: AuthResponse = serde_json::from_str(&response).unwrap();
+
         assert_eq!(auth_response.email, "existing@example.com");
         assert!(session_key.is_none());
 
@@ -357,11 +354,10 @@ mod tests {
         let login_msg = LoginMsg {
             code: Some("test_code".to_string()),
         };
-        let (response, session_key) = server
+        let (auth_response, session_key) = server
             .login(login_msg, &valid_email, authenticator.clone())
             .await
             .expect("Login should succeed with auth code");
-        let auth_response: AuthResponse = serde_json::from_str(&response).unwrap();
         assert_eq!(auth_response.email, "test@example.com");
         assert_eq!(session_key.unwrap(), "TeSt_KeY");
 

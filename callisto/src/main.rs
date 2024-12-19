@@ -116,9 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
     };
 
-    debug!("(main) Creating authenticator.");
     let authenticator = Arc::new(authenticator);
-    debug!("(main) Created authenticator.");
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         Entities::load_from_file(&file_name)
@@ -136,6 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting Callisto server listening on address: {}", addr);
 
     if test_mode {
+        debug!("(main) In test mode: custom catching of panics.");
         let orig_hook = panic::take_hook();
         panic::set_hook(Box::new(move |panic_info| {
             if !panic_info
@@ -145,14 +144,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .contains("Time to exit")
             {
                 orig_hook(panic_info);
+                process::exit(1);
+            } else {
+                process::exit(0);
             }
-            process::exit(0);
         }));
     }
 
     // We create a TcpListener and bind it to 127.0.0.1:PORT
     let listener = TcpListener::bind(addr).await?;
-
     // We start a loop to continuously accept incoming connections
     loop {
         let (stream, _) = listener.accept().await?;

@@ -464,7 +464,7 @@ impl TargetParams {
                     a, t
                 );
                 if (self.start_vel + a * t).magnitude() > IMPACT_DISTANCE {
-                    warn!("(compute_target_path) First attempt worked we might be going to fast to detect impact!");
+                    warn!("(compute_target_path) First attempt worked we might be going too fast to detect impact!");
                 }
                 Some(FlightPathResult {
                     path: first_attempt.compute_path(&result),
@@ -476,6 +476,7 @@ impl TargetParams {
                 debug!(
                     "Second attempt (couldn't get there in one round) taking into account target velocity."
                 );
+                // Now solve with our original params (vs first_attempt)
                 self.solve(&initial).map_or_else(
                     |e| {
                         error!(
@@ -485,14 +486,16 @@ impl TargetParams {
                         None
                     },
                     |result| {
+                        let a = Vec3::from(
+                            (<&[f64] as TryInto<[f64; 3]>>::try_into(&result[0..3]))
+                                .expect("Unable to convert to fixed array"),
+                        );
+                        let t = result[3];
                         debug!("(compute_target_path) Second attempt worked.",);
                         Some(FlightPathResult {
                             path: self.compute_path(&result),
-                            end_velocity: self.start_vel + guess_a * guess_t,
-                            plan: FlightPlan::new(
-                                (guess_a / G, guess_t.round() as u64).into(),
-                                None,
-                            ),
+                            end_velocity: self.start_vel + a * t,
+                            plan: FlightPlan::new((a / G, t.round() as u64).into(), None),
                         })
                     },
                 )
@@ -546,6 +549,7 @@ impl System for TargetParams {
 
         let pos_eqs = a * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos
             - self.end_pos;
+
         let a_eq = a.magnitude() - self.max_acceleration;
 
         rx[0] = pos_eqs[0];

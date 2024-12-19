@@ -164,8 +164,8 @@ pub async fn handle_request(
         });
 
     // If we don't have a valid email, we reply with an Authorization error to the client.
-    // The exceptions to doing that are 1) if we're in test mode (not authenticating),
-    // and 2) if we're doing an OPTIONS request (to get CORS headers) and 3) if we're doing a login request.  Login will
+    // The exceptions to doing that are 1) if we're doing an OPTIONS request (to get CORS headers) or
+    // 2) if we're doing a login request.  Login will
     // have its own custom logic to test here.
     if let Some(email) = valid_email.clone() {
         debug!("(lib.handleRequest) User {} is authorized.", email);
@@ -219,20 +219,22 @@ pub async fn handle_request(
             let login_msg = deserialize_body_or_respond!(req, LoginMsg);
 
             match server.login(login_msg, &valid_email, authenticator).await {
-                Ok((msg, session_key)) => {
-                    debug!(
-                        "(lib.handleRequest/login) Login request successful for user {:?} with session key {:?}.",
-                        msg,
+                Ok((auth_response, session_key)) => {
+                    info!(
+                        "(lib.handleRequest/login) LOGIN request successful for user {:?} with session key {:?}.",
+                        auth_response.email,
                         if session_key.is_none() { "No key".to_string() } else if test_mode { session_key.clone().unwrap() } else { "**********".to_string() }
                     );
 
-                    let mut resp = build_ok_response(&msg, &web_server);
+                    let mut resp = build_ok_response(
+                        &serde_json::to_string(&auth_response).unwrap(),
+                        &web_server,
+                    );
                     // Add the set-cookie header only when we didn't have a valid cookie before.
                     if valid_email.is_none() && session_key.is_some() {
-                        info!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
+                        debug!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
 
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
-                        // Should be "{}={}; HttpOnly; Secure",
                         let cookie_str = format!(
                             "{}={}; HttpOnly; Secure; SameSite=Strict",
                             SESSION_COOKIE_NAME,
@@ -250,8 +252,7 @@ pub async fn handle_request(
                     // 2) When a client first loads and it doesn't know if it has a valid session key.
                     // 3) If the cookie times out and needs to be refreshed.
                     warn!(
-                        "(lib.handleRequest/login) Error logging in so returning UNAUTHORIZED: {}",
-                        err
+                        "(lib.handleRequest/login) LOGIN: Invalid login attempt, returning UNAUTHORIZED.",
                     );
                     Ok(build_err_response(
                         StatusCode::UNAUTHORIZED,
