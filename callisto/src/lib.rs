@@ -164,8 +164,8 @@ pub async fn handle_request(
         });
 
     // If we don't have a valid email, we reply with an Authorization error to the client.
-    // The exceptions to doing that are 1) if we're in test mode (not authenticating),
-    // and 2) if we're doing an OPTIONS request (to get CORS headers) and 3) if we're doing a login request.  Login will
+    // The exceptions to doing that are 1) if we're doing an OPTIONS request (to get CORS headers) or 
+    // 2) if we're doing a login request.  Login will
     // have its own custom logic to test here.
     if let Some(email) = valid_email.clone() {
         debug!("(lib.handleRequest) User {} is authorized.", email);
@@ -220,7 +220,7 @@ pub async fn handle_request(
 
             match server.login(login_msg, &valid_email, authenticator).await {
                 Ok((msg, session_key)) => {
-                    debug!(
+                    info!(
                         "(lib.handleRequest/login) Login request successful for user {:?} with session key {:?}.",
                         msg,
                         if session_key.is_none() { "No key".to_string() } else if test_mode { session_key.clone().unwrap() } else { "**********".to_string() }
@@ -232,7 +232,6 @@ pub async fn handle_request(
                         info!("(lib.handleRequest/login) Adding session key as secure cookie to response.");
 
                         // Unfortunate that I cannot do this typed but the libraries for typed SetCookie look very broken.
-                        // Should be "{}={}; HttpOnly; Secure",
                         let cookie_str = format!(
                             "{}={}; HttpOnly; Secure; SameSite=Strict",
                             SESSION_COOKIE_NAME,
@@ -250,7 +249,7 @@ pub async fn handle_request(
                     // 2) When a client first loads and it doesn't know if it has a valid session key.
                     // 3) If the cookie times out and needs to be refreshed.
                     warn!(
-                        "(lib.handleRequest/login) Error logging in so returning UNAUTHORIZED: {}",
+                        "(lib.handleRequest/login) Invalid login attempt: returning UNAUTHORIZED: {}",
                         err
                     );
                     Ok(build_err_response(
