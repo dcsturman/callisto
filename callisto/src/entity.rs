@@ -337,7 +337,7 @@ impl Entities {
                 let missile_pos = missile.get_position();
                 let missile_source = match ship_snapshot.get(&missile.source) {
                     None => {
-                        warn!("Cannot find source {} for missile. It may have been destroyed.", &missile.source);
+                        warn!("(Entity.update_all) Cannot find source {} for missile. It may have been destroyed.", &missile.source);
                         return None;
                     }
                     Some(ship) => ship,
@@ -379,6 +379,7 @@ impl Entities {
                                 "(Entity.update_all) Missile {} exhausted at position {:?}.",
                                 missile, missile_pos
                             );
+                            cleanup_missile_list.push(missile);
                             Some(vec![EffectMsg::ExhaustedMissile {
                                 position: missile_pos,
                             }])
