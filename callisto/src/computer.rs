@@ -494,11 +494,8 @@ impl TargetParams {
                         debug!("(compute_target_path) Second attempt worked.",);
                         Some(FlightPathResult {
                             path: self.compute_path(&result),
-                            end_velocity: self.start_vel + a*t,
-                            plan: FlightPlan::new(
-                                (a / G, t.round() as u64).into(),
-                                None,
-                            ),
+                            end_velocity: self.start_vel + a * t,
+                            plan: FlightPlan::new((a / G, t.round() as u64).into(), None),
                         })
                     },
                 )

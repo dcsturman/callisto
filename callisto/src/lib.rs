@@ -164,7 +164,7 @@ pub async fn handle_request(
         });
 
     // If we don't have a valid email, we reply with an Authorization error to the client.
-    // The exceptions to doing that are 1) if we're doing an OPTIONS request (to get CORS headers) or 
+    // The exceptions to doing that are 1) if we're doing an OPTIONS request (to get CORS headers) or
     // 2) if we're doing a login request.  Login will
     // have its own custom logic to test here.
     if let Some(email) = valid_email.clone() {
@@ -226,7 +226,10 @@ pub async fn handle_request(
                         if session_key.is_none() { "No key".to_string() } else if test_mode { session_key.clone().unwrap() } else { "**********".to_string() }
                     );
 
-                    let mut resp = build_ok_response(&serde_json::to_string(&auth_response).unwrap(), &web_server);
+                    let mut resp = build_ok_response(
+                        &serde_json::to_string(&auth_response).unwrap(),
+                        &web_server,
+                    );
                     // Add the set-cookie header only when we didn't have a valid cookie before.
                     if valid_email.is_none() && session_key.is_some() {
                         debug!("(lib.handleRequest/login) Adding session key as secure cookie to response.");

@@ -60,10 +60,7 @@ impl Server {
             );
 
             let auth_response = AuthResponse { email };
-            Ok((
-                auth_response,
-                Some(session_key),
-            ))
+            Ok((auth_response, Some(session_key)))
         } else {
             Err("Must reauthenticate.".to_string())
         }

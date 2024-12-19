@@ -1743,7 +1743,7 @@ async fn integration_create_regular_server() {
         .try_wait()
         .unwrap();
 
-        assert!(exit_status.is_none());
+    assert!(exit_status.is_none());
 
     // Spawn one that loads a scenario
     let exit_status = spawn_server(

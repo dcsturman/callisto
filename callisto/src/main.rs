@@ -145,7 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             {
                 orig_hook(panic_info);
                 process::exit(1);
-
             } else {
                 process::exit(0);
             }
