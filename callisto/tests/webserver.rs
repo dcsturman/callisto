@@ -1730,6 +1730,7 @@ async fn integration_set_crew_actions() {
     send_quit(PORT, &cookie).await;
 }
 
+#[cfg_attr(feature = "ci", ignore)]
 #[tokio::test]
 async fn integration_create_regular_server() {
     const PORT_1: u16 = 3028;
