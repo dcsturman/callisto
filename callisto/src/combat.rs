@@ -1427,6 +1427,8 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
         let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, &mut rng);
-        assert!(result.iter().all(|msg| !msg.to_string().contains("out of range")));
+        assert!(result
+            .iter()
+            .all(|msg| !msg.to_string().contains("out of range")));
     }
 }
