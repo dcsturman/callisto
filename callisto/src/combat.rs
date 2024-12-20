@@ -60,12 +60,27 @@ pub fn attack(
         0
     };
 
-    let range_mod = if weapon.kind != WeaponType::Missile {
-        RANGE_MOD[find_range_band(
-            (defender.get_position() - attacker.get_position()).magnitude() as usize,
-        )]
-    } else {
+    let range_band =
+        find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize);
+
+    let range_mod = if weapon.kind == WeaponType::Missile {
         0
+    } else if weapon.kind.in_range(range_band) {
+        RANGE_MOD[range_band]
+    } else {
+        // We are out of range so cannot attack
+        debug!(
+            "(Combat.attack) {} is out of range of {}'s {}.",
+            defender.get_name(),
+            attacker.get_name(),
+            String::from(&weapon.kind)
+        );
+        return vec![EffectMsg::message(format!(
+            "{} is out of range of {}'s {}.",
+            defender.get_name(),
+            attacker.get_name(),
+            String::from(&weapon.kind)
+        ))];
     };
 
     debug!(
@@ -1355,5 +1370,65 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, EffectMsg::Message { .. })));
         }
+    }
+
+    #[test_log::test]
+    fn test_attack_range_mod() {
+        let mut rng = StdRng::seed_from_u64(38);
+        let attacker = Ship::new(
+            "Attacker".to_string(),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::zero(),
+            FlightPlan::default(),
+            Arc::new(ShipDesignTemplate::default()),
+            None,
+        );
+        let mut defender = Ship::new(
+            "Defender".to_string(),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::zero(),
+            FlightPlan::default(),
+            Arc::new(ShipDesignTemplate::default()),
+            None,
+        );
+
+        // Test in-range attack
+        let in_range_weapon = Weapon {
+            kind: WeaponType::Beam,
+            mount: WeaponMount::Turret(1),
+        };
+        defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
+        let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, &mut rng);
+        assert!(result
+            .iter()
+            .all(|msg| !msg.to_string().contains("out of range")));
+
+        // Test out-of-range attack
+        let out_of_range_weapon = Weapon {
+            kind: WeaponType::Pulse,
+            mount: WeaponMount::Turret(1),
+        };
+        defender.set_position(Vec3::new(30_000_000.0, 0.0, 0.0)); // Assuming this is out of range
+        let result = attack(
+            0,
+            0,
+            &attacker,
+            &mut defender,
+            &out_of_range_weapon,
+            &mut rng,
+        );
+        assert!(result
+            .iter()
+            .any(|msg| msg.to_string().contains("out of range")));
+
+        // Test missile which should never be out of range
+        let missile_weapon = Weapon {
+            kind: WeaponType::Missile,
+            mount: WeaponMount::Turret(1),
+        };
+        let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, &mut rng);
+        assert!(result
+            .iter()
+            .all(|msg| !msg.to_string().contains("out of range")));
     }
 }

@@ -115,7 +115,7 @@ pub enum BaySize {
     Large,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum WeaponType {
     Beam = 0,
     Pulse,
@@ -635,6 +635,19 @@ impl From<&Weapon> for String {
 impl WeaponType {
     pub fn is_laser(&self) -> bool {
         matches!(self, WeaponType::Beam | WeaponType::Pulse)
+    }
+
+    // Max ranges by weapon type.  Provide first range band
+    // 0 is short, 1 is medium, 2 is long, 3 is very long, 4 is distant
+    // Using a function as its just easier than a Lazy, etc.
+    pub fn in_range(&self, range: usize) -> bool {
+        match self {
+            WeaponType::Beam => range <= 1,
+            WeaponType::Pulse => range <= 2,
+            WeaponType::Missile => true,
+            WeaponType::Sand => true,
+            WeaponType::Particle => range <= 3,
+        }
     }
 }
 
