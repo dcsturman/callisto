@@ -646,7 +646,7 @@ impl WeaponType {
             WeaponType::Pulse => range <= 2,
             WeaponType::Missile => true,
             WeaponType::Sand => true,
-            WeaponType::Particle => range <= 3, 
+            WeaponType::Particle => range <= 3,
         }
     }
 }

@@ -60,7 +60,8 @@ pub fn attack(
         0
     };
 
-    let range_band = find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize);
+    let range_band =
+        find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize);
 
     let range_mod = if weapon.kind == WeaponType::Missile {
         0
@@ -1398,7 +1399,9 @@ mod tests {
         };
         defender.set_position(Vec3::new(1000.0, 0.0, 0.0)); // Assuming this is within range
         let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, &mut rng);
-        assert!(result.iter().all(|msg| !msg.to_string().contains("out of range")));
+        assert!(result
+            .iter()
+            .all(|msg| !msg.to_string().contains("out of range")));
 
         // Test out-of-range attack
         let out_of_range_weapon = Weapon {
@@ -1406,8 +1409,17 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
         defender.set_position(Vec3::new(1000000.0, 0.0, 0.0)); // Assuming this is out of range
-        let result = attack(0, 0, &attacker, &mut defender, &out_of_range_weapon, &mut rng);
-        assert!(result.iter().any(|msg| msg.to_string().contains("out of range")));
+        let result = attack(
+            0,
+            0,
+            &attacker,
+            &mut defender,
+            &out_of_range_weapon,
+            &mut rng,
+        );
+        assert!(result
+            .iter()
+            .any(|msg| msg.to_string().contains("out of range")));
 
         // Test missile which should never be out of range
         let missile_weapon = Weapon {

@@ -3,9 +3,9 @@
  */
 use super::computer::FlightPathResult;
 use super::crew::Crew;
-use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
+use std::fmt::Display;
 
 use super::entity::Vec3;
 use super::ship::FlightPlan;
