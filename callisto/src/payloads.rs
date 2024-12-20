@@ -3,6 +3,7 @@
  */
 use super::computer::FlightPathResult;
 use super::crew::Crew;
+use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
@@ -148,6 +149,12 @@ pub enum EffectMsg {
 impl EffectMsg {
     pub fn message(content: String) -> EffectMsg {
         EffectMsg::Message { content }
+    }
+}
+
+impl Display for EffectMsg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
