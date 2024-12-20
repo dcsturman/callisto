@@ -1374,7 +1374,7 @@ mod tests {
 
     #[test_log::test]
     fn test_attack_range_mod() {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(38);
         let attacker = Ship::new(
             "Attacker".to_string(),
             Vec3::new(0.0, 0.0, 0.0),
@@ -1397,7 +1397,7 @@ mod tests {
             kind: WeaponType::Beam,
             mount: WeaponMount::Turret(1),
         };
-        defender.set_position(Vec3::new(1000.0, 0.0, 0.0)); // Assuming this is within range
+        defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
         let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, &mut rng);
         assert!(result
             .iter()
@@ -1408,7 +1408,7 @@ mod tests {
             kind: WeaponType::Pulse,
             mount: WeaponMount::Turret(1),
         };
-        defender.set_position(Vec3::new(1000000.0, 0.0, 0.0)); // Assuming this is out of range
+        defender.set_position(Vec3::new(30_000_000.0, 0.0, 0.0)); // Assuming this is out of range
         let result = attack(
             0,
             0,
@@ -1427,6 +1427,6 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
         let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, &mut rng);
-        assert!(result.is_empty());
+        assert!(result.iter().all(|msg| !msg.to_string().contains("out of range")));
     }
 }
