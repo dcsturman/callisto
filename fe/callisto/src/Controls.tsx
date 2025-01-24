@@ -1,4 +1,5 @@
 import { useContext, useState, useEffect, useRef } from "react";
+import * as React from "react";
 import { Tooltip } from "react-tooltip";
 import * as THREE from "three";
 import { Crew } from "./CrewBuilder";
@@ -64,9 +65,9 @@ function ShipList(args: {
   function handleShipListSelectChange(
     event: React.ChangeEvent<HTMLSelectElement>
   ) {
-    let value = event.target.value;
+    const value = event.target.value;
 
-    let selectedShip = serverEntities.entities.ships.find(
+    const selectedShip = serverEntities.entities.ships.find(
       (ship) => ship.name === value
     );
 
@@ -83,13 +84,13 @@ function ShipList(args: {
       return;
     }
     if (args.computerShipName) {
-      let ship = serverEntities.entities.ships.find(
+      const ship = serverEntities.entities.ships.find(
         (ship) => ship.name === args.computerShipName
       );
       if (ship) {
         const downCamera = new THREE.Vector3(0, 0, 40);
         downCamera.applyQuaternion(args.camera.quaternion);
-        let new_camera_pos = new THREE.Vector3(
+        const new_camera_pos = new THREE.Vector3(
           ship.position[0] * SCALE,
           ship.position[1] * SCALE,
           ship.position[2] * SCALE
@@ -137,7 +138,7 @@ function ShipDesignList(args: {
   function handleDesignListSelectChange(
     event: React.ChangeEvent<HTMLSelectElement>
   ) {
-    let value = event.target.value;
+    const value = event.target.value;
     args.setShipDesignName(value);
   }
 
@@ -153,20 +154,20 @@ function ShipDesignList(args: {
       return <>Select a ship design.</>;
     }
 
-    let compressed = Object.values(design.compressedWeapons());
-    let describeWeapon = (weapon: {
+    const compressed = Object.values(design.compressedWeapons());
+    const describeWeapon = (weapon: {
       kind: string;
       mount: WeaponMount;
       used: number;
       total: number;
     }) => {
-      let weapon_name = new Weapon(weapon.kind, weapon.mount).toString();
+      const weapon_name = new Weapon(weapon.kind, weapon.mount).toString();
 
-      let [quant, suffix] = weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
+      const [quant, suffix] = weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
       return `${quant} ${weapon_name}${suffix}`;
     };
 
-    let weaponDesc = compressed.slice(0, -1).map((weapon, index) => {
+    let weaponDesc = compressed.slice(0, -1).map((...[weapon]) => {
       return describeWeapon(weapon) + ", ";
     });
 
@@ -240,7 +241,7 @@ function AddShip(args: {
   ) => void;
   shipDesignTemplates: ShipDesignTemplates;
 }) {
-  let designRef = useRef<HTMLInputElement>(null);
+  const designRef = useRef<HTMLInputElement>(null);
 
   const initialShip = {
     name: "ShipName",
@@ -267,22 +268,22 @@ function AddShip(args: {
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    let name = addShip.name;
-    let position: [number, number, number] = [
+    const name = addShip.name;
+    const position: [number, number, number] = [
       Number(addShip.xpos) * POSITION_SCALE,
       Number(addShip.ypos) * POSITION_SCALE,
       Number(addShip.zpos) * POSITION_SCALE,
     ];
-    let velocity: [number, number, number] = [
+    const velocity: [number, number, number] = [
       Number(addShip.xvel),
       Number(addShip.yvel),
       Number(addShip.zvel),
     ];
 
-    let design: string = addShip.design;
+    const design: string = addShip.design;
     addShipUpdate({ ...addShip, design: design });
 
-    let crew = addShip.crew;
+    const crew = addShip.crew;
     console.log(
       `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Design ${design}`
     );
@@ -504,7 +505,7 @@ export function Controls(args: {
       return;
     }
 
-    let new_fire_action = new FireAction(target, weapon_position);
+    const new_fire_action = new FireAction(target, weapon_position);
     setFireActions({
       ...fire_actions,
       [attacker]: {
@@ -618,7 +619,7 @@ export function Controls(args: {
               <input
                 type="checkbox"
                 checked={args.showRange !== null}
-                onChange={(e) => {
+                onChange={() => {
                   if (args.showRange === null) {
                     args.setShowRange(computerShip.name);
                   } else {

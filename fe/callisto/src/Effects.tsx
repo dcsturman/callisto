@@ -1,3 +1,4 @@
+import * as React from "react";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "./Util";
 import { SCALE } from "./Universal";

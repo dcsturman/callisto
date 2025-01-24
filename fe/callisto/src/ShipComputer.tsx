@@ -1,3 +1,4 @@
+import React from "react";
 import { useContext, useState, useRef } from "react";
 import {
   EntitiesServerContext,
@@ -75,7 +76,7 @@ export function ShipComputer(args: {
     initNavigationTargetState
   );
 
-  let startAccel = [
+  const startAccel = [
     ship?.plan[0][0][0].toString(),
     ship?.plan[0][0][1].toString(),
     ship?.plan[0][0][2].toString(),
@@ -98,23 +99,23 @@ export function ShipComputer(args: {
     // Perform computation logic here
     event.preventDefault();
 
-    let end_pos: [number, number, number] = [
+    const end_pos: [number, number, number] = [
       Number(navigationTarget.p_x) * POSITION_SCALE,
       Number(navigationTarget.p_y) * POSITION_SCALE,
       Number(navigationTarget.p_z) * POSITION_SCALE,
     ];
-    let end_vel: [number, number, number] = [
+    const end_vel: [number, number, number] = [
       Number(navigationTarget.v_x),
       Number(navigationTarget.v_y),
       Number(navigationTarget.v_z),
     ];
-    let target_vel: [number, number, number] | null = [
+    const target_vel: [number, number, number] | null = [
       Number(navigationTarget.v_x),
       Number(navigationTarget.v_y),
       Number(navigationTarget.v_z),
     ];
 
-    let standoff = Number(navigationTarget.standoff) * POSITION_SCALE;
+    const standoff = Number(navigationTarget.standoff) * POSITION_SCALE;
 
     console.log(
       `Computing route for ${ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} with standoff ${standoff}`
@@ -125,11 +126,11 @@ export function ShipComputer(args: {
   function handleNavTargetSelectChange(
     event: React.ChangeEvent<HTMLSelectElement>
   ) {
-    let value = event.target.value;
-    let shipTarget = serverEntities.entities.ships.find(
+    const value = event.target.value;
+    const shipTarget = serverEntities.entities.ships.find(
       (ship) => ship.name === value
     );
-    let planetTarget = serverEntities.entities.planets.find(
+    const planetTarget = serverEntities.entities.planets.find(
       (planet) => planet.name === value
     );
 
@@ -206,12 +207,12 @@ export function ShipComputer(args: {
   function accelerationManager(): JSX.Element {
     function handleSetAcceleration(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
-      let x = Number(computerAccel.x);
-      let y = Number(computerAccel.y);
-      let z = Number(computerAccel.z);
+      const x = Number(computerAccel.x);
+      const y = Number(computerAccel.y);
+      const z = Number(computerAccel.z);
 
-      let setColor = (id: string, color: string) => {
-        let elem = document.getElementById(id);
+      const setColor = (id: string, color: string) => {
+        const elem = document.getElementById(id);
         if (elem !== null) {
           elem.style.color = color;
         }
@@ -230,7 +231,7 @@ export function ShipComputer(args: {
 
           args.resetProposedPlan();
         })
-        .catch((error) => {
+        .catch(() => {
           setColor("control-input-x", "red");
           setColor("control-input-y", "red");
           setColor("control-input-z", "red");
@@ -336,7 +337,7 @@ export function ShipComputer(args: {
     );
   }
 
-  let title = ship.name + " Nav";
+  const title = ship.name + " Nav";
 
   return (
     <div id="computer-window" className="computer-window">
@@ -487,16 +488,16 @@ export function NavigationPlan(args: {
   plan: [Acceleration, Acceleration | null];
 }) {
   function prettyPrintAccel(accel: Acceleration) {
-    let ax = accel[0][0].toFixed(2).padStart(5, " ");
-    let ay = accel[0][1].toFixed(2).padStart(6, " ");
-    let az = accel[0][2].toFixed(2).padStart(6, " ");
-    let time = accel[1].toFixed(0).padStart(4, " ");
-    let s = `${time}s @ (${ax},${ay},${az})`;
+    const ax = accel[0][0].toFixed(2).padStart(5, " ");
+    const ay = accel[0][1].toFixed(2).padStart(6, " ");
+    const az = accel[0][2].toFixed(2).padStart(6, " ");
+    const time = accel[1].toFixed(0).padStart(4, " ");
+    const s = `${time}s @ (${ax},${ay},${az})`;
     return s;
   }
 
-  let accel0 = args.plan[0];
-  let accel1 = args.plan[1];
+  const accel0 = args.plan[0];
+  const accel1 = args.plan[1];
 
   return (
     <>

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::sync::Arc;
 
 use cgmath::{InnerSpace, Zero};
@@ -132,6 +132,21 @@ pub enum Sensors {
     Military,
     Improved,
     Advanced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
+pub enum Range {
+    Short = 0,
+    Medium,
+    Long,
+    VeryLong,
+    Distant,
+}
+
+impl Display for Range {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -640,13 +655,13 @@ impl WeaponType {
     // Max ranges by weapon type.  Provide first range band
     // 0 is short, 1 is medium, 2 is long, 3 is very long, 4 is distant
     // Using a function as its just easier than a Lazy, etc.
-    pub fn in_range(&self, range: usize) -> bool {
+    pub fn in_range(&self, range: Range) -> bool {
         match self {
-            WeaponType::Beam => range <= 1,
-            WeaponType::Pulse => range <= 2,
+            WeaponType::Beam => range <= Range::Medium,
+            WeaponType::Pulse => range <= Range::Long,
             WeaponType::Missile => true,
             WeaponType::Sand => true,
-            WeaponType::Particle => range <= 3,
+            WeaponType::Particle => range <= Range::VeryLong,
         }
     }
 }
