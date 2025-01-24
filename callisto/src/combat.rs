@@ -43,7 +43,8 @@ pub fn attack(
 ) -> Vec<EffectMsg> {
     let attacker_name = attacker.get_name();
 
-    debug!("(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}", 
+    debug!(
+        "(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}",
         attacker.get_name(),
         attacker.get_position(),
         defender.get_name(),
@@ -542,7 +543,7 @@ fn find_range_band(distance: usize) -> Range {
     RANGE_BANDS
         .iter()
         .position(|&x| x >= distance)
-        .and_then(|index| Range::from_repr(index))
+        .and_then(Range::from_repr)
         .unwrap_or(Range::Distant)
 }
 
