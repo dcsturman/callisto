@@ -44,11 +44,11 @@ pub fn attack(
     let attacker_name = attacker.get_name();
 
     debug!("(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}", 
-        attacker.get_name(), 
-        attacker.get_position(), 
-        defender.get_name(), 
-        defender.get_position(), 
-        (defender.get_position() - attacker.get_position()).magnitude(), 
+        attacker.get_name(),
+        attacker.get_position(),
+        defender.get_name(),
+        defender.get_position(),
+        (defender.get_position() - attacker.get_position()).magnitude(),
         find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize), RANGE_MOD[find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize) as usize]
     );
 
@@ -541,7 +541,9 @@ fn apply_crit(
 fn find_range_band(distance: usize) -> Range {
     RANGE_BANDS
         .iter()
-        .position(|&x| x >= distance).and_then(|index| Range::from_repr(index)).unwrap_or(Range::Distant)
+        .position(|&x| x >= distance)
+        .and_then(|index| Range::from_repr(index))
+        .unwrap_or(Range::Distant)
 }
 
 // Process all incoming fire actions and turn them into either missile launches or attacks.
@@ -747,9 +749,9 @@ mod tests {
     use crate::payloads::FireAction;
     use crate::ship::{BaySize, FlightPlan, Weapon, WeaponMount, WeaponType};
     use crate::ship::{Ship, ShipDesignTemplate};
-    use cgmath::{ Zero, MetricSpace };
+    use cgmath::{MetricSpace, Zero};
 
-    use rand::rngs::{ StdRng, ThreadRng };
+    use rand::rngs::{StdRng, ThreadRng};
     use rand::SeedableRng;
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
@@ -1440,7 +1442,7 @@ mod tests {
     fn test_attack_out_of_range() {
         // Rng doesn't matter as it shouldn't impact any results here.
         let mut rng = ThreadRng::default();
-        
+
         // Create ships far apart from each other
         let attacker = Ship::new(
             "Attacker".to_string(),
@@ -1466,11 +1468,17 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
 
-        assert_eq!(find_range_band(attacker.get_position().distance(defender.get_position()) as usize), Range::Long);
+        assert_eq!(
+            find_range_band(attacker.get_position().distance(defender.get_position()) as usize),
+            Range::Long
+        );
         let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
 
         assert_eq!(result.len(), 1);
-        assert!(matches!(&result[0], EffectMsg::Message { content } if content.contains("out of range")), "Expected out of range message");
+        assert!(
+            matches!(&result[0], EffectMsg::Message { content } if content.contains("out of range")),
+            "Expected out of range message"
+        );
 
         // Now test something in range.
 
@@ -1484,8 +1492,16 @@ mod tests {
             None,
         );
 
-        assert_eq!(find_range_band(attacker.get_position().distance(defender.get_position()) as usize), Range::Medium);
+        assert_eq!(
+            find_range_band(attacker.get_position().distance(defender.get_position()) as usize),
+            Range::Medium
+        );
         let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
-        assert!(result.iter().all(|msg| !msg.to_string().contains("out of range")), "Expected no out of range message");
+        assert!(
+            result
+                .iter()
+                .all(|msg| !msg.to_string().contains("out of range")),
+            "Expected no out of range message"
+        );
     }
 }
