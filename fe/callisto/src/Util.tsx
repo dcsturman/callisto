@@ -1,3 +1,4 @@
+import * as React from "react";
 import * as THREE from "three";
 import { useLayoutEffect, useRef } from "react";
 import { extend } from "@react-three/fiber";
@@ -81,7 +82,7 @@ export function GrowLine({
 
   useLayoutEffect(() => {
     if (lineRef.current?.geometry) {
-      let points = [];
+      const points = [];
 
       for (let i = 0; i < MAX_POINTS; i++) {
         points.push(

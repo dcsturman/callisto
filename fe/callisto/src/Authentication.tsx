@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import * as React from "react";
 import {
   googleLogout,
   useGoogleLogin,
@@ -10,7 +11,7 @@ export function Authentication(args: {
   setAuthenticated: (authenticated: boolean) => void;
   setEmail: (email: string | null) => void;
 }) {
-  const [googleAuthResponse, setGoogleAuthResponse] = useState<any>(null);
+  const [googleAuthResponse, setGoogleAuthResponse] = useState<CodeResponse | null>(null);
   const [secureState, setSecureState] = useState<string | undefined>();
 
   /** 
@@ -31,7 +32,7 @@ export function Authentication(args: {
   const googleLogin = useGoogleLogin({
     onSuccess: (codeResponse: CodeResponse) =>
       setGoogleAuthResponse(codeResponse),
-    onError: (error: any) => console.log("Login Failed:", error),
+    onError: (errorResponse: Pick<CodeResponse, 'error' | 'error_description' | 'error_uri'>) => console.log("Login Failed:", errorResponse),
     flow: "auth-code",
     state: secureState,
     redirect_uri: process.env.REACT_APP_C_BACKEND || "http://localhost:50001",
@@ -48,9 +49,13 @@ export function Authentication(args: {
   }, [googleLogin, secureState]);
 
   useEffect(() => {
-    function loginToCallisto(code: string) {
+    function loginToCallisto() {
       console.log("Logging in to Callisto");
-      login(googleAuthResponse.code, args.setEmail, args.setAuthenticated);
+      if (googleAuthResponse) {
+        login(googleAuthResponse.code, args.setEmail, args.setAuthenticated);
+      } else {
+        console.error("No code received from Google");
+      }
     }
 
     console.log(
@@ -63,7 +68,7 @@ export function Authentication(args: {
         return;
       }
 
-      loginToCallisto(googleAuthResponse.code);
+      loginToCallisto();
     }
   }, [args, googleAuthResponse, secureState]);
 
@@ -119,7 +124,7 @@ export function Authentication(args: {
             console.warn("Web Crypto API not supported");
           }
           const stateToken = window.crypto.getRandomValues(new Uint8Array(48));
-          let token = btoa(stateToken.toString());
+          const token = btoa(stateToken.toString());
           setSecureState(token);
         }}>
         Sign in with Google{" "}
@@ -140,7 +145,7 @@ export function Logout(args: {
     args.setEmail(null);
   };
 
-  let username = args.email ? args.email.split("@")[0] : "";
+  const username = args.email ? args.email.split("@")[0] : "";
   return (
     <div className="logout-window">
       <button className="blue-button" onClick={logOut}>

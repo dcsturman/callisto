@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import * as React from "react";
 import { ShipDesignTemplate } from "./Universal";
 
 export class Crew {
@@ -18,7 +19,15 @@ export class Crew {
         this.gunnery = [];
     }
 
-    parse(json: any) {
+    // This method is needed to ensure a parsed object from JSON.parse() actually becomes this Class.
+    parse(json: {
+        pilot: number;
+        engineering_jump: number;
+        engineering_power: number;
+        engineering_maneuver: number;
+        sensors: number;
+        gunnery: number[];
+    }) {
         this.pilot = json.pilot;
         this.engineering_jump = json.engineering_jump;
         this.engineering_power = json.engineering_power;
@@ -52,7 +61,7 @@ export function CrewBuilder(args: { updateCrew: (crew: Crew) => void, shipName: 
         customCrew.gunnery.push(0);
       }
       // Update the current gunnery value
-      let gunneryValues = customCrew.gunnery;
+      const gunneryValues = customCrew.gunnery;
 
       // Use currentGunId - 1 as we show id's starting at 1, but for the 
       // array of course want to start at 0
@@ -68,7 +77,7 @@ export function CrewBuilder(args: { updateCrew: (crew: Crew) => void, shipName: 
 
   return (
     <div className="crew-builder-window">
-      <h3>{args.shipName}'s Crew</h3>
+      <h3>{args.shipName}&apos;s Crew</h3>
       <label className="control-label crew-builder-input">
           Pilot        
           <input

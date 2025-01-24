@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import * as React from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
@@ -9,7 +10,6 @@ import { Ships, Missiles, Route } from "./Ships";
 import { EntityInfoWindow, Controls, ViewControls } from "./Controls";
 import { Effect, Explosions, ResultsWindow } from "./Effects";
 import {
-  loadScenario,
   nextRound,
   getEntities,
   getTemplates,
@@ -29,7 +29,7 @@ import {
 } from "./Universal";
 
 import "./index.css";
-import { RunTutorial, Tutorial } from "./Tutorial";
+import { Tutorial } from "./Tutorial";
 
 const POLL_ENTITIES_INTERVAL = 0;
 
@@ -265,9 +265,10 @@ function Simulator({
                   far: 200000,
                   position: [-100, 0, 0],
                 }}>
+                {/* eslint-disable react/no-unknown-property */ }
                 <pointLight
                   position={[-148e3, 10, 10]}
-                  intensity={6}
+                  intensity={6.0}
                   decay={0.01}
                   color="#fff7cd"
                 />

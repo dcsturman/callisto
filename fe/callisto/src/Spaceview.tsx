@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useContext, useRef } from "react";
 import * as THREE from "three";
 
@@ -159,7 +160,7 @@ function Planet(args: {
     },
   };
 
-  let texture_details = PLANET_TEMPLATES[args.planet.color];
+  const texture_details = PLANET_TEMPLATES[args.planet.color];
 
   const ref = useRef<THREE.Mesh>(null);
   useFrame(() => {
@@ -236,7 +237,7 @@ function Planets(args: {
 }) {
   return (
     <>
-      {args.planets.map((planet, index) => (
+      {args.planets.map((planet) => (
         <Planet
           key={planet.name}
           planet={planet}

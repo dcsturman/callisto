@@ -1,3 +1,4 @@
+import React from "react";
 import { useContext, useRef } from "react";
 
 import { Group, Mesh, SphereGeometry } from "three";
@@ -31,15 +32,10 @@ import { addVector, scaleVector, RangeSphere } from "./Util";
 
 extend({ TextGeometry });
 
-// This is to make typescript work with "extend"
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      textGeometry: ReactThreeFiber.Object3DNode<
-        TextGeometry,
-        typeof TextGeometry
-      >;
-    }
+// Needed for some reason to make textGeometry work.
+declare module '@react-three/fiber' {
+  interface ThreeElements {
+    textGeometry: ReactThreeFiber.Object3DNode<TextGeometry, typeof TextGeometry>;
   }
 }
 
@@ -234,9 +230,9 @@ export function Missiles() {
 export function Route(args: { plan: FlightPathResult }) {
   console.log(`(Ships.Route) Display plan: ${JSON.stringify(args.plan)}`);
   console.log(`(Ships.Route) Display route: ${JSON.stringify(args.plan.path)}`);
-  let start = scaleVector(args.plan.path[0], -1.0 * SCALE);
+  const start = scaleVector(args.plan.path[0], -1.0 * SCALE);
   let prev = args.plan.path[0];
-  let path = args.plan.path.slice(1);
+  const path = args.plan.path.slice(1);
 
   return (
     <group position={scaleVector(prev, SCALE) as Vector3}>
