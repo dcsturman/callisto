@@ -16,7 +16,7 @@ const steps: Step[] = [
   {
     target: ".mainscreen-container",
     content:
-      "Welcome to Callisto! This is the main screen where you can see ships, planets, missiles and other objects in space. You can navigate around using typical flying controls: &apos;a&apos; and &apos;d&apos; to turn, &apos;w&apos; and &apos;s&apos; to move forward and backwards, and &apos;q&apos; and &apos;e&apos; to roll.",
+      "Welcome to Callisto! This is the main screen where you can see ships, planets, missiles and other objects in space. You can navigate around using typical flying controls: 'a' and 'd' to turn, 'w' and 's' to move forward and backwards, and 'q' and 'e' to roll.",
     placement: "center",
   },
   {
@@ -55,7 +55,7 @@ const steps: Step[] = [
   {
     target: "#ship-computer",
     content:
-      "We now see the ship&apos;s computer for &apos;Killer&apos;.  You can see here the design (Harrier), hull points, armor, and other stats.  Its current position (x, y, z in km), an option to show ranges from this ship for combat, and its current plan of movement.",
+      "We now see the ship's computer for 'Killer'.  You can see here the design (Harrier), hull points, armor, and other stats.  Its current position (x, y, z in km), an option to show ranges from this ship for combat, and its current plan of movement.",
     placement: "auto",
   },
   {
@@ -71,7 +71,7 @@ const steps: Step[] = [
   },
   {
     target: ".as-form",
-    content: "We can manually set an acceleration for &apos;Killer&apos;.",
+    content: "We can manually set an acceleration for 'Killer'.",
     placement: "right",
   },
   {
