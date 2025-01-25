@@ -7,7 +7,7 @@ use rand::RngCore;
 use crate::combat_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::entity::Entity;
 use crate::payloads::{EffectMsg, FireAction, LaunchMissileMsg};
-use crate::ship::{BaySize, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
+use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
 use crate::{debug, error};
 
 const DIE_SIZE: u32 = 6;
@@ -43,9 +43,15 @@ pub fn attack(
 ) -> Vec<EffectMsg> {
     let attacker_name = attacker.get_name();
 
-    debug!("(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}", attacker.get_name(), attacker.get_position(), defender.get_name(), defender.get_position(), (defender.get_position() - attacker.get_position()).magnitude(), find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize),RANGE_MOD[find_range_band(
-            (defender.get_position() - attacker.get_position()).magnitude() as usize,
-        )]);
+    debug!(
+        "(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}",
+        attacker.get_name(),
+        attacker.get_position(),
+        defender.get_name(),
+        defender.get_position(),
+        (defender.get_position() - attacker.get_position()).magnitude(),
+        find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize), RANGE_MOD[find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize) as usize]
+    );
 
     let defensive_modifier = if defender.get_dodge_thrust() > 0 {
         debug!(
@@ -66,7 +72,7 @@ pub fn attack(
     let range_mod = if weapon.kind == WeaponType::Missile {
         0
     } else if weapon.kind.in_range(range_band) {
-        RANGE_MOD[range_band]
+        RANGE_MOD[range_band as usize]
     } else {
         // We are out of range so cannot attack
         debug!(
@@ -533,11 +539,12 @@ fn apply_crit(
     }
 }
 
-fn find_range_band(distance: usize) -> usize {
+fn find_range_band(distance: usize) -> Range {
     RANGE_BANDS
         .iter()
         .position(|&x| x >= distance)
-        .unwrap_or(RANGE_BANDS.len())
+        .and_then(Range::from_repr)
+        .unwrap_or(Range::Distant)
 }
 
 // Process all incoming fire actions and turn them into either missile launches or attacks.
@@ -743,9 +750,9 @@ mod tests {
     use crate::payloads::FireAction;
     use crate::ship::{BaySize, FlightPlan, Weapon, WeaponMount, WeaponType};
     use crate::ship::{Ship, ShipDesignTemplate};
-    use cgmath::Zero;
+    use cgmath::{MetricSpace, Zero};
 
-    use rand::rngs::StdRng;
+    use rand::rngs::{StdRng, ThreadRng};
     use rand::SeedableRng;
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
@@ -1431,8 +1438,6 @@ mod tests {
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));
     }
-<<<<<<< Updated upstream
-=======
 
     #[test]
     fn test_attack_out_of_range() {
@@ -1445,7 +1450,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            &Arc::new(ShipDesignTemplate::default()),
+            Arc::new(ShipDesignTemplate::default()),
             None,
         );
         let mut defender = Ship::new(
@@ -1454,7 +1459,7 @@ mod tests {
             Vec3::new(6_000_000.0, 6_000_000.0, 6_000_000.0),
             Vec3::zero(),
             FlightPlan::default(),
-            &Arc::new(ShipDesignTemplate::default()),
+            Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1484,7 +1489,7 @@ mod tests {
             Vec3::new(1_000_000.0, 1_000_000.0, 1_000_000.0),
             Vec3::zero(),
             FlightPlan::default(),
-            &Arc::new(ShipDesignTemplate::default()),
+            Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1500,5 +1505,4 @@ mod tests {
             "Expected no out of range message"
         );
     }
->>>>>>> Stashed changes
 }

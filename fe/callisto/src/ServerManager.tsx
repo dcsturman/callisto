@@ -95,7 +95,7 @@ export function login(
   setEmail: (email: string) => void,
   setAuthenticated: (authenticated: boolean) => void
 ) {
-  let fetch_params = {
+  const fetch_params = {
     ...standard_headers,
     method: "POST",
     body: JSON.stringify({ code: code }),
@@ -126,7 +126,7 @@ export function addShip(
     `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
   );
 
-  let payload = {
+  const payload = {
     name: name,
     position: position,
     velocity: velocity,
@@ -219,7 +219,7 @@ export async function setPlan(
   } else {
     plan_arr = [plan[0], plan[1]];
   }
-  let payload = { name: target, plan: plan_arr };
+  const payload = { name: target, plan: plan_arr };
 
   fetch(`${CALLISTO_BACKEND}/set_plan`, {
     ...standard_headers,
@@ -281,7 +281,7 @@ export function computeFlightPath(
     setProposedPlan(null);
     return;
   }
-  let payload = {
+  const payload = {
     entity_name: entity_name,
     end_pos: end_pos,
     end_vel: end_vel,
@@ -314,7 +314,7 @@ export function launchMissile(
   callback: EntityRefreshCallback,
   setAuthenticated: (authenticated: boolean) => void
 ) {
-  let payload = {
+  const payload = {
     source: source,
     target: target,
   };
@@ -399,10 +399,12 @@ export async function getTemplates(
   })
     .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     .then((json: any) => {
-      let templates: { [key: string]: ShipDesignTemplate } = {};
+      const templates: { [key: string]: ShipDesignTemplate } = {};
+      /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
       Object.entries(json).forEach((entry: [string, any]) => {
-        let currentTemplate: ShipDesignTemplate = ShipDesignTemplate.parse(
+        const currentTemplate: ShipDesignTemplate = ShipDesignTemplate.parse(
           entry[1]
         );
         templates[entry[0]] = currentTemplate;
@@ -411,7 +413,7 @@ export async function getTemplates(
     })
     .then((templates: ShipDesignTemplates) => {
       console.log("Received Templates: ");
-      for (let v of Object.values(templates)) {
+      for (const v of Object.values(templates)) {
         console.log(` ${v.name}`);
       }
       callBack(templates);

@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useContext } from "react";
 import Joyride, {
   ACTIONS,
   CallBackProps,
@@ -7,11 +7,12 @@ import Joyride, {
   ORIGIN,
   STATUS,
   Status,
+  Step,
 } from "react-joyride";
 import { loadScenario } from "./ServerManager";
 import { EntitiesServerContext } from "./Universal";
 
-const steps: any[] = [
+const steps: Step[] = [
   {
     target: ".mainscreen-container",
     content:
@@ -43,9 +44,9 @@ const steps: any[] = [
     content: (
       <span>
         This dropdown allows us to select a ship to control. We are going to
-        select the ship 'Killer' as its the only one in the game at this point.{" "}
+        select the ship &apos;Killer&apos; as its the only one in the game at this point.{" "}
         <p className="tutorial-instruction-text">
-          Select 'Killer' from the menu, now.
+          Select &apos;Killer&apos; from the menu, now.
         </p>
       </span>
     ),
@@ -102,7 +103,7 @@ const steps: any[] = [
       <span>
         Lets add a ship to the scenario.
         <p className="tutorial-instruction-text">
-          First click the toggle next to 'Add Ship'.
+          First click the toggle next to &apos;Add Ship&apos;.
         </p>
       </span>
     ),
@@ -114,10 +115,10 @@ const steps: any[] = [
       <span className="tutorial-instruction-text">
         Now fill in the form.{" "}
         <p className="tutorial-instruction-text">
-          Name it 'Beowulf', leave its position at (0, 0, 0), and give it a
-          velocity of (0, 0, 35000) and select the design 'Free Trader'.
+          Name it &apos;Beowulf&apos;, leave its position at (0, 0, 0), and give it a
+          velocity of (0, 0, 35000) and select the design &apos;Free Trader&apos;.
         </p>
-        <p className="tutorial-instruction-text">Click 'Add Ship'.</p>
+        <p className="tutorial-instruction-text">Click &apos;Add Ship&apos;.</p>
       </span>
     ),
     placement: "right",
@@ -142,7 +143,7 @@ const steps: any[] = [
       <span>
         Now its time for some combat, but lets clean up the display a bit.
         <p className="tutorial-instruction-text">
-          Click the toggle next to 'Add Ship' to close those controls."
+          Click the toggle next to &apos;Add Ship&apos; to close those controls.
         </p>
       </span>
     ),
@@ -152,8 +153,8 @@ const steps: any[] = [
     target: ".barbette-button",
     content: (
       <span>
-        Notice that <em>Killer's</em> weapons are disabled right now - because
-        we don't have a valid target! Lets fix that.
+        Notice that <em>Killer&apos;s</em> weapons are disabled right now - because
+        we don&apos;t have a valid target! Lets fix that.
       </span>
     ),
     placement: "top",
@@ -162,10 +163,10 @@ const steps: any[] = [
     target: "#fire-target",
     content: (
       <span>
-        This drop-down lets us select any other ship as a target. You'll see the
+        This drop-down lets us select any other ship as a target. You&apos;ll see the
         ship name and its range as well.
         <p className="tutorial-instruction-text">
-          Select 'Beowulf' as the target.
+          Select &apos;Beowulf&apos; as the target.
         </p>
       </span>
     ),
@@ -177,7 +178,7 @@ const steps: any[] = [
       <span>
         Now that we have a target, we can fire our weapons.
         <p className="tutorial-instruction-text">
-          Click the 'Barbette' button to fire the particle barbette.
+          Click the &apos;Barbette&apos; button to fire the particle barbette.
         </p>
       </span>
     ),
@@ -189,7 +190,7 @@ const steps: any[] = [
       <span>
         We can also fire a missile.
         <p className="tutorial-instruction-text">
-          Click the 'Missile Turret' button to fire a missile.
+          Click the &apos;Missile Turret&apos; button to fire a missile.
         </p>
       </span>
     ),
@@ -215,7 +216,7 @@ const steps: any[] = [
         <em>Beowulf</em> is at long range, the missile will take time to get
         there.
         <p className="tutorial-instruction-text">
-          Click 'Okay!' to close the window.
+          Click &apos;Okay!&apos; to close the window.
         </p>
       </span>
     ),
@@ -258,6 +259,7 @@ export function Tutorial({
 
     console.group("Joyride callback");
     console.log("Joyride callback data:", data);
+    console.log("index = ", index);
     console.log("stepIndex = ", stepIndex);
     console.log("runTutorial = " + runTutorial);
     console.groupEnd();
