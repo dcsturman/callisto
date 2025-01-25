@@ -500,7 +500,7 @@ impl ShipDesignTemplate {
     // basic systems and sensors are prioritized, and we ignore weapons.
     pub fn best_thrust(&self, current_power: u32) -> u8 {
         // First take out basic ship systems.
-        let power = current_power - self.displacement / 5;
+        let power = current_power.saturating_sub(self.displacement / 5);
         // Now adjust for sensors.  If we subtract all the power then we have no power left.
         let power = power.saturating_sub(
             match self.sensors {
@@ -1317,7 +1317,7 @@ mod tests {
         assert_eq!(ship.plan, zero_accel_plan);
 
         // Test case 5: Set a flight plan with acceleration at the ship's limit
-        let max_accel = ship.max_acceleration() as f64;
+        let max_accel = f64::from(ship.max_acceleration());
         let max_accel_plan = FlightPlan::new(
             AccelPair(Vec3::new(max_accel, 0.0, 0.0), 5000),
             Some(AccelPair(Vec3::new(0.0, max_accel, 0.0), 3000)),
