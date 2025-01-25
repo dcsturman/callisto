@@ -64,6 +64,11 @@ fn above_surface_or_none(surface: f64, distance: f64) -> Option<f64> {
     }
 }
 impl Planet {
+    /// Constructor to create a new planet.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the lock cannot be obtained to read the primary planet.
     #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn new(
@@ -73,7 +78,7 @@ impl Planet {
         radius: f64,
         mass: f64,
         primary: Option<String>,
-        primary_ptr: Option<Arc<RwLock<Planet>>>,
+        primary_ptr: &Option<Arc<RwLock<Planet>>>,
         dependency: i32,
     ) -> Self {
         let mut p = Planet {
@@ -127,6 +132,15 @@ impl Planet {
         self.gravity_radius_025 = gravity_radius_025;
     }
 
+    /// Calculate the rotational velocity of the planet around its primary.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the planet has no primary.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the lock cannot be obtained to read the primary planet.
     pub fn calculate_rotational_velocity(&self) -> Result<Vec3, String> {
         // We assume orbits are just on the x, z plane and around the primary.
         let primary = self
@@ -177,7 +191,7 @@ impl Entity for Planet {
         if let Some(_primary) = &self.primary_ptr {
             // To avoid error and avoid making this overly complex, we're going to go in small steps of time.
             // If this ends up being too expensive in the long run we have to find a new approach.
-            const MINI_STEP: u64 = 10;
+            const MINI_STEP: u32 = 10;
 
             let mut time: u64 = 0;
             let orig_velocity = self.velocity;
@@ -188,8 +202,8 @@ impl Entity for Planet {
                 self.velocity = self.calculate_rotational_velocity().unwrap();
 
                 // Now that we have velocity, move the planet the average of the prior velocity and the new velocity
-                self.position += (old_velocity + self.velocity) / 2.0 * MINI_STEP as f64;
-                time += MINI_STEP;
+                self.position += (old_velocity + self.velocity) / 2.0 * f64::from(MINI_STEP);
+                time += u64::from(MINI_STEP);
             }
             debug!(
                 "(Planet.update) Planet {} old velocity {:?} new velocity: {:?}",
@@ -217,7 +231,7 @@ mod tests {
             6.96e8,
             1.989e30,
             None,
-            None,
+            &None,
             0,
         );
 
@@ -243,7 +257,7 @@ mod tests {
             6.96e8,
             1.989e30,
             None,
-            None,
+            &None,
             0,
         )));
 
@@ -254,7 +268,7 @@ mod tests {
             6.371e6,
             5.97e24,
             Some("Sun".to_string()),
-            Some(Arc::clone(&sun)),
+            &Some(Arc::clone(&sun)),
             1,
         );
 

@@ -41,7 +41,7 @@ impl Server {
     /// session key.  It then returns the user's email. The session key is returned only if its is newly created
     /// (so not in this case).
     /// 
-    /// Otherwise it looks for a valid referral code (from Google OAuth2) and uses that to build a session
+    /// Otherwise it looks for a valid referral code (from Google `OAuth2`) and uses that to build a session
     /// key.  It then returns the user's email and the newly minted session key.
     /// 
     /// # Arguments
@@ -127,7 +127,7 @@ impl Server {
             ship.position,
             ship.velocity,
             ship.acceleration,
-            design.clone(),
+            design,
             ship.crew,
         );
 
@@ -267,7 +267,7 @@ impl Server {
     ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
-    pub fn update(&mut self, fire_actions: FireActionsMsg) -> String {
+    pub fn update(&mut self, fire_actions: &FireActionsMsg) -> String {
         let mut rng = get_rng(self.test_mode);
 
         // Grab the lock on entities

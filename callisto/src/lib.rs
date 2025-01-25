@@ -354,7 +354,7 @@ pub async fn handle_request(
             // The first element is the name of the ship. The second element is a vector of FireActions.
             let fire_actions = deserialize_body_or_respond!(req, FireActionsMsg);
 
-            let msg = server.update(fire_actions);
+            let msg = server.update(&fire_actions);
             let mut resp = Response::builder()
                 .status(StatusCode::OK)
                 .body(Bytes::copy_from_slice(msg.as_bytes()).into())

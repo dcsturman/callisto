@@ -5,7 +5,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
-use crate::computer::{FlightPathResult, TargetParams};
+use crate::computer::TargetParams;
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
 use crate::ship::Ship;
@@ -38,6 +38,11 @@ pub struct Missile {
 }
 
 impl Missile {
+    /// Constructor to create a new missile.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the lock cannot be obtained to read the target ship.
     pub fn new(
         name: String,
         source: String,
@@ -135,14 +140,11 @@ impl Entity for Missile {
                 self.name, params
             );
 
-            let mut path: FlightPathResult = match params.compute_target_path() {
-                Some(p) => p,
-                None => {
-                    error!("(update) Unable to compute path for missile {}", self.name);
-                    return Some(UpdateAction::ExhaustedMissile {
-                        name: self.name.clone(),
-                    });
-                }
+            let Some(mut path) = params.compute_target_path() else {
+                error!("(update) Unable to compute path for missile {}", self.name);
+                return Some(UpdateAction::ExhaustedMissile {
+                    name: self.name.clone(),
+                });
             };
 
             debug!(
@@ -171,8 +173,13 @@ impl Entity for Missile {
             self.acceleration = accel;
 
             let old_velocity: Vec3 = self.velocity;
-            self.velocity += accel * G * time as f64;
-            self.position += (old_velocity + self.velocity) / 2.0 * time as f64;
+
+            // Not ideal but we'll take the precision loss here in the case where
+            // time is very large.  
+            #[allow(clippy::cast_precision_loss)]
+            let time = time as f64;
+            self.velocity += accel * G * time;
+            self.position += (old_velocity + self.velocity) / 2.0 * time;
             self.burns -= 1;
 
             // See if we impacted.

@@ -143,7 +143,7 @@ impl Entities {
         position: Vec3,
         velocity: Vec3,
         acceleration: Vec3,
-        design: Arc<ShipDesignTemplate>,
+        design: &Arc<ShipDesignTemplate>,
         crew: Option<Crew>,
     ) {
         let ship = Ship::new(
@@ -151,7 +151,7 @@ impl Entities {
             position,
             velocity,
             FlightPlan::acceleration(acceleration),
-            &design,
+            design,
             crew,
         );
         self.ships.insert(name, Arc::new(RwLock::new(ship)));
@@ -182,11 +182,11 @@ impl Entities {
             })?;
 
             (
-                Some(primary.clone()),
+                &Some(primary.clone()),
                 primary.read().unwrap().dependency + 1,
             )
         } else {
-            (None, 0)
+            (&None, 0)
         };
 
         // A safety check to ensure we never have a pointer without a name of a primary or vis versa.
@@ -269,7 +269,7 @@ impl Entities {
 
     pub fn fire_actions(
         &mut self,
-        fire_actions: Vec<(String, Vec<FireAction>)>,
+        fire_actions: &[(String, Vec<FireAction>)],
         ship_snapshot: &HashMap<String, Ship>,
         rng: &mut dyn RngCore,
     ) -> Vec<EffectMsg> {
@@ -300,6 +300,7 @@ impl Entities {
         effects
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn update_all(
         &mut self,
         ship_snapshot: &HashMap<String, Ship>,
@@ -313,9 +314,9 @@ impl Entities {
         });
 
         // If we have effects from planet updates this has to change and get a bit more complex (like missiles below)
-        planets.iter().for_each(|planet| {
+        for planet in planets {
             planet.write().unwrap().update();
-        });
+        }
 
         let mut cleanup_missile_list = Vec::<String>::new();
 
@@ -393,8 +394,8 @@ impl Entities {
                             position: missile_pos,
                         }])
                     }
-                    update => panic!(
-                        "(Entity.update_all) Unexpected update {update:?} during missile updates."
+                    UpdateAction::ShipDestroyed => panic!(
+                        "(Entity.update_all) Unexpected ShipDestroyed update during missile updates."
                     ),
                 }
             })
@@ -435,15 +436,15 @@ impl Entities {
                 .collect::<Vec<_>>(),
         );
 
-        cleanup_missile_list.iter().for_each(|name| {
+        for name in &cleanup_missile_list {
             debug!("(Entity.update_all) Removing missile {}", name);
             self.missiles.remove(name);
-        });
+        }
 
-        cleanup_ships_list.iter().for_each(|name| {
+        for name in &cleanup_ships_list {
             debug!("(Entity.update_all) Removing ship {}", name);
             self.ships.remove(name);
-        });
+        }
 
         effects
     }
@@ -457,6 +458,8 @@ impl Entities {
                 return false;
             }
 
+            // Clearer if we spell out each branch
+            #[allow(clippy::match_same_arms)]
             match (&planet.primary, planet.primary_ptr.as_ref()) {
                 (Some(_), None) => return false,
                 (None, Some(_)) => return false,
@@ -678,7 +681,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -688,7 +691,7 @@ mod tests {
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -745,7 +748,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -753,7 +756,7 @@ mod tests {
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -761,7 +764,7 @@ mod tests {
             Vec3::new(7.0, 8.0, 9.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -811,7 +814,7 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -819,7 +822,7 @@ mod tests {
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -827,7 +830,7 @@ mod tests {
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -920,7 +923,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         assert!(
@@ -934,7 +937,7 @@ mod tests {
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         assert!(
@@ -957,7 +960,7 @@ mod tests {
             6371e3,
             5.97e24,
             Some(String::from("NonExistentPlanet")),
-            None,
+            &None,
             -6,
         );
 
@@ -995,7 +998,7 @@ mod tests {
             6371e3,
             5.97e24,
             Some(String::from("Sun")),
-            None,
+            &None,
             1,
         );
 
@@ -1049,7 +1052,7 @@ mod tests {
             Vec3::new(300.0, 200.0, 300.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1058,7 +1061,7 @@ mod tests {
             Vec3::new(800.0, 500.0, 300.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.launch_missile("Ship1", "Ship2").unwrap();
@@ -1262,7 +1265,7 @@ mod tests {
             7e8,
             100.0,
             None,
-            None,
+            &None,
             0,
         );
 
@@ -1283,7 +1286,7 @@ mod tests {
             4e6,
             100.0,
             Some(String::from("planet1")),
-            Some(Arc::new(RwLock::new(tst_planet))),
+            &Some(Arc::new(RwLock::new(tst_planet))),
             1,
         );
 
@@ -1302,7 +1305,7 @@ mod tests {
             4e6,
             100.0,
             Some(String::from("planet1")),
-            None,
+            &None,
             0,
         );
 
@@ -1357,7 +1360,7 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -1365,7 +1368,7 @@ mod tests {
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -1373,7 +1376,7 @@ mod tests {
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1458,7 +1461,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
-            design.clone(),
+            &design,
             None,
         );
         entities2.add_ship(
@@ -1466,7 +1469,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1519,7 +1522,7 @@ mod tests {
             Vec3::new(10.0, 11.0, 12.0),
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
-            design.clone(),
+            &design,
             None,
         );
         assert_ne!(
@@ -1533,7 +1536,7 @@ mod tests {
             Vec3::new(10.0, 11.0, 12.0),
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
-            design.clone(),
+            &design,
             None,
         );
         assert_eq!(entities1, entities2, "Entities should be equal again");
@@ -1620,7 +1623,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1659,7 +1662,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1751,7 +1754,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
