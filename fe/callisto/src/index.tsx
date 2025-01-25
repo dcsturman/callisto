@@ -1,22 +1,21 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { GoogleOAuthProvider } from '@react-oauth/google';
-import './index.css';
-import { GOOGLE_OAUTH_CLIENT_ID, App} from './App';
-import reportWebVitals from './reportWebVitals';
-
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+import "./index.css";
+import { GOOGLE_OAUTH_CLIENT_ID, App } from "./App";
+import reportWebVitals from "./reportWebVitals";
 
 const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement
+  document.getElementById("root") as HTMLElement
 );
 
 document.body.style.overflow = "hidden";
 
 root.render(
-    <GoogleOAuthProvider clientId={GOOGLE_OAUTH_CLIENT_ID}>
-  <React.StrictMode>
-    <App />    
-  </React.StrictMode>
+  <GoogleOAuthProvider clientId={GOOGLE_OAUTH_CLIENT_ID}>
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
   </GoogleOAuthProvider>
 );
 

@@ -1,4 +1,5 @@
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode } from "react";
+import * as React from "react";
 import { FaChevronUp } from "react-icons/fa";
 
 export function Accordion({ className, id, title, initialOpen, children } : { className?: string, id?: string, title: string, initialOpen?: boolean, children?: ReactNode }) {

@@ -1,3 +1,4 @@
+import React from "react";
 import { ShipDesignTemplate, WeaponMount } from "./Universal";
 import { FireState } from "./Controls";
 
@@ -57,7 +58,7 @@ export const WeaponButton = (props: {
     );
   }
   if ("Bay" in props.mount) {
-    let size = props.mount.Bay;
+    const size = props.mount.Bay;
     if (size === "Small") {
       return (
         <>
@@ -132,7 +133,7 @@ export const WeaponButton = (props: {
       );
     }
   } else if ("Turret" in props.mount) {
-    let num = props.mount.Turret;
+    const num = props.mount.Turret;
     if (num === 1) {
       return (
         <>

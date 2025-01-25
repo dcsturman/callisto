@@ -68,6 +68,7 @@ export class Ship extends Entity {
     this.assist_gunners = assist_gunners;
   }
 
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   static parse(json: any): Ship {
     return new Ship(
       json.name,
@@ -124,7 +125,19 @@ export class Planet extends Entity {
     this.gravity_radius_025 = gravity_radius_025;
   }
 
-  static parse(json: any): Planet {
+  static parse(json: { 
+    name: string;
+    position: [number, number, number];
+    velocity: [number, number, number];
+    color: string;
+    primary: [number, number, number];
+    radius: number;
+    mass: number;
+    gravity_radius_2: number;
+    gravity_radius_1: number;
+    gravity_radius_05: number;
+    gravity_radius_025: number;
+  }): Planet {
     return new Planet(
       json.name,
       json.position,
@@ -156,7 +169,12 @@ export class Missile extends Entity {
     this.acceleration = acceleration;
   }
 
-  static parse(json: any): Missile {
+  static parse(json: {
+    name: string;
+    position: [number, number, number];
+    velocity: [number, number, number];
+    acceleration: [number, number, number];
+  }): Missile {
     return new Missile(
       json.name,
       json.position,
@@ -177,10 +195,14 @@ export class EntityList {
     this.missiles = [];
   }
 
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   static parse(json: any): EntityList {
-    let entities = new EntityList();
+    const entities = new EntityList();
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     entities.ships = json.ships.map((ship: any) => Ship.parse(ship));
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     entities.planets = json.planets.map((planet: any) => Planet.parse(planet));
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     entities.missiles = json.missiles.map((missile: any) => Missile.parse(missile));
     return entities;
   }
@@ -190,14 +212,14 @@ export type EntityRefreshCallback = (entities: EntityList) => void;
 export const EntitiesServerContext = createContext<{
   entities: EntityList;
   handler: EntityRefreshCallback;
-}>({ entities: { ships: [], planets: [], missiles: [] }, handler: (e) => {} });
+}>({ entities: { ships: [], planets: [], missiles: [] }, handler: () => {} });
 
 export const EntitiesServerProvider = EntitiesServerContext.Provider;
 
 export const EntityToShowContext = createContext<{
   entityToShow: Entity | null;
   setEntityToShow: (ship: Entity | null) => void;
-}>({entityToShow: null, setEntityToShow: (e) => {}});
+}>({entityToShow: null, setEntityToShow: () => {}});
 
 export const EntityToShowProvider = EntityToShowContext.Provider;
 
@@ -207,14 +229,17 @@ export type FlightPathResult = {
   plan: [Acceleration, Acceleration | null]
 };
 
-export type WeaponMount = String | { Turret: number } | { BaySize: string };
+export type WeaponMount = string | { Turret: number } | { BaySize: string };
 
 export class Weapon {
   kind: string;
   mount: WeaponMount;
 
-  static parse(json: any): Weapon {
-    let w = new Weapon();
+  static parse(json: {
+    kind: string;
+    mount: WeaponMount;
+  }): Weapon {
+    const w = new Weapon();
     w.kind = json.kind;
     w.mount = json.mount;
     return w;
@@ -260,8 +285,9 @@ export class ShipDesignTemplate {
   weapons: Weapon[];
   tl: number;
 
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   static parse(json: any): ShipDesignTemplate {
-    let t = new ShipDesignTemplate();
+    const t = new ShipDesignTemplate();
     t.name = json.name;
     t.displacement = json.displacement;
     t.hull = json.hull;
@@ -273,6 +299,7 @@ export class ShipDesignTemplate {
     t.crew = json.crew;
     t.sensors = json.sensors;
     t.computer = json.computer;
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     t.weapons = json.weapons.map((w: any) => Weapon.parse(w));
     t.tl = json.tl;
     return t;
@@ -295,7 +322,7 @@ export class ShipDesignTemplate {
   }
 
   compressedWeapons() {
-    let initial_acc: {
+    const initial_acc: {
       [weapon: string]: {
         kind: string;
         mount: WeaponMount;
