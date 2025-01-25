@@ -108,8 +108,8 @@ impl FlightParams {
             match attempt {
                 0 => (accel, -accel, t_1, t_2),
                 1 => (-accel, accel, t_1, t_2),
-                2 => (accel, -accel, 1000000.0, 1000000.0),
-                _ => (-accel, accel, -1000000.0, -1000000.0),
+                2 => (accel, -accel, 1_000_000.0, 1_000_000.0),
+                _ => (-accel, accel, -1_000_000.0, -1_000_000.0),
             }
         } else if approx::ulps_eq!(distance, 0.0) {
             debug!("(best_guess) Making guess given zero differences.");

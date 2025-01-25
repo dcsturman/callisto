@@ -103,6 +103,16 @@ impl Entities {
         self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
     }
 
+    /// Load a scenario file.  A scenario file is just a JSON encoding of a set of entities.
+    /// After loading the file, the pointers are fixed up and the gravity wells are reset.
+    /// # Arguments
+    /// * `file_name` - The name of the file to load.
+    /// 
+    /// # Errors
+    /// Returns an error if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
     pub async fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
         info!("Load scenario file \"{}\".", file_name);
 
@@ -157,6 +167,21 @@ impl Entities {
         self.ships.insert(name, Arc::new(RwLock::new(ship)));
     }
 
+    /// Add a planet to the entities.
+    /// 
+    /// # Arguments
+    /// * `name` - The name of the planet.
+    /// * `position` - The position of the planet.
+    /// * `color` - The color of the planet.
+    /// * `primary` - The name of the primary planet.  If None, the planet is a star.
+    /// * `radius` - The radius of the planet.
+    /// * `mass` - The mass of the planet.
+    /// 
+    /// # Errors
+    /// Returns an error if the primary planet is not found or if for some reason a pointer to the primary planet cannot be created.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a planet.
     pub fn add_planet(
         &mut self,
         name: String,
@@ -212,6 +237,18 @@ impl Entities {
         Ok(())
     }
 
+    /// Launch a missile from a ship at a ship.
+    /// 
+    /// # Arguments
+    /// * `source` - The ship that is launching the missile.
+    /// * `target` - The ship that is the target of the missile.
+    /// 
+    /// # Errors
+    /// Returns an error if the source ship is not found.
+    /// Returns an error if the target ship is not found.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship.
     pub fn launch_missile(&mut self, source: &str, target: &str) -> Result<(), String> {
         // Could use a random number generator here for the name but that makes tests flakey (random)
         // So this counter used to distinguish missiles between the same source and target
@@ -256,7 +293,20 @@ impl Entities {
         Ok(())
     }
 
-    // Set the flight plan. Returns true if it was set. False if the plan was invalid for any reason.
+    /// Set the flight plan.
+    /// 
+    /// # Returns
+    /// `Ok(())` if the flight plan was set successfully.
+    /// 
+    /// # Arguments
+    /// * `name` - The name of the ship to set the flight plan for.
+    /// * `plan` - The flight plan to set.
+    /// 
+    /// # Errors
+    /// Returns an error if the ship is not found.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship.
     pub fn set_flight_plan(&mut self, name: &str, plan: &FlightPlan) -> Result<(), String> {
         if let Some(entity) = self.ships.get_mut(name) {
             entity.write().unwrap().set_flight_plan(plan)
@@ -267,6 +317,19 @@ impl Entities {
         }
     }
 
+    /// Process all fire actions and turn them into either missile launches or attacks.
+    /// 
+    /// # Arguments
+    /// * `fire_actions` - The fire actions to process.
+    /// * `ship_snapshot` - A snapshot of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
+    ///     a ship that was destroyed earlier in the round.
+    /// * `rng` - The random number generator to use.
+    /// 
+    /// # Returns
+    /// A list of all the effects resulting from the fire actions.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship.
     pub fn fire_actions(
         &mut self,
         fire_actions: &[(String, Vec<FireAction>)],
@@ -300,6 +363,17 @@ impl Entities {
         effects
     }
 
+    /// Update all entities.  This is typically done at the end of a round to advance a turn.
+    /// It returns all the effects resulting from the actions of the update.
+    /// 
+    /// # Arguments
+    /// * `ship_snapshot` - A snapshot of the ships at the start of the round.  This is used to ensure that
+    ///     any damage applied is simultaneous.  The snapshot is worked off of and real damage or other effects
+    ///     are applied to the actual entities.
+    /// * `rng` - A random number generator.
+    /// 
+    /// # Panics
+    /// Panics if the lock (read or write) cannot be obtained when reading any specific entity.
     #[allow(clippy::too_many_lines)]
     pub fn update_all(
         &mut self,
@@ -449,14 +523,17 @@ impl Entities {
         effects
     }
 
+    /// Validate the entity data structure, performing some important post-load checks.
+    /// These checks include:
+    /// * A planet has a named primary iff it has a pointer to that planet.
+    /// * Every missile has a point to its target and the names match.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a planet or missile.
     #[must_use]
     pub fn validate(&self) -> bool {
         for planet in self.planets.values() {
             let planet = planet.read().unwrap();
-
-            if planet.dependency < 0 {
-                return false;
-            }
 
             // Clearer if we spell out each branch
             #[allow(clippy::match_same_arms)]
@@ -490,6 +567,15 @@ impl Entities {
         true
     }
 
+    /// Fix secondary pointers in entities. For planets this is ensuring a link to the named primary for a planet.
+    /// For missiles this is ensuring a link to the named target for a missile.
+    /// 
+    /// # Errors
+    /// Returns an error if a named planet entity is not found when building a primary pointer.
+    /// Returns an error if a named ship entity is not found when building a target pointer.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write to a planet or missile.
     pub fn fixup_pointers(&mut self) -> Result<(), String> {
         for planet in self.planets.values() {
             let mut planet = planet.write().unwrap();
@@ -519,6 +605,10 @@ impl Entities {
         Ok(())
     }
 
+    /// Reset the gravity wells for all planets.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write to a planet.
     pub fn reset_gravity_wells(&mut self) {
         for planet in self.planets.values() {
             let mut planet = planet.write().unwrap();
@@ -931,7 +1021,7 @@ mod tests {
             "Entities with a valid planet and ship should be valid"
         );
 
-        // Test 3.5: Add a second ship
+        // Test 4: Add a second ship
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4.0, 5.0, 6.0),
@@ -945,34 +1035,14 @@ mod tests {
             "Entities with a valid planet and two ships should be valid"
         );
 
-        // Test 4: Add a valid missile
+        // Test 5: Add a valid missile
         entities.launch_missile("Ship1", "Ship2").unwrap();
         assert!(
             entities.validate(),
             "Entities with a valid planet, two ships, and missile should be valid"
         );
 
-        // Test 5: Add a planet with an invalid dependency
-        let planet = Planet::new(
-            String::from("InvalidPlanet"),
-            Vec3::new(7.0, 8.0, 9.0),
-            String::from("red"),
-            6371e3,
-            5.97e24,
-            Some(String::from("NonExistentPlanet")),
-            &None,
-            -6,
-        );
-
-        entities
-            .planets
-            .insert(String::from("InvalidPlanet"), Arc::new(RwLock::new(planet)));
-        assert!(
-            !entities.validate(),
-            "Entities with an invalid planet dependency should be invalid"
-        );
-
-        // Test 6: Fix the invalid dependency
+        // Test 6: Add a planet with dependency level 0
         {
             // Do this in its own block to release the locks after modification.
             let mut planet = entities
@@ -990,7 +1060,7 @@ mod tests {
             "Entities with fixed planet dependency should be valid"
         );
 
-        // Test 6.5: Add a planet with a missing primary_ptr
+        // Test 7: Add a planet with a missing primary_ptr
         let planet = Planet::new(
             String::from("InvalidPlanet2"),
             Vec3::new(7.0, 8.0, 9.0),
@@ -1011,7 +1081,7 @@ mod tests {
             "Entities with an invalid primary_ptr should be invalid"
         );
 
-        // Test 7: Fix the invalid primary_ptr
+        // Test 8: Fix the invalid primary_ptr
         {
             let planets_table = &mut entities.planets;
             let sun = planets_table.get_mut("Sun").unwrap().clone();
@@ -1027,7 +1097,7 @@ mod tests {
             "Entities with fixed primary_ptr should be valid"
         );
 
-        // Test 8: Make the primary_ptr have a different name from the primary
+        // Test 9: Make the primary_ptr have a different name from the primary
         {
             let planets_table = &mut entities.planets;
             let invalid_planet = planets_table.get_mut("InvalidPlanet").unwrap().clone();

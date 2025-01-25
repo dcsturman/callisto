@@ -40,6 +40,24 @@ pub fn task_chain_impact(effect: i32) -> i32 {
     }
 }
 
+/// Do the attack of one ship's weapon system against a ship.  This includes resolving previously launched missiles that
+/// now impact the target.  
+/// 
+/// # Arguments
+/// * `hit_mod` - The hit modifier to use (positive or negative).
+/// * `damage_mod` - The damage modifier to use (positive or negative).
+/// * `attacker` - The ship that is attacking.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod`.
+/// * `defender` - The ship that is being attacked.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod` (e.g. armor) as
+///     well as to apply damage.
+/// * `weapon` - The weapon being used.  This is used to get the weapon type and mount.
+/// * `rng` - The random number generator to use.
+/// 
+/// # Returns
+/// A list of all the effects resulting from the attack.
+/// 
+/// # Panics
+/// Panics if the lock cannot be obtained to read a ship or if we have a case where a check was made and then untrue
+/// (e.g. finding the index number of a ship in a list after ensuring its in the list).
 #[allow(clippy::too_many_lines)]
 pub fn attack(
     hit_mod: i32,
@@ -578,7 +596,22 @@ fn find_range_band(distance: u32) -> Range {
         .unwrap_or(Range::Distant)
 }
 
-// Process all incoming fire actions and turn them into either missile launches or attacks.
+/// Process all incoming fire actions and turn them into either missile launches or attacks.
+///
+/// # Arguments
+/// * `attacker` - The ship that is attacking.  This is used to get the attacker's position and sensors.
+/// * `ships` - A clone of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
+///     a ship that was destroyed earlier in the round.
+/// * `sand_counts` - A snapshot of all the sand capabilities of each ship.
+/// * `actions` - The fire actions to process.
+/// * `rng` - The random number generator to use.
+/// 
+/// # Returns
+/// * A tuple of the new missiles to launch and the effects of the fire actions.
+/// 
+/// # Panics
+/// Panics if the lock cannot be obtained to read a ship.
+/// Also, if we check that sandcasters are available but then cannot pop an element from the `sand_counts` list.
 #[allow(clippy::too_many_lines)]
 pub fn do_fire_actions<S: BuildHasher>(
     attacker: &Ship,

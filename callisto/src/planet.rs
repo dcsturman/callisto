@@ -39,7 +39,7 @@ pub struct Planet {
     // Not needed to be passed in JSON to the client; not needed for comparison operations.
     #[serde(skip)]
     #[derivative(PartialEq = "ignore")]
-    pub dependency: i32,
+    pub dependency: u32,
 
     #[derivative(PartialEq = "ignore")]
     pub gravity_radius_2: Option<f64>,
@@ -79,7 +79,7 @@ impl Planet {
         mass: f64,
         primary: Option<String>,
         primary_ptr: &Option<Arc<RwLock<Planet>>>,
-        dependency: i32,
+        dependency: u32,
     ) -> Self {
         let mut p = Planet {
             name,
@@ -106,15 +106,10 @@ impl Planet {
 
     pub fn reset_gravity_wells(&mut self) {
         // Names intentionally similar but clear to author
-        #[allow(clippy::similar_names)]
         let gravity_radius_2 = above_surface_or_none(self.radius, gravity_radius(2.0, self.mass));
-        #[allow(clippy::similar_names)]
         let gravity_radius_1 = above_surface_or_none(self.radius, gravity_radius(1.0, self.mass));
-        #[allow(clippy::similar_names)]
         let gravity_radius_05 = above_surface_or_none(self.radius, gravity_radius(0.5, self.mass));
-        #[allow(clippy::similar_names)]
-        let gravity_radius_025 =
-            above_surface_or_none(self.radius, gravity_radius(0.25, self.mass));
+        let gravity_radius_025 = above_surface_or_none(self.radius, gravity_radius(0.25, self.mass));
 
         debug!(
             "Gravity radius 025: {:?}: given radius {:?} and gravity_radius {}",
