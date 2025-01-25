@@ -243,8 +243,9 @@ mod tests {
     }
     #[test_log::test]
     fn test_planet_update() {
+        const TARGET_DISTANCE: f64 = 1_000_000_000.0;
+
         let _ = pretty_env_logger::try_init();
-        const TARGET_DISTANCE: f64 = 1000000000.0;
         // Create a primary (Sun) for the planet
         let sun = Arc::new(RwLock::new(Planet::new(
             String::from("Sun"),

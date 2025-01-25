@@ -1294,7 +1294,14 @@ mod tests {
             );
             // Check that we have effects. If not it means we missed which is okay for some attacks.
             // This is a hack but since the random seed is known, we map which should hit and which should miss.
-            if !should_hit {
+            if should_hit {
+                assert!(
+                    effects
+                        .iter()
+                        .any(|e| !matches!(e, EffectMsg::Message { .. })),
+                    "Expected hit in test case [hit_mod: {hit_mod}, damage_mod: {damage_mod}, weapon_type: {weapon_type:?}, weapon_mount: {weapon_mount:?}] and should produce effects: {effects:?}"
+                );
+            } else {
                 assert!(
                     !effects
                         .iter()
@@ -1302,14 +1309,8 @@ mod tests {
                     "Miss should produce no effects"
                 );
                 continue;
-            } else {
-                assert!(
-                    effects
-                        .iter()
-                        .any(|e| !matches!(e, EffectMsg::Message { .. })),
-                    "Expected hit in test case [hit_mod: {hit_mod}, damage_mod: {damage_mod}, weapon_type: {weapon_type:?}, weapon_mount: {weapon_mount:?}] and should produce effects: {effects:?}"
-                );
             }
+
             // Check for specific effect types based on weapon type
             match weapon_type {
                 WeaponType::Beam | WeaponType::Pulse => {
@@ -1533,10 +1534,13 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
 
-        assert_eq!(
-            find_range_band(attacker.get_position().distance(defender.get_position()) as u32),
-            Range::Long
-        );
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_possible_truncation)]
+        let range_band =
+            find_range_band(attacker.get_position().distance(defender.get_position()) as u32);
+
+        assert_eq!(range_band, Range::Long);
+
         let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
 
         assert_eq!(result.len(), 1);
@@ -1557,10 +1561,13 @@ mod tests {
             None,
         );
 
-        assert_eq!(
-            find_range_band(attacker.get_position().distance(defender.get_position()) as u32),
-            Range::Medium
-        );
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_possible_truncation)]
+        let range_band =
+            find_range_band(attacker.get_position().distance(defender.get_position()) as u32);
+
+        assert_eq!(range_band, Range::Medium);
+
         let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
         assert!(
             result

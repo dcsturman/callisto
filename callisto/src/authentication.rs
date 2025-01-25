@@ -522,7 +522,7 @@ pub(crate) mod tests {
     const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
-    #[should_panic]
+    #[should_panic = "No such file or directory"]
     async fn test_bad_credentials_file() {
         const BAD_FILE: &str = "./not_there_file.json";
         let authenticator = GoogleAuthenticator::new(

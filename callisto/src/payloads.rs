@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(deserialized.code, None);
 
         // Test deserialization with missing field
-        let json_str = r#"{}"#;
+        let json_str = "{}";
         let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
         assert_eq!(deserialized.code, None);
     }

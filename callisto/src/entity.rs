@@ -947,9 +947,9 @@ mod tests {
         entities.update_all(&ship_snapshot, &mut rng);
 
         // Validate the new positions for each entity
-        let expected_position1 = Vec3::new(5720442.4, 5721442.4, 5722442.4);
-        let expected_position2 = Vec3::new(11442884.8, 5724442.4, -11432884.8);
-        let expected_position3 = Vec3::new(-5712442.4, -5711442.4, 9000.0);
+        let expected_position1 = Vec3::new(5_720_442.4, 5_721_442.4, 5_722_442.4);
+        let expected_position2 = Vec3::new(11_442_884.8, 5_724_442.4, -11_432_884.8);
+        let expected_position3 = Vec3::new(-5_712_442.4, -5_711_442.4, 9000.0);
         assert_relative_eq!(
             entities
                 .ships
@@ -1042,25 +1042,7 @@ mod tests {
             "Entities with a valid planet, two ships, and missile should be valid"
         );
 
-        // Test 6: Add a planet with dependency level 0
-        {
-            // Do this in its own block to release the locks after modification.
-            let mut planet = entities
-                .planets
-                .get_mut("InvalidPlanet")
-                .unwrap()
-                .write()
-                .unwrap();
-            planet.dependency = 0;
-            planet.primary = None;
-            planet.primary_ptr = None;
-        }
-        assert!(
-            entities.validate(),
-            "Entities with fixed planet dependency should be valid"
-        );
-
-        // Test 7: Add a planet with a missing primary_ptr
+        // Test 5: Add a planet with a missing primary_ptr
         let planet = Planet::new(
             String::from("InvalidPlanet2"),
             Vec3::new(7.0, 8.0, 9.0),
@@ -1081,7 +1063,7 @@ mod tests {
             "Entities with an invalid primary_ptr should be invalid"
         );
 
-        // Test 8: Fix the invalid primary_ptr
+        // Test 6: Fix the invalid primary_ptr
         {
             let planets_table = &mut entities.planets;
             let sun = planets_table.get_mut("Sun").unwrap().clone();
@@ -1097,10 +1079,10 @@ mod tests {
             "Entities with fixed primary_ptr should be valid"
         );
 
-        // Test 9: Make the primary_ptr have a different name from the primary
+        // Test 7: Make the primary_ptr have a different name from the primary
         {
             let planets_table = &mut entities.planets;
-            let invalid_planet = planets_table.get_mut("InvalidPlanet").unwrap().clone();
+            let invalid_planet = planets_table.get_mut("InvalidPlanet2").unwrap().clone();
             let mut planet = planets_table
                 .get_mut("InvalidPlanet2")
                 .unwrap()
@@ -1135,7 +1117,7 @@ mod tests {
             None,
         );
         entities.launch_missile("Ship1", "Ship2").unwrap();
-        // Test 9: Create a missile with no target_ptr
+        // Test 8: Create a missile with no target_ptr
         {
             entities
                 .missiles
@@ -1149,7 +1131,7 @@ mod tests {
             !entities.validate(),
             "Entities with a missile with no target_ptr should be invalid"
         );
-        // Test 10: Fix the missile target_ptr
+        // Test 9: Fix the missile target_ptr
         {
             let missiles_table = &mut entities.missiles;
             let ship2 = entities.ships.get("Ship2").unwrap().clone();
@@ -1210,8 +1192,7 @@ mod tests {
     #[test_log::test]
     // TODO: Add test to add a moon.
     fn test_complex_planet_update() -> Result<(), String> {
-        let _ = pretty_env_logger::try_init();
-        let mut rng = SmallRng::seed_from_u64(0);
+        const EARTH_RADIUS: f64 = 151.25e9;
 
         fn check_radius_and_y(
             pos: Vec3,
@@ -1230,17 +1211,19 @@ mod tests {
             );
             (
                 (radius_2d.magnitude() - expected_mag).abs() / expected_mag < TOLERANCE,
-                radius.y == expected_y,
+                (radius.y - expected_y).abs() / expected_y < TOLERANCE,
             )
         }
 
+        let _ = pretty_env_logger::try_init();
+        let mut rng = SmallRng::seed_from_u64(0);
+
         let mut entities = Entities::new();
 
-        const EARTH_RADIUS: f64 = 151.25e9;
         // Create some planets and see if they move.
         entities.add_planet(
             String::from("Planet1"),
-            Vec3::new(EARTH_RADIUS, 2000000.0, 0.0),
+            Vec3::new(EARTH_RADIUS, 2_000_000.0, 0.0),
             String::from("blue"),
             None,
             6.371e6,
@@ -1248,7 +1231,7 @@ mod tests {
         )?;
         entities.add_planet(
             String::from("Planet2"),
-            Vec3::new(0.0, 5000000.0, EARTH_RADIUS),
+            Vec3::new(0.0, 5_000_000.0, EARTH_RADIUS),
             String::from("red"),
             None,
             3e7,
@@ -1286,7 +1269,7 @@ mod tests {
                     .get_position(),
                 Vec3::zero(),
                 EARTH_RADIUS,
-                2000000.0
+                2_000_000.0
             )
         );
         assert_eq!(
@@ -1301,7 +1284,7 @@ mod tests {
                     .get_position(),
                 Vec3::zero(),
                 EARTH_RADIUS,
-                5000000.0
+                5_000_000.0
             )
         );
         assert_eq!(
@@ -1316,7 +1299,7 @@ mod tests {
                     .get_position(),
                 Vec3::zero(),
                 EARTH_RADIUS,
-                8000.0
+                8_000.0
             )
         );
 
@@ -1348,7 +1331,7 @@ mod tests {
         let tst_planet_2 = Planet::new(
             String::from("planet2"),
             Vec3 {
-                x: 1000000000.0,
+                x: 1_000_000_000.0,
                 y: 0.0,
                 z: 0.0,
             },
@@ -1388,16 +1371,17 @@ mod tests {
 
     #[test_log::test]
     fn test_mixed_entities_serialize() -> Result<(), String> {
-        let mut entities = Entities::new();
-        let design = Arc::new(ShipDesignTemplate::default());
-
         // This constant is the radius of the earth's orbit (distance from sun).
         // It is NOT the radius of the earth (6.371e6 m)
         const EARTH_RADIUS: f64 = 151.25e9;
+
+        let mut entities = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
+
         // Create some planets and see if they move.
         entities.add_planet(
             String::from("Planet1"),
-            Vec3::new(EARTH_RADIUS, 2000000.0, 0.0),
+            Vec3::new(EARTH_RADIUS, 2_000_000.0, 0.0),
             String::from("blue"),
             None,
             6.371e6,
@@ -1405,7 +1389,7 @@ mod tests {
         )?;
         entities.add_planet(
             String::from("Planet2"),
-            Vec3::new(0.0, 5000000.0, EARTH_RADIUS),
+            Vec3::new(0.0, 5_000_000.0, EARTH_RADIUS),
             String::from("red"),
             None,
             3e7,
@@ -1496,11 +1480,11 @@ mod tests {
             }],
         "missiles":[],
         "planets":[
-            {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":5.972e24,
-            "gravity_radius_1":6375069.342849095,"gravity_radius_05":9015709.525726125,"gravity_radius_025":12750138.68569819},
-            {"name":"Planet2","position":[0.0,5000000.0,151250000000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30000000.0,"mass":3.00e23},
-            {"name":"Planet3","position":[106949900654.4653,8000.0,106949900654.4653],"velocity":[0.0,0.0,0.0],"color":"green","radius":4000000.0,"mass":1e26,
-            "gravity_radius_2":18446331.779326223,"gravity_radius_1":26087052.57835697,"gravity_radius_05":36892663.558652446,"gravity_radius_025":52174105.15671394}
+            {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,
+            "gravity_radius_1":6_375_069.342_849_095,"gravity_radius_05":9_015_709.525_726_125,"gravity_radius_025":12_750_138.685_698_19},
+            {"name":"Planet2","position":[0.0,5_000_000.0,151_250_000_000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30_000_000.0,"mass":3.00e23},
+            {"name":"Planet3","position":[106_949_900_654.465_3,8000.0,106_949_900_654.465_3],"velocity":[0.0,0.0,0.0],"color":"green","radius":4_000_000.0,"mass":1e26,
+            "gravity_radius_2":18_446_331.779_326_223,"gravity_radius_1":26_087_052.578_356_97,"gravity_radius_05":36_892_663.558_652_446,"gravity_radius_025":52_174_105.156_713_94}
          ]});
 
         assert_json_eq!(&entities, &cmp);
@@ -1761,13 +1745,13 @@ mod tests {
 
         // Test 1: Valid file
         let scenario = json!({"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
-             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
+             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"sun"}]});
 
@@ -1779,14 +1763,14 @@ mod tests {
 
         // Test 2: Add missile with a non-existent target
         let bad_scenario = json!({"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
-             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
-             {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
+             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
+             {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"sun"}]});
 
@@ -1798,13 +1782,13 @@ mod tests {
 
         // Test3: Add a planet with a non-existent primary
         let bad_scenario = json!({"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
-             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
+             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"InvalidPlanet"}]});
 

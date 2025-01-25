@@ -729,14 +729,14 @@ mod tests {
         const MAX_ACCEL: f64 = 6.0 * G;
         let params = FlightParams {
             start_pos: Vec3 {
-                x: 7000000.0,
-                y: -7000000.0,
-                z: 7000000.0,
+                x: 7_000_000.0,
+                y: -7_000_000.0,
+                z: 7_000_000.0,
             },
             end_pos: Vec3 {
-                x: 145738.5,
-                y: 39021470.2,
-                z: 145738.5,
+                x: 145_738.5,
+                y: 39_021_470.2,
+                z: 145_738.5,
             },
             start_vel: Vec3 {
                 x: 0.0,
@@ -773,6 +773,9 @@ mod tests {
         // expected_len = CEIL(t/DELTA_TIME)+3;
 
         let t = 2.0 * ((params.start_pos - params.end_pos).magnitude() / MAX_ACCEL).sqrt();
+
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_possible_truncation)]
         let expected_len = (t / DELTA_TIME_F64).floor() as usize + 3;
 
         info!(
@@ -874,6 +877,7 @@ mod tests {
 
         let plan = params.compute_flight_path().unwrap();
 
+        #[allow(clippy::cast_precision_loss)]
         let full_rounds_duration =
             (plan.plan.duration() as f64 / DELTA_TIME_F64).ceil() * DELTA_TIME_F64;
 
@@ -921,14 +925,14 @@ mod tests {
     fn test_compute_flight_path_zero_velocity() {
         let params = FlightParams {
             start_pos: Vec3 {
-                x: 7000000.0,
-                y: -7000000.0,
-                z: 7000000.0,
+                x: 7_000_000.0,
+                y: -7_000_000.0,
+                z: 7_000_000.0,
             },
             end_pos: Vec3 {
-                x: 7000000.0,
-                y: -7000000.0,
-                z: 7000000.0,
+                x: 7_000_000.0,
+                y: -7_000_000.0,
+                z: 7_000_000.0,
             },
             start_vel: Vec3 {
                 x: 6000.0,
@@ -1036,7 +1040,7 @@ mod tests {
     #[test_log::test]
     fn test_compute_flight_plan_to_current_location() {
         // Define current position and velocity
-        let current_pos = Vec3::new(1000000.0, 2000000.0, 3000000.0);
+        let current_pos = Vec3::new(1_000_000.0, 2_000_000.0, 3_000_000.0);
         let current_vel = Vec3::new(100.0, 200.0, 300.0);
 
         // Create FlightParams

@@ -17,7 +17,7 @@ use serde_json::json;
 
 use crate::authentication::Authenticator;
 use crate::authentication::MockAuthenticator;
-use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
+use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use crate::payloads::{
     AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, SetCrewActions,
     EMPTY_FIRE_ACTIONS_MSG,
@@ -157,10 +157,10 @@ async fn test_add_planet_ship() {
     let compare = json!({"planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
       "color":"red","radius":1.5e6,"mass":3e24,
-      "gravity_radius_1":4518410.048543495,
-      "gravity_radius_05":6389996.771013086,
-      "gravity_radius_025": 9036820.09708699,
-      "gravity_radius_2": 3194998.385506543}],
+      "gravity_radius_1":4_518_410.048_543_495,
+      "gravity_radius_05":6_389_996.771_013_086,
+      "gravity_radius_025": 9_036_820.097_086_99,
+      "gravity_radius_2": 3_194_998.385_506_543}],
     "missiles":[],
     "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -209,13 +209,13 @@ async fn test_add_planet_ship() {
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
         "color":"red","radius":1.5e6,"mass":3e24,
-        "gravity_radius_1":4518410.048543495,
-        "gravity_radius_05":6389996.771013086,
-        "gravity_radius_025": 9036820.09708699,
-        "gravity_radius_2": 3194998.385506543},
-    {"name":"planet2","position":[1000000.0,0.0,0.0],"velocity":[0.0,0.0,14148.851543499915],
+        "gravity_radius_1":4_518_410.048_543_495,
+        "gravity_radius_05":6_389_996.771_013_086,
+        "gravity_radius_025": 9_036_820.097_086_99,
+        "gravity_radius_2": 3_194_998.385_506_543},
+    {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
         "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
-        "gravity_radius_025":1649890.0717635232}],
+        "gravity_radius_025":1_649_890.071_763_523_2}],
     "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -265,14 +265,14 @@ async fn test_update_ship() {
     assert_eq!(response, msg_json("Add ship action executed"));
 
     let response = server.update(&EMPTY_FIRE_ACTIONS_MSG);
-    assert_eq!(response, r#"[]"#);
+    assert_eq!(response, "[]");
 
     let response = server.get_entities_json();
     let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
     let ship = entities.ships.get("ship1").unwrap().read().unwrap();
     assert_eq!(
         ship.get_position(),
-        Vec3::new(1000.0 * DELTA_TIME as f64, 0.0, 0.0)
+        Vec3::new(1000.0 * DELTA_TIME_F64, 0.0, 0.0)
     );
     assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
 }
@@ -316,7 +316,7 @@ async fn test_update_missile() {
     let entities = server.get_entities_json();
     let compare = json!(
         {"ships":[
-            {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
              "current_hull":88,
              "current_armor":13,
@@ -437,7 +437,7 @@ async fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 1906480.8,
+            x: 1_906_480.8,
             y: 0.0,
             z: 0.0
         }
@@ -445,7 +445,7 @@ async fn test_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 7625923.2,
+            x: 7_625_923.2,
             y: 0.0,
             z: 0.0
         }
@@ -496,7 +496,7 @@ async fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 1906480.8,
+            x: 1_906_480.8,
             y: 0.0,
             z: 0.0
         }
@@ -504,7 +504,7 @@ async fn test_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 7625923.2,
+            x: 7_625_923.2,
             y: 0.0,
             z: 0.0
         }
