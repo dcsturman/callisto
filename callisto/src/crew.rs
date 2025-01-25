@@ -32,7 +32,8 @@ fn default_gunnery() -> Vec<u8> {
 }
 
 impl Crew {
-    #[must_use] pub fn new() -> Crew {
+    #[must_use]
+    pub fn new() -> Crew {
         Crew {
             pilot: 0,
             engineering_jump: 0,
@@ -43,7 +44,8 @@ impl Crew {
         }
     }
 
-    #[must_use] pub fn get_skill(&self, skill: Skills) -> u8 {
+    #[must_use]
+    pub fn get_skill(&self, skill: Skills) -> u8 {
         match skill {
             Skills::Pilot => self.pilot,
             Skills::EngineeringJump => self.engineering_jump,
@@ -54,27 +56,33 @@ impl Crew {
         }
     }
 
-    #[must_use] pub fn get_pilot(&self) -> u8 {
+    #[must_use]
+    pub fn get_pilot(&self) -> u8 {
         self.pilot
     }
 
-    #[must_use] pub fn get_engineering_jump(&self) -> u8 {
+    #[must_use]
+    pub fn get_engineering_jump(&self) -> u8 {
         self.engineering_jump
     }
 
-    #[must_use] pub fn get_engineering_power(&self) -> u8 {
+    #[must_use]
+    pub fn get_engineering_power(&self) -> u8 {
         self.engineering_power
     }
 
-    #[must_use] pub fn get_engineering_maneuver(&self) -> u8 {
+    #[must_use]
+    pub fn get_engineering_maneuver(&self) -> u8 {
         self.engineering_maneuver
     }
 
-    #[must_use] pub fn get_sensors(&self) -> u8 {
+    #[must_use]
+    pub fn get_sensors(&self) -> u8 {
         self.sensors
     }
 
-    #[must_use] pub fn get_gunnery(&self, gun: usize) -> u8 {
+    #[must_use]
+    pub fn get_gunnery(&self, gun: usize) -> u8 {
         if gun >= self.gunnery.len() {
             return 0;
         }

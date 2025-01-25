@@ -14,7 +14,7 @@ use crate::{debug, error, info};
 // Temporary until missiles have actual acceleration built in
 const MAX_MISSILE_ACCELERATION: f64 = 10.0 * G;
 pub const DEFAULT_BURN: i32 = 10;
-pub const IMPACT_DISTANCE: f64 = 250000.0;
+pub const IMPACT_DISTANCE: f64 = 250_000.0;
 
 #[derive(Derivative)]
 #[derivative(PartialEq)]
@@ -39,9 +39,9 @@ pub struct Missile {
 
 impl Missile {
     /// Constructor to create a new missile.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the lock cannot be obtained to read the target ship.
     pub fn new(
         name: String,
@@ -175,7 +175,7 @@ impl Entity for Missile {
             let old_velocity: Vec3 = self.velocity;
 
             // Not ideal but we'll take the precision loss here in the case where
-            // time is very large.  
+            // time is very large.
             #[allow(clippy::cast_precision_loss)]
             let time = time as f64;
             self.velocity += accel * G * time;

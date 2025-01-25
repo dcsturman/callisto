@@ -65,9 +65,9 @@ fn above_surface_or_none(surface: f64, distance: f64) -> Option<f64> {
 }
 impl Planet {
     /// Constructor to create a new planet.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the lock cannot be obtained to read the primary planet.
     #[allow(clippy::too_many_arguments)]
     #[must_use]
@@ -133,13 +133,13 @@ impl Planet {
     }
 
     /// Calculate the rotational velocity of the planet around its primary.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the planet has no primary.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the lock cannot be obtained to read the primary planet.
     pub fn calculate_rotational_velocity(&self) -> Result<Vec3, String> {
         // We assume orbits are just on the x, z plane and around the primary.

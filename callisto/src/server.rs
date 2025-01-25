@@ -26,7 +26,11 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(entities: Arc<Mutex<Entities>>, authenticator: Arc<Box<dyn Authenticator>>, test_mode: bool) -> Self {
+    pub fn new(
+        entities: Arc<Mutex<Entities>>,
+        authenticator: Arc<Box<dyn Authenticator>>,
+        test_mode: bool,
+    ) -> Self {
         Server {
             entities,
             authenticator,
@@ -37,27 +41,27 @@ impl Server {
     /// Authenticates a user.
     ///
     /// This function handles the login process, including authentication and session key management.
-    /// In the common case, it checks that the user has previously been authenticated and has a valid 
+    /// In the common case, it checks that the user has previously been authenticated and has a valid
     /// session key.  It then returns the user's email. The session key is returned only if its is newly created
     /// (so not in this case).
-    /// 
+    ///
     /// Otherwise it looks for a valid referral code (from Google `OAuth2`) and uses that to build a session
     /// key.  It then returns the user's email and the newly minted session key.
-    /// 
+    ///
     /// # Arguments
     /// * `login` - The login message, possibly containing the referral code.
     /// * `valid_email` - The session cookie, if one exists.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the user cannot be authenticated.
     pub async fn login(
         &self,
         login: LoginMsg,
-        valid_email: &Option<String>
+        valid_email: &Option<String>,
     ) -> Result<(AuthResponse, Option<String>), String> {
         info!("(Server.login) Received and processing login request.",);
 
-        // Three cases. 
+        // Three cases.
         // 1) if there's a valid email, just let the client know what it is.  We do this here so that this
         // method is always the source of an AuthReponse and we don't need to create those in the dispatch handler.
         // 2) If there is a code then we do authentication via Google OAuth2.
@@ -69,7 +73,8 @@ impl Server {
             };
             Ok((auth_response, None))
         } else if let Some(code) = login.code {
-            let (session_key, email) = self.authenticator
+            let (session_key, email) = self
+                .authenticator
                 .authenticate_user(&code)
                 .await
                 .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
@@ -92,10 +97,7 @@ impl Server {
     ///
     /// # Errors
     /// Returns an error if the session key is invalid
-    pub fn validate_session_key(
-        &self,
-        cookie: &str,
-    ) -> Result<String, InvalidKeyError> {
+    pub fn validate_session_key(&self, cookie: &str) -> Result<String, InvalidKeyError> {
         self.authenticator.validate_session_key(cookie)
     }
 
@@ -458,7 +460,11 @@ mod tests {
         );
         let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
 
-        let server = Server::new(Arc::new(Mutex::new(Entities::new())), authenticator.clone(), false);
+        let server = Server::new(
+            Arc::new(Mutex::new(Entities::new())),
+            authenticator.clone(),
+            false,
+        );
 
         // Test case 1: Already valid email
         let cookie = Some("existing@example.com".to_string());
@@ -486,9 +492,7 @@ mod tests {
         // Test case 3: No valid email and no auth code
         let cookie = None;
         let login_msg = LoginMsg { code: None };
-        let result = server
-            .login(login_msg, &cookie)
-            .await;
+        let result = server.login(login_msg, &cookie).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());
     }

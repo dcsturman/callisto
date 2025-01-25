@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 use std::sync::{Arc, RwLock};
 
 use cgmath::InnerSpace;
@@ -14,11 +15,16 @@ const DIE_SIZE: u32 = 6;
 const STANDARD_ROLL_THRESHOLD: i32 = 8;
 const CRITICAL_THRESHOLD: i32 = 6 + STANDARD_ROLL_THRESHOLD;
 
-pub fn roll(rng: &mut dyn RngCore) -> u32 {
-    rng.next_u32() % DIE_SIZE + 1
+pub fn roll(rng: &mut dyn RngCore) -> u8 {
+    u8::try_from(rng.next_u32() % DIE_SIZE + 1).unwrap_or(0)
 }
 
-pub fn roll_dice(dice: usize, rng: &mut dyn RngCore) -> u32 {
+pub fn roll_dice(dice: u8, rng: &mut dyn RngCore) -> u8 {
+    if u32::from(dice) * DIE_SIZE > u32::from(u8::MAX) {
+        error!("(Combat.roll_dice) Too many dice to roll.");
+        return 0;
+    }
+
     (0..dice).map(|_| roll(rng)).sum()
 }
 
@@ -34,6 +40,7 @@ pub fn task_chain_impact(effect: i32) -> i32 {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn attack(
     hit_mod: i32,
     damage_mod: i32,
@@ -44,6 +51,13 @@ pub fn attack(
 ) -> Vec<EffectMsg> {
     let attacker_name = attacker.get_name();
 
+    // This in theory could be lossy but that would require there to be more than 4.29x10^9m which is VERY far.  If we
+    // wanted to be safer we check if the magnitude was greater than u32::MAX and then just use that.
+    // Note we will lose precision here but this is just for range so okay.
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation)]
+    let range_band = find_range_band((defender.get_position() - attacker.get_position()).magnitude() as u32);
+
     debug!(
         "(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}",
         attacker.get_name(),
@@ -51,7 +65,8 @@ pub fn attack(
         defender.get_name(),
         defender.get_position(),
         (defender.get_position() - attacker.get_position()).magnitude(),
-        find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize), RANGE_MOD[find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize) as usize]
+        range_band,
+        RANGE_MOD[range_band as usize]
     );
 
     let defensive_modifier = if defender.get_dodge_thrust() > 0 {
@@ -67,8 +82,6 @@ pub fn attack(
         0
     };
 
-    let range_band =
-        find_range_band((defender.get_position() - attacker.get_position()).magnitude() as usize);
 
     let range_mod = if weapon.kind == WeaponType::Missile {
         0
@@ -101,7 +114,7 @@ pub fn attack(
         defensive_modifier
     );
 
-    let roll = roll_dice(2, rng) as i32;
+    let roll = i32::from(roll_dice(2, rng));
     let hit_roll =
         roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + defensive_modifier;
 
@@ -118,22 +131,47 @@ pub fn attack(
         ))];
     }
 
+    let effect: u32 = u32::try_from(hit_roll - STANDARD_ROLL_THRESHOLD).unwrap_or(0);
+
     debug!(
         "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and hits {}.",
         attacker_name,
         roll,
-        hit_roll,
+        effect,
         defender.get_name()
     );
 
     // Damage is compute as the weapon dice for the given weapon
     // + the effect of the hit roll
-    let roll = roll_dice(DAMAGE_WEAPON_DICE[weapon.kind as usize] as usize, rng) as i32;
-    let mut damage = u32::try_from(
-        roll + hit_roll - STANDARD_ROLL_THRESHOLD - defender.get_current_armor() as i32
-            + damage_mod,
-    )
-    .unwrap_or(0);
+    let roll = u32::from(roll_dice(DAMAGE_WEAPON_DICE[weapon.kind as usize], rng));
+    let mut damage = roll + effect;
+
+    damage = if i64::from(damage) + i64::from(damage_mod) < 0 {
+        0
+    } else {
+        u32::try_from(i32::try_from(damage).unwrap_or(i32::MAX) + damage_mod).unwrap_or(0)
+    };
+
+    damage = if damage > defender.get_current_armor() {
+        damage - defender.get_current_armor()
+    } else {
+        debug!(
+            "(Combat.attack) Due too armor, {} does no damage to {} after rolling {}, adjustment with damage modifier {}, hit effect {}, and defender armor -{}.",
+            attacker_name,
+            defender.get_name(),
+            roll,
+            damage_mod,
+            (hit_roll - STANDARD_ROLL_THRESHOLD),
+            defender.get_current_armor()
+        );
+
+        return vec![EffectMsg::message(format!(
+            "{} hit by {}'s {} but damage absorbed by armor.",
+            defender.get_name(),
+            attacker.get_name(),
+            String::from(weapon.kind)
+        ))];
+    };
 
     debug!(
         "(Combat.attack) {} does {} damage to {} after rolling {}, adjustment with damage modifier {}, hit effect {}, and defender armor -{}.",
@@ -145,16 +183,6 @@ pub fn attack(
         (hit_roll - STANDARD_ROLL_THRESHOLD),
         defender.get_current_armor()
     );
-
-    // If after the attack (w/ armor) the damage is 0, then we're done, except for a message.
-    if damage == 0 {
-        return vec![EffectMsg::message(format!(
-            "{} hit by {}'s {} but damage absorbed by armor.",
-            defender.get_name(),
-            attacker.get_name(),
-            String::from(weapon.kind)
-        ))];
-    }
 
     // Calculate additional damage multipliers (for non missiles) and effects for non-crits now.
     let mut effects = if weapon.kind == WeaponType::Missile {
@@ -175,7 +203,8 @@ pub fn attack(
         // Weapon multiples are only for non-missiles.  Larger missile mounts just launch more missiles.
         match weapon.mount {
             WeaponMount::Turret(num) => {
-                damage += (u32::from(num) - 1) * DAMAGE_WEAPON_DICE[weapon.kind as usize] as u32;
+                damage +=
+                    (u32::from(num) - 1) * u32::from(DAMAGE_WEAPON_DICE[weapon.kind as usize]);
             }
             WeaponMount::Barbette => {
                 damage *= 3;
@@ -232,13 +261,17 @@ pub fn attack(
             rng,
         ));
     }
-    let crit_threshold: u32 = (defender.get_max_hull_points() as f32 / 10.0).ceil() as u32;
+    // Given get_max_hull_points() is u32, we divide it by 10 then the conversion to u64 is safe.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    let crit_threshold = (f64::from(defender.get_max_hull_points()) / 10.0).ceil() as u64;
 
     // The secondary crit occurs for each new 10% of the ship's hull points that this hit passes.
     let current_hull = defender.get_current_hull_points();
-    let prev_crits = (defender.get_max_hull_points() - current_hull) / crit_threshold;
-    let secondary_crit =
-        (defender.get_max_hull_points() - current_hull + damage) / crit_threshold - prev_crits;
+    let prev_crits = u64::from(defender.get_max_hull_points() - current_hull) / crit_threshold;
+    let secondary_crit = u64::from(defender.get_max_hull_points() - current_hull + damage)
+        / crit_threshold
+        - prev_crits;
 
     debug!(
         "(Combat.attack) Secondary crits {} to {}.",
@@ -256,10 +289,8 @@ pub fn attack(
 }
 
 fn do_critical(crit_level: u8, defender: &mut Ship, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
-    let location = ShipSystem::from_repr(
-        usize::try_from(roll_dice(2, rng) - 2).expect("(combat.apply_crit) roll is out of range"),
-    )
-    .expect("(combat.apply_crit) Unable to convert a roll to ship system.");
+    let location = ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
+        .expect("(combat.apply_crit) Unable to convert a roll to ship system.");
 
     let effects = apply_crit(crit_level, location, defender, rng);
 
@@ -272,6 +303,7 @@ fn do_critical(crit_level: u8, defender: &mut Ship, rng: &mut dyn RngCore) -> Ve
     effects
 }
 
+#[allow(clippy::too_many_lines)]
 fn apply_crit(
     crit_level: u8,
     location: ShipSystem,
@@ -282,7 +314,7 @@ fn apply_crit(
     let level = u8::max(current_level + 1, crit_level);
 
     if level > 6 {
-        let damage = roll_dice(6, rng);
+        let damage = u32::from(roll_dice(6, rng));
         debug!(
             "(Combat.apply_crit) {} suffers > level 6 crit to {:?} for {}.",
             defender.get_name(),
@@ -363,7 +395,7 @@ fn apply_crit(
                     defender.get_name()
                 ))];
                 effects.append(&mut apply_crit(
-                    if level == 5 { 1 } else { roll(rng) as u8 },
+                    if level == 5 { 1 } else { roll(rng) },
                     ShipSystem::Hull,
                     defender,
                     rng,
@@ -372,9 +404,9 @@ fn apply_crit(
             }
             (ShipSystem::Fuel, level) if level < 4 => {
                 let fuel_loss = match level {
-                    1 => roll(rng),
-                    2 => roll_dice(2, rng),
-                    3 => roll(rng) * defender.design.fuel / 10,
+                    1 => u32::from(roll(rng)),
+                    2 => u32::from(roll_dice(2, rng)),
+                    3 => u32::from(roll(rng)) * defender.design.fuel / 10,
                     _ => 0,
                 };
                 defender.current_fuel = u32::saturating_sub(defender.current_fuel, fuel_loss);
@@ -391,7 +423,7 @@ fn apply_crit(
                     defender.get_name()
                 ))];
                 effects.append(&mut apply_crit(
-                    if level == 5 { 1 } else { roll(rng) as u8 },
+                    if level == 5 { 1 } else { roll(rng) },
                     ShipSystem::Hull,
                     defender,
                     rng,
@@ -406,9 +438,12 @@ fn apply_crit(
                 ))]
             }
             (ShipSystem::Weapon, level) => {
-                let possible = defender.active_weapons.iter().filter(|x| **x).count() as u32;
+                let possible = defender.active_weapons.iter().filter(|x| **x).count();
                 let mut effects = if possible > 0 {
-                    let pick = (rng.next_u32() % possible) as usize;
+                    let pick = usize::try_from(rng.next_u32()).unwrap_or_else(|_e| {
+                        error!("Usize cannot contain u32!");
+                        0
+                    }) % possible;
 
                     debug!(
                         "(Combat.apply_crit) Weapon pick {} from active weapons for {} of {:?}.",
@@ -439,17 +474,17 @@ fn apply_crit(
                 };
                 effects.append(&mut match level {
                     5 => apply_crit(1, ShipSystem::Hull, defender, rng),
-                    6 => apply_crit(roll(rng) as u8, ShipSystem::Hull, defender, rng),
+                    6 => apply_crit(roll(rng), ShipSystem::Hull, defender, rng),
                     _ => vec![],
                 });
                 effects
             }
             (ShipSystem::Armor, level) => {
                 let damage = match level {
-                    1 => 1,
-                    2 => roll(rng) / 2,
-                    x if x < 5 => roll(rng),
-                    _ => roll_dice(2, rng),
+                    1 => 1_u32,
+                    2 => u32::from(roll(rng)) / 2,
+                    x if x < 5 => u32::from(roll(rng)),
+                    _ => u32::from(roll_dice(2, rng)),
                 };
 
                 defender.current_armor = u32::saturating_sub(defender.current_armor, damage);
@@ -464,7 +499,7 @@ fn apply_crit(
                 effects
             }
             (ShipSystem::Hull, level) => {
-                let damage = roll_dice(level as usize, rng);
+                let damage = u32::from(roll_dice(level, rng));
                 defender.current_hull = u32::saturating_sub(defender.current_hull, damage);
                 vec![EffectMsg::message(format!(
                     "{}'s hull critical hit and reduced by {}.",
@@ -485,12 +520,7 @@ fn apply_crit(
                     "{}'s maneuver critical hit and offline.",
                     defender.get_name()
                 ))];
-                effects.append(&mut apply_crit(
-                    roll(rng) as u8,
-                    ShipSystem::Hull,
-                    defender,
-                    rng,
-                ));
+                effects.append(&mut apply_crit(roll(rng), ShipSystem::Hull, defender, rng));
                 effects
             }
             (ShipSystem::Manuever, _) => {
@@ -520,7 +550,7 @@ fn apply_crit(
                     defender.get_name()
                 ))];
                 if level >= 4 {
-                    effects.append(&mut apply_crit(1, ShipSystem::Hull, defender, rng))
+                    effects.append(&mut apply_crit(1, ShipSystem::Hull, defender, rng));
                 }
                 effects
             }
@@ -540,7 +570,7 @@ fn apply_crit(
     }
 }
 
-fn find_range_band(distance: usize) -> Range {
+fn find_range_band(distance: u32) -> Range {
     RANGE_BANDS
         .iter()
         .position(|&x| x >= distance)
@@ -549,17 +579,18 @@ fn find_range_band(distance: usize) -> Range {
 }
 
 // Process all incoming fire actions and turn them into either missile launches or attacks.
-pub fn do_fire_actions(
+#[allow(clippy::too_many_lines)]
+pub fn do_fire_actions<S: BuildHasher>(
     attacker: &Ship,
-    ships: &mut HashMap<String, Arc<RwLock<Ship>>>,
-    sand_counts: &mut HashMap<String, Vec<i32>>,
+    ships: &mut HashMap<String, Arc<RwLock<Ship>>, S>,
+    sand_counts: &mut HashMap<String, Vec<i32>, S>,
     actions: &[FireAction],
     rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
     let mut new_missiles = vec![];
 
     let assist_bonus = if attacker.get_assist_gunners() {
-        let effect = roll_dice(2, rng) as i32 - STANDARD_ROLL_THRESHOLD
+        let effect = i32::from(roll_dice(2, rng)) - STANDARD_ROLL_THRESHOLD
             + i32::from(attacker.get_crew().get_pilot());
         debug!("(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so result is {}.", attacker.get_name(), attacker.get_crew().get_pilot(), effect, task_chain_impact(effect));
         task_chain_impact(effect)
@@ -647,7 +678,7 @@ pub fn do_fire_actions(
                             // There is a serious error if after checking if the sand_casters list isn't empty
                             // it then cannot pop an element. So unwrap() is safe here.
                             let modifier = sand_casters.pop().unwrap();
-                            let effect = roll_dice(2, rng) as i32 - STANDARD_ROLL_THRESHOLD + modifier;
+                            let effect = i32::from(roll_dice(2, rng)) - STANDARD_ROLL_THRESHOLD + modifier;
                             if effect >= 0 {
                                 debug!(
                                     "(Combat.do_fire_actions) {}'s sand (modifier = {})successfully deployed against {} with effect {}.",
@@ -656,7 +687,7 @@ pub fn do_fire_actions(
                                     attacker.get_name(),
                                     effect
                                 );
-                                let sand_mod = effect + roll(rng) as i32;
+                                let sand_mod = effect + i32::from(roll(rng));
                                 (sand_mod, vec![EffectMsg::message(format!(
                                     "{}'s sand successfully deployed against {} reducing damage by {}.",
                                     target.get_name(),
@@ -710,7 +741,9 @@ pub fn do_fire_actions(
 }
 
 #[must_use]
-pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, Vec<i32>> {
+pub fn create_sand_counts<S: BuildHasher>(
+    ship_snapshot: &HashMap<String, Ship, S>,
+) -> HashMap<String, Vec<i32>> {
     ship_snapshot
         .iter()
         .map(|(name, ship)| {
@@ -1468,7 +1501,7 @@ mod tests {
         };
 
         assert_eq!(
-            find_range_band(attacker.get_position().distance(defender.get_position()) as usize),
+            find_range_band(attacker.get_position().distance(defender.get_position()) as u32),
             Range::Long
         );
         let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
@@ -1492,7 +1525,7 @@ mod tests {
         );
 
         assert_eq!(
-            find_range_band(attacker.get_position().distance(defender.get_position()) as usize),
+            find_range_band(attacker.get_position().distance(defender.get_position()) as u32),
             Range::Medium
         );
         let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);

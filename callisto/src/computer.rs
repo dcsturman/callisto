@@ -117,8 +117,8 @@ impl FlightParams {
             match attempt {
                 0 => (delta, -delta, 0.0, 0.0),
                 1 => (-delta, delta, 0.0, 0.0),
-                2 => (delta, -delta, 1000000.0, 1000000.0),
-                _ => (-delta, delta, -1000000.0, -1000000.0),
+                2 => (delta, -delta, 1_000_000.0, 1_000_000.0),
+                _ => (-delta, delta, -1_000_000.0, -1_000_000.0),
             }
         } else {
             debug!("(best_guess) Making guess based on distance.");
@@ -140,8 +140,8 @@ impl FlightParams {
                     (-self.start_vel.magnitude() + root_part) / self.max_acceleration,
                     (-self.start_vel.magnitude() - root_part) / self.max_acceleration,
                 ),
-                1 => (1000000.0, 1000000.0),
-                2 => (-1000000.0, -1000000.0),
+                1 => (1_000_000.0, 1_000_000.0),
+                2 => (-1_000_000.0, -1_000_000.0),
                 _ => (0.0, 0.0),
             };
 
@@ -159,7 +159,7 @@ impl FlightParams {
 
     /**
      * Computes a flight path given the parameters.
-     * Returns a FlightPathResult which contains the path, the end velocity and the plan.
+     * Returns a `FlightPathResult` which contains the path, the end velocity and the plan.
      */
     pub fn compute_flight_path(&self) -> Option<FlightPathResult> {
         for attempt in 0..3 {
@@ -242,8 +242,7 @@ impl FlightParams {
             for (accel, duration) in [(a_1, t_1), (a_2, t_2)] {
                 let mut time = 0.0;
                 let mut delta: f64 = DELTA_TIME_F64;
-                while approx::relative_ne!(time - duration, 0.0, epsilon = 1e-4)
-                    && time < duration
+                while approx::relative_ne!(time - duration, 0.0, epsilon = 1e-4) && time < duration
                 {
                     if time + delta > duration {
                         delta = duration - time;
@@ -273,10 +272,7 @@ impl FlightParams {
                 path,
                 end_velocity: vel,
                 // Convert acceleration back into G's (vs m/s^2) at this point.
-                plan: FlightPlan::new(
-                    (a_1 / G, t_1).into(),
-                    Some((a_2 / G, t_2).into()),
-                ),
+                plan: FlightPlan::new((a_1 / G, t_1).into(), Some((a_2 / G, t_2).into())),
             });
         }
         None

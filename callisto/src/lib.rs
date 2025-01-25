@@ -181,7 +181,7 @@ pub async fn handle_request(
     let valid_email = cookie.and_then(|cookie| server.validate_session_key(&cookie).ok());
 
     // If we don't have a valid email, we reply with an Authorization error to the client.
-    // The exceptions to doing that are 
+    // The exceptions to doing that are
     // 1) if we're doing an OPTIONS request (to get CORS headers) or
     // 2) if we're doing a login request.  Login will
     // have its own custom logic to test here.
@@ -196,7 +196,10 @@ pub async fn handle_request(
             .body(Bytes::copy_from_slice("Unauthorized".as_bytes()).into())
             .unwrap());
     } else {
-        debug!("(lib.handleRequest) Ignore authentication for this {:?} request.", req.method());
+        debug!(
+            "(lib.handleRequest) Ignore authentication for this {:?} request.",
+            req.method()
+        );
     }
 
     let web_server = authenticator.as_ref().get_web_server();
@@ -234,7 +237,7 @@ pub async fn handle_request(
             let login_msg = deserialize_body_or_respond!(req, LoginMsg);
 
             // When we call this it might be trivial - if valid_email is Some(_).
-            // But we put all this business logic into [Server.login](Server::login) rather than 
+            // But we put all this business logic into [Server.login](Server::login) rather than
             // split it up between the two locations.
             // Our role here is just to repackage the response and put it on the wire.
             match server.login(login_msg, &valid_email).await {

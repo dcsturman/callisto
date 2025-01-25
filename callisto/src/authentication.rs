@@ -54,9 +54,7 @@ pub struct GoogleAuthenticator {
 
 impl GoogleAuthenticator {
     pub async fn new(url: &str, secret: String, users_file: &str, web_server: String) -> Self {
-        let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
-            panic!("Error {e:?} loading Google credentials file {GOOGLE_CREDENTIALS_FILE}")
-        });
+        let credentials = load_google_credentials_from_file(&secret);
         let authorized_users = load_authorized_users_from_file(users_file)
             .await
             .expect("Unable to load authorized users file.");
@@ -199,7 +197,7 @@ impl Authenticator for GoogleAuthenticator {
 
         // Generate a cryptographically secure session key.
         //let mut session_key: String = "Bearer ".to_string();
-        let mut session_key: String = "".to_string();
+        let mut session_key: String = String::new();
         session_key.push_str(
             &general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()),
         );
@@ -269,14 +267,19 @@ impl Authenticator for GoogleAuthenticator {
     }
 }
 
-fn load_google_credentials_from_file(file_name: &str) -> Result<GoogleCredentials, Box<dyn Error>> {
+/// Load the oauth credentials for this server's domain from a file.
+/// 
+/// # Panics
+/// 
+/// If the file cannot be read or the credentials are malformed (cannot be parsed).
+fn load_google_credentials_from_file(file_name: &str) -> GoogleCredentials {
     let file = std::fs::File::open(file_name)
         .unwrap_or_else(|e| panic!("Error {e:?} opening Google credentials file {file_name}"));
     let reader = std::io::BufReader::new(file);
     let credentials: GoogleCredsJson = serde_json::from_reader(reader)
         .unwrap_or_else(|e| panic!("Error {e:?} parsing Google credentials file {file_name}"));
     debug!("Load Google credentials file \"{}\".", file_name);
-    Ok(credentials.web)
+    credentials.web
 }
 
 pub async fn load_authorized_users_from_file(
@@ -527,8 +530,7 @@ pub(crate) mod tests {
     async fn test_load_google_credentials_from_file() {
         let credentials = load_google_credentials_from_file(
             format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}").as_str(),
-        )
-        .unwrap();
+        );
         assert!(!credentials.client_id.is_empty());
         assert!(!credentials.client_secret.is_empty());
     }

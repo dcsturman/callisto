@@ -24,7 +24,7 @@ pub const DELTA_TIME_F64: f64 = 360.0;
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
 // We will use 4 sig figs for every physics constant we import.
 // This is the value of 1 (earth) gravity in m/s^2
-pub const G: f64 = 9.807000000;
+pub const G: f64 = 9.807_000_000;
 pub type Vec3 = Vector3<f64>;
 
 pub trait Entity: Debug + PartialEq + Serialize + Send + Sync {
