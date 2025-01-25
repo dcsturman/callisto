@@ -21,13 +21,15 @@ use crate::{debug, info, warn};
 // Add function beyond what Entities does and provides an API to our server.
 pub struct Server {
     entities: Arc<Mutex<Entities>>,
+    authenticator: Arc<Box<dyn Authenticator>>,
     test_mode: bool,
 }
 
 impl Server {
-    pub fn new(entities: Arc<Mutex<Entities>>, test_mode: bool) -> Self {
+    pub fn new(entities: Arc<Mutex<Entities>>, authenticator: Arc<Box<dyn Authenticator>>, test_mode: bool) -> Self {
         Server {
             entities,
+            authenticator,
             test_mode,
         }
     }
@@ -44,16 +46,14 @@ impl Server {
     /// 
     /// # Arguments
     /// * `login` - The login message, possibly containing the referral code.
-    /// * `cookie` - The session cookie, if one exists.
-    /// * `authenticator` - The authenticator to use for authentication.
+    /// * `valid_email` - The session cookie, if one exists.
     /// 
     /// # Errors
     /// Returns an error if the user cannot be authenticated.
     pub async fn login(
         &self,
         login: LoginMsg,
-        valid_email: &Option<String>,
-        authenticator: Arc<Box<dyn Authenticator>>,
+        valid_email: &Option<String>
     ) -> Result<(AuthResponse, Option<String>), String> {
         info!("(Server.login) Received and processing login request.",);
 
@@ -69,7 +69,7 @@ impl Server {
             };
             Ok((auth_response, None))
         } else if let Some(code) = login.code {
-            let (session_key, email) = authenticator
+            let (session_key, email) = self.authenticator
                 .authenticate_user(&code)
                 .await
                 .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
@@ -89,16 +89,14 @@ impl Server {
     ///
     /// # Arguments
     /// * `cookie` - The session cookie, if one exists.
-    /// * `authenticator` - The authenticator to use for authentication.
     ///
     /// # Errors
     /// Returns an error if the session key is invalid
     pub fn validate_session_key(
         &self,
         cookie: &str,
-        authenticator: Arc<Box<dyn Authenticator>>,
     ) -> Result<String, InvalidKeyError> {
-        authenticator.validate_session_key(cookie)
+        self.authenticator.validate_session_key(cookie)
     }
 
     /// Adds a ship to the entities.
@@ -452,21 +450,21 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_login() {
-        let server = Server::new(Arc::new(Mutex::new(Entities::new())), false);
         let mock_auth = MockAuthenticator::new(
             "http://test.com",
             "secret".to_string(),
             "users.txt",
             "http://web.test.com".to_string(),
         );
-
         let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
+
+        let server = Server::new(Arc::new(Mutex::new(Entities::new())), authenticator.clone(), false);
 
         // Test case 1: Already valid email
         let cookie = Some("existing@example.com".to_string());
         let login_msg = LoginMsg { code: None };
         let (auth_response, session_key) = server
-            .login(login_msg, &cookie, authenticator.clone())
+            .login(login_msg, &cookie)
             .await
             .expect("Login should succeed with valid email");
 
@@ -479,7 +477,7 @@ mod tests {
             code: Some("test_code".to_string()),
         };
         let (auth_response, session_key) = server
-            .login(login_msg, &cookie, authenticator.clone())
+            .login(login_msg, &cookie)
             .await
             .expect("Login should succeed with auth code");
         assert_eq!(auth_response.email, "test@example.com");
@@ -489,7 +487,7 @@ mod tests {
         let cookie = None;
         let login_msg = LoginMsg { code: None };
         let result = server
-            .login(login_msg, &cookie, authenticator.clone())
+            .login(login_msg, &cookie)
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());

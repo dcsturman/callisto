@@ -15,6 +15,8 @@ use test_log::test;
 use assert_json_diff::assert_json_eq;
 use serde_json::json;
 
+use crate::authentication::Authenticator;
+use crate::authentication::MockAuthenticator;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
 use crate::payloads::{
     AddPlanetMsg, AddShipMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, SetCrewActions,
@@ -27,7 +29,15 @@ async fn setup_test_with_server() -> Server {
     let _ = pretty_env_logger::try_init();
     crate::ship::config_test_ship_templates().await;
 
-    Server::new(Arc::new(Mutex::new(Entities::new())), true)
+    let mock_auth = MockAuthenticator::new(
+        "http://test.com",
+        "secret".to_string(),
+        "users.txt",
+        "http://web.test.com".to_string(),
+    );
+    let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
+
+    Server::new(Arc::new(Mutex::new(Entities::new())), authenticator, true)
 }
 
 /**

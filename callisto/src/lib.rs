@@ -177,8 +177,8 @@ pub async fn handle_request(
         .typed_get::<Cookie>()
         .and_then(|cookies| cookies.get(SESSION_COOKIE_NAME).map(ToString::to_string));
 
-    let mut server = Server::new(entities, test_mode);
-    let valid_email = cookie.and_then(|cookie| server.validate_session_key(&cookie, authenticator.clone()).ok());
+    let mut server = Server::new(entities, authenticator.clone(), test_mode);
+    let valid_email = cookie.and_then(|cookie| server.validate_session_key(&cookie).ok());
 
     // If we don't have a valid email, we reply with an Authorization error to the client.
     // The exceptions to doing that are 
@@ -237,7 +237,7 @@ pub async fn handle_request(
             // But we put all this business logic into [Server.login](Server::login) rather than 
             // split it up between the two locations.
             // Our role here is just to repackage the response and put it on the wire.
-            match server.login(login_msg, &valid_email, authenticator).await {
+            match server.login(login_msg, &valid_email).await {
                 Ok((auth_response, session_key)) => {
                     info!(
                         "(lib.handleRequest/login) LOGIN request successful for user {:?} with session key {:?}.",
