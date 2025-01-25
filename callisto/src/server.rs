@@ -6,7 +6,7 @@ use cgmath::InnerSpace;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::authentication::Authenticator;
+use crate::authentication::{Authenticator, InvalidKeyError};
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
@@ -32,6 +32,23 @@ impl Server {
         }
     }
 
+    /// Authenticates a user.
+    ///
+    /// This function handles the login process, including authentication and session key management.
+    /// In the common case, it checks that the user has previously been authenticated and has a valid 
+    /// session key.  It then returns the user's email. The session key is returned only if its is newly created
+    /// (so not in this case).
+    /// 
+    /// Otherwise it looks for a valid referral code (from Google OAuth2) and uses that to build a session
+    /// key.  It then returns the user's email and the newly minted session key.
+    /// 
+    /// # Arguments
+    /// * `login` - The login message, possibly containing the referral code.
+    /// * `cookie` - The session cookie, if one exists.
+    /// * `authenticator` - The authenticator to use for authentication.
+    /// 
+    /// # Errors
+    /// Returns an error if the user cannot be authenticated.
     pub async fn login(
         &self,
         login: LoginMsg,
@@ -40,7 +57,9 @@ impl Server {
     ) -> Result<(AuthResponse, Option<String>), String> {
         info!("(Server.login) Received and processing login request.",);
 
-        // Three cases. 1) if there's a valid email, just let the client know what it is.
+        // Three cases. 
+        // 1) if there's a valid email, just let the client know what it is.  We do this here so that this
+        // method is always the source of an AuthReponse and we don't need to create those in the dispatch handler.
         // 2) If there is a code then we do authentication via Google OAuth2.
         // 3) this isn't authenticated and we need to force reauthentication.  We do that
         // by returning an error and eventually a 401 to the client.
@@ -64,6 +83,22 @@ impl Server {
         } else {
             Err("Must reauthenticate.".to_string())
         }
+    }
+
+    /// Validates a session key with the given authenticator.
+    ///
+    /// # Arguments
+    /// * `cookie` - The session cookie, if one exists.
+    /// * `authenticator` - The authenticator to use for authentication.
+    ///
+    /// # Errors
+    /// Returns an error if the session key is invalid
+    pub fn validate_session_key(
+        &self,
+        cookie: &str,
+        authenticator: Arc<Box<dyn Authenticator>>,
+    ) -> Result<String, InvalidKeyError> {
+        authenticator.validate_session_key(cookie)
     }
 
     /// Adds a ship to the entities.
@@ -101,18 +136,29 @@ impl Server {
         Ok(msg_json("Add ship action executed"))
     }
 
-    pub fn set_crew_actions(&self, request: SetCrewActions) -> Result<String, String> {
+    /// Sets the crew actions for a ship.
+    ///
+    /// # Arguments
+    /// * `request` - The message containing the parameters for the ship.
+    ///
+    /// # Errors
+    /// Returns an error if the ship cannot be found.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities or we cannot obtain a write
+    /// lock on the ship in question.
+    pub fn set_crew_actions(&self, request: &SetCrewActions) -> Result<String, String> {
         let entities = self
             .entities
             .lock()
-            .map_err(|_e| "Unable to obtain lock on Entities.")?;
+            .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
         let mut ship = entities
             .ships
             .get(&request.ship_name)
             .ok_or("Unable to find ship to set agility for.".to_string())?
             .write()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
         // Go through each possible action in SetCrewActions, one by one.
         if request.dodge_thrust.is_some() || request.assist_gunners.is_some() {
@@ -126,6 +172,7 @@ impl Server {
     ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
+    #[must_use]
     pub fn get_entities(&self) -> Entities {
         self.entities.lock().unwrap().clone()
     }
@@ -416,10 +463,10 @@ mod tests {
         let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
 
         // Test case 1: Already valid email
-        let valid_email = Some("existing@example.com".to_string());
+        let cookie = Some("existing@example.com".to_string());
         let login_msg = LoginMsg { code: None };
         let (auth_response, session_key) = server
-            .login(login_msg, &valid_email, authenticator.clone())
+            .login(login_msg, &cookie, authenticator.clone())
             .await
             .expect("Login should succeed with valid email");
 
@@ -427,22 +474,22 @@ mod tests {
         assert!(session_key.is_none());
 
         // Test case 2: New login with auth code
-        let valid_email = None;
+        let cookie = None;
         let login_msg = LoginMsg {
             code: Some("test_code".to_string()),
         };
         let (auth_response, session_key) = server
-            .login(login_msg, &valid_email, authenticator.clone())
+            .login(login_msg, &cookie, authenticator.clone())
             .await
             .expect("Login should succeed with auth code");
         assert_eq!(auth_response.email, "test@example.com");
         assert_eq!(session_key.unwrap(), "TeSt_KeY");
 
         // Test case 3: No valid email and no auth code
-        let valid_email = None;
+        let cookie = None;
         let login_msg = LoginMsg { code: None };
         let result = server
-            .login(login_msg, &valid_email, authenticator.clone())
+            .login(login_msg, &cookie, authenticator.clone())
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());

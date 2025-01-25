@@ -172,22 +172,17 @@ pub async fn handle_request(
     // This is a chain of events all of which have to be okay.
     // We need to have a cookie in the headers; then that cookie needs to be a callisto session key, and then it has to be one we know about it in our local table.
     // In the end though we just need to know if we have it or not.
-    let valid_email = req
+    let cookie = req
         .headers()
         .typed_get::<Cookie>()
-        .and_then(|cookies| cookies.get(SESSION_COOKIE_NAME).map(ToString::to_string))
-        .and_then(|cookie| {
-            // A bit unusual but the first .as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
-            // gets a reference to the Authenticator in the Option.
-            authenticator
-                .clone()
-                .as_ref()
-                .validate_session_key(&cookie)
-                .ok()
-        });
+        .and_then(|cookies| cookies.get(SESSION_COOKIE_NAME).map(ToString::to_string));
+
+    let mut server = Server::new(entities, test_mode);
+    let valid_email = cookie.and_then(|cookie| server.validate_session_key(&cookie, authenticator.clone()).ok());
 
     // If we don't have a valid email, we reply with an Authorization error to the client.
-    // The exceptions to doing that are 1) if we're doing an OPTIONS request (to get CORS headers) or
+    // The exceptions to doing that are 
+    // 1) if we're doing an OPTIONS request (to get CORS headers) or
     // 2) if we're doing a login request.  Login will
     // have its own custom logic to test here.
     if let Some(email) = valid_email.clone() {
@@ -200,13 +195,10 @@ pub async fn handle_request(
             .status(StatusCode::UNAUTHORIZED)
             .body(Bytes::copy_from_slice("Unauthorized".as_bytes()).into())
             .unwrap());
-    } else if test_mode {
-        warn!("(lib.handleRequest) Server in test mode.  All users authorized.");
     } else {
-        debug!("(lib.handleRequest) Ignore authentication for this request.");
+        debug!("(lib.handleRequest) Ignore authentication for this {:?} request.", req.method());
     }
 
-    let mut server = Server::new(entities, test_mode);
     let web_server = authenticator.as_ref().get_web_server();
 
     match (req.method(), req.uri().path()) {
@@ -241,6 +233,10 @@ pub async fn handle_request(
         (&Method::POST, "/login") => {
             let login_msg = deserialize_body_or_respond!(req, LoginMsg);
 
+            // When we call this it might be trivial - if valid_email is Some(_).
+            // But we put all this business logic into [Server.login](Server::login) rather than 
+            // split it up between the two locations.
+            // Our role here is just to repackage the response and put it on the wire.
             match server.login(login_msg, &valid_email, authenticator).await {
                 Ok((auth_response, session_key)) => {
                     info!(
@@ -300,7 +296,7 @@ pub async fn handle_request(
         (&Method::POST, "/set_crew_actions") => {
             let request = deserialize_body_or_respond!(req, SetCrewActions);
 
-            match server.set_crew_actions(request) {
+            match server.set_crew_actions(&request) {
                 Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
                 Err(err) => Ok(build_err_response(
                     StatusCode::BAD_REQUEST,

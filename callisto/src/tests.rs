@@ -727,7 +727,7 @@ async fn test_fight_with_crew() {
     // Now have that capable crew do something.
     let crew_actions = r#"{"ship_name":"ship1","dodge_thrust":3,"assist_gunners":true}"#;
     let response = server
-        .set_crew_actions(serde_json::from_str(crew_actions).unwrap())
+        .set_crew_actions(&serde_json::from_str(crew_actions).unwrap())
         .unwrap();
 
     assert_eq!(response, msg_json("Set crew action executed"));
@@ -836,7 +836,7 @@ async fn test_slugfest() {
     // Destroyer pilot will aid gunners
     let crew_actions = r#"{"ship_name":"Evil Destroyer","assist_gunners":true}"#;
     let response = server
-        .set_crew_actions(serde_json::from_str(crew_actions).unwrap())
+        .set_crew_actions(&serde_json::from_str(crew_actions).unwrap())
         .unwrap();
     assert_eq!(response, msg_json("Set crew action executed"));
 
@@ -1082,7 +1082,7 @@ async fn test_set_agility() {
     let mut agility_request = SetCrewActions::new("agile_ship");
     agility_request.dodge_thrust = Some(1);
 
-    let result = server.set_crew_actions(agility_request);
+    let result = server.set_crew_actions(&agility_request);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
@@ -1095,7 +1095,7 @@ async fn test_set_agility() {
     let mut invalid_agility_request = SetCrewActions::new("agile_ship");
     invalid_agility_request.dodge_thrust = Some(11);
 
-    let result = server.set_crew_actions(invalid_agility_request);
+    let result = server.set_crew_actions(&invalid_agility_request);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
@@ -1106,7 +1106,7 @@ async fn test_set_agility() {
     let mut non_existent_ship_request = SetCrewActions::new("non_existent_ship");
     non_existent_ship_request.dodge_thrust = Some(1);
 
-    let result = server.set_crew_actions(non_existent_ship_request);
+    let result = server.set_crew_actions(&non_existent_ship_request);
     assert!(result.is_err());
 }
 
@@ -1125,7 +1125,7 @@ async fn test_set_crew_actions_aid_gunner() {
     let mut crew_actions = SetCrewActions::new("test_ship");
     crew_actions.assist_gunners = Some(true);
 
-    let result = server.set_crew_actions(crew_actions);
+    let result = server.set_crew_actions(&crew_actions);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
@@ -1138,7 +1138,7 @@ async fn test_set_crew_actions_aid_gunner() {
     let mut crew_actions = SetCrewActions::new("test_ship");
     crew_actions.assist_gunners = Some(false);
 
-    let result = server.set_crew_actions(crew_actions);
+    let result = server.set_crew_actions(&crew_actions);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
@@ -1158,7 +1158,7 @@ async fn test_set_crew_actions_aid_gunner() {
     crew_actions.assist_gunners = Some(true);
     crew_actions.dodge_thrust = Some(1);
 
-    let result = server.set_crew_actions(crew_actions);
+    let result = server.set_crew_actions(&crew_actions);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
@@ -1169,7 +1169,7 @@ async fn test_set_crew_actions_aid_gunner() {
     let mut non_existent_ship_actions = SetCrewActions::new("non_existent_ship");
     non_existent_ship_actions.assist_gunners = Some(true);
 
-    let result = server.set_crew_actions(non_existent_ship_actions);
+    let result = server.set_crew_actions(&non_existent_ship_actions);
     assert!(result.is_err());
 }
 
