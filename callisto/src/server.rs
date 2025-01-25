@@ -66,6 +66,16 @@ impl Server {
         }
     }
 
+    /// Adds a ship to the entities.
+    /// 
+    /// # Arguments
+    /// * `ship` - The message containing the parameters for the ship.
+    /// 
+    /// # Errors
+    /// Returns an error if the ship design cannot be found.
+    /// 
+    /// # Panics
+    /// Panics if the ship templates are not loaded or if the lock on entities cannot be obtained.
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
         info!(
             "(Server.add_ship) Received and processing add ship request. {:?}",
@@ -128,6 +138,16 @@ impl Server {
         serde_json::to_string(&clean_templates).unwrap()
     }
 
+    /// Adds a planet to the entities.
+    /// 
+    /// # Arguments
+    /// * `planet` - The message containing the parameters for the planet.
+    /// 
+    /// # Errors
+    /// Returns an error if the planet already exists in the entities.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write the entities.
     pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
         // Add the planet to the server
         self.entities.lock().unwrap().add_planet(
@@ -142,12 +162,22 @@ impl Server {
         Ok(msg_json("Add planet action executed"))
     }
 
-    pub fn remove(&self, name: RemoveEntityMsg) -> Result<String, String> {
+    /// Removes an entity from the entities.
+    /// 
+    /// # Arguments
+    /// * `name` - The name of the entity to remove.
+    /// 
+    /// # Errors
+    /// Returns an error if the name entity does not exist in the list of entities.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write the entities.
+    pub fn remove(&self, name: &RemoveEntityMsg) -> Result<String, String> {
         // Remove the entity from the server
         let mut entities = self.entities.lock().unwrap();
-        if entities.ships.remove(&name).is_none()
-            && entities.planets.remove(&name).is_none()
-            && entities.missiles.remove(&name).is_none()
+        if entities.ships.remove(name).is_none()
+            && entities.planets.remove(name).is_none()
+            && entities.missiles.remove(name).is_none()
         {
             warn!("Unable to find entity named {} to remove", name);
             let err_msg = format!("Unable to find entity named {} to remove", name);
@@ -157,15 +187,33 @@ impl Server {
         Ok(msg_json("Remove action executed"))
     }
 
-    pub fn set_plan(&self, plan_msg: SetPlanMsg) -> Result<String, String> {
+    /// Sets the flight plan for a ship.
+    /// 
+    /// # Arguments
+    /// * `plan_msg` - The message containing the parameters for the flight plan.
+    /// 
+    /// # Errors
+    /// Returns an error if the flight plan is one that is not legal for this ship (e.g. acceleration is too high)
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
+    pub fn set_plan(&self, plan_msg: &SetPlanMsg) -> Result<String, String> {
         // Change the acceleration of the entity
         self.entities
             .lock()
             .unwrap()
             .set_flight_plan(&plan_msg.name, &plan_msg.plan)
-            .map(|_| msg_json("Set acceleration action executed"))
+            .map(|()| msg_json("Set acceleration action executed"))
     }
 
+    /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
+    /// (e.g. move a ship, planet or missile) as well as new fire actions.
+    /// 
+    /// # Arguments
+    /// * `fire_actions` - The fire actions to execute.
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
     pub fn update(&mut self, fire_actions: FireActionsMsg) -> String {
         let mut rng = get_rng(self.test_mode);
 
@@ -173,7 +221,7 @@ impl Server {
         let mut entities = self
             .entities
             .lock()
-            .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e));
+            .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
         // Take a snapshot of all the ships.  We'll use this for attackers while
         // damage goes directly onto the "official" ships.  But it means if they are damaged
@@ -206,7 +254,18 @@ impl Server {
         json
     }
 
-    pub fn compute_path(&self, msg: ComputePathMsg) -> Result<String, String> {
+    /// Computes a flight path for a ship.
+    /// 
+    /// # Arguments
+    /// * `msg` - The message containing the parameters for the flight path.
+    /// 
+    /// # Errors
+    /// Returns an error if the computer cannot find a valid flight path (solve the non-linear equations)
+    /// or if we cannot marshall the flight path into JSON (should never happen).
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
+    pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<String, String> {
         info!(
             "(/compute_path) Received and processing compute path request. {:?}",
             msg
@@ -254,22 +313,19 @@ impl Server {
 
         debug!("(/compute_path)Call computer with params: {:?}", params);
 
-        let plan = if let Some(plan) = params.compute_flight_path() {
-            debug!("(/compute_path) Plan: {:?}", plan);
-            plan
-        } else {
+        let Some(plan) = params.compute_flight_path() else {
             return Err(format!("Unable to compute flight path: {:?}", params));
         };
 
+        debug!("(/compute_path) Plan: {:?}", plan);
         debug!(
             "(/compute_path) Plan has real acceleration of {} vs max_accel of {}",
             plan.plan.0 .0.magnitude(),
             max_accel / G
         );
 
-        let json = match serde_json::to_string(&plan) {
-            Ok(json) => json,
-            Err(_) => return Err("Error converting flight path to JSON".to_string()),
+        let Ok(json) = serde_json::to_string(&plan) else {
+            return Err("Error converting flight path to JSON".to_string());
         };
 
         debug!("(/compute_path) Flight path response: {}", json);
@@ -277,6 +333,14 @@ impl Server {
         Ok(json)
     }
 
+    /// Loads a scenario file.      
+    /// 
+    /// # Errors
+    /// Returns an error if the scenario file cannot be loaded (e.g. doesn't exist)
+    /// 
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write the entities.  Not clear when this might happen,
+    /// especially given this routine is run only on server initialization.
     pub async fn load_scenario(&self, msg: &LoadScenarioMsg) -> Result<String, String> {
         info!(
             "(/load_scenario) Received and processing load scenario request. {:?}",
@@ -291,6 +355,10 @@ impl Server {
         Ok(msg_json("Load scenario action executed"))
     }
 
+    /// Gets the current entities and serializes it to JSON.
+    /// 
+    /// # Panics
+    /// Panics if for some reason it cannot serialize the entities correctly.
     pub fn get_entities_json(&self) -> String {
         info!("Received and processing get entities request.");
         let json = serde_json::to_string::<Entities>(&self.entities.lock().unwrap())

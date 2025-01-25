@@ -325,7 +325,7 @@ pub async fn handle_request(
         (&Method::POST, "/remove") => {
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
 
-            match server.remove(name) {
+            match server.remove(&name) {
                 Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
                 Err(err) => Ok(build_err_response(
                     StatusCode::BAD_REQUEST,
@@ -338,7 +338,7 @@ pub async fn handle_request(
             info!("Received and processing plan set request.");
             let plan_msg = deserialize_body_or_respond!(req, SetPlanMsg);
 
-            match server.set_plan(plan_msg) {
+            match server.set_plan(&plan_msg) {
                 Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
                 Err(err) => {
                     warn!("(/set_plan)) Error setting plan: {}", err);
@@ -369,7 +369,7 @@ pub async fn handle_request(
 
         (&Method::POST, "/compute_path") => {
             let msg = deserialize_body_or_respond!(req, ComputePathMsg);
-            match server.compute_path(msg) {
+            match server.compute_path(&msg) {
                 Ok(json) => {
                     let mut resp = Response::builder()
                         .status(StatusCode::OK)

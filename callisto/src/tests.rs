@@ -356,7 +356,7 @@ async fn test_remove_ship() {
         .unwrap();
     assert_eq!(response, msg_json("Add ship action executed"));
 
-    let response = server.remove("ship1".to_string()).unwrap();
+    let response = server.remove(&"ship1".to_string()).unwrap();
     assert_eq!(response, msg_json("Remove action executed"));
 
     let entities = server.get_entities_json();
@@ -364,7 +364,7 @@ async fn test_remove_ship() {
     assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[]}"#);
 
     // Try remove with non-existent ship
-    let response = server.remove("ship2".to_string());
+    let response = server.remove(&"ship2".to_string());
     assert!(response.is_err());
 }
 
@@ -391,7 +391,7 @@ async fn test_set_acceleration() {
     assert!(!flight_plan.has_second());
 
     let response = server
-        .set_plan(serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#).unwrap());
+        .set_plan(&serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#).unwrap());
     assert!(response.is_ok());
 
     let response = server.get_entities_json();
@@ -418,7 +418,7 @@ async fn test_compute_path_basic() {
 
     let path_request = r#"{"entity_name":"ship1","end_pos":[29430000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#;
     let response = server
-        .compute_path(serde_json::from_str(path_request).unwrap())
+        .compute_path(&serde_json::from_str(path_request).unwrap())
         .unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
@@ -478,7 +478,7 @@ async fn test_compute_path_with_standoff() {
         .unwrap();
     assert_eq!(response, msg_json("Add ship action executed"));
 
-    let response = server.compute_path(serde_json::from_str(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 60000}"#).unwrap()).unwrap();
+    let response = server.compute_path(&serde_json::from_str(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 60000}"#).unwrap()).unwrap();
     let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
 
     assert_eq!(plan.path.len(), 9);
