@@ -139,7 +139,7 @@ mod tests {
     #[should_panic(expected = "(Crew.getSkill) Multiple gunners possible.")]
     fn test_get_skill_gunnery_panic() {
         let crew = Crew::new();
-        crew.get_skill(Skills::Gunnery);
+        let _ = crew.get_skill(Skills::Gunnery);
     }
 
     #[test_log::test]
