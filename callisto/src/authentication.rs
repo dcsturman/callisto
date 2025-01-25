@@ -56,8 +56,7 @@ impl GoogleAuthenticator {
     pub async fn new(url: &str, secret: String, users_file: &str, web_server: String) -> Self {
         let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
             panic!(
-                "Error {:?} loading Google credentials file {}",
-                e, GOOGLE_CREDENTIALS_FILE
+                "Error {e:?} loading Google credentials file {GOOGLE_CREDENTIALS_FILE}"
             )
         });
         let authorized_users = load_authorized_users_from_file(users_file)
@@ -94,8 +93,7 @@ impl GoogleAuthenticator {
 
         let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
             panic!(
-                "(validate_google_token) Error: Unable to parse Google public keys: {:?}",
-                e
+                "(validate_google_token) Error: Unable to parse Google public keys: {e:?}"
             )
         });
 
@@ -144,16 +142,14 @@ impl Authenticator for GoogleAuthenticator {
         debug!("(authenticate_google_user) Fetched token response.");
         let body = token_response.text().await.unwrap_or_else(|e| {
             panic!(
-                "(authenticate_google_user) Unable to get text from token response: {:?}",
-                e
+                "(authenticate_google_user) Unable to get text from token response: {e:?}"
             )
         });
 
         let token_response_json: GoogleTokenResponse =
             serde_json::from_str(&body).unwrap_or_else(|e| {
                 panic!(
-                    "(authenticate_google_user) Unable to parse token response: {:?}",
-                    e
+                    "(authenticate_google_user) Unable to parse token response: {e:?}"
                 )
             });
 
@@ -162,8 +158,7 @@ impl Authenticator for GoogleAuthenticator {
         // Get the key ID from the token header
         let header = decode_header(&token).unwrap_or_else(|e| {
             panic!(
-                "(authenticate_google_user) Unable to decode token header: {:?}",
-                e
+                "(authenticate_google_user) Unable to decode token header: {e:?}"
             )
         });
         let kid = header.kid.unwrap_or_else(|| {
@@ -287,15 +282,13 @@ impl Authenticator for GoogleAuthenticator {
 fn load_google_credentials_from_file(file_name: &str) -> Result<GoogleCredentials, Box<dyn Error>> {
     let file = std::fs::File::open(file_name).unwrap_or_else(|e| {
         panic!(
-            "Error {:?} opening Google credentials file {}",
-            e, file_name
+            "Error {e:?} opening Google credentials file {file_name}"
         )
     });
     let reader = std::io::BufReader::new(file);
     let credentials: GoogleCredsJson = serde_json::from_reader(reader).unwrap_or_else(|e| {
         panic!(
-            "Error {:?} parsing Google credentials file {}",
-            e, file_name
+            "Error {e:?} parsing Google credentials file {file_name}"
         )
     });
     debug!("Load Google credentials file \"{}\".", file_name);
@@ -307,7 +300,7 @@ pub async fn load_authorized_users_from_file(
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let data = read_local_or_cloud_file(file_name).await?;
     serde_json::from_slice::<Vec<String>>(&data)
-        .map_err(|e| panic!("Error {:?} parsing authorized users file {}", e, file_name))
+        .map_err(|e| panic!("Error {e:?} parsing authorized users file {file_name}"))
 }
 
 // Mock authenticator for testing
@@ -548,7 +541,7 @@ pub(crate) mod tests {
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_google_credentials_from_file() {
         let credentials = load_google_credentials_from_file(
-            format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE).as_str(),
+            format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}").as_str(),
         )
         .unwrap();
         assert!(!credentials.client_id.is_empty());
@@ -560,7 +553,7 @@ pub(crate) mod tests {
     async fn test_fetch_google_public_keys() {
         let mut authenticator = GoogleAuthenticator::new(
             "http://localhost:3000",
-            format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE),
+            format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}"),
             LOCAL_TEST_FILE,
             "http://localhost:3000".to_string(),
         )

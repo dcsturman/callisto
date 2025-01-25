@@ -124,7 +124,7 @@ async fn send_quit(port: u16, cookie: &str) {
 }
 
 fn path(port: u16, verb: &str) -> String {
-    format!("http://{}:{}/{}", SERVER_ADDRESS, port, verb)
+    format!("http://{SERVER_ADDRESS}:{port}/{verb}")
 }
 
 /**
@@ -239,8 +239,7 @@ async fn integration_simple_unknown() {
 
     assert!(
         response.status().is_client_error(),
-        "Instead of expected 404 got {:?}",
-        response
+        "Instead of expected 404 got {response:?}"
     );
 
     send_quit(PORT, &cookie).await;
@@ -270,7 +269,7 @@ async fn integration_add_ship() {
         .body(ship)
         .send()
         .await
-        .unwrap_or_else(|e| panic!("Unable to get response from server: {:?}", e))
+        .unwrap_or_else(|e| panic!("Unable to get response from server: {e:?}"))
         .json()
         .await
         .unwrap();
@@ -1116,7 +1115,7 @@ async fn integration_malformed_requests() {
             .body(invalid_json.to_string())
             .send()
             .await
-            .unwrap_or_else(|e| panic!("Request to {} failed: {:?}", op, e));
+            .unwrap_or_else(|e| panic!("Request to {op} failed: {e:?}"));
 
         assert_eq!(
             response.status(),
@@ -1129,9 +1128,7 @@ async fn integration_malformed_requests() {
         let error_text = response.text().await.unwrap();
         assert!(
             error_text.contains("Invalid JSON"),
-            "Expected 'Invalid JSON' error for {}, got: {}",
-            op,
-            error_text
+            "Expected 'Invalid JSON' error for {op}, got: {error_text}"
         );
     }
 

@@ -176,8 +176,7 @@ impl Entities {
         let (primary_ptr, dependency) = if let Some(primary_name) = &primary {
             let primary = self.planets.get(primary_name).ok_or_else(|| {
                 format!(
-                    "Primary planet {} not found for planet {}.",
-                    primary_name, name
+                    "Primary planet {primary_name} not found for planet {name}."
                 )
             })?;
 
@@ -192,8 +191,7 @@ impl Entities {
         // A safety check to ensure we never have a pointer without a name of a primary or vis versa.
         if primary_ptr.is_some() ^ primary.is_some() {
             return Err(format!(
-                "Planet {} has a primary pointer but no primary name or vice versa.",
-                name
+                "Planet {name} has a primary pointer but no primary name or vice versa."
             ));
         }
 
@@ -219,17 +217,17 @@ impl Entities {
         let id = self.next_missile_id;
         self.next_missile_id += 1;
 
-        let name = format!("{}::{}::{:X}", source, target, id);
+        let name = format!("{source}::{target}::{id:X}");
         let source_ptr = self
             .ships
             .get(source)
-            .ok_or_else(|| format!("Missile source {} not found for missile {}.", source, name))?
+            .ok_or_else(|| format!("Missile source {source} not found for missile {name}."))?
             .clone();
 
         let target_ptr = self
             .ships
             .get(target)
-            .ok_or_else(|| format!("Target {} not found for missile {}.", target, name))?
+            .ok_or_else(|| format!("Target {target} not found for missile {name}."))?
             .clone();
 
         let source_ship = source_ptr.read().unwrap();
@@ -263,8 +261,7 @@ impl Entities {
             entity.write().unwrap().set_flight_plan(plan)
         } else {
             Err(format!(
-                "Could not set acceleration for non-existent entity {}",
-                name
+                "Could not set acceleration for non-existent entity {name}"
             ))
         }
     }
@@ -396,8 +393,7 @@ impl Entities {
                         }])
                     }
                     update => panic!(
-                        "(Entity.update_all) Unexpected update {:?} during missile updates.",
-                        update
+                        "(Entity.update_all) Unexpected update {update:?} during missile updates."
                     ),
                 }
             })
@@ -425,13 +421,12 @@ impl Entities {
                             Some(vec![
                                 EffectMsg::ShipDestroyed { position: pos },
                                 EffectMsg::Message {
-                                    content: format!("{} destroyed.", name),
+                                    content: format!("{name} destroyed."),
                                 },
                             ])
                         }
                         update => panic!(
-                            "(Entity.update_all) Unexpected update {:?} during ship updates.",
-                            update
+                            "(Entity.update_all) Unexpected update {update:?} during ship updates."
                         ),
                     }
                 })
@@ -709,14 +704,14 @@ mod tests {
         entities.launch_missile("Ship1", "Ship2").unwrap();
 
         // Test Display trait
-        let display_output = format!("{}", entities);
+        let display_output = format!("{entities}");
         assert!(display_output.contains("Ship1"));
         assert!(display_output.contains("Planet1"));
         assert!(display_output.contains("Ship2"));
         assert!(display_output.contains("Ship1::Ship2::0"));
 
         // Test Debug trait
-        let debug_output = format!("{:?}", entities);
+        let debug_output = format!("{entities:?}");
         assert_eq!(
             display_output, debug_output,
             "Display and Debug outputs should be identical"
@@ -725,12 +720,12 @@ mod tests {
         // Test empty Entities
         let empty_entities = Entities::new();
         assert_eq!(
-            format!("{}", empty_entities),
+            format!("{empty_entities}"),
             "Entities {}",
             "Empty Entities should display as 'Entities {{}}'"
         );
         assert_eq!(
-            format!("{:?}", empty_entities),
+            format!("{empty_entities:?}"),
             "Entities {}",
             "Empty Entities should debug as 'Entities {{}}'"
         );

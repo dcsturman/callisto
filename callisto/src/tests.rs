@@ -558,7 +558,7 @@ async fn test_exhausted_missile() {
     // Second to 9th round nothing happens.
     for round in 0..9 {
         let response = server.update(EMPTY_FIRE_ACTIONS_MSG);
-        assert_eq!(response, "[]", "Round {}", round);
+        assert_eq!(response, "[]", "Round {round}");
     }
 
     // 10th round missile should exhaust itself.
@@ -1013,8 +1013,7 @@ async fn test_missile_impact_close() {
         effects
             .iter()
             .any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
-        "Expected ShipImpact effect, but got: {:?}",
-        effects
+        "Expected ShipImpact effect, but got: {effects:?}"
     );
 
     // Ensure no ExhaustedMissile effect
@@ -1051,8 +1050,7 @@ async fn test_missile_impact_close() {
         effects
             .iter()
             .any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
-        "Expected ShipImpact effect, but got: {:?}",
-        effects
+        "Expected ShipImpact effect, but got: {effects:?}"
     );
 
     // Ensure no ExhaustedMissile effect

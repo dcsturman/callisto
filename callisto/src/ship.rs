@@ -145,7 +145,7 @@ pub enum Range {
 
 impl Display for Range {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -314,8 +314,7 @@ impl Ship {
                 self.dodge_thrust = old_agility;
                 self.assist_gunners = old_assist;
                 Err(InvalidThrustError(format!(
-                    "Thrust {} exceeds max acceleration {}.",
-                    thrust, old_max_acceleration
+                    "Thrust {thrust} exceeds max acceleration {old_max_acceleration}."
                 )))
             }
             _ => {
@@ -1060,7 +1059,7 @@ mod tests {
         let invalid_chars = ['I', 'O', 'a', 'i', 'o', 'z', '#', ' ', '-'];
         for &c in &invalid_chars {
             let result = std::panic::catch_unwind(|| digit_to_int(c));
-            assert!(result.is_err(), "Expected panic for character: {}", c);
+            assert!(result.is_err(), "Expected panic for character: {c}");
         }
     }
 
@@ -1069,7 +1068,7 @@ mod tests {
         let invalid_ints = [34, 35, 99, 255];
         for &i in &invalid_ints {
             let result = std::panic::catch_unwind(|| int_to_digit(i));
-            assert!(result.is_err(), "Expected panic for integer: {}", i);
+            assert!(result.is_err(), "Expected panic for integer: {i}");
         }
     }
 
@@ -1079,7 +1078,7 @@ mod tests {
         for i in 0..34 {
             let digit = int_to_digit(i);
             let num = digit_to_int(digit);
-            assert_eq!(i, num, "Roundtrip failed for number {}", i);
+            assert_eq!(i, num, "Roundtrip failed for number {i}");
         }
     }
 
@@ -1446,7 +1445,7 @@ mod tests {
         assert!(matches!(result, Err(InvalidThrustError(_))));
         let err = result.unwrap_err();
         assert!(err.source().is_none());
-        assert!(format!("{}", err).contains("Invalid thrust attempted:"));
+        assert!(format!("{err}").contains("Invalid thrust attempted:"));
 
         // Test resetting agility
         ship.reset_crew_actions();

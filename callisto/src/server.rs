@@ -53,7 +53,7 @@ impl Server {
             let (session_key, email) = authenticator
                 .authenticate_user(&code)
                 .await
-                .map_err(|e| format!("(Server.login) Unable to authenticate user: {:?}", e))?;
+                .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
             debug!(
                 "(Server.login) Authenticated user {} with session key.",
                 email
@@ -180,7 +180,7 @@ impl Server {
             && entities.missiles.remove(name).is_none()
         {
             warn!("Unable to find entity named {} to remove", name);
-            let err_msg = format!("Unable to find entity named {} to remove", name);
+            let err_msg = format!("Unable to find entity named {name} to remove");
             return Err(err_msg);
         }
 
@@ -244,7 +244,7 @@ impl Server {
 
         // 5. Marshall the events and reply with them back to the user.
         let json = serde_json::to_string(&effects)
-            .unwrap_or_else(|_| panic!("Unable to serialize `effects` {:?}.", effects));
+            .unwrap_or_else(|_| panic!("Unable to serialize `effects` {effects:?}."));
 
         // 6. Reset all ship agility setting as the round is over.
         for ship in entities.ships.values() {
@@ -314,7 +314,7 @@ impl Server {
         debug!("(/compute_path)Call computer with params: {:?}", params);
 
         let Some(plan) = params.compute_flight_path() else {
-            return Err(format!("Unable to compute flight path: {:?}", params));
+            return Err(format!("Unable to compute flight path: {params:?}"));
         };
 
         debug!("(/compute_path) Plan: {:?}", plan);

@@ -1238,12 +1238,7 @@ mod tests {
                     effects
                         .iter()
                         .any(|e| !matches!(e, EffectMsg::Message { .. })),
-                    "Expected hit in test case [hit_mod: {}, damage_mod: {}, weapon_type: {:?}, weapon_mount: {:?}] and should produce effects: {:?}",
-                    hit_mod,
-                    damage_mod,
-                    weapon_type,
-                    weapon_mount,
-                    effects
+                    "Expected hit in test case [hit_mod: {hit_mod}, damage_mod: {damage_mod}, weapon_type: {weapon_type:?}, weapon_mount: {weapon_mount:?}] and should produce effects: {effects:?}"
                 );
             }
             // Check for specific effect types based on weapon type

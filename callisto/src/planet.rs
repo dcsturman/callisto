@@ -302,7 +302,7 @@ mod tests {
         let sun_position = sun.read().unwrap().get_position();
         let distance_to_sun = (planet.get_position() - sun_position).magnitude();
 
-        println!("Distance to Sun: {}", distance_to_sun);
+        println!("Distance to Sun: {distance_to_sun}");
 
         // The distance should be roughly constant (allowing for some numerical error)
         assert!(
@@ -317,8 +317,7 @@ mod tests {
             (planet.get_position() - sun.read().unwrap().get_position()).dot(planet.get_velocity());
         assert!(
             position_velocity_dot.abs() < 5e12,
-            "Velocity should be perpendicular to the position vector: {}",
-            position_velocity_dot
+            "Velocity should be perpendicular to the position vector: {position_velocity_dot}"
         );
     }
 }
