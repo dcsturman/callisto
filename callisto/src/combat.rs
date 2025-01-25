@@ -799,7 +799,7 @@ mod tests {
             Vec3::new(-1000.0, 1000.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(attacker_design),
+            &Arc::new(attacker_design),
             None,
         );
         let target = Ship::new(
@@ -807,7 +807,7 @@ mod tests {
             Vec3::new(1000.0, 0.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(target_design),
+            &Arc::new(target_design),
             None,
         );
 
@@ -876,7 +876,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -929,7 +929,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(design),
+            &Arc::new(design),
             None,
         );
 
@@ -1154,7 +1154,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            attacker_design.clone(),
+            &attacker_design,
             None,
         );
 
@@ -1163,7 +1163,7 @@ mod tests {
             Vec3::new(1000.0, 0.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            defender_design.clone(),
+            &defender_design,
             None,
         );
 
@@ -1275,7 +1275,7 @@ mod tests {
                 Vec3::new(1000.0, 0.0, 0.0),
                 Vec3::zero(),
                 FlightPlan::default(),
-                defender_design.clone(),
+                &defender_design,
                 None,
             );
         }
@@ -1329,7 +1329,7 @@ mod tests {
                 Vec3::new(1000.0, 0.0, 0.0),
                 Vec3::zero(),
                 FlightPlan::default(),
-                defender_design.clone(),
+                &defender_design,
                 None,
             );
 
@@ -1380,7 +1380,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
         let mut defender = Ship::new(
@@ -1388,7 +1388,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1431,4 +1431,74 @@ mod tests {
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));
     }
+<<<<<<< Updated upstream
+=======
+
+    #[test]
+    fn test_attack_out_of_range() {
+        // Rng doesn't matter as it shouldn't impact any results here.
+        let mut rng = ThreadRng::default();
+
+        // Create ships far apart from each other
+        let attacker = Ship::new(
+            "Attacker".to_string(),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::zero(),
+            FlightPlan::default(),
+            &Arc::new(ShipDesignTemplate::default()),
+            None,
+        );
+        let mut defender = Ship::new(
+            "Defender".to_string(),
+            // Position defender very far away (beyond weapon range)
+            Vec3::new(6_000_000.0, 6_000_000.0, 6_000_000.0),
+            Vec3::zero(),
+            FlightPlan::default(),
+            &Arc::new(ShipDesignTemplate::default()),
+            None,
+        );
+
+        // Create a beam weapon (which has limited range unlike missiles)
+        let weapon = Weapon {
+            kind: WeaponType::Beam,
+            mount: WeaponMount::Turret(1),
+        };
+
+        assert_eq!(
+            find_range_band(attacker.get_position().distance(defender.get_position()) as usize),
+            Range::Long
+        );
+        let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
+
+        assert_eq!(result.len(), 1);
+        assert!(
+            matches!(&result[0], EffectMsg::Message { content } if content.contains("out of range")),
+            "Expected out of range message"
+        );
+
+        // Now test something in range.
+
+        let mut defender = Ship::new(
+            "Defender".to_string(),
+            // Position defender very far away (beyond weapon range)
+            Vec3::new(1_000_000.0, 1_000_000.0, 1_000_000.0),
+            Vec3::zero(),
+            FlightPlan::default(),
+            &Arc::new(ShipDesignTemplate::default()),
+            None,
+        );
+
+        assert_eq!(
+            find_range_band(attacker.get_position().distance(defender.get_position()) as usize),
+            Range::Medium
+        );
+        let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
+        assert!(
+            result
+                .iter()
+                .all(|msg| !msg.to_string().contains("out of range")),
+            "Expected no out of range message"
+        );
+    }
+>>>>>>> Stashed changes
 }

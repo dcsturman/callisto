@@ -95,15 +95,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Build the authenticator
     let authenticator: Box<dyn Authenticator> = if test_mode {
-        Box::new(
-            MockAuthenticator::new(
-                &args.web_server,
-                args.secret,
-                &args.users_file,
-                args.web_server.clone(),
-            )
-            .await,
-        )
+        Box::new(MockAuthenticator::new(
+            &args.web_server,
+            args.secret,
+            &args.users_file,
+            args.web_server.clone(),
+        ))
     } else {
         Box::new(
             GoogleAuthenticator::new(
@@ -121,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         Entities::load_from_file(&file_name)
             .await
-            .unwrap_or_else(|e| panic!("Issue loading scenario file {}: {}", file_name, e))
+            .unwrap_or_else(|e| panic!("Issue loading scenario file {file_name}: {e}"))
     } else {
         Entities::new()
     }));
@@ -137,16 +134,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         debug!("(main) In test mode: custom catching of panics.");
         let orig_hook = panic::take_hook();
         panic::set_hook(Box::new(move |panic_info| {
-            if !panic_info
+            if panic_info
                 .payload()
                 .downcast_ref::<&str>()
                 .unwrap_or(&"")
                 .contains("Time to exit")
             {
+                process::exit(0);
+            } else {
                 orig_hook(panic_info);
                 process::exit(1);
-            } else {
-                process::exit(0);
             }
         }));
     }

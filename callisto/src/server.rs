@@ -228,7 +228,7 @@ impl Server {
             (
                 entity.get_position(),
                 entity.get_velocity(),
-                entity.max_acceleration() * G,
+                G * entity.max_acceleration() as f64,
             )
         };
 
@@ -301,14 +301,14 @@ impl Server {
     }
 }
 
-fn get_rng(test_mode: bool) -> Box<SmallRng> {
+fn get_rng(test_mode: bool) -> SmallRng {
     if test_mode {
         info!("(lib.get_rng) Server in TEST mode for random numbers (constant seed of 0).");
         // Use 0 to seed all test case random number generators.
-        Box::new(SmallRng::seed_from_u64(0))
+        SmallRng::seed_from_u64(0)
     } else {
         debug!("(lib.get_rng) Server in standard mode for random numbers.");
-        Box::new(SmallRng::from_entropy())
+        SmallRng::from_entropy()
     }
 }
 
@@ -334,8 +334,8 @@ mod tests {
             "secret".to_string(),
             "users.txt",
             "http://web.test.com".to_string(),
-        )
-        .await;
+        );
+
         let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
 
         // Test case 1: Already valid email

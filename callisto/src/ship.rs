@@ -11,7 +11,7 @@ use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
 use crate::crew::Crew;
-use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, G};
+use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
 use crate::read_local_or_cloud_file;
 use crate::{debug, info, warn};
@@ -163,7 +163,7 @@ impl Ship {
         position: Vec3,
         velocity: Vec3,
         plan: FlightPlan,
-        design: Arc<ShipDesignTemplate>,
+        design: &Arc<ShipDesignTemplate>,
         crew: Option<Crew>,
     ) -> Self {
         Ship {
@@ -204,12 +204,17 @@ impl Ship {
         self.dodge_thrust = 0;
     }
 
+    /// Set the flight plan for this ship.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns 'Err' if the flight plan has an acceleration greater than the ship's capabilities at this point in time.
     pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> Result<(), String> {
         // First validate the plan to make sure its legal.
         // Its legal as long as the magnitudes in the flight plan are less than the max of the maneuverability rating
         // and the powerplant rating.
         // We use the current maneuverability rating in case the ship took damage
-        let max_accel = self.max_acceleration();
+        let max_accel = f64::from(self.max_acceleration());
         debug!("(Ship.set_flight_plan) ship: {}, max_accel: {} new_plan: {:?} with magnitude on first accel of {}", self.name, max_accel, new_plan, new_plan.0 .0.magnitude());
         if new_plan.0.in_limits(max_accel) {
             if let Some(second) = &new_plan.1 {
@@ -231,14 +236,11 @@ impl Ship {
         }
     }
 
-    pub fn max_acceleration(&self) -> f64 {
-        let power_limit = self.design.best_thrust(self.current_power) as f64;
-        let maneuver_limit = self.current_maneuver as f64;
-        f64::max(
-            f64::min(power_limit, maneuver_limit)
-                - self.dodge_thrust as f64
-                - if self.assist_gunners { 1.0 } else { 0.0 },
-            0.0,
+    pub fn max_acceleration(&self) -> u8 {
+        let power_limit = self.design.best_thrust(self.current_power);
+        let maneuver_limit = self.current_maneuver;
+        u8::min(power_limit, maneuver_limit).saturating_sub(
+            self.dodge_thrust + u8::from(self.assist_gunners)
         )
     }
 
@@ -270,6 +272,11 @@ impl Ship {
         &mut self.crew
     }
 
+    /// Set possible pilot actions for the next round. These include allocating thrust to dodging as 
+    /// well as allocating a single point of thrust to assist gunners.
+    /// 
+    /// # Errors
+    /// Returns 'Err' if there isn't enough thrust to perform these actions.
     pub fn set_pilot_actions(
         &mut self,
         thrust: Option<u8>,
@@ -282,40 +289,41 @@ impl Ship {
         self.assist_gunners = false;
 
         // First see if we can set the dodge thrust
-        if thrust.is_some_and(|thrust| thrust > self.max_acceleration() as u8) {
-            let thrust = thrust.unwrap();
-            let old_max_acceleration = self.max_acceleration();
-            warn!(
-                "(Ship.set_agility_thrust) thrust {} exceeds max acceleration {}",
-                thrust, old_max_acceleration
-            );
-            self.dodge_thrust = old_agility;
-            self.assist_gunners = old_assist;
-            Err(InvalidThrustError(format!(
-                "Thrust {} exceeds max acceleration {}.",
-                thrust, old_max_acceleration
-            )))
-        } else {
-            if let Some(thrust) = thrust {
-                self.dodge_thrust = thrust;
+        match thrust {
+            Some(thrust) if thrust > self.max_acceleration() => {
+                let old_max_acceleration = self.max_acceleration();
+                warn!(
+                    "(Ship.set_agility_thrust) thrust {} exceeds max acceleration {}",
+                    thrust, old_max_acceleration
+                );
+                self.dodge_thrust = old_agility;
+                self.assist_gunners = old_assist;
+                Err(InvalidThrustError(format!(
+                    "Thrust {} exceeds max acceleration {}.",
+                    thrust, old_max_acceleration
+                )))
             }
+            _ => {
+                if let Some(thrust) = thrust {
+                    self.dodge_thrust = thrust;
+                }
 
-            // Second see if we can accommodate assist gunner
-            if let Some(assist) = assist {
-                if assist && self.max_acceleration() < 1.0 {
-                    warn!("(Ship.set_agility_thrust) No thrust available to reserve for assisting gunners.");
-                    self.dodge_thrust = old_agility;
-                    self.assist_gunners = old_assist;
-
-                    Err(InvalidThrustError(
-                        "No thrust available to reserve for assisting gunners".to_string(),
-                    ))
+                // Second see if we can accommodate assist gunner
+                if let Some(assist) = assist {
+                    if assist && self.max_acceleration() < 1 {
+                        warn!("(Ship.set_agility_thrust) No thrust available to reserve for assisting gunners.");
+                        self.dodge_thrust = old_agility;
+                        Err(InvalidThrustError(
+                            "No thrust available to reserve for assisting gunners".to_string(),
+                        ))
+                    } else {
+                        self.assist_gunners = assist;
+                        Ok(())
+                    }
                 } else {
-                    self.assist_gunners = assist;
+                    self.assist_gunners = false;
                     Ok(())
                 }
-            } else {
-                Ok(())
             }
         }
     }
@@ -382,20 +390,22 @@ impl Entity for Ship {
 
         if self.plan.empty() {
             // Just move at current velocity
-            self.position += self.velocity * DELTA_TIME as f64;
+            self.position += self.velocity * DELTA_TIME_F64;
             debug!("(Ship.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}", self.name, self.velocity, DELTA_TIME, self.position);
         } else {
             // Adjust time in case max acceleration has changed due to combat damage.  Note this might be simplistic and require a new plan but that is up
             // to the user to notice and fix.
-            let max_thrust = self.max_acceleration();
+            let max_thrust = f64::from(self.max_acceleration());
             self.plan.ensure_thrust_limit(max_thrust);
             let moves = self.plan.advance_time(DELTA_TIME);
 
             for ap in moves.iter() {
                 let old_velocity: Vec3 = self.velocity;
                 let (accel, duration) = ap.into();
-                self.velocity += accel * G * duration as f64;
-                self.position += (old_velocity + self.velocity) / 2.0 * duration as f64;
+                #[allow(clippy::cast_precision_loss)]
+                let duration = duration as f64;
+                self.velocity += accel * G * duration;
+                self.position += (old_velocity + self.velocity) / 2.0 * duration;
                 debug!(
                     "(Ship.update) Accelerate at {:0.3?} m/s for time {}",
                     accel * G,
@@ -432,7 +442,11 @@ serde_with::serde_conv!(
     }
 );
 
-// Load ship templates from a file.
+/// Load ship templates from a file. The file can be local or on Google cloud storage (encoded in filename)
+/// 
+/// # Errors
+/// 
+/// If the file cannot be read or if GCS cannot be reached (depending on url of file)
 pub async fn load_ship_templates_from_file(
     file_name: &str,
 ) -> Result<HashMap<String, Arc<ShipDesignTemplate>>, Box<dyn std::error::Error>> {
@@ -451,7 +465,11 @@ pub async fn load_ship_templates_from_file(
     Ok(table)
 }
 
-// Helper method designed only for use in tests to load templates from a default file.
+/// Helper method that loads ship templates from a file.  This is designed only for use in tests to load templates from a default file.
+/// 
+/// # Panics
+/// 
+/// If the file cannot be loaded.
 pub async fn config_test_ship_templates() {
     const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
     let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
@@ -467,25 +485,26 @@ impl ShipDesignTemplate {
     // basic systems and sensors are prioritized, and we ignore weapons.
     pub fn best_thrust(&self, current_power: u32) -> u8 {
         // First take out basic ship systems.
-        let power: i32 = current_power as i32 - self.displacement as i32 / 5;
-        // Now adjust for sensors.
-        let power = power
-            - match self.sensors {
+        let power = current_power - self.displacement / 5;
+        // Now adjust for sensors.  If we subtract all the power then we have no power left.
+        let power = power.saturating_sub(
+            match self.sensors {
                 Sensors::Basic => 0,
                 Sensors::Civilian => 1,
                 Sensors::Military => 2,
                 Sensors::Improved => 4,
                 Sensors::Advanced => 6,
-            };
+            },
+        );
 
-        if power <= 0 {
+        if power == 0 {
             return 0;
         }
 
         // Power left for thrust is one thrust per 10% of ship displacement in power units.
-        let available_thrust = power * 10 / self.displacement as i32;
-
-        u8::min(self.maneuver, available_thrust as u8)
+        // Displacement cannot be over 1M tons ever.
+        // If somehow power is enough we are above u8::MAX then just use that as really thrust cannot be that high.
+        (power * 10 / self.displacement).try_into().unwrap_or(u8::MAX).min(self.maneuver)
     }
 }
 
@@ -497,6 +516,9 @@ impl PartialOrd for Weapon {
 
 impl Ord for Weapon {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Could write this more efficiently as many identical outcomes
+        // but seems more readable when expanded.
+        #[allow(clippy::match_same_arms)]
         match (&self.mount, &other.mount) {
             (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => {
                 self.kind.cmp(&other.kind)
@@ -564,10 +586,14 @@ impl std::ops::Sub<i32> for Sensors {
     type Output = Sensors;
 
     fn sub(self, rhs: i32) -> Self::Output {
+        // Know that this enum isn't so big this can overflow
+        #[allow(clippy::cast_possible_wrap)]
         let int_rep = self as u32 as i32;
         if int_rep - rhs <= 0 {
             Sensors::Basic
         } else {
+            // Because of the check above this can never go below 0 so is safe
+            #[allow(clippy::cast_sign_loss)]
             Sensors::from_repr((int_rep - rhs) as usize).unwrap()
         }
     }
@@ -576,8 +602,7 @@ impl std::ops::Sub<i32> for Sensors {
 impl From<Stealth> for i32 {
     fn from(s: Stealth) -> Self {
         match s {
-            Stealth::Basic => -2,
-            Stealth::Improved => -2,
+            Stealth::Basic | Stealth::Improved => -2,
             Stealth::Enhanced => -4,
             Stealth::Advanced => -6,
         }
@@ -620,7 +645,7 @@ impl From<&Weapon> for String {
             (kind, WeaponMount::Turret(2)) => format!("{} double turret", String::from(kind)),
             (kind, WeaponMount::Turret(3)) => format!("{} triple turret", String::from(kind)),
             (_, WeaponMount::Turret(size)) => {
-                panic!("(From<Weapon> for String) illegal turret size {}.", size)
+                panic!("(From<Weapon> for String) illegal turret size {size}.")
             }
             (kind, WeaponMount::Barbette) => format!("{} barbette", String::from(kind)),
             (kind, WeaponMount::Bay(BaySize::Small)) => format!("{} small bay", String::from(kind)),
@@ -642,11 +667,18 @@ impl WeaponType {
     // Using a function as its just easier than a Lazy, etc.
     pub fn in_range(&self, range: usize) -> bool {
         match self {
+<<<<<<< Updated upstream
             WeaponType::Beam => range <= 1,
             WeaponType::Pulse => range <= 2,
             WeaponType::Missile => true,
             WeaponType::Sand => true,
             WeaponType::Particle => range <= 3,
+=======
+            WeaponType::Beam => range <= Range::Medium,
+            WeaponType::Pulse => range <= Range::Long,
+            WeaponType::Missile | WeaponType::Sand => true,
+            WeaponType::Particle => range <= Range::VeryLong,
+>>>>>>> Stashed changes
         }
     }
 }
@@ -739,6 +771,7 @@ impl FlightPlan {
 
     // Constructor that creates a flight plan that just has a single acceleration.
     // We use i64::MAX to represent infinite time.
+    #[must_use]
     pub fn acceleration(accel: Vec3) -> Self {
         FlightPlan((accel, DEFAULT_ACCEL_DURATION).into(), None)
     }
@@ -753,14 +786,17 @@ impl FlightPlan {
         self.1 = Some((accel, time).into());
     }
 
+    #[must_use]
     pub fn has_second(&self) -> bool {
         self.1.is_some()
     }
 
+    #[must_use]
     pub fn duration(&self) -> u64 {
-        self.0 .1 + self.1.as_ref().map(|a| a.1).unwrap_or(0)
+        self.0 .1 + self.1.as_ref().map_or(0, |a| a.1)
     }
 
+    #[must_use]
     pub fn empty(&self) -> bool {
         self.0 .1 == 0 || self.0 .0 == Vec3::zero()
     }
@@ -772,14 +808,19 @@ impl FlightPlan {
 
         if let Some(second) = &self.1 {
             if second.0.magnitude() > limit {
-                self.set_second(renormalize(second.0, limit), second.1)
+                self.set_second(renormalize(second.0, limit), second.1);
             }
         }
     }
 
-    // Modify this plan by advancing time and adjusting it based on that time.
-    // i.e. the flight plan advances.
-    // Returns the portion of the plan that was advanced.
+    /// Modify this plan by advancing time and adjusting it based on that time.
+    /// i.e. the flight plan advances.
+    /// Returns the portion of the plan that was advanced.
+    ///
+    /// # Arguments
+    ///
+    /// * `time` - The time to advance the plan.
+    #[must_use]
     pub fn advance_time(&mut self, time: u64) -> Self {
         if time < self.0 .1 {
             // If time is less than the first duration:
@@ -787,32 +828,36 @@ impl FlightPlan {
             // Return: the first acceleration for time
             self.0 .1 -= time;
             FlightPlan::new((self.0 .0, time).into(), None)
-        } else if matches!(&self.1, Some(second) if time < self.0.1 + second.1) {
-            // If time is between the first duration plus the second duration:
-            // This plan: The second acceleration for the remaining time (duration of the entire plan less the time)
-            // Return: The first acceleration for its full time, and the portion of the second acceleration up to time.
-            let new_first = self.0.clone();
-            let first_time = self.0 .1;
-            let second = self.1.clone().unwrap();
-            self.0 = (second.0, second.1 - (time - self.0 .1)).into();
-            self.1 = None;
-            debug!("(FlightPlan.advance_time) self: {:?} new_first: {:?} second: {:?} time: {} first_time: {}", self, new_first, second, time, first_time);
-            FlightPlan::new(
-                new_first,
-                if time <= first_time {
-                    None
-                } else {
-                    Some((second.0, time - first_time).into())
-                },
-            )
         } else {
-            // If time is more than first and second durations:
-            // This plan: becomes a zero acceleration plan.
-            // Return: the entire plan.
-            let result = self.clone();
-            self.0 = (Vec3::zero(), 0).into();
-            self.1 = None;
-            result
+            match &self.1.clone() {
+                Some(second) if time < self.0 .1 + second.1 => {
+                    // If time is between the first duration plus the second duration:
+                    // This plan: The second acceleration for the remaining time (duration of the entire plan less the time)
+                    // Return: The first acceleration for its full time, and the portion of the second acceleration up to time.
+                    let new_first = self.0.clone();
+                    let first_time = self.0 .1;
+                    self.0 = (second.0, second.1 - (time - self.0 .1)).into();
+                    self.1 = None;
+                    debug!("(FlightPlan.advance_time) self: {:?} new_first: {:?} second: {:?} time: {} first_time: {}", self, new_first, second, time, first_time);
+                    FlightPlan::new(
+                        new_first,
+                        if time <= first_time {
+                            None
+                        } else {
+                            Some((second.0, time - first_time).into())
+                        },
+                    )
+                }
+                _ => {
+                    // If time is more than first and second durations:
+                    // This plan: becomes a zero acceleration plan.
+                    // Return: the entire plan.
+                    let result = self.clone();
+                    self.0 = (Vec3::zero(), 0).into();
+                    self.1 = None;
+                    result
+                }
+            }
         }
     }
 
@@ -900,7 +945,7 @@ fn digit_to_int(code: char) -> u8 {
         'X' => 31,
         'Y' => 32,
         'Z' => 33,
-        _ => panic!("(ship.digitToInt) Unknown code: {}", code),
+        _ => panic!("(ship.digitToInt) Unknown code: {code}"),
     }
 }
 
@@ -911,7 +956,7 @@ fn int_to_digit(code: u8) -> char {
         x if x <= 17 => (x - 10 + b'A') as char,
         x if x <= 22 => (x - 18 + b'J') as char,
         x if x <= 33 => (x - 23 + b'P') as char,
-        _ => panic!("(ship.intToDigit) Unknown code: {}", code),
+        _ => panic!("(ship.intToDigit) Unknown code: {code}"),
     }
 }
 
@@ -1042,7 +1087,7 @@ mod tests {
             initial_position,
             initial_velocity,
             initial_plan.clone(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1234,7 +1279,7 @@ mod tests {
             initial_position,
             initial_velocity,
             initial_plan.clone(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1265,7 +1310,7 @@ mod tests {
         assert_eq!(ship.plan, zero_accel_plan);
 
         // Test case 5: Set a flight plan with acceleration at the ship's limit
-        let max_accel = ship.max_acceleration();
+        let max_accel = ship.max_acceleration() as f64;
         let max_accel_plan = FlightPlan::new(
             AccelPair(Vec3::new(max_accel, 0.0, 0.0), 5000),
             Some(AccelPair(Vec3::new(0.0, max_accel, 0.0), 3000)),
@@ -1289,7 +1334,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
         let ship2 = Ship::new(
@@ -1297,7 +1342,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
         assert!(ship1 < ship2);
@@ -1369,7 +1414,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1408,7 +1453,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             Some(Crew::new()),
         );
 
@@ -1429,7 +1474,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             Some(Crew::new()),
         );
 
@@ -1591,7 +1636,7 @@ mod tests {
             Vec3::zero(),
             Vec3::zero(),
             FlightPlan::default(),
-            design.clone(),
+            &design,
             None,
         );
 

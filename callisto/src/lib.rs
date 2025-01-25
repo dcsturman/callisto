@@ -128,6 +128,33 @@ macro_rules! deserialize_body_or_respond {
     }};
 }
 
+/// This is the main server loop, handling each request the server receives.
+///
+/// First this method needs to check if the user is authenticated on each request.  If not
+/// then we go into our authentication flow.  It also much handle CORS messages.  Beyond that
+/// messages are either POST or GET. Most of the logic for these should be handled by [Server]
+/// so that unit testing of the logic is possible.
+///
+/// # Arguments
+///
+/// * `req` - The request to handle
+/// * `entities` - The entities table. Each invocation is a new ref count/[clone](Arc::clone)
+/// * `test_mode` - Whether we are in test mode.  Test mode disables authentication and ensures a deterministic seed for each random number generator.
+/// * `authenticator` - The authenticator to use.
+///
+/// # Returns
+///
+/// A [Response] with the appropriate headers and body.
+///
+/// # Errors
+///
+/// Will return an `Err` when login fails.
+///
+/// # Panics
+///
+/// Will panic as a quick exit on a QUIT message.  Only possible when in test mode.
+///
+#[allow(clippy::too_many_lines)]
 pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
@@ -148,11 +175,7 @@ pub async fn handle_request(
     let valid_email = req
         .headers()
         .typed_get::<Cookie>()
-        .and_then(|cookies| {
-            cookies
-                .get(SESSION_COOKIE_NAME)
-                .map(|cookie| cookie.to_string())
-        })
+        .and_then(|cookies| cookies.get(SESSION_COOKIE_NAME).map(ToString::to_string))
         .and_then(|cookie| {
             // A bit unusual but the first .as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
             // gets a reference to the Authenticator in the Option.
@@ -440,6 +463,15 @@ pub async fn handle_request(
  * Given this function returns all the content in the file, its not great for large files, but 100% okay
  * for config files and scenarios (as is our case).
  * General utility routine to be used in a few places.
+ *
+ * # Errors
+ *
+ * Will return `Err` if the file cannot be read or if GCS cannot be reached (depending on url of file)
+ *
+ * # Panics
+ *
+ * Will panic with a helpful message if GCS authentication fails.  GCS authentication needs to be handled outside (and prior to)
+ * this function.
  */
 pub async fn read_local_or_cloud_file(
     filename: &str,
@@ -449,11 +481,11 @@ pub async fn read_local_or_cloud_file(
         // Extract bucket name from the GCS URI
         let parts: Vec<&str> = filename.split('/').collect();
         let bucket_name = parts[2];
-        let file_name = parts[3..].join("/");
+        let object_name = parts[3..].join("/");
 
         // Create a GCS client
         let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
-            panic!("Error {:?} authenticating with GCS. Did you do `gcloud auth application-default login` before running?", e)
+            panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
         });
 
         let client = Client::new(config);
@@ -463,7 +495,7 @@ pub async fn read_local_or_cloud_file(
             .download_object(
                 &GetObjectRequest {
                     bucket: bucket_name.to_string(),
-                    object: file_name.to_string(),
+                    object: object_name.to_string(),
                     ..Default::default()
                 },
                 &Range::default(),

@@ -19,6 +19,8 @@ use crate::ship::{Weapon, WeaponMount, WeaponType};
 use crate::{debug, error, info, warn};
 
 pub const DELTA_TIME: u64 = 360;
+pub const DELTA_TIME_F64: f64 = 360.0;
+
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
 // We will use 4 sig figs for every physics constant we import.
 // This is the value of 1 (earth) gravity in m/s^2
@@ -146,7 +148,7 @@ impl Entities {
             position,
             velocity,
             FlightPlan::acceleration(acceleration),
-            design,
+            &design,
             crew,
         );
         self.ships.insert(name, Arc::new(RwLock::new(ship)));

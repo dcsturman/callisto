@@ -317,7 +317,7 @@ pub struct MockAuthenticator {
 }
 
 impl MockAuthenticator {
-    pub async fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
+    pub fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
         MockAuthenticator {
             session_keys: RwLock::new(HashMap::new()),
             web_server,
@@ -480,8 +480,7 @@ pub(crate) mod tests {
             "secret".to_string(),
             "users.txt",
             "http://web.test.com".to_string(),
-        )
-        .await;
+        );
 
         // Test authentication flow
         let (session_key, email) = mock_auth
