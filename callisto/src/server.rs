@@ -228,7 +228,7 @@ impl Server {
             (
                 entity.get_position(),
                 entity.get_velocity(),
-                G * entity.max_acceleration() as f64,
+                G * f64::from(entity.max_acceleration()),
             )
         };
 

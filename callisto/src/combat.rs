@@ -61,7 +61,7 @@ pub fn attack(
             defender.get_crew().get_pilot()
         );
         defender.decrement_dodge_thrust();
-        -(defender.get_crew().get_pilot() as i32)
+        -i32::from(defender.get_crew().get_pilot())
     } else {
         0
     };
@@ -174,7 +174,7 @@ pub fn attack(
         // Weapon multiples are only for non-missiles.  Larger missile mounts just launch more missiles.
         match weapon.mount {
             WeaponMount::Turret(num) => {
-                damage += (num as u32 - 1) * DAMAGE_WEAPON_DICE[weapon.kind as usize] as u32;
+                damage += (u32::from(num) - 1) * DAMAGE_WEAPON_DICE[weapon.kind as usize] as u32;
             }
             WeaponMount::Barbette => {
                 damage *= 3;
@@ -559,7 +559,7 @@ pub fn do_fire_actions(
 
     let assist_bonus = if attacker.get_assist_gunners() {
         let effect = roll_dice(2, rng) as i32 - STANDARD_ROLL_THRESHOLD
-            + attacker.get_crew().get_pilot() as i32;
+            + i32::from(attacker.get_crew().get_pilot());
         debug!("(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so result is {}.", attacker.get_name(), attacker.get_crew().get_pilot(), effect, task_chain_impact(effect));
         task_chain_impact(effect)
     } else {
@@ -580,7 +580,7 @@ pub fn do_fire_actions(
             }
 
             let weapon = attacker.get_weapon(action.weapon_id);
-            let gunnery_skill = attacker.get_crew().get_gunnery(action.weapon_id as usize) as i32;
+            let gunnery_skill = i32::from(attacker.get_crew().get_gunnery(action.weapon_id as usize));
             debug!(
                 "(Combat.do_fire_actions) Gunnery skill for weapon #{} is {}.",
                 action.weapon_id,
@@ -722,7 +722,7 @@ pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<Stri
                         if weapon.kind == WeaponType::Sand && ship.active_weapons[index] {
                             match weapon.mount {
                                 WeaponMount::Turret(n) => {
-                                    Some(n as i32 - 1 + ship.get_crew().get_gunnery(index) as i32)
+                                    Some(i32::from(n) - 1 + i32::from(ship.get_crew().get_gunnery(index)))
                                 }
                                 WeaponMount::Barbette => {
                                     error!("Barbette sand mount not supported.");
@@ -1450,7 +1450,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
         let mut defender = Ship::new(
@@ -1459,7 +1459,7 @@ mod tests {
             Vec3::new(6_000_000.0, 6_000_000.0, 6_000_000.0),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1489,7 +1489,7 @@ mod tests {
             Vec3::new(1_000_000.0, 1_000_000.0, 1_000_000.0),
             Vec3::zero(),
             FlightPlan::default(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
