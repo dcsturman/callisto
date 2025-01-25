@@ -359,7 +359,7 @@ impl Server {
     /// 
     /// # Panics
     /// Panics if for some reason it cannot serialize the entities correctly.
-    pub fn get_entities_json(&self) -> String {
+    #[must_use] pub fn get_entities_json(&self) -> String {
         info!("Received and processing get entities request.");
         let json = serde_json::to_string::<Entities>(&self.entities.lock().unwrap())
             .expect("(server.get) Unable to serialize entities");

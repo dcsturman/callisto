@@ -83,7 +83,7 @@ impl PartialEq for Entities {
 }
 
 impl Entities {
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Entities {
             ships: HashMap::new(),
             missiles: HashMap::new(),
@@ -92,11 +92,11 @@ impl Entities {
         }
     }
 
-    pub fn len(&self) -> usize {
+    #[must_use] pub fn len(&self) -> usize {
         self.ships.len() + self.missiles.len() + self.planets.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    #[must_use] pub fn is_empty(&self) -> bool {
         self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
     }
 
@@ -452,7 +452,7 @@ impl Entities {
         effects
     }
 
-    pub fn validate(&self) -> bool {
+    #[must_use] pub fn validate(&self) -> bool {
         for planet in self.planets.values() {
             let planet = planet.read().unwrap();
 

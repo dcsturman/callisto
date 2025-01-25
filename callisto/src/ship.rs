@@ -173,7 +173,7 @@ pub enum ShipSystem {
 }
 
 impl Ship {
-    pub fn new(
+    #[must_use] pub fn new(
         name: String,
         position: Vec3,
         velocity: Vec3,
@@ -251,7 +251,7 @@ impl Ship {
         }
     }
 
-    pub fn max_acceleration(&self) -> u8 {
+    #[must_use] pub fn max_acceleration(&self) -> u8 {
         let power_limit = self.design.best_thrust(self.current_power);
         let maneuver_limit = self.current_maneuver;
         u8::min(power_limit, maneuver_limit).saturating_sub(
@@ -259,11 +259,11 @@ impl Ship {
         )
     }
 
-    pub fn get_current_hull_points(&self) -> u32 {
+    #[must_use] pub fn get_current_hull_points(&self) -> u32 {
         self.current_hull
     }
 
-    pub fn get_max_hull_points(&self) -> u32 {
+    #[must_use] pub fn get_max_hull_points(&self) -> u32 {
         self.design.hull
     }
 
@@ -271,15 +271,15 @@ impl Ship {
         self.current_hull = new_hull;
     }
 
-    pub fn get_current_armor(&self) -> u32 {
+    #[must_use] pub fn get_current_armor(&self) -> u32 {
         self.current_armor
     }
 
-    pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
+    #[must_use] pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
         &self.design.weapons[weapon_id as usize]
     }
 
-    pub fn get_crew(&self) -> &Crew {
+    #[must_use] pub fn get_crew(&self) -> &Crew {
         &self.crew
     }
 
@@ -350,7 +350,7 @@ impl Ship {
         self.dodge_thrust = u8::saturating_sub(self.dodge_thrust, 1);
     }
 
-    pub fn get_assist_gunners(&self) -> bool {
+    #[must_use] pub fn get_assist_gunners(&self) -> bool {
         self.assist_gunners
     }
     pub fn reset_crew_actions(&mut self) {
@@ -358,7 +358,7 @@ impl Ship {
         self.assist_gunners = false;
     }
 
-    pub fn get_dodge_thrust(&self) -> u8 {
+    #[must_use] pub fn get_dodge_thrust(&self) -> u8 {
         self.dodge_thrust
     }
 }
@@ -498,7 +498,7 @@ pub async fn config_test_ship_templates() {
 impl ShipDesignTemplate {
     // Making this overly simplistic for now.  Assume for power usage that
     // basic systems and sensors are prioritized, and we ignore weapons.
-    pub fn best_thrust(&self, current_power: u32) -> u8 {
+    #[must_use] pub fn best_thrust(&self, current_power: u32) -> u8 {
         // First take out basic ship systems.
         let power = current_power.saturating_sub(self.displacement / 5);
         // Now adjust for sensors.  If we subtract all the power then we have no power left.
@@ -565,7 +565,7 @@ impl Ord for Weapon {
 }
 
 impl Sensors {
-    pub fn max(lhs: Sensors, rhs: Sensors) -> Sensors {
+    #[must_use] pub fn max(lhs: Sensors, rhs: Sensors) -> Sensors {
         if lhs > rhs {
             lhs
         } else {
@@ -673,14 +673,14 @@ impl From<&Weapon> for String {
 }
 
 impl WeaponType {
-    pub fn is_laser(&self) -> bool {
+    #[must_use] pub fn is_laser(&self) -> bool {
         matches!(self, WeaponType::Beam | WeaponType::Pulse)
     }
 
     // Max ranges by weapon type.  Provide first range band
     // 0 is short, 1 is medium, 2 is long, 3 is very long, 4 is distant
     // Using a function as its just easier than a Lazy, etc.
-    pub fn in_range(&self, range: Range) -> bool {
+    #[must_use] pub fn in_range(&self, range: Range) -> bool {
         match self {
             WeaponType::Beam => range <= Range::Medium,
             WeaponType::Pulse => range <= Range::Long,
@@ -712,7 +712,7 @@ impl From<ShipSystem> for String {
 pub struct InvalidThrustError(String);
 
 impl InvalidThrustError {
-    pub fn get_msg(&self) -> String {
+    #[must_use] pub fn get_msg(&self) -> String {
         self.0.clone()
     }
 }
@@ -746,7 +746,7 @@ impl From<AccelPair> for (Vec3, u64) {
 }
 
 impl AccelPair {
-    pub fn in_limits(&self, limit: f64) -> bool {
+    #[must_use] pub fn in_limits(&self, limit: f64) -> bool {
         self.0.magnitude() <= limit
             || approx::relative_eq!(&self.0.magnitude(), &limit, max_relative = 1e-3)
     }
@@ -772,7 +772,7 @@ impl Default for FlightPlan {
 }
 
 impl FlightPlan {
-    pub fn new(first: AccelPair, second: Option<AccelPair>) -> Self {
+    #[must_use] pub fn new(first: AccelPair, second: Option<AccelPair>) -> Self {
         FlightPlan(first, second)
     }
 

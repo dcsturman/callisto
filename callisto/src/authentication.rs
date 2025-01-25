@@ -317,7 +317,7 @@ pub struct MockAuthenticator {
 }
 
 impl MockAuthenticator {
-    pub fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
+    #[must_use] pub fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
         MockAuthenticator {
             session_keys: RwLock::new(HashMap::new()),
             web_server,

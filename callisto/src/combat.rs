@@ -22,7 +22,7 @@ pub fn roll_dice(dice: usize, rng: &mut dyn RngCore) -> u32 {
     (0..dice).map(|_| roll(rng)).sum()
 }
 
-pub fn task_chain_impact(effect: i32) -> i32 {
+#[must_use] pub fn task_chain_impact(effect: i32) -> i32 {
     match effect {
         x if x <= -6 => -3,
         -5..=-2 => -2,
@@ -708,7 +708,7 @@ pub fn do_fire_actions(
     (new_missiles, effects)
 }
 
-pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, Vec<i32>> {
+#[must_use] pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, Vec<i32>> {
     ship_snapshot
         .iter()
         .map(|(name, ship)| {

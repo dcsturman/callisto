@@ -65,7 +65,7 @@ fn above_surface_or_none(surface: f64, distance: f64) -> Option<f64> {
 }
 impl Planet {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    #[must_use] pub fn new(
         name: String,
         position: Vec3,
         color: String,

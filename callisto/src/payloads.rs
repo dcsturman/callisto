@@ -50,7 +50,7 @@ pub struct SetCrewActions {
 }
 
 impl SetCrewActions {
-    pub fn new(ship_name: &str) -> Self {
+    #[must_use] pub fn new(ship_name: &str) -> Self {
         SetCrewActions {
             ship_name: ship_name.to_string(),
             dodge_thrust: None,
@@ -147,7 +147,7 @@ pub enum EffectMsg {
     },
 }
 impl EffectMsg {
-    pub fn message(content: String) -> EffectMsg {
+    #[must_use] pub fn message(content: String) -> EffectMsg {
         EffectMsg::Message { content }
     }
 }
