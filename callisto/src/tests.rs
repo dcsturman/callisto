@@ -915,9 +915,7 @@ async fn test_get_entities() {
     let server = setup_test_with_server().await;
 
     // Test getting entities from an empty server
-    let result = server.get_entities();
-    assert!(result.is_ok());
-    let empty_entities = result.unwrap();
+    let empty_entities = server.get_entities();
     assert!(empty_entities.ships.is_empty());
     assert!(empty_entities.planets.is_empty());
     assert!(empty_entities.missiles.is_empty());
@@ -954,9 +952,7 @@ async fn test_get_entities() {
         .unwrap();
 
     // Test getting entities after adding a ship and a planet
-    let result = server.get_entities();
-    assert!(result.is_ok());
-    let entities = result.unwrap();
+    let entities = server.get_entities();
 
     // Check the ship
     assert_eq!(entities.ships.len(), 1);
@@ -1091,7 +1087,7 @@ async fn test_set_agility() {
     assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
     // Verify the ship's agility has been updated
-    let entities = server.get_entities().unwrap();
+    let entities = server.get_entities();
     let ship = entities.ships.get("agile_ship").unwrap().read().unwrap();
     assert_eq!(ship.get_dodge_thrust(), 1);
 
@@ -1134,7 +1130,7 @@ async fn test_set_crew_actions_aid_gunner() {
     assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
     // Verify the ship's crew actions have been updated
-    let entities = server.get_entities().unwrap();
+    let entities = server.get_entities();
     let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
     assert!(ship.get_assist_gunners());
 
@@ -1147,7 +1143,7 @@ async fn test_set_crew_actions_aid_gunner() {
     assert_eq!(result.unwrap(), msg_json("Set crew action executed"));
 
     // Verify the ship's crew actions have been updated
-    let entities = server.get_entities().unwrap();
+    let entities = server.get_entities();
     let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
     assert!(!ship.get_assist_gunners());
 
@@ -1196,7 +1192,7 @@ async fn test_load_scenario() {
     assert_eq!(response, msg_json("Add planet action executed"));
 
     // Verify initial entities exist
-    let initial_entities = server.get_entities().unwrap();
+    let initial_entities = server.get_entities();
     assert!(initial_entities.ships.contains_key("test_ship"));
     assert!(initial_entities.planets.contains_key("test_planet"));
     assert_eq!(initial_entities.ships.len(), 1);
@@ -1212,7 +1208,7 @@ async fn test_load_scenario() {
     assert_eq!(result.unwrap(), msg_json("Load scenario action executed"));
 
     // Verify the scenario was loaded correctly and previous entities are gone
-    let entities = server.get_entities().unwrap();
+    let entities = server.get_entities();
 
     // Verify previous entities are gone
     assert!(!entities.ships.contains_key("test_ship"));

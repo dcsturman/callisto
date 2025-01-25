@@ -122,10 +122,18 @@ impl Server {
         Ok(msg_json("Set crew action executed"))
     }
 
-    pub fn get_entities(&self) -> Result<Entities, String> {
-        Ok(self.entities.lock().unwrap().clone())
+    /// Gets the current entities and returns them in a `Result`.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
+    pub fn get_entities(&self) -> Entities {
+        self.entities.lock().unwrap().clone()
     }
 
+    /// Gets the ship designs and serializes it to JSON.
+    ///
+    /// # Panics
+    /// Panics if the ship templates have not been loaded.
     pub fn get_designs(&self) -> String {
         // Strip the Arc, etc. from the ShipTemplates before marshalling back.
         let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
