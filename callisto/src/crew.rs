@@ -47,10 +47,10 @@ impl Crew {
     /// Get the skill level for a crew for a particular skill.  Note that you cannot
     /// use this function to get gunnery skill as there may be multiple gunners in the crew. Use
     /// `get_gunnery` instead.
-    /// 
+    ///
     /// # Arguments
     /// * `skill` - The skill to get the level for.
-    /// 
+    ///
     /// # Panics
     /// Panics if the skill is gunnery.
     #[must_use]
@@ -100,11 +100,11 @@ impl Crew {
 
     /// Sets a crew skill level.  Note that setting a skill this way for gunnery is not allowed.
     /// Instead use `add_gunnery`.
-    /// 
+    ///
     /// # Arguments
     /// * `skill` - The skill to set.
     /// * `value` - The value to set the skill to.
-    /// 
+    ///
     /// # Panics
     /// Panics if the skill is gunnery.
     pub fn set_skill(&mut self, skill: Skills, value: u8) {

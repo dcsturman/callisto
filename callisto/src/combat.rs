@@ -42,7 +42,7 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 
 /// Do the attack of one ship's weapon system against a ship.  This includes resolving previously launched missiles that
 /// now impact the target.  
-/// 
+///
 /// # Arguments
 /// * `hit_mod` - The hit modifier to use (positive or negative).
 /// * `damage_mod` - The damage modifier to use (positive or negative).
@@ -51,10 +51,10 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 ///     well as to apply damage.
 /// * `weapon` - The weapon being used.  This is used to get the weapon type and mount.
 /// * `rng` - The random number generator to use.
-/// 
+///
 /// # Returns
 /// A list of all the effects resulting from the attack.
-/// 
+///
 /// # Panics
 /// Panics if the lock cannot be obtained to read a ship or if we have a case where a check was made and then untrue
 /// (e.g. finding the index number of a ship in a list after ensuring its in the list).
@@ -74,7 +74,8 @@ pub fn attack(
     // Note we will lose precision here but this is just for range so okay.
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_possible_truncation)]
-    let range_band = find_range_band((defender.get_position() - attacker.get_position()).magnitude() as u32);
+    let range_band =
+        find_range_band((defender.get_position() - attacker.get_position()).magnitude() as u32);
 
     debug!(
         "(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}",
@@ -99,7 +100,6 @@ pub fn attack(
     } else {
         0
     };
-
 
     let range_mod = if weapon.kind == WeaponType::Missile {
         0
@@ -605,10 +605,10 @@ fn find_range_band(distance: u32) -> Range {
 /// * `sand_counts` - A snapshot of all the sand capabilities of each ship.
 /// * `actions` - The fire actions to process.
 /// * `rng` - The random number generator to use.
-/// 
+///
 /// # Returns
 /// * A tuple of the new missiles to launch and the effects of the fire actions.
-/// 
+///
 /// # Panics
 /// Panics if the lock cannot be obtained to read a ship.
 /// Also, if we check that sandcasters are available but then cannot pop an element from the `sand_counts` list.

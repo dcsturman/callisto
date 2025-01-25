@@ -32,13 +32,13 @@ pub trait Authenticator: Send + Sync {
     ) -> Result<(String, GoogleProfile), Box<dyn Error>>;
 
     /// Validates a session key on a message.
-    /// 
+    ///
     /// # Arguments
     /// * `session_key` - The session key to validate
-    /// 
-    /// # Returns 
+    ///
+    /// # Returns
     /// `Ok(email)` with the associated email for this authenticated user, if valid
-    /// 
+    ///
     /// # Errors
     /// Returns `InvalidKeyError` if the session key is invalid.
     fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError>;
@@ -61,15 +61,14 @@ pub struct GoogleAuthenticator {
 }
 
 impl GoogleAuthenticator {
-
     /// Creates a new `GoogleAuthenticator` instance
-    /// 
+    ///
     /// # Arguments
     /// * `url` - The URL of the node server.
     /// * `secret_file` - The name of the file containing the Google issued oauth credentials.
     /// * `users_file` - The name of the file containing the list of authorized users.
     /// * `web_server` - The URL of the web server.
-    /// 
+    ///
     /// # Panics
     /// If the `users_file` or `secret_file` cannot be read.
     pub async fn new(url: &str, secret_file: String, users_file: &str, web_server: String) -> Self {
@@ -287,15 +286,15 @@ impl Authenticator for GoogleAuthenticator {
 }
 
 /// Load the oauth credentials for this server's domain from a file.
-/// 
+///
 /// # Arguments
 /// * `file_name` - The name of the file to load.
-/// 
+///
 /// # Returns
 /// The Google issued oauth credentials.
-/// 
+///
 /// # Panics
-/// 
+///
 /// If the file cannot be read or the credentials are malformed (cannot be parsed).
 fn load_google_credentials_from_file(file_name: &str) -> GoogleCredentials {
     let file = std::fs::File::open(file_name)
@@ -308,20 +307,21 @@ fn load_google_credentials_from_file(file_name: &str) -> GoogleCredentials {
 }
 
 /// Load the list of authorized users from a file.  The file is a JSON array of strings.
-/// 
+///
 /// # Arguments
 /// * `file_name` - The name of the file to load.
-/// 
+///
 /// # Returns
 /// A list of all the authorized users.
-/// 
+///
 /// # Errors
 /// Returns `Err` if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
 pub async fn load_authorized_users_from_file(
     file_name: &str,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let data = read_local_or_cloud_file(file_name).await?;
-    serde_json::from_slice::<Vec<String>>(&data).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    serde_json::from_slice::<Vec<String>>(&data)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
 // Mock authenticator for testing

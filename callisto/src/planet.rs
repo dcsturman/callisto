@@ -109,7 +109,8 @@ impl Planet {
         let gravity_radius_2 = above_surface_or_none(self.radius, gravity_radius(2.0, self.mass));
         let gravity_radius_1 = above_surface_or_none(self.radius, gravity_radius(1.0, self.mass));
         let gravity_radius_05 = above_surface_or_none(self.radius, gravity_radius(0.5, self.mass));
-        let gravity_radius_025 = above_surface_or_none(self.radius, gravity_radius(0.25, self.mass));
+        let gravity_radius_025 =
+            above_surface_or_none(self.radius, gravity_radius(0.25, self.mass));
 
         debug!(
             "Gravity radius 025: {:?}: given radius {:?} and gravity_radius {}",

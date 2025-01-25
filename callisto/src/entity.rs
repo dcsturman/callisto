@@ -107,10 +107,10 @@ impl Entities {
     /// After loading the file, the pointers are fixed up and the gravity wells are reset.
     /// # Arguments
     /// * `file_name` - The name of the file to load.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
     pub async fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -168,7 +168,7 @@ impl Entities {
     }
 
     /// Add a planet to the entities.
-    /// 
+    ///
     /// # Arguments
     /// * `name` - The name of the planet.
     /// * `position` - The position of the planet.
@@ -176,10 +176,10 @@ impl Entities {
     /// * `primary` - The name of the primary planet.  If None, the planet is a star.
     /// * `radius` - The radius of the planet.
     /// * `mass` - The mass of the planet.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the primary planet is not found or if for some reason a pointer to the primary planet cannot be created.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read a planet.
     pub fn add_planet(
@@ -238,15 +238,15 @@ impl Entities {
     }
 
     /// Launch a missile from a ship at a ship.
-    /// 
+    ///
     /// # Arguments
     /// * `source` - The ship that is launching the missile.
     /// * `target` - The ship that is the target of the missile.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the source ship is not found.
     /// Returns an error if the target ship is not found.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read a ship.
     pub fn launch_missile(&mut self, source: &str, target: &str) -> Result<(), String> {
@@ -294,17 +294,17 @@ impl Entities {
     }
 
     /// Set the flight plan.
-    /// 
+    ///
     /// # Returns
     /// `Ok(())` if the flight plan was set successfully.
-    /// 
+    ///
     /// # Arguments
     /// * `name` - The name of the ship to set the flight plan for.
     /// * `plan` - The flight plan to set.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the ship is not found.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read a ship.
     pub fn set_flight_plan(&mut self, name: &str, plan: &FlightPlan) -> Result<(), String> {
@@ -318,16 +318,16 @@ impl Entities {
     }
 
     /// Process all fire actions and turn them into either missile launches or attacks.
-    /// 
+    ///
     /// # Arguments
     /// * `fire_actions` - The fire actions to process.
     /// * `ship_snapshot` - A snapshot of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
     ///     a ship that was destroyed earlier in the round.
     /// * `rng` - The random number generator to use.
-    /// 
+    ///
     /// # Returns
     /// A list of all the effects resulting from the fire actions.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read a ship.
     pub fn fire_actions(
@@ -365,13 +365,13 @@ impl Entities {
 
     /// Update all entities.  This is typically done at the end of a round to advance a turn.
     /// It returns all the effects resulting from the actions of the update.
-    /// 
+    ///
     /// # Arguments
     /// * `ship_snapshot` - A snapshot of the ships at the start of the round.  This is used to ensure that
     ///     any damage applied is simultaneous.  The snapshot is worked off of and real damage or other effects
     ///     are applied to the actual entities.
     /// * `rng` - A random number generator.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock (read or write) cannot be obtained when reading any specific entity.
     #[allow(clippy::too_many_lines)]
@@ -527,7 +527,7 @@ impl Entities {
     /// These checks include:
     /// * A planet has a named primary iff it has a pointer to that planet.
     /// * Every missile has a point to its target and the names match.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read a planet or missile.
     #[must_use]
@@ -569,11 +569,11 @@ impl Entities {
 
     /// Fix secondary pointers in entities. For planets this is ensuring a link to the named primary for a planet.
     /// For missiles this is ensuring a link to the named target for a missile.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if a named planet entity is not found when building a primary pointer.
     /// Returns an error if a named ship entity is not found when building a target pointer.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to write to a planet or missile.
     pub fn fixup_pointers(&mut self) -> Result<(), String> {
@@ -606,7 +606,7 @@ impl Entities {
     }
 
     /// Reset the gravity wells for all planets.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to write to a planet.
     pub fn reset_gravity_wells(&mut self) {
