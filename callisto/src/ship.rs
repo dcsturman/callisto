@@ -667,18 +667,10 @@ impl WeaponType {
     // Using a function as its just easier than a Lazy, etc.
     pub fn in_range(&self, range: usize) -> bool {
         match self {
-<<<<<<< Updated upstream
-            WeaponType::Beam => range <= 1,
-            WeaponType::Pulse => range <= 2,
-            WeaponType::Missile => true,
-            WeaponType::Sand => true,
-            WeaponType::Particle => range <= 3,
-=======
             WeaponType::Beam => range <= Range::Medium,
             WeaponType::Pulse => range <= Range::Long,
             WeaponType::Missile | WeaponType::Sand => true,
             WeaponType::Particle => range <= Range::VeryLong,
->>>>>>> Stashed changes
         }
     }
 }
