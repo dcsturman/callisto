@@ -22,7 +22,8 @@ pub fn roll_dice(dice: usize, rng: &mut dyn RngCore) -> u32 {
     (0..dice).map(|_| roll(rng)).sum()
 }
 
-#[must_use] pub fn task_chain_impact(effect: i32) -> i32 {
+#[must_use]
+pub fn task_chain_impact(effect: i32) -> i32 {
     match effect {
         x if x <= -6 => -3,
         -5..=-2 => -2,
@@ -708,7 +709,8 @@ pub fn do_fire_actions(
     (new_missiles, effects)
 }
 
-#[must_use] pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, Vec<i32>> {
+#[must_use]
+pub fn create_sand_counts(ship_snapshot: &HashMap<String, Ship>) -> HashMap<String, Vec<i32>> {
     ship_snapshot
         .iter()
         .map(|(name, ship)| {
@@ -721,9 +723,10 @@ pub fn do_fire_actions(
                     .filter_map(|(index, weapon)| {
                         if weapon.kind == WeaponType::Sand && ship.active_weapons[index] {
                             match weapon.mount {
-                                WeaponMount::Turret(n) => {
-                                    Some(i32::from(n) - 1 + i32::from(ship.get_crew().get_gunnery(index)))
-                                }
+                                WeaponMount::Turret(n) => Some(
+                                    i32::from(n) - 1
+                                        + i32::from(ship.get_crew().get_gunnery(index)),
+                                ),
                                 WeaponMount::Barbette => {
                                     error!("Barbette sand mount not supported.");
                                     None

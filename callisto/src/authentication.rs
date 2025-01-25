@@ -55,9 +55,7 @@ pub struct GoogleAuthenticator {
 impl GoogleAuthenticator {
     pub async fn new(url: &str, secret: String, users_file: &str, web_server: String) -> Self {
         let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
-            panic!(
-                "Error {e:?} loading Google credentials file {GOOGLE_CREDENTIALS_FILE}"
-            )
+            panic!("Error {e:?} loading Google credentials file {GOOGLE_CREDENTIALS_FILE}")
         });
         let authorized_users = load_authorized_users_from_file(users_file)
             .await
@@ -92,9 +90,7 @@ impl GoogleAuthenticator {
         debug!("(validate_google_token) Fetched Google public keys okay.");
 
         let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
-            panic!(
-                "(validate_google_token) Error: Unable to parse Google public keys: {e:?}"
-            )
+            panic!("(validate_google_token) Error: Unable to parse Google public keys: {e:?}")
         });
 
         self.public_keys = Some(public_keys);
@@ -141,25 +137,19 @@ impl Authenticator for GoogleAuthenticator {
 
         debug!("(authenticate_google_user) Fetched token response.");
         let body = token_response.text().await.unwrap_or_else(|e| {
-            panic!(
-                "(authenticate_google_user) Unable to get text from token response: {e:?}"
-            )
+            panic!("(authenticate_google_user) Unable to get text from token response: {e:?}")
         });
 
         let token_response_json: GoogleTokenResponse =
             serde_json::from_str(&body).unwrap_or_else(|e| {
-                panic!(
-                    "(authenticate_google_user) Unable to parse token response: {e:?}"
-                )
+                panic!("(authenticate_google_user) Unable to parse token response: {e:?}")
             });
 
         let token = token_response_json.id_token;
 
         // Get the key ID from the token header
         let header = decode_header(&token).unwrap_or_else(|e| {
-            panic!(
-                "(authenticate_google_user) Unable to decode token header: {e:?}"
-            )
+            panic!("(authenticate_google_user) Unable to decode token header: {e:?}")
         });
         let kid = header.kid.unwrap_or_else(|| {
             panic!("(authenticate_google_user) Unable to get key ID from token header")
@@ -280,17 +270,11 @@ impl Authenticator for GoogleAuthenticator {
 }
 
 fn load_google_credentials_from_file(file_name: &str) -> Result<GoogleCredentials, Box<dyn Error>> {
-    let file = std::fs::File::open(file_name).unwrap_or_else(|e| {
-        panic!(
-            "Error {e:?} opening Google credentials file {file_name}"
-        )
-    });
+    let file = std::fs::File::open(file_name)
+        .unwrap_or_else(|e| panic!("Error {e:?} opening Google credentials file {file_name}"));
     let reader = std::io::BufReader::new(file);
-    let credentials: GoogleCredsJson = serde_json::from_reader(reader).unwrap_or_else(|e| {
-        panic!(
-            "Error {e:?} parsing Google credentials file {file_name}"
-        )
-    });
+    let credentials: GoogleCredsJson = serde_json::from_reader(reader)
+        .unwrap_or_else(|e| panic!("Error {e:?} parsing Google credentials file {file_name}"));
     debug!("Load Google credentials file \"{}\".", file_name);
     Ok(credentials.web)
 }
@@ -310,7 +294,8 @@ pub struct MockAuthenticator {
 }
 
 impl MockAuthenticator {
-    #[must_use] pub fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
+    #[must_use]
+    pub fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
         MockAuthenticator {
             session_keys: RwLock::new(HashMap::new()),
             web_server,

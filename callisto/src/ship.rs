@@ -11,7 +11,9 @@ use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
 use crate::crew::Crew;
-use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
+use crate::entity::{
+    Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G,
+};
 use crate::payloads::Vec3asVec;
 use crate::read_local_or_cloud_file;
 use crate::{debug, info, warn};
@@ -173,7 +175,8 @@ pub enum ShipSystem {
 }
 
 impl Ship {
-    #[must_use] pub fn new(
+    #[must_use]
+    pub fn new(
         name: String,
         position: Vec3,
         velocity: Vec3,
@@ -220,9 +223,9 @@ impl Ship {
     }
 
     /// Set the flight plan for this ship.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns 'Err' if the flight plan has an acceleration greater than the ship's capabilities at this point in time.
     pub fn set_flight_plan(&mut self, new_plan: &FlightPlan) -> Result<(), String> {
         // First validate the plan to make sure its legal.
@@ -251,19 +254,21 @@ impl Ship {
         }
     }
 
-    #[must_use] pub fn max_acceleration(&self) -> u8 {
+    #[must_use]
+    pub fn max_acceleration(&self) -> u8 {
         let power_limit = self.design.best_thrust(self.current_power);
         let maneuver_limit = self.current_maneuver;
-        u8::min(power_limit, maneuver_limit).saturating_sub(
-            self.dodge_thrust + u8::from(self.assist_gunners)
-        )
+        u8::min(power_limit, maneuver_limit)
+            .saturating_sub(self.dodge_thrust + u8::from(self.assist_gunners))
     }
 
-    #[must_use] pub fn get_current_hull_points(&self) -> u32 {
+    #[must_use]
+    pub fn get_current_hull_points(&self) -> u32 {
         self.current_hull
     }
 
-    #[must_use] pub fn get_max_hull_points(&self) -> u32 {
+    #[must_use]
+    pub fn get_max_hull_points(&self) -> u32 {
         self.design.hull
     }
 
@@ -271,15 +276,18 @@ impl Ship {
         self.current_hull = new_hull;
     }
 
-    #[must_use] pub fn get_current_armor(&self) -> u32 {
+    #[must_use]
+    pub fn get_current_armor(&self) -> u32 {
         self.current_armor
     }
 
-    #[must_use] pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
+    #[must_use]
+    pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
         &self.design.weapons[weapon_id as usize]
     }
 
-    #[must_use] pub fn get_crew(&self) -> &Crew {
+    #[must_use]
+    pub fn get_crew(&self) -> &Crew {
         &self.crew
     }
 
@@ -287,9 +295,9 @@ impl Ship {
         &mut self.crew
     }
 
-    /// Set possible pilot actions for the next round. These include allocating thrust to dodging as 
+    /// Set possible pilot actions for the next round. These include allocating thrust to dodging as
     /// well as allocating a single point of thrust to assist gunners.
-    /// 
+    ///
     /// # Errors
     /// Returns 'Err' if there isn't enough thrust to perform these actions.
     pub fn set_pilot_actions(
@@ -349,7 +357,8 @@ impl Ship {
         self.dodge_thrust = u8::saturating_sub(self.dodge_thrust, 1);
     }
 
-    #[must_use] pub fn get_assist_gunners(&self) -> bool {
+    #[must_use]
+    pub fn get_assist_gunners(&self) -> bool {
         self.assist_gunners
     }
     pub fn reset_crew_actions(&mut self) {
@@ -357,7 +366,8 @@ impl Ship {
         self.assist_gunners = false;
     }
 
-    #[must_use] pub fn get_dodge_thrust(&self) -> u8 {
+    #[must_use]
+    pub fn get_dodge_thrust(&self) -> u8 {
         self.dodge_thrust
     }
 }
@@ -457,9 +467,9 @@ serde_with::serde_conv!(
 );
 
 /// Load ship templates from a file. The file can be local or on Google cloud storage (encoded in filename)
-/// 
+///
 /// # Errors
-/// 
+///
 /// If the file cannot be read or if GCS cannot be reached (depending on url of file)
 pub async fn load_ship_templates_from_file(
     file_name: &str,
@@ -480,9 +490,9 @@ pub async fn load_ship_templates_from_file(
 }
 
 /// Helper method that loads ship templates from a file.  This is designed only for use in tests to load templates from a default file.
-/// 
+///
 /// # Panics
-/// 
+///
 /// If the file cannot be loaded.
 pub async fn config_test_ship_templates() {
     const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
@@ -497,19 +507,18 @@ pub async fn config_test_ship_templates() {
 impl ShipDesignTemplate {
     // Making this overly simplistic for now.  Assume for power usage that
     // basic systems and sensors are prioritized, and we ignore weapons.
-    #[must_use] pub fn best_thrust(&self, current_power: u32) -> u8 {
+    #[must_use]
+    pub fn best_thrust(&self, current_power: u32) -> u8 {
         // First take out basic ship systems.
         let power = current_power.saturating_sub(self.displacement / 5);
         // Now adjust for sensors.  If we subtract all the power then we have no power left.
-        let power = power.saturating_sub(
-            match self.sensors {
-                Sensors::Basic => 0,
-                Sensors::Civilian => 1,
-                Sensors::Military => 2,
-                Sensors::Improved => 4,
-                Sensors::Advanced => 6,
-            },
-        );
+        let power = power.saturating_sub(match self.sensors {
+            Sensors::Basic => 0,
+            Sensors::Civilian => 1,
+            Sensors::Military => 2,
+            Sensors::Improved => 4,
+            Sensors::Advanced => 6,
+        });
 
         if power == 0 {
             return 0;
@@ -518,7 +527,10 @@ impl ShipDesignTemplate {
         // Power left for thrust is one thrust per 10% of ship displacement in power units.
         // Displacement cannot be over 1M tons ever.
         // If somehow power is enough we are above u8::MAX then just use that as really thrust cannot be that high.
-        (power * 10 / self.displacement).try_into().unwrap_or(u8::MAX).min(self.maneuver)
+        (power * 10 / self.displacement)
+            .try_into()
+            .unwrap_or(u8::MAX)
+            .min(self.maneuver)
     }
 }
 
@@ -564,7 +576,8 @@ impl Ord for Weapon {
 }
 
 impl Sensors {
-    #[must_use] pub fn max(lhs: Sensors, rhs: Sensors) -> Sensors {
+    #[must_use]
+    pub fn max(lhs: Sensors, rhs: Sensors) -> Sensors {
         if lhs > rhs {
             lhs
         } else {
@@ -672,14 +685,16 @@ impl From<&Weapon> for String {
 }
 
 impl WeaponType {
-    #[must_use] pub fn is_laser(&self) -> bool {
+    #[must_use]
+    pub fn is_laser(&self) -> bool {
         matches!(self, WeaponType::Beam | WeaponType::Pulse)
     }
 
     // Max ranges by weapon type.  Provide first range band
     // 0 is short, 1 is medium, 2 is long, 3 is very long, 4 is distant
     // Using a function as its just easier than a Lazy, etc.
-    #[must_use] pub fn in_range(&self, range: Range) -> bool {
+    #[must_use]
+    pub fn in_range(&self, range: Range) -> bool {
         match self {
             WeaponType::Beam => range <= Range::Medium,
             WeaponType::Pulse => range <= Range::Long,
@@ -711,7 +726,8 @@ impl From<ShipSystem> for String {
 pub struct InvalidThrustError(String);
 
 impl InvalidThrustError {
-    #[must_use] pub fn get_msg(&self) -> String {
+    #[must_use]
+    pub fn get_msg(&self) -> String {
         self.0.clone()
     }
 }
@@ -745,7 +761,8 @@ impl From<AccelPair> for (Vec3, u64) {
 }
 
 impl AccelPair {
-    #[must_use] pub fn in_limits(&self, limit: f64) -> bool {
+    #[must_use]
+    pub fn in_limits(&self, limit: f64) -> bool {
         self.0.magnitude() <= limit
             || approx::relative_eq!(&self.0.magnitude(), &limit, max_relative = 1e-3)
     }
@@ -771,7 +788,8 @@ impl Default for FlightPlan {
 }
 
 impl FlightPlan {
-    #[must_use] pub fn new(first: AccelPair, second: Option<AccelPair>) -> Self {
+    #[must_use]
+    pub fn new(first: AccelPair, second: Option<AccelPair>) -> Self {
         FlightPlan(first, second)
     }
 

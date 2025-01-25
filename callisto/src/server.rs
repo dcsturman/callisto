@@ -67,13 +67,13 @@ impl Server {
     }
 
     /// Adds a ship to the entities.
-    /// 
+    ///
     /// # Arguments
     /// * `ship` - The message containing the parameters for the ship.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the ship design cannot be found.
-    /// 
+    ///
     /// # Panics
     /// Panics if the ship templates are not loaded or if the lock on entities cannot be obtained.
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
@@ -139,13 +139,13 @@ impl Server {
     }
 
     /// Adds a planet to the entities.
-    /// 
+    ///
     /// # Arguments
     /// * `planet` - The message containing the parameters for the planet.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the planet already exists in the entities.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to write the entities.
     pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
@@ -163,13 +163,13 @@ impl Server {
     }
 
     /// Removes an entity from the entities.
-    /// 
+    ///
     /// # Arguments
     /// * `name` - The name of the entity to remove.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the name entity does not exist in the list of entities.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to write the entities.
     pub fn remove(&self, name: &RemoveEntityMsg) -> Result<String, String> {
@@ -188,13 +188,13 @@ impl Server {
     }
 
     /// Sets the flight plan for a ship.
-    /// 
+    ///
     /// # Arguments
     /// * `plan_msg` - The message containing the parameters for the flight plan.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the flight plan is one that is not legal for this ship (e.g. acceleration is too high)
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
     pub fn set_plan(&self, plan_msg: &SetPlanMsg) -> Result<String, String> {
@@ -208,10 +208,10 @@ impl Server {
 
     /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
     /// (e.g. move a ship, planet or missile) as well as new fire actions.
-    /// 
+    ///
     /// # Arguments
     /// * `fire_actions` - The fire actions to execute.
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
     pub fn update(&mut self, fire_actions: FireActionsMsg) -> String {
@@ -255,14 +255,14 @@ impl Server {
     }
 
     /// Computes a flight path for a ship.
-    /// 
+    ///
     /// # Arguments
     /// * `msg` - The message containing the parameters for the flight path.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the computer cannot find a valid flight path (solve the non-linear equations)
     /// or if we cannot marshall the flight path into JSON (should never happen).
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
     pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<String, String> {
@@ -334,10 +334,10 @@ impl Server {
     }
 
     /// Loads a scenario file.      
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the scenario file cannot be loaded (e.g. doesn't exist)
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock cannot be obtained to write the entities.  Not clear when this might happen,
     /// especially given this routine is run only on server initialization.
@@ -356,10 +356,11 @@ impl Server {
     }
 
     /// Gets the current entities and serializes it to JSON.
-    /// 
+    ///
     /// # Panics
     /// Panics if for some reason it cannot serialize the entities correctly.
-    #[must_use] pub fn get_entities_json(&self) -> String {
+    #[must_use]
+    pub fn get_entities_json(&self) -> String {
         info!("Received and processing get entities request.");
         let json = serde_json::to_string::<Entities>(&self.entities.lock().unwrap())
             .expect("(server.get) Unable to serialize entities");
