@@ -16,7 +16,6 @@ use crate::{debug, error, info, warn};
 
 type GoogleProfile = String;
 
-const GOOGLE_CREDENTIALS_FILE: &str = "google_credentials.json";
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
 /// Trait defining the authentication behavior for the application
@@ -32,7 +31,16 @@ pub trait Authenticator: Send + Sync {
         code: &str,
     ) -> Result<(String, GoogleProfile), Box<dyn Error>>;
 
-    /// Validates a session key and returns the associated email if valid, InvalidKeyError otherwise
+    /// Validates a session key on a message.
+    ///
+    /// # Arguments
+    /// * `session_key` - The session key to validate
+    ///
+    /// # Returns
+    /// `Ok(email)` with the associated email for this authenticated user, if valid
+    ///
+    /// # Errors
+    /// Returns `InvalidKeyError` if the session key is invalid.
     fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError>;
 
     /// Checks authorization for an incoming request
@@ -53,13 +61,18 @@ pub struct GoogleAuthenticator {
 }
 
 impl GoogleAuthenticator {
-    pub async fn new(url: &str, secret: String, users_file: &str, web_server: String) -> Self {
-        let credentials = load_google_credentials_from_file(&secret).unwrap_or_else(|e| {
-            panic!(
-                "Error {:?} loading Google credentials file {}",
-                e, GOOGLE_CREDENTIALS_FILE
-            )
-        });
+    /// Creates a new `GoogleAuthenticator` instance
+    ///
+    /// # Arguments
+    /// * `url` - The URL of the node server.
+    /// * `secret_file` - The name of the file containing the Google issued oauth credentials.
+    /// * `users_file` - The name of the file containing the list of authorized users.
+    /// * `web_server` - The URL of the web server.
+    ///
+    /// # Panics
+    /// If the `users_file` or `secret_file` cannot be read.
+    pub async fn new(url: &str, secret_file: String, users_file: &str, web_server: String) -> Self {
+        let credentials = load_google_credentials_from_file(&secret_file);
         let authorized_users = load_authorized_users_from_file(users_file)
             .await
             .expect("Unable to load authorized users file.");
@@ -93,10 +106,7 @@ impl GoogleAuthenticator {
         debug!("(validate_google_token) Fetched Google public keys okay.");
 
         let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
-            panic!(
-                "(validate_google_token) Error: Unable to parse Google public keys: {:?}",
-                e
-            )
+            panic!("(validate_google_token) Error: Unable to parse Google public keys: {e:?}")
         });
 
         self.public_keys = Some(public_keys);
@@ -143,28 +153,19 @@ impl Authenticator for GoogleAuthenticator {
 
         debug!("(authenticate_google_user) Fetched token response.");
         let body = token_response.text().await.unwrap_or_else(|e| {
-            panic!(
-                "(authenticate_google_user) Unable to get text from token response: {:?}",
-                e
-            )
+            panic!("(authenticate_google_user) Unable to get text from token response: {e:?}")
         });
 
         let token_response_json: GoogleTokenResponse =
             serde_json::from_str(&body).unwrap_or_else(|e| {
-                panic!(
-                    "(authenticate_google_user) Unable to parse token response: {:?}",
-                    e
-                )
+                panic!("(authenticate_google_user) Unable to parse token response: {e:?}")
             });
 
         let token = token_response_json.id_token;
 
         // Get the key ID from the token header
         let header = decode_header(&token).unwrap_or_else(|e| {
-            panic!(
-                "(authenticate_google_user) Unable to decode token header: {:?}",
-                e
-            )
+            panic!("(authenticate_google_user) Unable to decode token header: {e:?}")
         });
         let kid = header.kid.unwrap_or_else(|| {
             panic!("(authenticate_google_user) Unable to get key ID from token header")
@@ -214,7 +215,7 @@ impl Authenticator for GoogleAuthenticator {
 
         // Generate a cryptographically secure session key.
         //let mut session_key: String = "Bearer ".to_string();
-        let mut session_key: String = "".to_string();
+        let mut session_key: String = String::new();
         session_key.push_str(
             &general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()),
         );
@@ -284,30 +285,43 @@ impl Authenticator for GoogleAuthenticator {
     }
 }
 
-fn load_google_credentials_from_file(file_name: &str) -> Result<GoogleCredentials, Box<dyn Error>> {
-    let file = std::fs::File::open(file_name).unwrap_or_else(|e| {
-        panic!(
-            "Error {:?} opening Google credentials file {}",
-            e, file_name
-        )
-    });
+/// Load the oauth credentials for this server's domain from a file.
+///
+/// # Arguments
+/// * `file_name` - The name of the file to load.
+///
+/// # Returns
+/// The Google issued oauth credentials.
+///
+/// # Panics
+///
+/// If the file cannot be read or the credentials are malformed (cannot be parsed).
+fn load_google_credentials_from_file(file_name: &str) -> GoogleCredentials {
+    let file = std::fs::File::open(file_name)
+        .unwrap_or_else(|e| panic!("Error {e:?} opening Google credentials file {file_name}"));
     let reader = std::io::BufReader::new(file);
-    let credentials: GoogleCredsJson = serde_json::from_reader(reader).unwrap_or_else(|e| {
-        panic!(
-            "Error {:?} parsing Google credentials file {}",
-            e, file_name
-        )
-    });
+    let credentials: GoogleCredsJson = serde_json::from_reader(reader)
+        .unwrap_or_else(|e| panic!("Error {e:?} parsing Google credentials file {file_name}"));
     debug!("Load Google credentials file \"{}\".", file_name);
-    Ok(credentials.web)
+    credentials.web
 }
 
+/// Load the list of authorized users from a file.  The file is a JSON array of strings.
+///
+/// # Arguments
+/// * `file_name` - The name of the file to load.
+///
+/// # Returns
+/// A list of all the authorized users.
+///
+/// # Errors
+/// Returns `Err` if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
 pub async fn load_authorized_users_from_file(
     file_name: &str,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let data = read_local_or_cloud_file(file_name).await?;
     serde_json::from_slice::<Vec<String>>(&data)
-        .map_err(|e| panic!("Error {:?} parsing authorized users file {}", e, file_name))
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
 // Mock authenticator for testing
@@ -317,7 +331,8 @@ pub struct MockAuthenticator {
 }
 
 impl MockAuthenticator {
-    pub async fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
+    #[must_use]
+    pub fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
         MockAuthenticator {
             session_keys: RwLock::new(HashMap::new()),
             web_server,
@@ -473,6 +488,8 @@ struct GoogleCredsJson {
 pub(crate) mod tests {
     use super::*;
 
+    const GOOGLE_CREDENTIALS_FILE: &str = "google_credentials.json";
+
     #[tokio::test]
     async fn test_mock_authenticator() {
         let mock_auth = MockAuthenticator::new(
@@ -480,8 +497,7 @@ pub(crate) mod tests {
             "secret".to_string(),
             "users.txt",
             "http://web.test.com".to_string(),
-        )
-        .await;
+        );
 
         // Test authentication flow
         let (session_key, email) = mock_auth
@@ -506,7 +522,7 @@ pub(crate) mod tests {
     const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
-    #[should_panic]
+    #[should_panic = "No such file or directory"]
     async fn test_bad_credentials_file() {
         const BAD_FILE: &str = "./not_there_file.json";
         let authenticator = GoogleAuthenticator::new(
@@ -549,9 +565,8 @@ pub(crate) mod tests {
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_google_credentials_from_file() {
         let credentials = load_google_credentials_from_file(
-            format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE).as_str(),
-        )
-        .unwrap();
+            format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}").as_str(),
+        );
         assert!(!credentials.client_id.is_empty());
         assert!(!credentials.client_secret.is_empty());
     }
@@ -561,7 +576,7 @@ pub(crate) mod tests {
     async fn test_fetch_google_public_keys() {
         let mut authenticator = GoogleAuthenticator::new(
             "http://localhost:3000",
-            format!("{}/{}", LOCAL_SECRETS_DIR, GOOGLE_CREDENTIALS_FILE),
+            format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}"),
             LOCAL_TEST_FILE,
             "http://localhost:3000".to_string(),
         )

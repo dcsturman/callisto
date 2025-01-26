@@ -50,6 +50,7 @@ pub struct SetCrewActions {
 }
 
 impl SetCrewActions {
+    #[must_use]
     pub fn new(ship_name: &str) -> Self {
         SetCrewActions {
             ship_name: ship_name.to_string(),
@@ -147,6 +148,7 @@ pub enum EffectMsg {
     },
 }
 impl EffectMsg {
+    #[must_use]
     pub fn message(content: String) -> EffectMsg {
         EffectMsg::Message { content }
     }
@@ -154,7 +156,7 @@ impl EffectMsg {
 
 impl Display for EffectMsg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -431,7 +433,7 @@ mod tests {
         assert_eq!(deserialized.code, None);
 
         // Test deserialization with missing field
-        let json_str = r#"{}"#;
+        let json_str = "{}";
         let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
         assert_eq!(deserialized.code, None);
     }

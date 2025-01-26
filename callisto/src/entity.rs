@@ -19,10 +19,12 @@ use crate::ship::{Weapon, WeaponMount, WeaponType};
 use crate::{debug, error, info, warn};
 
 pub const DELTA_TIME: u64 = 360;
+pub const DELTA_TIME_F64: f64 = 360.0;
+
 pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
 // We will use 4 sig figs for every physics constant we import.
 // This is the value of 1 (earth) gravity in m/s^2
-pub const G: f64 = 9.807000000;
+pub const G: f64 = 9.807_000_000;
 pub type Vec3 = Vector3<f64>;
 
 pub trait Entity: Debug + PartialEq + Serialize + Send + Sync {
@@ -81,6 +83,7 @@ impl PartialEq for Entities {
 }
 
 impl Entities {
+    #[must_use]
     pub fn new() -> Self {
         Entities {
             ships: HashMap::new(),
@@ -90,14 +93,26 @@ impl Entities {
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.ships.len() + self.missiles.len() + self.planets.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
     }
 
+    /// Load a scenario file.  A scenario file is just a JSON encoding of a set of entities.
+    /// After loading the file, the pointers are fixed up and the gravity wells are reset.
+    /// # Arguments
+    /// * `file_name` - The name of the file to load.
+    ///
+    /// # Errors
+    /// Returns an error if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
     pub async fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
         info!("Load scenario file \"{}\".", file_name);
 
@@ -138,7 +153,7 @@ impl Entities {
         position: Vec3,
         velocity: Vec3,
         acceleration: Vec3,
-        design: Arc<ShipDesignTemplate>,
+        design: &Arc<ShipDesignTemplate>,
         crew: Option<Crew>,
     ) {
         let ship = Ship::new(
@@ -152,6 +167,21 @@ impl Entities {
         self.ships.insert(name, Arc::new(RwLock::new(ship)));
     }
 
+    /// Add a planet to the entities.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the planet.
+    /// * `position` - The position of the planet.
+    /// * `color` - The color of the planet.
+    /// * `primary` - The name of the primary planet.  If None, the planet is a star.
+    /// * `radius` - The radius of the planet.
+    /// * `mass` - The mass of the planet.
+    ///
+    /// # Errors
+    /// Returns an error if the primary planet is not found or if for some reason a pointer to the primary planet cannot be created.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a planet.
     pub fn add_planet(
         &mut self,
         name: String,
@@ -173,25 +203,21 @@ impl Entities {
 
         let (primary_ptr, dependency) = if let Some(primary_name) = &primary {
             let primary = self.planets.get(primary_name).ok_or_else(|| {
-                format!(
-                    "Primary planet {} not found for planet {}.",
-                    primary_name, name
-                )
+                format!("Primary planet {primary_name} not found for planet {name}.")
             })?;
 
             (
-                Some(primary.clone()),
+                &Some(primary.clone()),
                 primary.read().unwrap().dependency + 1,
             )
         } else {
-            (None, 0)
+            (&None, 0)
         };
 
         // A safety check to ensure we never have a pointer without a name of a primary or vis versa.
         if primary_ptr.is_some() ^ primary.is_some() {
             return Err(format!(
-                "Planet {} has a primary pointer but no primary name or vice versa.",
-                name
+                "Planet {name} has a primary pointer but no primary name or vice versa."
             ));
         }
 
@@ -211,23 +237,35 @@ impl Entities {
         Ok(())
     }
 
+    /// Launch a missile from a ship at a ship.
+    ///
+    /// # Arguments
+    /// * `source` - The ship that is launching the missile.
+    /// * `target` - The ship that is the target of the missile.
+    ///
+    /// # Errors
+    /// Returns an error if the source ship is not found.
+    /// Returns an error if the target ship is not found.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship.
     pub fn launch_missile(&mut self, source: &str, target: &str) -> Result<(), String> {
         // Could use a random number generator here for the name but that makes tests flakey (random)
         // So this counter used to distinguish missiles between the same source and target
         let id = self.next_missile_id;
         self.next_missile_id += 1;
 
-        let name = format!("{}::{}::{:X}", source, target, id);
+        let name = format!("{source}::{target}::{id:X}");
         let source_ptr = self
             .ships
             .get(source)
-            .ok_or_else(|| format!("Missile source {} not found for missile {}.", source, name))?
+            .ok_or_else(|| format!("Missile source {source} not found for missile {name}."))?
             .clone();
 
         let target_ptr = self
             .ships
             .get(target)
-            .ok_or_else(|| format!("Target {} not found for missile {}.", target, name))?
+            .ok_or_else(|| format!("Target {target} not found for missile {name}."))?
             .clone();
 
         let source_ship = source_ptr.read().unwrap();
@@ -255,21 +293,46 @@ impl Entities {
         Ok(())
     }
 
-    // Set the flight plan. Returns true if it was set. False if the plan was invalid for any reason.
+    /// Set the flight plan.
+    ///
+    /// # Returns
+    /// `Ok(())` if the flight plan was set successfully.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the ship to set the flight plan for.
+    /// * `plan` - The flight plan to set.
+    ///
+    /// # Errors
+    /// Returns an error if the ship is not found.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship.
     pub fn set_flight_plan(&mut self, name: &str, plan: &FlightPlan) -> Result<(), String> {
         if let Some(entity) = self.ships.get_mut(name) {
             entity.write().unwrap().set_flight_plan(plan)
         } else {
             Err(format!(
-                "Could not set acceleration for non-existent entity {}",
-                name
+                "Could not set acceleration for non-existent entity {name}"
             ))
         }
     }
 
+    /// Process all fire actions and turn them into either missile launches or attacks.
+    ///
+    /// # Arguments
+    /// * `fire_actions` - The fire actions to process.
+    /// * `ship_snapshot` - A snapshot of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
+    ///     a ship that was destroyed earlier in the round.
+    /// * `rng` - The random number generator to use.
+    ///
+    /// # Returns
+    /// A list of all the effects resulting from the fire actions.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a ship.
     pub fn fire_actions(
         &mut self,
-        fire_actions: Vec<(String, Vec<FireAction>)>,
+        fire_actions: &[(String, Vec<FireAction>)],
         ship_snapshot: &HashMap<String, Ship>,
         rng: &mut dyn RngCore,
     ) -> Vec<EffectMsg> {
@@ -300,6 +363,18 @@ impl Entities {
         effects
     }
 
+    /// Update all entities.  This is typically done at the end of a round to advance a turn.
+    /// It returns all the effects resulting from the actions of the update.
+    ///
+    /// # Arguments
+    /// * `ship_snapshot` - A snapshot of the ships at the start of the round.  This is used to ensure that
+    ///     any damage applied is simultaneous.  The snapshot is worked off of and real damage or other effects
+    ///     are applied to the actual entities.
+    /// * `rng` - A random number generator.
+    ///
+    /// # Panics
+    /// Panics if the lock (read or write) cannot be obtained when reading any specific entity.
+    #[allow(clippy::too_many_lines)]
     pub fn update_all(
         &mut self,
         ship_snapshot: &HashMap<String, Ship>,
@@ -313,9 +388,9 @@ impl Entities {
         });
 
         // If we have effects from planet updates this has to change and get a bit more complex (like missiles below)
-        planets.iter().for_each(|planet| {
+        for planet in planets {
             planet.write().unwrap().update();
-        });
+        }
 
         let mut cleanup_missile_list = Vec::<String>::new();
 
@@ -393,9 +468,8 @@ impl Entities {
                             position: missile_pos,
                         }])
                     }
-                    update => panic!(
-                        "(Entity.update_all) Unexpected update {:?} during missile updates.",
-                        update
+                    UpdateAction::ShipDestroyed => panic!(
+                        "(Entity.update_all) Unexpected ShipDestroyed update during missile updates."
                     ),
                 }
             })
@@ -423,13 +497,12 @@ impl Entities {
                             Some(vec![
                                 EffectMsg::ShipDestroyed { position: pos },
                                 EffectMsg::Message {
-                                    content: format!("{} destroyed.", name),
+                                    content: format!("{name} destroyed."),
                                 },
                             ])
                         }
                         update => panic!(
-                            "(Entity.update_all) Unexpected update {:?} during ship updates.",
-                            update
+                            "(Entity.update_all) Unexpected update {update:?} during ship updates."
                         ),
                     }
                 })
@@ -437,27 +510,33 @@ impl Entities {
                 .collect::<Vec<_>>(),
         );
 
-        cleanup_missile_list.iter().for_each(|name| {
+        for name in &cleanup_missile_list {
             debug!("(Entity.update_all) Removing missile {}", name);
             self.missiles.remove(name);
-        });
+        }
 
-        cleanup_ships_list.iter().for_each(|name| {
+        for name in &cleanup_ships_list {
             debug!("(Entity.update_all) Removing ship {}", name);
             self.ships.remove(name);
-        });
+        }
 
         effects
     }
 
+    /// Validate the entity data structure, performing some important post-load checks.
+    /// These checks include:
+    /// * A planet has a named primary iff it has a pointer to that planet.
+    /// * Every missile has a point to its target and the names match.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read a planet or missile.
+    #[must_use]
     pub fn validate(&self) -> bool {
         for planet in self.planets.values() {
             let planet = planet.read().unwrap();
 
-            if planet.dependency < 0 {
-                return false;
-            }
-
+            // Clearer if we spell out each branch
+            #[allow(clippy::match_same_arms)]
             match (&planet.primary, planet.primary_ptr.as_ref()) {
                 (Some(_), None) => return false,
                 (None, Some(_)) => return false,
@@ -488,6 +567,15 @@ impl Entities {
         true
     }
 
+    /// Fix secondary pointers in entities. For planets this is ensuring a link to the named primary for a planet.
+    /// For missiles this is ensuring a link to the named target for a missile.
+    ///
+    /// # Errors
+    /// Returns an error if a named planet entity is not found when building a primary pointer.
+    /// Returns an error if a named ship entity is not found when building a target pointer.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write to a planet or missile.
     pub fn fixup_pointers(&mut self) -> Result<(), String> {
         for planet in self.planets.values() {
             let mut planet = planet.write().unwrap();
@@ -517,6 +605,10 @@ impl Entities {
         Ok(())
     }
 
+    /// Reset the gravity wells for all planets.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write to a planet.
     pub fn reset_gravity_wells(&mut self) {
         for planet in self.planets.values() {
             let mut planet = planet.write().unwrap();
@@ -679,7 +771,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -689,7 +781,7 @@ mod tests {
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -707,14 +799,14 @@ mod tests {
         entities.launch_missile("Ship1", "Ship2").unwrap();
 
         // Test Display trait
-        let display_output = format!("{}", entities);
+        let display_output = format!("{entities}");
         assert!(display_output.contains("Ship1"));
         assert!(display_output.contains("Planet1"));
         assert!(display_output.contains("Ship2"));
         assert!(display_output.contains("Ship1::Ship2::0"));
 
         // Test Debug trait
-        let debug_output = format!("{:?}", entities);
+        let debug_output = format!("{entities:?}");
         assert_eq!(
             display_output, debug_output,
             "Display and Debug outputs should be identical"
@@ -723,12 +815,12 @@ mod tests {
         // Test empty Entities
         let empty_entities = Entities::new();
         assert_eq!(
-            format!("{}", empty_entities),
+            format!("{empty_entities}"),
             "Entities {}",
             "Empty Entities should display as 'Entities {{}}'"
         );
         assert_eq!(
-            format!("{:?}", empty_entities),
+            format!("{empty_entities:?}"),
             "Entities {}",
             "Empty Entities should debug as 'Entities {{}}'"
         );
@@ -746,7 +838,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -754,7 +846,7 @@ mod tests {
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -762,7 +854,7 @@ mod tests {
             Vec3::new(7.0, 8.0, 9.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -812,7 +904,7 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -820,7 +912,7 @@ mod tests {
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -828,7 +920,7 @@ mod tests {
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -855,9 +947,9 @@ mod tests {
         entities.update_all(&ship_snapshot, &mut rng);
 
         // Validate the new positions for each entity
-        let expected_position1 = Vec3::new(5720442.4, 5721442.4, 5722442.4);
-        let expected_position2 = Vec3::new(11442884.8, 5724442.4, -11432884.8);
-        let expected_position3 = Vec3::new(-5712442.4, -5711442.4, 9000.0);
+        let expected_position1 = Vec3::new(5_720_442.4, 5_721_442.4, 5_722_442.4);
+        let expected_position2 = Vec3::new(11_442_884.8, 5_724_442.4, -11_432_884.8);
+        let expected_position3 = Vec3::new(-5_712_442.4, -5_711_442.4, 9000.0);
         assert_relative_eq!(
             entities
                 .ships
@@ -921,7 +1013,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         assert!(
@@ -929,13 +1021,13 @@ mod tests {
             "Entities with a valid planet and ship should be valid"
         );
 
-        // Test 3.5: Add a second ship
+        // Test 4: Add a second ship
         entities.add_ship(
             String::from("Ship2"),
             Vec3::new(4.0, 5.0, 6.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         assert!(
@@ -943,52 +1035,14 @@ mod tests {
             "Entities with a valid planet and two ships should be valid"
         );
 
-        // Test 4: Add a valid missile
+        // Test 5: Add a valid missile
         entities.launch_missile("Ship1", "Ship2").unwrap();
         assert!(
             entities.validate(),
             "Entities with a valid planet, two ships, and missile should be valid"
         );
 
-        // Test 5: Add a planet with an invalid dependency
-        let planet = Planet::new(
-            String::from("InvalidPlanet"),
-            Vec3::new(7.0, 8.0, 9.0),
-            String::from("red"),
-            6371e3,
-            5.97e24,
-            Some(String::from("NonExistentPlanet")),
-            None,
-            -6,
-        );
-
-        entities
-            .planets
-            .insert(String::from("InvalidPlanet"), Arc::new(RwLock::new(planet)));
-        assert!(
-            !entities.validate(),
-            "Entities with an invalid planet dependency should be invalid"
-        );
-
-        // Test 6: Fix the invalid dependency
-        {
-            // Do this in its own block to release the locks after modification.
-            let mut planet = entities
-                .planets
-                .get_mut("InvalidPlanet")
-                .unwrap()
-                .write()
-                .unwrap();
-            planet.dependency = 0;
-            planet.primary = None;
-            planet.primary_ptr = None;
-        }
-        assert!(
-            entities.validate(),
-            "Entities with fixed planet dependency should be valid"
-        );
-
-        // Test 6.5: Add a planet with a missing primary_ptr
+        // Test 5: Add a planet with a missing primary_ptr
         let planet = Planet::new(
             String::from("InvalidPlanet2"),
             Vec3::new(7.0, 8.0, 9.0),
@@ -996,7 +1050,7 @@ mod tests {
             6371e3,
             5.97e24,
             Some(String::from("Sun")),
-            None,
+            &None,
             1,
         );
 
@@ -1009,7 +1063,7 @@ mod tests {
             "Entities with an invalid primary_ptr should be invalid"
         );
 
-        // Test 7: Fix the invalid primary_ptr
+        // Test 6: Fix the invalid primary_ptr
         {
             let planets_table = &mut entities.planets;
             let sun = planets_table.get_mut("Sun").unwrap().clone();
@@ -1025,10 +1079,10 @@ mod tests {
             "Entities with fixed primary_ptr should be valid"
         );
 
-        // Test 8: Make the primary_ptr have a different name from the primary
+        // Test 7: Make the primary_ptr have a different name from the primary
         {
             let planets_table = &mut entities.planets;
-            let invalid_planet = planets_table.get_mut("InvalidPlanet").unwrap().clone();
+            let invalid_planet = planets_table.get_mut("InvalidPlanet2").unwrap().clone();
             let mut planet = planets_table
                 .get_mut("InvalidPlanet2")
                 .unwrap()
@@ -1050,7 +1104,7 @@ mod tests {
             Vec3::new(300.0, 200.0, 300.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1059,11 +1113,11 @@ mod tests {
             Vec3::new(800.0, 500.0, 300.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.launch_missile("Ship1", "Ship2").unwrap();
-        // Test 9: Create a missile with no target_ptr
+        // Test 8: Create a missile with no target_ptr
         {
             entities
                 .missiles
@@ -1077,7 +1131,7 @@ mod tests {
             !entities.validate(),
             "Entities with a missile with no target_ptr should be invalid"
         );
-        // Test 10: Fix the missile target_ptr
+        // Test 9: Fix the missile target_ptr
         {
             let missiles_table = &mut entities.missiles;
             let ship2 = entities.ships.get("Ship2").unwrap().clone();
@@ -1138,8 +1192,7 @@ mod tests {
     #[test_log::test]
     // TODO: Add test to add a moon.
     fn test_complex_planet_update() -> Result<(), String> {
-        let _ = pretty_env_logger::try_init();
-        let mut rng = SmallRng::seed_from_u64(0);
+        const EARTH_RADIUS: f64 = 151.25e9;
 
         fn check_radius_and_y(
             pos: Vec3,
@@ -1158,17 +1211,19 @@ mod tests {
             );
             (
                 (radius_2d.magnitude() - expected_mag).abs() / expected_mag < TOLERANCE,
-                radius.y == expected_y,
+                (radius.y - expected_y).abs() / expected_y < TOLERANCE,
             )
         }
 
+        let _ = pretty_env_logger::try_init();
+        let mut rng = SmallRng::seed_from_u64(0);
+
         let mut entities = Entities::new();
 
-        const EARTH_RADIUS: f64 = 151.25e9;
         // Create some planets and see if they move.
         entities.add_planet(
             String::from("Planet1"),
-            Vec3::new(EARTH_RADIUS, 2000000.0, 0.0),
+            Vec3::new(EARTH_RADIUS, 2_000_000.0, 0.0),
             String::from("blue"),
             None,
             6.371e6,
@@ -1176,7 +1231,7 @@ mod tests {
         )?;
         entities.add_planet(
             String::from("Planet2"),
-            Vec3::new(0.0, 5000000.0, EARTH_RADIUS),
+            Vec3::new(0.0, 5_000_000.0, EARTH_RADIUS),
             String::from("red"),
             None,
             3e7,
@@ -1214,7 +1269,7 @@ mod tests {
                     .get_position(),
                 Vec3::zero(),
                 EARTH_RADIUS,
-                2000000.0
+                2_000_000.0
             )
         );
         assert_eq!(
@@ -1229,7 +1284,7 @@ mod tests {
                     .get_position(),
                 Vec3::zero(),
                 EARTH_RADIUS,
-                5000000.0
+                5_000_000.0
             )
         );
         assert_eq!(
@@ -1244,7 +1299,7 @@ mod tests {
                     .get_position(),
                 Vec3::zero(),
                 EARTH_RADIUS,
-                8000.0
+                8_000.0
             )
         );
 
@@ -1263,7 +1318,7 @@ mod tests {
             7e8,
             100.0,
             None,
-            None,
+            &None,
             0,
         );
 
@@ -1276,7 +1331,7 @@ mod tests {
         let tst_planet_2 = Planet::new(
             String::from("planet2"),
             Vec3 {
-                x: 1000000000.0,
+                x: 1_000_000_000.0,
                 y: 0.0,
                 z: 0.0,
             },
@@ -1284,7 +1339,7 @@ mod tests {
             4e6,
             100.0,
             Some(String::from("planet1")),
-            Some(Arc::new(RwLock::new(tst_planet))),
+            &Some(Arc::new(RwLock::new(tst_planet))),
             1,
         );
 
@@ -1303,7 +1358,7 @@ mod tests {
             4e6,
             100.0,
             Some(String::from("planet1")),
-            None,
+            &None,
             0,
         );
 
@@ -1316,16 +1371,17 @@ mod tests {
 
     #[test_log::test]
     fn test_mixed_entities_serialize() -> Result<(), String> {
-        let mut entities = Entities::new();
-        let design = Arc::new(ShipDesignTemplate::default());
-
         // This constant is the radius of the earth's orbit (distance from sun).
         // It is NOT the radius of the earth (6.371e6 m)
         const EARTH_RADIUS: f64 = 151.25e9;
+
+        let mut entities = Entities::new();
+        let design = Arc::new(ShipDesignTemplate::default());
+
         // Create some planets and see if they move.
         entities.add_planet(
             String::from("Planet1"),
-            Vec3::new(EARTH_RADIUS, 2000000.0, 0.0),
+            Vec3::new(EARTH_RADIUS, 2_000_000.0, 0.0),
             String::from("blue"),
             None,
             6.371e6,
@@ -1333,7 +1389,7 @@ mod tests {
         )?;
         entities.add_planet(
             String::from("Planet2"),
-            Vec3::new(0.0, 5000000.0, EARTH_RADIUS),
+            Vec3::new(0.0, 5_000_000.0, EARTH_RADIUS),
             String::from("red"),
             None,
             3e7,
@@ -1358,7 +1414,7 @@ mod tests {
             Vec3::new(1000.0, 2000.0, 3000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -1366,7 +1422,7 @@ mod tests {
             Vec3::new(4000.0, 5000.0, 6000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
         entities.add_ship(
@@ -1374,7 +1430,7 @@ mod tests {
             Vec3::new(7000.0, 8000.0, 9000.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1424,11 +1480,11 @@ mod tests {
             }],
         "missiles":[],
         "planets":[
-            {"name":"Planet1","position":[151250000000.0,2000000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6371000.0,"mass":5.972e24,
-            "gravity_radius_1":6375069.342849095,"gravity_radius_05":9015709.525726125,"gravity_radius_025":12750138.68569819},
-            {"name":"Planet2","position":[0.0,5000000.0,151250000000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30000000.0,"mass":3.00e23},
-            {"name":"Planet3","position":[106949900654.4653,8000.0,106949900654.4653],"velocity":[0.0,0.0,0.0],"color":"green","radius":4000000.0,"mass":1e26,
-            "gravity_radius_2":18446331.779326223,"gravity_radius_1":26087052.57835697,"gravity_radius_05":36892663.558652446,"gravity_radius_025":52174105.15671394}
+            {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,
+            "gravity_radius_1":6_375_069.342_849_095,"gravity_radius_05":9_015_709.525_726_125,"gravity_radius_025":12_750_138.685_698_19},
+            {"name":"Planet2","position":[0.0,5_000_000.0,151_250_000_000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30_000_000.0,"mass":3.00e23},
+            {"name":"Planet3","position":[106_949_900_654.465_3,8000.0,106_949_900_654.465_3],"velocity":[0.0,0.0,0.0],"color":"green","radius":4_000_000.0,"mass":1e26,
+            "gravity_radius_2":18_446_331.779_326_223,"gravity_radius_1":26_087_052.578_356_97,"gravity_radius_05":36_892_663.558_652_446,"gravity_radius_025":52_174_105.156_713_94}
          ]});
 
         assert_json_eq!(&entities, &cmp);
@@ -1459,7 +1515,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
-            design.clone(),
+            &design,
             None,
         );
         entities2.add_ship(
@@ -1467,7 +1523,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::new(0.1, 0.2, 0.3),
             Vec3::new(2.0, 0.0, 3.0),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1520,7 +1576,7 @@ mod tests {
             Vec3::new(10.0, 11.0, 12.0),
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
-            design.clone(),
+            &design,
             None,
         );
         assert_ne!(
@@ -1534,7 +1590,7 @@ mod tests {
             Vec3::new(10.0, 11.0, 12.0),
             Vec3::new(1.0, 1.1, 1.2),
             Vec3::new(1.0, 1.1, 1.2),
-            design.clone(),
+            &design,
             None,
         );
         assert_eq!(entities1, entities2, "Entities should be equal again");
@@ -1621,7 +1677,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 
@@ -1660,7 +1716,7 @@ mod tests {
             Vec3::new(1.0, 2.0, 3.0),
             Vec3::zero(),
             Vec3::zero(),
-            design.clone(),
+            &design,
             None,
         );
 
@@ -1689,13 +1745,13 @@ mod tests {
 
         // Test 1: Valid file
         let scenario = json!({"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
-             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
+             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"sun"}]});
 
@@ -1707,14 +1763,14 @@ mod tests {
 
         // Test 2: Add missile with a non-existent target
         let bad_scenario = json!({"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
-             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
-             {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
+             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
+             {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"sun"}]});
 
@@ -1726,13 +1782,13 @@ mod tests {
 
         // Test3: Add a planet with a non-existent primary
         let bad_scenario = json!({"ships":[
-            {"name":"ship1","position":[1000000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+            {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
-             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
+             "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"InvalidPlanet"}]});
 
@@ -1752,7 +1808,7 @@ mod tests {
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::zero(),
             Vec3::zero(),
-            Arc::new(ShipDesignTemplate::default()),
+            &Arc::new(ShipDesignTemplate::default()),
             None,
         );
 

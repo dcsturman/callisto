@@ -7,7 +7,7 @@ use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::entity::{Vec3, DELTA_TIME, G};
+use crate::entity::{Vec3, DELTA_TIME_F64, G};
 use crate::missile::IMPACT_DISTANCE;
 use crate::payloads::Vec3asVec;
 use crate::ship::FlightPlan;
@@ -75,7 +75,7 @@ impl FlightParams {
             + self.start_pos
             - (self.end_pos
                 + if let Some(target_vel) = self.target_velocity {
-                    target_vel * ((t_2 + t_1) / DELTA_TIME as f64).ceil() * DELTA_TIME as f64
+                    target_vel * ((t_2 + t_1) / DELTA_TIME_F64).ceil() * DELTA_TIME_F64
                 } else {
                     Vec3::zero()
                 })
@@ -108,8 +108,8 @@ impl FlightParams {
             match attempt {
                 0 => (accel, -accel, t_1, t_2),
                 1 => (-accel, accel, t_1, t_2),
-                2 => (accel, -accel, 1000000.0, 1000000.0),
-                _ => (-accel, accel, -1000000.0, -1000000.0),
+                2 => (accel, -accel, 1_000_000.0, 1_000_000.0),
+                _ => (-accel, accel, -1_000_000.0, -1_000_000.0),
             }
         } else if approx::ulps_eq!(distance, 0.0) {
             debug!("(best_guess) Making guess given zero differences.");
@@ -117,8 +117,8 @@ impl FlightParams {
             match attempt {
                 0 => (delta, -delta, 0.0, 0.0),
                 1 => (-delta, delta, 0.0, 0.0),
-                2 => (delta, -delta, 1000000.0, 1000000.0),
-                _ => (-delta, delta, -1000000.0, -1000000.0),
+                2 => (delta, -delta, 1_000_000.0, 1_000_000.0),
+                _ => (-delta, delta, -1_000_000.0, -1_000_000.0),
             }
         } else {
             debug!("(best_guess) Making guess based on distance.");
@@ -140,8 +140,8 @@ impl FlightParams {
                     (-self.start_vel.magnitude() + root_part) / self.max_acceleration,
                     (-self.start_vel.magnitude() - root_part) / self.max_acceleration,
                 ),
-                1 => (1000000.0, 1000000.0),
-                2 => (-1000000.0, -1000000.0),
+                1 => (1_000_000.0, 1_000_000.0),
+                2 => (-1_000_000.0, -1_000_000.0),
                 _ => (0.0, 0.0),
             };
 
@@ -159,7 +159,7 @@ impl FlightParams {
 
     /**
      * Computes a flight path given the parameters.
-     * Returns a FlightPathResult which contains the path, the end velocity and the plan.
+     * Returns a `FlightPathResult` which contains the path, the end velocity and the plan.
      */
     pub fn compute_flight_path(&self) -> Option<FlightPathResult> {
         for attempt in 0..3 {
@@ -218,6 +218,15 @@ impl FlightParams {
             let t_1 = answer[6];
             let t_2 = answer[7];
 
+            if t_1 < 0.0 || t_2 < 0.0 {
+                warn!(
+                    "(compute_flight_path) Unable to solve flight path with params: {:?} with negative time.",
+                    self
+                );
+                // This attempt didn't work. On to the next one (and skip all the use of the answer)
+                continue;
+            }
+
             info!(
                 "(compute_flight_path) Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
                 a_1, a_2, t_1, t_2
@@ -230,14 +239,13 @@ impl FlightParams {
 
             // Every path starts with the starting position
             path.push(pos);
-            for (accel, duration) in [(a_1, t_1), (a_2, t_2)].iter() {
+            for (accel, duration) in [(a_1, t_1), (a_2, t_2)] {
                 let mut time = 0.0;
-                let mut delta: f64 = DELTA_TIME as f64;
-                while approx::relative_ne!(time - *duration, 0.0, epsilon = 1e-4)
-                    && time < *duration
+                let mut delta: f64 = DELTA_TIME_F64;
+                while approx::relative_ne!(time - duration, 0.0, epsilon = 1e-4) && time < duration
                 {
-                    if time + delta > *duration {
-                        delta = *duration - time;
+                    if time + delta > duration {
+                        delta = duration - time;
                     }
                     let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
                     let new_vel = vel + accel * delta;
@@ -252,15 +260,19 @@ impl FlightParams {
                 }
             }
 
+            // Convert time into an unsigned integer.
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_sign_loss)]
+            let t_1 = t_1.round() as u64;
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_sign_loss)]
+            let t_2 = t_2.round() as u64;
+
             return Some(FlightPathResult {
                 path,
                 end_velocity: vel,
                 // Convert acceleration back into G's (vs m/s^2) at this point.
-                // Also convert time into an unsigned integer.
-                plan: FlightPlan::new(
-                    (a_1 / G, t_1.round() as u64).into(),
-                    Some((a_2 / G, t_2.round() as u64).into()),
-                ),
+                plan: FlightPlan::new((a_1 / G, t_1).into(), Some((a_2 / G, t_2).into())),
             });
         }
         None
@@ -403,7 +415,7 @@ impl TargetParams {
 
         path.push(pos);
         let mut time = 0.0;
-        let mut delta: f64 = DELTA_TIME as f64;
+        let mut delta: f64 = DELTA_TIME_F64;
         while time < answer[3] {
             if time + delta > answer[3] {
                 delta = answer[3] - time;
@@ -453,12 +465,21 @@ impl TargetParams {
         first_attempt.target_vel = Vec3::zero();
 
         match first_attempt.solve(&initial) {
-            Ok(result) if result[3] <= DELTA_TIME as f64 => {
+            Ok(result) if result[3] <= DELTA_TIME_F64 => {
                 let a = Vec3::from(
                     (<&[f64] as TryInto<[f64; 3]>>::try_into(&result[0..3]))
                         .expect("Unable to convert to fixed array"),
                 );
                 let t = result[3];
+
+                if t < 0.0 {
+                    warn!("(compute_target_path) First attempt failed. Time is negative.");
+                    return None;
+                }
+                #[allow(clippy::cast_possible_truncation)]
+                #[allow(clippy::cast_sign_loss)]
+                let t_u64 = t.round() as u64;
+
                 debug!(
                     "(compute_target_path) First attempt worked. Acceleration: {:?}, time: {:?}.",
                     a, t
@@ -469,7 +490,7 @@ impl TargetParams {
                 Some(FlightPathResult {
                     path: first_attempt.compute_path(&result),
                     end_velocity: self.start_vel + a * t,
-                    plan: FlightPlan::new((a / G, t.round() as u64).into(), None),
+                    plan: FlightPlan::new((a / G, t_u64).into(), None),
                 })
             }
             Ok(_result) => {
@@ -491,11 +512,20 @@ impl TargetParams {
                                 .expect("Unable to convert to fixed array"),
                         );
                         let t = result[3];
+
+                        if t < 0.0 {
+                            warn!("(compute_target_path) Second attempt failed. Time is negative.");
+                            return None;
+                        }
+
+                        #[allow(clippy::cast_possible_truncation)]
+                        #[allow(clippy::cast_sign_loss)]
+                        let t_u64 = t.round() as u64;
                         debug!("(compute_target_path) Second attempt worked.",);
                         Some(FlightPathResult {
                             path: self.compute_path(&result),
                             end_velocity: self.start_vel + a * t,
-                            plan: FlightPlan::new((a / G, t.round() as u64).into(), None),
+                            plan: FlightPlan::new((a / G, t_u64).into(), None),
                         })
                     },
                 )
@@ -699,14 +729,14 @@ mod tests {
         const MAX_ACCEL: f64 = 6.0 * G;
         let params = FlightParams {
             start_pos: Vec3 {
-                x: 7000000.0,
-                y: -7000000.0,
-                z: 7000000.0,
+                x: 7_000_000.0,
+                y: -7_000_000.0,
+                z: 7_000_000.0,
             },
             end_pos: Vec3 {
-                x: 145738.5,
-                y: 39021470.2,
-                z: 145738.5,
+                x: 145_738.5,
+                y: 39_021_470.2,
+                z: 145_738.5,
             },
             start_vel: Vec3 {
                 x: 0.0,
@@ -743,7 +773,10 @@ mod tests {
         // expected_len = CEIL(t/DELTA_TIME)+3;
 
         let t = 2.0 * ((params.start_pos - params.end_pos).magnitude() / MAX_ACCEL).sqrt();
-        let expected_len = (t / DELTA_TIME as f64).floor() as usize + 3;
+
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_possible_truncation)]
+        let expected_len = (t / DELTA_TIME_F64).floor() as usize + 3;
 
         info!(
             " distance: {}",
@@ -844,8 +877,9 @@ mod tests {
 
         let plan = params.compute_flight_path().unwrap();
 
+        #[allow(clippy::cast_precision_loss)]
         let full_rounds_duration =
-            (plan.plan.duration() as f64 / DELTA_TIME as f64).ceil() * DELTA_TIME as f64;
+            (plan.plan.duration() as f64 / DELTA_TIME_F64).ceil() * DELTA_TIME_F64;
 
         let real_end_target = Vec3 {
             x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration,
@@ -891,14 +925,14 @@ mod tests {
     fn test_compute_flight_path_zero_velocity() {
         let params = FlightParams {
             start_pos: Vec3 {
-                x: 7000000.0,
-                y: -7000000.0,
-                z: 7000000.0,
+                x: 7_000_000.0,
+                y: -7_000_000.0,
+                z: 7_000_000.0,
             },
             end_pos: Vec3 {
-                x: 7000000.0,
-                y: -7000000.0,
-                z: 7000000.0,
+                x: 7_000_000.0,
+                y: -7_000_000.0,
+                z: 7_000_000.0,
             },
             start_vel: Vec3 {
                 x: 6000.0,
@@ -1006,7 +1040,7 @@ mod tests {
     #[test_log::test]
     fn test_compute_flight_plan_to_current_location() {
         // Define current position and velocity
-        let current_pos = Vec3::new(1000000.0, 2000000.0, 3000000.0);
+        let current_pos = Vec3::new(1_000_000.0, 2_000_000.0, 3_000_000.0);
         let current_vel = Vec3::new(100.0, 200.0, 300.0);
 
         // Create FlightParams
