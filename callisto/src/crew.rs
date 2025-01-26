@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Skills {
     Pilot,
     EngineeringJump,
@@ -31,6 +32,7 @@ fn default_gunnery() -> Vec<u8> {
 }
 
 impl Crew {
+    #[must_use]
     pub fn new() -> Crew {
         Crew {
             pilot: 0,
@@ -42,6 +44,16 @@ impl Crew {
         }
     }
 
+    /// Get the skill level for a crew for a particular skill.  Note that you cannot
+    /// use this function to get gunnery skill as there may be multiple gunners in the crew. Use
+    /// `get_gunnery` instead.
+    ///
+    /// # Arguments
+    /// * `skill` - The skill to get the level for.
+    ///
+    /// # Panics
+    /// Panics if the skill is gunnery.
+    #[must_use]
     pub fn get_skill(&self, skill: Skills) -> u8 {
         match skill {
             Skills::Pilot => self.pilot,
@@ -53,26 +65,32 @@ impl Crew {
         }
     }
 
+    #[must_use]
     pub fn get_pilot(&self) -> u8 {
         self.pilot
     }
 
+    #[must_use]
     pub fn get_engineering_jump(&self) -> u8 {
         self.engineering_jump
     }
 
+    #[must_use]
     pub fn get_engineering_power(&self) -> u8 {
         self.engineering_power
     }
 
+    #[must_use]
     pub fn get_engineering_maneuver(&self) -> u8 {
         self.engineering_maneuver
     }
 
+    #[must_use]
     pub fn get_sensors(&self) -> u8 {
         self.sensors
     }
 
+    #[must_use]
     pub fn get_gunnery(&self, gun: usize) -> u8 {
         if gun >= self.gunnery.len() {
             return 0;
@@ -80,6 +98,15 @@ impl Crew {
         self.gunnery[gun]
     }
 
+    /// Sets a crew skill level.  Note that setting a skill this way for gunnery is not allowed.
+    /// Instead use `add_gunnery`.
+    ///
+    /// # Arguments
+    /// * `skill` - The skill to set.
+    /// * `value` - The value to set the skill to.
+    ///
+    /// # Panics
+    /// Panics if the skill is gunnery.
     pub fn set_skill(&mut self, skill: Skills, value: u8) {
         match skill {
             Skills::Pilot => self.pilot = value,
@@ -139,7 +166,7 @@ mod tests {
     #[should_panic(expected = "(Crew.getSkill) Multiple gunners possible.")]
     fn test_get_skill_gunnery_panic() {
         let crew = Crew::new();
-        crew.get_skill(Skills::Gunnery);
+        let _ = crew.get_skill(Skills::Gunnery);
     }
 
     #[test_log::test]

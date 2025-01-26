@@ -6,7 +6,7 @@ use cgmath::InnerSpace;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::authentication::Authenticator;
+use crate::authentication::{Authenticator, InvalidKeyError};
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
@@ -21,26 +21,49 @@ use crate::{debug, info, warn};
 // Add function beyond what Entities does and provides an API to our server.
 pub struct Server {
     entities: Arc<Mutex<Entities>>,
+    authenticator: Arc<Box<dyn Authenticator>>,
     test_mode: bool,
 }
 
 impl Server {
-    pub fn new(entities: Arc<Mutex<Entities>>, test_mode: bool) -> Self {
+    pub fn new(
+        entities: Arc<Mutex<Entities>>,
+        authenticator: Arc<Box<dyn Authenticator>>,
+        test_mode: bool,
+    ) -> Self {
         Server {
             entities,
+            authenticator,
             test_mode,
         }
     }
 
+    /// Authenticates a user.
+    ///
+    /// This function handles the login process, including authentication and session key management.
+    /// In the common case, it checks that the user has previously been authenticated and has a valid
+    /// session key.  It then returns the user's email. The session key is returned only if its is newly created
+    /// (so not in this case).
+    ///
+    /// Otherwise it looks for a valid referral code (from Google `OAuth2`) and uses that to build a session
+    /// key.  It then returns the user's email and the newly minted session key.
+    ///
+    /// # Arguments
+    /// * `login` - The login message, possibly containing the referral code.
+    /// * `valid_email` - The session cookie, if one exists.
+    ///
+    /// # Errors
+    /// Returns an error if the user cannot be authenticated.
     pub async fn login(
         &self,
         login: LoginMsg,
         valid_email: &Option<String>,
-        authenticator: Arc<Box<dyn Authenticator>>,
     ) -> Result<(AuthResponse, Option<String>), String> {
         info!("(Server.login) Received and processing login request.",);
 
-        // Three cases. 1) if there's a valid email, just let the client know what it is.
+        // Three cases.
+        // 1) if there's a valid email, just let the client know what it is.  We do this here so that this
+        // method is always the source of an AuthReponse and we don't need to create those in the dispatch handler.
         // 2) If there is a code then we do authentication via Google OAuth2.
         // 3) this isn't authenticated and we need to force reauthentication.  We do that
         // by returning an error and eventually a 401 to the client.
@@ -50,10 +73,11 @@ impl Server {
             };
             Ok((auth_response, None))
         } else if let Some(code) = login.code {
-            let (session_key, email) = authenticator
+            let (session_key, email) = self
+                .authenticator
                 .authenticate_user(&code)
                 .await
-                .map_err(|e| format!("(Server.login) Unable to authenticate user: {:?}", e))?;
+                .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
             debug!(
                 "(Server.login) Authenticated user {} with session key.",
                 email
@@ -66,6 +90,27 @@ impl Server {
         }
     }
 
+    /// Validates a session key with the given authenticator.
+    ///
+    /// # Arguments
+    /// * `cookie` - The session cookie, if one exists.
+    ///
+    /// # Errors
+    /// Returns an error if the session key is invalid
+    pub fn validate_session_key(&self, cookie: &str) -> Result<String, InvalidKeyError> {
+        self.authenticator.validate_session_key(cookie)
+    }
+
+    /// Adds a ship to the entities.
+    ///
+    /// # Arguments
+    /// * `ship` - The message containing the parameters for the ship.
+    ///
+    /// # Errors
+    /// Returns an error if the ship design cannot be found.
+    ///
+    /// # Panics
+    /// Panics if the ship templates are not loaded or if the lock on entities cannot be obtained.
     pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
         info!(
             "(Server.add_ship) Received and processing add ship request. {:?}",
@@ -84,25 +129,36 @@ impl Server {
             ship.position,
             ship.velocity,
             ship.acceleration,
-            design.clone(),
+            design,
             ship.crew,
         );
 
         Ok(msg_json("Add ship action executed"))
     }
 
-    pub fn set_crew_actions(&self, request: SetCrewActions) -> Result<String, String> {
+    /// Sets the crew actions for a ship.
+    ///
+    /// # Arguments
+    /// * `request` - The message containing the parameters for the ship.
+    ///
+    /// # Errors
+    /// Returns an error if the ship cannot be found.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities or we cannot obtain a write
+    /// lock on the ship in question.
+    pub fn set_crew_actions(&self, request: &SetCrewActions) -> Result<String, String> {
         let entities = self
             .entities
             .lock()
-            .map_err(|_e| "Unable to obtain lock on Entities.")?;
+            .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
         let mut ship = entities
             .ships
             .get(&request.ship_name)
             .ok_or("Unable to find ship to set agility for.".to_string())?
             .write()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
         // Go through each possible action in SetCrewActions, one by one.
         if request.dodge_thrust.is_some() || request.assist_gunners.is_some() {
@@ -112,10 +168,19 @@ impl Server {
         Ok(msg_json("Set crew action executed"))
     }
 
-    pub fn get_entities(&self) -> Result<Entities, String> {
-        Ok(self.entities.lock().unwrap().clone())
+    /// Gets the current entities and returns them in a `Result`.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
+    #[must_use]
+    pub fn get_entities(&self) -> Entities {
+        self.entities.lock().unwrap().clone()
     }
 
+    /// Gets the ship designs and serializes it to JSON.
+    ///
+    /// # Panics
+    /// Panics if the ship templates have not been loaded.
     pub fn get_designs(&self) -> String {
         // Strip the Arc, etc. from the ShipTemplates before marshalling back.
         let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
@@ -128,6 +193,16 @@ impl Server {
         serde_json::to_string(&clean_templates).unwrap()
     }
 
+    /// Adds a planet to the entities.
+    ///
+    /// # Arguments
+    /// * `planet` - The message containing the parameters for the planet.
+    ///
+    /// # Errors
+    /// Returns an error if the planet already exists in the entities.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write the entities.
     pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
         // Add the planet to the server
         self.entities.lock().unwrap().add_planet(
@@ -142,38 +217,66 @@ impl Server {
         Ok(msg_json("Add planet action executed"))
     }
 
-    pub fn remove(&self, name: RemoveEntityMsg) -> Result<String, String> {
+    /// Removes an entity from the entities.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the entity to remove.
+    ///
+    /// # Errors
+    /// Returns an error if the name entity does not exist in the list of entities.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write the entities.
+    pub fn remove(&self, name: &RemoveEntityMsg) -> Result<String, String> {
         // Remove the entity from the server
         let mut entities = self.entities.lock().unwrap();
-        if entities.ships.remove(&name).is_none()
-            && entities.planets.remove(&name).is_none()
-            && entities.missiles.remove(&name).is_none()
+        if entities.ships.remove(name).is_none()
+            && entities.planets.remove(name).is_none()
+            && entities.missiles.remove(name).is_none()
         {
             warn!("Unable to find entity named {} to remove", name);
-            let err_msg = format!("Unable to find entity named {} to remove", name);
+            let err_msg = format!("Unable to find entity named {name} to remove");
             return Err(err_msg);
         }
 
         Ok(msg_json("Remove action executed"))
     }
 
-    pub fn set_plan(&self, plan_msg: SetPlanMsg) -> Result<String, String> {
+    /// Sets the flight plan for a ship.
+    ///
+    /// # Arguments
+    /// * `plan_msg` - The message containing the parameters for the flight plan.
+    ///
+    /// # Errors
+    /// Returns an error if the flight plan is one that is not legal for this ship (e.g. acceleration is too high)
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
+    pub fn set_plan(&self, plan_msg: &SetPlanMsg) -> Result<String, String> {
         // Change the acceleration of the entity
         self.entities
             .lock()
             .unwrap()
             .set_flight_plan(&plan_msg.name, &plan_msg.plan)
-            .map(|_| msg_json("Set acceleration action executed"))
+            .map(|()| msg_json("Set acceleration action executed"))
     }
 
-    pub fn update(&mut self, fire_actions: FireActionsMsg) -> String {
+    /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
+    /// (e.g. move a ship, planet or missile) as well as new fire actions.
+    ///
+    /// # Arguments
+    /// * `fire_actions` - The fire actions to execute.
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
+    pub fn update(&mut self, fire_actions: &FireActionsMsg) -> String {
         let mut rng = get_rng(self.test_mode);
 
         // Grab the lock on entities
         let mut entities = self
             .entities
             .lock()
-            .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {}", e));
+            .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
         // Take a snapshot of all the ships.  We'll use this for attackers while
         // damage goes directly onto the "official" ships.  But it means if they are damaged
@@ -196,7 +299,7 @@ impl Server {
 
         // 5. Marshall the events and reply with them back to the user.
         let json = serde_json::to_string(&effects)
-            .unwrap_or_else(|_| panic!("Unable to serialize `effects` {:?}.", effects));
+            .unwrap_or_else(|_| panic!("Unable to serialize `effects` {effects:?}."));
 
         // 6. Reset all ship agility setting as the round is over.
         for ship in entities.ships.values() {
@@ -206,7 +309,18 @@ impl Server {
         json
     }
 
-    pub fn compute_path(&self, msg: ComputePathMsg) -> Result<String, String> {
+    /// Computes a flight path for a ship.
+    ///
+    /// # Arguments
+    /// * `msg` - The message containing the parameters for the flight path.
+    ///
+    /// # Errors
+    /// Returns an error if the computer cannot find a valid flight path (solve the non-linear equations)
+    /// or if we cannot marshall the flight path into JSON (should never happen).
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to read the entities.
+    pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<String, String> {
         info!(
             "(/compute_path) Received and processing compute path request. {:?}",
             msg
@@ -228,7 +342,7 @@ impl Server {
             (
                 entity.get_position(),
                 entity.get_velocity(),
-                entity.max_acceleration() * G,
+                G * f64::from(entity.max_acceleration()),
             )
         };
 
@@ -254,22 +368,19 @@ impl Server {
 
         debug!("(/compute_path)Call computer with params: {:?}", params);
 
-        let plan = if let Some(plan) = params.compute_flight_path() {
-            debug!("(/compute_path) Plan: {:?}", plan);
-            plan
-        } else {
-            return Err(format!("Unable to compute flight path: {:?}", params));
+        let Some(plan) = params.compute_flight_path() else {
+            return Err(format!("Unable to compute flight path: {params:?}"));
         };
 
+        debug!("(/compute_path) Plan: {:?}", plan);
         debug!(
             "(/compute_path) Plan has real acceleration of {} vs max_accel of {}",
             plan.plan.0 .0.magnitude(),
             max_accel / G
         );
 
-        let json = match serde_json::to_string(&plan) {
-            Ok(json) => json,
-            Err(_) => return Err("Error converting flight path to JSON".to_string()),
+        let Ok(json) = serde_json::to_string(&plan) else {
+            return Err("Error converting flight path to JSON".to_string());
         };
 
         debug!("(/compute_path) Flight path response: {}", json);
@@ -277,6 +388,14 @@ impl Server {
         Ok(json)
     }
 
+    /// Loads a scenario file.      
+    ///
+    /// # Errors
+    /// Returns an error if the scenario file cannot be loaded (e.g. doesn't exist)
+    ///
+    /// # Panics
+    /// Panics if the lock cannot be obtained to write the entities.  Not clear when this might happen,
+    /// especially given this routine is run only on server initialization.
     pub async fn load_scenario(&self, msg: &LoadScenarioMsg) -> Result<String, String> {
         info!(
             "(/load_scenario) Received and processing load scenario request. {:?}",
@@ -291,6 +410,11 @@ impl Server {
         Ok(msg_json("Load scenario action executed"))
     }
 
+    /// Gets the current entities and serializes it to JSON.
+    ///
+    /// # Panics
+    /// Panics if for some reason it cannot serialize the entities correctly.
+    #[must_use]
     pub fn get_entities_json(&self) -> String {
         info!("Received and processing get entities request.");
         let json = serde_json::to_string::<Entities>(&self.entities.lock().unwrap())
@@ -301,14 +425,14 @@ impl Server {
     }
 }
 
-fn get_rng(test_mode: bool) -> Box<SmallRng> {
+fn get_rng(test_mode: bool) -> SmallRng {
     if test_mode {
         info!("(lib.get_rng) Server in TEST mode for random numbers (constant seed of 0).");
         // Use 0 to seed all test case random number generators.
-        Box::new(SmallRng::seed_from_u64(0))
+        SmallRng::seed_from_u64(0)
     } else {
         debug!("(lib.get_rng) Server in standard mode for random numbers.");
-        Box::new(SmallRng::from_entropy())
+        SmallRng::from_entropy()
     }
 }
 
@@ -328,21 +452,25 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_login() {
-        let server = Server::new(Arc::new(Mutex::new(Entities::new())), false);
         let mock_auth = MockAuthenticator::new(
             "http://test.com",
             "secret".to_string(),
             "users.txt",
             "http://web.test.com".to_string(),
-        )
-        .await;
+        );
         let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
 
+        let server = Server::new(
+            Arc::new(Mutex::new(Entities::new())),
+            authenticator.clone(),
+            false,
+        );
+
         // Test case 1: Already valid email
-        let valid_email = Some("existing@example.com".to_string());
+        let cookie = Some("existing@example.com".to_string());
         let login_msg = LoginMsg { code: None };
         let (auth_response, session_key) = server
-            .login(login_msg, &valid_email, authenticator.clone())
+            .login(login_msg, &cookie)
             .await
             .expect("Login should succeed with valid email");
 
@@ -350,23 +478,21 @@ mod tests {
         assert!(session_key.is_none());
 
         // Test case 2: New login with auth code
-        let valid_email = None;
+        let cookie = None;
         let login_msg = LoginMsg {
             code: Some("test_code".to_string()),
         };
         let (auth_response, session_key) = server
-            .login(login_msg, &valid_email, authenticator.clone())
+            .login(login_msg, &cookie)
             .await
             .expect("Login should succeed with auth code");
         assert_eq!(auth_response.email, "test@example.com");
         assert_eq!(session_key.unwrap(), "TeSt_KeY");
 
         // Test case 3: No valid email and no auth code
-        let valid_email = None;
+        let cookie = None;
         let login_msg = LoginMsg { code: None };
-        let result = server
-            .login(login_msg, &valid_email, authenticator.clone())
-            .await;
+        let result = server.login(login_msg, &cookie).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());
     }

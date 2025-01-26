@@ -25,7 +25,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use callisto::debug;
-use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME};
+use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use callisto::payloads::{FlightPathMsg, SimpleMsg, EMPTY_FIRE_ACTIONS_MSG};
 use callisto::ship::ShipDesignTemplate;
 
@@ -61,23 +61,23 @@ async fn spawn_server(
     let mut handle = handle
         .env(
             "RUST_LOG",
-            var("RUST_LOG").unwrap_or_else(|_| "".to_string()),
+            var("RUST_LOG").unwrap_or_else(|_| String::new()),
         )
         .env(
             "RUSTFLAGS",
-            var("RUSTFLAGS").unwrap_or_else(|_| "".to_string()),
+            var("RUSTFLAGS").unwrap_or_else(|_| String::new()),
         )
         .env(
             "CARGO_LLVM_COV",
-            var("CARGO_LLVM_COV").unwrap_or_else(|_| "".to_string()),
+            var("CARGO_LLVM_COV").unwrap_or_else(|_| String::new()),
         )
         .env(
             "CARGO_LLVM_COV_SHOW_ENV",
-            var("CARGO_LLVM_COV_SHOW_ENV").unwrap_or_else(|_| "".to_string()),
+            var("CARGO_LLVM_COV_SHOW_ENV").unwrap_or_else(|_| String::new()),
         )
         .env(
             "CARGO_LLVM_COV_TARGET_DIR",
-            var("CARGO_LLVM_COV_TARGET_DIR").unwrap_or_else(|_| "".to_string()),
+            var("CARGO_LLVM_COV_TARGET_DIR").unwrap_or_else(|_| String::new()),
         )
         .arg("-p")
         .arg(port.to_string())
@@ -102,7 +102,7 @@ async fn spawn_server(
 /**
  * Spawns a callisto server and returns a handle to it.  Used across tests to get a server up and running.
  * @param port The port to run the server on.
- * @return A handle to the running server.  This is critical as otherwise with kill_on_drop the server will be killed before the tests complete.
+ * @return A handle to the running server.  This is critical as otherwise with `kill_on_drop` the server will be killed before the tests complete.
  */
 async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
     spawn_server(port, true, None, None, false).await
@@ -124,12 +124,12 @@ async fn send_quit(port: u16, cookie: &str) {
 }
 
 fn path(port: u16, verb: &str) -> String {
-    format!("http://{}:{}/{}", SERVER_ADDRESS, port, verb)
+    format!("http://{SERVER_ADDRESS}:{port}/{verb}")
 }
 
 /**
  * Do authentication with the test server
- * Return the user name and the key from SetCookie
+ * Return the user name and the key from `SetCookie`
  */
 async fn test_authenticate(port: u16) -> Result<(String, String), String> {
     let client = Client::new();
@@ -239,8 +239,7 @@ async fn integration_simple_unknown() {
 
     assert!(
         response.status().is_client_error(),
-        "Instead of expected 404 got {:?}",
-        response
+        "Instead of expected 404 got {response:?}"
     );
 
     send_quit(PORT, &cookie).await;
@@ -270,7 +269,7 @@ async fn integration_add_ship() {
         .body(ship)
         .send()
         .await
-        .unwrap_or_else(|e| panic!("Unable to get response from server: {:?}", e))
+        .unwrap_or_else(|e| panic!("Unable to get response from server: {e:?}"))
         .json()
         .await
         .unwrap();
@@ -450,10 +449,10 @@ async fn integration_add_planet_ship() {
     let compare = json!({"planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
       "color":"red","radius":1.5e6,"mass":3e24,
-      "gravity_radius_1":4518410.048543495,
-      "gravity_radius_05":6389996.771013086,
-      "gravity_radius_025": 9036820.09708699,
-      "gravity_radius_2": 3194998.385506543}],
+      "gravity_radius_1":4_518_410.048_543_495,
+      "gravity_radius_05":6_389_996.771_013_086,
+      "gravity_radius_025": 9_036_820.097_086_99,
+      "gravity_radius_2": 3_194_998.385_506_543}],
     "missiles":[],
     "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -522,13 +521,13 @@ async fn integration_add_planet_ship() {
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
         "color":"red","radius":1.5e6,"mass":3e24,
-        "gravity_radius_1":4518410.048543495,
-        "gravity_radius_05":6389996.771013086,
-        "gravity_radius_025": 9036820.09708699,
-        "gravity_radius_2": 3194998.385506543},
-    {"name":"planet2","position":[1000000.0,0.0,0.0],"velocity":[0.0,0.0,14148.851543499915],
+        "gravity_radius_1":4_518_410.048_543_495,
+        "gravity_radius_05":6_389_996.771_013_086,
+        "gravity_radius_025": 9_036_820.097_086_99,
+        "gravity_radius_2": 3_194_998.385_506_543},
+    {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
         "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
-        "gravity_radius_025":1649890.0717635232}],
+        "gravity_radius_025":1_649_890.071_763_523_2}],
     "ships":[
     {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
      "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -607,7 +606,7 @@ async fn integration_update_ship() {
         .text()
         .await
         .unwrap();
-    assert_eq!(response, r#"[]"#);
+    assert_eq!(response, "[]");
 
     let response = client
         .get(path(PORT, GET_ENTITIES_PATH))
@@ -624,7 +623,7 @@ async fn integration_update_ship() {
         let ship = entities.ships.get("ship1").unwrap().read().unwrap();
         assert_eq!(
             ship.get_position(),
-            Vec3::new(1000.0 * DELTA_TIME as f64, 0.0, 0.0)
+            Vec3::new(1000.0 * DELTA_TIME_F64, 0.0, 0.0)
         );
         assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
     }
@@ -635,6 +634,7 @@ async fn integration_update_ship() {
  * Test to create two ships, launch a missile, and advance the round and see the missile move.
  *
  */
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn integration_update_missile() {
     const PORT: u16 = 3016;
@@ -720,7 +720,7 @@ async fn integration_update_missile() {
 
     let compare = json!(
             {"ships":[
-                {"name":"ship1","position":[360000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+                {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
                  "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
                  "current_hull":88,
                  "current_armor":13,
@@ -958,7 +958,7 @@ async fn integration_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 1906480.8,
+            x: 1_906_480.8,
             y: 0.0,
             z: 0.0
         }
@@ -966,7 +966,7 @@ async fn integration_compute_path_basic() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 7625923.2,
+            x: 7_625_923.2,
             y: 0.0,
             z: 0.0
         }
@@ -1046,7 +1046,7 @@ async fn integration_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[1],
         Vec3 {
-            x: 1906480.8,
+            x: 1_906_480.8,
             y: 0.0,
             z: 0.0
         }
@@ -1054,7 +1054,7 @@ async fn integration_compute_path_with_standoff() {
     assert_ulps_eq!(
         plan.path[2],
         Vec3 {
-            x: 7625923.2,
+            x: 7_625_923.2,
             y: 0.0,
             z: 0.0
         }
@@ -1091,6 +1091,7 @@ async fn integration_compute_path_with_standoff() {
 
 /// Test malformed requests return appropriate error responses
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn integration_malformed_requests() {
     const PORT: u16 = 3021;
     let _server = spawn_test_server(PORT).await;
@@ -1116,7 +1117,7 @@ async fn integration_malformed_requests() {
             .body(invalid_json.to_string())
             .send()
             .await
-            .unwrap_or_else(|e| panic!("Request to {} failed: {:?}", op, e));
+            .unwrap_or_else(|e| panic!("Request to {op} failed: {e:?}"));
 
         assert_eq!(
             response.status(),
@@ -1129,9 +1130,7 @@ async fn integration_malformed_requests() {
         let error_text = response.text().await.unwrap();
         assert!(
             error_text.contains("Invalid JSON"),
-            "Expected 'Invalid JSON' error for {}, got: {}",
-            op,
-            error_text
+            "Expected 'Invalid JSON' error for {op}, got: {error_text}"
         );
     }
 
@@ -1532,7 +1531,7 @@ async fn integration_fail_login() {
     // First an unauthenticated action
     let response = client
         .post(path(PORT, ADD_SHIP_PATH))
-        .body(r#"{}"#)
+        .body("{}")
         .send()
         .await
         .unwrap();
@@ -1546,7 +1545,7 @@ async fn integration_fail_login() {
     // Now log in but without a valid code
     let response = client
         .post(path(PORT, LOGIN_PATH))
-        .body(r#"{}"#)
+        .body("{}")
         .send()
         .await
         .unwrap();
@@ -1564,6 +1563,7 @@ async fn integration_fail_login() {
 /**
  * Test setting crew actions through the web server
  */
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn integration_set_crew_actions() {
     const PORT: u16 = 3026;

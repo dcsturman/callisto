@@ -128,6 +128,33 @@ macro_rules! deserialize_body_or_respond {
     }};
 }
 
+/// This is the main server loop, handling each request the server receives.
+///
+/// First this method needs to check if the user is authenticated on each request.  If not
+/// then we go into our authentication flow.  It also much handle CORS messages.  Beyond that
+/// messages are either POST or GET. Most of the logic for these should be handled by [Server]
+/// so that unit testing of the logic is possible.
+///
+/// # Arguments
+///
+/// * `req` - The request to handle
+/// * `entities` - The entities table. Each invocation is a new ref count/[clone](Arc::clone)
+/// * `test_mode` - Whether we are in test mode.  Test mode disables authentication and ensures a deterministic seed for each random number generator.
+/// * `authenticator` - The authenticator to use.
+///
+/// # Returns
+///
+/// A [Response] with the appropriate headers and body.
+///
+/// # Errors
+///
+/// Will return an `Err` when login fails.
+///
+/// # Panics
+///
+/// Will panic as a quick exit on a QUIT message.  Only possible when in test mode.
+///
+#[allow(clippy::too_many_lines)]
 pub async fn handle_request(
     req: Request<Incoming>,
     entities: Arc<Mutex<Entities>>,
@@ -145,26 +172,17 @@ pub async fn handle_request(
     // This is a chain of events all of which have to be okay.
     // We need to have a cookie in the headers; then that cookie needs to be a callisto session key, and then it has to be one we know about it in our local table.
     // In the end though we just need to know if we have it or not.
-    let valid_email = req
+    let cookie = req
         .headers()
         .typed_get::<Cookie>()
-        .and_then(|cookies| {
-            cookies
-                .get(SESSION_COOKIE_NAME)
-                .map(|cookie| cookie.to_string())
-        })
-        .and_then(|cookie| {
-            // A bit unusual but the first .as_ref() is for Arc<..>, which gives us an Option<Authenticator>.  The second
-            // gets a reference to the Authenticator in the Option.
-            authenticator
-                .clone()
-                .as_ref()
-                .validate_session_key(&cookie)
-                .ok()
-        });
+        .and_then(|cookies| cookies.get(SESSION_COOKIE_NAME).map(ToString::to_string));
+
+    let mut server = Server::new(entities, authenticator.clone(), test_mode);
+    let valid_email = cookie.and_then(|cookie| server.validate_session_key(&cookie).ok());
 
     // If we don't have a valid email, we reply with an Authorization error to the client.
-    // The exceptions to doing that are 1) if we're doing an OPTIONS request (to get CORS headers) or
+    // The exceptions to doing that are
+    // 1) if we're doing an OPTIONS request (to get CORS headers) or
     // 2) if we're doing a login request.  Login will
     // have its own custom logic to test here.
     if let Some(email) = valid_email.clone() {
@@ -177,13 +195,13 @@ pub async fn handle_request(
             .status(StatusCode::UNAUTHORIZED)
             .body(Bytes::copy_from_slice("Unauthorized".as_bytes()).into())
             .unwrap());
-    } else if test_mode {
-        warn!("(lib.handleRequest) Server in test mode.  All users authorized.");
     } else {
-        debug!("(lib.handleRequest) Ignore authentication for this request.");
+        debug!(
+            "(lib.handleRequest) Ignore authentication for this {:?} request.",
+            req.method()
+        );
     }
 
-    let mut server = Server::new(entities, test_mode);
     let web_server = authenticator.as_ref().get_web_server();
 
     match (req.method(), req.uri().path()) {
@@ -218,7 +236,11 @@ pub async fn handle_request(
         (&Method::POST, "/login") => {
             let login_msg = deserialize_body_or_respond!(req, LoginMsg);
 
-            match server.login(login_msg, &valid_email, authenticator).await {
+            // When we call this it might be trivial - if valid_email is Some(_).
+            // But we put all this business logic into [Server.login](Server::login) rather than
+            // split it up between the two locations.
+            // Our role here is just to repackage the response and put it on the wire.
+            match server.login(login_msg, &valid_email).await {
                 Ok((auth_response, session_key)) => {
                     info!(
                         "(lib.handleRequest/login) LOGIN request successful for user {:?} with session key {:?}.",
@@ -277,7 +299,7 @@ pub async fn handle_request(
         (&Method::POST, "/set_crew_actions") => {
             let request = deserialize_body_or_respond!(req, SetCrewActions);
 
-            match server.set_crew_actions(request) {
+            match server.set_crew_actions(&request) {
                 Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
                 Err(err) => Ok(build_err_response(
                     StatusCode::BAD_REQUEST,
@@ -302,7 +324,7 @@ pub async fn handle_request(
         (&Method::POST, "/remove") => {
             let name = deserialize_body_or_respond!(req, RemoveEntityMsg);
 
-            match server.remove(name) {
+            match server.remove(&name) {
                 Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
                 Err(err) => Ok(build_err_response(
                     StatusCode::BAD_REQUEST,
@@ -315,7 +337,7 @@ pub async fn handle_request(
             info!("Received and processing plan set request.");
             let plan_msg = deserialize_body_or_respond!(req, SetPlanMsg);
 
-            match server.set_plan(plan_msg) {
+            match server.set_plan(&plan_msg) {
                 Ok(msg) => Ok(build_ok_response(&msg, &web_server)),
                 Err(err) => {
                     warn!("(/set_plan)) Error setting plan: {}", err);
@@ -335,7 +357,7 @@ pub async fn handle_request(
             // The first element is the name of the ship. The second element is a vector of FireActions.
             let fire_actions = deserialize_body_or_respond!(req, FireActionsMsg);
 
-            let msg = server.update(fire_actions);
+            let msg = server.update(&fire_actions);
             let mut resp = Response::builder()
                 .status(StatusCode::OK)
                 .body(Bytes::copy_from_slice(msg.as_bytes()).into())
@@ -346,7 +368,7 @@ pub async fn handle_request(
 
         (&Method::POST, "/compute_path") => {
             let msg = deserialize_body_or_respond!(req, ComputePathMsg);
-            match server.compute_path(msg) {
+            match server.compute_path(&msg) {
                 Ok(json) => {
                     let mut resp = Response::builder()
                         .status(StatusCode::OK)
@@ -440,6 +462,15 @@ pub async fn handle_request(
  * Given this function returns all the content in the file, its not great for large files, but 100% okay
  * for config files and scenarios (as is our case).
  * General utility routine to be used in a few places.
+ *
+ * # Errors
+ *
+ * Will return `Err` if the file cannot be read or if GCS cannot be reached (depending on url of file)
+ *
+ * # Panics
+ *
+ * Will panic with a helpful message if GCS authentication fails.  GCS authentication needs to be handled outside (and prior to)
+ * this function.
  */
 pub async fn read_local_or_cloud_file(
     filename: &str,
@@ -449,11 +480,11 @@ pub async fn read_local_or_cloud_file(
         // Extract bucket name from the GCS URI
         let parts: Vec<&str> = filename.split('/').collect();
         let bucket_name = parts[2];
-        let file_name = parts[3..].join("/");
+        let object_name = parts[3..].join("/");
 
         // Create a GCS client
         let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
-            panic!("Error {:?} authenticating with GCS. Did you do `gcloud auth application-default login` before running?", e)
+            panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
         });
 
         let client = Client::new(config);
@@ -463,7 +494,7 @@ pub async fn read_local_or_cloud_file(
             .download_object(
                 &GetObjectRequest {
                     bucket: bucket_name.to_string(),
-                    object: file_name.to_string(),
+                    object: object_name.to_string(),
                     ..Default::default()
                 },
                 &Range::default(),
