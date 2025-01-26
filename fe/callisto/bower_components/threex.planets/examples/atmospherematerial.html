@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <script src='vendor/three.js/build/three.min.js'></script>
 <script src='../threex.planets.js'></script>
-<script src='../threex.atmospherematerial.js'></script>
+<script src=>'../threex.atmospherematerial.js'</script>
 <!-- include for threex.glowdatgui -->
 <script src='vendor/three.js/examples/js/libs/dat.gui.min.js'></script>
 <script src="../threex.atmospheredatgui.js"></script>
@@ -67,7 +67,7 @@
 	mesh.scale.multiplyScalar(1.01);
 	scene.add( mesh );
 
-	// new THREEx.addAtmosphereMaterial2DatGui(material, datGUI)
+	//new THREEx.addAtmosphereMaterial2DatGui(material, datGUI)
 
 	var geometry	= new THREE.SphereGeometry(0.5, 32, 32)
 	geometry	= mesh.geometry.clone()

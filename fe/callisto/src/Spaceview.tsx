@@ -7,6 +7,7 @@ import { KernelSize, Resolution } from "postprocessing";
 import { TextureLoader } from "three/src/loaders/TextureLoader";
 import { useLoader, useFrame } from "@react-three/fiber";
 
+
 import Color from "color";
 
 import { Line, scaleVector } from "./Util";
@@ -18,6 +19,8 @@ import {
 } from "./Universal";
 
 import { RangeSphere } from "./Util";
+
+import { createAtmosphereMaterial } from "./atmospherematerial";
 
 function Planet(args: {
   planet: PlanetType;
@@ -170,6 +173,13 @@ function Planet(args: {
   });
 
   if (texture_details != null) {
+    const glowColor	= new THREE.Color('cyan')
+    const atmospherematerial: THREE.ShaderMaterial  = 	createAtmosphereMaterial() as unknown as THREE.ShaderMaterial;
+    atmospherematerial.side	= THREE.BackSide;
+    atmospherematerial.uniforms.coeficient.value	= 0.5;
+    atmospherematerial.uniforms.power.value		= 4.0;
+    atmospherematerial.uniforms.glowColor.value	= glowColor;
+
     return (
       <>
         {allViewChanges()}
@@ -190,6 +200,7 @@ function Planet(args: {
             side={THREE.FrontSide}
             transparent={false}
           />
+          <shaderMaterial uniforms={atmospherematerial.uniforms} vertexShader={atmospherematerial.vertexShader} fragmentShader={atmospherematerial.fragmentShader} transparent={true} depthWrite={false}/>
         </mesh>
       </>
     );
