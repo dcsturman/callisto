@@ -356,6 +356,8 @@ impl Authenticator for MockAuthenticator {
             .write()
             .unwrap()
             .insert(session_key.clone(), email.clone());
+
+        debug!("(MockAuthenticator.authenticate_user) Mock authenticator authenticated user {email} with fake session key {session_key}.");
         Ok((session_key, email))
     }
 

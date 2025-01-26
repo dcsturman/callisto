@@ -35,7 +35,7 @@ export function Authentication(args: {
     onError: (errorResponse: Pick<CodeResponse, 'error' | 'error_description' | 'error_uri'>) => console.log("Login Failed:", errorResponse),
     flow: "auth-code",
     state: secureState,
-    redirect_uri: process.env.REACT_APP_C_BACKEND || "http://localhost:50001",
+    redirect_uri: process.env.REACT_APP_C_BACKEND || "http://localhost:30000",
     accessType: "offline",
     isSignedIn: true,
     responseType: "code",

@@ -60,6 +60,30 @@
         "tl": 12
     },
     {
+        "name": "Far Trader",
+        "displacement": 200,
+        "hull": 80,
+        "armor": 2,
+        "maneuver": 1,
+        "jump": 2,
+        "power": 90,
+        "fuel": 41,
+        "crew": 5,
+        "sensors": "Civilian",
+        "computer": 5,
+        "weapons": [
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 1 }
+            },
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 1 }
+            }
+        ],
+        "tl": 12
+    },
+    {
         "name": "Free Trader",
         "displacement": 200,
         "hull": 80,
@@ -139,6 +163,147 @@
             }
         ],
         "tl": 15
+    },
+    {
+        "name": "Herald Fast Messenger",
+        "displacement": 300,
+        "hull": 120,
+        "armor": 4,
+        "maneuver": 2,
+        "jump": 4,
+        "power": 240,
+        "fuel": 123,
+        "crew": 7,
+        "sensors": "Civilian",
+        "computer": 15,
+        "weapons": [
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 1 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 1 }
+            }
+        ],
+        "tl": 15
+
+    },
+    {
+        "name": "Indigo Pirate Carrier",
+        "displacement": 300,
+        "hull": 180,
+        "armor": 0,
+        "maneuver": 1,
+        "jump": 2,
+        "power": 135,
+        "fuel": 81,
+        "crew": 27,
+        "sensors": "Military",
+        "computer": 10,
+        "weapons": [
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 2 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 1 }
+            },
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 2 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 1 }
+            },
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 2 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 1 }
+            }            
+        ],
+        "tl": 15
+    },
+    {
+        "name": "Light Fighter",
+        "displacement": 10,
+        "hull": 4,
+        "armor": 2,
+        "maneuver": 6,
+        "jump": 0,
+        "power": 15,
+        "fuel": 1,
+        "crew": 1,
+        "sensors": "Military",
+        "computer": 10,
+        "weapons": [
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 1 }
+            }
+        ],
+        "tl": 12
+    },
+    {
+        "name": "Patrol Corvette - Type T",
+        "displacement": 400,
+        "hull": 160,
+        "armor": 4,
+        "maneuver": 4,
+        "jump": 3,
+        "power": 405,
+        "fuel": 124,
+        "crew": 17,
+        "sensors": "Military",
+        "computer": 15,
+        "weapons": [
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            }
+        ],
+        "tl": 12
+    },
+    {
+        "name": "Star Ray Interceptor",
+        "displacement": 200,
+        "hull": 80,
+        "armor": 4,
+        "maneuver": 3,
+        "jump": 1,
+        "power": 140,
+        "fuel": 42,
+        "crew": 13,
+        "sensors": "Improved",
+        "computer": 10,
+        "weapons": [
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Beam",
+                "mount": { "Turret": 3 }
+            }
+        ],
+        "tl": 12
     },
     {
         "name": "System Defense Boat",

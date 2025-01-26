@@ -209,11 +209,10 @@ function ShipDesignList(args: {
           data-tooltip-id={args.shipDesignName + "ship-description-tip"}
           data-tooltip-content={args.shipDesignName}
           data-tooltip-delay-show={700}>
-          {Object.keys(args.shipDesigns)
-            .sort()
-            .map((ship_name: string) => (
-              <option key={ship_name + "-ship_list"}>{ship_name}</option>
-            ))}
+          {Object.values(args.shipDesigns).sort((a, b) => a.displacement > b.displacement ? 1 : a.displacement < b.displacement ? -1 : a.name.localeCompare(b.name))
+          .map((design) => (
+            <option key={design.name + "-ship_list"} value={design.name} >{`${design.name} (${design.displacement})`}</option>
+          ))}
         </select>
         <Tooltip
           id={args.shipDesignName + "ship-description-tip"}
