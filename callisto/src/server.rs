@@ -272,6 +272,8 @@ impl Server {
     pub fn update(&mut self, fire_actions: &FireActionsMsg) -> String {
         let mut rng = get_rng(self.test_mode);
 
+        debug!("(/update) Fire actions: {:?}", fire_actions);
+
         // Grab the lock on entities
         let mut entities = self
             .entities

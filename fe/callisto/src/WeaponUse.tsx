@@ -265,7 +265,7 @@ export function FireActions(args: {
     (ship) => ship.name === args.computerShipName
   );
 
-  
+  console.log("**** FireActions JSON: " + JSON.stringify(args.actions));
   return (
     <div className="control-form">
       <h2>Fire Actions</h2>
@@ -274,7 +274,7 @@ export function FireActions(args: {
           args.design.weapons[action.weapon_id].kind
         ) ? (
           <div className="fire-actions-div" key={index + "_fire_img"}>
-          <p>
+            <p>
             <RayIcon
               className="beam-type-icon"
               style={{

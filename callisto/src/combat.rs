@@ -65,6 +65,7 @@ pub fn attack(
     attacker: &Ship,
     defender: &mut Ship,
     weapon: &Weapon,
+    called_shot_system: &Option<ShipSystem>,
     rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
     let attacker_name = attacker.get_name();
@@ -132,9 +133,11 @@ pub fn attack(
         defensive_modifier
     );
 
+    let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
+
     let roll = i32::from(roll_dice(2, rng));
     let hit_roll =
-        roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + defensive_modifier;
+        roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + defensive_modifier;
 
     if hit_roll < STANDARD_ROLL_THRESHOLD {
         debug!(
@@ -276,6 +279,7 @@ pub fn attack(
             u8::try_from(hit_roll - CRITICAL_THRESHOLD)
                 .expect("(combat.attack) hit_role primary crit calc is out of range"),
             defender,
+            called_shot_system,
             rng,
         ));
     }
@@ -299,16 +303,20 @@ pub fn attack(
 
     // Add a level 1 crit for each secondary crit.
     for _ in 0..secondary_crit {
-        effects.append(&mut do_critical(1, defender, rng));
+        effects.append(&mut do_critical(1, defender, called_shot_system, rng));
     }
 
     defender.set_hull_points(u32::saturating_sub(current_hull, damage));
     effects
 }
 
-fn do_critical(crit_level: u8, defender: &mut Ship, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
-    let location = ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
-        .expect("(combat.apply_crit) Unable to convert a roll to ship system.");
+fn do_critical(crit_level: u8, defender: &mut Ship, called_shot_system: &Option<ShipSystem>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let location = if let Some(system) = called_shot_system {
+        *system
+    } else {
+        ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
+        .expect("(combat.apply_crit) Unable to convert a roll to ship system.")
+    };
 
     let effects = apply_crit(crit_level, location, defender, rng);
 
@@ -753,7 +761,7 @@ pub fn do_fire_actions<S: BuildHasher>(
                         }
                     };
 
-                    effects.append(&mut attack(assist_bonus + gunnery_skill, -sand_mod, attacker, &mut target, weapon, rng));
+                    effects.append(&mut attack(assist_bonus + gunnery_skill, -sand_mod, attacker, &mut target, weapon, &action.called_shot_system, rng));
                     effects
                 }
                 _ => {
@@ -764,7 +772,7 @@ pub fn do_fire_actions<S: BuildHasher>(
                         target.get_name()
                     );
 
-                    attack(assist_bonus + gunnery_skill, 0, attacker, &mut target, weapon, rng)
+                    attack(assist_bonus + gunnery_skill, 0, attacker, &mut target, weapon, &action.called_shot_system, rng)
                 }
             }
         })
@@ -895,26 +903,32 @@ mod tests {
             FireAction {
                 weapon_id: 0,
                 target: "Target".to_string(),
+                called_shot_system: None,
             }, // Beam Turret
             FireAction {
                 weapon_id: 1,
                 target: "Target".to_string(),
+                called_shot_system: None,
             }, // Missile Turret
             FireAction {
                 weapon_id: 2,
                 target: "Target".to_string(),
+                called_shot_system: None,
             }, // Missile Barbette
             FireAction {
                 weapon_id: 3,
                 target: "Target".to_string(),
+                called_shot_system: None,
             }, // Missile Bay (Small)
             FireAction {
                 weapon_id: 4,
                 target: "Target".to_string(),
+                called_shot_system: None,
             }, // Missile Bay (Medium)
             FireAction {
                 weapon_id: 5,
                 target: "Target".to_string(),
+                called_shot_system: None,
             }, // Missile Bay (Large)
         ];
 
@@ -1290,6 +1304,7 @@ mod tests {
                 &attacker,
                 &mut defender,
                 &weapon,
+                &None,
                 &mut rng,
             );
             // Check that we have effects. If not it means we missed which is okay for some attacks.
@@ -1365,6 +1380,7 @@ mod tests {
                 kind: WeaponType::Beam,
                 mount: WeaponMount::Turret(1),
             },
+            &None,
             &mut rng,
         );
         assert!(
@@ -1385,6 +1401,7 @@ mod tests {
                 kind: WeaponType::Beam,
                 mount: WeaponMount::Turret(1),
             },
+            &None,
             &mut rng,
         );
         assert!(crit_effects
@@ -1422,6 +1439,7 @@ mod tests {
                         kind: WeaponType::Particle,
                         mount: WeaponMount::Bay(size),
                     },
+                    &None,
                     &mut rng,
                 );
             }
@@ -1470,7 +1488,7 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
         defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
-        let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, &None, &mut rng);
         assert!(result
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));
@@ -1487,6 +1505,7 @@ mod tests {
             &attacker,
             &mut defender,
             &out_of_range_weapon,
+            &None,
             &mut rng,
         );
         assert!(result
@@ -1498,7 +1517,7 @@ mod tests {
             kind: WeaponType::Missile,
             mount: WeaponMount::Turret(1),
         };
-        let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, &None, &mut rng);
         assert!(result
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));
@@ -1541,7 +1560,7 @@ mod tests {
 
         assert_eq!(range_band, Range::Long);
 
-        let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &weapon, &None, &mut rng);
 
         assert_eq!(result.len(), 1);
         assert!(
@@ -1568,7 +1587,7 @@ mod tests {
 
         assert_eq!(range_band, Range::Medium);
 
-        let result = attack(0, 0, &attacker, &mut defender, &weapon, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &weapon, &None, &mut rng);
         assert!(
             result
                 .iter()

@@ -159,7 +159,7 @@ pub enum Stealth {
     Advanced,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, FromRepr)]
+#[derive(Debug, Clone, Copy, PartialEq, FromRepr, Deserialize, Serialize)]
 pub enum ShipSystem {
     Sensors = 0,
     Powerplant,

@@ -3,6 +3,7 @@
  */
 use super::computer::FlightPathResult;
 use super::crew::Crew;
+use super::ship::ShipSystem;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Display;
@@ -111,6 +112,12 @@ pub type FlightPathMsg = FlightPathResult;
 pub struct FireAction {
     pub weapon_id: u32,
     pub target: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        //with = "::serde_with::rust::unwrap_or_skip"
+    )]
+    pub called_shot_system: Option<ShipSystem>
 }
 
 pub type FireActionsMsg = Vec<(String, Vec<FireAction>)>;
@@ -342,6 +349,7 @@ mod tests {
                 vec![FireAction {
                     weapon_id: 0,
                     target: "ship2".to_string(),
+                    called_shot_system: None
                 }],
             ),
             (
@@ -349,6 +357,7 @@ mod tests {
                 vec![FireAction {
                     weapon_id: 1,
                     target: "ship1".to_string(),
+                    called_shot_system: None
                 }],
             ),
         ];
