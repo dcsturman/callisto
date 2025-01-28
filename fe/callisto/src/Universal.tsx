@@ -382,7 +382,7 @@ export const SHIP_SYSTEMS = [
   "Weapon",
   "Armor",
   "Hull",
-  "Manuever",
+  "Maneuver",
   "Cargo",
   "Jump",
   "Crew",
