@@ -374,3 +374,17 @@ export const RANGE_BANDS = [
   25000000, 
   50000000
 ];
+
+export const SHIP_SYSTEMS = [
+  "Sensors",
+  "Powerplant",
+  "Fuel",
+  "Weapon",
+  "Armor",
+  "Hull",
+  "Manuever",
+  "Cargo",
+  "Jump",
+  "Crew",
+  "Bridge",
+];

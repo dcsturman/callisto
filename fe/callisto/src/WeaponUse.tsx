@@ -1,5 +1,12 @@
-import React from "react";
-import { ShipDesignTemplate, WeaponMount } from "./Universal";
+import React, { useContext, useState } from "react";
+import { findRangeBand } from "./Util";
+import {
+  ShipDesignTemplate,
+  WeaponMount,
+  EntitiesServerContext,
+  Ship,
+  SHIP_SYSTEMS
+} from "./Universal";
 import { FireState } from "./Controls";
 
 // Icons for each type of weapon
@@ -15,6 +22,7 @@ import { ReactComponent as LargeBay } from "./icons/bay-l.svg";
 import { ReactComponent as RayIcon } from "./icons/laser.svg";
 import { ReactComponent as MissileIcon } from "./icons/missile.svg";
 import { Tooltip } from "react-tooltip";
+import { vectorDistance } from "./Util";
 
 // Consistent set of colors for both type of weapons and fire states.
 const WEAPON_COLORS: { [key: string]: string } = {
@@ -211,10 +219,53 @@ export const WeaponButton = (props: {
   return <></>;
 };
 
+function CalledShotMenu(args: {
+  attacker: Ship,
+  target: Ship,
+  calledShot: string | null;
+  setCalledShot: (system: string | null) => void;
+}) {
+  const range = findRangeBand(vectorDistance(args.attacker.position, args.target.position));
+
+  const [system, setSystem] = useState<string | null>(args.calledShot);
+
+  if (range !== "Short") {
+    return <></>;
+  }
+
+  return (
+      <select 
+        className="called-shot-menu"
+        name="called_shot_system"
+        value={system ? system : "No called shot"}
+        onChange={(e) => { if (e.target.value === "No called shot") {
+          args.setCalledShot(null);
+          setSystem(null);
+        } else {
+          args.setCalledShot(e.target.value);
+          setSystem(e.target.value);
+        }}}>
+        <option key="none" value="No called shot">No called shot</option>
+        {SHIP_SYSTEMS.map((system) => (
+          <option key={system} value={system}>
+            {system}
+          </option>
+        ))}
+      </select>
+  );
+}
+
 export function FireActions(args: {
   actions: FireState;
   design: ShipDesignTemplate;
+  computerShipName: string;
 }) {
+  const serverEntities = useContext(EntitiesServerContext);
+  const computerShip = serverEntities.entities.ships.find(
+    (ship) => ship.name === args.computerShipName
+  );
+
+  console.log("**** FireActions JSON: " + JSON.stringify(args.actions));
   return (
     <div className="control-form">
       <h2>Fire Actions</h2>
@@ -222,7 +273,8 @@ export function FireActions(args: {
         ["Beam", "Pulse", "Particle"].includes(
           args.design.weapons[action.weapon_id].kind
         ) ? (
-          <p key={index + "_fire_img"}>
+          <div className="fire-actions-div" key={index + "_fire_img"}>
+            <p>
             <RayIcon
               className="beam-type-icon"
               style={{
@@ -230,7 +282,9 @@ export function FireActions(args: {
               }}
             />{" "}
             to {action.target}
-          </p>
+            </p>
+            <CalledShotMenu attacker={computerShip!} target={serverEntities.entities.ships.find((ship) => ship.name === action.target)!} calledShot={action.called_shot_system} setCalledShot={(system) => action.called_shot_system = system} />
+            </div>
         ) : (
           <p key={index + "_fire_img"}>
             <MissileIcon

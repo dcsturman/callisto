@@ -159,7 +159,7 @@ pub enum Stealth {
     Advanced,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, FromRepr)]
+#[derive(Debug, Clone, Copy, PartialEq, FromRepr, Deserialize, Serialize)]
 pub enum ShipSystem {
     Sensors = 0,
     Powerplant,
@@ -167,7 +167,7 @@ pub enum ShipSystem {
     Weapon,
     Armor,
     Hull,
-    Manuever,
+    Maneuver,
     Cargo,
     Jump,
     Crew,
@@ -710,7 +710,7 @@ impl From<ShipSystem> for String {
             ShipSystem::Hull => "hull".to_string(),
             ShipSystem::Armor => "armor".to_string(),
             ShipSystem::Jump => "jump drive".to_string(),
-            ShipSystem::Manuever => "maneuver drive".to_string(),
+            ShipSystem::Maneuver => "maneuver drive".to_string(),
             ShipSystem::Powerplant => "power plant".to_string(),
             ShipSystem::Crew => "crew".to_string(),
             ShipSystem::Weapon => "a weapon".to_string(),
@@ -1827,7 +1827,7 @@ mod tests {
             (ShipSystem::Hull, "hull"),
             (ShipSystem::Armor, "armor"),
             (ShipSystem::Jump, "jump drive"),
-            (ShipSystem::Manuever, "maneuver drive"),
+            (ShipSystem::Maneuver, "maneuver drive"),
             (ShipSystem::Powerplant, "power plant"),
             (ShipSystem::Crew, "crew"),
             (ShipSystem::Weapon, "a weapon"),

@@ -23,7 +23,7 @@ use crate::payloads::{
     EMPTY_FIRE_ACTIONS_MSG,
 };
 use crate::server::{msg_json, Server};
-use crate::ship::ShipDesignTemplate;
+use crate::ship::{ShipDesignTemplate, ShipSystem};
 
 async fn setup_test_with_server() -> Server {
     let _ = pretty_env_logger::try_init();
@@ -621,6 +621,62 @@ async fn test_destroy_ship() {
     assert!(effects.contains(&EffectMsg::Message {
         content: "ship2 destroyed.".to_string()
     }));
+}
+
+#[test(tokio::test)]
+async fn test_called_shot() {
+    let mut server = setup_test_with_server().await;
+
+    // Gazelle class is a good test for this as it has 2 Particle Barbettes (likely to cause a crit) and 2 triple beams (also capable of called shots)
+    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(ship).unwrap())
+        .unwrap();
+    assert_eq!(response, msg_json("Add ship action executed"));
+
+    // Make this a very weak ship
+    let ship2 = r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Scout/Courier"}"#;
+    let response = server
+        .add_ship(serde_json::from_str(ship2).unwrap())
+        .unwrap();
+    assert_eq!(response, msg_json("Add ship action executed"));
+
+    // Pummel the weak ship.
+    let fire_actions = json!([["ship1", [
+        {"weapon_id": 0, "target": "ship2", "called_shot_system": Some(ShipSystem::Maneuver)},
+        {"weapon_id": 1, "target": "ship2", "called_shot_system": Some(ShipSystem::Maneuver)},
+        {"weapon_id": 2, "target": "ship2", "called_shot_system": Some(ShipSystem::Maneuver)},
+        {"weapon_id": 3, "target": "ship2", "called_shot_system": Some(ShipSystem::Maneuver)}
+    ]]])
+    .to_string();
+
+    let response = server.update(&serde_json::from_str(&fire_actions).unwrap());
+
+    let effects = serde_json::from_str::<Vec<EffectMsg>>(response.as_str()).unwrap();
+
+    // First ensure there is at least one critical hit that matches.
+    assert!(effects.iter().any(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver") && content.contains("critical"))), "No critical hits to called shot area: maneuver");
+
+    // Second ensure 6 critical hits to maneuver and the rest to hull.
+    // This means we find all messages with the word "critical" but not the word "caused" (the latter are damage effects)
+    let crits = effects.iter().filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("critical") && !content.contains("caused"))).collect::<Vec<_>>();
+    assert_eq!(
+        crits
+            .iter()
+            .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver")))
+            .count(),
+        6,
+        "Expected 6 critical hits to maneuver: {crits:#?}"
+    );
+    assert!(
+        crits
+            .iter()
+            .filter(
+                |e| matches!(e, EffectMsg::Message { content } if !content.contains("maneuver"))
+            )
+            .all(|e| matches!(e, EffectMsg::Message { content } if content.contains("hull"))),
+        "Expected the rest of the critical hits to hull: {crits:#?}"
+    );
 }
 
 #[test(tokio::test)]
