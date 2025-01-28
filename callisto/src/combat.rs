@@ -136,8 +136,12 @@ pub fn attack(
     let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
 
     let roll = i32::from(roll_dice(2, rng));
-    let hit_roll =
-        roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + defensive_modifier;
+    let hit_roll = roll
+        + hit_mod
+        + HIT_WEAPON_MOD[weapon.kind as usize]
+        + range_mod
+        + called_mod
+        + defensive_modifier;
 
     if hit_roll < STANDARD_ROLL_THRESHOLD {
         debug!(
@@ -310,12 +314,17 @@ pub fn attack(
     effects
 }
 
-fn do_critical(crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+fn do_critical(
+    crit_level: u8,
+    defender: &mut Ship,
+    called_shot_system: Option<&ShipSystem>,
+    rng: &mut dyn RngCore,
+) -> Vec<EffectMsg> {
     let location = if let Some(system) = called_shot_system {
         *system
     } else {
         ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
-        .expect("(combat.apply_crit) Unable to convert a roll to ship system.")
+            .expect("(combat.apply_crit) Unable to convert a roll to ship system.")
     };
 
     let effects = apply_crit(crit_level, location, defender, rng);
@@ -1488,7 +1497,15 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
         defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
-        let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, None, &mut rng);
+        let result = attack(
+            0,
+            0,
+            &attacker,
+            &mut defender,
+            &in_range_weapon,
+            None,
+            &mut rng,
+        );
         assert!(result
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));
@@ -1517,7 +1534,15 @@ mod tests {
             kind: WeaponType::Missile,
             mount: WeaponMount::Turret(1),
         };
-        let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, None, &mut rng);
+        let result = attack(
+            0,
+            0,
+            &attacker,
+            &mut defender,
+            &missile_weapon,
+            None,
+            &mut rng,
+        );
         assert!(result
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));

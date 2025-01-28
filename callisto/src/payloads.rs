@@ -117,7 +117,7 @@ pub struct FireAction {
         skip_serializing_if = "Option::is_none",
         //with = "::serde_with::rust::unwrap_or_skip"
     )]
-    pub called_shot_system: Option<ShipSystem>
+    pub called_shot_system: Option<ShipSystem>,
 }
 
 pub type FireActionsMsg = Vec<(String, Vec<FireAction>)>;
@@ -349,7 +349,7 @@ mod tests {
                 vec![FireAction {
                     weapon_id: 0,
                     target: "ship2".to_string(),
-                    called_shot_system: None
+                    called_shot_system: None,
                 }],
             ),
             (
@@ -357,7 +357,7 @@ mod tests {
                 vec![FireAction {
                     weapon_id: 1,
                     target: "ship1".to_string(),
-                    called_shot_system: None
+                    called_shot_system: None,
                 }],
             ),
         ];

@@ -23,7 +23,7 @@ use crate::payloads::{
     EMPTY_FIRE_ACTIONS_MSG,
 };
 use crate::server::{msg_json, Server};
-use crate::ship::{ ShipSystem, ShipDesignTemplate};
+use crate::ship::{ShipDesignTemplate, ShipSystem};
 
 async fn setup_test_with_server() -> Server {
     let _ = pretty_env_logger::try_init();
@@ -660,8 +660,23 @@ async fn test_called_shot() {
     // Second ensure 6 critical hits to maneuver and the rest to hull.
     // This means we find all messages with the word "critical" but not the word "caused" (the latter are damage effects)
     let crits = effects.iter().filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("critical") && !content.contains("caused"))).collect::<Vec<_>>();
-    assert_eq!(crits.iter().filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver"))).count(), 6, "Expected 6 critical hits to maneuver: {crits:#?}");
-    assert!(crits.iter().filter(|e| matches!(e, EffectMsg::Message { content } if !content.contains("maneuver"))).all(|e| matches!(e, EffectMsg::Message { content } if content.contains("hull"))), "Expected the rest of the critical hits to hull: {crits:#?}");
+    assert_eq!(
+        crits
+            .iter()
+            .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver")))
+            .count(),
+        6,
+        "Expected 6 critical hits to maneuver: {crits:#?}"
+    );
+    assert!(
+        crits
+            .iter()
+            .filter(
+                |e| matches!(e, EffectMsg::Message { content } if !content.contains("maneuver"))
+            )
+            .all(|e| matches!(e, EffectMsg::Message { content } if content.contains("hull"))),
+        "Expected the rest of the critical hits to hull: {crits:#?}"
+    );
 }
 
 #[test(tokio::test)]
