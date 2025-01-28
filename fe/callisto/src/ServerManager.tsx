@@ -251,7 +251,10 @@ export function nextRound(
   fetch(`${CALLISTO_BACKEND}/update`, {
     ...standard_headers,
     method: "POST",
-    body: JSON.stringify(Object.entries(fireActions)),
+    body: JSON.stringify(Object.entries(fireActions),(key, value) => {
+      if (value !== null) {
+        return value;
+      }}),
   })
     .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())
@@ -292,7 +295,10 @@ export function computeFlightPath(
   fetch(`${CALLISTO_BACKEND}/compute_path`, {
     ...standard_headers,
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload, (key, value) => {
+      if (value !== null) {
+        return value;
+      }}),
   })
     .then((response) => validate_response(response, setAuthenticated))
     .then((response) => response.json())

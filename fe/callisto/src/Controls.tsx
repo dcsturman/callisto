@@ -35,9 +35,11 @@ import { CiCircleQuestion } from "react-icons/ci";
 class FireAction {
   target: string;
   weapon_id: number;
+  called_shot_system: string | null;
   constructor(target: string, weapon_id: number) {
     this.weapon_id = weapon_id;
     this.target = target;
+    this.called_shot_system = null;
   }
 }
 
@@ -694,6 +696,7 @@ export function Controls(args: {
           <FireActions
             actions={fire_actions[computerShip?.name].state || []}
             design={computerShipDesign}
+            computerShipName={computerShip.name}
           />
         )}
       </Accordion>

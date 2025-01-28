@@ -549,3 +549,21 @@ input {
 .tutorial-instruction-text {
   color: red;
 }
+
+.fire-actions-div {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.called-shot-menu {
+  display: flex;
+  flex-direction: row;
+  border-radius: 5px;
+  color: black;
+  background-color: whitesmoke;
+  border: 1px solid #333;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 9pt;
+}

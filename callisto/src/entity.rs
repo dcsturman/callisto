@@ -436,6 +436,7 @@ impl Entities {
                             .get(&ship)
                             .map_or_else(|| { warn!("Cannot find target {} for missile. It may have been destroyed.", ship); None},
                             |ship| Some(ship.clone()));
+
                         if let Some(target) = target {
                             let mut target = target.write().unwrap();
                             let effects = attack(
@@ -444,6 +445,8 @@ impl Entities {
                                 missile_source,
                                 &mut target,
                                 &FAKE_MISSILE_LAUNCHER,
+                                // Missiles cannot do called shots
+                                None,
                                 rng,
                             );
                             cleanup_missile_list.push(missile);
