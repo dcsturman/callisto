@@ -446,7 +446,7 @@ impl Entities {
                                 &mut target,
                                 &FAKE_MISSILE_LAUNCHER,
                                 // Missiles cannot do called shots
-                                &None,
+                                None,
                                 rng,
                             );
                             cleanup_missile_list.push(missile);

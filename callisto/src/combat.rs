@@ -65,7 +65,7 @@ pub fn attack(
     attacker: &Ship,
     defender: &mut Ship,
     weapon: &Weapon,
-    called_shot_system: &Option<ShipSystem>,
+    called_shot_system: Option<&ShipSystem>,
     rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
     let attacker_name = attacker.get_name();
@@ -310,7 +310,7 @@ pub fn attack(
     effects
 }
 
-fn do_critical(crit_level: u8, defender: &mut Ship, called_shot_system: &Option<ShipSystem>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+fn do_critical(crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
     let location = if let Some(system) = called_shot_system {
         *system
     } else {
@@ -533,14 +533,14 @@ fn apply_crit(
                     damage
                 ))]
             }
-            (ShipSystem::Manuever, 5) => {
+            (ShipSystem::Maneuver, 5) => {
                 defender.current_maneuver = 0;
                 vec![EffectMsg::message(format!(
                     "{}'s maneuver critical hit and offline.",
                     defender.get_name()
                 ))]
             }
-            (ShipSystem::Manuever, 6) => {
+            (ShipSystem::Maneuver, 6) => {
                 defender.current_maneuver = 0;
                 let mut effects = vec![EffectMsg::message(format!(
                     "{}'s maneuver critical hit and offline.",
@@ -549,7 +549,7 @@ fn apply_crit(
                 effects.append(&mut apply_crit(roll(rng), ShipSystem::Hull, defender, rng));
                 effects
             }
-            (ShipSystem::Manuever, _) => {
+            (ShipSystem::Maneuver, _) => {
                 defender.current_maneuver = u8::saturating_sub(defender.current_maneuver, 1);
                 vec![EffectMsg::message(format!(
                     "{}'s maneuver critical hit and reduced by 1.",
@@ -761,7 +761,7 @@ pub fn do_fire_actions<S: BuildHasher>(
                         }
                     };
 
-                    effects.append(&mut attack(assist_bonus + gunnery_skill, -sand_mod, attacker, &mut target, weapon, &action.called_shot_system, rng));
+                    effects.append(&mut attack(assist_bonus + gunnery_skill, -sand_mod, attacker, &mut target, weapon, action.called_shot_system.as_ref(), rng));
                     effects
                 }
                 _ => {
@@ -772,7 +772,7 @@ pub fn do_fire_actions<S: BuildHasher>(
                         target.get_name()
                     );
 
-                    attack(assist_bonus + gunnery_skill, 0, attacker, &mut target, weapon, &action.called_shot_system, rng)
+                    attack(assist_bonus + gunnery_skill, 0, attacker, &mut target, weapon, action.called_shot_system.as_ref(), rng)
                 }
             }
         })
@@ -1155,11 +1155,11 @@ mod tests {
         // Test Drive critical hits
         for level in 1..=6 {
             ship.current_maneuver = 6;
-            let effects = apply_crit(level, ShipSystem::Manuever, &mut ship, &mut rng);
+            let effects = apply_crit(level, ShipSystem::Maneuver, &mut ship, &mut rng);
             assert!(effects
                 .iter()
                 .any(|e| matches!(e, EffectMsg::Message { .. })));
-            assert_eq!(ship.crit_level[ShipSystem::Manuever as usize], level);
+            assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], level);
         }
 
         // Test Jump critical hits
@@ -1304,7 +1304,7 @@ mod tests {
                 &attacker,
                 &mut defender,
                 &weapon,
-                &None,
+                None,
                 &mut rng,
             );
             // Check that we have effects. If not it means we missed which is okay for some attacks.
@@ -1380,7 +1380,7 @@ mod tests {
                 kind: WeaponType::Beam,
                 mount: WeaponMount::Turret(1),
             },
-            &None,
+            None,
             &mut rng,
         );
         assert!(
@@ -1401,7 +1401,7 @@ mod tests {
                 kind: WeaponType::Beam,
                 mount: WeaponMount::Turret(1),
             },
-            &None,
+            None,
             &mut rng,
         );
         assert!(crit_effects
@@ -1439,7 +1439,7 @@ mod tests {
                         kind: WeaponType::Particle,
                         mount: WeaponMount::Bay(size),
                     },
-                    &None,
+                    None,
                     &mut rng,
                 );
             }
@@ -1488,7 +1488,7 @@ mod tests {
             mount: WeaponMount::Turret(1),
         };
         defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
-        let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, &None, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &in_range_weapon, None, &mut rng);
         assert!(result
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));
@@ -1505,7 +1505,7 @@ mod tests {
             &attacker,
             &mut defender,
             &out_of_range_weapon,
-            &None,
+            None,
             &mut rng,
         );
         assert!(result
@@ -1517,7 +1517,7 @@ mod tests {
             kind: WeaponType::Missile,
             mount: WeaponMount::Turret(1),
         };
-        let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, &None, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &missile_weapon, None, &mut rng);
         assert!(result
             .iter()
             .all(|msg| !msg.to_string().contains("out of range")));
@@ -1560,7 +1560,7 @@ mod tests {
 
         assert_eq!(range_band, Range::Long);
 
-        let result = attack(0, 0, &attacker, &mut defender, &weapon, &None, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &weapon, None, &mut rng);
 
         assert_eq!(result.len(), 1);
         assert!(
@@ -1587,7 +1587,7 @@ mod tests {
 
         assert_eq!(range_band, Range::Medium);
 
-        let result = attack(0, 0, &attacker, &mut defender, &weapon, &None, &mut rng);
+        let result = attack(0, 0, &attacker, &mut defender, &weapon, None, &mut rng);
         assert!(
             result
                 .iter()

@@ -22,7 +22,7 @@ pub struct LoginMsg {
     pub code: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 pub struct AuthResponse {
     pub email: String,
 }
