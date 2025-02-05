@@ -17,7 +17,7 @@ const SOLVE_TOLERANCE: f64 = 1e-4;
 const MAX_ITERATIONS: usize = 400;
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct FlightPathResult {
     #[serde_as(as = "Vec<Vec3asVec>")]
     pub path: Vec<Vec3>,

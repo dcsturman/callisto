@@ -10,8 +10,9 @@ use crate::authentication::{Authenticator, InvalidKeyError};
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, FireActionsMsg, LoadScenarioMsg,
-    LoginMsg, RemoveEntityMsg, SetCrewActions, SetPlanMsg, SimpleMsg,
+    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FireActionsMsg,
+    FlightPathMsg, LoadScenarioMsg, LoginMsg, RemoveEntityMsg, SetCrewActions, SetPlanMsg,
+    ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -63,9 +64,9 @@ impl Server {
 
         // Three cases.
         // 1) if there's a valid email, just let the client know what it is.  We do this here so that this
-        // method is always the source of an AuthReponse and we don't need to create those in the dispatch handler.
+        // method is always the source of an AuthResponse and we don't need to create those in the dispatch handler.
         // 2) If there is a code then we do authentication via Google OAuth2.
-        // 3) this isn't authenticated and we need to force reauthentication.  We do that
+        // 3) this isn't authenticated and we need to force re-authentication.  We do that
         // by returning an error and eventually a 401 to the client.
         if let Some(email) = valid_email {
             let auth_response = AuthResponse {
@@ -133,7 +134,7 @@ impl Server {
             ship.crew,
         );
 
-        Ok(msg_json("Add ship action executed"))
+        Ok("Add ship action executed".to_string())
     }
 
     /// Sets the crew actions for a ship.
@@ -165,7 +166,7 @@ impl Server {
             ship.set_pilot_actions(request.dodge_thrust, request.assist_gunners)
                 .map_err(|e| e.get_msg())?;
         }
-        Ok(msg_json("Set crew action executed"))
+        Ok("Set crew action executed".to_string())
     }
 
     /// Gets the current entities and returns them in a `Result`.
@@ -177,11 +178,20 @@ impl Server {
         self.entities.lock().unwrap().clone()
     }
 
+    /// Get the entities marshalled into JSON
+    ///
+    /// # Panics
+    /// Panics if entities cannot be converted.
+    #[must_use]
+    pub fn get_entities_json(&self) -> String {
+        serde_json::to_string(&*self.entities.lock().unwrap()).unwrap()
+    }
+
     /// Gets the ship designs and serializes it to JSON.
     ///
     /// # Panics
     /// Panics if the ship templates have not been loaded.
-    pub fn get_designs(&self) -> String {
+    pub fn get_designs(&self) -> ShipDesignTemplateMsg {
         // Strip the Arc, etc. from the ShipTemplates before marshalling back.
         let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
             .get()
@@ -190,7 +200,7 @@ impl Server {
             .map(|(key, value)| (key.clone(), (*value.clone()).clone()))
             .collect();
 
-        serde_json::to_string(&clean_templates).unwrap()
+        clean_templates
     }
 
     /// Adds a planet to the entities.
@@ -214,7 +224,7 @@ impl Server {
             planet.mass,
         )?;
 
-        Ok(msg_json("Add planet action executed"))
+        Ok("Add planet action executed".to_string())
     }
 
     /// Removes an entity from the entities.
@@ -239,7 +249,7 @@ impl Server {
             return Err(err_msg);
         }
 
-        Ok(msg_json("Remove action executed"))
+        Ok("Remove action executed".to_string())
     }
 
     /// Sets the flight plan for a ship.
@@ -258,7 +268,7 @@ impl Server {
             .lock()
             .unwrap()
             .set_flight_plan(&plan_msg.name, &plan_msg.plan)
-            .map(|()| msg_json("Set acceleration action executed"))
+            .map(|()| "Set acceleration action executed".to_string())
     }
 
     /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
@@ -269,7 +279,7 @@ impl Server {
     ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
-    pub fn update(&mut self, fire_actions: &FireActionsMsg) -> String {
+    pub fn update(&mut self, fire_actions: &FireActionsMsg) -> Vec<EffectMsg> {
         let mut rng = get_rng(self.test_mode);
 
         debug!("(/update) Fire actions: {:?}", fire_actions);
@@ -297,18 +307,12 @@ impl Server {
         // 4. Update all entities (ships, planets, missiles) and gather in their effects.
         effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
 
-        debug!("(/update) Effects: {:?}", effects);
-
-        // 5. Marshall the events and reply with them back to the user.
-        let json = serde_json::to_string(&effects)
-            .unwrap_or_else(|_| panic!("Unable to serialize `effects` {effects:?}."));
-
-        // 6. Reset all ship agility setting as the round is over.
+        // 5. Reset all ship agility setting as the round is over.
         for ship in entities.ships.values() {
             ship.write().unwrap().reset_crew_actions();
         }
 
-        json
+        effects
     }
 
     /// Computes a flight path for a ship.
@@ -322,7 +326,7 @@ impl Server {
     ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
-    pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<String, String> {
+    pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<FlightPathMsg, String> {
         info!(
             "(/compute_path) Received and processing compute path request. {:?}",
             msg
@@ -338,7 +342,7 @@ impl Server {
             let entity = entities
                 .ships
                 .get(&msg.entity_name)
-                .unwrap()
+                .ok_or_else(|| format!("Cannot compute flightpath for unknown ship named '{}'", msg.entity_name))?
                 .read()
                 .unwrap();
             (
@@ -381,13 +385,7 @@ impl Server {
             max_accel / G
         );
 
-        let Ok(json) = serde_json::to_string(&plan) else {
-            return Err("Error converting flight path to JSON".to_string());
-        };
-
-        debug!("(/compute_path) Flight path response: {}", json);
-
-        Ok(json)
+        Ok(plan)
     }
 
     /// Loads a scenario file.      
@@ -409,21 +407,7 @@ impl Server {
             .map_err(|e| e.to_string())?;
         *self.entities.lock().unwrap() = entities;
 
-        Ok(msg_json("Load scenario action executed"))
-    }
-
-    /// Gets the current entities and serializes it to JSON.
-    ///
-    /// # Panics
-    /// Panics if for some reason it cannot serialize the entities correctly.
-    #[must_use]
-    pub fn get_entities_json(&self) -> String {
-        info!("Received and processing get entities request.");
-        let json = serde_json::to_string::<Entities>(&self.entities.lock().unwrap())
-            .expect("(server.get) Unable to serialize entities");
-
-        info!("(/) Entities: {:?}", json);
-        json
+        Ok("Load scenario action executed".to_string())
     }
 }
 
@@ -436,13 +420,6 @@ fn get_rng(test_mode: bool) -> SmallRng {
         debug!("(lib.get_rng) Server in standard mode for random numbers.");
         SmallRng::from_entropy()
     }
-}
-
-pub(crate) fn msg_json(msg: &str) -> String {
-    serde_json::to_string(&SimpleMsg {
-        msg: msg.to_string(),
-    })
-    .unwrap()
 }
 
 #[cfg(test)]

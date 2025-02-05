@@ -1,9 +1,12 @@
 {
     "cSpell.words": [
+        "Agasham",
         "cgmath",
         "conv",
+        "crits",
         "drei",
         "mainscreen",
+        "Midu",
         "mockstream",
         "nalgebra",
         "powerplant",
@@ -30,5 +33,6 @@
         "xpos",
         "xvel",
         "ypos"
-    ]
+    ],
+    "rust-analyzer.rustfmt.overrideCommand": null
 }

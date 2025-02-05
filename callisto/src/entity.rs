@@ -344,7 +344,7 @@ impl Entities {
             .flat_map(|(attacker, actions)| {
                 let attack_ship = match ship_snapshot.get(attacker) {
                     None => {
-                        error!("Cannot find attacker {} for fire actions.", attacker);
+                        warn!("Cannot find attacker {} for fire actions.", attacker);
                         return vec![];
                     }
                     Some(ship) => ship,
@@ -354,7 +354,7 @@ impl Entities {
                     do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, rng);
                 for missile in missiles {
                     if let Err(msg) = self.launch_missile(&missile.source, &missile.target) {
-                        error!("Could not launch missile: {}", msg);
+                        warn!("Could not launch missile: {}", msg);
                     }
                 }
                 effects

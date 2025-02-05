@@ -1,9 +1,12 @@
 /*** All the payloads used from the client to the server.  Some are not terribly meaningful or complex, but putting them all
  * here for completeness.
  */
+use std::collections::HashMap;
+
 use super::computer::FlightPathResult;
 use super::crew::Crew;
-use super::ship::ShipSystem;
+use super::entity::Entities;
+use super::ship::{ShipDesignTemplate, ShipSystem};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Display;
@@ -11,18 +14,13 @@ use std::fmt::Display;
 use super::entity::Vec3;
 use super::ship::FlightPlan;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SimpleMsg {
-    pub msg: String,
-}
-
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LoginMsg {
     pub code: Option<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct AuthResponse {
     pub email: String,
 }
@@ -62,7 +60,7 @@ impl SetCrewActions {
 }
 
 #[serde_as]
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct LaunchMissileMsg {
     pub source: String,
     pub target: String,
@@ -172,6 +170,8 @@ pub struct LoadScenarioMsg {
     pub scenario_name: String,
 }
 
+pub type ShipDesignTemplateMsg = HashMap<String, ShipDesignTemplate>;
+
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
@@ -188,6 +188,34 @@ serde_with::serde_conv!(
         })
     }
 );
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum IncomingMsg {
+    Login(LoginMsg),
+    AddShip(AddShipMsg),
+    AddPlanet(AddPlanetMsg),
+    Remove(RemoveEntityMsg),
+    SetPlan(SetPlanMsg),
+    ComputePath(ComputePathMsg),
+    SetCrewActions(SetCrewActions),
+    Update(FireActionsMsg),
+    LoadScenario(LoadScenarioMsg),
+    EntitiesRequest,
+    DesignTemplateRequest,
+    Quit,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum OutgoingMsg {
+    AuthResponse(AuthResponse),
+    DesignTemplateResponse(ShipDesignTemplateMsg),
+    EntityResponse(Entities),
+    FlightPath(FlightPathMsg),
+    Effects(Vec<EffectMsg>),
+    LaunchMissile(LaunchMissileMsg),
+    SimpleMsg(String),
+    Error(String),
+}
 
 #[cfg(test)]
 mod tests {
