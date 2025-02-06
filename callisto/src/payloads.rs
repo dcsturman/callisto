@@ -17,7 +17,7 @@ use super::ship::FlightPlan;
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LoginMsg {
-    pub code: Option<String>,
+    pub code: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -214,6 +214,7 @@ pub enum OutgoingMsg {
     Effects(Vec<EffectMsg>),
     LaunchMissile(LaunchMissileMsg),
     SimpleMsg(String),
+    PleaseLogin,
     Error(String),
 }
 
@@ -441,7 +442,7 @@ mod tests {
     fn test_login_msg() {
         // Test with code present
         let msg_with_code = LoginMsg {
-            code: Some("auth_code_123".to_string()),
+            code: "auth_code_123".to_string(),
         };
 
         let expected_json_with_code = json!({
@@ -454,24 +455,6 @@ mod tests {
         // Test deserialization with code
         let json_str = r#"{"code": "auth_code_123"}"#;
         let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
-        assert_eq!(deserialized.code, Some("auth_code_123".to_string()));
-
-        // Test without code
-        let msg_without_code = LoginMsg { code: None };
-
-        let expected_json_without_code = json!({});
-
-        let serialized = serde_json::to_string(&msg_without_code).unwrap();
-        assert_eq!(serialized, expected_json_without_code.to_string());
-
-        // Test deserialization without code
-        let json_str = r#"{"code": null}"#;
-        let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
-        assert_eq!(deserialized.code, None);
-
-        // Test deserialization with missing field
-        let json_str = "{}";
-        let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
-        assert_eq!(deserialized.code, None);
+        assert_eq!(deserialized.code, "auth_code_123".to_string());
     }
 }

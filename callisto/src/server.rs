@@ -6,7 +6,7 @@ use cgmath::InnerSpace;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::authentication::{Authenticator, InvalidKeyError};
+use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
@@ -20,16 +20,16 @@ use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
-pub struct Server {
+pub struct Server<'a> {
     entities: Arc<Mutex<Entities>>,
-    authenticator: Arc<Box<dyn Authenticator>>,
+    authenticator: &'a mut Box<dyn Authenticator>,
     test_mode: bool,
 }
 
-impl Server {
+impl<'a> Server<'a> {
     pub fn new(
         entities: Arc<Mutex<Entities>>,
-        authenticator: Arc<Box<dyn Authenticator>>,
+        authenticator: &'a mut Box<dyn Authenticator>,
         test_mode: bool,
     ) -> Self {
         Server {
@@ -55,51 +55,25 @@ impl Server {
     ///
     /// # Errors
     /// Returns an error if the user cannot be authenticated.
-    pub async fn login(
-        &self,
-        login: LoginMsg,
-        valid_email: &Option<String>,
-    ) -> Result<(AuthResponse, Option<String>), String> {
+    pub async fn login(&mut self, login: LoginMsg) -> Result<AuthResponse, String> {
         info!("(Server.login) Received and processing login request.",);
 
-        // Three cases.
-        // 1) if there's a valid email, just let the client know what it is.  We do this here so that this
-        // method is always the source of an AuthResponse and we don't need to create those in the dispatch handler.
-        // 2) If there is a code then we do authentication via Google OAuth2.
-        // 3) this isn't authenticated and we need to force re-authentication.  We do that
-        // by returning an error and eventually a 401 to the client.
-        if let Some(email) = valid_email {
-            let auth_response = AuthResponse {
-                email: email.clone(),
-            };
-            Ok((auth_response, None))
-        } else if let Some(code) = login.code {
-            let (session_key, email) = self
-                .authenticator
-                .authenticate_user(&code)
-                .await
-                .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
-            debug!(
-                "(Server.login) Authenticated user {} with session key.",
-                email
-            );
+        let email = self
+            .authenticator
+            .authenticate_user(&login.code)
+            .await
+            .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
 
-            let auth_response = AuthResponse { email };
-            Ok((auth_response, Some(session_key)))
-        } else {
-            Err("Must reauthenticate.".to_string())
-        }
+        debug!(
+            "(Server.login) Authenticated user {} with session key.",
+            email
+        );
+        Ok(AuthResponse { email })
     }
 
-    /// Validates a session key with the given authenticator.
-    ///
-    /// # Arguments
-    /// * `cookie` - The session cookie, if one exists.
-    ///
-    /// # Errors
-    /// Returns an error if the session key is invalid
-    pub fn validate_session_key(&self, cookie: &str) -> Result<String, InvalidKeyError> {
-        self.authenticator.validate_session_key(cookie)
+    #[must_use]
+    pub fn validated_user(&self) -> bool {
+        self.authenticator.validated_user()
     }
 
     /// Adds a ship to the entities.
@@ -342,7 +316,12 @@ impl Server {
             let entity = entities
                 .ships
                 .get(&msg.entity_name)
-                .ok_or_else(|| format!("Cannot compute flightpath for unknown ship named '{}'", msg.entity_name))?
+                .ok_or_else(|| {
+                    format!(
+                        "Cannot compute flightpath for unknown ship named '{}'",
+                        msg.entity_name
+                    )
+                })?
                 .read()
                 .unwrap();
             (
@@ -431,48 +410,24 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_login() {
-        let mock_auth = MockAuthenticator::new(
-            "http://test.com",
-            "secret".to_string(),
-            "users.txt",
-            "http://web.test.com".to_string(),
-        );
-        let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
+        let mock_auth = MockAuthenticator::new("http://web.test.com");
+        let mut authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
-        let server = Server::new(
+        let mut server = Server::new(
             Arc::new(Mutex::new(Entities::new())),
-            authenticator.clone(),
+            &mut authenticator,
             false,
         );
 
-        // Test case 1: Already valid email
-        let cookie = Some("existing@example.com".to_string());
-        let login_msg = LoginMsg { code: None };
-        let (auth_response, session_key) = server
-            .login(login_msg, &cookie)
+        // Try a login
+        let login_msg = LoginMsg {
+            code: MockAuthenticator::mock_valid_code(),
+        };
+        let auth_response = server
+            .login(login_msg)
             .await
             .expect("Login should succeed with valid email");
 
-        assert_eq!(auth_response.email, "existing@example.com");
-        assert!(session_key.is_none());
-
-        // Test case 2: New login with auth code
-        let cookie = None;
-        let login_msg = LoginMsg {
-            code: Some("test_code".to_string()),
-        };
-        let (auth_response, session_key) = server
-            .login(login_msg, &cookie)
-            .await
-            .expect("Login should succeed with auth code");
         assert_eq!(auth_response.email, "test@example.com");
-        assert_eq!(session_key.unwrap(), "TeSt_KeY");
-
-        // Test case 3: No valid email and no auth code
-        let cookie = None;
-        let login_msg = LoginMsg { code: None };
-        let result = server.login(login_msg, &cookie).await;
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());
     }
 }

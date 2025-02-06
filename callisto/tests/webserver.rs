@@ -16,8 +16,7 @@ use tokio::process::{Child, Command};
 use tokio::time::{sleep, Duration};
 use tokio_native_tls::TlsStream;
 use tokio_tungstenite::{
-    client_async_tls,
-    connect_async,
+    client_async_tls, connect_async,
     tungstenite::{Error, Result},
     MaybeTlsStream, WebSocketStream,
 };
@@ -28,12 +27,11 @@ use callisto::debug;
 
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use callisto::payloads::{
-    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FireAction, 
-    IncomingMsg, LoadScenarioMsg, LoginMsg, OutgoingMsg,
-    SetCrewActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, FireAction, IncomingMsg, LoadScenarioMsg,
+    LoginMsg, OutgoingMsg, SetCrewActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
-use callisto::crew::{ Crew, Skills };
+use callisto::crew::{Crew, Skills};
 
 use cgmath::{assert_ulps_eq, Zero};
 
@@ -176,7 +174,7 @@ async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
     Ok((email, cookie))
     */
     let msg = IncomingMsg::Login(LoginMsg {
-        code: Some("test_code".to_string()),
+        code: "test_code".to_string(),
     });
 
     let body = rpc(stream, msg).await;
@@ -241,6 +239,25 @@ async fn integration_simple_get() {
     if let OutgoingMsg::EntityResponse(entities) = body {
         assert!(entities.is_empty(), "Expected empty entities list.");
     }
+    send_quit(&mut stream).await;
+}
+
+#[tokio::test]
+async fn integration_action_without_login() {
+    const PORT: u16 = 3012;
+    let _server = spawn_test_server(PORT).await;
+
+    let mut stream = open_socket(PORT).await.unwrap();
+
+    // Intentionally skip test authenticate here.
+    debug!("****** ONE");
+    let body = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
+    debug!("****** TWO");
+    assert!(
+        matches!(body, OutgoingMsg::PleaseLogin),
+        "Expected request to log in, but instead got {body:?}"
+    );
+
     send_quit(&mut stream).await;
 }
 
@@ -1043,7 +1060,10 @@ async fn integration_malformed_requests() {
         )]),
     )
     .await;
-    assert!(matches!(&message, OutgoingMsg::Effects(x) if x.is_empty()), "Expected empty effects for invalid fire action, got {message:?}");
+    assert!(
+        matches!(&message, OutgoingMsg::Effects(x) if x.is_empty()),
+        "Expected empty effects for invalid fire action, got {message:?}"
+    );
 
     send_quit(&mut stream).await;
 }
@@ -1145,7 +1165,6 @@ async fn integration_load_scenario() {
     send_quit(&mut stream).await;
 }
 
-
 #[cfg_attr(feature = "ci", ignore)]
 #[test_log::test(tokio::test)]
 async fn integration_load_cloud_scenario() {
@@ -1176,18 +1195,24 @@ async fn integration_fail_login() {
     // Test unauthenticated connection
     let socket_url = format!("ws://127.0.0.1:{PORT}/ws");
     let stream = connect_async(socket_url).await;
-    assert!(stream.is_err(), "Expected connection to fail without authentication");
+    assert!(
+        stream.is_err(),
+        "Expected connection to fail without authentication"
+    );
 
     // Test invalid authentication
     let mut stream = open_socket(PORT).await.unwrap();
     let message = rpc(
         &mut stream,
         IncomingMsg::Login(LoginMsg {
-            code: Some("invalid_code".to_string()),
+            code: "invalid_code".to_string(),
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::Error(_)));
+    assert!(
+        matches!(message, OutgoingMsg::Error(_)),
+        "Expected error for invalid authentication. Got: {message:?}"
+    );
 
     send_quit(&mut stream).await;
 }
@@ -1235,12 +1260,7 @@ async fn integration_set_crew_actions() {
     let response = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
 
     if let OutgoingMsg::EntityResponse(entities) = response {
-        let ship = entities
-            .ships
-            .get("test_ship")
-            .unwrap()
-            .read()
-            .unwrap();
+        let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
         let crew = ship.get_crew();
         debug!("(integration_set_crew_actions) Crew: ({:?})", crew);
         assert_eq!(crew.get_pilot(), 2);

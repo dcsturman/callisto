@@ -16,6 +16,8 @@ use crate::planet::Planet;
 use crate::read_local_or_cloud_file;
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
+
+#[allow(unused_imports)]
 use crate::{debug, error, info, warn};
 
 pub const DELTA_TIME: u64 = 360;

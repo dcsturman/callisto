@@ -1,6 +1,4 @@
-use callisto::server::Server;
-use tokio::net::TcpListener;
-
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::panic;
 use std::path::PathBuf;
@@ -11,18 +9,18 @@ use futures_util::{SinkExt, StreamExt};
 
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use tokio::net::TcpStream;
+use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::Message;
 
 use clap::Parser;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 
 extern crate callisto;
 
-use callisto::authentication::Authenticator;
-use callisto::authentication::GoogleAuthenticator;
-use callisto::authentication::MockAuthenticator;
+use callisto::authentication::{
+    load_authorized_users, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator,
+};
 use callisto::entity::Entities;
 use callisto::handle_request;
 use callisto::payloads::OutgoingMsg;
@@ -68,18 +66,30 @@ async fn handle_connection(
     stream: TcpStream,
     acceptor: Arc<TlsAcceptor>,
     entities: Arc<Mutex<Entities>>,
-    authenticator: Arc<Box<dyn Authenticator>>,
+    mut authenticator: Box<dyn Authenticator>,
+    session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
     test_mode: bool,
 ) {
     // First, upgrade the stream to be TLS
-    let stream = acceptor
-        .accept(stream)
-        .await
-        .expect("(handle_connection) Failed to upgrade TcpStream to TLS.");
+    let Ok(stream) = acceptor.accept(stream).await else {
+        // Server should protect itself and just ignore this connection if it cannot to TLS.
+        warn!("(handle_connection) Failed to upgrade TcpStream to TLS. Dropping connection.");
+        return;
+    };
+
     debug!("(handle_connection) Upgraded to TLS.");
 
     // Second, upgrade the stream to use websockets with tungstenite
-    let mut ws_stream = tokio_tungstenite::accept_async(stream)
+    // TODO: Add a config here for extra safety
+    // TODO: This is where we can check headers. How do we set them?
+
+    let mut tmp_email = None;
+    let callback_handler = HeaderCallback {
+        session_keys: session_keys.clone(),
+        email_setter: |email| tmp_email = email,
+    };
+
+    let mut ws_stream = tokio_tungstenite::accept_hdr_async(stream, callback_handler)
         .await
         .unwrap_or_else(|e| {
             error!(
@@ -93,14 +103,14 @@ async fn handle_connection(
 
     while let Some(msg) = ws_stream.next().await {
         match msg {
-            Ok(tungstenite::Message::Text(text)) => {
+            Ok(Message::Text(text)) => {
                 // Handle the request
                 let response = if let Ok(parsed_message) = serde_json::from_str(&text) {
                     handle_request(
                         parsed_message,
                         entities.clone(),
                         test_mode,
-                        authenticator.clone(),
+                        &mut authenticator,
                     )
                     .await
                 } else {
@@ -111,7 +121,7 @@ async fn handle_connection(
                 // Send the response
                 if let Ok(response) = response {
                     ws_stream
-                        .send(tungstenite::Message::Text(
+                        .send(Message::Text(
                             serde_json::to_string(&response)
                                 .expect("Failed to serialize response")
                                 .into(),
@@ -124,7 +134,7 @@ async fn handle_connection(
                     error!("(handle_connection) Error processing handle_request on message {response:?}.");
                     // Let the client know
                     ws_stream
-                        .send(tungstenite::Message::Text(
+                        .send(Message::Text(
                             serde_json::to_string(&OutgoingMsg::Error(
                                 "Unable to process message.".to_string(),
                             ))
@@ -137,7 +147,7 @@ async fn handle_connection(
                         });
                 }
             }
-            Ok(tungstenite::Message::Close(_)) => {
+            Ok(Message::Close(_)) => {
                 // Close the connection
                 ws_stream.close(None).await.unwrap_or_else(|e| {
                     error!("(handle_connection) Failed to close connection: {e:?}");
@@ -211,30 +221,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
     info!("(main) Loaded ship templates.");
 
-    // Build the authenticator
-    let authenticator: Box<dyn Authenticator> = if test_mode {
-        Box::new(MockAuthenticator::new(
-            &args.web_server,
-            args.secret,
-            &args.users_file,
-            args.web_server.clone(),
-        ))
-    } else {
-        Box::new(
-            GoogleAuthenticator::new(
-                &args.web_server,
-                args.secret,
-                &args.users_file,
-                args.web_server.clone(),
-            )
-            .await,
-        )
-    };
-
-    let authenticator = Arc::new(authenticator);
-
-    info!("(main) Built authenticator.");
-
     // Build the main entities table that will be the state of our server.
     let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
         Entities::load_from_file(&file_name)
@@ -269,6 +255,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         }));
     }
 
+    // All the data shared between authenticators.
+    let session_keys = Arc::new(Mutex::new(HashMap::new()));
+    let valid_users = load_authorized_users(&args.users_file).await;
+    let my_credentials = GoogleAuthenticator::load_google_credentials(&args.secret);
+    let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
+
     // We start a loop to continuously accept incoming connections
     loop {
         let (stream, peer_addr) = listener.accept().await?;
@@ -276,14 +268,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
         // Spawn a tokio task to serve multiple connections concurrently
         let ent = entities.clone();
-        let auth = authenticator.clone();
         let acceptor = acceptor.clone();
 
-        /*let fut = async move  {
-            handle_connection(stream, acceptor, ent, auth).await.unwrap();
-            future::ok::<(),Box<dyn std::error::Error + Send + Sync + 'static>>(())
-        };*/
-
-        tokio::task::spawn(handle_connection(stream, acceptor, ent, auth, test_mode));
+        // Build the authenticator
+        let authenticator: Box<dyn Authenticator> = if test_mode {
+            Box::new(MockAuthenticator::new(&args.web_server))
+        } else {
+            Box::new(GoogleAuthenticator::new(
+                &args.web_server,
+                args.web_server.clone(),
+                my_credentials.clone(),
+                google_keys.clone(),
+                valid_users.clone(),
+            ))
+        };
+        tokio::task::spawn(handle_connection(
+            stream,
+            acceptor,
+            ent,
+            authenticator,
+            session_keys.clone(),
+            test_mode,
+        ));
     }
 }

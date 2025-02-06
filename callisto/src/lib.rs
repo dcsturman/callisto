@@ -33,7 +33,6 @@ use payloads::{IncomingMsg, OutgoingMsg};
 use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
-pub const SESSION_COOKIE_NAME: &str = "callisto-session-key";
 
 /// This is the main server loop, handling each request the server receives.
 ///
@@ -66,7 +65,7 @@ pub async fn handle_request(
     message: IncomingMsg,
     entities: Arc<Mutex<Entities>>,
     test_mode: bool,
-    authenticator: Arc<Box<dyn Authenticator>>,
+    authenticator: &mut Box<dyn Authenticator>,
 ) -> Result<OutgoingMsg, String> {
     info!("Request: {:?}", message);
 
@@ -75,47 +74,26 @@ pub async fn handle_request(
         result.map_or_else(error_msg, |msg| Ok(OutgoingMsg::SimpleMsg(msg)))
     };
 
-    let mut server = Server::new(entities, authenticator.clone(), test_mode);
+    let mut server = Server::new(entities, authenticator, test_mode);
+
+    // If the connection has not logged in yet, that is the priority.
+    // Nothing else is processed until login is complete.
+    if !server.validated_user()
+        && !matches!(message, IncomingMsg::Login(_))
+        && !matches!(message, IncomingMsg::Quit)
+    {
+        return Ok(OutgoingMsg::PleaseLogin);
+    }
 
     match message {
-        /*
-        (&Method::OPTIONS, curious) => {
-            debug!(
-                "(lib.handleRequest) Received and processing OPTIONS request with uri: {}",
-                curious
-            );
-            let mut resp = Response::new("".as_bytes().into());
-            add_auth_headers(&mut resp, &web_server);
-            let allow_methods = vec![
-                hyper::http::Method::POST,
-                hyper::http::Method::GET,
-                hyper::http::Method::OPTIONS,
-            ]
-            .into_iter()
-            .collect::<AccessControlAllowMethods>();
-            let allow_headers = vec![
-                hyper::http::header::CONTENT_TYPE,
-                hyper::http::header::AUTHORIZATION,
-                hyper::http::header::COOKIE,
-                hyper::http::header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-            ]
-            .into_iter()
-            .collect::<AccessControlAllowHeaders>();
-
-            resp.headers_mut().typed_insert(allow_methods);
-            resp.headers_mut().typed_insert(allow_headers);
-
-            Ok(resp)
-        }
-        */
         IncomingMsg::Login(login_msg) => {
             // But we put all this business logic into [Server.login](Server::login) rather than
             // split it up between the two locations.
             // Our role here is just to repackage the response and put it on the wire.
             server
-                .login(login_msg, &None)
+                .login(login_msg)
                 .await
-                .map_or_else(error_msg, |(auth_response, _)| {
+                .map_or_else(error_msg, |auth_response| {
                     Ok(OutgoingMsg::AuthResponse(auth_response))
                 })
         }
