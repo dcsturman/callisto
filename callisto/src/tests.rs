@@ -49,7 +49,7 @@ async fn test_simple_get() {
 /**
  * Test that we can add a ship to the server and get it back.
  */
-#[test(tokio::test)]
+#[test_log::test(tokio::test)]
 async fn test_add_ship() {
     let mut authenticator = setup_authenticator();
     let server = setup_test_with_server(&mut authenticator).await;
@@ -63,8 +63,10 @@ async fn test_add_ship() {
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true]
         }"#;
+
+    let message: AddShipMsg = serde_json::from_str(ship).unwrap();
     let response = server
-        .add_ship(serde_json::from_str(ship).unwrap())
+        .add_ship(message)
         .unwrap();
 
     assert_eq!(response, "Add ship action executed");

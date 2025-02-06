@@ -163,7 +163,7 @@ impl FlightParams {
      */
     pub fn compute_flight_path(&self) -> Option<FlightPathResult> {
         for attempt in 0..3 {
-            warn!("(compute_flight_path) Attempt {}", attempt);
+            info!("(compute_flight_path) Attempt {}", attempt);
             let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess(attempt);
             let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_accel_1).into();
             initial.append(&mut Into::<[f64; 3]>::into(guess_accel_2).into());
@@ -314,7 +314,7 @@ impl Problem for FlightParams {
  * The eighth is the duration (time) of the second acceleration.
  * The solver will find an x that gives us minimal error.  In particular it finds r(x) where:
  * The first three values of r(x) (by x, y, z) are the difference between the target position and the actual position.
- * The next three values of r(x) (by x, y, z) are the difference between the target velocity and the actual veloctiy.
+ * The next three values of r(x) (by x, y, z) are the difference between the target velocity and the actual velocity.
  * The seventh value is the difference between the first acceleration magnitude and the max acceleration.
  * The eighth value is the difference between the second acceleration magnitude and the max acceleration.
  */

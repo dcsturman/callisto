@@ -52,7 +52,7 @@ export function Authentication(args: {
     function loginToCallisto() {
       console.log("Logging in to Callisto");
       if (googleAuthResponse) {
-        login(googleAuthResponse.code, args.setEmail, args.setAuthenticated);
+        login(googleAuthResponse.code);
       } else {
         console.error("No code received from Google");
       }

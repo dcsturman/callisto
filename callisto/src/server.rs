@@ -351,7 +351,7 @@ impl<'a> Server<'a> {
             max_accel,
         );
 
-        debug!("(/compute_path)Call computer with params: {:?}", params);
+        debug!("(/compute_path) Call computer with params: {:?}", params);
 
         let Some(plan) = params.compute_flight_path() else {
             return Err(format!("Unable to compute flight path: {params:?}"));

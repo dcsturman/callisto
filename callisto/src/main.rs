@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::panic;
 use std::path::PathBuf;
 use std::process;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use futures_util::{SinkExt, StreamExt};
@@ -37,6 +38,10 @@ struct Args {
     #[arg(short, long, default_value_t = 8443)]
     port: u16,
 
+    /// Local IP address to bind to.  Typically 127.0.0.1 or 0.0.0.0 (for docker)
+    #[arg(short, long, default_value = "0.0.0.0")]
+    address: String,
+
     /// JSON file for planets in scenario
     #[arg(short = 'f', long)]
     scenario_file: Option<String>,
@@ -58,8 +63,8 @@ struct Args {
     oauth_creds: String,
 
     // Prefix of the certificate and key files for tls.  The server will append .crt and .key to this.
-    #[arg(short, long, default_value = "keys/localhost")]
-    tls_files: String,
+    #[arg(short = 'k', long, default_value = "keys/localhost")]
+    tls_keys: String,
 
     // Google Cloud Storage bucket to use in lieu of config directory
     #[arg(short, long, default_value = DEFAULT_AUTHORIZED_USERS_FILE)]
@@ -75,10 +80,12 @@ async fn handle_connection(
     test_mode: bool,
 ) {
     // First, upgrade the stream to be TLS
-    let Ok(stream) = acceptor.accept(stream).await else {
-        // Server should protect itself and just ignore this connection if it cannot to TLS.
-        warn!("(handle_connection) Failed to upgrade TcpStream to TLS. Dropping connection.");
-        return;
+    let stream = match acceptor.accept(stream).await {
+        Ok(stream) => stream,
+        Err(e) => {
+            warn!("(handle_connection) Failed to upgrade TcpStream to TLS: {e:?}");
+            return;
+        }
     };
 
     debug!("(handle_connection) Upgraded to TLS.");
@@ -108,6 +115,7 @@ async fn handle_connection(
     while let Some(msg) = ws_stream.next().await {
         match msg {
             Ok(Message::Text(text)) => {
+                debug!("(handle_connection) Received message: {text}");
                 // Handle the request
                 let response = if let Ok(parsed_message) = serde_json::from_str(&text) {
                     handle_request(
@@ -119,21 +127,25 @@ async fn handle_connection(
                     .await
                 } else {
                     // TODO: Really this should return a 400? But can I do that without killing the connection?
-                    Ok(ResponseMsg::Error("Malformed message.".to_string()))
+                    Ok(vec![ResponseMsg::Error("Malformed message.".to_string())])
                 };
 
+                debug!("(handle_connection) Response(s): {response:?}");
+                
                 // Send the response
                 if let Ok(response) = response {
-                    ws_stream
-                        .send(Message::Text(
-                            serde_json::to_string(&response)
-                                .expect("Failed to serialize response")
-                                .into(),
-                        ))
-                        .await
-                        .unwrap_or_else(|e| {
-                            error!("(handle_connection) Failed to send response: {e:?}");
-                        });
+                    for message in response {
+                        ws_stream
+                            .send(Message::Text(
+                                serde_json::to_string(&message)
+                                    .expect("Failed to serialize response")
+                                    .into(),
+                            ))
+                            .await
+                            .unwrap_or_else(|e| {
+                                error!("(handle_connection) Failed to send response: {e:?}");
+                            });
+                    }
                 } else {
                     error!("(handle_connection) Error processing handle_request on message {response:?}.");
                     // Let the client know
@@ -179,13 +191,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let port = args.port;
     debug!("Using port: {port}");
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let ip_addr = IpAddr::from_str(&args.address)?;
+    let addr = SocketAddr::from((ip_addr, port));
 
     // Load our certs and key.
-    let cert_path = PathBuf::from(format!("{}.crt", args.tls_files));
+    let cert_path = PathBuf::from(format!("{}.crt", args.tls_keys));
     let certs = CertificateDer::pem_file_iter(cert_path)?.collect::<Result<Vec<_>, _>>()?;
 
-    let key_path = PathBuf::from(format!("{}.key", args.tls_files)); 
+    let key_path = PathBuf::from(format!("{}.key", args.tls_keys));
     let key = PrivateKeyDer::from_pem_file(key_path)?;
 
     info!("(main) Loaded certs and key.");

@@ -10,6 +10,8 @@ import { Ships, Missiles, Route } from "./Ships";
 import { EntityInfoWindow, Controls, ViewControls } from "./Controls";
 import { Effect, Explosions, ResultsWindow } from "./Effects";
 import {
+  setMessageHandlers,
+  startWebsocket,
   nextRound,
   getEntities,
   getTemplates,
@@ -40,6 +42,7 @@ export function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(true);
   const [email, setEmail] = useState<string | null>(null);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
+  const [socketReady, setSocketReady] = useState<boolean>(false);
 
   console.group("Callisto Config parameters");
   if (process.env.REACT_APP_C_BACKEND) {
@@ -58,23 +61,41 @@ export function App() {
   }
   console.groupEnd();
 
+  useEffect(() => {
+    if (!socketReady) {
+      startWebsocket(setSocketReady);
+    } else {
+      setMessageHandlers(
+        setEmail,
+        setAuthenticated,
+        () => {},
+        () => {},
+        () => {},
+        () => {}
+      );
+    }
+  }, [socketReady]);
+
   return (
     <div>
-      {authenticated ? (
+      {authenticated && socketReady ? (
         <>
           <Simulator
             setAuthenticated={setAuthenticated}
             email={email}
+            socketReady={socketReady}
             setEmail={setEmail}
             computerShipName={computerShipName}
             setComputerShipName={setComputerShipName}
           />
         </>
-      ) : (
+      ) : socketReady ? (
         <Authentication
           setAuthenticated={setAuthenticated}
           setEmail={setEmail}
         />
+      ) : (
+        <div>Waiting for socket to open...</div>
       )}
     </div>
   );
@@ -84,12 +105,14 @@ function Simulator({
   setAuthenticated,
   email,
   setEmail,
+  socketReady,
   computerShipName,
   setComputerShipName,
 }: {
   setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
+  socketReady: boolean;
   computerShipName: string | null;
   setComputerShipName: (ship: string | null) => void;
 }) {
@@ -118,9 +141,25 @@ function Simulator({
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
 
   useEffect(() => {
+    if (socketReady) {
+      setMessageHandlers(
+        setEmail,
+        setAuthenticated,
+        setTemplates,
+        setEntities,
+        setProposedPlan,
+        (effects: Effect[]) => {
+          setEvents(effects);
+          setShowResults(true);
+        }
+      );
+    }
+  }, [socketReady, setAuthenticated, setEmail]);
+
+  useEffect(() => {
     if (POLL_ENTITIES_INTERVAL > 0) {
       const interval = setInterval(() => {
-        getEntities(setEntities, setAuthenticated);
+        getEntities();
       }, POLL_ENTITIES_INTERVAL);
       return () => clearInterval(interval);
     }
@@ -139,8 +178,7 @@ function Simulator({
       end_vel,
       setProposedPlan,
       target_vel,
-      standoff,
-      setAuthenticated
+      standoff
     );
   };
 
@@ -163,8 +201,8 @@ function Simulator({
   }
 
   useEffect(() => {
-    getTemplates(setTemplates, setAuthenticated);
-    getEntities(setEntities, setAuthenticated);
+    getTemplates();
+    getEntities();
   }, [setAuthenticated]);
 
   useEffect(() => {
@@ -197,17 +235,7 @@ function Simulator({
               />
             )}
             <Controls
-              nextRound={(fireActions, callback) =>
-                nextRound(
-                  fireActions,
-                  setEvents,
-                  (es: EntityList) => {
-                    setShowResults(true);
-                    callback(es);
-                  },
-                  setAuthenticated
-                )
-              }
+              nextRound={(fireActions) => nextRound(fireActions)}
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
               shipDesignTemplates={templates}
@@ -246,7 +274,6 @@ function Simulator({
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
-                  setAuthenticated={setAuthenticated}
                 />
               )}
               {showResults && (
@@ -265,7 +292,7 @@ function Simulator({
                   far: 200000,
                   position: [-100, 0, 0],
                 }}>
-                {/* eslint-disable react/no-unknown-property */ }
+                {/* eslint-disable react/no-unknown-property */}
                 <pointLight
                   position={[-148e3, 10, 10]}
                   intensity={6.0}

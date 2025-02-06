@@ -50,7 +50,7 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 ///
 /// # Returns
 ///
-/// A [Response] with the appropriate headers and body.
+/// A [Vec<Response>] with a list of responses to send back to the client.  This way we avoid having the web socket or other network mechanism in this code.
 ///
 /// # Errors
 ///
@@ -66,15 +66,18 @@ pub async fn handle_request(
     entities: Arc<Mutex<Entities>>,
     test_mode: bool,
     authenticator: &mut Box<dyn Authenticator>,
-) -> Result<ResponseMsg, String> {
-    info!("Request: {:?}", message);
+) -> Result<Vec<ResponseMsg>, String> {
+    info!("(handle_request) Request: {:?}", message);
 
-    let error_msg = |err_msg: String| Ok(ResponseMsg::Error(err_msg));
-    let simple_response = |result: Result<String, String>| -> Result<ResponseMsg, String> {
-        result.map_or_else(error_msg, |msg| Ok(ResponseMsg::SimpleMsg(msg)))
+    let error_msg = |err_msg: String| Ok(vec![ResponseMsg::Error(err_msg)]);
+    let response_with_update = |result: Result<String, String>| -> Result<Vec<ResponseMsg>, String> {
+        result.map_or_else(error_msg, |msg| Ok(vec![ResponseMsg::SimpleMsg(msg), ResponseMsg::EntityResponse(entities.clone().lock().unwrap().clone())]))
+    };
+    let simple_response = |result: Result<String, String>| -> Result<Vec<ResponseMsg>, String> {
+        result.map_or_else(error_msg, |msg| Ok(vec![ResponseMsg::SimpleMsg(msg)]))
     };
 
-    let mut server = Server::new(entities, authenticator, test_mode);
+    let mut server = Server::new(entities.clone(), authenticator, test_mode);
 
     // If the connection has not logged in yet, that is the priority.
     // Nothing else is processed until login is complete.
@@ -82,7 +85,7 @@ pub async fn handle_request(
         && !matches!(message, RequestMsg::Login(_))
         && !matches!(message, RequestMsg::Quit)
     {
-        return Ok(ResponseMsg::PleaseLogin);
+        return Ok(vec![ResponseMsg::PleaseLogin]);
     }
 
     match message {
@@ -94,21 +97,21 @@ pub async fn handle_request(
                 .login(login_msg)
                 .await
                 .map_or_else(error_msg, |auth_response| {
-                    Ok(ResponseMsg::AuthResponse(auth_response))
+                    Ok(vec![ResponseMsg::AuthResponse(auth_response)])
                 })
         }
-        RequestMsg::AddShip(ship) => simple_response(server.add_ship(ship)),
-        RequestMsg::SetCrewActions(request) => simple_response(server.set_crew_actions(&request)),
-        RequestMsg::AddPlanet(planet) => simple_response(server.add_planet(planet)),
-        RequestMsg::Remove(name) => simple_response(server.remove(&name)),
-        RequestMsg::SetPlan(plan) => simple_response(server.set_plan(&plan)),
+        RequestMsg::AddShip(ship) => response_with_update(server.add_ship(ship)),
+        RequestMsg::SetCrewActions(request) => response_with_update(server.set_crew_actions(&request)),
+        RequestMsg::AddPlanet(planet) => response_with_update(server.add_planet(planet)),
+        RequestMsg::Remove(name) => response_with_update(server.remove(&name)),
+        RequestMsg::SetPlan(plan) => response_with_update(server.set_plan(&plan)),
         RequestMsg::Update(fire_actions) => {
             let effects = server.update(&fire_actions);
-            Ok(ResponseMsg::Effects(effects))
+            Ok(vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities.clone().lock().unwrap().clone())])
         }
         RequestMsg::ComputePath(path_goal) => server
             .compute_path(&path_goal)
-            .map_or_else(error_msg, |path| Ok(ResponseMsg::FlightPath(path))),
+            .map_or_else(error_msg, |path| Ok(vec![ResponseMsg::FlightPath(path)])),
         RequestMsg::LoadScenario(scenario_name) => {
             simple_response(server.load_scenario(&scenario_name).await)
         }
@@ -122,12 +125,12 @@ pub async fn handle_request(
         RequestMsg::EntitiesRequest => {
             info!("Received and processing get request.");
             let json = server.get_entities();
-            Ok(ResponseMsg::EntityResponse(json))
+            Ok(vec![ResponseMsg::EntityResponse(json)])
         }
         RequestMsg::DesignTemplateRequest => {
             info!("Received and processing get designs request.");
             let template_msg = server.get_designs();
-            Ok(ResponseMsg::DesignTemplateResponse(template_msg))
+            Ok(vec![ResponseMsg::DesignTemplateResponse(template_msg)])
         }
     }
 }
