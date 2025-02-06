@@ -178,10 +178,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     // Load our certs and key.
-    let cert_path = PathBuf::from("keys/server-cert.crt");
+    let cert_path = PathBuf::from("keys/localhost.crt");
     let certs = CertificateDer::pem_file_iter(cert_path)?.collect::<Result<Vec<_>, _>>()?;
 
-    let key_path = PathBuf::from("keys/server-cert.key");
+    let key_path = PathBuf::from("keys/localhost.key");
     let key = PrivateKeyDer::from_pem_file(key_path)?;
 
     info!("(main) Loaded certs and key.");

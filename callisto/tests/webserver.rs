@@ -8,15 +8,20 @@
 extern crate callisto;
 use std::env::var;
 use std::io;
+use std::fs;
+use std::sync::Arc;
 
 use assert_json_diff::assert_json_eq;
 use futures_util::{SinkExt, StreamExt};
+
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
 use tokio::time::{sleep, Duration};
-use tokio_native_tls::TlsStream;
+use rustls::pki_types::{CertificateDer, pem::PemObject};
 use tokio_tungstenite::{
-    client_async_tls, connect_async,
+    Connector, 
+    connect_async,
+    connect_async_tls_with_config,
     tungstenite::{Error, Result},
     MaybeTlsStream, WebSocketStream,
 };
@@ -35,7 +40,7 @@ use callisto::crew::{Crew, Skills};
 
 use cgmath::{assert_ulps_eq, Zero};
 
-type MyWebSocket = WebSocketStream<MaybeTlsStream<TlsStream<TcpStream>>>;
+type MyWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "target/debug/callisto";
@@ -98,35 +103,24 @@ async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
     spawn_server(port, true, None, None, false).await
 }
 
-/**
- * Send a quit message to cleanly end a test.
- */
-async fn send_quit(stream: &mut MyWebSocket) {
-    stream
-        .send(serde_json::to_string(&RequestMsg::Quit).unwrap().into())
-        .await
-        .unwrap();
-}
-
 async fn open_socket(
     port: u16,
-) -> Result<WebSocketStream<MaybeTlsStream<TlsStream<TcpStream>>>, Error> {
-    let connector: tokio_native_tls::TlsConnector =
-        tokio_native_tls::native_tls::TlsConnector::builder()
-            .danger_accept_invalid_certs(true)
-            .build()
-            .unwrap()
-            .into();
-    let stream = TcpStream::connect(format!("{SERVER_ADDRESS}:{port}"))
-        .await
-        .unwrap();
-    let tls_stream = connector.connect(SERVER_ADDRESS, stream).await.unwrap();
-    debug!("(webservers.open_socket) TLS stream established.");
+) -> Result<MyWebSocket, Error> {
 
-    let socket_url = format!("ws://{SERVER_ADDRESS}:{port}/");
+    let rust_cert = CertificateDer::pem_file_iter("keys/rootCA.crt").expect("Cannot open CA file").map(|result| result.unwrap());
+    let mut root_store = rustls::RootCertStore::empty();
+    root_store.add_parsable_certificates(rust_cert);
+
+    let config = rustls::client::ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+
+    let connector = Connector::Rustls(Arc::new(config));
+    
+    let socket_url = format!("wss://{SERVER_ADDRESS}:{port}/");
     debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
 
-    let (ws_stream, _) = client_async_tls(socket_url, tls_stream)
+    let (ws_stream, _) = connect_async_tls_with_config(socket_url, None, false, Some(connector))
         .await
         .unwrap_or_else(|e| panic!("Client_async_tls failed with {e:?}"));
 
@@ -149,6 +143,16 @@ async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
         });
     let body = serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap();
     body
+}
+
+/**
+ * Send a quit message to cleanly end a test.
+ */
+async fn send_quit(stream: &mut MyWebSocket) {
+    stream
+        .send(serde_json::to_string(&RequestMsg::Quit).unwrap().into())
+        .await
+        .unwrap();
 }
 
 /**

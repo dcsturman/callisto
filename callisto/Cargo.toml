@@ -36,13 +36,13 @@ cookie = "0.18.1"
 async-trait = "0.1.83"
 quit = "2.0.0"
 rustls = "0.23.21"
-tokio-tungstenite = { version = "0.26.1", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.26.1", features = ["rustls-tls-native-roots"] }
 tokio-rustls = "0.26.1"
 rustls-pki-types = "1.11.0"
 futures-util = "0.3.31"
 futures = "0.3.31"
-tokio-native-tls = "0.3.1"
 http = "1.2.0"
+pem = "3.0.4"
 
 [dev-dependencies]
 mockstream = "0.0.3"
