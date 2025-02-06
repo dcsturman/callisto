@@ -27,8 +27,8 @@ use callisto::debug;
 
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use callisto::payloads::{
-    AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, FireAction, IncomingMsg, LoadScenarioMsg,
-    LoginMsg, OutgoingMsg, SetCrewActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, FireAction, RequestMsg, LoadScenarioMsg,
+    LoginMsg, ResponseMsg, SetCrewActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -103,7 +103,7 @@ async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
  */
 async fn send_quit(stream: &mut MyWebSocket) {
     stream
-        .send(serde_json::to_string(&IncomingMsg::Quit).unwrap().into())
+        .send(serde_json::to_string(&RequestMsg::Quit).unwrap().into())
         .await
         .unwrap();
 }
@@ -134,7 +134,7 @@ async fn open_socket(
     Ok(ws_stream)
 }
 
-async fn rpc(stream: &mut MyWebSocket, request: IncomingMsg) -> OutgoingMsg {
+async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
     stream
         .send(serde_json::to_string(&request).unwrap().into())
         .await
@@ -147,7 +147,7 @@ async fn rpc(stream: &mut MyWebSocket, request: IncomingMsg) -> OutgoingMsg {
         .unwrap_or_else(|err| {
             panic!("Receiving error from server {err:?} in response to request: {request:?}.")
         });
-    let body = serde_json::from_str::<OutgoingMsg>(reply.to_text().unwrap()).unwrap();
+    let body = serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap();
     body
 }
 
@@ -173,12 +173,12 @@ async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
     let email = response.text().await.unwrap();
     Ok((email, cookie))
     */
-    let msg = IncomingMsg::Login(LoginMsg {
+    let msg = RequestMsg::Login(LoginMsg {
         code: "test_code".to_string(),
     });
 
     let body = rpc(stream, msg).await;
-    if let OutgoingMsg::AuthResponse(auth_response) = body {
+    if let ResponseMsg::AuthResponse(auth_response) = body {
         Ok(auth_response.email)
     } else {
         Err(format!("Expected auth response to login. Got {body:?}"))
@@ -197,14 +197,14 @@ async fn integration_get_designs() {
 
     let _ = test_authenticate(&mut stream).await.unwrap();
 
-    let body = rpc(&mut stream, IncomingMsg::DesignTemplateRequest).await;
+    let body = rpc(&mut stream, RequestMsg::DesignTemplateRequest).await;
 
     assert!(
-        matches!(body, OutgoingMsg::DesignTemplateResponse(_)),
+        matches!(body, ResponseMsg::DesignTemplateResponse(_)),
         "Improper response to design request received."
     );
 
-    if let OutgoingMsg::DesignTemplateResponse(designs) = body {
+    if let ResponseMsg::DesignTemplateResponse(designs) = body {
         assert!(!designs.is_empty(), "Received empty design list.");
         assert!(
             designs.contains_key("Buccaneer"),
@@ -230,13 +230,13 @@ async fn integration_simple_get() {
 
     let _ = test_authenticate(&mut stream).await.unwrap();
 
-    let body = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
+    let body = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
     assert!(
-        matches!(body, OutgoingMsg::EntityResponse(_)),
+        matches!(body, ResponseMsg::EntityResponse(_)),
         "Improper response to get request received."
     );
 
-    if let OutgoingMsg::EntityResponse(entities) = body {
+    if let ResponseMsg::EntityResponse(entities) = body {
         assert!(entities.is_empty(), "Expected empty entities list.");
     }
     send_quit(&mut stream).await;
@@ -251,10 +251,10 @@ async fn integration_action_without_login() {
 
     // Intentionally skip test authenticate here.
     debug!("****** ONE");
-    let body = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
+    let body = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
     debug!("****** TWO");
     assert!(
-        matches!(body, OutgoingMsg::PleaseLogin),
+        matches!(body, ResponseMsg::PleaseLogin),
         "Expected request to log in, but instead got {body:?}"
     );
 
@@ -284,21 +284,21 @@ async fn integration_add_ship() {
         crew: None,
     };
 
-    let body = rpc(&mut stream, IncomingMsg::AddShip(ship)).await;
+    let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
 
     assert!(
-        matches!(body, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"),
+        matches!(body, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"),
         "Improper response to add ship request received."
     );
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
 
     assert!(
-        matches!(entities, OutgoingMsg::EntityResponse(_)),
+        matches!(entities, ResponseMsg::EntityResponse(_)),
         "Improper response to entities request received."
     );
 
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -339,7 +339,7 @@ async fn integration_add_planet_ship() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship1".to_string(),
             position: [0.0, 2000.0, 0.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -350,11 +350,11 @@ async fn integration_add_planet_ship() {
     )
     .await;
 
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship2".to_string(),
             position: [10000.0, 10000.0, 10000.0].into(),
             velocity: [10000.0, 0.0, 0.0].into(),
@@ -364,10 +364,10 @@ async fn integration_add_planet_ship() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
-    let response = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
-    if let OutgoingMsg::EntityResponse(entities) = response {
+    let response = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = response {
         let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -409,7 +409,7 @@ async fn integration_add_planet_ship() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddPlanet(AddPlanetMsg {
+        RequestMsg::AddPlanet(AddPlanetMsg {
             name: "planet1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             color: "red".to_string(),
@@ -419,11 +419,11 @@ async fn integration_add_planet_ship() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
 
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let compare = json!({"planets":[
         {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
           "color":"red","radius":1.5e6,"mass":3e24,
@@ -471,7 +471,7 @@ async fn integration_add_planet_ship() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddPlanet(AddPlanetMsg {
+        RequestMsg::AddPlanet(AddPlanetMsg {
             name: "planet2".to_string(),
             position: [1_000_000.0, 0.0, 0.0].into(),
             color: "red".to_string(),
@@ -481,10 +481,10 @@ async fn integration_add_planet_ship() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let compare = json!({"missiles":[],
         "planets":[
         {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -551,7 +551,7 @@ async fn integration_update_ship() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [1000.0, 0.0, 0.0].into(),
@@ -562,13 +562,13 @@ async fn integration_update_ship() {
     )
     .await;
 
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
-    let response = rpc(&mut stream, IncomingMsg::Update(EMPTY_FIRE_ACTIONS_MSG)).await;
-    assert!(matches!(response, OutgoingMsg::Effects(eq) if eq.is_empty()));
+    let response = rpc(&mut stream, RequestMsg::Update(EMPTY_FIRE_ACTIONS_MSG)).await;
+    assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let ship = entities.ships.get("ship1").unwrap().read().unwrap();
         assert_eq!(
             ship.get_position(),
@@ -598,7 +598,7 @@ async fn integration_update_missile() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [1000.0, 0.0, 0.0].into(),
@@ -608,11 +608,11 @@ async fn integration_update_missile() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship2".to_string(),
             position: [5000.0, 0.0, 5000.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -622,7 +622,7 @@ async fn integration_update_missile() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
     let fire_actions = vec![(
         "ship1".to_string(),
@@ -633,8 +633,8 @@ async fn integration_update_missile() {
         }],
     )];
 
-    let effects = rpc(&mut stream, IncomingMsg::Update(fire_actions)).await;
-    if let OutgoingMsg::Effects(effects) = effects {
+    let effects = rpc(&mut stream, RequestMsg::Update(fire_actions)).await;
+    if let ResponseMsg::Effects(effects) = effects {
         let filtered_effects: Vec<_> = effects
             .iter()
             .filter(|e| !matches!(e, EffectMsg::Message { .. }))
@@ -648,8 +648,8 @@ async fn integration_update_missile() {
         panic!("Improper response to update request received.");
     }
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let compare = json!({"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
@@ -706,7 +706,7 @@ async fn integration_remove_ship() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -716,13 +716,13 @@ async fn integration_remove_ship() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
-    let message = rpc(&mut stream, IncomingMsg::Remove("ship1".to_string())).await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Remove action executed"));
+    let message = rpc(&mut stream, RequestMsg::Remove("ship1".to_string())).await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Remove action executed"));
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         assert!(entities.ships.is_empty());
         assert!(entities.missiles.is_empty());
         assert!(entities.planets.is_empty());
@@ -748,7 +748,7 @@ async fn integration_set_acceleration() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -758,10 +758,10 @@ async fn integration_set_acceleration() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let ship = entities.ships.get("ship1").unwrap().read().unwrap();
         let flight_plan = &ship.plan;
         assert_eq!(flight_plan.0 .0, [0.0, 0.0, 0.0].into());
@@ -771,18 +771,18 @@ async fn integration_set_acceleration() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::SetPlan(SetPlanMsg {
+        RequestMsg::SetPlan(SetPlanMsg {
             name: "ship1".to_string(),
             plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
         }),
     )
     .await;
     assert!(
-        matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Set acceleration action executed")
+        matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Set acceleration action executed")
     );
 
-    let entities = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
-    if let OutgoingMsg::EntityResponse(entities) = entities {
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let ship = entities.ships.get("ship1").unwrap().read().unwrap();
         let flight_plan = &ship.plan;
         assert_eq!(flight_plan.0 .0, [1.0, 2.0, 2.0].into());
@@ -808,7 +808,7 @@ async fn integration_compute_path_basic() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -818,11 +818,11 @@ async fn integration_compute_path_basic() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::ComputePath(ComputePathMsg {
+        RequestMsg::ComputePath(ComputePathMsg {
             entity_name: "ship1".to_string(),
             end_pos: [58_842_000.0, 0.0, 0.0].into(),
             end_vel: [0.0, 0.0, 0.0].into(),
@@ -832,7 +832,7 @@ async fn integration_compute_path_basic() {
     )
     .await;
 
-    if let OutgoingMsg::FlightPath(plan) = message {
+    if let ResponseMsg::FlightPath(plan) = message {
         assert_eq!(plan.path.len(), 9);
         assert_eq!(plan.path[0], Vec3::zero());
         assert_ulps_eq!(
@@ -900,7 +900,7 @@ async fn integration_compute_path_with_standoff() {
     // Add test ship
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "ship1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -910,12 +910,12 @@ async fn integration_compute_path_with_standoff() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
     // Compute path with standoff
     let message = rpc(
         &mut stream,
-        IncomingMsg::ComputePath(ComputePathMsg {
+        RequestMsg::ComputePath(ComputePathMsg {
             entity_name: "ship1".to_string(),
             end_pos: [58_842_000.0, 0.0, 0.0].into(),
             end_vel: [0.0, 0.0, 0.0].into(),
@@ -925,7 +925,7 @@ async fn integration_compute_path_with_standoff() {
     )
     .await;
 
-    if let OutgoingMsg::FlightPath(plan) = message {
+    if let ResponseMsg::FlightPath(plan) = message {
         assert_eq!(plan.path.len(), 9);
         assert_eq!(plan.path[0], Vec3::zero());
         assert_ulps_eq!(
@@ -992,7 +992,7 @@ async fn integration_malformed_requests() {
     // Test invalid ship design
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "bad_ship".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -1002,12 +1002,12 @@ async fn integration_malformed_requests() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::Error(_)));
+    assert!(matches!(message, ResponseMsg::Error(_)));
 
     // Test invalid planet primary
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddPlanet(AddPlanetMsg {
+        RequestMsg::AddPlanet(AddPlanetMsg {
             name: "planet1".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             color: "red".to_string(),
@@ -1017,12 +1017,12 @@ async fn integration_malformed_requests() {
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::Error(_)));
+    assert!(matches!(message, ResponseMsg::Error(_)));
 
     // Test invalid compute path request
     let message = rpc(
         &mut stream,
-        IncomingMsg::ComputePath(ComputePathMsg {
+        RequestMsg::ComputePath(ComputePathMsg {
             entity_name: "nonexistent_ship".to_string(),
             end_pos: [0.0, 0.0, 0.0].into(),
             end_vel: [0.0, 0.0, 0.0].into(),
@@ -1032,25 +1032,25 @@ async fn integration_malformed_requests() {
     )
     .await;
     assert!(
-        matches!(message, OutgoingMsg::Error(_)),
+        matches!(message, ResponseMsg::Error(_)),
         "Expected error for invalid compute path request, got {message:?}"
     );
 
     // Test invalid flight plan
     let message = rpc(
         &mut stream,
-        IncomingMsg::SetPlan(SetPlanMsg {
+        RequestMsg::SetPlan(SetPlanMsg {
             name: "nonexistent_ship".to_string(),
             plan: vec![([f64::NAN, 0.0, 0.0].into(), 1000)].into(),
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::Error(_)));
+    assert!(matches!(message, ResponseMsg::Error(_)));
 
     // Test fire action with invalid parameters
     let message = rpc(
         &mut stream,
-        IncomingMsg::Update(vec![(
+        RequestMsg::Update(vec![(
             "nonexistent_ship".to_string(),
             vec![FireAction {
                 weapon_id: 0,
@@ -1061,7 +1061,7 @@ async fn integration_malformed_requests() {
     )
     .await;
     assert!(
-        matches!(&message, OutgoingMsg::Effects(x) if x.is_empty()),
+        matches!(&message, ResponseMsg::Effects(x) if x.is_empty()),
         "Expected empty effects for invalid fire action, got {message:?}"
     );
 
@@ -1077,16 +1077,16 @@ async fn integration_bad_requests() {
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Test setting crew actions for non-existent ship
-    let msg = IncomingMsg::SetCrewActions(SetCrewActions {
+    let msg = RequestMsg::SetCrewActions(SetCrewActions {
         ship_name: "ship1".to_string(),
         dodge_thrust: Some(3),
         assist_gunners: Some(true),
     });
     let response = rpc(&mut stream, msg).await;
-    assert!(matches!(response, OutgoingMsg::Error(_)));
+    assert!(matches!(response, ResponseMsg::Error(_)));
 
     // Test adding planet with invalid primary
-    let msg = IncomingMsg::AddPlanet(AddPlanetMsg {
+    let msg = RequestMsg::AddPlanet(AddPlanetMsg {
         name: "planet1".to_string(),
         position: [0.0, 0.0, 0.0].into(),
         color: "red".to_string(),
@@ -1095,23 +1095,23 @@ async fn integration_bad_requests() {
         mass: 3e24,
     });
     let response = rpc(&mut stream, msg).await;
-    assert!(matches!(response, OutgoingMsg::Error(_)));
+    assert!(matches!(response, ResponseMsg::Error(_)));
 
     // Test removing non-existent ship
-    let msg = IncomingMsg::Remove("ship1".to_string());
+    let msg = RequestMsg::Remove("ship1".to_string());
     let response = rpc(&mut stream, msg).await;
-    assert!(matches!(response, OutgoingMsg::Error(_)));
+    assert!(matches!(response, ResponseMsg::Error(_)));
 
     // Test setting flight plan for non-existent ship
-    let msg = IncomingMsg::SetPlan(SetPlanMsg {
+    let msg = RequestMsg::SetPlan(SetPlanMsg {
         name: "ship1".to_string(),
         plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
     });
     let response = rpc(&mut stream, msg).await;
-    assert!(matches!(response, OutgoingMsg::Error(_)));
+    assert!(matches!(response, ResponseMsg::Error(_)));
 
     // Test fire action with invalid weapon_id
-    let msg = IncomingMsg::Update(vec![(
+    let msg = RequestMsg::Update(vec![(
         "ship1".to_string(),
         vec![FireAction {
             weapon_id: u32::MAX,
@@ -1121,7 +1121,7 @@ async fn integration_bad_requests() {
     )]);
     let response = rpc(&mut stream, msg).await;
     assert!(
-        matches!(&response, OutgoingMsg::Effects(x) if x.is_empty()),
+        matches!(&response, ResponseMsg::Effects(x) if x.is_empty()),
         "Expected empty effects for invalid weapon_id. Instead got {response:?}"
     );
 
@@ -1137,16 +1137,16 @@ async fn integration_load_scenario() {
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Test successful scenario load
-    let msg = IncomingMsg::LoadScenario(LoadScenarioMsg {
+    let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
         scenario_name: "./tests/test-scenario.json".to_string(),
     });
     let response = rpc(&mut stream, msg).await;
-    assert!(matches!(response, OutgoingMsg::SimpleMsg(_)));
+    assert!(matches!(response, ResponseMsg::SimpleMsg(_)));
 
     // Verify the scenario was loaded by checking entities
-    let msg = IncomingMsg::EntitiesRequest;
+    let msg = RequestMsg::EntitiesRequest;
     let response = rpc(&mut stream, msg).await;
-    if let OutgoingMsg::EntityResponse(entities) = response {
+    if let ResponseMsg::EntityResponse(entities) = response {
         assert!(
             !entities.ships.is_empty() || !entities.planets.is_empty(),
             "Expected scenario to load some entities"
@@ -1156,11 +1156,11 @@ async fn integration_load_scenario() {
     }
 
     // Test loading non-existent scenario
-    let msg = IncomingMsg::LoadScenario(LoadScenarioMsg {
+    let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
         scenario_name: "./scenarios/nonexistent.json".to_string(),
     });
     let response = rpc(&mut stream, msg).await;
-    assert!(matches!(response, OutgoingMsg::Error(_)));
+    assert!(matches!(response, ResponseMsg::Error(_)));
 
     send_quit(&mut stream).await;
 }
@@ -1177,12 +1177,12 @@ async fn integration_load_cloud_scenario() {
     // Test loading non-existent cloud scenario
     let message = rpc(
         &mut stream,
-        IncomingMsg::LoadScenario(LoadScenarioMsg {
+        RequestMsg::LoadScenario(LoadScenarioMsg {
             scenario_name: "gs://nobucket/nonexistent.json".to_string(),
         }),
     )
     .await;
-    assert!(matches!(message, OutgoingMsg::Error(_)));
+    assert!(matches!(message, ResponseMsg::Error(_)));
 
     send_quit(&mut stream).await;
 }
@@ -1204,13 +1204,13 @@ async fn integration_fail_login() {
     let mut stream = open_socket(PORT).await.unwrap();
     let message = rpc(
         &mut stream,
-        IncomingMsg::Login(LoginMsg {
+        RequestMsg::Login(LoginMsg {
             code: "invalid_code".to_string(),
         }),
     )
     .await;
     assert!(
-        matches!(message, OutgoingMsg::Error(_)),
+        matches!(message, ResponseMsg::Error(_)),
         "Expected error for invalid authentication. Got: {message:?}"
     );
 
@@ -1243,7 +1243,7 @@ async fn integration_set_crew_actions() {
 
     let message = rpc(
         &mut stream,
-        IncomingMsg::AddShip(AddShipMsg {
+        RequestMsg::AddShip(AddShipMsg {
             name: "test_ship".to_string(),
             position: [0.0, 0.0, 0.0].into(),
             velocity: [0.0, 0.0, 0.0].into(),
@@ -1254,12 +1254,12 @@ async fn integration_set_crew_actions() {
     )
     .await;
 
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
     // Verify the crew skills were set by checking entities
-    let response = rpc(&mut stream, IncomingMsg::EntitiesRequest).await;
+    let response = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
 
-    if let OutgoingMsg::EntityResponse(entities) = response {
+    if let ResponseMsg::EntityResponse(entities) = response {
         let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
         let crew = ship.get_crew();
         debug!("(integration_set_crew_actions) Crew: ({:?})", crew);
@@ -1277,7 +1277,7 @@ async fn integration_set_crew_actions() {
     // Test successful crew actions set
     let message = rpc(
         &mut stream,
-        IncomingMsg::SetCrewActions(SetCrewActions {
+        RequestMsg::SetCrewActions(SetCrewActions {
             ship_name: "test_ship".to_string(),
             dodge_thrust: Some(1),
             assist_gunners: Some(true),
@@ -1285,12 +1285,12 @@ async fn integration_set_crew_actions() {
     )
     .await;
 
-    assert!(matches!(message, OutgoingMsg::SimpleMsg(_)));
+    assert!(matches!(message, ResponseMsg::SimpleMsg(_)));
 
     // Test setting crew actions for non-existent ship
     let message = rpc(
         &mut stream,
-        IncomingMsg::SetCrewActions(SetCrewActions {
+        RequestMsg::SetCrewActions(SetCrewActions {
             ship_name: "nonexistent_ship".to_string(),
             dodge_thrust: Some(1),
             assist_gunners: Some(true),
@@ -1298,7 +1298,7 @@ async fn integration_set_crew_actions() {
     )
     .await;
 
-    assert!(matches!(message, OutgoingMsg::Error(_)));
+    assert!(matches!(message, ResponseMsg::Error(_)));
 
     send_quit(&mut stream).await;
 }

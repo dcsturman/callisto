@@ -23,7 +23,7 @@ use callisto::authentication::{
 };
 use callisto::entity::Entities;
 use callisto::handle_request;
-use callisto::payloads::OutgoingMsg;
+use callisto::payloads::ResponseMsg;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
@@ -115,7 +115,7 @@ async fn handle_connection(
                     .await
                 } else {
                     // TODO: Really this should return a 400? But can I do that without killing the connection?
-                    Ok(OutgoingMsg::Error("Malformed message.".to_string()))
+                    Ok(ResponseMsg::Error("Malformed message.".to_string()))
                 };
 
                 // Send the response
@@ -135,7 +135,7 @@ async fn handle_connection(
                     // Let the client know
                     ws_stream
                         .send(Message::Text(
-                            serde_json::to_string(&OutgoingMsg::Error(
+                            serde_json::to_string(&ResponseMsg::Error(
                                 "Unable to process message.".to_string(),
                             ))
                             .expect("Failed to serialize response")

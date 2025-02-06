@@ -190,7 +190,7 @@ serde_with::serde_conv!(
 );
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum IncomingMsg {
+pub enum RequestMsg {
     Login(LoginMsg),
     AddShip(AddShipMsg),
     AddPlanet(AddPlanetMsg),
@@ -206,7 +206,7 @@ pub enum IncomingMsg {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum OutgoingMsg {
+pub enum ResponseMsg {
     AuthResponse(AuthResponse),
     DesignTemplateResponse(ShipDesignTemplateMsg),
     EntityResponse(Entities),

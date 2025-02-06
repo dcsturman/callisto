@@ -29,7 +29,7 @@ use std::io::{BufReader, Read};
 
 use authentication::Authenticator;
 use entity::Entities;
-use payloads::{IncomingMsg, OutgoingMsg};
+use payloads::{RequestMsg, ResponseMsg};
 use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
@@ -62,16 +62,16 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 ///
 #[allow(clippy::too_many_lines)]
 pub async fn handle_request(
-    message: IncomingMsg,
+    message: RequestMsg,
     entities: Arc<Mutex<Entities>>,
     test_mode: bool,
     authenticator: &mut Box<dyn Authenticator>,
-) -> Result<OutgoingMsg, String> {
+) -> Result<ResponseMsg, String> {
     info!("Request: {:?}", message);
 
-    let error_msg = |err_msg: String| Ok(OutgoingMsg::Error(err_msg));
-    let simple_response = |result: Result<String, String>| -> Result<OutgoingMsg, String> {
-        result.map_or_else(error_msg, |msg| Ok(OutgoingMsg::SimpleMsg(msg)))
+    let error_msg = |err_msg: String| Ok(ResponseMsg::Error(err_msg));
+    let simple_response = |result: Result<String, String>| -> Result<ResponseMsg, String> {
+        result.map_or_else(error_msg, |msg| Ok(ResponseMsg::SimpleMsg(msg)))
     };
 
     let mut server = Server::new(entities, authenticator, test_mode);
@@ -79,14 +79,14 @@ pub async fn handle_request(
     // If the connection has not logged in yet, that is the priority.
     // Nothing else is processed until login is complete.
     if !server.validated_user()
-        && !matches!(message, IncomingMsg::Login(_))
-        && !matches!(message, IncomingMsg::Quit)
+        && !matches!(message, RequestMsg::Login(_))
+        && !matches!(message, RequestMsg::Quit)
     {
-        return Ok(OutgoingMsg::PleaseLogin);
+        return Ok(ResponseMsg::PleaseLogin);
     }
 
     match message {
-        IncomingMsg::Login(login_msg) => {
+        RequestMsg::Login(login_msg) => {
             // But we put all this business logic into [Server.login](Server::login) rather than
             // split it up between the two locations.
             // Our role here is just to repackage the response and put it on the wire.
@@ -94,40 +94,40 @@ pub async fn handle_request(
                 .login(login_msg)
                 .await
                 .map_or_else(error_msg, |auth_response| {
-                    Ok(OutgoingMsg::AuthResponse(auth_response))
+                    Ok(ResponseMsg::AuthResponse(auth_response))
                 })
         }
-        IncomingMsg::AddShip(ship) => simple_response(server.add_ship(ship)),
-        IncomingMsg::SetCrewActions(request) => simple_response(server.set_crew_actions(&request)),
-        IncomingMsg::AddPlanet(planet) => simple_response(server.add_planet(planet)),
-        IncomingMsg::Remove(name) => simple_response(server.remove(&name)),
-        IncomingMsg::SetPlan(plan) => simple_response(server.set_plan(&plan)),
-        IncomingMsg::Update(fire_actions) => {
+        RequestMsg::AddShip(ship) => simple_response(server.add_ship(ship)),
+        RequestMsg::SetCrewActions(request) => simple_response(server.set_crew_actions(&request)),
+        RequestMsg::AddPlanet(planet) => simple_response(server.add_planet(planet)),
+        RequestMsg::Remove(name) => simple_response(server.remove(&name)),
+        RequestMsg::SetPlan(plan) => simple_response(server.set_plan(&plan)),
+        RequestMsg::Update(fire_actions) => {
             let effects = server.update(&fire_actions);
-            Ok(OutgoingMsg::Effects(effects))
+            Ok(ResponseMsg::Effects(effects))
         }
-        IncomingMsg::ComputePath(path_goal) => server
+        RequestMsg::ComputePath(path_goal) => server
             .compute_path(&path_goal)
-            .map_or_else(error_msg, |path| Ok(OutgoingMsg::FlightPath(path))),
-        IncomingMsg::LoadScenario(scenario_name) => {
+            .map_or_else(error_msg, |path| Ok(ResponseMsg::FlightPath(path))),
+        RequestMsg::LoadScenario(scenario_name) => {
             simple_response(server.load_scenario(&scenario_name).await)
         }
-        IncomingMsg::Quit => {
+        RequestMsg::Quit => {
             if !test_mode {
                 warn!("Receiving a quit request in non-test mode.  Ignoring.");
             }
             info!("Received and processing quit request.");
             panic!("Time to exit");
         }
-        IncomingMsg::EntitiesRequest => {
+        RequestMsg::EntitiesRequest => {
             info!("Received and processing get request.");
             let json = server.get_entities();
-            Ok(OutgoingMsg::EntityResponse(json))
+            Ok(ResponseMsg::EntityResponse(json))
         }
-        IncomingMsg::DesignTemplateRequest => {
+        RequestMsg::DesignTemplateRequest => {
             info!("Received and processing get designs request.");
             let template_msg = server.get_designs();
-            Ok(OutgoingMsg::DesignTemplateResponse(template_msg))
+            Ok(ResponseMsg::DesignTemplateResponse(template_msg))
         }
     }
 }
