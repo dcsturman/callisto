@@ -53,9 +53,13 @@ struct Args {
     #[arg(short, long, default_value = "http://localhost:50001")]
     web_server: String,
 
-    // Location of the secrets directory.  Important, for example, if using Docker secrets
+    // Location of the oauth google credentials.  Important, for example, if using Docker secrets
     #[arg(long, default_value = "./secrets/google_credentials.json")]
-    secret: String,
+    oauth_creds: String,
+
+    // Prefix of the certificate and key files for tls.  The server will append .crt and .key to this.
+    #[arg(short, long, default_value = "keys/localhost")]
+    tls_files: String,
 
     // Google Cloud Storage bucket to use in lieu of config directory
     #[arg(short, long, default_value = DEFAULT_AUTHORIZED_USERS_FILE)]
@@ -178,10 +182,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     // Load our certs and key.
-    let cert_path = PathBuf::from("keys/localhost.crt");
+    let cert_path = PathBuf::from(format!("{}.crt", args.tls_files));
     let certs = CertificateDer::pem_file_iter(cert_path)?.collect::<Result<Vec<_>, _>>()?;
 
-    let key_path = PathBuf::from("keys/localhost.key");
+    let key_path = PathBuf::from(format!("{}.key", args.tls_files)); 
     let key = PrivateKeyDer::from_pem_file(key_path)?;
 
     info!("(main) Loaded certs and key.");
@@ -258,7 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     // All the data shared between authenticators.
     let session_keys = Arc::new(Mutex::new(HashMap::new()));
     let valid_users = load_authorized_users(&args.users_file).await;
-    let my_credentials = GoogleAuthenticator::load_google_credentials(&args.secret);
+    let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
     let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
 
     // We start a loop to continuously accept incoming connections
