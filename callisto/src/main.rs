@@ -25,6 +25,7 @@ use callisto::authentication::{
 use callisto::entity::Entities;
 use callisto::handle_request;
 use callisto::payloads::ResponseMsg;
+use callisto::server::Server;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
@@ -94,10 +95,17 @@ async fn handle_connection(
     // TODO: Add a config here for extra safety
     // TODO: This is where we can check headers. How do we set them?
 
-    let mut tmp_email = None;
+    // Tmp locked structure to get info out of the accept handler.
+    // This is necessary because the callback_handler is consumed, so other approaches didn't need for me.
+    // First element is the session key, second is the email.
+    let auth_info = Arc::new(Mutex::new((
+        authenticator.get_session_key(),
+        authenticator.get_email(),
+    )));
+
     let callback_handler = HeaderCallback {
         session_keys: session_keys.clone(),
-        email_setter: |email| tmp_email = email,
+        auth_info: auth_info.clone(),
     };
 
     let mut ws_stream = tokio_tungstenite::accept_hdr_async(stream, callback_handler)
@@ -110,6 +118,13 @@ async fn handle_connection(
             process::exit(1);
         });
 
+    {
+        let auth_info = auth_info.lock().unwrap();
+        authenticator.set_session_key(&auth_info.0);
+        authenticator.set_email(&auth_info.1);
+    }
+
+    let mut server = Server::new(entities.clone(), &mut authenticator, test_mode);
     debug!("(handle_connection) Upgraded to websockets and starting message handling loop.");
 
     while let Some(msg) = ws_stream.next().await {
@@ -118,20 +133,14 @@ async fn handle_connection(
                 debug!("(handle_connection) Received message: {text}");
                 // Handle the request
                 let response = if let Ok(parsed_message) = serde_json::from_str(&text) {
-                    handle_request(
-                        parsed_message,
-                        entities.clone(),
-                        test_mode,
-                        &mut authenticator,
-                    )
-                    .await
+                    handle_request(parsed_message, &mut server, session_keys.clone()).await
                 } else {
                     // TODO: Really this should return a 400? But can I do that without killing the connection?
                     Ok(vec![ResponseMsg::Error("Malformed message.".to_string())])
                 };
 
                 debug!("(handle_connection) Response(s): {response:?}");
-                
+
                 // Send the response
                 if let Ok(response) = response {
                     for message in response {

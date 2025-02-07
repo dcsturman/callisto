@@ -39,6 +39,19 @@ impl<'a> Server<'a> {
         }
     }
 
+    #[must_use]
+    pub fn in_test_mode(&self) -> bool {
+        self.test_mode
+    }
+
+    /// Returns a clone of the entities.
+    /// # Panics
+    /// Panics if the lock on entities cannot be obtained.
+    #[must_use]
+    pub fn clone_entities(&self) -> Entities {
+        self.entities.lock().unwrap().clone()
+    }
+
     /// Authenticates a user.
     ///
     /// This function handles the login process, including authentication and session key management.
@@ -55,12 +68,16 @@ impl<'a> Server<'a> {
     ///
     /// # Errors
     /// Returns an error if the user cannot be authenticated.
-    pub async fn login(&mut self, login: LoginMsg) -> Result<AuthResponse, String> {
+    pub async fn login(
+        &mut self,
+        login: LoginMsg,
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<AuthResponse, String> {
         info!("(Server.login) Received and processing login request.",);
 
         let email = self
             .authenticator
-            .authenticate_user(&login.code)
+            .authenticate_user(&login.code, session_keys)
             .await
             .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
 
@@ -71,6 +88,7 @@ impl<'a> Server<'a> {
         Ok(AuthResponse { email })
     }
 
+    /// Returns true if the user has been validated.
     #[must_use]
     pub fn validated_user(&self) -> bool {
         self.authenticator.validated_user()
@@ -423,11 +441,16 @@ mod tests {
         let login_msg = LoginMsg {
             code: MockAuthenticator::mock_valid_code(),
         };
+
+        let session_keys = Arc::new(Mutex::new(HashMap::new()));
         let auth_response = server
-            .login(login_msg)
+            .login(login_msg, &session_keys)
             .await
             .expect("Login should succeed with valid email");
 
         assert_eq!(auth_response.email, "test@example.com");
+
+        // No connection established in this test, so there should be no session keys.
+        assert_eq!(session_keys.lock().unwrap().len(), 0);
     }
 }

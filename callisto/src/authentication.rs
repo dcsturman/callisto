@@ -22,6 +22,7 @@ type GoogleProfile = String;
 
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 const SESSION_COOKIE_NAME: &str = "callisto-session-key";
+const COOKIE_ID: &str = "cookie";
 
 /// Trait defining the authentication behavior for the application
 #[async_trait]
@@ -31,14 +32,21 @@ pub trait Authenticator: Send + Sync {
 
     /// Authenticates a Google user with the provided code
     /// Returns a tuple of (session_key, user_profile) on success
-    async fn authenticate_user(&mut self, code: &str) -> Result<GoogleProfile, Box<dyn Error>>;
+    async fn authenticate_user(
+        &mut self,
+        code: &str,
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<GoogleProfile, Box<dyn Error>>;
 
     /// Checks if this socket has been validated, i.e. has successfully logged in.
     /// # Returns
     /// `true` if the user is validated, `false` otherwise.
     fn validated_user(&self) -> bool;
 
-    fn set_email(&mut self, email: Option<String>);
+    fn set_email(&mut self, email: &Option<String>);
+    fn set_session_key(&mut self, session_key: &Option<String>);
+    fn get_email(&self) -> Option<String>;
+    fn get_session_key(&self) -> Option<String>;
 }
 
 /// Load the list of authorized users from a file.  The file is a JSON array of strings.
@@ -61,23 +69,18 @@ pub async fn load_authorized_users(users_file: &str) -> Arc<Vec<String>> {
     Arc::new(authorized_users)
 }
 
-#[derive(Debug, Clone)]
-pub struct HeaderCallback<F: FnMut(Option<String>)> {
+pub struct HeaderCallback {
     pub session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
-    pub email_setter: F,
+    // First is the session key, second is the email
+    pub auth_info: Arc<Mutex<(Option<String>, Option<String>)>>,
 }
 
-impl<F> Callback for HeaderCallback<F>
-where
-    F: FnMut(Option<String>),
-{
+impl Callback for HeaderCallback {
     fn on_request(self, request: &Request, response: Response) -> Result<Response, ErrorResponse> {
-        Ok(generic_on_request(
-            &self.session_keys,
-            self.email_setter,
-            request,
-            response,
-        ))
+        let (new_response, new_session_key, new_email) =
+            generic_on_request(&self.session_keys, request, response);
+        *self.auth_info.lock().unwrap() = (new_session_key, new_email);
+        Ok(new_response)
     }
 }
 
@@ -91,6 +94,10 @@ pub struct GoogleAuthenticator {
      * The email address of the user.  If None, the user hasn't logged in yet.
      */
     email: Option<String>,
+    /**
+     * The session key for this user.  If None, the user hasn't logged in yet.
+     */
+    session_key: Option<String>,
     /**
      * The URL of the node server (this server).
      */
@@ -132,6 +139,7 @@ impl GoogleAuthenticator {
         GoogleAuthenticator {
             credentials,
             email: None,
+            session_key: None,
             authorized_users,
             node_server_url: url.to_string(),
             google_keys,
@@ -194,39 +202,43 @@ impl GoogleAuthenticator {
     }
 }
 
-fn generic_on_request<T: FnOnce(Option<String>)>(
+fn generic_on_request(
     session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
-    email_setter: T,
     request: &Request,
     response: Response,
-) -> Response {
+) -> (Response, Option<String>, Option<String>) {
     let cookies = request
         .headers()
         .iter()
-        .filter_map(|(key, _)| {
-            if key.as_str() == SESSION_COOKIE_NAME {
-                Some(key.to_string())
+        .filter_map(|(key, value)| {
+            if key.as_str() == COOKIE_ID {
+                Some(value.to_str().unwrap().to_string())
             } else {
                 None
             }
+            .and_then(|cookie| {
+                cookie
+                    .strip_prefix(&format!("{SESSION_COOKIE_NAME}="))
+                    .map(std::string::ToString::to_string)
+            })
         })
         .collect::<Vec<String>>();
 
     // If we found a cookie, find if there's a valid email address to go with it.
     // This happens in the case where we get disconnected and the client reconnects.
-    let email = {
+    let valid_pair = {
         let unlocked_session_keys = session_keys
             .lock()
             .expect("Unable to get lock session keys.");
 
         let mut emails = cookies
-            .into_iter()
+            .iter()
             .filter_map(|cookie| {
                 unlocked_session_keys
-                    .get(&cookie)
-                    .and_then(std::clone::Clone::clone)
+                    .get(cookie)
+                    .and_then(|email| email.as_ref().map(|email| (cookie.clone(), email.clone())))
             })
-            .collect::<Vec<String>>();
+            .collect::<Vec<(String, String)>>();
 
         if emails.len() > 1 {
             warn!("(on_request) Found multiple valid emails for session key.");
@@ -234,17 +246,20 @@ fn generic_on_request<T: FnOnce(Option<String>)>(
         emails.pop()
     };
 
-    if let Some(email) = email {
+    if let Some((key, email)) = valid_pair {
         // We have a logged in user with a valid email, so record that.
-        debug!("(on_request) Found valid email for session key: {}", email);
-        email_setter(Some(email));
-        response
-    } else {
+        debug!(
+            "(on_request) Found valid email {} for session key: {}",
+            email, key
+        );
+        (response, Some(email.clone()), Some(key.clone()))
+    } else if cookies.is_empty() {
         // The case where we need to create a new session key.
         debug!("(on_request) No valid email found for session key.");
         let mut response = response.clone();
 
         let session_key = generate_session_key();
+        let new_session_key = Some(session_key.clone());
         session_keys
             .lock()
             .expect("Unable to get lock session keys.")
@@ -257,7 +272,9 @@ fn generic_on_request<T: FnOnce(Option<String>)>(
                 .unwrap(),
         );
 
-        response
+        (response, new_session_key, None)
+    } else {
+        (response, cookies.first().cloned(), None)
     }
 }
 
@@ -267,11 +284,27 @@ impl Authenticator for GoogleAuthenticator {
         self.web_server.clone()
     }
 
-    fn set_email(&mut self, email: Option<String>) {
-        self.email = email;
+    fn get_email(&self) -> Option<String> {
+        self.email.clone()
     }
 
-    async fn authenticate_user(&mut self, code: &str) -> Result<GoogleProfile, Box<dyn Error>> {
+    fn get_session_key(&self) -> Option<String> {
+        self.session_key.clone()
+    }
+
+    fn set_email(&mut self, email: &Option<String>) {
+        self.email.clone_from(email);
+    }
+
+    fn set_session_key(&mut self, session_key: &Option<String>) {
+        self.session_key.clone_from(session_key);
+    }
+
+    async fn authenticate_user(
+        &mut self,
+        code: &str,
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<GoogleProfile, Box<dyn Error>> {
         // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
         // Look up the profile.  Then return the session key and profile.
         const GRANT_TYPE: &str = "authorization_code";
@@ -363,6 +396,16 @@ impl Authenticator for GoogleAuthenticator {
             return Err(Box::new(UnauthorizedUserError {}));
         }
 
+        // We now have a valid email address.  Associate it with our session key.
+        if self.session_key.is_none() {
+            warn!("(authenticate_google_user) No session key found.");
+        } else {
+            session_keys
+                .lock()
+                .unwrap()
+                .insert(self.session_key.clone().unwrap(), Some(email.clone()));
+        }
+
         info!(
             "(Authenticator.authenticate_google_user) Validated login for user {}",
             email
@@ -404,6 +447,7 @@ async fn load_authorized_users_from_file(
 #[derive(Debug, Clone)]
 pub struct MockAuthenticator {
     email: Option<String>,
+    session_key: Option<String>,
     web_server: String,
 }
 
@@ -412,6 +456,7 @@ impl MockAuthenticator {
     pub fn new(web_server: &str) -> Self {
         MockAuthenticator {
             email: None,
+            session_key: None,
             web_server: web_server.to_string(),
         }
     }
@@ -428,15 +473,40 @@ impl Authenticator for MockAuthenticator {
         self.web_server.clone()
     }
 
-    fn set_email(&mut self, email: Option<String>) {
-        self.email = email;
+    fn get_email(&self) -> Option<String> {
+        self.email.clone()
     }
 
-    async fn authenticate_user(&mut self, code: &str) -> Result<GoogleProfile, Box<dyn Error>> {
-        self.email = Some("test@example.com".to_string());
+    fn get_session_key(&self) -> Option<String> {
+        self.session_key.clone()
+    }
 
+    fn set_email(&mut self, email: &Option<String>) {
+        self.email.clone_from(email);
+    }
+
+    fn set_session_key(&mut self, session_key: &Option<String>) {
+        self.session_key.clone_from(session_key);
+    }
+
+    async fn authenticate_user(
+        &mut self,
+        code: &str,
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<GoogleProfile, Box<dyn Error>> {
         if code != Self::mock_valid_code() {
             return Err(Box::new(InvalidKeyError {}));
+        }
+
+        self.email = Some("test@example.com".to_string());
+
+        if self.session_key.is_none() {
+            warn!("(MockAuthenticator.authenticate_user) Mock authenticator authenticated user but no session key found.");
+        } else {
+            session_keys
+                .lock()
+                .unwrap()
+                .insert(self.session_key.clone().unwrap(), self.email.clone());
         }
 
         debug!(
@@ -455,6 +525,7 @@ fn generate_session_key() -> String {
     let mut session_key: String = "Bearer ".to_string();
     session_key
         .push_str(&general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()));
+
     session_key
 }
 
@@ -562,14 +633,21 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn test_mock_authenticator() {
         let mut mock_auth = MockAuthenticator::new("http://web.test.com");
+        mock_auth.set_session_key(&Some("test_session_key".to_string()));
 
+        let session_keys = Arc::new(Mutex::new(HashMap::new()));
         // Test authentication flow
         let email = mock_auth
-            .authenticate_user("test_code")
+            .authenticate_user("test_code", &session_keys)
             .await
             .expect("Authentication should succeed");
 
         assert_eq!(email, "test@example.com");
+        assert_eq!(
+            session_keys.lock().unwrap().len(),
+            1,
+            "Session keys should have one entry"
+        );
 
         // Test if user is now validated.
         assert!(mock_auth.validated_user(), "User should be validated");

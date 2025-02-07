@@ -439,7 +439,7 @@ async fn integration_add_planet_ship() {
     )
     .await;
     assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
-    
+
     // This time lets just grab the entities that follows each such change (vs requesting one)
     let entities = drain_entity_response(&mut stream).await;
 
@@ -1326,7 +1326,7 @@ async fn integration_set_crew_actions() {
         }),
     )
     .await;
-    
+
     assert!(matches!(message, ResponseMsg::Error(_)));
 
     send_quit(&mut stream).await;

@@ -18,6 +18,7 @@ pub mod tests;
 
 extern crate pretty_env_logger;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use google_cloud_storage::client::{Client, ClientConfig};
@@ -27,8 +28,6 @@ use google_cloud_storage::http::objects::get::GetObjectRequest;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-use authentication::Authenticator;
-use entity::Entities;
 use payloads::{RequestMsg, ResponseMsg};
 use server::Server;
 
@@ -60,24 +59,33 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 ///
 /// Will panic as a quick exit on a QUIT message.  Only possible when in test mode.
 ///
-#[allow(clippy::too_many_lines)]
-pub async fn handle_request(
+// Note the lifetimes do seem to be needed and the implicit_hasher rule has impact across
+// a lot of the codebase.  So excluding those two clippy warnings.
+#[allow(
+    clippy::too_many_lines,
+    clippy::needless_lifetimes,
+    clippy::implicit_hasher
+)]
+pub async fn handle_request<'a, 'b>(
     message: RequestMsg,
-    entities: Arc<Mutex<Entities>>,
-    test_mode: bool,
-    authenticator: &mut Box<dyn Authenticator>,
+    server: &'b mut Server<'a>,
+    session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Result<Vec<ResponseMsg>, String> {
     info!("(handle_request) Request: {:?}", message);
 
     let error_msg = |err_msg: String| Ok(vec![ResponseMsg::Error(err_msg)]);
-    let response_with_update = |result: Result<String, String>| -> Result<Vec<ResponseMsg>, String> {
-        result.map_or_else(error_msg, |msg| Ok(vec![ResponseMsg::SimpleMsg(msg), ResponseMsg::EntityResponse(entities.clone().lock().unwrap().clone())]))
-    };
+    let response_with_update =
+        |result: Result<String, String>| -> Result<Vec<ResponseMsg>, String> {
+            result.map_or_else(error_msg, |msg| {
+                Ok(vec![
+                    ResponseMsg::SimpleMsg(msg),
+                    ResponseMsg::EntityResponse(server.clone_entities()),
+                ])
+            })
+        };
     let simple_response = |result: Result<String, String>| -> Result<Vec<ResponseMsg>, String> {
         result.map_or_else(error_msg, |msg| Ok(vec![ResponseMsg::SimpleMsg(msg)]))
     };
-
-    let mut server = Server::new(entities.clone(), authenticator, test_mode);
 
     // If the connection has not logged in yet, that is the priority.
     // Nothing else is processed until login is complete.
@@ -94,20 +102,25 @@ pub async fn handle_request(
             // split it up between the two locations.
             // Our role here is just to repackage the response and put it on the wire.
             server
-                .login(login_msg)
+                .login(login_msg, &session_keys)
                 .await
                 .map_or_else(error_msg, |auth_response| {
                     Ok(vec![ResponseMsg::AuthResponse(auth_response)])
                 })
         }
         RequestMsg::AddShip(ship) => response_with_update(server.add_ship(ship)),
-        RequestMsg::SetCrewActions(request) => response_with_update(server.set_crew_actions(&request)),
+        RequestMsg::SetCrewActions(request) => {
+            response_with_update(server.set_crew_actions(&request))
+        }
         RequestMsg::AddPlanet(planet) => response_with_update(server.add_planet(planet)),
         RequestMsg::Remove(name) => response_with_update(server.remove(&name)),
         RequestMsg::SetPlan(plan) => response_with_update(server.set_plan(&plan)),
         RequestMsg::Update(fire_actions) => {
             let effects = server.update(&fire_actions);
-            Ok(vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities.clone().lock().unwrap().clone())])
+            Ok(vec![
+                ResponseMsg::Effects(effects),
+                ResponseMsg::EntityResponse(server.clone_entities()),
+            ])
         }
         RequestMsg::ComputePath(path_goal) => server
             .compute_path(&path_goal)
@@ -116,7 +129,7 @@ pub async fn handle_request(
             simple_response(server.load_scenario(&scenario_name).await)
         }
         RequestMsg::Quit => {
-            if !test_mode {
+            if !server.in_test_mode() {
                 warn!("Receiving a quit request in non-test mode.  Ignoring.");
             }
             info!("Received and processing quit request.");

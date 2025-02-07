@@ -65,9 +65,7 @@ async fn test_add_ship() {
         }"#;
 
     let message: AddShipMsg = serde_json::from_str(ship).unwrap();
-    let response = server
-        .add_ship(message)
-        .unwrap();
+    let response = server.add_ship(message).unwrap();
 
     assert_eq!(response, "Add ship action executed");
 
