@@ -1323,6 +1323,67 @@ async fn integration_set_crew_actions() {
     send_quit(&mut stream).await;
 }
 
+#[test_log::test(tokio::test)]
+async fn integration_multi_client_test() {
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
+
+    let mut stream1 = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream1).await.unwrap();
+    let mut stream2 = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream2).await.unwrap();
+    let mut stream3 = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream3).await.unwrap();
+
+    callisto::ship::config_test_ship_templates().await;
+    rpc(
+        &mut stream1,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    drain_entity_response(&mut stream1).await;
+    rpc(
+        &mut stream2,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship2".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    drain_entity_response(&mut stream2).await;
+    rpc(
+        &mut stream3,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship3".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    let entities = drain_entity_response(&mut stream3).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
+        assert_eq!(entities.ships.len(), 3);
+    } else {
+        panic!("Expected EntityResponse");
+    }
+
+    send_quit(&mut stream1).await;
+}
+
 #[cfg_attr(feature = "ci", ignore)]
 #[tokio::test]
 async fn integration_create_regular_server() {
