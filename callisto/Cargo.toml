@@ -43,6 +43,8 @@ futures-util = "0.3.31"
 futures = "0.3.31"
 http = "1.2.0"
 pem = "3.0.4"
+futures-core = "0.3.31"
+dyn-clone = "1.0.18"
 
 [dev-dependencies]
 mockstream = "0.0.3"

@@ -8,7 +8,7 @@
 extern crate callisto;
 use std::env::var;
 use std::io;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicU16 };
 
 use assert_json_diff::assert_json_eq;
 use futures_util::{SinkExt, StreamExt};
@@ -41,6 +41,12 @@ type MyWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "target/debug/callisto";
+
+static NEXT_PORT: AtomicU16 = AtomicU16::new(3010);
+
+fn get_next_port() -> u16 {
+    NEXT_PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
 
 async fn spawn_server(
     port: u16,
@@ -175,29 +181,14 @@ async fn send_quit(stream: &mut MyWebSocket) {
  * Return the user name and the key from `SetCookie`
  */
 async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
-    /* let client = Client::new();
-    let response = client
-        .post(path(port, LOGIN_PATH))
-        .body(r#"{"code":"test_code"}"#)
-        .send()
-        .await
-        .unwrap();
-    let cookie = response
-        .headers()
-        .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let email = response.text().await.unwrap();
-    Ok((email, cookie))
-    */
     let msg = RequestMsg::Login(LoginMsg {
         code: "test_code".to_string(),
     });
 
     let body = rpc(stream, msg).await;
     if let ResponseMsg::AuthResponse(auth_response) = body {
+        let _msg = stream.next().await.unwrap().unwrap();
+        drain_entity_response(stream).await;
         Ok(auth_response.email)
     } else {
         Err(format!("Expected auth response to login. Got {body:?}"))
@@ -209,10 +200,10 @@ async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
  */
 #[test_log::test(tokio::test)]
 async fn integration_get_designs() {
-    const PORT: u16 = 3010;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
 
     let _ = test_authenticate(&mut stream).await.unwrap();
 
@@ -242,10 +233,10 @@ async fn integration_get_designs() {
  */
 #[tokio::test]
 async fn integration_simple_get() {
-    const PORT: u16 = 3011;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
 
     let _ = test_authenticate(&mut stream).await.unwrap();
 
@@ -263,10 +254,10 @@ async fn integration_simple_get() {
 
 #[tokio::test]
 async fn integration_action_without_login() {
-    const PORT: u16 = 3012;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
 
     // Intentionally skip test authenticate here.
     let body = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
@@ -283,10 +274,10 @@ async fn integration_action_without_login() {
  */
 #[test_log::test(tokio::test)]
 async fn integration_add_ship() {
-    const PORT: u16 = 3013;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Need this only because we are going to deserialize ships.
@@ -345,13 +336,13 @@ async fn integration_add_ship() {
 */
 #[test_log::test(tokio::test)]
 async fn integration_add_planet_ship() {
-    const PORT: u16 = 3014;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
     // Need this only because we are going to deserialize ships.
     callisto::ship::config_test_ship_templates().await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     let message = rpc(
@@ -562,10 +553,10 @@ async fn integration_add_planet_ship() {
  */
 #[tokio::test]
 async fn integration_update_ship() {
-    const PORT: u16 = 3015;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
@@ -610,10 +601,10 @@ async fn integration_update_ship() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn integration_update_missile() {
-    const PORT: u16 = 3016;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
@@ -720,10 +711,10 @@ async fn integration_update_missile() {
  */
 #[tokio::test]
 async fn integration_remove_ship() {
-    const PORT: u16 = 3017;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
@@ -764,10 +755,10 @@ async fn integration_remove_ship() {
  */
 #[tokio::test]
 async fn integration_set_acceleration() {
-    const PORT: u16 = 3018;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
@@ -824,10 +815,10 @@ async fn integration_set_acceleration() {
  */
 #[tokio::test]
 async fn integration_compute_path_basic() {
-    const PORT: u16 = 3019;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
@@ -916,10 +907,10 @@ async fn integration_compute_path_basic() {
  */
 #[test_log::test(tokio::test)]
 async fn integration_compute_path_with_standoff() {
-    const PORT: u16 = 3021;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
@@ -1011,10 +1002,10 @@ async fn integration_compute_path_with_standoff() {
  */
 #[test_log::test(tokio::test)]
 async fn integration_malformed_requests() {
-    const PORT: u16 = 3022;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Test invalid ship design
@@ -1098,10 +1089,10 @@ async fn integration_malformed_requests() {
 
 #[test_log::test(tokio::test)]
 async fn integration_bad_requests() {
-    const PORT: u16 = 3024;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Test setting crew actions for non-existent ship
@@ -1158,10 +1149,10 @@ async fn integration_bad_requests() {
 
 #[test_log::test(tokio::test)]
 async fn integration_load_scenario() {
-    const PORT: u16 = 3023;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Test successful scenario load
@@ -1196,10 +1187,10 @@ async fn integration_load_scenario() {
 #[cfg_attr(feature = "ci", ignore)]
 #[test_log::test(tokio::test)]
 async fn integration_load_cloud_scenario() {
-    const PORT: u16 = 3027;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Test loading non-existent cloud scenario
@@ -1217,11 +1208,11 @@ async fn integration_load_cloud_scenario() {
 
 #[tokio::test]
 async fn integration_fail_login() {
-    const PORT: u16 = 3025;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
     // Test unauthenticated connection
-    let socket_url = format!("ws://127.0.0.1:{PORT}/ws");
+    let socket_url = format!("ws://127.0.0.1:{port}/ws");
     let stream = connect_async(socket_url).await;
     assert!(
         stream.is_err(),
@@ -1229,7 +1220,7 @@ async fn integration_fail_login() {
     );
 
     // Test invalid authentication
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let message = rpc(
         &mut stream,
         RequestMsg::Login(LoginMsg {
@@ -1250,10 +1241,10 @@ async fn integration_fail_login() {
  */
 #[test_log::test(tokio::test)]
 async fn integration_set_crew_actions() {
-    const PORT: u16 = 3026;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let mut stream = open_socket(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
     let _ = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
@@ -1335,17 +1326,17 @@ async fn integration_set_crew_actions() {
 #[cfg_attr(feature = "ci", ignore)]
 #[tokio::test]
 async fn integration_create_regular_server() {
-    const PORT_1: u16 = 3028;
-    const PORT_2: u16 = 3029;
-    const PORT_3: u16 = 3030;
+    let port_1 = get_next_port();
+    let port_2 = get_next_port();
+    let port_3 = get_next_port();
 
     // Test regular server
-    let mut server1 = spawn_server(PORT_1, false, None, None, true).await.unwrap();
+    let mut server1 = spawn_server(port_1, false, None, None, true).await.unwrap();
     assert!(server1.try_wait().unwrap().is_none());
 
     // Test server with scenario
     let mut server2 = spawn_server(
-        PORT_2,
+        port_2,
         false,
         Some("./tests/test-scenario.json".to_string()),
         None,
@@ -1357,7 +1348,7 @@ async fn integration_create_regular_server() {
 
     // Test server with design file
     let mut server3 = spawn_server(
-        PORT_3,
+        port_3,
         false,
         None,
         Some("./tests/test_templates.json".to_string()),

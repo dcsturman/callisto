@@ -7,6 +7,7 @@ pub mod entity;
 pub mod missile;
 pub mod payloads;
 pub mod planet;
+pub mod processor;
 pub mod server;
 pub mod ship;
 
@@ -33,19 +34,19 @@ use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
 
-/// This is the main server loop, handling each request the server receives.
+/// This the primary server dispatch when a message arrives.  It knows nothing about threading or even how messages are received or sent.
 ///
-/// First this method needs to check if the user is authenticated on each request.  If not
-/// then we go into our authentication flow.  It also much handle CORS messages.  Beyond that
-/// messages are either POST or GET. Most of the logic for these should be handled by [Server]
+/// The function first checks if the user is logged in.  If not
+/// then we just send back a request for a proper login message (using Google oauth2).  Most of the logic for these should be handled by [Server]
 /// so that unit testing of the logic is possible.
 ///
 /// # Arguments
 ///
-/// * `req` - The request to handle
-/// * `entities` - The entities table. Each invocation is a new ref count/[clone](Arc::clone)
+/// * `message`: - Incoming message of type [`RequestMsg`]
+/// * `server` - The [`Server`] struct presenting the server for this connection.
+/// * `session_keys` - The session keys for all connections.  It is needed so the login flow can update it with proper login information.  This isn't local
+///         to this connection per se because this could be a reconnect of a previous connection.
 /// * `test_mode` - Whether we are in test mode.  Test mode disables authentication and ensures a deterministic seed for each random number generator.
-/// * `authenticator` - The authenticator to use.
 ///
 /// # Returns
 ///
@@ -66,9 +67,9 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
     clippy::needless_lifetimes,
     clippy::implicit_hasher
 )]
-pub async fn handle_request<'a, 'b>(
+pub async fn handle_request(
     message: RequestMsg,
-    server: &'b mut Server<'a>,
+    server: &mut Server,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Result<Vec<ResponseMsg>, String> {
     info!("(handle_request) Request: {:?}", message);
@@ -105,7 +106,12 @@ pub async fn handle_request<'a, 'b>(
                 .login(login_msg, &session_keys)
                 .await
                 .map_or_else(error_msg, |auth_response| {
-                    Ok(vec![ResponseMsg::AuthResponse(auth_response)])
+                    // Now that we are successfully logged in, we can send back the design templates and entities - no need to wait to be asked.
+                    Ok(vec![
+                        ResponseMsg::AuthResponse(auth_response),
+                        ResponseMsg::DesignTemplateResponse(server.get_designs()),
+                        ResponseMsg::EntityResponse(server.clone_entities()),
+                    ])
                 })
         }
         RequestMsg::AddShip(ship) => response_with_update(server.add_ship(ship)),

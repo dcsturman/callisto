@@ -6,13 +6,13 @@ use std::process;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use futures_util::{SinkExt, StreamExt};
-
+use futures::channel::mpsc::channel;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::net::{TcpListener, TcpStream};
+use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::WebSocketStream;
 
 use clap::Parser;
 use log::{debug, error, info, warn};
@@ -22,14 +22,15 @@ extern crate callisto;
 use callisto::authentication::{
     load_authorized_users, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator,
 };
+
 use callisto::entity::Entities;
-use callisto::handle_request;
-use callisto::payloads::ResponseMsg;
-use callisto::server::Server;
+use callisto::processor::processor;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
+
+const MAX_CHANNEL_DEPTH: usize = 10;
 
 /// Server to implement physically pseudo-realistic spaceflight and possibly combat.
 #[derive(Parser, Debug)]
@@ -72,20 +73,36 @@ struct Args {
     users_file: String,
 }
 
+/// Build a full secure websocket from a raw TCP stream.
+///
+/// # Arguments
+/// * `stream` - The raw TCP stream to upgrade.
+/// * `acceptor` - The TLS acceptor to use to upgrade the stream.
+/// * `session_keys` - The session keys to use for authentication.  This is a map of session keys to email addresses.  This is used to authenticate the user.  Its included
+///     here because on connection we can see any `HttpCookie` on the request.  We use that in case a connection drops and reconnects so we don't need to force a re-login.
+///
+/// # Returns
+/// A tuple of the websocket stream, the session key, and an optional email address.  The email address we `Some(email)` if this user has previously logged in.
 async fn handle_connection(
     stream: TcpStream,
     acceptor: Arc<TlsAcceptor>,
-    entities: Arc<Mutex<Entities>>,
-    mut authenticator: Box<dyn Authenticator>,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
-    test_mode: bool,
-) {
+) -> Result<
+    (
+        WebSocketStream<TlsStream<TcpStream>>,
+        String,
+        Option<String>,
+    ),
+    String,
+> {
     // First, upgrade the stream to be TLS
     let stream = match acceptor.accept(stream).await {
         Ok(stream) => stream,
         Err(e) => {
             warn!("(handle_connection) Failed to upgrade TcpStream to TLS: {e:?}");
-            return;
+            return Err(format!(
+                "(handle_connection) Failed to upgrade TcpStream to TLS: {e:?}"
+            ));
         }
     };
 
@@ -98,97 +115,28 @@ async fn handle_connection(
     // Tmp locked structure to get info out of the accept handler.
     // This is necessary because the callback_handler is consumed, so other approaches didn't need for me.
     // First element is the session key, second is the email.
-    let auth_info = Arc::new(Mutex::new((
-        authenticator.get_session_key(),
-        authenticator.get_email(),
-    )));
+    // TODO: Is there a better way to do this?  We just need to get this returned.  We don't actually need to create
+    // this here. We also don't need to access it until the callback_handler is done.
+    let auth_info = Arc::new(Mutex::new((String::new(), None)));
 
     let callback_handler = HeaderCallback {
         session_keys: session_keys.clone(),
         auth_info: auth_info.clone(),
     };
 
-    let mut ws_stream = tokio_tungstenite::accept_hdr_async(stream, callback_handler)
-        .await
-        .unwrap_or_else(|e| {
-            error!(
-                "(handle_connection) Error during the websocket handshake occurred: {}",
-                e
-            );
-            process::exit(1);
-        });
+    let ws_stream: WebSocketStream<TlsStream<TcpStream>> =
+        tokio_tungstenite::accept_hdr_async(stream, callback_handler)
+            .await
+            .unwrap_or_else(|e| {
+                error!(
+                    "(handle_connection) Error during the websocket handshake occurred: {}",
+                    e
+                );
+                process::exit(1);
+            });
 
-    {
-        let auth_info = auth_info.lock().unwrap();
-        authenticator.set_session_key(&auth_info.0);
-        authenticator.set_email(&auth_info.1);
-    }
-
-    let mut server = Server::new(entities.clone(), &mut authenticator, test_mode);
-    debug!("(handle_connection) Upgraded to websockets and starting message handling loop.");
-
-    while let Some(msg) = ws_stream.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                debug!("(handle_connection) Received message: {text}");
-                // Handle the request
-                let response = if let Ok(parsed_message) = serde_json::from_str(&text) {
-                    handle_request(parsed_message, &mut server, session_keys.clone()).await
-                } else {
-                    // TODO: Really this should return a 400? But can I do that without killing the connection?
-                    Ok(vec![ResponseMsg::Error("Malformed message.".to_string())])
-                };
-
-                debug!("(handle_connection) Response(s): {response:?}");
-
-                // Send the response
-                if let Ok(response) = response {
-                    for message in response {
-                        ws_stream
-                            .send(Message::Text(
-                                serde_json::to_string(&message)
-                                    .expect("Failed to serialize response")
-                                    .into(),
-                            ))
-                            .await
-                            .unwrap_or_else(|e| {
-                                error!("(handle_connection) Failed to send response: {e:?}");
-                            });
-                    }
-                } else {
-                    error!("(handle_connection) Error processing handle_request on message {response:?}.");
-                    // Let the client know
-                    ws_stream
-                        .send(Message::Text(
-                            serde_json::to_string(&ResponseMsg::Error(
-                                "Unable to process message.".to_string(),
-                            ))
-                            .expect("Failed to serialize response")
-                            .into(),
-                        ))
-                        .await
-                        .unwrap_or_else(|e| {
-                            error!("(handle_connection) Failed to send response: {e:?}");
-                        });
-                }
-            }
-            Ok(Message::Close(_)) => {
-                // Close the connection
-                ws_stream.close(None).await.unwrap_or_else(|e| {
-                    error!("(handle_connection) Failed to close connection: {e:?}");
-                });
-                break;
-            }
-            Ok(m) => {
-                error!("(handle_connection) Unexpected message: {:?}", m);
-            }
-            Err(e) => {
-                error!("(handle_connection) Could not read next message: {e:?}");
-            }
-        }
-    }
-
-    debug!("(handle_connection) Connection closed.");
+    let auth_info = auth_info.lock().unwrap();
+    Ok((ws_stream, auth_info.0.clone(), auth_info.1.clone()))
 }
 
 #[tokio::main]
@@ -281,40 +229,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         }));
     }
 
-    // All the data shared between authenticators.
+    // Keep track of session keys (cookies) on connections.
     let session_keys = Arc::new(Mutex::new(HashMap::new()));
-    let valid_users = load_authorized_users(&args.users_file).await;
+
+    // All the data shared between authenticators.
+    let authorized_users = load_authorized_users(&args.users_file).await;
     let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
-    let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
+    let (mut connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
+
+    // Create an Authenticator to be cloned on each new connection.
+
+    let auth_template: Box<dyn Authenticator> = if test_mode {
+        Box::new(MockAuthenticator::new(&args.address))
+    } else {
+        let authorized_users = Arc::new(authorized_users);
+        let my_credentials = Arc::new(my_credentials);
+        let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
+
+        Box::new(GoogleAuthenticator::new(
+            &args.address,
+            args.web_server,
+            my_credentials,
+            google_keys,
+            authorized_users,
+        ))
+    };
+
+    // Start a processor thread to handle all connections once established.
+    tokio::task::spawn(processor(
+        connection_receiver,
+        auth_template,
+        session_keys.clone(),
+        test_mode,
+    ));
 
     // We start a loop to continuously accept incoming connections
     loop {
         let (stream, peer_addr) = listener.accept().await?;
-        debug!("(main) Accepted connection from: {}", peer_addr);
-
-        // Spawn a tokio task to serve multiple connections concurrently
-        let ent = entities.clone();
-        let acceptor = acceptor.clone();
-
-        // Build the authenticator
-        let authenticator: Box<dyn Authenticator> = if test_mode {
-            Box::new(MockAuthenticator::new(&args.web_server))
-        } else {
-            Box::new(GoogleAuthenticator::new(
-                &args.web_server,
-                args.web_server.clone(),
-                my_credentials.clone(),
-                google_keys.clone(),
-                valid_users.clone(),
-            ))
-        };
-        tokio::task::spawn(handle_connection(
-            stream,
-            acceptor,
-            ent,
-            authenticator,
-            session_keys.clone(),
-            test_mode,
-        ));
+        let upgrade = handle_connection(stream, acceptor.clone(), session_keys.clone()).await;
+        match upgrade {
+            Ok((ws_stream, session_key, email)) => {
+                debug!("(main) Successfully established websocket connection to {peer_addr}.");
+                connection_sender
+                    .try_send((ws_stream, session_key, email))
+                    .unwrap();
+            }
+            Err(e) => {
+                warn!("(main) Server at {addr} failed to establish websocket connection from {peer_addr}: {e}");
+                continue;
+            }
+        }
     }
 }

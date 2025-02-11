@@ -28,7 +28,7 @@ fn setup_authenticator() -> Box<dyn Authenticator> {
     Box::new(MockAuthenticator::new("http://test.com"))
 }
 
-async fn setup_test_with_server(authenticator: &mut Box<dyn Authenticator>) -> Server {
+async fn setup_test_with_server(authenticator: Box<dyn Authenticator>) -> Server {
     let _ = pretty_env_logger::try_init();
     crate::ship::config_test_ship_templates().await;
 
@@ -40,8 +40,8 @@ async fn setup_test_with_server(authenticator: &mut Box<dyn Authenticator>) -> S
  */
 #[test(tokio::test)]
 async fn test_simple_get() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
     let body = server.get_entities_json();
     assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[]}"#);
 }
@@ -51,8 +51,8 @@ async fn test_simple_get() {
  */
 #[test_log::test(tokio::test)]
 async fn test_add_ship() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
     let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer","current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -89,8 +89,8 @@ async fn test_add_ship() {
 */
 #[test(tokio::test)]
 async fn test_add_planet_ship() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -255,8 +255,8 @@ async fn test_add_planet_ship() {
  */
 #[test(tokio::test)]
 async fn test_update_ship() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -283,8 +283,8 @@ async fn test_update_ship() {
  */
 #[test(tokio::test)]
 async fn test_update_missile() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
     let response = server
@@ -359,8 +359,8 @@ async fn test_update_missile() {
  */
 #[test(tokio::test)]
 async fn test_remove_ship() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -385,8 +385,8 @@ async fn test_remove_ship() {
  */
 #[test(tokio::test)]
 async fn test_set_acceleration() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -421,8 +421,8 @@ async fn test_set_acceleration() {
  */
 #[test(tokio::test)]
 async fn test_compute_path_basic() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -483,8 +483,8 @@ async fn test_compute_path_basic() {
 
 #[test(tokio::test)]
 async fn test_compute_path_with_standoff() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
     let response = server
@@ -542,8 +542,8 @@ async fn test_compute_path_with_standoff() {
 
 #[test(tokio::test)]
 async fn test_exhausted_missile() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     // Create two ships with one to fire at the other.
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
@@ -590,8 +590,8 @@ async fn test_exhausted_missile() {
 
 #[test(tokio::test)]
 async fn test_destroy_ship() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
@@ -629,8 +629,8 @@ async fn test_destroy_ship() {
 
 #[test(tokio::test)]
 async fn test_called_shot() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     // Gazelle class is a good test for this as it has 2 Particle Barbettes (likely to cause a crit) and 2 triple beams (also capable of called shots)
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
@@ -684,8 +684,8 @@ async fn test_called_shot() {
 
 #[test(tokio::test)]
 async fn test_big_fight() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
     let response = server
@@ -782,8 +782,8 @@ async fn test_big_fight() {
 
 #[test(tokio::test)]
 async fn test_fight_with_crew() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     // Ship 1 has a capable crew.
     let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", 
@@ -891,8 +891,8 @@ async fn test_fight_with_crew() {
 
 #[test(tokio::test)]
 async fn test_slugfest() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
     // Boost weapon #10 as its firing a pules laser at the harrier.
@@ -983,8 +983,8 @@ async fn test_slugfest() {
 
 #[test(tokio::test)]
 async fn test_get_entities() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     // Test getting entities from an empty server
     let empty_entities = server.get_entities();
@@ -1047,8 +1047,8 @@ async fn test_get_entities() {
 // Test for get_designs in server.
 #[test(tokio::test)]
 async fn test_get_designs() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
     let designs = server.get_designs();
     assert!(!designs.is_empty());
     assert!(designs.contains_key("Buccaneer"));
@@ -1056,8 +1056,8 @@ async fn test_get_designs() {
 
 #[test(tokio::test)]
 async fn test_missile_impact_close() {
-    let mut authenticator = setup_authenticator();
-    let mut server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let mut server = setup_test_with_server(authenticator).await;
 
     // Add the firing ship
     let firing_ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
@@ -1141,8 +1141,8 @@ async fn test_missile_impact_close() {
 
 #[test(tokio::test)]
 async fn test_set_agility() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     // Add a ship to the server
     let ship = r#"{"name":"agile_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
@@ -1185,8 +1185,8 @@ async fn test_set_agility() {
 
 #[test(tokio::test)]
 async fn test_set_crew_actions_aid_gunner() {
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     // Add a ship to the server
     let ship = r#"{"name":"test_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
@@ -1250,8 +1250,8 @@ async fn test_set_crew_actions_aid_gunner() {
 #[tokio::test]
 async fn test_load_scenario() {
     // Create server and configure ship templates
-    let mut authenticator = setup_authenticator();
-    let server = setup_test_with_server(&mut authenticator).await;
+    let authenticator = setup_authenticator();
+    let server = setup_test_with_server(authenticator).await;
 
     // First add some ships and planets to the server
     let ship = r#"{"name":"test_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;

@@ -9,6 +9,8 @@ use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use dyn_clone::DynClone;
+
 use tokio_tungstenite::tungstenite::handshake::server::{
     Callback, ErrorResponse, Request, Response,
 };
@@ -26,7 +28,7 @@ const COOKIE_ID: &str = "cookie";
 
 /// Trait defining the authentication behavior for the application
 #[async_trait]
-pub trait Authenticator: Send + Sync {
+pub trait Authenticator: Send + Sync + DynClone + Debug {
     /// Returns the web server URL
     fn get_web_server(&self) -> String;
 
@@ -43,8 +45,8 @@ pub trait Authenticator: Send + Sync {
     /// `true` if the user is validated, `false` otherwise.
     fn validated_user(&self) -> bool;
 
-    fn set_email(&mut self, email: &Option<String>);
-    fn set_session_key(&mut self, session_key: &Option<String>);
+    fn set_email(&mut self, email: Option<&String>);
+    fn set_session_key(&mut self, session_key: &str);
     fn get_email(&self) -> Option<String>;
     fn get_session_key(&self) -> Option<String>;
 }
@@ -59,20 +61,18 @@ pub trait Authenticator: Send + Sync {
 ///
 /// # Panics
 /// If the file cannot be read.
-pub async fn load_authorized_users(users_file: &str) -> Arc<Vec<String>> {
-    let authorized_users = load_authorized_users_from_file(users_file)
+pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
+    load_authorized_users_from_file(users_file)
         .await
         .unwrap_or_else(|_| {
             panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory.");
-        });
-
-    Arc::new(authorized_users)
+        })
 }
 
 pub struct HeaderCallback {
     pub session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
     // First is the session key, second is the email
-    pub auth_info: Arc<Mutex<(Option<String>, Option<String>)>>,
+    pub auth_info: Arc<Mutex<(String, Option<String>)>>,
 }
 
 impl Callback for HeaderCallback {
@@ -191,14 +191,14 @@ impl GoogleAuthenticator {
     /// # Panics
     /// If the file cannot be read or the credentials are malformed (cannot be parsed).
     #[must_use]
-    pub fn load_google_credentials(file_name: &str) -> Arc<GoogleCredentials> {
+    pub fn load_google_credentials(file_name: &str) -> GoogleCredentials {
         let file = std::fs::File::open(file_name)
             .unwrap_or_else(|e| panic!("Error {e:?} opening Google credentials file {file_name}"));
         let reader = std::io::BufReader::new(file);
         let credentials: GoogleCredsJson = serde_json::from_reader(reader)
             .unwrap_or_else(|e| panic!("Error {e:?} parsing Google credentials file {file_name}"));
         debug!("Load Google credentials file \"{}\".", file_name);
-        Arc::new(credentials.web)
+        credentials.web
     }
 }
 
@@ -206,7 +206,7 @@ fn generic_on_request(
     session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
     request: &Request,
     response: Response,
-) -> (Response, Option<String>, Option<String>) {
+) -> (Response, String, Option<String>) {
     let cookies = request
         .headers()
         .iter()
@@ -252,14 +252,13 @@ fn generic_on_request(
             "(on_request) Found valid email {} for session key: {}",
             email, key
         );
-        (response, Some(email.clone()), Some(key.clone()))
+        (response, key.clone(), Some(email.clone()))
     } else if cookies.is_empty() {
         // The case where we need to create a new session key.
         debug!("(on_request) No valid email found for session key.");
         let mut response = response.clone();
 
         let session_key = generate_session_key();
-        let new_session_key = Some(session_key.clone());
         session_keys
             .lock()
             .expect("Unable to get lock session keys.")
@@ -272,9 +271,11 @@ fn generic_on_request(
                 .unwrap(),
         );
 
-        (response, new_session_key, None)
+        (response, session_key, None)
     } else {
-        (response, cookies.first().cloned(), None)
+        // We aren't logged in, but there is already a set cookie. So just use that vs
+        // creating another session key.
+        (response, cookies.first().unwrap().clone(), None)
     }
 }
 
@@ -292,12 +293,12 @@ impl Authenticator for GoogleAuthenticator {
         self.session_key.clone()
     }
 
-    fn set_email(&mut self, email: &Option<String>) {
-        self.email.clone_from(email);
+    fn set_email(&mut self, email: Option<&String>) {
+        self.email = email.cloned();
     }
 
-    fn set_session_key(&mut self, session_key: &Option<String>) {
-        self.session_key.clone_from(session_key);
+    fn set_session_key(&mut self, session_key: &str) {
+        self.session_key = Some(session_key.to_string());
     }
 
     async fn authenticate_user(
@@ -481,12 +482,12 @@ impl Authenticator for MockAuthenticator {
         self.session_key.clone()
     }
 
-    fn set_email(&mut self, email: &Option<String>) {
-        self.email.clone_from(email);
+    fn set_email(&mut self, email: Option<&String>) {
+        self.email = email.cloned();
     }
 
-    fn set_session_key(&mut self, session_key: &Option<String>) {
-        self.session_key.clone_from(session_key);
+    fn set_session_key(&mut self, session_key: &str) {
+        self.session_key = Some(session_key.to_string());
     }
 
     async fn authenticate_user(
@@ -633,7 +634,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn test_mock_authenticator() {
         let mut mock_auth = MockAuthenticator::new("http://web.test.com");
-        mock_auth.set_session_key(&Some("test_session_key".to_string()));
+        mock_auth.set_session_key("test_session_key");
 
         let session_keys = Arc::new(Mutex::new(HashMap::new()));
         // Test authentication flow

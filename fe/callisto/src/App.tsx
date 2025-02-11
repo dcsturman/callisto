@@ -13,8 +13,6 @@ import {
   setMessageHandlers,
   startWebsocket,
   nextRound,
-  getEntities,
-  getTemplates,
   computeFlightPath,
 } from "./ServerManager";
 
@@ -32,8 +30,6 @@ import {
 
 import "./index.css";
 import { Tutorial } from "./Tutorial";
-
-const POLL_ENTITIES_INTERVAL = 0;
 
 export const GOOGLE_OAUTH_CLIENT_ID: string =
   process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
@@ -156,15 +152,6 @@ function Simulator({
     }
   }, [socketReady, setAuthenticated, setEmail]);
 
-  useEffect(() => {
-    if (POLL_ENTITIES_INTERVAL > 0) {
-      const interval = setInterval(() => {
-        getEntities();
-      }, POLL_ENTITIES_INTERVAL);
-      return () => clearInterval(interval);
-    }
-  }, [entities, setAuthenticated]);
-
   const getAndShowPlan = (
     entity_name: string | null,
     end_pos: [number, number, number],
@@ -199,11 +186,6 @@ function Simulator({
       setKeyHeld({ shift: false, slash: keysHeld.slash });
     }
   }
-
-  useEffect(() => {
-    getTemplates();
-    getEntities();
-  }, [setAuthenticated]);
 
   useEffect(() => {
     window.addEventListener("keydown", downHandler);

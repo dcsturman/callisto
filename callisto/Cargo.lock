@@ -302,7 +302,9 @@ dependencies = [
  "cookie",
  "derivative",
  "duct",
+ "dyn-clone",
  "futures",
+ "futures-core",
  "futures-util",
  "gomez",
  "google-cloud-storage",
@@ -630,6 +632,12 @@ name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "feeef44e73baff3a26d371801df019877a9866a8c493d315ab00177843314f35"
 
 [[package]]
 name = "either"

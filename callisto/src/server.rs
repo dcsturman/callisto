@@ -20,16 +20,16 @@ use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
-pub struct Server<'a> {
+pub struct Server {
     entities: Arc<Mutex<Entities>>,
-    authenticator: &'a mut Box<dyn Authenticator>,
+    authenticator: Box<dyn Authenticator>,
     test_mode: bool,
 }
 
-impl<'a> Server<'a> {
+impl Server {
     pub fn new(
         entities: Arc<Mutex<Entities>>,
-        authenticator: &'a mut Box<dyn Authenticator>,
+        authenticator: Box<dyn Authenticator>,
         test_mode: bool,
     ) -> Self {
         Server {
@@ -429,13 +429,9 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn test_login() {
         let mock_auth = MockAuthenticator::new("http://web.test.com");
-        let mut authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
+        let authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
-        let mut server = Server::new(
-            Arc::new(Mutex::new(Entities::new())),
-            &mut authenticator,
-            false,
-        );
+        let mut server = Server::new(Arc::new(Mutex::new(Entities::new())), authenticator, false);
 
         // Try a login
         let login_msg = LoginMsg {
