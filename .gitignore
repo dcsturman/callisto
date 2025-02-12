@@ -28,3 +28,4 @@ callisto/config/authorized_users.json
 /.firebase
 *.*~
 callisto/coverage/**
+/callisto/keys
