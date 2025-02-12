@@ -35,7 +35,7 @@ export const GOOGLE_OAUTH_CLIENT_ID: string =
   process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
 
 export function App() {
-  const [authenticated, setAuthenticated] = useState<boolean>(true);
+  const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [email, setEmail] = useState<string | null>(null);
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
   const [socketReady, setSocketReady] = useState<boolean>(false);
@@ -72,6 +72,7 @@ export function App() {
     }
   }, [socketReady]);
 
+  console.log("(App) Authenticated? " + authenticated);
   return (
     <div>
       {authenticated && socketReady ? (

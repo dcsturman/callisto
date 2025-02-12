@@ -155,7 +155,7 @@ async fn drain_entity_response(stream: &mut MyWebSocket) -> ResponseMsg {
     let Ok(reply) = stream.next().await.unwrap() else {
         panic!("Expected entity response.  Got error.");
     };
-    let body = serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap();
+    let body = serde_json::from_str::<ResponseMsg>(reply.to_text().expect("Expected text response")).expect("Failed to parse entity response");
     assert!(
         matches!(body, ResponseMsg::EntityResponse(_)),
         "Expected entity response: {body:?}"
@@ -1348,7 +1348,7 @@ async fn integration_multi_client_test() {
         }),
     )
     .await;
-    drain_entity_response(&mut stream1).await;
+
     rpc(
         &mut stream2,
         RequestMsg::AddShip(AddShipMsg {
@@ -1361,7 +1361,13 @@ async fn integration_multi_client_test() {
         }),
     )
     .await;
-    drain_entity_response(&mut stream2).await;
+
+    // Before we do our RPC, get rid of the extra two messages
+    debug!("(integration_multi_client_test) Draining extra messages (1).");
+    drain_entity_response(&mut stream3).await;
+    debug!("(integration_multi_client_test) Draining extra messages (2).");
+    drain_entity_response(&mut stream3).await;
+
     rpc(
         &mut stream3,
         RequestMsg::AddShip(AddShipMsg {
@@ -1374,6 +1380,8 @@ async fn integration_multi_client_test() {
         }),
     )
     .await;
+
+    // Should now be just the 1 entity reponse message (since we drained above)
     let entities = drain_entity_response(&mut stream3).await;
     if let ResponseMsg::EntityResponse(entities) = entities {
         assert_eq!(entities.ships.len(), 3);
