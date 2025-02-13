@@ -1,17 +1,25 @@
 use std::collections::HashMap;
 use std::net::ToSocketAddrs;
 use std::panic;
-use std::path::PathBuf;
 use std::process;
 use std::sync::{Arc, Mutex};
 
-use futures::channel::mpsc::channel;
-use rustls::pki_types::pem::PemObject;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use tokio::net::{TcpListener, TcpStream};
-use tokio_rustls::server::TlsStream;
-use tokio_rustls::TlsAcceptor;
+use futures::channel::mpsc::{ Sender, Receiver, channel };
 use tokio_tungstenite::WebSocketStream;
+use tokio::net::{TcpListener, TcpStream};
+
+// Things we use only when we are not using the `no_tls_upgrade` feature.
+#[cfg(not(feature = "no_tls_upgrade"))]
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+#[cfg(not(feature = "no_tls_upgrade"))]
+use tokio_rustls::server::TlsStream;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use tokio_rustls::TlsAcceptor;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use std::path::PathBuf;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use rustls::pki_types::pem::PemObject;
+
 
 use clap::Parser;
 use log::{debug, error, info, warn};
@@ -63,11 +71,6 @@ struct Args {
     #[arg(long, default_value = "./secrets/google_credentials.json")]
     oauth_creds: String,
 
-    // Do not try to upgrade to TLS.  This is for environments where we are testing without security
-    // or where security is already provided.
-    #[arg(short, long)]
-    no_tls_upgrade: bool,
-
     // Prefix of the certificate and key files for tls.  The server will append .crt and .key to this.
     #[arg(short = 'k', long, default_value = "keys/localhost")]
     tls_keys: String,
@@ -77,11 +80,19 @@ struct Args {
     users_file: String,
 }
 
-/// Build a full secure websocket from a raw TCP stream.
+
+#[cfg(feature = "no_tls_upgrade")]
+pub type SubStream = TcpStream;
+#[cfg(not(feature = "no_tls_upgrade"))]
+pub type SubStream = TlsStream<TcpStream>;
+
+/// Build a possibly full secure websocket from a raw TCP stream.
+/// This function relies heavily on the feature `no_tls_upgrade`.  If the feature is enabled
+/// the type [`SubStream`] is a [`TcpStream`], otherwise it is a [`TlsStream<TcpStream>`].
 ///
 /// # Arguments
 /// * `stream` - The raw TCP stream to upgrade.
-/// * `acceptor` - The TLS acceptor to use to upgrade the stream.
+/// * `acceptor` - The TLS acceptor to use to upgrade the stream. (only when `no_tls_upgrade` is not enabled)
 /// * `session_keys` - The session keys to use for authentication.  This is a map of session keys to email addresses.  This is used to authenticate the user.  Its included
 ///     here because on connection we can see any `HttpCookie` on the request.  We use that in case a connection drops and reconnects so we don't need to force a re-login.
 ///
@@ -89,19 +100,16 @@ struct Args {
 /// A tuple of the websocket stream, the session key, and an optional email address.  The email address we `Some(email)` if this user has previously logged in.
 async fn handle_connection(
     stream: TcpStream,
-    acceptor: Arc<TlsAcceptor>,
+    #[cfg(not(feature = "no_tls_upgrade"))] acceptor: Arc<TlsAcceptor>,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
-) -> Result<
-    (
-        WebSocketStream<TlsStream<TcpStream>>,
-        String,
-        Option<String>,
-    ),
-    String,
-> {
+) -> Result<(WebSocketStream<SubStream>, String, Option<String>), String> {
+    #[cfg(not(feature = "no_tls_upgrade"))]
     // First, upgrade the stream to be TLS
-    let stream = match acceptor.accept(stream).await {
-        Ok(stream) => stream,
+    let stream: SubStream = match acceptor.accept(stream).await {
+        Ok(stream) => {
+            debug!("(handle_connection) Upgraded to TLS.");
+            stream
+        }
         Err(e) => {
             warn!("(handle_connection) Failed to upgrade TcpStream to TLS: {e:?}");
             return Err(format!(
@@ -110,11 +118,8 @@ async fn handle_connection(
         }
     };
 
-    debug!("(handle_connection) Upgraded to TLS.");
-
     // Second, upgrade the stream to use websockets with tungstenite
     // TODO: Add a config here for extra safety
-    // TODO: This is where we can check headers. How do we set them?
 
     // Tmp locked structure to get info out of the accept handler.
     // This is necessary because the callback_handler is consumed, so other approaches didn't need for me.
@@ -128,16 +133,15 @@ async fn handle_connection(
         auth_info: auth_info.clone(),
     };
 
-    let ws_stream: WebSocketStream<TlsStream<TcpStream>> =
-        tokio_tungstenite::accept_hdr_async(stream, callback_handler)
-            .await
-            .unwrap_or_else(|e| {
-                error!(
-                    "(handle_connection) Error during the websocket handshake occurred: {}",
-                    e
-                );
-                process::exit(1);
-            });
+    let ws_stream: WebSocketStream<SubStream> = tokio_tungstenite::accept_hdr_async(stream, callback_handler)
+        .await
+        .unwrap_or_else(|e| {
+            error!(
+                "(handle_connection) Error during the websocket handshake occurred: {}",
+                e
+            );
+            process::exit(1);
+        });
 
     let auth_info = auth_info.lock().unwrap();
     Ok((ws_stream, auth_info.0.clone(), auth_info.1.clone()))
@@ -161,19 +165,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         .expect("DNS resolution returned no IP addresses");
 
     // Load our certs and key.
+    #[cfg(not(feature = "no_tls_upgrade"))]
     let cert_path = PathBuf::from(format!("{}.crt", args.tls_keys));
+    #[cfg(not(feature = "no_tls_upgrade"))]
     let certs = CertificateDer::pem_file_iter(cert_path)?.collect::<Result<Vec<_>, _>>()?;
-
+    #[cfg(not(feature = "no_tls_upgrade"))]
     let key_path = PathBuf::from(format!("{}.key", args.tls_keys));
+    #[cfg(not(feature = "no_tls_upgrade"))]
     let key = PrivateKeyDer::from_pem_file(key_path)?;
-
+    #[cfg(not(feature = "no_tls_upgrade"))]
     info!("(main) Loaded certs and key.");
 
+    #[cfg(not(feature = "no_tls_upgrade"))]
     let config = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)?;
 
+    #[cfg(not(feature = "no_tls_upgrade"))]
     let acceptor = Arc::new(TlsAcceptor::from(Arc::new(config)));
+
     let listener = TcpListener::bind(&addr).await?;
 
     info!("(main) Bound to address (tcp): {}", addr);
@@ -241,7 +251,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     // All the data shared between authenticators.
     let authorized_users = load_authorized_users(&args.users_file).await;
     let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
-    let (mut connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
+    let (mut connection_sender, connection_receiver): (Sender<(WebSocketStream<SubStream>, String, Option<String>)>, Receiver<(WebSocketStream<SubStream>, String, Option<String>)>) = channel(MAX_CHANNEL_DEPTH);
 
     // Create an Authenticator to be cloned on each new connection.
 
@@ -276,7 +286,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     // Eventually we'll have one such thread per server.
     loop {
         let (stream, peer_addr) = listener.accept().await?;
-        let upgrade = handle_connection(stream, acceptor.clone(), session_keys.clone()).await;
+
+        // Upgrade will be built differently depending on the feature `no_tls_upgrade`.
+        #[cfg(feature = "no_tls_upgrade")]
+        let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> = handle_connection(stream, session_keys.clone()).await;
+
+        #[cfg(not(feature = "no_tls_upgrade"))]
+        let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> = handle_connection(stream, acceptor.clone(), session_keys.clone()).await;
+
         match upgrade {
             Ok((ws_stream, session_key, email)) => {
                 debug!("(main) Successfully established websocket connection to {peer_addr}.");

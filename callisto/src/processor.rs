@@ -6,13 +6,15 @@ use futures::channel::mpsc::Receiver;
 use futures::select;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tokio_tungstenite::tungstenite::{
     error::{Error, ProtocolError},
     Message,
 };
 use tokio_tungstenite::WebSocketStream;
+
+#[cfg(not(feature = "no_tls_upgrade"))]
+use tokio_rustls::server::TlsStream;
 
 use dyn_clone::clone_box;
 
@@ -23,6 +25,11 @@ use crate::entity::Entities;
 use crate::handle_request;
 use crate::payloads::{AuthResponse, ResponseMsg};
 use crate::server::Server;
+
+#[cfg(feature = "no_tls_upgrade")]
+type SubStream = TcpStream;
+#[cfg(not(feature = "no_tls_upgrade"))]
+type SubStream = TlsStream<TcpStream>;
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn};
@@ -47,7 +54,7 @@ use crate::{debug, error, info, warn};
 #[allow(clippy::too_many_lines)]
 pub async fn processor(
     mut connection_receiver: Receiver<(
-        WebSocketStream<TlsStream<TcpStream>>,
+        WebSocketStream<SubStream>,
         String,
         Option<String>,
     )>,
@@ -249,7 +256,7 @@ pub async fn processor(
 
 struct Connection {
     server: Server,
-    stream: WebSocketStream<TlsStream<TcpStream>>,
+    stream: WebSocketStream<SubStream>,
 }
 
 fn is_broadcast_message(message: &ResponseMsg) -> bool {
@@ -263,7 +270,7 @@ async fn build_connection(
     session_key: &str,
     session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
     email: Option<&String>,
-    stream: WebSocketStream<TlsStream<TcpStream>>,
+    stream: WebSocketStream<SubStream>,
     entities: &Arc<Mutex<Entities>>,
     test_mode: bool,
 ) -> Option<Connection> {

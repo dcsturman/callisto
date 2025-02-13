@@ -8,20 +8,28 @@
 extern crate callisto;
 use std::env::var;
 use std::io;
-use std::sync::{atomic::AtomicU16, Arc};
+use std::sync::atomic::AtomicU16;
 
 use assert_json_diff::assert_json_eq;
 use futures_util::{SinkExt, StreamExt};
 
-use rustls::pki_types::{pem::PemObject, CertificateDer};
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
 use tokio::time::{sleep, Duration};
 use tokio_tungstenite::{
-    connect_async, connect_async_tls_with_config,
+    connect_async, 
     tungstenite::{Error, Result},
-    Connector, MaybeTlsStream, WebSocketStream,
+     MaybeTlsStream, WebSocketStream,
 };
+
+#[cfg(not(feature = "no_tls_upgrade"))]
+use std::sync::Arc;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use rustls::pki_types::{pem::PemObject, CertificateDer};
+#[cfg(not(feature = "no_tls_upgrade"))]
+use tokio_tungstenite::connect_async_tls_with_config;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use tokio_tungstenite::Connector;
 
 use serde_json::json;
 
@@ -107,27 +115,39 @@ async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
 }
 
 async fn open_socket(port: u16) -> Result<MyWebSocket, Error> {
-    let rust_cert = CertificateDer::pem_file_iter("keys/rootCA.crt")
-        .expect("Cannot open CA file")
-        .map(|result| result.unwrap());
-    let mut root_store = rustls::RootCertStore::empty();
-    root_store.add_parsable_certificates(rust_cert);
+    #[cfg(feature = "no_tls_upgrade")]
+    {
+        let socket_url = format!("ws://{SERVER_ADDRESS}:{port}/ws");
+        debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
+        let (ws_stream, _) = connect_async(socket_url).await?;
+        debug!("(webservers.open_socket) WebSocket stream established.");
+        Ok(ws_stream)
+    }
+    #[cfg(not(feature = "no_tls_upgrade"))]
+    {
+        let rust_cert = CertificateDer::pem_file_iter("keys/rootCA.crt")
+            .expect("Cannot open CA file")
+            .map(|result| result.unwrap());
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.add_parsable_certificates(rust_cert);
 
-    let config = rustls::client::ClientConfig::builder()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
+        let config = rustls::client::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
 
-    let connector = Connector::Rustls(Arc::new(config));
+        let connector = Connector::Rustls(Arc::new(config));
 
-    let socket_url = format!("wss://{SERVER_ADDRESS}:{port}/");
-    debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
+        let socket_url = format!("wss://{SERVER_ADDRESS}:{port}/");
+        debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
 
-    let (ws_stream, _) = connect_async_tls_with_config(socket_url, None, false, Some(connector))
-        .await
-        .unwrap_or_else(|e| panic!("Client_async_tls failed with {e:?}"));
+        let (ws_stream, _) =
+            connect_async_tls_with_config(socket_url, None, false, Some(connector))
+                .await
+                .unwrap_or_else(|e| panic!("Client_async_tls failed with {e:?}"));
 
-    debug!("(webservers.open_socket) WebSocket stream established.");
-    Ok(ws_stream)
+        debug!("(webservers.open_socket) WebSocket stream established.");
+        Ok(ws_stream)
+    }
 }
 
 async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
@@ -174,20 +194,37 @@ async fn drain_initialization_messages(stream: &mut MyWebSocket) {
     let Ok(template_msg) = stream.next().await.unwrap() else {
         panic!("Expected template response.  Got error.");
     };
-    assert!(matches!(serde_json::from_str::<ResponseMsg>(template_msg.to_text().unwrap()), Ok(ResponseMsg::DesignTemplateResponse(_))), "Expected template response, got {template_msg:?}.");
+    assert!(
+        matches!(
+            serde_json::from_str::<ResponseMsg>(template_msg.to_text().unwrap()),
+            Ok(ResponseMsg::DesignTemplateResponse(_))
+        ),
+        "Expected template response, got {template_msg:?}."
+    );
     debug!("Drained template initialization message.");
-
 
     let Ok(entity_msg) = stream.next().await.unwrap() else {
         panic!("Expected entity response.  Got error.");
     };
-    assert!(matches!(serde_json::from_str::<ResponseMsg>(entity_msg.to_text().unwrap()), Ok(ResponseMsg::EntityResponse(_))), "Expected entity response.");
+    assert!(
+        matches!(
+            serde_json::from_str::<ResponseMsg>(entity_msg.to_text().unwrap()),
+            Ok(ResponseMsg::EntityResponse(_))
+        ),
+        "Expected entity response."
+    );
     debug!("Drained entity initialization message.");
 
     let Ok(users_msg) = stream.next().await.unwrap() else {
         panic!("Expected users response.  Got error.");
     };
-    assert!(matches!(serde_json::from_str::<ResponseMsg>(users_msg.to_text().unwrap()), Ok(ResponseMsg::Users(_))), "Expected users response.");
+    assert!(
+        matches!(
+            serde_json::from_str::<ResponseMsg>(users_msg.to_text().unwrap()),
+            Ok(ResponseMsg::Users(_))
+        ),
+        "Expected users response."
+    );
     debug!("Drained users initialization message.");
 }
 
@@ -1241,10 +1278,18 @@ async fn integration_fail_login() {
     // Test unauthenticated connection
     let socket_url = format!("ws://127.0.0.1:{port}/ws");
     let stream = connect_async(socket_url).await;
-    assert!(
-        stream.is_err(),
-        "Expected connection to fail without authentication"
-    );
+
+    if cfg!(feature = "no_tls_upgrade") {
+        assert!(
+            stream.is_ok(),
+            "Expected connection to succeed without TLS upgrade"
+        );
+    } else {
+        assert!(
+            stream.is_err(),
+            "Expected connection to fail without authentication"
+        );
+    }
 
     // Test invalid authentication
     let mut stream = open_socket(port).await.unwrap();
