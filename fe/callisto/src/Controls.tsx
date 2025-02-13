@@ -185,7 +185,7 @@ function ShipDesignList(args: {
       <>
         <h3>{design.name}</h3>
         <div className="ship-design-description-tooltip">
-          {design.displacement} tons with {design.hull} hullpoints and{" "}
+          {design.displacement} tons with {design.hull} hull points and{" "}
           {design.armor} armor.&nbsp;
           {design.power} power back {design.maneuver}G thrust and jump{" "}
           {design.jump}. {weaponDesc}.
@@ -538,8 +538,6 @@ export function Controls(args: {
                 acceleration,
                 designName,
                 crew,
-                serverEntities.handler,
-                args.setAuthenticated
               )
             }
             shipDesignTemplates={args.shipDesignTemplates}

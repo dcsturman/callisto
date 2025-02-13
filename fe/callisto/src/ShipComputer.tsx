@@ -23,7 +23,6 @@ export function ShipComputer(args: {
     target_vel: [number, number, number] | null,
     standoff: number
   ) => void;
-  setAuthenticated: (authenticated: boolean) => void;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
 
@@ -189,8 +188,6 @@ export function ShipComputer(args: {
       setPlan(
         ship.name,
         args.proposedPlan.plan,
-        serverEntities.handler,
-        args.setAuthenticated
       ).then(() => args.resetProposedPlan());
 
       if (selectRef.current !== null) {
@@ -220,9 +217,7 @@ export function ShipComputer(args: {
 
       setPlan(
         ship.name,
-        [[[x, y, z], DEFAULT_ACCEL_DURATION], null],
-        serverEntities.handler,
-        args.setAuthenticated
+        [[[x, y, z], DEFAULT_ACCEL_DURATION], null]
       )
         .then(() => {
           setColor("control-input-x", "black");
@@ -298,8 +293,6 @@ export function ShipComputer(args: {
         ship.name,
         agility,
         assistGunners,
-        serverEntities.handler,
-        args.setAuthenticated
       );
     }
 

@@ -6,49 +6,55 @@
  * Testing the logic should be done in the unit tests for main.rs.
  */
 extern crate callisto;
-
-use std::collections::HashMap;
 use std::env::var;
 use std::io;
-
-use tokio::process::{Child, Command};
-use tokio::time::{sleep, Duration};
+use std::sync::atomic::AtomicU16;
 
 use assert_json_diff::assert_json_eq;
-use hyper::header::{
-    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
+use futures_util::{SinkExt, StreamExt};
+
+use tokio::net::TcpStream;
+use tokio::process::{Child, Command};
+use tokio::time::{sleep, Duration};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{Error, Result},
+    MaybeTlsStream, WebSocketStream,
 };
 
-use reqwest::Client;
-use reqwest::Method;
-use reqwest::StatusCode;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use rustls::pki_types::{pem::PemObject, CertificateDer};
+#[cfg(not(feature = "no_tls_upgrade"))]
+use std::sync::Arc;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use tokio_tungstenite::connect_async_tls_with_config;
+#[cfg(not(feature = "no_tls_upgrade"))]
+use tokio_tungstenite::Connector;
+
 use serde_json::json;
 
 use callisto::debug;
-use callisto::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
-use callisto::payloads::{FlightPathMsg, SimpleMsg, EMPTY_FIRE_ACTIONS_MSG};
-use callisto::ship::ShipDesignTemplate;
+
+use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
+use callisto::payloads::{
+    AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, FireAction, LoadScenarioMsg, LoginMsg,
+    RequestMsg, ResponseMsg, SetCrewActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+};
+
+use callisto::crew::{Crew, Skills};
 
 use cgmath::{assert_ulps_eq, Zero};
+
+type MyWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "target/debug/callisto";
 
-// GET verbs
-const GET_ENTITIES_PATH: &str = "entities";
-const GET_DESIGNS_PATH: &str = "designs";
-// POST verbs
-const LOGIN_PATH: &str = "login";
-const UPDATE_ENTITIES_PATH: &str = "update";
-const COMPUTE_PATH_PATH: &str = "compute_path";
-const ADD_SHIP_PATH: &str = "add_ship";
-const ADD_PLANET_PATH: &str = "add_planet";
-const REMOVE_ENTITY_PATH: &str = "remove";
-const SET_ACCELERATION_PATH: &str = "set_plan";
-const SET_CREW_ACTIONS_PATH: &str = "set_crew_actions";
-const INVALID_PATH: &str = "unknown";
-const LOAD_SCENARIO_PATH: &str = "load_scenario";
-const QUIT_PATH: &str = "quit";
+static NEXT_PORT: AtomicU16 = AtomicU16::new(3010);
+
+fn get_next_port() -> u16 {
+    NEXT_PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
 
 async fn spawn_server(
     port: u16,
@@ -108,89 +114,182 @@ async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
     spawn_server(port, true, None, None, false).await
 }
 
+async fn open_socket(port: u16) -> Result<MyWebSocket, Error> {
+    #[cfg(feature = "no_tls_upgrade")]
+    {
+        let socket_url = format!("ws://{SERVER_ADDRESS}:{port}/ws");
+        debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
+        let (ws_stream, _) = connect_async(socket_url).await?;
+        debug!("(webservers.open_socket) WebSocket stream established.");
+        Ok(ws_stream)
+    }
+    #[cfg(not(feature = "no_tls_upgrade"))]
+    {
+        let rust_cert = CertificateDer::pem_file_iter("keys/rootCA.crt")
+            .expect("Cannot open CA file")
+            .map(|result| result.unwrap());
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.add_parsable_certificates(rust_cert);
+
+        let config = rustls::client::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        let connector = Connector::Rustls(Arc::new(config));
+
+        let socket_url = format!("wss://{SERVER_ADDRESS}:{port}/");
+        debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
+
+        let (ws_stream, _) =
+            connect_async_tls_with_config(socket_url, None, false, Some(connector))
+                .await
+                .unwrap_or_else(|e| panic!("Client_async_tls failed with {e:?}"));
+
+        debug!("(webservers.open_socket) WebSocket stream established.");
+        Ok(ws_stream)
+    }
+}
+
+async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
+    stream
+        .send(serde_json::to_string(&request).unwrap().into())
+        .await
+        .unwrap();
+
+    let reply = stream
+        .next()
+        .await
+        .unwrap_or_else(|| panic!("No response from server for request: {request:?}."))
+        .unwrap_or_else(|err| {
+            panic!("Receiving error from server {err:?} in response to request: {request:?}.")
+        });
+    let body = serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap();
+    body
+}
+
+/**
+ * Since we tend to get a lot of entity messages in reply to actions, this helper method
+ * will drain away an extra entity response.
+ */
+async fn drain_entity_response(stream: &mut MyWebSocket) -> ResponseMsg {
+    let Ok(reply) = stream.next().await.unwrap() else {
+        panic!("Expected entity response.  Got error.");
+    };
+    let body =
+        serde_json::from_str::<ResponseMsg>(reply.to_text().expect("Expected text response"))
+            .expect("Failed to parse entity response");
+    assert!(
+        matches!(body, ResponseMsg::EntityResponse(_)),
+        "Expected entity response: {body:?}"
+    );
+
+    body
+}
+
+/**
+ * Drain all the messages the server sends on connect.  This right now is
+ * 3 messages: templates, entities, and users.  See [`callisto:build_successful_auth_msgs`].
+ */
+async fn drain_initialization_messages(stream: &mut MyWebSocket) {
+    let Ok(template_msg) = stream.next().await.unwrap() else {
+        panic!("Expected template response.  Got error.");
+    };
+    assert!(
+        matches!(
+            serde_json::from_str::<ResponseMsg>(template_msg.to_text().unwrap()),
+            Ok(ResponseMsg::DesignTemplateResponse(_))
+        ),
+        "Expected template response, got {template_msg:?}."
+    );
+    debug!("Drained template initialization message.");
+
+    let Ok(entity_msg) = stream.next().await.unwrap() else {
+        panic!("Expected entity response.  Got error.");
+    };
+    assert!(
+        matches!(
+            serde_json::from_str::<ResponseMsg>(entity_msg.to_text().unwrap()),
+            Ok(ResponseMsg::EntityResponse(_))
+        ),
+        "Expected entity response."
+    );
+    debug!("Drained entity initialization message.");
+
+    let Ok(users_msg) = stream.next().await.unwrap() else {
+        panic!("Expected users response.  Got error.");
+    };
+    assert!(
+        matches!(
+            serde_json::from_str::<ResponseMsg>(users_msg.to_text().unwrap()),
+            Ok(ResponseMsg::Users(_))
+        ),
+        "Expected users response."
+    );
+    debug!("Drained users initialization message.");
+}
+
 /**
  * Send a quit message to cleanly end a test.
  */
-async fn send_quit(port: u16, cookie: &str) {
-    let client = Client::new();
+async fn send_quit(stream: &mut MyWebSocket) {
+    stream
+        .send(serde_json::to_string(&RequestMsg::Quit).unwrap().into())
+        .await
+        .unwrap();
 
-    // We ignore the error back from the reqwest as its expected.
-    #[allow(unused_must_use)]
-    client
-        .get(path(port, QUIT_PATH))
-        .header("Cookie", cookie)
-        .send()
-        .await;
-}
-
-fn path(port: u16, verb: &str) -> String {
-    format!("http://{SERVER_ADDRESS}:{port}/{verb}")
+    stream.close(None).await.unwrap();
 }
 
 /**
  * Do authentication with the test server
  * Return the user name and the key from `SetCookie`
+ * Also drain the initialization messages.
  */
-async fn test_authenticate(port: u16) -> Result<(String, String), String> {
-    let client = Client::new();
-    let response = client
-        .post(path(port, LOGIN_PATH))
-        .body(r#"{"code":"test_code"}"#)
-        .send()
-        .await
-        .unwrap();
-    let cookie = response
-        .headers()
-        .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
-    let email = response.text().await.unwrap();
-    Ok((email, cookie))
+async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
+    let msg = RequestMsg::Login(LoginMsg {
+        code: "test_code".to_string(),
+    });
+
+    let body = rpc(stream, msg).await;
+    if let ResponseMsg::AuthResponse(auth_response) = body {
+        drain_initialization_messages(stream).await;
+        Ok(auth_response.email)
+    } else {
+        Err(format!("Expected auth response to login. Got {body:?}"))
+    }
 }
 
 /**
  * Test for get_designs in server.
  */
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn integration_get_designs() {
-    const PORT: u16 = 3010;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
 
-    let client = Client::new();
-    let body = client
-        .get(path(PORT, GET_DESIGNS_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
 
-    assert!(!body.is_empty());
-    let result = serde_json::from_str::<HashMap<String, ShipDesignTemplate>>(body.as_str());
+    let body = rpc(&mut stream, RequestMsg::DesignTemplateRequest).await;
+
     assert!(
-        result.is_ok(),
-        "Unable to deserialize designs with body: {} , Error {:?}",
-        body,
-        result.unwrap_err()
-    );
-    let designs = result.unwrap();
-    assert!(!designs.is_empty(), "Received empty design list.");
-    assert!(
-        designs.contains_key("Buccaneer"),
-        "Buccaneer not found in designs."
-    );
-    assert!(
-        designs.get("Buccaneer").unwrap().name == "Buccaneer",
-        "Buccaneer body malformed in design file."
+        matches!(body, ResponseMsg::DesignTemplateResponse(_)),
+        "Improper response to design request received."
     );
 
-    send_quit(PORT, &cookie).await;
+    if let ResponseMsg::DesignTemplateResponse(designs) = body {
+        assert!(!designs.is_empty(), "Received empty design list.");
+        assert!(
+            designs.contains_key("Buccaneer"),
+            "Buccaneer not found in designs."
+        );
+        assert!(
+            designs.get("Buccaneer").unwrap().name == "Buccaneer",
+            "Buccaneer body malformed in design file."
+        );
+    }
+    send_quit(&mut stream).await;
 }
 
 /**
@@ -198,51 +297,40 @@ async fn integration_get_designs() {
  */
 #[tokio::test]
 async fn integration_simple_get() {
-    const PORT: u16 = 3011;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
 
-    let client = Client::new();
-    let body = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
 
-    assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[]}"#);
-
-    send_quit(PORT, &cookie).await;
-}
-
-/**
- * Test that we get a 404 response when we request a path that doesn't exist.
- */
-#[tokio::test]
-async fn integration_simple_unknown() {
-    const PORT: u16 = 3012;
-    let _server = spawn_test_server(PORT).await;
-
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-
-    let client = Client::new();
-    let response = client
-        .get(path(PORT, INVALID_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap();
-
+    let body = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
     assert!(
-        response.status().is_client_error(),
-        "Instead of expected 404 got {response:?}"
+        matches!(body, ResponseMsg::EntityResponse(_)),
+        "Improper response to get request received."
     );
 
-    send_quit(PORT, &cookie).await;
+    if let ResponseMsg::EntityResponse(entities) = body {
+        assert!(entities.is_empty(), "Expected empty entities list.");
+    }
+    send_quit(&mut stream).await;
+}
+
+#[tokio::test]
+async fn integration_action_without_login() {
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
+
+    let mut stream = open_socket(port).await.unwrap();
+
+    // Intentionally skip test authenticate here.
+    let body = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    assert!(
+        matches!(body, ResponseMsg::PleaseLogin),
+        "Expected request to log in, but instead got {body:?}"
+    );
+
+    send_quit(&mut stream).await;
 }
 
 /**
@@ -250,49 +338,40 @@ async fn integration_simple_unknown() {
  */
 #[test_log::test(tokio::test)]
 async fn integration_add_ship() {
-    const PORT: u16 = 3013;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Need this only because we are going to deserialize ships.
     callisto::ship::config_test_ship_templates().await;
 
-    let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer",
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
+    let ship = AddShipMsg {
+        name: "ship1".to_string(),
+        position: [0.0, 0.0, 0.0].into(),
+        velocity: [0.0, 0.0, 0.0].into(),
+        acceleration: [0.0, 0.0, 0.0].into(),
+        design: "Buccaneer".to_string(),
+        crew: None,
+    };
 
-    let client = Client::new();
+    let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
 
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap_or_else(|e| panic!("Unable to get response from server: {e:?}"))
-        .json()
-        .await
-        .unwrap();
-
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
+    assert!(
+        matches!(body, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"),
+        "Improper response to add ship request received."
     );
 
-    let response = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let entities = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
 
-    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-    let compare = json!({"ships":[
+    assert!(
+        matches!(entities, ResponseMsg::EntityResponse(_)),
+        "Improper response to entities request received."
+    );
+
+    if let ResponseMsg::EntityResponse(entities) = entities {
+        let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
          "current_hull":160,
@@ -311,9 +390,9 @@ async fn integration_add_ship() {
         "missiles":[],
         "planets":[]});
 
-    assert_json_eq!(entities, compare);
-
-    send_quit(PORT, &cookie).await;
+        assert_json_eq!(entities, compare);
+    }
+    send_quit(&mut stream).await;
 }
 
 /*
@@ -321,65 +400,49 @@ async fn integration_add_ship() {
 */
 #[test_log::test(tokio::test)]
 async fn integration_add_planet_ship() {
-    const PORT: u16 = 3014;
-    let _server = spawn_test_server(PORT).await;
-
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
     // Need this only because we are going to deserialize ships.
     callisto::ship::config_test_ship_templates().await;
 
-    let ship = r#"{"name":"ship1","position":[0,2000,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer",
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
-    let client = Client::new();
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
+    let mut stream = open_socket(port).await.unwrap();
+    let _cookie = test_authenticate(&mut stream).await.unwrap();
 
-    let ship = r#"{"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0], "acceleration":[0,0,0], "design":"Buccaneer",
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]}}"#;
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 2000.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
 
-    let response = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
 
-    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-    let compare = json!({"ships":[
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship2".to_string(),
+            position: [10000.0, 10000.0, 10000.0].into(),
+            velocity: [10000.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
+
+    let response = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+    if let ResponseMsg::EntityResponse(entities) = response {
+        let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
          "current_hull":160,
@@ -413,48 +476,103 @@ async fn integration_add_planet_ship() {
           "missiles":[],
           "planets":[]});
 
-    assert_json_eq!(entities, compare);
+        assert_json_eq!(entities, compare);
+    } else {
+        panic!("Improper response to entities request received.");
+    }
 
-    let planet =
-        r#"{"name":"planet1","position":[0,0,0],"color":"red","radius":1.5e6,"mass":3e24}"#;
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_PLANET_PATH))
-        .header("Cookie", &cookie)
-        .body(planet)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add planet action executed".to_string()
-        }
-    );
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddPlanet(AddPlanetMsg {
+            name: "planet1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            color: "red".to_string(),
+            radius: 1.5e6,
+            mass: 3e24,
+            primary: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
 
-    let entities = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    // This time lets just grab the entities that follows each such change (vs requesting one)
+    let entities = drain_entity_response(&mut stream).await;
 
-    let result = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
+    if let ResponseMsg::EntityResponse(entities) = entities {
+        let compare = json!({"planets":[
+        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+          "color":"red","radius":1.5e6,"mass":3e24,
+          "gravity_radius_1":4_518_410.048_543_495,
+          "gravity_radius_05":6_389_996.771_013_086,
+          "gravity_radius_025": 9_036_820.097_086_99,
+          "gravity_radius_2": 3_194_998.385_506_543}],
+        "missiles":[],
+        "ships":[
+            {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "current_hull":160,
+             "current_armor":5,
+             "current_power":300,
+             "current_maneuver":3,
+             "current_jump":2,
+             "current_fuel":81,
+             "current_crew":11,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true, true, true],
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "dodge_thrust":0,
+             "assist_gunners":false,
+            },
+            {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "current_hull":160,
+             "current_armor":5,
+             "current_power":300,
+             "current_maneuver":3,
+             "current_jump":2,
+             "current_fuel":81,
+             "current_crew":11,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true, true, true],
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "dodge_thrust":0,
+             "assist_gunners":false,
+            }]});
 
-    let compare = json!({"planets":[
-    {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-      "color":"red","radius":1.5e6,"mass":3e24,
-      "gravity_radius_1":4_518_410.048_543_495,
-      "gravity_radius_05":6_389_996.771_013_086,
-      "gravity_radius_025": 9_036_820.097_086_99,
-      "gravity_radius_2": 3_194_998.385_506_543}],
-    "missiles":[],
-    "ships":[
+        assert_json_eq!(entities, compare);
+    } else {
+        panic!("Improper response to entities request received.");
+    }
+
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddPlanet(AddPlanetMsg {
+            name: "planet2".to_string(),
+            position: [1_000_000.0, 0.0, 0.0].into(),
+            color: "red".to_string(),
+            radius: 1.5e6,
+            mass: 1e23,
+            primary: Some("planet1".to_string()),
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
+
+    let entities = drain_entity_response(&mut stream).await;
+
+    if let ResponseMsg::EntityResponse(entities) = entities {
+        let compare = json!({"missiles":[],
+        "planets":[
+        {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+            "color":"red","radius":1.5e6,"mass":3e24,
+            "gravity_radius_1":4_518_410.048_543_495,
+            "gravity_radius_05":6_389_996.771_013_086,
+            "gravity_radius_025": 9_036_820.097_086_99,
+            "gravity_radius_2": 3_194_998.385_506_543},
+        {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
+            "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+            "gravity_radius_025":1_649_890.071_763_523_2}],
+        "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
          "current_hull":160,
@@ -486,83 +604,12 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
         }]});
 
-    assert_json_eq!(result, compare);
+        assert_json_eq!(&entities, &compare);
+    } else {
+        panic!("Improper response to entities request received.");
+    }
 
-    let planet = r#"{"name":"planet2","position":[1000000,0,0],"primary":"planet1", "color":"red","radius":1.5e6,"mass":1e23}"#;
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_PLANET_PATH))
-        .header("Cookie", &cookie)
-        .body(planet)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add planet action executed".to_string()
-        }
-    );
-
-    let entities = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-
-    let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
-    let compare = json!({"missiles":[],
-    "planets":[
-    {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-        "color":"red","radius":1.5e6,"mass":3e24,
-        "gravity_radius_1":4_518_410.048_543_495,
-        "gravity_radius_05":6_389_996.771_013_086,
-        "gravity_radius_025": 9_036_820.097_086_99,
-        "gravity_radius_2": 3_194_998.385_506_543},
-    {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
-        "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
-        "gravity_radius_025":1_649_890.071_763_523_2}],
-    "ships":[
-    {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
-     "current_hull":160,
-     "current_armor":5,
-     "current_power":300,
-     "current_maneuver":3,
-     "current_jump":2,
-     "current_fuel":81,
-     "current_crew":11,
-     "current_sensors": "Improved",
-     "active_weapons": [true, true, true, true],
-     "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-     "dodge_thrust":0,
-     "assist_gunners":false,
-    },
-    {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
-     "current_hull":160,
-     "current_armor":5,
-     "current_power":300,
-     "current_maneuver":3,
-     "current_jump":2,
-     "current_fuel":81,
-     "current_crew":11,
-     "current_sensors": "Improved",
-     "active_weapons": [true, true, true, true],
-     "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-     "dodge_thrust":0,
-     "assist_gunners":false,
-    }]});
-
-    assert_json_eq!(&start, &compare);
-
-    send_quit(PORT, &cookie).await;
+    send_quit(&mut stream).await;
 }
 
 /*
@@ -570,64 +617,45 @@ async fn integration_add_planet_ship() {
  */
 #[tokio::test]
 async fn integration_update_ship() {
-    const PORT: u16 = 3015;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let client = Client::new();
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [1000.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
 
-    let response = client
-        .post(path(PORT, UPDATE_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .body(serde_json::to_string(&EMPTY_FIRE_ACTIONS_MSG).unwrap())
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    assert_eq!(response, "[]");
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
 
-    let response = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let response = rpc(&mut stream, RequestMsg::Update(EMPTY_FIRE_ACTIONS_MSG)).await;
+    assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
 
-    {
-        let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+    let entities = drain_entity_response(&mut stream).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let ship = entities.ships.get("ship1").unwrap().read().unwrap();
         assert_eq!(
             ship.get_position(),
             Vec3::new(1000.0 * DELTA_TIME_F64, 0.0, 0.0)
         );
         assert_eq!(ship.get_velocity(), Vec3::new(1000.0, 0.0, 0.0));
+    } else {
+        panic!("Improper response to entities request received.");
     }
-    send_quit(PORT, &cookie).await;
+    send_quit(&mut stream).await;
 }
 
 /*
@@ -637,127 +665,109 @@ async fn integration_update_ship() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn integration_update_missile() {
-    const PORT: u16 = 3016;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
-    let client = Client::new();
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [1000.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "System Defense Boat".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
 
-    let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship2)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship2".to_string(),
+            position: [5000.0, 0.0, 5000.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "System Defense Boat".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
 
-    let fire_missile = json!([["ship1", [{"weapon_id": 1, "target": "ship2"}] ]]);
-    let body = serde_json::to_string(&fire_missile).unwrap();
-    //let missile = r#"{"source":"ship1","target":"ship2"}"#;
-    let response = client
-        .post(path(PORT, UPDATE_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .body(body)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let fire_actions = vec![(
+        "ship1".to_string(),
+        vec![FireAction {
+            weapon_id: 1,
+            target: "ship2".to_string(),
+            called_shot_system: None,
+        }],
+    )];
 
-    let compare = json!([
-        {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
-    ]);
-
-    assert_json_eq!(
-        serde_json::from_str::<Vec<callisto::payloads::EffectMsg>>(response.as_str())
-            .unwrap()
+    let effects = rpc(&mut stream, RequestMsg::Update(fire_actions)).await;
+    if let ResponseMsg::Effects(effects) = effects {
+        let filtered_effects: Vec<_> = effects
             .iter()
-            .filter(|e| !matches!(e, callisto::payloads::EffectMsg::Message { .. }))
-            .collect::<Vec<_>>(),
-        compare
-    );
+            .filter(|e| !matches!(e, EffectMsg::Message { .. }))
+            .collect();
 
-    let entities = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+        let compare = vec![EffectMsg::ShipImpact {
+            position: Vec3::new(5000.0, 0.0, 5000.0),
+        }];
+        assert_json_eq!(filtered_effects, compare);
+    } else {
+        panic!("Improper response to update request received.");
+    }
 
-    let compare = json!(
-            {"ships":[
-                {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-                 "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
-                 "current_hull":88,
-                 "current_armor":13,
-                 "current_power":240,
-                 "current_maneuver":9,
-                 "current_jump":0,
-                 "current_fuel":6,
-                 "current_crew":13,
-                 "current_sensors": "Improved",
-                 "active_weapons": [true, true],
-                 "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-                 "dodge_thrust":0,
-                 "assist_gunners":false,
-                },
-                {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-                 "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
-                 "current_hull":83,
-                 "current_armor":13,
-                 "current_power":240,
-                 "current_maneuver":9,
-                 "current_jump":0,
-                 "current_fuel":6,
-                 "current_crew":13,
-                 "current_sensors": "Improved",
-                 "active_weapons": [true, true],
-                 "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-                 "dodge_thrust":0,
-                 "assist_gunners":false,
-                }],
-                 "missiles":[],"planets":[]});
+    let entities = drain_entity_response(&mut stream).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
+        let compare = json!({"ships":[
+            {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "current_hull":88,
+             "current_armor":13,
+             "current_power":240,
+             "current_maneuver":9,
+             "current_jump":0,
+             "current_fuel":6,
+             "current_crew":13,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true],
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "dodge_thrust":0,
+             "assist_gunners":false,
+            },
+            {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
+             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "current_hull":83,
+             "current_armor":13,
+             "current_power":240,
+             "current_maneuver":9,
+             "current_jump":0,
+             "current_fuel":6,
+             "current_crew":13,
+             "current_sensors": "Improved",
+             "active_weapons": [true, true],
+             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "dodge_thrust":0,
+             "assist_gunners":false,
+            }],
+            "missiles":[],"planets":[]});
 
-    assert_json_eq!(
-        serde_json::from_str::<Entities>(entities.as_str()).unwrap(),
-        compare
-    );
+        assert_json_eq!(entities, compare);
+    } else {
+        panic!("Improper response to entities request received.");
+    }
 
-    send_quit(PORT, &cookie).await;
+    send_quit(&mut stream).await;
 }
 
 /*
@@ -765,60 +775,43 @@ async fn integration_update_missile() {
  */
 #[tokio::test]
 async fn integration_remove_ship() {
-    const PORT: u16 = 3017;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _cookie = test_authenticate(&mut stream).await.unwrap();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let client = Client::new();
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
+    callisto::ship::config_test_ship_templates().await;
 
-    let response: SimpleMsg = client
-        .post(path(PORT, REMOVE_ENTITY_PATH))
-        .header("Cookie", &cookie)
-        .body(r#""ship1""#)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Remove action executed".to_string()
-        }
-    );
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
 
-    let entities = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let message = rpc(&mut stream, RequestMsg::Remove("ship1".to_string())).await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Remove action executed"));
 
-    assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[]}"#);
+    let entities = drain_entity_response(&mut stream).await;
 
-    send_quit(PORT, &cookie).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
+        assert!(entities.ships.is_empty());
+        assert!(entities.missiles.is_empty());
+        assert!(entities.planets.is_empty());
+    } else {
+        panic!("Improper response to entities request received.");
+    }
+
+    send_quit(&mut stream).await;
 }
 
 /**
@@ -826,44 +819,30 @@ async fn integration_remove_ship() {
  */
 #[tokio::test]
 async fn integration_set_acceleration() {
-    const PORT: u16 = 3018;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let client = Client::new();
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
-
-    let response = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _cookie = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
-    let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-    {
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+
+    let entities = drain_entity_response(&mut stream).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let ship = entities.ships.get("ship1").unwrap().read().unwrap();
         let flight_plan = &ship.plan;
         assert_eq!(flight_plan.0 .0, [0.0, 0.0, 0.0].into());
@@ -871,43 +850,28 @@ async fn integration_set_acceleration() {
         assert!(!flight_plan.has_second());
     }
 
-    let response: SimpleMsg = client
-        .post(path(PORT, SET_ACCELERATION_PATH))
-        .header("Cookie", &cookie)
-        .body(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Set acceleration action executed".to_string()
-        }
+    let message = rpc(
+        &mut stream,
+        RequestMsg::SetPlan(SetPlanMsg {
+            name: "ship1".to_string(),
+            plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
+        }),
+    )
+    .await;
+    assert!(
+        matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Set acceleration action executed")
     );
 
-    let response = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-
-    {
-        let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+    let entities = drain_entity_response(&mut stream).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
         let ship = entities.ships.get("ship1").unwrap().read().unwrap();
         let flight_plan = &ship.plan;
         assert_eq!(flight_plan.0 .0, [1.0, 2.0, 2.0].into());
         assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
         assert!(!flight_plan.has_second());
     }
-    send_quit(PORT, &cookie).await;
+
+    send_quit(&mut stream).await;
 }
 
 /**
@@ -915,716 +879,479 @@ async fn integration_set_acceleration() {
  */
 #[tokio::test]
 async fn integration_compute_path_basic() {
-    const PORT: u16 = 3019;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _cookie = test_authenticate(&mut stream).await.unwrap();
 
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let client = Client::new();
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    callisto::ship::config_test_ship_templates().await;
 
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
 
-    let response = client
-        .post(path(PORT, COMPUTE_PATH_PATH))
-        .header("Cookie", &cookie)
-        .body(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let message = rpc(
+        &mut stream,
+        RequestMsg::ComputePath(ComputePathMsg {
+            entity_name: "ship1".to_string(),
+            end_pos: [58_842_000.0, 0.0, 0.0].into(),
+            end_vel: [0.0, 0.0, 0.0].into(),
+            standoff_distance: 0.0,
+            target_velocity: None,
+        }),
+    )
+    .await;
 
-    let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
-
-    assert_eq!(plan.path.len(), 9);
-    assert_eq!(plan.path[0], Vec3::zero());
-    assert_ulps_eq!(
-        plan.path[1],
-        Vec3 {
-            x: 1_906_480.8,
-            y: 0.0,
-            z: 0.0
-        }
-    );
-    assert_ulps_eq!(
-        plan.path[2],
-        Vec3 {
-            x: 7_625_923.2,
-            y: 0.0,
-            z: 0.0
-        }
-    );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
-    let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(
-        a,
-        Vec3 {
-            x: 3.0,
-            y: 0.0,
-            z: 0.0
-        }
-    );
-    assert_eq!(t, 1414);
-
-    if let Some(accel) = plan.plan.1 {
-        let (a, _t) = accel.into();
+    if let ResponseMsg::FlightPath(plan) = message {
+        assert_eq!(plan.path.len(), 9);
+        assert_eq!(plan.path[0], Vec3::zero());
         assert_ulps_eq!(
-            a,
+            plan.path[1],
             Vec3 {
-                x: -3.0,
+                x: 1_906_480.8,
                 y: 0.0,
                 z: 0.0
             }
         );
-    } else {
-        panic!("Expecting second acceleration.")
-    }
-    assert_eq!(t, 1414);
-
-    send_quit(PORT, &cookie).await;
-}
-
-#[tokio::test]
-async fn integration_compute_path_with_standoff() {
-    const PORT: u16 = 3020;
-    let _server = spawn_test_server(PORT).await;
-
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-
-    let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-    let client = Client::new();
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-
-    assert_json_eq!(
-        response,
-        SimpleMsg {
-            msg: "Add ship action executed".to_string()
-        }
-    );
-
-    let response = client
-        .post(path(PORT, COMPUTE_PATH_PATH))
-        .header("Cookie", &cookie)
-        .body(r#"{"entity_name":"ship1","end_pos":[58842000,0,0],"end_vel":[0,0,0],"standoff_distance": 60000}"#)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-
-    let plan = serde_json::from_str::<FlightPathMsg>(response.as_str()).unwrap();
-
-    assert_eq!(plan.path.len(), 9);
-    assert_eq!(plan.path[0], Vec3::zero());
-    assert_ulps_eq!(
-        plan.path[1],
-        Vec3 {
-            x: 1_906_480.8,
-            y: 0.0,
-            z: 0.0
-        }
-    );
-    assert_ulps_eq!(
-        plan.path[2],
-        Vec3 {
-            x: 7_625_923.2,
-            y: 0.0,
-            z: 0.0
-        }
-    );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
-    let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(
-        a,
-        Vec3 {
-            x: 3.0,
-            y: 0.0,
-            z: 0.0
-        }
-    );
-    assert_eq!(t, 1413);
-
-    if let Some(accel) = plan.plan.1 {
-        let (a, _t) = accel.into();
         assert_ulps_eq!(
-            a,
+            plan.path[2],
             Vec3 {
-                x: -3.0,
+                x: 7_625_923.2,
                 y: 0.0,
                 z: 0.0
             }
         );
-    } else {
-        panic!("Expecting second acceleration.")
-    }
-    assert_eq!(t, 1413);
-
-    send_quit(PORT, &cookie).await;
-}
-
-/// Test malformed requests return appropriate error responses
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn integration_malformed_requests() {
-    const PORT: u16 = 3021;
-    let _server = spawn_test_server(PORT).await;
-
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-
-    let client = reqwest::Client::new();
-
-    // Test cases with invalid JSON for each endpoint
-    let test_cases = vec![
-        (UPDATE_ENTITIES_PATH, r#"{"not": "valid_update"}"#),
-        (COMPUTE_PATH_PATH, r#"{"missing": "path_data"}"#),
-        (ADD_SHIP_PATH, r#"{"invalid": "json"}"#),
-        (ADD_PLANET_PATH, r#"{"name": "missing_required_fields"}"#),
-        (REMOVE_ENTITY_PATH, r#"{"invalid": "remove_request"}"#),
-        (SET_ACCELERATION_PATH, r#"{"not": "valid_plan"}"#),
-    ];
-
-    for (op, invalid_json) in test_cases {
-        let response = client
-            .post(path(PORT, op))
-            .header("Cookie", &cookie)
-            .body(invalid_json.to_string())
-            .send()
-            .await
-            .unwrap_or_else(|e| panic!("Request to {op} failed: {e:?}"));
-
-        assert_eq!(
-            response.status(),
-            StatusCode::BAD_REQUEST,
-            "Expected BAD_REQUEST for malformed {} request, got {:?}",
-            op,
-            response.status()
+        assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
+        let (a, t) = plan.plan.0.into();
+        assert_ulps_eq!(
+            a,
+            Vec3 {
+                x: 3.0,
+                y: 0.0,
+                z: 0.0
+            }
         );
+        assert_eq!(t, 1414);
 
-        let error_text = response.text().await.unwrap();
-        assert!(
-            error_text.contains("Invalid JSON"),
-            "Expected 'Invalid JSON' error for {op}, got: {error_text}"
-        );
-    }
-
-    // Test oversized request body (larger than 64KB)
-    let large_body = "x".repeat(65 * 1024); // 65KB
-    let response = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(large_body)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::PAYLOAD_TOO_LARGE,
-        "Expected PAYLOAD_TOO_LARGE for oversized request"
-    );
-
-    // Test completely empty body
-    let response = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body("")
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for empty body"
-    );
-
-    // Test malformed URL parameters
-    let response = client
-        .get(format!(
-            "{}/{}",
-            path(PORT, GET_ENTITIES_PATH),
-            "invalid_param"
-        ))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::NOT_FOUND,
-        "Expected NOT_FOUND for invalid URL parameters"
-    );
-
-    // Test invalid HTTP method
-    let response = client
-        .put(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body("{}")
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::NOT_FOUND,
-        "Expected NOT_FOUND for invalid HTTP method"
-    );
-
-    // Test invalid content type
-    let response = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body("not json")
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid content type"
-    );
-
-    // Test malformed ship design
-    let invalid_ship = r#"{
-        "name": "bad_ship",
-        "position": [0,0,0],
-        "velocity": [0,0,0],
-        "acceleration": [0,0,0],
-        "design": "NonexistentDesign",
-        "crew": {
-            "pilot": 0,
-            "engineering_jump": 0,
-            "engineering_power": 0,
-            "engineering_maneuver": 0,
-            "sensors": 0,
-            "gunnery": []
+        if let Some(accel) = plan.plan.1 {
+            let (a, _t) = accel.into();
+            assert_ulps_eq!(
+                a,
+                Vec3 {
+                    x: -3.0,
+                    y: 0.0,
+                    z: 0.0
+                }
+            );
+        } else {
+            panic!("Expecting second acceleration.");
         }
-    }"#;
+        assert_eq!(t, 1414);
+    } else {
+        panic!("Improper response to compute path request received: {message:?}");
+    }
 
-    let response = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(invalid_ship)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid ship design"
-    );
-
-    // Test malformed compute path request
-    let invalid_path = r#"{
-        "start": [0,0,0],
-        "invalid_field": "value"
-    }"#;
-
-    let response = client
-        .post(path(PORT, COMPUTE_PATH_PATH))
-        .header("Cookie", &cookie)
-        .body(invalid_path)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid compute path request"
-    );
-
-    send_quit(PORT, &cookie).await;
-}
-
-#[tokio::test]
-async fn integration_bad_requests() {
-    const PORT: u16 = 3024;
-    let _server = spawn_test_server(PORT).await;
-
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-
-    let client = reqwest::Client::new();
-
-    // A bad set_crew request where we name a ship that doesn't exit.
-    let response = client
-        .post(path(PORT, SET_CREW_ACTIONS_PATH))
-        .header("Cookie", &cookie)
-        .body(r#"{"ship_name":"ship1","dodge_thrust":3,"assist_gunners":true}"#)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid set_crew request"
-    );
-
-    // A planet with an invalid primary
-    let response = client
-        .post(path(PORT, ADD_PLANET_PATH))
-        .header("Cookie", &cookie)
-        .body(r#"{"name":"planet1","position":[0,0,0],"velocity":[0,0,0],"color":"red","primary":"InvalidPlanet","radius":1.5e6,"mass":3e24}"#)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid planet primary"
-    );
-
-    // Remove a ship that doesn't exist
-    let response = client
-        .post(path(PORT, REMOVE_ENTITY_PATH))
-        .header("Cookie", &cookie)
-        .body(r#""ship1""#)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid remove request"
-    );
-
-    // Set a flight plan for a non-existent ship
-    let response = client
-        .post(path(PORT, SET_ACCELERATION_PATH))
-        .header("Cookie", &cookie)
-        .body(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid set acceleration request"
-    );
-
-    // Call fire_action with a weapon_id that is NaN
-    let response = client
-        .post(path(PORT, UPDATE_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .body(r#"[[["ship1", [{"weapon_id": NaN, "target": "ship2"}]]]]"#)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected BAD_REQUEST for invalid fire_action request"
-    );
-
-    send_quit(PORT, &cookie).await;
-}
-
-#[tokio::test]
-async fn integration_options_request() {
-    const PORT: u16 = 3022;
-    let _server = spawn_test_server(PORT).await;
-
-    let client = reqwest::Client::new();
-    let web_backend = "https://test.example.com".to_string();
-
-    let response = client
-        .request(Method::OPTIONS, path(PORT, ""))
-        .body("".as_bytes())
-        .header("Origin", web_backend.clone())
-        .send()
-        .await
-        .unwrap();
-
-    // Verify response headers
-    let headers = response.headers();
-
-    // Check Allow-Credentials
-    let allow_credentials = headers.get(ACCESS_CONTROL_ALLOW_CREDENTIALS).unwrap();
-    assert_eq!(allow_credentials, "true");
-
-    // Check Allow-Methods
-    let allow_methods = headers.get(ACCESS_CONTROL_ALLOW_METHODS).unwrap();
-    assert!(allow_methods.to_str().unwrap().contains("POST"));
-    assert!(allow_methods.to_str().unwrap().contains("GET"));
-    assert!(allow_methods.to_str().unwrap().contains("OPTIONS"));
-
-    // Check Allow-Headers
-    let allow_headers = headers.get(ACCESS_CONTROL_ALLOW_HEADERS).unwrap();
-    let headers_str = allow_headers.to_str().unwrap();
-    assert!(headers_str.contains("content-type"));
-    assert!(headers_str.contains("authorization"));
-    assert!(headers_str.contains("cookie"));
-    assert!(headers_str.contains("access-control-allow-credentials"));
-
-    // Verify empty response body
-    let body = response.text().await.unwrap();
-    assert_eq!(body, "");
-
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-    send_quit(PORT, &cookie).await;
+    send_quit(&mut stream).await;
 }
 
 /**
- * Test loading scenarios through the web server
+ * Test that will compute a path with standoff value
  */
-#[tokio::test]
+#[test_log::test(tokio::test)]
+async fn integration_compute_path_with_standoff() {
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
+
+    let mut stream = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
+
+    callisto::ship::config_test_ship_templates().await;
+
+    // Add test ship
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
+    drain_entity_response(&mut stream).await;
+
+    // Compute path with standoff
+    let message = rpc(
+        &mut stream,
+        RequestMsg::ComputePath(ComputePathMsg {
+            entity_name: "ship1".to_string(),
+            end_pos: [58_842_000.0, 0.0, 0.0].into(),
+            end_vel: [0.0, 0.0, 0.0].into(),
+            standoff_distance: 60000.0,
+            target_velocity: None,
+        }),
+    )
+    .await;
+
+    if let ResponseMsg::FlightPath(plan) = message {
+        assert_eq!(plan.path.len(), 9);
+        assert_eq!(plan.path[0], Vec3::zero());
+        assert_ulps_eq!(
+            plan.path[1],
+            Vec3 {
+                x: 1_906_480.8,
+                y: 0.0,
+                z: 0.0
+            }
+        );
+        assert_ulps_eq!(
+            plan.path[2],
+            Vec3 {
+                x: 7_625_923.2,
+                y: 0.0,
+                z: 0.0
+            }
+        );
+        assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
+
+        let (a, t) = plan.plan.0.into();
+        assert_ulps_eq!(
+            a,
+            Vec3 {
+                x: 3.0,
+                y: 0.0,
+                z: 0.0
+            }
+        );
+        assert_eq!(t, 1413);
+
+        if let Some(accel) = plan.plan.1 {
+            let (a, _t) = accel.into();
+            assert_ulps_eq!(
+                a,
+                Vec3 {
+                    x: -3.0,
+                    y: 0.0,
+                    z: 0.0
+                }
+            );
+        } else {
+            panic!("Expecting second acceleration.");
+        }
+        assert_eq!(t, 1413);
+    } else {
+        panic!("Expected FlightPath response");
+    }
+
+    send_quit(&mut stream).await;
+}
+
+/**
+ * Test various malformed requests to ensure proper error handling
+ */
+#[test_log::test(tokio::test)]
+async fn integration_malformed_requests() {
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
+
+    let mut stream = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
+
+    // Test invalid ship design
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "bad_ship".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "NonexistentDesign".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::Error(_)));
+
+    // Test invalid planet primary
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddPlanet(AddPlanetMsg {
+            name: "planet1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            color: "red".to_string(),
+            primary: Some("InvalidPrimary".to_string()),
+            radius: 1.5e6,
+            mass: 3e24,
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::Error(_)));
+
+    // Test invalid compute path request
+    let message = rpc(
+        &mut stream,
+        RequestMsg::ComputePath(ComputePathMsg {
+            entity_name: "nonexistent_ship".to_string(),
+            end_pos: [0.0, 0.0, 0.0].into(),
+            end_vel: [0.0, 0.0, 0.0].into(),
+            standoff_distance: 0.0,
+            target_velocity: None,
+        }),
+    )
+    .await;
+    assert!(
+        matches!(message, ResponseMsg::Error(_)),
+        "Expected error for invalid compute path request, got {message:?}"
+    );
+
+    // Test invalid flight plan
+    let message = rpc(
+        &mut stream,
+        RequestMsg::SetPlan(SetPlanMsg {
+            name: "nonexistent_ship".to_string(),
+            plan: vec![([f64::NAN, 0.0, 0.0].into(), 1000)].into(),
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::Error(_)));
+
+    // Test fire action with invalid parameters
+    let message = rpc(
+        &mut stream,
+        RequestMsg::Update(vec![(
+            "nonexistent_ship".to_string(),
+            vec![FireAction {
+                weapon_id: 0,
+                target: "nonexistent_target".to_string(),
+                called_shot_system: None,
+            }],
+        )]),
+    )
+    .await;
+    assert!(
+        matches!(&message, ResponseMsg::Effects(x) if x.is_empty()),
+        "Expected empty effects for invalid fire action, got {message:?}"
+    );
+
+    send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_bad_requests() {
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
+
+    let mut stream = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
+
+    // Test setting crew actions for non-existent ship
+    let msg = RequestMsg::SetCrewActions(SetCrewActions {
+        ship_name: "ship1".to_string(),
+        dodge_thrust: Some(3),
+        assist_gunners: Some(true),
+    });
+    let response = rpc(&mut stream, msg).await;
+    assert!(matches!(response, ResponseMsg::Error(_)));
+
+    // Test adding planet with invalid primary
+    let msg = RequestMsg::AddPlanet(AddPlanetMsg {
+        name: "planet1".to_string(),
+        position: [0.0, 0.0, 0.0].into(),
+        color: "red".to_string(),
+        primary: Some("InvalidPlanet".to_string()),
+        radius: 1.5e6,
+        mass: 3e24,
+    });
+    let response = rpc(&mut stream, msg).await;
+    assert!(matches!(response, ResponseMsg::Error(_)));
+
+    // Test removing non-existent ship
+    let msg = RequestMsg::Remove("ship1".to_string());
+    let response = rpc(&mut stream, msg).await;
+    assert!(matches!(response, ResponseMsg::Error(_)));
+
+    // Test setting flight plan for non-existent ship
+    let msg = RequestMsg::SetPlan(SetPlanMsg {
+        name: "ship1".to_string(),
+        plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
+    });
+    let response = rpc(&mut stream, msg).await;
+    assert!(matches!(response, ResponseMsg::Error(_)));
+
+    // Test fire action with invalid weapon_id
+    let msg = RequestMsg::Update(vec![(
+        "ship1".to_string(),
+        vec![FireAction {
+            weapon_id: u32::MAX,
+            target: "ship2".to_string(),
+            called_shot_system: None,
+        }],
+    )]);
+    let response = rpc(&mut stream, msg).await;
+    assert!(
+        matches!(&response, ResponseMsg::Effects(x) if x.is_empty()),
+        "Expected empty effects for invalid weapon_id. Instead got {response:?}"
+    );
+
+    send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
 async fn integration_load_scenario() {
-    const PORT: u16 = 3023;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-
-    let client = reqwest::Client::new();
+    let mut stream = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
 
     // Test successful scenario load
-    let valid_scenario = r#"{"scenario_name": "./tests/test-scenario.json"}"#;
-    let response = client
-        .post(path(PORT, LOAD_SCENARIO_PATH))
-        .header("Cookie", &cookie)
-        .body(valid_scenario)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "Failed to load valid scenario"
-    );
+    let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
+        scenario_name: "./tests/test-scenario.json".to_string(),
+    });
+    let response = rpc(&mut stream, msg).await;
+    assert!(matches!(response, ResponseMsg::SimpleMsg(_)));
 
     // Verify the scenario was loaded by checking entities
-    let entities = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-
-    let entities_json: Entities = serde_json::from_str(&entities).unwrap();
-    assert!(
-        !entities_json.ships.is_empty() || !entities_json.planets.is_empty(),
-        "Expected scenario to load some entities"
-    );
+    let msg = RequestMsg::EntitiesRequest;
+    let response = rpc(&mut stream, msg).await;
+    if let ResponseMsg::EntityResponse(entities) = response {
+        assert!(
+            !entities.ships.is_empty() || !entities.planets.is_empty(),
+            "Expected scenario to load some entities"
+        );
+    } else {
+        panic!("Expected EntityResponse");
+    }
 
     // Test loading non-existent scenario
-    let invalid_scenario = r#"{"scenario_name": "./scenarios/nonexistent.json"}"#;
-    let response = client
-        .post(path(PORT, LOAD_SCENARIO_PATH))
-        .header("Cookie", &cookie)
-        .body(invalid_scenario)
-        .send()
-        .await
-        .unwrap();
+    let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
+        scenario_name: "./scenarios/nonexistent.json".to_string(),
+    });
+    let response = rpc(&mut stream, msg).await;
+    assert!(matches!(response, ResponseMsg::Error(_)));
 
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error when loading non-existent scenario"
-    );
-
-    // Test malformed request
-    let malformed_request = r#"{"wrong_field": "value"}"#;
-    let response = client
-        .post(path(PORT, LOAD_SCENARIO_PATH))
-        .header("Cookie", &cookie)
-        .body(malformed_request)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error for malformed request"
-    );
-
-    // Test empty scenario name
-    let empty_scenario = r#"{"scenario_name": ""}"#;
-    let response = client
-        .post(path(PORT, LOAD_SCENARIO_PATH))
-        .header("Cookie", &cookie)
-        .body(empty_scenario)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error for empty scenario name"
-    );
-
-    send_quit(PORT, &cookie).await;
+    send_quit(&mut stream).await;
 }
 
 #[cfg_attr(feature = "ci", ignore)]
 #[test_log::test(tokio::test)]
 async fn integration_load_cloud_scenario() {
-    const PORT: u16 = 3027;
-    let _server = spawn_test_server(PORT).await;
-    let client = reqwest::Client::new();
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let invalid_scenario = r#"{"scenario_name": "gs://nobucket/nonexistent.json"}"#;
-    let response = client
-        .post(path(PORT, LOAD_SCENARIO_PATH))
-        .header("Cookie", &cookie)
-        .body(invalid_scenario)
-        .send()
-        .await
-        .unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
 
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error when loading non-existent scenario"
-    );
+    // Test loading non-existent cloud scenario
+    let message = rpc(
+        &mut stream,
+        RequestMsg::LoadScenario(LoadScenarioMsg {
+            scenario_name: "gs://nobucket/nonexistent.json".to_string(),
+        }),
+    )
+    .await;
+    assert!(matches!(message, ResponseMsg::Error(_)));
 
-    send_quit(PORT, &cookie).await;
+    send_quit(&mut stream).await;
 }
 
 #[tokio::test]
 async fn integration_fail_login() {
-    const PORT: u16 = 3025;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let client = reqwest::Client::new();
+    // Test unauthenticated connection
+    let socket_url = format!("ws://127.0.0.1:{port}/ws");
+    let stream = connect_async(socket_url).await;
 
-    // First an unauthenticated action
-    let response = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .body("{}")
-        .send()
-        .await
-        .unwrap();
+    if cfg!(feature = "no_tls_upgrade") {
+        assert!(
+            stream.is_ok(),
+            "Expected connection to succeed without TLS upgrade"
+        );
+    } else {
+        assert!(
+            stream.is_err(),
+            "Expected connection to fail without authentication"
+        );
+    }
 
-    assert_eq!(
-        response.status(),
-        StatusCode::UNAUTHORIZED,
-        "Expected UNAUTHORIZED for unauthenticated request"
+    // Test invalid authentication
+    let mut stream = open_socket(port).await.unwrap();
+    let message = rpc(
+        &mut stream,
+        RequestMsg::Login(LoginMsg {
+            code: "invalid_code".to_string(),
+        }),
+    )
+    .await;
+    assert!(
+        matches!(message, ResponseMsg::Error(_)),
+        "Expected error for invalid authentication. Got: {message:?}"
     );
 
-    // Now log in but without a valid code
-    let response = client
-        .post(path(PORT, LOGIN_PATH))
-        .body("{}")
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::UNAUTHORIZED,
-        "Expected UNAUTHORIZED for unauthenticated request"
-    );
-
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
-    send_quit(PORT, &cookie).await;
+    send_quit(&mut stream).await;
 }
 
 /**
- * Test setting crew actions through the web server
+ * Test setting crew actions through WebSocket
  */
-#[allow(clippy::too_many_lines)]
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn integration_set_crew_actions() {
-    const PORT: u16 = 3026;
-    let _server = spawn_test_server(PORT).await;
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let (_, cookie) = test_authenticate(PORT).await.unwrap();
+    let mut stream = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream).await.unwrap();
 
     callisto::ship::config_test_ship_templates().await;
 
     // First add a ship to test with
-    let ship = r#"{
-        "name": "test_ship",
-        "position": [0.0, 0.0, 0.0],
-        "velocity": [0.0, 0.0, 0.0],
-        "acceleration": [0.0, 0.0, 0.0],
-        "design": "Buccaneer",
-        "crew": {
-            "pilot": 2,
-            "engineering_jump": 1,
-            "engineering_power": 3,
-            "engineering_maneuver": 2,
-            "sensors": 1,
-            "gunnery": [0,1,2]
-        }
-    }"#;
+    let mut crew = Crew::default();
+    crew.set_skill(Skills::Pilot, 2);
+    crew.set_skill(Skills::EngineeringJump, 1);
+    crew.set_skill(Skills::EngineeringPower, 3);
+    crew.set_skill(Skills::EngineeringManeuver, 2);
+    crew.set_skill(Skills::Sensors, 1);
+    crew.add_gunnery(0);
+    crew.add_gunnery(1);
+    crew.add_gunnery(2);
 
-    let client = Client::new();
+    let message = rpc(
+        &mut stream,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "test_ship".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: Some(crew),
+        }),
+    )
+    .await;
 
-    // Add the ship
-    let response: SimpleMsg = client
-        .post(path(PORT, ADD_SHIP_PATH))
-        .header("Cookie", &cookie)
-        .body(ship)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-
-    assert_eq!(response.msg, "Add ship action executed");
+    assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
 
     // Verify the crew skills were set by checking entities
-    let entities: String = client
-        .get(path(PORT, GET_ENTITIES_PATH))
-        .header("Cookie", &cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let response = drain_entity_response(&mut stream).await;
 
-    {
-        let entities_json: Entities = serde_json::from_str(&entities).unwrap();
-        let ship = entities_json
-            .ships
-            .get("test_ship")
-            .unwrap()
-            .read()
-            .unwrap();
+    if let ResponseMsg::EntityResponse(entities) = response {
+        let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
         let crew = ship.get_crew();
         debug!("(integration_set_crew_actions) Crew: ({:?})", crew);
         assert_eq!(crew.get_pilot(), 2);
@@ -1633,146 +1360,142 @@ async fn integration_set_crew_actions() {
         assert_eq!(crew.get_engineering_maneuver(), 2);
         assert_eq!(crew.get_gunnery(0), 0);
         assert_eq!(crew.get_gunnery(1), 1);
-
         assert_eq!(crew.get_gunnery(2), 2);
+    } else {
+        panic!("Expected EntityResponse");
     }
+
     // Test successful crew actions set
-    let valid_actions = r#"{
-                    "ship_name": "test_ship",
-                    "actions": {
-                        "dodge_thrust": 1,
-                        "assist_gunners": true
-                    }
-                }"#;
+    let message = rpc(
+        &mut stream,
+        RequestMsg::SetCrewActions(SetCrewActions {
+            ship_name: "test_ship".to_string(),
+            dodge_thrust: Some(1),
+            assist_gunners: Some(true),
+        }),
+    )
+    .await;
 
-    let response = client
-        .post(path(PORT, SET_CREW_ACTIONS_PATH))
-        .header("Cookie", &cookie)
-        .body(valid_actions)
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "Failed to set crew actions."
-    );
+    assert!(matches!(message, ResponseMsg::SimpleMsg(_)));
+    drain_entity_response(&mut stream).await;
 
     // Test setting crew actions for non-existent ship
-    let invalid_ship_actions = r#"{
-        "ship_name": "nonexistent_ship",
-        "actions": {
-            "dodge_thrust": 1,
-            "assist_gunners": true
-        }
-    }"#;
+    let message = rpc(
+        &mut stream,
+        RequestMsg::SetCrewActions(SetCrewActions {
+            ship_name: "nonexistent_ship".to_string(),
+            dodge_thrust: Some(1),
+            assist_gunners: Some(true),
+        }),
+    )
+    .await;
 
-    let response = client
-        .post(path(PORT, SET_CREW_ACTIONS_PATH))
-        .header("Cookie", &cookie)
-        .body(invalid_ship_actions)
-        .send()
-        .await
-        .unwrap();
+    assert!(matches!(message, ResponseMsg::Error(_)));
 
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error when setting crew actions for non-existent ship"
-    );
+    send_quit(&mut stream).await;
+}
 
-    // Test malformed crew actions
-    let malformed_actions = r#"{
-        "ship_name": "test_ship",
-        "actions": {
-            "dodge_thrust": true,
-            "assist_gunners": 1,            
-        }
-    }"#;
+#[test_log::test(tokio::test)]
+async fn integration_multi_client_test() {
+    let port = get_next_port();
+    let _server = spawn_test_server(port).await;
 
-    let response = client
-        .post(path(PORT, SET_CREW_ACTIONS_PATH))
-        .header("Cookie", &cookie)
-        .body(malformed_actions)
-        .send()
-        .await
-        .unwrap();
+    let mut stream1 = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream1).await.unwrap();
+    let mut stream2 = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream2).await.unwrap();
+    let mut stream3 = open_socket(port).await.unwrap();
+    let _ = test_authenticate(&mut stream3).await.unwrap();
 
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error for malformed crew actions"
-    );
+    callisto::ship::config_test_ship_templates().await;
+    rpc(
+        &mut stream1,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship1".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
 
-    // Test invalid crew action values (out of range)
-    let invalid_values = r#"{
-        "ship_name": "test_ship",
-        "actions": {
-            "dodge_thrust": 999,
-        }
-    }"#;
+    rpc(
+        &mut stream2,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship2".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
 
-    let response = client
-        .post(path(PORT, SET_CREW_ACTIONS_PATH))
-        .header("Cookie", &cookie)
-        .body(invalid_values)
-        .send()
-        .await
-        .unwrap();
+    // Before we do our RPC, get rid of the extra two messages
+    debug!("(integration_multi_client_test) Draining extra messages (1).");
+    drain_entity_response(&mut stream3).await;
+    debug!("(integration_multi_client_test) Draining extra messages (2).");
+    drain_entity_response(&mut stream3).await;
 
-    assert_eq!(
-        response.status(),
-        StatusCode::BAD_REQUEST,
-        "Expected error for invalid crew action values"
-    );
+    rpc(
+        &mut stream3,
+        RequestMsg::AddShip(AddShipMsg {
+            name: "ship3".to_string(),
+            position: [0.0, 0.0, 0.0].into(),
+            velocity: [0.0, 0.0, 0.0].into(),
+            acceleration: [0.0, 0.0, 0.0].into(),
+            design: "Buccaneer".to_string(),
+            crew: None,
+        }),
+    )
+    .await;
 
-    send_quit(PORT, &cookie).await;
+    // Should now be just the 1 entity response message (since we drained above)
+    let entities = drain_entity_response(&mut stream3).await;
+    if let ResponseMsg::EntityResponse(entities) = entities {
+        assert_eq!(entities.ships.len(), 3);
+    } else {
+        panic!("Expected EntityResponse");
+    }
+
+    send_quit(&mut stream1).await;
 }
 
 #[cfg_attr(feature = "ci", ignore)]
 #[tokio::test]
 async fn integration_create_regular_server() {
-    const PORT_1: u16 = 3028;
-    const PORT_2: u16 = 3029;
-    const PORT_3: u16 = 3030;
+    let port_1 = get_next_port();
+    let port_2 = get_next_port();
+    let port_3 = get_next_port();
 
-    // Spawn a regular server
-    let exit_status = spawn_server(PORT_1, false, None, None, true)
-        .await
-        .unwrap()
-        .try_wait()
-        .unwrap();
+    // Test regular server
+    let mut server1 = spawn_server(port_1, false, None, None, true).await.unwrap();
+    assert!(server1.try_wait().unwrap().is_none());
 
-    assert!(exit_status.is_none());
-
-    // Spawn one that loads a scenario
-    let exit_status = spawn_server(
-        PORT_2,
+    // Test server with scenario
+    let mut server2 = spawn_server(
+        port_2,
         false,
         Some("./tests/test-scenario.json".to_string()),
         None,
         true,
     )
     .await
-    .unwrap()
-    .try_wait()
     .unwrap();
+    assert!(server2.try_wait().unwrap().is_none());
 
-    assert!(exit_status.is_none());
-
-    // Spawn one that loads a design file
-    let exit_status = spawn_server(
-        PORT_3,
+    // Test server with design file
+    let mut server3 = spawn_server(
+        port_3,
         false,
         None,
         Some("./tests/test_templates.json".to_string()),
         true,
     )
     .await
-    .unwrap()
-    .try_wait()
     .unwrap();
-
-    assert!(exit_status.is_none());
+    assert!(server3.try_wait().unwrap().is_none());
 }

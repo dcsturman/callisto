@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React from "react";
 import Joyride, {
   ACTIONS,
   CallBackProps,
@@ -10,7 +10,6 @@ import Joyride, {
   Step,
 } from "react-joyride";
 import { loadScenario } from "./ServerManager";
-import { EntitiesServerContext } from "./Universal";
 
 const steps: Step[] = [
   {
@@ -242,7 +241,6 @@ export function Tutorial({
   stepIndex,
   setStepIndex,
   selectAShip,
-  setAuthenticated,
 }: {
   runTutorial: boolean;
   setRunTutorial: (runTutorial: boolean) => void;
@@ -251,8 +249,6 @@ export function Tutorial({
   selectAShip: () => void;
   setAuthenticated: (authenticated: boolean) => void;
 }) {
-
-  const serverEntities = useContext(EntitiesServerContext);
 
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { action, index, origin, status, type } = data;
@@ -265,7 +261,7 @@ export function Tutorial({
     console.groupEnd();
 
     if (action === ACTIONS.START) {
-      loadScenario(TUTORIAL_SCENARIO, serverEntities.handler, setAuthenticated);
+      loadScenario(TUTORIAL_SCENARIO);
       setStepIndex(0);
     } else if (action === ACTIONS.RESET) {
       setStepIndex(0);
