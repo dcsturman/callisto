@@ -4,7 +4,7 @@ use std::panic;
 use std::process;
 use std::sync::{Arc, Mutex};
 
-use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::channel::mpsc::channel;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::WebSocketStream;
 
@@ -134,13 +134,10 @@ async fn handle_connection(
     let ws_stream: WebSocketStream<SubStream> =
         tokio_tungstenite::accept_hdr_async(stream, callback_handler)
             .await
-            .unwrap_or_else(|e| {
-                error!(
-                    "(handle_connection) Error during the websocket handshake occurred: {}",
-                    e
-                );
-                process::exit(1);
-            });
+            .map_err(|e| {
+                error!("(handle_connection) Error during the websocket handshake occurred: {e}");
+                format!("(handle_connection) Error during the websocket handshake occurred: {e}")
+            })?;
 
     let auth_info = auth_info.lock().unwrap();
     Ok((ws_stream, auth_info.0.clone(), auth_info.1.clone()))
@@ -250,10 +247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     // All the data shared between authenticators.
     let authorized_users = load_authorized_users(&args.users_file).await;
     let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
-    let (mut connection_sender, connection_receiver): (
-        Sender<(WebSocketStream<SubStream>, String, Option<String>)>,
-        Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
-    ) = channel(MAX_CHANNEL_DEPTH);
+    let (mut connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
 
     // Create an Authenticator to be cloned on each new connection.
 
@@ -281,6 +275,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         test_mode,
     ));
 
+    #[cfg(feature = "no_tls_upgrade")]
+    debug!("(main) No TLS upgrade enabled.");
+
+    #[cfg(not(feature = "no_tls_upgrade"))]
+    debug!("(main) TLS upgrade enabled.");
+
     info!("Starting Callisto server listening on address: {}", addr);
 
     // We start a loop to continuously accept incoming connections.  Once we have a connection
@@ -289,6 +289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     loop {
         let (stream, peer_addr) = listener.accept().await?;
 
+        debug!("(main) Accepted connection from {peer_addr}.");
         // Upgrade will be built differently depending on the feature `no_tls_upgrade`.
         #[cfg(feature = "no_tls_upgrade")]
         let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> =

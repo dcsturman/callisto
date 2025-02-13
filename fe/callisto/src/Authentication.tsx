@@ -6,6 +6,7 @@ import {
   CodeResponse,
 } from "@react-oauth/google";
 import { login, logout } from "./ServerManager";
+import { GOOGLE_OAUTH_CLIENT_ID } from "./App";
 
 export function Authentication(args: {
   setAuthenticated: (authenticated: boolean) => void;
@@ -60,9 +61,14 @@ export function Authentication(args: {
     }
 
     console.log(
-      "(Authentication) Redirect URI (REACT_APP_CALLISTO_BACKEND) is set to: " +
-        process.env.REACT_APP_CALLISTO_BACKEND
+      "(Authentication) Redirect URI (REACT_APP_NODE_SERVER) is set to: " +
+        process.env.REACT_APP_NODE_SERVER || window.location.href
     );
+
+    console.log("(Authentication) OAuth ClientID = " + GOOGLE_OAUTH_CLIENT_ID);
+
+    console.log(process.env);
+
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
         console.error("(Authentication) State mismatch, ignoring response");

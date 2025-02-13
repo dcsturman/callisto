@@ -7,7 +7,8 @@
 # Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
 
 ARG NODE_VERSION=23.1
-
+ARG BACKEND
+ARG NODE_SERVER
 ################################################################################
 # Use node image for base image for all stages.
 FROM node:${NODE_VERSION}-alpine AS base
@@ -36,6 +37,9 @@ RUN --mount=type=bind,source=package.json,target=package.json \
 # Create a stage for building the application.
 FROM deps AS build
 
+ARG BACKEND
+ARG NODE_SERVER
+
 # Download additional development dependencies before building, as some projects require
 # "devDependencies" to be installed to build. If you don't need this, remove this step.
 RUN --mount=type=bind,source=package.json,target=package.json \
@@ -47,6 +51,9 @@ RUN --mount=type=bind,source=package.json,target=package.json \
 COPY . .
 COPY ./public ./public
 COPY ./env* .
+
+ENV REACT_APP_CALLISTO_BACKEND=${BACKEND}
+ENV REACT_APP_NODE_SERVER=${NODE_SERVER}
 
 # Run the build script.
 RUN npm run build

@@ -56,13 +56,12 @@ export function startWebsocket(setReady: (ready: boolean) => void) {
     "http://",
     ""
   );
-  console.log(
-    `(ServerManager.startWebSocket) Establishing socket to wss://"${stripped_name}"`
-  );
-  console.trace();
+
   if (socket === undefined || socket.readyState === WebSocket.CLOSED) {
     setReady(false);
-    socket = new WebSocket(`wss://${stripped_name}`);
+    const back_end = `ws://${stripped_name}`;
+    console.log(`(ServerManager.startWebsocket) Open web socket to ${back_end}`);
+    socket = new WebSocket(back_end);
   } else {
     console.log("Socket already defined.  Not building it.");
   }
