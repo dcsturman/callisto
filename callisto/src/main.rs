@@ -244,16 +244,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     // Keep track of session keys (cookies) on connections.
     let session_keys = Arc::new(Mutex::new(HashMap::new()));
 
-    // All the data shared between authenticators.
-    let authorized_users = load_authorized_users(&args.users_file).await;
-    let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
     let (mut connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
 
     // Create an Authenticator to be cloned on each new connection.
-
     let auth_template: Box<dyn Authenticator> = if test_mode {
         Box::new(MockAuthenticator::new(&args.address))
     } else {
+        // All the data shared between authenticators.
+        let authorized_users = load_authorized_users(&args.users_file).await;
+        let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
+
         let authorized_users = Arc::new(authorized_users);
         let my_credentials = Arc::new(my_credentials);
         let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;

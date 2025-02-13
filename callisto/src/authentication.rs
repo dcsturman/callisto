@@ -65,7 +65,7 @@ pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
     load_authorized_users_from_file(users_file)
         .await
         .unwrap_or_else(|_| {
-            panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory: {users_file}");
+            panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}', defaulting to test list.");
         })
 }
 
