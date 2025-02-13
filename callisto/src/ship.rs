@@ -778,6 +778,18 @@ pub struct FlightPlan(
     pub Option<AccelPair>,
 );
 
+impl From<Vec<(Vec3, u64)>> for FlightPlan {
+    fn from(vec: Vec<(Vec3, u64)>) -> Self {
+        match vec.len() {
+            0 => FlightPlan::default(),
+            1 => FlightPlan(vec[0].into(), None),
+            2 => FlightPlan(vec[0].into(), Some(vec[1].into())),
+            _ => panic!("(From<Vec<(Vec3, u64)>> for FlightPlan) illegal length of vector"),
+        }
+    }
+}
+
+#[must_use]
 fn renormalize(orig: Vec3, limit: f64) -> Vec3 {
     orig / orig.magnitude() * limit
 }

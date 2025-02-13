@@ -280,9 +280,10 @@ function SpaceView(args: {
   controlGravityWell: boolean;
   controlJumpDistance: boolean;
 }) {
+
   const serverEntities = useContext(EntitiesServerContext);
   const planets = serverEntities.entities.planets;
-
+  
   return (
     <>
       <Axes />

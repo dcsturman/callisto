@@ -1,96 +1,158 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
-use headers::{Cookie, HeaderMapExt};
-use hyper::body::Incoming;
-use hyper::{Request, StatusCode};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::RwLock;
+use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use dyn_clone::DynClone;
+
+use tokio_tungstenite::tungstenite::handshake::server::{
+    Callback, ErrorResponse, Request, Response,
+};
+
 use crate::read_local_or_cloud_file;
+
+#[allow(unused_imports)]
 use crate::{debug, error, info, warn};
 
 type GoogleProfile = String;
 
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
+const SESSION_COOKIE_NAME: &str = "callisto-session-key";
+const COOKIE_ID: &str = "cookie";
 
 /// Trait defining the authentication behavior for the application
 #[async_trait]
-pub trait Authenticator: Send + Sync {
+pub trait Authenticator: Send + Sync + DynClone + Debug {
     /// Returns the web server URL
     fn get_web_server(&self) -> String;
 
     /// Authenticates a Google user with the provided code
     /// Returns a tuple of (session_key, user_profile) on success
     async fn authenticate_user(
-        &self,
+        &mut self,
         code: &str,
-    ) -> Result<(String, GoogleProfile), Box<dyn Error>>;
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<GoogleProfile, Box<dyn Error>>;
 
-    /// Validates a session key on a message.
-    ///
-    /// # Arguments
-    /// * `session_key` - The session key to validate
-    ///
+    /// Checks if this socket has been validated, i.e. has successfully logged in.
     /// # Returns
-    /// `Ok(email)` with the associated email for this authenticated user, if valid
-    ///
-    /// # Errors
-    /// Returns `InvalidKeyError` if the session key is invalid.
-    fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError>;
+    /// `true` if the user is validated, `false` otherwise.
+    fn validated_user(&self) -> bool;
 
-    /// Checks authorization for an incoming request
-    /// Returns the authorized email on success, or an error tuple with status code and message
-    async fn check_authorization(
-        &self,
-        req: &Request<Incoming>,
-    ) -> Result<String, (StatusCode, String)>;
+    fn set_email(&mut self, email: Option<&String>);
+    fn set_session_key(&mut self, session_key: &str);
+    fn get_email(&self) -> Option<String>;
+    fn get_session_key(&self) -> Option<String>;
 }
 
+/// Load the list of authorized users from a file.  The file is a JSON array of strings.
+///
+/// # Arguments
+/// * `users_file` - The name of the file to load.
+///
+/// # Returns
+/// A list of all the authorized users.  If the file is invalid, then note the warning and return the empty list.
+///
+/// # Panics
+/// If the file cannot be read.
+pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
+    load_authorized_users_from_file(users_file)
+        .await
+        .unwrap_or_else(|_| {
+            panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}', defaulting to test list.");
+        })
+}
+
+pub struct HeaderCallback {
+    pub session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+    // First is the session key, second is the email
+    pub auth_info: Arc<Mutex<(String, Option<String>)>>,
+}
+
+impl Callback for HeaderCallback {
+    fn on_request(self, request: &Request, response: Response) -> Result<Response, ErrorResponse> {
+        let (new_response, new_session_key, new_email) =
+            generic_on_request(&self.session_keys, request, response);
+        *self.auth_info.lock().unwrap() = (new_session_key, new_email);
+        Ok(new_response)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct GoogleAuthenticator {
-    credentials: GoogleCredentials,
-    session_keys: RwLock<HashMap<String, String>>,
-    authorized_users: Vec<String>,
-    node_server_url: String,
-    public_keys: Option<GooglePublicKeys>,
+    /**
+     * The Google credentials for this server's domain (for oauth2).
+     */
+    credentials: Arc<GoogleCredentials>,
+    /**
+     * The email address of the user.  If None, the user hasn't logged in yet.
+     */
+    email: Option<String>,
+    /**
+     * The session key for this user.  If None, the user hasn't logged in yet.
+     */
+    session_key: Option<String>,
+    /**
+     * The URL of the web server (front end).
+     */
     web_server: String,
+    /**
+     * The Google public keys.  These are used to validate the Google tokens.
+     */
+    google_keys: Arc<GooglePublicKeys>,
+    /**
+     * The list of authorized users.
+     */
+    authorized_users: Arc<Vec<String>>,
 }
 
 impl GoogleAuthenticator {
     /// Creates a new `GoogleAuthenticator` instance
     ///
     /// # Arguments
-    /// * `url` - The URL of the node server.
-    /// * `secret_file` - The name of the file containing the Google issued oauth credentials.
-    /// * `users_file` - The name of the file containing the list of authorized users.
-    /// * `web_server` - The URL of the web server.
+    /// * `url` - The URL of the node server (this server).
+    /// * `web_server` - The URL of the web server (front end).
+    /// * `credentials` - The Google credentials for this server's domain (for oauth2).
+    /// * `google_keys` - A copy of the previously fetched Google public keys.
+    /// * `authorized_users` - A pointer to the (possibly long) list of authorized users.
     ///
     /// # Panics
     /// If the `users_file` or `secret_file` cannot be read.
-    pub async fn new(url: &str, secret_file: String, users_file: &str, web_server: String) -> Self {
-        let credentials = load_google_credentials_from_file(&secret_file);
-        let authorized_users = load_authorized_users_from_file(users_file)
-            .await
-            .expect("Unable to load authorized users file.");
-        let mut authenticator = GoogleAuthenticator {
+    #[must_use]
+    pub fn new(
+        web_server: &str,
+        credentials: Arc<GoogleCredentials>,
+        google_keys: Arc<GooglePublicKeys>,
+        authorized_users: Arc<Vec<String>>,
+    ) -> Self {
+        GoogleAuthenticator {
             credentials,
-            session_keys: RwLock::new(HashMap::new()),
+            email: None,
+            session_key: None,
             authorized_users,
-            node_server_url: url.to_string(),
-            public_keys: None,
-            web_server,
-        };
-
-        authenticator.fetch_google_public_keys().await;
-
-        authenticator
+            google_keys,
+            web_server: web_server.to_string(),
+        }
     }
 
-    async fn fetch_google_public_keys(&mut self) {
+    // Static helper methods
+    /**
+     * Fetches the Google public keys from the Google API (public internet).  These are hosted at a well known
+     * public URL.
+     *
+     * # Returns
+     * The Google public keys.
+     *
+     * # Panics
+     * If the keys cannot be fetched or parsed.
+     */
+    pub async fn fetch_google_public_keys() -> Arc<GooglePublicKeys> {
         // Fetch Google's public keys
         let client = reqwest::Client::new();
         let public_keys_response = client
@@ -105,11 +167,109 @@ impl GoogleAuthenticator {
 
         debug!("(validate_google_token) Fetched Google public keys okay.");
 
-        let public_keys = serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
-            panic!("(validate_google_token) Error: Unable to parse Google public keys: {e:?}")
-        });
+        Arc::new(
+            serde_json::from_str::<GooglePublicKeys>(&text).unwrap_or_else(|e| {
+                panic!("(validate_google_token) Error: Unable to parse Google public keys: {e:?}")
+            }),
+        )
+    }
 
-        self.public_keys = Some(public_keys);
+    /// Load the oauth credentials for this server's domain from a file.
+    ///
+    /// # Arguments
+    /// * `file_name` - The name of the file to load.
+    ///
+    /// # Returns
+    /// The Google issued oauth credentials.
+    ///
+    /// # Panics
+    /// If the file cannot be read or the credentials are malformed (cannot be parsed).
+    #[must_use]
+    pub fn load_google_credentials(file_name: &str) -> GoogleCredentials {
+        let file = std::fs::File::open(file_name)
+            .unwrap_or_else(|e| panic!("Error {e:?} opening Google credentials file {file_name}"));
+        let reader = std::io::BufReader::new(file);
+        let credentials: GoogleCredsJson = serde_json::from_reader(reader)
+            .unwrap_or_else(|e| panic!("Error {e:?} parsing Google credentials file {file_name}"));
+        debug!("Load Google credentials file \"{}\".", file_name);
+        credentials.web
+    }
+}
+
+fn generic_on_request(
+    session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    request: &Request,
+    response: Response,
+) -> (Response, String, Option<String>) {
+    let cookies = request
+        .headers()
+        .iter()
+        .filter_map(|(key, value)| {
+            if key.as_str() == COOKIE_ID {
+                Some(value.to_str().unwrap().to_string())
+            } else {
+                None
+            }
+            .and_then(|cookie| {
+                cookie
+                    .strip_prefix(&format!("{SESSION_COOKIE_NAME}="))
+                    .map(std::string::ToString::to_string)
+            })
+        })
+        .collect::<Vec<String>>();
+
+    // If we found a cookie, find if there's a valid email address to go with it.
+    // This happens in the case where we get disconnected and the client reconnects.
+    let valid_pair = {
+        let unlocked_session_keys = session_keys
+            .lock()
+            .expect("Unable to get lock session keys.");
+
+        let mut emails = cookies
+            .iter()
+            .filter_map(|cookie| {
+                unlocked_session_keys
+                    .get(cookie)
+                    .and_then(|email| email.as_ref().map(|email| (cookie.clone(), email.clone())))
+            })
+            .collect::<Vec<(String, String)>>();
+
+        if emails.len() > 1 {
+            warn!("(on_request) Found multiple valid emails for session key.");
+        }
+        emails.pop()
+    };
+
+    if let Some((key, email)) = valid_pair {
+        // We have a logged in user with a valid email, so record that.
+        debug!(
+            "(on_request) Found valid email {} for session key: {}",
+            email, key
+        );
+        (response, key.clone(), Some(email.clone()))
+    } else if cookies.is_empty() {
+        // The case where we need to create a new session key.
+        debug!("(on_request) No valid email found for session key.");
+        let mut response = response.clone();
+
+        let session_key = generate_session_key();
+        session_keys
+            .lock()
+            .expect("Unable to get lock session keys.")
+            .insert(session_key.clone(), None);
+
+        response.headers_mut().insert(
+            "Set-Cookie",
+            format!("{SESSION_COOKIE_NAME}={session_key}; SameSite=None; Secure")
+                .parse()
+                .unwrap(),
+        );
+
+        (response, session_key, None)
+    } else {
+        // We aren't logged in, but there is already a set cookie. So just use that vs
+        // creating another session key.
+        (response, cookies.first().unwrap().clone(), None)
     }
 }
 
@@ -119,14 +279,31 @@ impl Authenticator for GoogleAuthenticator {
         self.web_server.clone()
     }
 
+    fn get_email(&self) -> Option<String> {
+        self.email.clone()
+    }
+
+    fn get_session_key(&self) -> Option<String> {
+        self.session_key.clone()
+    }
+
+    fn set_email(&mut self, email: Option<&String>) {
+        self.email = email.cloned();
+    }
+
+    fn set_session_key(&mut self, session_key: &str) {
+        self.session_key = Some(session_key.to_string());
+    }
+
     async fn authenticate_user(
-        &self,
+        &mut self,
         code: &str,
-    ) -> Result<(String, GoogleProfile), Box<dyn Error>> {
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<GoogleProfile, Box<dyn Error>> {
         // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
         // Look up the profile.  Then return the session key and profile.
         const GRANT_TYPE: &str = "authorization_code";
-        let redirect_uri = &self.node_server_url;
+        let redirect_uri = &self.get_web_server();
 
         let token_request = [
             ("code", &code.to_string()),
@@ -158,7 +335,7 @@ impl Authenticator for GoogleAuthenticator {
 
         let token_response_json: GoogleTokenResponse =
             serde_json::from_str(&body).unwrap_or_else(|e| {
-                panic!("(authenticate_google_user) Unable to parse token response: {e:?}")
+                panic!("(authenticate_google_user) Unable to parse token response: {e:?} {body}")
             });
 
         let token = token_response_json.id_token;
@@ -173,9 +350,7 @@ impl Authenticator for GoogleAuthenticator {
 
         // Find the matching public key
         let public_key = self
-            .public_keys
-            .as_ref()
-            .unwrap()
+            .google_keys
             .keys
             .iter()
             .find(|k| k.kid == kid)
@@ -209,18 +384,6 @@ impl Authenticator for GoogleAuthenticator {
         }
         debug!("(authenticate_google_user) Token validated.");
 
-        // Generate a cryptographically secure session key.
-        // Record it with the email from token_data.email.
-        // Then return the session key and the email.
-
-        // Generate a cryptographically secure session key.
-        //let mut session_key: String = "Bearer ".to_string();
-        let mut session_key: String = String::new();
-        session_key.push_str(
-            &general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()),
-        );
-
-        // Record it with the email from token_data.email.
         let email = token_data.claims.email.clone();
 
         // Check if email is an authorized user
@@ -228,82 +391,33 @@ impl Authenticator for GoogleAuthenticator {
             return Err(Box::new(UnauthorizedUserError {}));
         }
 
-        self.session_keys
-            .write()
-            .unwrap()
-            .insert(session_key.clone(), email.clone());
-
-        info!("Created session key for user: {}", email);
-
-        // Then return the session key and the email.
-        Ok((session_key, email))
-    }
-
-    // Given a session key, make sure we have it in our table and thus
-    // there is a corresponding email address.  Lack of an entry
-    // means this cookie is old or made up.
-    // Return Ok(the email address) or an InvalidKeyError.
-    fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
-        if let Some(email) = self.session_keys.read().unwrap().get(session_key) {
-            Ok(email.to_string())
+        // We now have a valid email address.  Associate it with our session key.
+        if self.session_key.is_none() {
+            warn!("(authenticate_google_user) No session key found.");
         } else {
-            Err(InvalidKeyError {})
+            session_keys
+                .lock()
+                .unwrap()
+                .insert(self.session_key.clone().unwrap(), Some(email.clone()));
         }
+
+        info!(
+            "(Authenticator.authenticate_google_user) Validated login for user {}",
+            email
+        );
+        self.email = Some(email.clone());
+        Ok(email)
     }
 
-    async fn check_authorization(
-        &self,
-        req: &Request<Incoming>,
-    ) -> Result<String, (StatusCode, String)> {
-        if let Some(cookies) = req.headers().typed_get::<Cookie>() {
-            match cookies.get("callisto-session-key") {
-                Some(cookie) => {
-                    debug!(
-                        "(Authenticator.check_authorization) Found session key cookie: {:?}",
-                        cookie
-                    );
-
-                    self.validate_session_key(cookie).map_err(|e| {
-                        error!(
-                            "(Authenticator.check_authorization) Invalid session key: {:?}",
-                            e
-                        );
-                        (StatusCode::UNAUTHORIZED, "Invalid session key".to_string())
-                    })
-                }
-                None => Err((
-                    StatusCode::UNAUTHORIZED,
-                    "No session key cookie".to_string(),
-                )),
-            }
-        } else {
-            Err((
-                StatusCode::UNAUTHORIZED,
-                "No session key cookie".to_string(),
-            ))
-        }
+    /**  
+     * Check if a user is logged in on this session.
+     *
+     * # Returns
+     * `true` if the user is logged in, `false` otherwise.
+     */
+    fn validated_user(&self) -> bool {
+        self.email.is_some()
     }
-}
-
-/// Load the oauth credentials for this server's domain from a file.
-///
-/// # Arguments
-/// * `file_name` - The name of the file to load.
-///
-/// # Returns
-/// The Google issued oauth credentials.
-///
-/// # Panics
-///
-/// If the file cannot be read or the credentials are malformed (cannot be parsed).
-fn load_google_credentials_from_file(file_name: &str) -> GoogleCredentials {
-    let file = std::fs::File::open(file_name)
-        .unwrap_or_else(|e| panic!("Error {e:?} opening Google credentials file {file_name}"));
-    let reader = std::io::BufReader::new(file);
-    let credentials: GoogleCredsJson = serde_json::from_reader(reader)
-        .unwrap_or_else(|e| panic!("Error {e:?} parsing Google credentials file {file_name}"));
-    debug!("Load Google credentials file \"{}\".", file_name);
-    credentials.web
 }
 
 /// Load the list of authorized users from a file.  The file is a JSON array of strings.
@@ -316,7 +430,7 @@ fn load_google_credentials_from_file(file_name: &str) -> GoogleCredentials {
 ///
 /// # Errors
 /// Returns `Err` if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
-pub async fn load_authorized_users_from_file(
+async fn load_authorized_users_from_file(
     file_name: &str,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let data = read_local_or_cloud_file(file_name).await?;
@@ -325,18 +439,26 @@ pub async fn load_authorized_users_from_file(
 }
 
 // Mock authenticator for testing
+#[derive(Debug, Clone)]
 pub struct MockAuthenticator {
-    session_keys: RwLock<HashMap<String, String>>,
+    email: Option<String>,
+    session_key: Option<String>,
     web_server: String,
 }
 
 impl MockAuthenticator {
     #[must_use]
-    pub fn new(_url: &str, _secret: String, _users_file: &str, web_server: String) -> Self {
+    pub fn new(web_server: &str) -> Self {
         MockAuthenticator {
-            session_keys: RwLock::new(HashMap::new()),
-            web_server,
+            email: None,
+            session_key: None,
+            web_server: web_server.to_string(),
         }
+    }
+
+    #[must_use]
+    pub fn mock_valid_code() -> String {
+        "test_code".to_string()
     }
 }
 
@@ -346,52 +468,63 @@ impl Authenticator for MockAuthenticator {
         self.web_server.clone()
     }
 
+    fn get_email(&self) -> Option<String> {
+        self.email.clone()
+    }
+
+    fn get_session_key(&self) -> Option<String> {
+        self.session_key.clone()
+    }
+
+    fn set_email(&mut self, email: Option<&String>) {
+        self.email = email.cloned();
+    }
+
+    fn set_session_key(&mut self, session_key: &str) {
+        self.session_key = Some(session_key.to_string());
+    }
+
     async fn authenticate_user(
-        &self,
-        _code: &str,
-    ) -> Result<(String, GoogleProfile), Box<dyn Error>> {
-        let session_key = "TeSt_KeY".to_string();
-        let email = "test@example.com".to_string();
-        self.session_keys
-            .write()
-            .unwrap()
-            .insert(session_key.clone(), email.clone());
+        &mut self,
+        code: &str,
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<GoogleProfile, Box<dyn Error>> {
+        if code != Self::mock_valid_code() {
+            return Err(Box::new(InvalidKeyError {}));
+        }
 
-        debug!("(MockAuthenticator.authenticate_user) Mock authenticator authenticated user {email} with fake session key {session_key}.");
-        Ok((session_key, email))
-    }
+        self.email = Some("test@example.com".to_string());
 
-    fn validate_session_key(&self, session_key: &str) -> Result<String, InvalidKeyError> {
-        if let Some(email) = self.session_keys.read().unwrap().get(session_key) {
-            debug!(
-                "(MockAuthenticator.validate_session_key) Session key validated: {}",
-                session_key
-            );
-            Ok(email.to_string())
+        if self.session_key.is_none() {
+            warn!("(MockAuthenticator.authenticate_user) Mock authenticator authenticated user but no session key found.");
         } else {
-            warn!("(MockAuthenticator.validate_session_key) Unexpected: MockAuthenticator failing to authenticate key {}",
-                session_key);
-            Err(InvalidKeyError {})
+            session_keys
+                .lock()
+                .unwrap()
+                .insert(self.session_key.clone().unwrap(), self.email.clone());
         }
+
+        debug!(
+            "(MockAuthenticator.authenticate_user) Mock authenticator authenticated user {}.",
+            self.email.as_ref().unwrap()
+        );
+        self.email.clone().ok_or_else(|| "No email".into())
     }
 
-    async fn check_authorization(
-        &self,
-        req: &Request<Incoming>,
-    ) -> Result<String, (StatusCode, String)> {
-        if let Some(cookies) = req.headers().typed_get::<Cookie>() {
-            if let Some(session_key) = cookies.get("callisto-session-key") {
-                return self
-                    .validate_session_key(session_key)
-                    .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid session key".to_string()));
-            }
-        }
-        Err((StatusCode::UNAUTHORIZED, "No session key found".to_string()))
+    fn validated_user(&self) -> bool {
+        self.email.is_some()
     }
 }
 
-// Error types.
+fn generate_session_key() -> String {
+    let mut session_key: String = "Bearer ".to_string();
+    session_key
+        .push_str(&general_purpose::URL_SAFE_NO_PAD.encode(rand::thread_rng().gen::<[u8; 32]>()));
 
+    session_key
+}
+
+// Error types.
 #[derive(Debug)]
 pub struct TokenTimeoutError {}
 
@@ -457,12 +590,12 @@ struct GoogleTokenResponse {
     id_token: String,
 }
 
-#[derive(Deserialize)]
-struct GooglePublicKeys {
+#[derive(Deserialize, Debug, Clone)]
+pub struct GooglePublicKeys {
     keys: Vec<GooglePublicKey>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct GooglePublicKey {
     kid: String,
     n: String,
@@ -470,8 +603,8 @@ struct GooglePublicKey {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-struct GoogleCredentials {
+#[derive(Deserialize, Debug, Clone)]
+pub struct GoogleCredentials {
     client_id: String,
     project_id: String,
     auth_uri: String,
@@ -494,47 +627,41 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn test_mock_authenticator() {
-        let mock_auth = MockAuthenticator::new(
-            "http://test.com",
-            "secret".to_string(),
-            "users.txt",
-            "http://web.test.com".to_string(),
-        );
+        let mut mock_auth = MockAuthenticator::new("http://web.test.com");
+        mock_auth.set_session_key("test_session_key");
 
+        let session_keys = Arc::new(Mutex::new(HashMap::new()));
         // Test authentication flow
-        let (session_key, email) = mock_auth
-            .authenticate_user("test_code")
+        let email = mock_auth
+            .authenticate_user("test_code", &session_keys)
             .await
             .expect("Authentication should succeed");
 
         assert_eq!(email, "test@example.com");
+        assert_eq!(
+            session_keys.lock().unwrap().len(),
+            1,
+            "Session keys should have one entry"
+        );
 
-        // Test session key validation
-        let validated_email = mock_auth
-            .validate_session_key(&session_key)
-            .expect("Session key should be valid");
-        assert_eq!(validated_email, "test@example.com");
-
-        // Test invalid session key
-        assert!(mock_auth.validate_session_key("invalid_key").is_err());
+        // Test if user is now validated.
+        assert!(mock_auth.validated_user(), "User should be validated");
     }
 
     const LOCAL_SECRETS_DIR: &str = "./secrets";
     const LOCAL_TEST_FILE: &str = "./config/authorized_users.json";
     const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
+
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     #[should_panic = "No such file or directory"]
     async fn test_bad_credentials_file() {
         const BAD_FILE: &str = "./not_there_file.json";
-        let authenticator = GoogleAuthenticator::new(
-            "http://localhost:3000",
-            BAD_FILE.to_string(),
-            "",
-            "http://localhost:3000".to_string(),
-        )
-        .await; // This should fail.
-        assert!(authenticator.credentials.client_id.is_empty());
+        let authorized_users = load_authorized_users(BAD_FILE).await;
+        assert!(
+            authorized_users.is_empty(),
+            "Should not get any contents on a bad authorized user file."
+        );
     }
 
     // This test cannot work in the GitHub Actions CI environment, so skip in that case.
@@ -566,7 +693,7 @@ pub(crate) mod tests {
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_load_google_credentials_from_file() {
-        let credentials = load_google_credentials_from_file(
+        let credentials = GoogleAuthenticator::load_google_credentials(
             format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}").as_str(),
         );
         assert!(!credentials.client_id.is_empty());
@@ -576,14 +703,6 @@ pub(crate) mod tests {
     #[test_log::test(tokio::test)]
     #[cfg_attr(feature = "ci", ignore)]
     async fn test_fetch_google_public_keys() {
-        let mut authenticator = GoogleAuthenticator::new(
-            "http://localhost:3000",
-            format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}"),
-            LOCAL_TEST_FILE,
-            "http://localhost:3000".to_string(),
-        )
-        .await;
-        authenticator.fetch_google_public_keys().await;
-        assert!(authenticator.public_keys.is_some());
+        let _keys = GoogleAuthenticator::fetch_google_public_keys().await;
     }
 }

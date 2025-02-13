@@ -11,7 +11,7 @@ WORKDIR /app
 # Build dependencies
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir ./src && echo 'fn main() {}' > ./src/main.rs && touch ./src/lib.rs
-RUN cargo build --release
+RUN cargo build --release --features no_tls_upgrade
 
 # Replace with real src
 RUN rm -rf ./src
@@ -21,7 +21,7 @@ COPY . .
 FROM build AS release
 RUN touch ./src/main.rs
 RUN touch ./src/lib.rs
-RUN cargo build --release
+RUN cargo build --release --features no_tls_upgrade
 #RUN strip target/release/callisto
 
 # use a plain alpine image, the alpine version needs to match the builder

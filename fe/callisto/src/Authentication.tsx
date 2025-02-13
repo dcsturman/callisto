@@ -5,7 +5,8 @@ import {
   useGoogleLogin,
   CodeResponse,
 } from "@react-oauth/google";
-import { login } from "./ServerManager";
+import { login, logout } from "./ServerManager";
+import { GOOGLE_OAUTH_CLIENT_ID } from "./App";
 
 export function Authentication(args: {
   setAuthenticated: (authenticated: boolean) => void;
@@ -35,7 +36,8 @@ export function Authentication(args: {
     onError: (errorResponse: Pick<CodeResponse, 'error' | 'error_description' | 'error_uri'>) => console.log("Login Failed:", errorResponse),
     flow: "auth-code",
     state: secureState,
-    redirect_uri: process.env.REACT_APP_C_BACKEND || "http://localhost:30000",
+    // Redirect_uri should be the address of the Node.js server.
+    redirect_uri: process.env.REACT_APP_NODE_SERVER || window.location.href,
     accessType: "offline",
     isSignedIn: true,
     responseType: "code",
@@ -52,16 +54,21 @@ export function Authentication(args: {
     function loginToCallisto() {
       console.log("Logging in to Callisto");
       if (googleAuthResponse) {
-        login(googleAuthResponse.code, args.setEmail, args.setAuthenticated);
+        login(googleAuthResponse.code);
       } else {
         console.error("No code received from Google");
       }
     }
 
     console.log(
-      "(Authentication) Redirect URI (REACT_APP_C_BACKEND) is set to: " +
-        process.env.REACT_APP_C_BACKEND
+      "(Authentication) Redirect URI (REACT_APP_NODE_SERVER) is set to: " +
+        process.env.REACT_APP_NODE_SERVER || window.location.href
     );
+
+    console.log("(Authentication) OAuth ClientID = " + GOOGLE_OAUTH_CLIENT_ID);
+
+    console.log(process.env);
+
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
         console.error("(Authentication) State mismatch, ignoring response");
@@ -143,12 +150,14 @@ export function Logout(args: {
 
     args.setAuthenticated(false);
     args.setEmail(null);
+    logout();
+    console.log("(Authentication.Logout)Logged out");
   };
 
   const username = args.email ? args.email.split("@")[0] : "";
   return (
     <div className="logout-window">
-      <button className="blue-button" onClick={logOut}>
+      <button className="blue-button logout-button" onClick={logOut}>
         Logout {username}
       </button>
     </div>

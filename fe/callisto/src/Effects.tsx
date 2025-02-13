@@ -20,6 +20,16 @@ export class Effect {
   content: string | null = null;
   position: [number, number, number] | null = [0, 0, 0];
   origin: [number, number, number] | null = [0, 0, 0];
+
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  static parse(json: any): Effect {
+    const e = new Effect();
+    e.kind = json.kind;
+    e.content = json.content ?? null;
+    e.position = json.position ?? null;
+    e.origin = json.origin ?? null;
+    return e;
+  }
 }
 
 export function Explosion(args: {

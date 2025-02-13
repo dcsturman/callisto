@@ -6,12 +6,13 @@ use cgmath::InnerSpace;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::authentication::{Authenticator, InvalidKeyError};
+use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, FireActionsMsg, LoadScenarioMsg,
-    LoginMsg, RemoveEntityMsg, SetCrewActions, SetPlanMsg, SimpleMsg,
+    AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FireActionsMsg,
+    FlightPathMsg, LoadScenarioMsg, LoginMsg, RemoveEntityMsg, SetCrewActions, SetPlanMsg,
+    ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -21,14 +22,14 @@ use crate::{debug, info, warn};
 // Add function beyond what Entities does and provides an API to our server.
 pub struct Server {
     entities: Arc<Mutex<Entities>>,
-    authenticator: Arc<Box<dyn Authenticator>>,
+    authenticator: Box<dyn Authenticator>,
     test_mode: bool,
 }
 
 impl Server {
     pub fn new(
         entities: Arc<Mutex<Entities>>,
-        authenticator: Arc<Box<dyn Authenticator>>,
+        authenticator: Box<dyn Authenticator>,
         test_mode: bool,
     ) -> Self {
         Server {
@@ -36,6 +37,19 @@ impl Server {
             authenticator,
             test_mode,
         }
+    }
+
+    #[must_use]
+    pub fn in_test_mode(&self) -> bool {
+        self.test_mode
+    }
+
+    /// Returns a clone of the entities.
+    /// # Panics
+    /// Panics if the lock on entities cannot be obtained.
+    #[must_use]
+    pub fn clone_entities(&self) -> Entities {
+        self.entities.lock().unwrap().clone()
     }
 
     /// Authenticates a user.
@@ -55,50 +69,46 @@ impl Server {
     /// # Errors
     /// Returns an error if the user cannot be authenticated.
     pub async fn login(
-        &self,
+        &mut self,
         login: LoginMsg,
-        valid_email: &Option<String>,
-    ) -> Result<(AuthResponse, Option<String>), String> {
+        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    ) -> Result<AuthResponse, String> {
         info!("(Server.login) Received and processing login request.",);
 
-        // Three cases.
-        // 1) if there's a valid email, just let the client know what it is.  We do this here so that this
-        // method is always the source of an AuthReponse and we don't need to create those in the dispatch handler.
-        // 2) If there is a code then we do authentication via Google OAuth2.
-        // 3) this isn't authenticated and we need to force reauthentication.  We do that
-        // by returning an error and eventually a 401 to the client.
-        if let Some(email) = valid_email {
-            let auth_response = AuthResponse {
-                email: email.clone(),
-            };
-            Ok((auth_response, None))
-        } else if let Some(code) = login.code {
-            let (session_key, email) = self
-                .authenticator
-                .authenticate_user(&code)
-                .await
-                .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
-            debug!(
-                "(Server.login) Authenticated user {} with session key.",
-                email
-            );
+        let email = self
+            .authenticator
+            .authenticate_user(&login.code, session_keys)
+            .await
+            .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
 
-            let auth_response = AuthResponse { email };
-            Ok((auth_response, Some(session_key)))
-        } else {
-            Err("Must reauthenticate.".to_string())
+        debug!(
+            "(Server.login) Authenticated user {} with session key.",
+            email
+        );
+
+        Ok(AuthResponse { email })
+    }
+
+    /// Logs a user out by clearing the session key and email.
+    ///
+    /// # Arguments
+    /// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs out (to remove the session key).
+    ///
+    /// # Panics
+    /// Panics if the lock on `session_keys` cannot be obtained.
+    pub fn logout(&mut self, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>) {
+        info!("(Server.logout) Received and processing logout request.",);
+        self.authenticator.set_email(None);
+        let mut keys = session_keys.lock().unwrap();
+        if let Some(session_key) = self.authenticator.get_session_key() {
+            keys.remove(&session_key);
         }
     }
 
-    /// Validates a session key with the given authenticator.
-    ///
-    /// # Arguments
-    /// * `cookie` - The session cookie, if one exists.
-    ///
-    /// # Errors
-    /// Returns an error if the session key is invalid
-    pub fn validate_session_key(&self, cookie: &str) -> Result<String, InvalidKeyError> {
-        self.authenticator.validate_session_key(cookie)
+    /// Returns true if the user has been validated.
+    #[must_use]
+    pub fn validated_user(&self) -> bool {
+        self.authenticator.validated_user()
     }
 
     /// Adds a ship to the entities.
@@ -133,7 +143,7 @@ impl Server {
             ship.crew,
         );
 
-        Ok(msg_json("Add ship action executed"))
+        Ok("Add ship action executed".to_string())
     }
 
     /// Sets the crew actions for a ship.
@@ -165,7 +175,7 @@ impl Server {
             ship.set_pilot_actions(request.dodge_thrust, request.assist_gunners)
                 .map_err(|e| e.get_msg())?;
         }
-        Ok(msg_json("Set crew action executed"))
+        Ok("Set crew action executed".to_string())
     }
 
     /// Gets the current entities and returns them in a `Result`.
@@ -177,11 +187,20 @@ impl Server {
         self.entities.lock().unwrap().clone()
     }
 
+    /// Get the entities marshalled into JSON
+    ///
+    /// # Panics
+    /// Panics if entities cannot be converted.
+    #[must_use]
+    pub fn get_entities_json(&self) -> String {
+        serde_json::to_string(&*self.entities.lock().unwrap()).unwrap()
+    }
+
     /// Gets the ship designs and serializes it to JSON.
     ///
     /// # Panics
     /// Panics if the ship templates have not been loaded.
-    pub fn get_designs(&self) -> String {
+    pub fn get_designs(&self) -> ShipDesignTemplateMsg {
         // Strip the Arc, etc. from the ShipTemplates before marshalling back.
         let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
             .get()
@@ -190,7 +209,7 @@ impl Server {
             .map(|(key, value)| (key.clone(), (*value.clone()).clone()))
             .collect();
 
-        serde_json::to_string(&clean_templates).unwrap()
+        clean_templates
     }
 
     /// Adds a planet to the entities.
@@ -214,7 +233,7 @@ impl Server {
             planet.mass,
         )?;
 
-        Ok(msg_json("Add planet action executed"))
+        Ok("Add planet action executed".to_string())
     }
 
     /// Removes an entity from the entities.
@@ -239,7 +258,7 @@ impl Server {
             return Err(err_msg);
         }
 
-        Ok(msg_json("Remove action executed"))
+        Ok("Remove action executed".to_string())
     }
 
     /// Sets the flight plan for a ship.
@@ -258,7 +277,7 @@ impl Server {
             .lock()
             .unwrap()
             .set_flight_plan(&plan_msg.name, &plan_msg.plan)
-            .map(|()| msg_json("Set acceleration action executed"))
+            .map(|()| "Set acceleration action executed".to_string())
     }
 
     /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
@@ -269,7 +288,7 @@ impl Server {
     ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
-    pub fn update(&mut self, fire_actions: &FireActionsMsg) -> String {
+    pub fn update(&mut self, fire_actions: &FireActionsMsg) -> Vec<EffectMsg> {
         let mut rng = get_rng(self.test_mode);
 
         debug!("(/update) Fire actions: {:?}", fire_actions);
@@ -297,18 +316,12 @@ impl Server {
         // 4. Update all entities (ships, planets, missiles) and gather in their effects.
         effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
 
-        debug!("(/update) Effects: {:?}", effects);
-
-        // 5. Marshall the events and reply with them back to the user.
-        let json = serde_json::to_string(&effects)
-            .unwrap_or_else(|_| panic!("Unable to serialize `effects` {effects:?}."));
-
-        // 6. Reset all ship agility setting as the round is over.
+        // 5. Reset all ship agility setting as the round is over.
         for ship in entities.ships.values() {
             ship.write().unwrap().reset_crew_actions();
         }
 
-        json
+        effects
     }
 
     /// Computes a flight path for a ship.
@@ -322,7 +335,7 @@ impl Server {
     ///
     /// # Panics
     /// Panics if the lock cannot be obtained to read the entities.
-    pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<String, String> {
+    pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<FlightPathMsg, String> {
         info!(
             "(/compute_path) Received and processing compute path request. {:?}",
             msg
@@ -338,7 +351,12 @@ impl Server {
             let entity = entities
                 .ships
                 .get(&msg.entity_name)
-                .unwrap()
+                .ok_or_else(|| {
+                    format!(
+                        "Cannot compute flightpath for unknown ship named '{}'",
+                        msg.entity_name
+                    )
+                })?
                 .read()
                 .unwrap();
             (
@@ -368,7 +386,7 @@ impl Server {
             max_accel,
         );
 
-        debug!("(/compute_path)Call computer with params: {:?}", params);
+        debug!("(/compute_path) Call computer with params: {:?}", params);
 
         let Some(plan) = params.compute_flight_path() else {
             return Err(format!("Unable to compute flight path: {params:?}"));
@@ -381,13 +399,7 @@ impl Server {
             max_accel / G
         );
 
-        let Ok(json) = serde_json::to_string(&plan) else {
-            return Err("Error converting flight path to JSON".to_string());
-        };
-
-        debug!("(/compute_path) Flight path response: {}", json);
-
-        Ok(json)
+        Ok(plan)
     }
 
     /// Loads a scenario file.      
@@ -409,21 +421,7 @@ impl Server {
             .map_err(|e| e.to_string())?;
         *self.entities.lock().unwrap() = entities;
 
-        Ok(msg_json("Load scenario action executed"))
-    }
-
-    /// Gets the current entities and serializes it to JSON.
-    ///
-    /// # Panics
-    /// Panics if for some reason it cannot serialize the entities correctly.
-    #[must_use]
-    pub fn get_entities_json(&self) -> String {
-        info!("Received and processing get entities request.");
-        let json = serde_json::to_string::<Entities>(&self.entities.lock().unwrap())
-            .expect("(server.get) Unable to serialize entities");
-
-        info!("(/) Entities: {:?}", json);
-        json
+        Ok("Load scenario action executed".to_string())
     }
 }
 
@@ -438,13 +436,6 @@ fn get_rng(test_mode: bool) -> SmallRng {
     }
 }
 
-pub(crate) fn msg_json(msg: &str) -> String {
-    serde_json::to_string(&SimpleMsg {
-        msg: msg.to_string(),
-    })
-    .unwrap()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,48 +445,25 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_login() {
-        let mock_auth = MockAuthenticator::new(
-            "http://test.com",
-            "secret".to_string(),
-            "users.txt",
-            "http://web.test.com".to_string(),
-        );
-        let authenticator = Arc::new(Box::new(mock_auth) as Box<dyn Authenticator>);
+        let mock_auth = MockAuthenticator::new("http://web.test.com");
+        let authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
-        let server = Server::new(
-            Arc::new(Mutex::new(Entities::new())),
-            authenticator.clone(),
-            false,
-        );
+        let mut server = Server::new(Arc::new(Mutex::new(Entities::new())), authenticator, false);
 
-        // Test case 1: Already valid email
-        let cookie = Some("existing@example.com".to_string());
-        let login_msg = LoginMsg { code: None };
-        let (auth_response, session_key) = server
-            .login(login_msg, &cookie)
+        // Try a login
+        let login_msg = LoginMsg {
+            code: MockAuthenticator::mock_valid_code(),
+        };
+
+        let session_keys = Arc::new(Mutex::new(HashMap::new()));
+        let auth_response = server
+            .login(login_msg, &session_keys)
             .await
             .expect("Login should succeed with valid email");
 
-        assert_eq!(auth_response.email, "existing@example.com");
-        assert!(session_key.is_none());
-
-        // Test case 2: New login with auth code
-        let cookie = None;
-        let login_msg = LoginMsg {
-            code: Some("test_code".to_string()),
-        };
-        let (auth_response, session_key) = server
-            .login(login_msg, &cookie)
-            .await
-            .expect("Login should succeed with auth code");
         assert_eq!(auth_response.email, "test@example.com");
-        assert_eq!(session_key.unwrap(), "TeSt_KeY");
 
-        // Test case 3: No valid email and no auth code
-        let cookie = None;
-        let login_msg = LoginMsg { code: None };
-        let result = server.login(login_msg, &cookie).await;
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Must reauthenticate.".to_string());
+        // No connection established in this test, so there should be no session keys.
+        assert_eq!(session_keys.lock().unwrap().len(), 0);
     }
 }

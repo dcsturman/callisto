@@ -265,7 +265,6 @@ export function FireActions(args: {
     (ship) => ship.name === args.computerShipName
   );
 
-  console.log("**** FireActions JSON: " + JSON.stringify(args.actions));
   return (
     <div className="control-form">
       <h2>Fire Actions</h2>

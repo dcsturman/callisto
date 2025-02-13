@@ -214,7 +214,13 @@ export const EntitiesServerContext = createContext<{
   handler: EntityRefreshCallback;
 }>({ entities: { ships: [], planets: [], missiles: [] }, handler: () => {} });
 
+export const DesignTemplatesContext = createContext<{
+  templates: ShipDesignTemplates,
+  handler: (templates: ShipDesignTemplates) => void;
+}>({templates: {}, handler: () => {}});
+
 export const EntitiesServerProvider = EntitiesServerContext.Provider;
+export const DesignTemplatesProvider = DesignTemplatesContext.Provider;
 
 export const EntityToShowContext = createContext<{
   entityToShow: Entity | null;
@@ -223,10 +229,29 @@ export const EntityToShowContext = createContext<{
 
 export const EntityToShowProvider = EntityToShowContext.Provider;
 
-export type FlightPathResult = {
+export class FlightPathResult {
   path: [number, number, number][];
   end_velocity: [number, number, number];
   plan: [Acceleration, Acceleration | null]
+
+  constructor(
+    path: [number, number, number][],
+    end_velocity: [number, number, number],
+    plan: [Acceleration, Acceleration | null]
+  ) {
+    this.path = path;
+    this.end_velocity = end_velocity;
+    this.plan = plan;
+  }
+
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  static parse(json: any): FlightPathResult {
+    return new FlightPathResult(
+      json.path,
+      json.end_velocity,
+      json.plan
+    );
+  }
 };
 
 export type WeaponMount = string | { Turret: number } | { BaySize: string };

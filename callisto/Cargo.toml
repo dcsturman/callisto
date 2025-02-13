@@ -7,6 +7,7 @@ edition = "2021"
 
 [features]
 ci = []
+no_tls_upgrade = []
 
 [dependencies]
 cgmath = { version = "0.18", features = ["swizzle", "serde", "rand", "mint"] }
@@ -35,6 +36,16 @@ headers = "0.4.0"
 cookie = "0.18.1"
 async-trait = "0.1.83"
 quit = "2.0.0"
+rustls = "0.23.21"
+tokio-tungstenite = { version = "0.26.1", features = ["rustls-tls-native-roots"] }
+tokio-rustls = "0.26.1"
+rustls-pki-types = "1.11.0"
+futures-util = "0.3.31"
+futures = "0.3.31"
+http = "1.2.0"
+pem = "3.0.4"
+futures-core = "0.3.31"
+dyn-clone = "1.0.18"
 
 [dev-dependencies]
 mockstream = "0.0.3"

@@ -1,9 +1,13 @@
-/*** All the payloads used from the client to the server.  Some are not terribly meaningful or complex, but putting them all
+/**
+ * All the payloads used from the client to the server.  Some are not terribly meaningful or complex, but putting them all
  * here for completeness.
  */
+use std::collections::HashMap;
+
 use super::computer::FlightPathResult;
 use super::crew::Crew;
-use super::ship::ShipSystem;
+use super::entity::Entities;
+use super::ship::{ShipDesignTemplate, ShipSystem};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Display;
@@ -11,18 +15,13 @@ use std::fmt::Display;
 use super::entity::Vec3;
 use super::ship::FlightPlan;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SimpleMsg {
-    pub msg: String,
-}
-
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LoginMsg {
-    pub code: Option<String>,
+    pub code: String,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct AuthResponse {
     pub email: String,
 }
@@ -62,7 +61,7 @@ impl SetCrewActions {
 }
 
 #[serde_as]
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct LaunchMissileMsg {
     pub source: String,
     pub target: String,
@@ -172,6 +171,8 @@ pub struct LoadScenarioMsg {
     pub scenario_name: String,
 }
 
+pub type ShipDesignTemplateMsg = HashMap<String, ShipDesignTemplate>;
+
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
@@ -188,6 +189,41 @@ serde_with::serde_conv!(
         })
     }
 );
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum RequestMsg {
+    Login(LoginMsg),
+    AddShip(AddShipMsg),
+    AddPlanet(AddPlanetMsg),
+    Remove(RemoveEntityMsg),
+    SetPlan(SetPlanMsg),
+    ComputePath(ComputePathMsg),
+    SetCrewActions(SetCrewActions),
+    Update(FireActionsMsg),
+    LoadScenario(LoadScenarioMsg),
+    EntitiesRequest,
+    DesignTemplateRequest,
+    Logout,
+    Quit,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ResponseMsg {
+    AuthResponse(AuthResponse),
+    DesignTemplateResponse(ShipDesignTemplateMsg),
+    EntityResponse(Entities),
+    FlightPath(FlightPathMsg),
+    Effects(Vec<EffectMsg>),
+    Users(Vec<String>),
+    LaunchMissile(LaunchMissileMsg),
+    SimpleMsg(String),
+    // LogoutResponse is a faux message never sent back.  However,
+    // it allows us to signal between the message handling layer and the connection
+    // layer that we just dropped this connection.
+    LogoutResponse,
+    PleaseLogin,
+    Error(String),
+}
 
 #[cfg(test)]
 mod tests {
@@ -413,7 +449,7 @@ mod tests {
     fn test_login_msg() {
         // Test with code present
         let msg_with_code = LoginMsg {
-            code: Some("auth_code_123".to_string()),
+            code: "auth_code_123".to_string(),
         };
 
         let expected_json_with_code = json!({
@@ -426,24 +462,6 @@ mod tests {
         // Test deserialization with code
         let json_str = r#"{"code": "auth_code_123"}"#;
         let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
-        assert_eq!(deserialized.code, Some("auth_code_123".to_string()));
-
-        // Test without code
-        let msg_without_code = LoginMsg { code: None };
-
-        let expected_json_without_code = json!({});
-
-        let serialized = serde_json::to_string(&msg_without_code).unwrap();
-        assert_eq!(serialized, expected_json_without_code.to_string());
-
-        // Test deserialization without code
-        let json_str = r#"{"code": null}"#;
-        let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
-        assert_eq!(deserialized.code, None);
-
-        // Test deserialization with missing field
-        let json_str = "{}";
-        let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
-        assert_eq!(deserialized.code, None);
+        assert_eq!(deserialized.code, "auth_code_123".to_string());
     }
 }
