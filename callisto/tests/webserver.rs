@@ -167,6 +167,31 @@ async fn drain_entity_response(stream: &mut MyWebSocket) -> ResponseMsg {
 }
 
 /**
+ * Drain all the messages the server sends on connect.  This right now is
+ * 3 messages: templates, entities, and users.  See [`callisto:build_successful_auth_msgs`].
+ */
+async fn drain_initialization_messages(stream: &mut MyWebSocket) {
+    let Ok(template_msg) = stream.next().await.unwrap() else {
+        panic!("Expected template response.  Got error.");
+    };
+    assert!(matches!(serde_json::from_str::<ResponseMsg>(template_msg.to_text().unwrap()), Ok(ResponseMsg::DesignTemplateResponse(_))), "Expected template response, got {template_msg:?}.");
+    debug!("Drained template initialization message.");
+
+
+    let Ok(entity_msg) = stream.next().await.unwrap() else {
+        panic!("Expected entity response.  Got error.");
+    };
+    assert!(matches!(serde_json::from_str::<ResponseMsg>(entity_msg.to_text().unwrap()), Ok(ResponseMsg::EntityResponse(_))), "Expected entity response.");
+    debug!("Drained entity initialization message.");
+
+    let Ok(users_msg) = stream.next().await.unwrap() else {
+        panic!("Expected users response.  Got error.");
+    };
+    assert!(matches!(serde_json::from_str::<ResponseMsg>(users_msg.to_text().unwrap()), Ok(ResponseMsg::Users(_))), "Expected users response.");
+    debug!("Drained users initialization message.");
+}
+
+/**
  * Send a quit message to cleanly end a test.
  */
 async fn send_quit(stream: &mut MyWebSocket) {
@@ -181,6 +206,7 @@ async fn send_quit(stream: &mut MyWebSocket) {
 /**
  * Do authentication with the test server
  * Return the user name and the key from `SetCookie`
+ * Also drain the initialization messages.
  */
 async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
     let msg = RequestMsg::Login(LoginMsg {
@@ -189,8 +215,7 @@ async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
 
     let body = rpc(stream, msg).await;
     if let ResponseMsg::AuthResponse(auth_response) = body {
-        let _msg = stream.next().await.unwrap().unwrap();
-        drain_entity_response(stream).await;
+        drain_initialization_messages(stream).await;
         Ok(auth_response.email)
     } else {
         Err(format!("Expected auth response to login. Got {body:?}"))

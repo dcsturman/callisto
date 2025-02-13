@@ -63,6 +63,11 @@ struct Args {
     #[arg(long, default_value = "./secrets/google_credentials.json")]
     oauth_creds: String,
 
+    // Do not try to upgrade to TLS.  This is for environments where we are testing without security
+    // or where security is already provided.
+    #[arg(short, long)]
+    no_tls_upgrade: bool,
+
     // Prefix of the certificate and key files for tls.  The server will append .crt and .key to this.
     #[arg(short = 'k', long, default_value = "keys/localhost")]
     tls_keys: String,
