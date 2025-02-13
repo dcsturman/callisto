@@ -59,7 +59,7 @@ export function startWebsocket(setReady: (ready: boolean) => void) {
 
   if (socket === undefined || socket.readyState === WebSocket.CLOSED) {
     setReady(false);
-    const back_end = `ws://${stripped_name}`;
+    const back_end = `wss://${stripped_name}`;
     console.log(`(ServerManager.startWebsocket) Open web socket to ${back_end}`);
     socket = new WebSocket(back_end);
   } else {
