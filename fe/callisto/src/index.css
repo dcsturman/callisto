@@ -473,14 +473,33 @@ input {
   background-color: transparent
 }
 
-.admin-button-window{
+.admin-button-window {
   display: flex;
+  flex-direction: column;
   position: fixed;
   bottom: 0;
   right: 0px;
   padding-left: 4px;
   border: 0px solid #b6bcae;
   z-index: 5;
+}
+
+.user-list {
+  padding-right: 0px;
+  border: 1px solid #b6bcae;
+  overflow: auto;
+  padding-inline-start: 0px;
+  
+}
+
+.user-list-list {
+  padding-inline-start: 15px;
+  li::marker {
+    color: rgb(0, 255, 0);
+  }
+}
+.logout-button {
+  width: 100%
 }
 
 .authentication-blurb {

@@ -9,6 +9,7 @@ import {
 import { FireActionMsg } from "./Controls";
 import { Effect } from "./Effects";
 import { Crew } from "./CrewBuilder";
+import { UserList } from "./UserList";
 
 export const CALLISTO_BACKEND =
   process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
@@ -20,7 +21,7 @@ const ENTITIES_REQUEST = '"EntitiesRequest"';
 const LOGOUT_REQUEST = '"Logout"';
 
 // Define the (global) websocket
-let socket: WebSocket;
+export let socket: WebSocket;
 
 // Message handlers, one for each type of incoming data we can receive.
 let setEmail: (email: string) => void = () => {
@@ -41,6 +42,9 @@ let setFlightPath: (plan: FlightPathResult) => void = () => {
 let setEffects: (effects: Effect[]) => void = () => {
   console.error("Calling default implementation of setEffects()");
 };
+let setUsers: (users: UserList) => void = () => {
+  console.error("Calling default implementation of setUsers()");
+};
 
 //
 // Functions managing the socket connection
@@ -56,7 +60,7 @@ export function startWebsocket(setReady: (ready: boolean) => void) {
     `(ServerManager.startWebSocket) Establishing socket to wss://"${stripped_name}"`
   );
   console.trace();
-  if (socket === undefined) {
+  if (socket === undefined || socket.readyState === WebSocket.CLOSED) {
     setReady(false);
     socket = new WebSocket(`wss://${stripped_name}`);
   } else {
@@ -66,7 +70,11 @@ export function startWebsocket(setReady: (ready: boolean) => void) {
     console.log("(ServerManager.startWebsocket.onopen) Socket opened");
     setReady(true);
   };
-  socket.onclose = handleClose;
+  socket.onclose = (event: CloseEvent) => { 
+    console.log("(ServerManager.startWebsocket.onclose) Socket closed")
+    setReady(false); 
+    handleClose(event) 
+  };
   socket.onmessage = handleMessage;
 }
 
@@ -80,7 +88,8 @@ export function setMessageHandlers(
   templates: (templates: ShipDesignTemplates) => void,
   entities: (entities: EntityList) => void,
   flightPath: (plan: FlightPathResult) => void,
-  effects: (effects: Effect[]) => void
+  effects: (effects: Effect[]) => void,
+  users: (users: UserList) => void
 ) {
   setEmail = email;
   setAuthenticated = authenticated;
@@ -88,6 +97,7 @@ export function setMessageHandlers(
   setEntities = entities;
   setFlightPath = flightPath;
   setEffects = effects;
+  setUsers = users;
 }
 
 const handleClose = (event: CloseEvent) => {
@@ -142,9 +152,14 @@ const handleMessage = (event: MessageEvent) => {
   }
 
   if ("Effects" in json) {
-    console.log("Received Effects");
     const response = json.Effects;
     handleEffect(response, setEffects);
+    return;
+  }
+
+  if ("Users" in json) {
+    const response = json.Users;
+    handleUsers(response, setUsers);
     return;
   }
 
@@ -341,4 +356,8 @@ function handleFlightPath(
 function handleEffect(json: object[], setEvents: (effects: Effect[]) => void) {
   const effects = json.map((effect: object) => Effect.parse(effect));
   setEvents(effects);
+}
+
+function handleUsers(json: [string], setUsers: (users: UserList) => void) {
+  setUsers(json);
 }

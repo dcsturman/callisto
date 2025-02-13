@@ -149,7 +149,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
     //let ip_addr = IpAddr::from_str(&args.address)?;
     //let addr = SocketAddr::from((ip_addr, port));
-    let addr = (args.address.clone(), port).to_socket_addrs().expect("Unable to resolve the IP address for this server").next().expect("DNS resolution returned no IP addresses");
+    let addr = (args.address.clone(), port)
+        .to_socket_addrs()
+        .expect("Unable to resolve the IP address for this server")
+        .next()
+        .expect("DNS resolution returned no IP addresses");
 
     // Load our certs and key.
     let cert_path = PathBuf::from(format!("{}.crt", args.tls_keys));
@@ -225,8 +229,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         "Starting with scenario entities: {:?}",
         entities.lock().unwrap()
     );
-
-
 
     // Keep track of session keys (cookies) on connections.
     let session_keys = Arc::new(Mutex::new(HashMap::new()));

@@ -214,8 +214,13 @@ pub enum ResponseMsg {
     EntityResponse(Entities),
     FlightPath(FlightPathMsg),
     Effects(Vec<EffectMsg>),
+    Users(Vec<String>),
     LaunchMissile(LaunchMissileMsg),
     SimpleMsg(String),
+    // LogoutResponse is a faux message never sent back.  However,
+    // it allows us to signal between the message handling layer and the connection
+    // layer that we just dropped this connection.
+    LogoutResponse,
     PleaseLogin,
     Error(String),
 }

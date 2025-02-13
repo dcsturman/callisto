@@ -15,6 +15,7 @@ import {
   nextRound,
   computeFlightPath,
 } from "./ServerManager";
+import { Users, UserList } from "./UserList";
 
 import { ShipComputer } from "./ShipComputer";
 
@@ -51,7 +52,9 @@ export function App() {
     planets: [],
     missiles: [],
   });
+  
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
+  const [users, setUsers] = useState<UserList>([] as unknown as UserList);
 
   console.groupCollapsed("Callisto Config parameters");
   if (process.env.REACT_APP_CALLISTO_BACKEND) {
@@ -78,7 +81,8 @@ export function App() {
       setTemplates,
       setEntities,
       () => {},
-      () => {}
+      () => {},
+      setUsers,
     );
     if (!socketReady) {
       startWebsocket(setSocketReady);
@@ -98,6 +102,8 @@ export function App() {
             setEmail={setEmail}
             computerShipName={computerShipName}
             setComputerShipName={setComputerShipName}
+            users={users}
+            setUsers={setUsers}
           />
         </>
       ) : socketReady ? (
@@ -121,6 +127,8 @@ function Simulator({
   socketReady,
   computerShipName,
   setComputerShipName,
+  setUsers,
+  users
 }: {
     setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
@@ -128,6 +136,8 @@ function Simulator({
   socketReady: boolean;
   computerShipName: string | null;
   setComputerShipName: (ship: string | null) => void;
+  users: UserList;
+  setUsers: (users: UserList) => void;
 }) {
 
   const entitiesContext = useContext(EntitiesServerContext);
@@ -162,7 +172,8 @@ function Simulator({
         (effects: Effect[]) => {
           setEvents(effects);
           setShowResults(true);
-        }
+        },
+        setUsers,
       );
     }
   }, [socketReady, setAuthenticated, setEmail]);
@@ -256,6 +267,7 @@ function Simulator({
                     Exit Tutorial
                   </button>
                 )}
+                <Users users={users} email={email}/>
                 <Logout
                   setAuthenticated={setAuthenticated}
                   email={email}

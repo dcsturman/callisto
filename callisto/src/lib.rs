@@ -29,29 +29,11 @@ use google_cloud_storage::http::objects::get::GetObjectRequest;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-use payloads::{RequestMsg, ResponseMsg, AuthResponse};
+use payloads::{AuthResponse, RequestMsg, ResponseMsg};
 use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
 
-#[derive(Debug)]
-pub enum RequestError {
-    Logout,
-}
-
-impl std::fmt::Display for RequestError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for RequestError {
-    fn description(&self) -> &str {
-        match *self {
-            RequestError::Logout => "Logout",
-        }
-    }
-}
 /// This the primary server dispatch when a message arrives.  It knows nothing about threading or even how messages are received or sent.
 ///
 /// The function first checks if the user is logged in.  If not
@@ -89,7 +71,7 @@ pub async fn handle_request(
     message: RequestMsg,
     server: &mut Server,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
-) -> Result<Vec<ResponseMsg>, RequestError> {
+) -> Vec<ResponseMsg> {
     info!("(handle_request) Request: {:?}", message);
 
     // If the connection has not logged in yet, that is the priority.
@@ -98,7 +80,7 @@ pub async fn handle_request(
         && !matches!(message, RequestMsg::Login(_))
         && !matches!(message, RequestMsg::Quit)
     {
-        return Ok(vec![ResponseMsg::PleaseLogin]);
+        return vec![ResponseMsg::PleaseLogin];
     }
 
     match message {
@@ -111,7 +93,7 @@ pub async fn handle_request(
                 .await
                 .map_or_else(error_msg, |auth_response| {
                     // Now that we are successfully logged in, we can send back the design templates and entities - no need to wait to be asked.
-                    Ok(build_successful_auth_msgs(auth_response, server))
+                    build_successful_auth_msgs(auth_response, server, &session_keys)
                 })
         }
         RequestMsg::AddShip(ship) => response_with_update(server, server.add_ship(ship)),
@@ -123,21 +105,27 @@ pub async fn handle_request(
         RequestMsg::SetPlan(plan) => response_with_update(server, server.set_plan(&plan)),
         RequestMsg::Update(fire_actions) => {
             let effects = server.update(&fire_actions);
-            Ok(vec![
+            vec![
                 ResponseMsg::Effects(effects),
                 ResponseMsg::EntityResponse(server.clone_entities()),
-            ])
+            ]
         }
         RequestMsg::ComputePath(path_goal) => server
             .compute_path(&path_goal)
-            .map_or_else(error_msg, |path| Ok(vec![ResponseMsg::FlightPath(path)])),
+            .map_or_else(error_msg, |path| vec![ResponseMsg::FlightPath(path)]),
         RequestMsg::LoadScenario(scenario_name) => {
             simple_response(server.load_scenario(&scenario_name).await)
         }
         RequestMsg::Logout => {
             info!("Received and processing logout request.");
             server.logout(&session_keys);
-            Err(RequestError::Logout)
+            let users = session_keys
+                .lock()
+                .unwrap()
+                .values()
+                .filter_map(Clone::clone)
+                .collect();
+            vec![ResponseMsg::LogoutResponse, ResponseMsg::Users(users)]
         }
         RequestMsg::Quit => {
             if !server.in_test_mode() {
@@ -149,40 +137,66 @@ pub async fn handle_request(
         RequestMsg::EntitiesRequest => {
             info!("Received and processing get request.");
             let json = server.get_entities();
-            Ok(vec![ResponseMsg::EntityResponse(json)])
+            vec![ResponseMsg::EntityResponse(json)]
         }
         RequestMsg::DesignTemplateRequest => {
             info!("Received and processing get designs request.");
             let template_msg = server.get_designs();
-            Ok(vec![ResponseMsg::DesignTemplateResponse(template_msg)])
+            vec![ResponseMsg::DesignTemplateResponse(template_msg)]
         }
     }
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn error_msg<E>(err_msg: String) -> Result<Vec<ResponseMsg>, E> {
-    Ok(vec![ResponseMsg::Error(err_msg)])
+fn error_msg(err_msg: String) -> Vec<ResponseMsg> {
+    vec![ResponseMsg::Error(err_msg)]
 }
 
-
-fn response_with_update<E>(server: &Server, result: Result<String, String>) -> Result<Vec<ResponseMsg>, E> {
+fn response_with_update(server: &Server, result: Result<String, String>) -> Vec<ResponseMsg> {
     result.map_or_else(error_msg, |msg| {
-        Ok(vec![
+        vec![
             ResponseMsg::SimpleMsg(msg),
             ResponseMsg::EntityResponse(server.clone_entities()),
-        ])
+        ]
     })
 }
 
-fn simple_response<E>(result: Result<String, String>) -> Result<Vec<ResponseMsg>, E> {
-    result.map_or_else(error_msg, |msg| Ok(vec![ResponseMsg::SimpleMsg(msg)]))
+fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
+    result.map_or_else(error_msg, |msg| vec![ResponseMsg::SimpleMsg(msg)])
 }
 
+/// Build the list of messages to send back to the client after a successful login.
+/// This is used both when a user logs in and when a user reconnects.
+/// 
+/// # Arguments
+/// * `auth_response` - The authentication response from the server.
+/// * `server` - The server object.
+/// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs in (to update this info)
+///
+/// # Returns
+/// A vector of messages to send back to the client.
+/// 
+/// # Panics
+/// If the session keys cannot be locked.
+#[allow(clippy::implicit_hasher)]
 #[must_use]
-pub fn build_successful_auth_msgs(auth_response: AuthResponse, server: &Server) -> Vec<ResponseMsg> {
-    vec![ResponseMsg::AuthResponse(auth_response),
-    ResponseMsg::DesignTemplateResponse(server.get_designs()),
-    ResponseMsg::EntityResponse(server.clone_entities())]
+pub fn build_successful_auth_msgs(
+    auth_response: AuthResponse,
+    server: &Server,
+    session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+) -> Vec<ResponseMsg> {
+    let users: Vec<String> = session_keys
+        .lock()
+        .unwrap()
+        .values()
+        .filter_map(Clone::clone)
+        .collect();
+    vec![
+        ResponseMsg::AuthResponse(auth_response),
+        ResponseMsg::DesignTemplateResponse(server.get_designs()),
+        ResponseMsg::EntityResponse(server.clone_entities()),
+        ResponseMsg::Users(users),
+    ]
 }
 
 /**

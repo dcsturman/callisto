@@ -151,7 +151,7 @@ export function Logout(args: {
   const username = args.email ? args.email.split("@")[0] : "";
   return (
     <div className="logout-window">
-      <button className="blue-button" onClick={logOut}>
+      <button className="blue-button logout-button" onClick={logOut}>
         Logout {username}
       </button>
     </div>

@@ -85,20 +85,18 @@ impl Server {
             "(Server.login) Authenticated user {} with session key.",
             email
         );
+
         Ok(AuthResponse { email })
     }
 
     /// Logs a user out by clearing the session key and email.
-    /// 
+    ///
     /// # Arguments
     /// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs out (to remove the session key).
-    /// 
+    ///
     /// # Panics
     /// Panics if the lock on `session_keys` cannot be obtained.
-    pub fn logout(
-        &mut self,
-        session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
-    ) {
+    pub fn logout(&mut self, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>) {
         info!("(Server.logout) Received and processing logout request.",);
         self.authenticator.set_email(None);
         let mut keys = session_keys.lock().unwrap();
@@ -106,7 +104,6 @@ impl Server {
             keys.remove(&session_key);
         }
     }
-
 
     /// Returns true if the user has been validated.
     #[must_use]

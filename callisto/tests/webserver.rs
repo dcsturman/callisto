@@ -8,7 +8,7 @@
 extern crate callisto;
 use std::env::var;
 use std::io;
-use std::sync::{Arc, atomic::AtomicU16 };
+use std::sync::{atomic::AtomicU16, Arc};
 
 use assert_json_diff::assert_json_eq;
 use futures_util::{SinkExt, StreamExt};
@@ -155,7 +155,9 @@ async fn drain_entity_response(stream: &mut MyWebSocket) -> ResponseMsg {
     let Ok(reply) = stream.next().await.unwrap() else {
         panic!("Expected entity response.  Got error.");
     };
-    let body = serde_json::from_str::<ResponseMsg>(reply.to_text().expect("Expected text response")).expect("Failed to parse entity response");
+    let body =
+        serde_json::from_str::<ResponseMsg>(reply.to_text().expect("Expected text response"))
+            .expect("Failed to parse entity response");
     assert!(
         matches!(body, ResponseMsg::EntityResponse(_)),
         "Expected entity response: {body:?}"
