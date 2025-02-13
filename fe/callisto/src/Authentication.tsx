@@ -6,7 +6,6 @@ import {
   CodeResponse,
 } from "@react-oauth/google";
 import { login, logout } from "./ServerManager";
-import { GOOGLE_OAUTH_CLIENT_ID } from "./App";
 
 export function Authentication(args: {
   setAuthenticated: (authenticated: boolean) => void;
@@ -65,7 +64,8 @@ export function Authentication(args: {
         process.env.REACT_APP_NODE_SERVER || window.location.href
     );
 
-    console.log("(Authentication) OAuth ClientID = " + GOOGLE_OAUTH_CLIENT_ID);
+    // Uncomment when debugging but don't generally want this in the logs in the client.
+    //console.log("(Authentication) OAuth ClientID = " + GOOGLE_OAUTH_CLIENT_ID);
 
     console.log(process.env);
 
