@@ -7,7 +7,7 @@ use futures::select;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_rustls::server::TlsStream;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{Message, error::{ Error, ProtocolError}} ;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tokio_tungstenite::WebSocketStream;
 
@@ -15,10 +15,12 @@ use dyn_clone::clone_box;
 
 use crate::authentication::Authenticator;
 
+use crate::build_successful_auth_msgs;
 use crate::entity::Entities;
-use crate::handle_request;
-use crate::payloads::ResponseMsg;
+use crate::payloads::{AuthResponse, ResponseMsg};
 use crate::server::Server;
+use crate::{handle_request, RequestError};
+
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn};
 
@@ -47,11 +49,11 @@ pub async fn processor(
         Option<String>,
     )>,
     auth_template: Box<dyn Authenticator>,
+    entities: Arc<Mutex<Entities>>,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
     test_mode: bool,
 ) {
     // All the data shared between authenticators.
-    let entities = Arc::new(Mutex::new(Entities::new()));
     let mut connections = Vec::<Connection>::new();
 
     loop {
@@ -84,16 +86,13 @@ pub async fn processor(
             .map(|(i, c)| Box::pin(async move { (i, c.stream.next().await) }))
             .collect::<FuturesUnordered<_>>();
 
-        debug!("(processor) Waiting for next connection or message.");
-
         // Wait on either a new connection or a message from an existing connection, whichever comes first.
         // Return the next message to process if there is one.
         let to_do = select! {
             next_connection = connection_receiver.next() => {
-                debug!("(processor) New connection");
                 if let Some((stream, session_key, email)) = next_connection {
                 // Build the authenticator
-                let connection = build_connection(
+                let mut connection = build_connection(
                     &auth_template,
                     &session_key,
                     email.as_ref(),
@@ -102,8 +101,26 @@ pub async fn processor(
                     test_mode,
                 );
                 drop(message_streams);
+                if let Some(email) = email {
+                    // If we got a successful Some(email) then we need to fake like this was a log in by
+                    // letting the client know auth was successful, but also sending any initialization messages.
+                    // We use [build_successful_auth_msgs] to keep this list of messages the same as if it was in response
+                    // to a login message.
+                    let msgs = build_successful_auth_msgs(AuthResponse { email: email.clone() }, &connection.server);
+                    let mut okay = true;
+                    for msg in msgs {
+                        let encoded_message: Utf8Bytes = serde_json::to_string(&msg).unwrap().into();
+                        if connection.stream.send(Message::Text(encoded_message)).await.is_err() {
+                            okay = false;
+                            break;
+                        };
+                    }
+                    if !okay {
+                        warn!("(processor) Failed to send AuthResponse to new connection. Assuming its bad and dropping it.");
+                        continue;
+                    }
+                }
                 connections.push(connection);
-
                 debug!("(processor) Added new connection.  Total connections: {}", connections.len());
                 continue;
             }
@@ -112,90 +129,138 @@ pub async fn processor(
                 break;
             },
             next_item =  message_streams.next() => {
-                if let Some((index, Some(next_msg))) = next_item {
+                match next_item {
+                Some((index, Some(next_msg))) => {
                     Some((index, next_msg))
-                } else {
-                    error!("(processor) Strange response on message stream: {next_item:?}. Possible disconnect msg?");
+                },
+                Some((index, None)) => {
+                    info!("(processor) Connection {index} disconnected.  Removing.");
+                    drop(message_streams);
+                    connections.remove(index);
                     continue;
+                },
+                None => {
+                    warn!("(processor) Strange response from message stream.  Exiting.");
+                    break;
+                },
                 }
             }
         };
 
         drop(message_streams);
 
-        if let Some((index, Ok(Message::Text(text)))) = to_do {
-            debug!("(handle_connection) Received message: {text}");
-            // Handle the request
-            let response = if let Ok(parsed_message) = serde_json::from_str(&text) {
-                // TODO: I think we move handle_request into the server, but lets come back to that.
-                handle_request(
-                    parsed_message,
-                    &mut connections[index].server,
-                    session_keys.clone(),
-                )
-                .await
-            } else {
-                Ok(vec![ResponseMsg::Error("Malformed message.".to_string())])
-            };
+        match to_do {
+            Some((index, Ok(Message::Text(text)))) => {
+                debug!("(handle_connection) Received message: {text}");
+                // Handle the request
+                let response: Result<Vec<ResponseMsg>, String> = if let Ok(parsed_message) =
+                    serde_json::from_str(&text)
+                {
+                    // TODO: I think we move handle_request into the server, but lets come back to that.
+                    match handle_request(
+                        parsed_message,
+                        &mut connections[index].server,
+                        session_keys.clone(),
+                    )
+                    .await
+                    {
+                        Ok(response) => Ok(response),
+                        Err(RequestError::Logout) => {
+                            // User has logged out.  Close the connection.
+                            debug!("(processor) User logged out.  Closing connection. Now {} connections.", connections.len() - 1);
+                            connections[index]
+                                .stream
+                                .close(None)
+                                .await
+                                .unwrap_or_else(|e| {
+                                    error!("(handle_connection) Failed to close connection as directed by logout: {e:?}");
+                                });
+                            continue;
+                        }
+                    }
+                } else {
+                    Ok(vec![ResponseMsg::Error("Malformed message.".to_string())])
+                };
 
-            debug!("(handle_connection) Response(s): {response:?}");
+                debug!("(handle_connection) Response(s): {response:?}");
 
-            // Send the response
-            if let Ok(response) = response {
-                for message in response {
-                    let encoded_message: Utf8Bytes =
-                        serde_json::to_string(&message).unwrap().into();
-                    if is_broadcast_message(&message) {
-                        debug!("(processor) Broadcast message to {} connections.", connections.len());
-                        for connection in &mut connections {
-                            connection
+                // Send the response
+                if let Ok(response) = response {
+                    for message in response {
+                        let encoded_message: Utf8Bytes =
+                            serde_json::to_string(&message).unwrap().into();
+                        if is_broadcast_message(&message) {
+                            debug!(
+                                "(processor) Broadcast message to {} connections.",
+                                connections.len()
+                            );
+                            for connection in &mut connections {
+                                connection
                                 .stream
                                 .send(Message::Text(encoded_message.clone()))
                                 .await
                                 .unwrap_or_else(|e| {
                                     error!("(handle_connection) Failed to send broadcast response: {e:?}");
                                 });
+                            }
+                        } else {
+                            connections[index]
+                                .stream
+                                .send(Message::Text(
+                                    serde_json::to_string(&message)
+                                        .expect("Failed to serialize response")
+                                        .into(),
+                                ))
+                                .await
+                                .unwrap_or_else(|e| {
+                                    error!("(handle_connection) Failed to send response: {e:?}");
+                                });
                         }
-                    } else {
-                        connections[index]
-                            .stream
-                            .send(Message::Text(
-                                serde_json::to_string(&message)
-                                    .expect("Failed to serialize response")
-                                    .into(),
-                            ))
-                            .await
-                            .unwrap_or_else(|e| {
-                                error!("(handle_connection) Failed to send response: {e:?}");
-                            });
                     }
-                }
-            } else {
-                error!(
+                } else {
+                    error!(
                     "(handle_connection) Error processing handle_request on message {response:?}."
                 );
-                // Let the client know
+                    // Let the client know
+                    connections[index]
+                        .stream
+                        .send(Message::Text(
+                            serde_json::to_string(&ResponseMsg::Error(
+                                "Unable to process message.".to_string(),
+                            ))
+                            .expect("Failed to serialize response")
+                            .into(),
+                        ))
+                        .await
+                        .unwrap_or_else(|e| {
+                            error!("(handle_connection) Failed to send response: {e:?}");
+                        });
+                }
+            }
+            Some((index, Ok(Message::Close(_)))) => {
+                // Close the connection
                 connections[index]
                     .stream
-                    .send(Message::Text(
-                        serde_json::to_string(&ResponseMsg::Error(
-                            "Unable to process message.".to_string(),
-                        ))
-                        .expect("Failed to serialize response")
-                        .into(),
-                    ))
+                    .close(None)
                     .await
-                    .unwrap_or_else(|e| {
-                        error!("(handle_connection) Failed to send response: {e:?}");
-                    });
+                    .unwrap_or_else(|e| {                                    
+                        if let Error::Protocol(ProtocolError::SendAfterClosing) = e {
+                            // This is expected when we try to close a connection that is already closed.
+                            debug!("(processor) Attempted to close a connection that was already closed.  Ignoring.");
+                        } else {
+                            error!("(handle_connection) Failed to close connection: {e:?}");
+                    }});
+                // Mark this stream for deletion
+                connections.remove(index);
+                debug!("(processor) Removed connection.  Now {} connections.", connections.len());
             }
-        } else {
-            error!("(processor) Unexpected message: {:?}", to_do);
-            // Close the connection
-            //current.stream.close(None).await.unwrap_or_else(|e| {
-            //    error!("(handle_connection) Failed to close connection: {e:?}");
-            //});
-            // Mark this stream for deletion
+            Some((index, res)) => {
+                error!("(processor) Unexpected message on connection {index}: {res:?}");
+            }
+            None => {
+                warn!("(processor) Strange `None` response from message stream.  Ignoring");
+                continue;
+            }
         }
     }
 }

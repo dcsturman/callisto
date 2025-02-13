@@ -1381,7 +1381,7 @@ async fn integration_multi_client_test() {
     )
     .await;
 
-    // Should now be just the 1 entity reponse message (since we drained above)
+    // Should now be just the 1 entity response message (since we drained above)
     let entities = drain_entity_response(&mut stream3).await;
     if let ResponseMsg::EntityResponse(entities) = entities {
         assert_eq!(entities.ships.len(), 3);

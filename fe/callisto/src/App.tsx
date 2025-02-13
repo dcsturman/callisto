@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import * as React from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
@@ -26,6 +26,9 @@ import {
   FlightPathResult,
   ShipDesignTemplates,
   ViewControlParams,
+  DesignTemplatesContext,
+  EntitiesServerContext,
+  DesignTemplatesProvider,
 } from "./Universal";
 
 import "./index.css";
@@ -40,16 +43,27 @@ export function App() {
   const [computerShipName, setComputerShipName] = useState<string | null>(null);
   const [socketReady, setSocketReady] = useState<boolean>(false);
 
-  console.group("Callisto Config parameters");
-  if (process.env.REACT_APP_C_BACKEND) {
+  // Logically entities and templates make more sense in the Simulator. However,
+  // we need to set the handlers at this level in case we just reauthenticate successfully
+  // (e.g. on screen refresh when the cookie is valid).
+  const [entities, setEntities] = useState<EntityList>({
+    ships: [],
+    planets: [],
+    missiles: [],
+  });
+  const [templates, setTemplates] = useState<ShipDesignTemplates>({});
+
+  console.groupCollapsed("Callisto Config parameters");
+  if (process.env.REACT_APP_CALLISTO_BACKEND) {
     console.log(
-      "REACT_APP_C_BACKEND is set to: " + process.env.REACT_APP_C_BACKEND
+      "REACT_APP_CALLISTO_BACKEND is set to: " + process.env.REACT_APP_CALLISTO_BACKEND
     );
   } else {
-    console.log("REACT_APP_C_BACKEND is not set.");
+    console.log("REACT_APP_CALLISTO_BACKEND is not set.");
     console.log("ENV is set to: " + JSON.stringify(process.env));
   }
 
+  console.log("Running on " + window.location.href);
   if (process.env.REACT_APP_RUN_TUTORIAL) {
     console.log("Tutorial is set to run.");
   } else {
@@ -58,22 +72,22 @@ export function App() {
   console.groupEnd();
 
   useEffect(() => {
+    setMessageHandlers(
+      setEmail,
+      setAuthenticated,
+      setTemplates,
+      setEntities,
+      () => {},
+      () => {}
+    );
     if (!socketReady) {
       startWebsocket(setSocketReady);
-    } else {
-      setMessageHandlers(
-        setEmail,
-        setAuthenticated,
-        () => {},
-        () => {},
-        () => {},
-        () => {}
-      );
-    }
+    } 
   }, [socketReady]);
 
-  console.log("(App) Authenticated? " + authenticated);
   return (
+    <EntitiesServerProvider value={{ entities: entities, handler: setEntities }}>
+    <DesignTemplatesProvider value={{templates: templates, handler: setTemplates}}>
     <div>
       {authenticated && socketReady ? (
         <>
@@ -95,6 +109,8 @@ export function App() {
         <div>Waiting for socket to open...</div>
       )}
     </div>
+    </DesignTemplatesProvider>
+    </EntitiesServerProvider>
   );
 }
 
@@ -106,18 +122,17 @@ function Simulator({
   computerShipName,
   setComputerShipName,
 }: {
-  setAuthenticated: (authenticated: boolean) => void;
+    setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
   socketReady: boolean;
   computerShipName: string | null;
   setComputerShipName: (ship: string | null) => void;
 }) {
-  const [entities, setEntities] = useState<EntityList>({
-    ships: [],
-    planets: [],
-    missiles: [],
-  });
+
+  const entitiesContext = useContext(EntitiesServerContext);
+  const templatesContext = useContext(DesignTemplatesContext);
+
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(
     null
@@ -132,7 +147,6 @@ function Simulator({
     gravityWells: false,
     jumpDistance: false,
   });
-  const [templates, setTemplates] = useState<ShipDesignTemplates>({});
   const [showRange, setShowRange] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
@@ -142,8 +156,8 @@ function Simulator({
       setMessageHandlers(
         setEmail,
         setAuthenticated,
-        setTemplates,
-        setEntities,
+        templatesContext.handler,
+        entitiesContext.handler,
         setProposedPlan,
         (effects: Effect[]) => {
           setEvents(effects);
@@ -204,8 +218,6 @@ function Simulator({
         setEntityToShow: setEntityToShow,
       }}>
       <>
-        <EntitiesServerProvider
-          value={{ entities: entities, handler: setEntities }}>
           <div className="mainscreen-container">
             {!process.env.REACT_APP_RUN_TUTORIAL || (
               <Tutorial
@@ -219,9 +231,9 @@ function Simulator({
             )}
             <Controls
               nextRound={(fireActions) => nextRound(fireActions)}
+              shipDesignTemplates={templatesContext.templates}
               computerShipName={computerShipName}
               setComputerShipName={setComputerShipName}
-              shipDesignTemplates={templates}
               getAndShowPlan={getAndShowPlan}
               setCameraPos={setCameraPos}
               camera={camera}
@@ -311,7 +323,6 @@ function Simulator({
               </Canvas>
             </div>
           </div>
-        </EntitiesServerProvider>
       </>
       {entityToShow && <EntityInfoWindow entity={entityToShow} />}
     </EntityToShowProvider>

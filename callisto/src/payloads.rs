@@ -203,6 +203,7 @@ pub enum RequestMsg {
     LoadScenario(LoadScenarioMsg),
     EntitiesRequest,
     DesignTemplateRequest,
+    Logout,
     Quit,
 }
 

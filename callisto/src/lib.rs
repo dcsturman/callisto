@@ -29,11 +29,29 @@ use google_cloud_storage::http::objects::get::GetObjectRequest;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-use payloads::{RequestMsg, ResponseMsg};
+use payloads::{RequestMsg, ResponseMsg, AuthResponse};
 use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
 
+#[derive(Debug)]
+pub enum RequestError {
+    Logout,
+}
+
+impl std::fmt::Display for RequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for RequestError {
+    fn description(&self) -> &str {
+        match *self {
+            RequestError::Logout => "Logout",
+        }
+    }
+}
 /// This the primary server dispatch when a message arrives.  It knows nothing about threading or even how messages are received or sent.
 ///
 /// The function first checks if the user is logged in.  If not
@@ -71,22 +89,8 @@ pub async fn handle_request(
     message: RequestMsg,
     server: &mut Server,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
-) -> Result<Vec<ResponseMsg>, String> {
+) -> Result<Vec<ResponseMsg>, RequestError> {
     info!("(handle_request) Request: {:?}", message);
-
-    let error_msg = |err_msg: String| Ok(vec![ResponseMsg::Error(err_msg)]);
-    let response_with_update =
-        |result: Result<String, String>| -> Result<Vec<ResponseMsg>, String> {
-            result.map_or_else(error_msg, |msg| {
-                Ok(vec![
-                    ResponseMsg::SimpleMsg(msg),
-                    ResponseMsg::EntityResponse(server.clone_entities()),
-                ])
-            })
-        };
-    let simple_response = |result: Result<String, String>| -> Result<Vec<ResponseMsg>, String> {
-        result.map_or_else(error_msg, |msg| Ok(vec![ResponseMsg::SimpleMsg(msg)]))
-    };
 
     // If the connection has not logged in yet, that is the priority.
     // Nothing else is processed until login is complete.
@@ -107,20 +111,16 @@ pub async fn handle_request(
                 .await
                 .map_or_else(error_msg, |auth_response| {
                     // Now that we are successfully logged in, we can send back the design templates and entities - no need to wait to be asked.
-                    Ok(vec![
-                        ResponseMsg::AuthResponse(auth_response),
-                        ResponseMsg::DesignTemplateResponse(server.get_designs()),
-                        ResponseMsg::EntityResponse(server.clone_entities()),
-                    ])
+                    Ok(build_successful_auth_msgs(auth_response, server))
                 })
         }
-        RequestMsg::AddShip(ship) => response_with_update(server.add_ship(ship)),
+        RequestMsg::AddShip(ship) => response_with_update(server, server.add_ship(ship)),
         RequestMsg::SetCrewActions(request) => {
-            response_with_update(server.set_crew_actions(&request))
+            response_with_update(server, server.set_crew_actions(&request))
         }
-        RequestMsg::AddPlanet(planet) => response_with_update(server.add_planet(planet)),
-        RequestMsg::Remove(name) => response_with_update(server.remove(&name)),
-        RequestMsg::SetPlan(plan) => response_with_update(server.set_plan(&plan)),
+        RequestMsg::AddPlanet(planet) => response_with_update(server, server.add_planet(planet)),
+        RequestMsg::Remove(name) => response_with_update(server, server.remove(&name)),
+        RequestMsg::SetPlan(plan) => response_with_update(server, server.set_plan(&plan)),
         RequestMsg::Update(fire_actions) => {
             let effects = server.update(&fire_actions);
             Ok(vec![
@@ -133,6 +133,11 @@ pub async fn handle_request(
             .map_or_else(error_msg, |path| Ok(vec![ResponseMsg::FlightPath(path)])),
         RequestMsg::LoadScenario(scenario_name) => {
             simple_response(server.load_scenario(&scenario_name).await)
+        }
+        RequestMsg::Logout => {
+            info!("Received and processing logout request.");
+            server.logout(&session_keys);
+            Err(RequestError::Logout)
         }
         RequestMsg::Quit => {
             if !server.in_test_mode() {
@@ -152,6 +157,32 @@ pub async fn handle_request(
             Ok(vec![ResponseMsg::DesignTemplateResponse(template_msg)])
         }
     }
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn error_msg<E>(err_msg: String) -> Result<Vec<ResponseMsg>, E> {
+    Ok(vec![ResponseMsg::Error(err_msg)])
+}
+
+
+fn response_with_update<E>(server: &Server, result: Result<String, String>) -> Result<Vec<ResponseMsg>, E> {
+    result.map_or_else(error_msg, |msg| {
+        Ok(vec![
+            ResponseMsg::SimpleMsg(msg),
+            ResponseMsg::EntityResponse(server.clone_entities()),
+        ])
+    })
+}
+
+fn simple_response<E>(result: Result<String, String>) -> Result<Vec<ResponseMsg>, E> {
+    result.map_or_else(error_msg, |msg| Ok(vec![ResponseMsg::SimpleMsg(msg)]))
+}
+
+#[must_use]
+pub fn build_successful_auth_msgs(auth_response: AuthResponse, server: &Server) -> Vec<ResponseMsg> {
+    vec![ResponseMsg::AuthResponse(auth_response),
+    ResponseMsg::DesignTemplateResponse(server.get_designs()),
+    ResponseMsg::EntityResponse(server.clone_entities())]
 }
 
 /**

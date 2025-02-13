@@ -99,10 +99,6 @@ pub struct GoogleAuthenticator {
      */
     session_key: Option<String>,
     /**
-     * The URL of the node server (this server).
-     */
-    node_server_url: String,
-    /**
      * The URL of the web server (front end).
      */
     web_server: String,
@@ -130,8 +126,7 @@ impl GoogleAuthenticator {
     /// If the `users_file` or `secret_file` cannot be read.
     #[must_use]
     pub fn new(
-        url: &str,
-        web_server: String,
+        web_server: &str,
         credentials: Arc<GoogleCredentials>,
         google_keys: Arc<GooglePublicKeys>,
         authorized_users: Arc<Vec<String>>,
@@ -141,9 +136,8 @@ impl GoogleAuthenticator {
             email: None,
             session_key: None,
             authorized_users,
-            node_server_url: url.to_string(),
             google_keys,
-            web_server,
+            web_server: web_server.to_string(),
         }
     }
 
@@ -309,7 +303,7 @@ impl Authenticator for GoogleAuthenticator {
         // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
         // Look up the profile.  Then return the session key and profile.
         const GRANT_TYPE: &str = "authorization_code";
-        let redirect_uri = &self.node_server_url;
+        let redirect_uri = &self.get_web_server();
 
         let token_request = [
             ("code", &code.to_string()),

@@ -27,7 +27,7 @@ services:
       context: fe/callisto
     environment:
       NODE_ENV: production
-      REACT_APP_C_BACKEND: localhost:30000
+      REACT_APP_CALLISTO_BACKEND: localhost:30000
     expose:
       - 3000
     ports:

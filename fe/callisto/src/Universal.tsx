@@ -214,7 +214,13 @@ export const EntitiesServerContext = createContext<{
   handler: EntityRefreshCallback;
 }>({ entities: { ships: [], planets: [], missiles: [] }, handler: () => {} });
 
+export const DesignTemplatesContext = createContext<{
+  templates: ShipDesignTemplates,
+  handler: (templates: ShipDesignTemplates) => void;
+}>({templates: {}, handler: () => {}});
+
 export const EntitiesServerProvider = EntitiesServerContext.Provider;
+export const DesignTemplatesProvider = DesignTemplatesContext.Provider;
 
 export const EntityToShowContext = createContext<{
   entityToShow: Entity | null;

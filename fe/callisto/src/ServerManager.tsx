@@ -11,15 +11,16 @@ import { Effect } from "./Effects";
 import { Crew } from "./CrewBuilder";
 
 export const CALLISTO_BACKEND =
-  process.env.REACT_APP_C_BACKEND || "http://localhost:30000";
+  process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
 
 // Message structures
 // This message (a simple enum on the rust server side) is just a string.
-const DESIGN_TEMPLATE_REQUEST = "\"DesignTemplateRequest\"";
-const ENTITIES_REQUEST = "\"EntitiesRequest\"";
+const DESIGN_TEMPLATE_REQUEST = '"DesignTemplateRequest"';
+const ENTITIES_REQUEST = '"EntitiesRequest"';
+const LOGOUT_REQUEST = '"Logout"';
 
 // Define the (global) websocket
-let socket = new WebSocket(CALLISTO_BACKEND);
+let socket: WebSocket;
 
 // Message handlers, one for each type of incoming data we can receive.
 let setEmail: (email: string) => void = () => {
@@ -41,16 +42,28 @@ let setEffects: (effects: Effect[]) => void = () => {
   console.error("Calling default implementation of setEffects()");
 };
 
-// 
+//
 // Functions managing the socket connection
 //
 
 export function startWebsocket(setReady: (ready: boolean) => void) {
-  console.log("Trying to establish websocket.");
-  setReady(false);
-  socket = new WebSocket(CALLISTO_BACKEND);
+  console.log("(ServerManager.startWebsocket) Trying to establish websocket.");
+    const stripped_name = CALLISTO_BACKEND.replace("https://", "").replace(
+    "http://",
+    ""
+  );
+  console.log(
+    `(ServerManager.startWebSocket) Establishing socket to wss://"${stripped_name}"`
+  );
+  console.trace();
+  if (socket === undefined) {
+    setReady(false);
+    socket = new WebSocket(`wss://${stripped_name}`);
+  } else {
+    console.log("Socket already defined.  Not building it.");
+  }
   socket.onopen = () => {
-    console.log("Socket opened");
+    console.log("(ServerManager.startWebsocket.onopen) Socket opened");
     setReady(true);
   };
   socket.onclose = handleClose;
@@ -67,7 +80,7 @@ export function setMessageHandlers(
   templates: (templates: ShipDesignTemplates) => void,
   entities: (entities: EntityList) => void,
   flightPath: (plan: FlightPathResult) => void,
-  effects: (effects: Effect[]) => void,
+  effects: (effects: Effect[]) => void
 ) {
   setEmail = email;
   setAuthenticated = authenticated;
@@ -78,7 +91,11 @@ export function setMessageHandlers(
 }
 
 const handleClose = (event: CloseEvent) => {
-  const msg = "Socket closed: " + event.code + " Reason: " + event.reason;
+  const msg =
+    "(ServerManager.handleClose) Socket closed: " +
+    event.code +
+    " Reason: " +
+    event.reason;
   if (event.wasClean) {
     console.log(msg);
   } else {
@@ -86,11 +103,8 @@ const handleClose = (event: CloseEvent) => {
   }
 };
 
-
 const handleMessage = (event: MessageEvent) => {
   const json = JSON.parse(event.data);
-
-  console.log("Received Message: " + JSON.stringify(json));
 
   // Because this isn't an object (just a string)  check for it differently.
   if (json === "PleaseLogin") {
@@ -99,8 +113,13 @@ const handleMessage = (event: MessageEvent) => {
   }
   if ("AuthResponse" in json) {
     const email = json.AuthResponse.email;
-    setEmail(email);
-    setAuthenticated(true);
+    if (email !== null) {
+      setEmail(email);
+      setAuthenticated(true);
+    } else {
+      console.log("(ServerManager) Authenticated with null email. Ignoring.");
+      setAuthenticated(false);
+    }
     return;
   }
 
@@ -140,14 +159,12 @@ const handleMessage = (event: MessageEvent) => {
     return;
   }
 
-
   if ("Error" in json) {
     console.error("Received Error: " + json.Error);
   }
 };
 
-
-// 
+//
 // Functions called to communicate to the server
 //
 export function login(code: string) {
@@ -274,6 +291,10 @@ export function getTemplates() {
   socket.send(DESIGN_TEMPLATE_REQUEST);
 }
 
+export function logout() {
+  socket.send(LOGOUT_REQUEST);
+}
+
 //
 // Functions to handle incoming messages that are more complex than a few lines.
 //
@@ -293,11 +314,11 @@ function handleTemplates(
   });
 
   // Output all the templates to the console.
-  console.log("Received Templates: ");
+  console.groupCollapsed("Received Templates: ");
   for (const v of Object.values(templates)) {
     console.log(` ${v.name}`);
   }
-
+  console.groupEnd();
   setTemplates(templates);
 }
 

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::ToSocketAddrs;
 use std::panic;
 use std::path::PathBuf;
 use std::process;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc::channel;
@@ -148,8 +147,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let port = args.port;
     debug!("Using port: {port}");
 
-    let ip_addr = IpAddr::from_str(&args.address)?;
-    let addr = SocketAddr::from((ip_addr, port));
+    //let ip_addr = IpAddr::from_str(&args.address)?;
+    //let addr = SocketAddr::from((ip_addr, port));
+    let addr = (args.address.clone(), port).to_socket_addrs().expect("Unable to resolve the IP address for this server").next().expect("DNS resolution returned no IP addresses");
 
     // Load our certs and key.
     let cert_path = PathBuf::from(format!("{}.crt", args.tls_keys));
@@ -178,6 +178,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         );
     }
 
+    if test_mode {
+        debug!("(main) In test mode: custom catching of panics.");
+        let orig_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
+            if panic_info
+                .payload()
+                .downcast_ref::<&str>()
+                .unwrap_or(&"")
+                .contains("Time to exit")
+            {
+                process::exit(0);
+            } else {
+                orig_hook(panic_info);
+                process::exit(1);
+            }
+        }));
+    }
     let templates = load_ship_templates_from_file(&args.design_file)
         .await
         .unwrap_or_else(|e| {
@@ -209,25 +226,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         entities.lock().unwrap()
     );
 
-    info!("Starting Callisto server listening on address: {}", addr);
 
-    if test_mode {
-        debug!("(main) In test mode: custom catching of panics.");
-        let orig_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |panic_info| {
-            if panic_info
-                .payload()
-                .downcast_ref::<&str>()
-                .unwrap_or(&"")
-                .contains("Time to exit")
-            {
-                process::exit(0);
-            } else {
-                orig_hook(panic_info);
-                process::exit(1);
-            }
-        }));
-    }
 
     // Keep track of session keys (cookies) on connections.
     let session_keys = Arc::new(Mutex::new(HashMap::new()));
@@ -247,8 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
 
         Box::new(GoogleAuthenticator::new(
-            &args.address,
-            args.web_server,
+            &args.web_server,
             my_credentials,
             google_keys,
             authorized_users,
@@ -259,11 +257,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     tokio::task::spawn(processor(
         connection_receiver,
         auth_template,
+        entities,
         session_keys.clone(),
         test_mode,
     ));
 
-    // We start a loop to continuously accept incoming connections
+    info!("Starting Callisto server listening on address: {}", addr);
+
+    // We start a loop to continuously accept incoming connections.  Once we have a connection
+    // it gets upgraded (or fails) and then is sent to the master thread.
+    // Eventually we'll have one such thread per server.
     loop {
         let (stream, peer_addr) = listener.accept().await?;
         let upgrade = handle_connection(stream, acceptor.clone(), session_keys.clone()).await;

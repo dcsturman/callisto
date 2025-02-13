@@ -5,7 +5,7 @@ import {
   useGoogleLogin,
   CodeResponse,
 } from "@react-oauth/google";
-import { login } from "./ServerManager";
+import { login, logout } from "./ServerManager";
 
 export function Authentication(args: {
   setAuthenticated: (authenticated: boolean) => void;
@@ -35,8 +35,8 @@ export function Authentication(args: {
     onError: (errorResponse: Pick<CodeResponse, 'error' | 'error_description' | 'error_uri'>) => console.log("Login Failed:", errorResponse),
     flow: "auth-code",
     state: secureState,
-    //redirect_uri: process.env.REACT_APP_C_BACKEND || "http://localhost:30000",
-    redirect_uri: "http://127.0.0.1:30000",
+    // Redirect_uri should be the address of the Node.js server.
+    redirect_uri: process.env.REACT_APP_NODE_SERVER || window.location.href,
     accessType: "offline",
     isSignedIn: true,
     responseType: "code",
@@ -60,8 +60,8 @@ export function Authentication(args: {
     }
 
     console.log(
-      "(Authentication) Redirect URI (REACT_APP_C_BACKEND) is set to: " +
-        process.env.REACT_APP_C_BACKEND
+      "(Authentication) Redirect URI (REACT_APP_CALLISTO_BACKEND) is set to: " +
+        process.env.REACT_APP_CALLISTO_BACKEND
     );
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
@@ -144,6 +144,8 @@ export function Logout(args: {
 
     args.setAuthenticated(false);
     args.setEmail(null);
+    logout();
+    console.log("(Authentication.Logout)Logged out");
   };
 
   const username = args.email ? args.email.split("@")[0] : "";
