@@ -17,15 +17,15 @@ use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
 use tokio::time::{sleep, Duration};
 use tokio_tungstenite::{
-    connect_async, 
+    connect_async,
     tungstenite::{Error, Result},
-     MaybeTlsStream, WebSocketStream,
+    MaybeTlsStream, WebSocketStream,
 };
 
 #[cfg(not(feature = "no_tls_upgrade"))]
-use std::sync::Arc;
-#[cfg(not(feature = "no_tls_upgrade"))]
 use rustls::pki_types::{pem::PemObject, CertificateDer};
+#[cfg(not(feature = "no_tls_upgrade"))]
+use std::sync::Arc;
 #[cfg(not(feature = "no_tls_upgrade"))]
 use tokio_tungstenite::connect_async_tls_with_config;
 #[cfg(not(feature = "no_tls_upgrade"))]

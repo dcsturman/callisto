@@ -53,11 +53,7 @@ use crate::{debug, error, info, warn};
 #[allow(clippy::implicit_hasher)]
 #[allow(clippy::too_many_lines)]
 pub async fn processor(
-    mut connection_receiver: Receiver<(
-        WebSocketStream<SubStream>,
-        String,
-        Option<String>,
-    )>,
+    mut connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
     auth_template: Box<dyn Authenticator>,
     entities: Arc<Mutex<Entities>>,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,

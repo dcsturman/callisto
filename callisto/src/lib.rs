@@ -167,7 +167,7 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 
 /// Build the list of messages to send back to the client after a successful login.
 /// This is used both when a user logs in and when a user reconnects.
-/// 
+///
 /// # Arguments
 /// * `auth_response` - The authentication response from the server.
 /// * `server` - The server object.
@@ -175,7 +175,7 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 ///
 /// # Returns
 /// A vector of messages to send back to the client.
-/// 
+///
 /// # Panics
 /// If the session keys cannot be locked.
 #[allow(clippy::implicit_hasher)]

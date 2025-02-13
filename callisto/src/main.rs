@@ -4,22 +4,21 @@ use std::panic;
 use std::process;
 use std::sync::{Arc, Mutex};
 
-use futures::channel::mpsc::{ Sender, Receiver, channel };
-use tokio_tungstenite::WebSocketStream;
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::WebSocketStream;
 
 // Things we use only when we are not using the `no_tls_upgrade` feature.
 #[cfg(not(feature = "no_tls_upgrade"))]
+use rustls::pki_types::pem::PemObject;
+#[cfg(not(feature = "no_tls_upgrade"))]
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+#[cfg(not(feature = "no_tls_upgrade"))]
+use std::path::PathBuf;
 #[cfg(not(feature = "no_tls_upgrade"))]
 use tokio_rustls::server::TlsStream;
 #[cfg(not(feature = "no_tls_upgrade"))]
 use tokio_rustls::TlsAcceptor;
-#[cfg(not(feature = "no_tls_upgrade"))]
-use std::path::PathBuf;
-#[cfg(not(feature = "no_tls_upgrade"))]
-use rustls::pki_types::pem::PemObject;
-
 
 use clap::Parser;
 use log::{debug, error, info, warn};
@@ -80,7 +79,6 @@ struct Args {
     users_file: String,
 }
 
-
 #[cfg(feature = "no_tls_upgrade")]
 pub type SubStream = TcpStream;
 #[cfg(not(feature = "no_tls_upgrade"))]
@@ -133,15 +131,16 @@ async fn handle_connection(
         auth_info: auth_info.clone(),
     };
 
-    let ws_stream: WebSocketStream<SubStream> = tokio_tungstenite::accept_hdr_async(stream, callback_handler)
-        .await
-        .unwrap_or_else(|e| {
-            error!(
-                "(handle_connection) Error during the websocket handshake occurred: {}",
-                e
-            );
-            process::exit(1);
-        });
+    let ws_stream: WebSocketStream<SubStream> =
+        tokio_tungstenite::accept_hdr_async(stream, callback_handler)
+            .await
+            .unwrap_or_else(|e| {
+                error!(
+                    "(handle_connection) Error during the websocket handshake occurred: {}",
+                    e
+                );
+                process::exit(1);
+            });
 
     let auth_info = auth_info.lock().unwrap();
     Ok((ws_stream, auth_info.0.clone(), auth_info.1.clone()))
@@ -251,7 +250,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     // All the data shared between authenticators.
     let authorized_users = load_authorized_users(&args.users_file).await;
     let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
-    let (mut connection_sender, connection_receiver): (Sender<(WebSocketStream<SubStream>, String, Option<String>)>, Receiver<(WebSocketStream<SubStream>, String, Option<String>)>) = channel(MAX_CHANNEL_DEPTH);
+    let (mut connection_sender, connection_receiver): (
+        Sender<(WebSocketStream<SubStream>, String, Option<String>)>,
+        Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
+    ) = channel(MAX_CHANNEL_DEPTH);
 
     // Create an Authenticator to be cloned on each new connection.
 
@@ -289,10 +291,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
         // Upgrade will be built differently depending on the feature `no_tls_upgrade`.
         #[cfg(feature = "no_tls_upgrade")]
-        let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> = handle_connection(stream, session_keys.clone()).await;
+        let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> =
+            handle_connection(stream, session_keys.clone()).await;
 
         #[cfg(not(feature = "no_tls_upgrade"))]
-        let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> = handle_connection(stream, acceptor.clone(), session_keys.clone()).await;
+        let upgrade: Result<(WebSocketStream<SubStream>, _, _), _> =
+            handle_connection(stream, acceptor.clone(), session_keys.clone()).await;
 
         match upgrade {
             Ok((ws_stream, session_key, email)) => {
