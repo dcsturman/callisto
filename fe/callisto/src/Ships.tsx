@@ -55,7 +55,7 @@ new FontLoader().load(
 function Ship(args: {
   ship: ShipType;
   index: number;
-  setComputerShipName: (shipName: string | null) => void;
+  setComputerShip: (ship: ShipType | null) => void;
   showRange: string | null;
 }) {
   const entityToShow = useContext(EntityToShowContext);
@@ -69,7 +69,7 @@ function Ship(args: {
     textRef.current?.lookAt(camera.position);
   });
   function handleShipClick() {
-    args.setComputerShipName(args.ship.name);
+    args.setComputerShip(args.ship);
   }
 
   const showRange = args.showRange && args.showRange === args.ship.name;
@@ -144,7 +144,7 @@ function Ship(args: {
 }
 
 export function Ships(args: {
-  setComputerShipName: (shipName: string | null) => void;
+  setComputerShip: (ship: ShipType | null) => void;
   showRange: string | null;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
@@ -155,7 +155,7 @@ export function Ships(args: {
           key={ship.name}
           ship={ship}
           index={index}
-          setComputerShipName={args.setComputerShipName}
+          setComputerShip={args.setComputerShip}
           showRange={args.showRange}
         />
       ))}
@@ -228,8 +228,6 @@ export function Missiles() {
 }
 
 export function Route(args: { plan: FlightPathResult }) {
-  console.log(`(Ships.Route) Display plan: ${JSON.stringify(args.plan)}`);
-  console.log(`(Ships.Route) Display route: ${JSON.stringify(args.plan.path)}`);
   const start = scaleVector(args.plan.path[0], -1.0 * SCALE);
   let prev = args.plan.path[0];
   const path = args.plan.path.slice(1);

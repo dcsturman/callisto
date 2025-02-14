@@ -19,9 +19,11 @@ COPY . .
 
 # do a release build
 FROM build AS release
+ARG TLS_UPGRADE=1
+
 RUN touch ./src/main.rs
 RUN touch ./src/lib.rs
-RUN cargo build --release --features no_tls_upgrade
+RUN if [ "$TLS_UPGRADE" = "1" ]; then cargo build --release; else cargo build --release --features no_tls_upgrade; fi
 #RUN strip target/release/callisto
 
 # use a plain alpine image, the alpine version needs to match the builder

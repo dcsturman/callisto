@@ -71,8 +71,12 @@ struct Args {
     oauth_creds: String,
 
     // Prefix of the certificate and key files for tls.  The server will append .crt and .key to this.
-    #[arg(short = 'k', long, default_value = "keys/localhost")]
-    tls_keys: String,
+    #[arg(long, default_value = "keys/localhost.key")]
+    tls_keys_private: String,
+
+    // Prefix of the certificate and key files for tls.  The server will append .crt and .key to this.
+    #[arg(long, default_value = "keys/localhost.crt")]
+    tls_keys_public: String,
 
     // Google Cloud Storage bucket to use in lieu of config directory
     #[arg(short, long, default_value = DEFAULT_AUTHORIZED_USERS_FILE)]
@@ -162,11 +166,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
     // Load our certs and key.
     #[cfg(not(feature = "no_tls_upgrade"))]
-    let cert_path = PathBuf::from(format!("{}.crt", args.tls_keys));
+    let cert_path = PathBuf::from(args.tls_keys_public);
     #[cfg(not(feature = "no_tls_upgrade"))]
     let certs = CertificateDer::pem_file_iter(cert_path)?.collect::<Result<Vec<_>, _>>()?;
     #[cfg(not(feature = "no_tls_upgrade"))]
-    let key_path = PathBuf::from(format!("{}.key", args.tls_keys));
+    let key_path = PathBuf::from(args.tls_keys_private);
     #[cfg(not(feature = "no_tls_upgrade"))]
     let key = PrivateKeyDer::from_pem_file(key_path)?;
     #[cfg(not(feature = "no_tls_upgrade"))]
