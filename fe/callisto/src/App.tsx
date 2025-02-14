@@ -176,7 +176,7 @@ function Simulator({
         setUsers,
       );
     }
-  }, [socketReady, setAuthenticated, setEmail]);
+  }, [socketReady, setAuthenticated, setEmail,templatesContext.handler, entitiesContext.handler, setUsers]);
 
   const getAndShowPlan = (
     entity_name: string | null,
