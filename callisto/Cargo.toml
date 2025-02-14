@@ -11,9 +11,6 @@ no_tls_upgrade = []
 
 [dependencies]
 cgmath = { version = "0.18", features = ["swizzle", "serde", "rand", "mint"] }
-hyper = { version = "1.2", features = ["full"] }
-http-body-util = "0.1"
-hyper-util = { version = "0.1", features = ["full"] }
 serde = "1.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 tokio = { version = "1.37.0", features = ["full"] }
@@ -32,28 +29,19 @@ jsonwebtoken = "9.3.0"
 reqwest = { version = "0.12.4", features = ["json"] }
 base64 = "0.22.1"
 google-cloud-storage = "0.22.1"
-headers = "0.4.0"
-cookie = "0.18.1"
 async-trait = "0.1.83"
 quit = "2.0.0"
 rustls = "0.23.21"
 tokio-tungstenite = { version = "0.26.1", features = ["rustls-tls-native-roots"] }
 tokio-rustls = "0.26.1"
-rustls-pki-types = "1.11.0"
 futures-util = "0.3.31"
 futures = "0.3.31"
-http = "1.2.0"
 pem = "3.0.4"
-futures-core = "0.3.31"
 dyn-clone = "1.0.18"
 
 [dev-dependencies]
-mockstream = "0.0.3"
-lazy_static = "1.4.0"
 test-log="*"
-duct = "0.13.7"
 reqwest = { version = "0.12.4", features = ["json"] }
-mockall = "0.13.1"
 async-trait = "0.1.83"
 
 [[bin]]
