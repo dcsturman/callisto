@@ -55,6 +55,7 @@ jobs:
         with:
           context: ./callisto
           push: true
+          build-args: TLS_UPGRADE=0
           tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
