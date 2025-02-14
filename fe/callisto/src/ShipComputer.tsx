@@ -4,12 +4,16 @@ import {
   EntitiesServerContext,
   FlightPathResult,
   Ship,
+  Planet,
+  Entity,
   DEFAULT_ACCEL_DURATION,
   Acceleration,
   POSITION_SCALE,
 } from "./Universal";
 
 import { setPlan, setCrewActions } from "./ServerManager";
+
+import { EntitySelectorType, EntitySelector } from "./EntitySelector";
 
 export function ShipComputer(args: {
   shipName: string;
@@ -122,57 +126,32 @@ export function ShipComputer(args: {
     args.getAndShowPlan(ship.name, end_pos, end_vel, target_vel, standoff);
   }
 
-  function handleNavTargetSelectChange(
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) {
-    const value = event.target.value;
-    const shipTarget = serverEntities.entities.ships.find(
-      (ship) => ship.name === value
-    );
-    const planetTarget = serverEntities.entities.planets.find(
-      (planet) => planet.name === value
-    );
-
-    if (shipTarget == null && planetTarget == null) {
-      console.error(
-        `(Controls.handleNavTargetSelectChange) Cannot find navigation target {${value}}`
-      );
+  function handleNavTargetSelect(entity: Entity | null) {
+    if (entity == null) {
+      setNavigationTarget(initNavigationTargetState);
+      return;
     }
 
-    let p_x = 0;
-    let p_y = 0;
-    let p_z = 0;
-    let v_x = 0;
-    let v_y = 0;
-    let v_z = 0;
-    let standoff = 0;
-
-    if (shipTarget != null) {
-      p_x = shipTarget.position[0] / POSITION_SCALE;
-      p_y = shipTarget.position[1] / POSITION_SCALE;
-      p_z = shipTarget.position[2] / POSITION_SCALE;
-      v_x = shipTarget.velocity[0];
-      v_y = shipTarget.velocity[1];
-      v_z = shipTarget.velocity[2];
-      standoff = 1000;
-    } else if (planetTarget != null) {
-      p_x = planetTarget.position[0] / POSITION_SCALE;
-      p_y = planetTarget.position[1] / POSITION_SCALE;
-      p_z = planetTarget.position[2] / POSITION_SCALE;
-      v_x = planetTarget.velocity[0];
-      v_y = planetTarget.velocity[1];
-      v_z = planetTarget.velocity[2];
-      standoff = (planetTarget.radius * 1.1) / POSITION_SCALE;
-    }
+    const p_x = (entity.position[0] / POSITION_SCALE).toFixed(0);
+    const p_y = (entity.position[1] / POSITION_SCALE).toFixed(0);
+    const p_z = (entity.position[2] / POSITION_SCALE).toFixed(0);
+    const v_x = entity.velocity[0].toFixed(1);
+    const v_y = entity.velocity[1].toFixed(1);
+    const v_z = entity.velocity[2].toFixed(1);
+    const standoff = (
+      entity instanceof Ship
+        ? 1000
+        : ((entity as Planet).radius * 1.1) / POSITION_SCALE
+    ).toFixed(1);
 
     setNavigationTarget({
-      p_x: p_x.toFixed(0),
-      p_y: p_y.toFixed(0),
-      p_z: p_z.toFixed(0),
-      v_x: v_x.toFixed(1),
-      v_y: v_y.toFixed(1),
-      v_z: v_z.toFixed(1),
-      standoff: standoff.toFixed(1),
+      p_x,
+      p_y,
+      p_z,
+      v_x,
+      v_y,
+      v_z,
+      standoff,
     });
   }
 
@@ -185,10 +164,9 @@ export function ShipComputer(args: {
         y: args.proposedPlan.plan[0][0][1].toString(),
         z: args.proposedPlan.plan[0][0][2].toString(),
       });
-      setPlan(
-        ship.name,
-        args.proposedPlan.plan,
-      ).then(() => args.resetProposedPlan());
+      setPlan(ship.name, args.proposedPlan.plan).then(() =>
+        args.resetProposedPlan()
+      );
 
       if (selectRef.current !== null) {
         selectRef.current.value = "";
@@ -215,10 +193,7 @@ export function ShipComputer(args: {
         }
       };
 
-      setPlan(
-        ship.name,
-        [[[x, y, z], DEFAULT_ACCEL_DURATION], null]
-      )
+      setPlan(ship.name, [[[x, y, z], DEFAULT_ACCEL_DURATION], null])
         .then(() => {
           setColor("control-input-x", "black");
           setColor("control-input-y", "black");
@@ -289,36 +264,31 @@ export function ShipComputer(args: {
     function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
       ship.dodge_thrust = agility;
-      setCrewActions(
-        ship.name,
-        agility,
-        assistGunners,
-      );
+      setCrewActions(ship.name, agility, assistGunners);
     }
 
     return (
       <>
         <h2 className="control-form">Crew Actions</h2>
-        <form id="crew-actions-form" className="control-form" onSubmit={handleSubmit}>
+        <form
+          id="crew-actions-form"
+          className="control-form"
+          onSubmit={handleSubmit}>
           <div className="crew-actions-form-container">
-          <label className="control-label" >          
-              Dodge
-              </label>
-              <input
-                className="control-input"
-                type="text"
-                value={agility.toString()}
-                onChange={(event) => setDodge(Number(event.target.value))}
-              />
+            <label className="control-label">Dodge</label>
+            <input
+              className="control-input"
+              type="text"
+              value={agility.toString()}
+              onChange={(event) => setDodge(Number(event.target.value))}
+            />
 
-          <label className="control-label">
-              Assist Gunner
-            </label>
-              <input
-                type="checkbox"
-                checked={assistGunners}
-                onChange={() => setAssistGunners(!assistGunners)}
-              />
+            <label className="control-label">Assist Gunner</label>
+            <input
+              type="checkbox"
+              checked={assistGunners}
+              onChange={() => setAssistGunners(!assistGunners)}
+            />
           </div>
           <input
             className="control-input control-button blue-button"
@@ -360,25 +330,7 @@ export function ShipComputer(args: {
       <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
         <label className="control-label" style={{ display: "flex" }}>
           Nav Target:
-          <select
-            className="select-dropdown control-name-input control-input"
-            ref={selectRef}
-            name="navigation_target"
-            onChange={handleNavTargetSelectChange}>
-            <option key="none" value=""></option>
-            {serverEntities.entities.ships
-              .filter((candidate) => candidate.name !== ship.name)
-              .map((notMeShip) => (
-                <option key={notMeShip.name} value={notMeShip.name}>
-                  {notMeShip.name}
-                </option>
-              ))}
-            {serverEntities.entities.planets.map((planet) => (
-              <option key={planet.name} value={planet.name}>
-                {planet.name}
-              </option>
-            ))}
-          </select>
+          <EntitySelector filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]} onChange={handleNavTargetSelect} exclude={ship.name} />
         </label>
         <div className="target-details-div">
           <label className="control-label">

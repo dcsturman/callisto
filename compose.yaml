@@ -14,7 +14,9 @@ services:
     secrets:
       - google_credentials
       - gcs_credentials
-    command: --oauth-creds /run/secrets/google_credentials --scenario-file /scenarios/sol.json --users-file /config/authorized_users.json --design-file  /scenarios/default_ship_templates.json  --web-server http://localhost:50001
+      - tls_keys_private
+      - tls_keys_public
+    command: --tls-keys-private /run/secrets/tls_keys_private --tls-keys-public /run/secrets/tls_keys_public --oauth-creds /run/secrets/google_credentials --scenario-file /scenarios/sol.json --users-file /config/authorized_users.json --design-file  /scenarios/default_ship_templates.json  --web-server http://localhost:50001
     environment:
       RUST_LOG: debug
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
@@ -37,5 +39,9 @@ secrets:
     file: callisto/secrets/google_credentials.json
   gcs_credentials:
     file: ~/.config/gcloud/application_default_credentials.json
+  tls_keys_private:
+    file: callisto/keys/localhost.key
+  tls_keys_public:
+    file: callisto/keys/localhost.crt
 
 
