@@ -21,6 +21,7 @@ import {
 
 import { CrewBuilder } from "./CrewBuilder";
 import { addShip } from "./ServerManager";
+import { EntitySelector, EntitySelectorType } from "./EntitySelector";
 import {
   scaleVector,
   vectorToString,
@@ -47,76 +48,36 @@ export type FireState = FireAction[];
 export type FireActionMsg = { [key: string]: FireState };
 
 function ShipList(args: {
-  computerShipName: string | null;
-  setComputerShipName: (shipName: string | null) => void;
+  computerShip: Ship | null;
+  setComputerShip: (ship: Ship | null) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
 }) {
-  const serverEntities = useContext(EntitiesServerContext);
-
-  const ships = serverEntities.entities.ships;
-
-  const selectRef = useRef<HTMLSelectElement>(null);
-  useEffect(() => {
-    if (selectRef.current != null) {
-      selectRef.current.value =
-        (args.computerShipName && args.computerShipName) || "";
-    }
-  }, [args.computerShipName]);
-
-  function handleShipListSelectChange(
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) {
-    const value = event.target.value;
-
-    const selectedShip = serverEntities.entities.ships.find(
-      (ship) => ship.name === value
-    );
-
-    if (selectedShip == null) {
-      args.setComputerShipName(null);
-    } else {
-      args.setComputerShipName(selectedShip.name);
-    }
-  }
-
   function moveCameraToShip() {
     if (args.camera == null) {
       console.log("Cannot move camera because camera object in Three is null.");
       return;
     }
-    if (args.computerShipName) {
-      const ship = serverEntities.entities.ships.find(
-        (ship) => ship.name === args.computerShipName
-      );
-      if (ship) {
-        const downCamera = new THREE.Vector3(0, 0, 40);
-        downCamera.applyQuaternion(args.camera.quaternion);
-        const new_camera_pos = new THREE.Vector3(
-          ship.position[0] * SCALE,
-          ship.position[1] * SCALE,
-          ship.position[2] * SCALE
-        ).add(downCamera);
-        args.setCameraPos(new_camera_pos);
-      }
+    if (args.computerShip) {
+      const downCamera = new THREE.Vector3(0, 0, 40);
+      downCamera.applyQuaternion(args.camera.quaternion);
+      const new_camera_pos = new THREE.Vector3(
+        args.computerShip.position[0] * SCALE,
+        args.computerShip.position[1] * SCALE,
+        args.computerShip.position[2] * SCALE
+      ).add(downCamera);
+      args.setCameraPos(new_camera_pos);
     }
   }
 
   return (
     <div className="control-launch-div">
       <h2 className="ship-list-label">Ship: </h2>
-      <select
-        id="ship-list-dropdown"
-        className="select-dropdown control-name-input control-input"
-        name="ship_list_choice"
-        ref={selectRef}
-        defaultValue={args.computerShipName || ""}
-        onChange={handleShipListSelectChange}>
-        <option key="none" value=""></option>
-        {ships.map((ship) => (
-          <option key={ship.name + "-ship_list"}>{ship.name}</option>
-        ))}
-      </select>
+      <EntitySelector
+        filter={[EntitySelectorType.Ship]}
+        onChange={(entity) => args.setComputerShip(entity as Ship)}
+        current={args.computerShip}
+      />
       <button className="control-input blue-button" onClick={moveCameraToShip}>
         Go
       </button>
@@ -165,7 +126,8 @@ function ShipDesignList(args: {
     }) => {
       const weapon_name = new Weapon(weapon.kind, weapon.mount).toString();
 
-      const [quant, suffix] = weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
+      const [quant, suffix] =
+        weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
       return `${quant} ${weapon_name}${suffix}`;
     };
 
@@ -176,9 +138,11 @@ function ShipDesignList(args: {
     if (compressed.length === 0) {
       weaponDesc = ["This ship is unarmed."];
     } else if (compressed.length === 1) {
-      weaponDesc =  ["Weapons are ",describeWeapon(compressed[0])];
+      weaponDesc = ["Weapons are ", describeWeapon(compressed[0])];
     } else {
-      weaponDesc.push("and " + describeWeapon(compressed[compressed.length - 1]));
+      weaponDesc.push(
+        "and " + describeWeapon(compressed[compressed.length - 1])
+      );
       weaponDesc = ["Weapons are "].concat(weaponDesc);
     }
     return (
@@ -211,10 +175,21 @@ function ShipDesignList(args: {
           data-tooltip-id={args.shipDesignName + "ship-description-tip"}
           data-tooltip-content={args.shipDesignName}
           data-tooltip-delay-show={700}>
-          {Object.values(args.shipDesigns).sort((a, b) => a.displacement > b.displacement ? 1 : a.displacement < b.displacement ? -1 : a.name.localeCompare(b.name))
-          .map((design) => (
-            <option key={design.name + "-ship_list"} value={design.name} >{`${design.name} (${design.displacement})`}</option>
-          ))}
+          {Object.values(args.shipDesigns)
+            .sort((a, b) =>
+              a.displacement > b.displacement
+                ? 1
+                : a.displacement < b.displacement
+                ? -1
+                : a.name.localeCompare(b.name)
+            )
+            .map((design) => (
+              <option
+                key={design.name + "-ship_list"}
+                value={
+                  design.name
+                }>{`${design.name} (${design.displacement})`}</option>
+            ))}
         </select>
         <Tooltip
           id={args.shipDesignName + "ship-description-tip"}
@@ -295,84 +270,88 @@ function AddShip(args: {
 
   return (
     <Accordion id="add-ship-header" title="Add Ship" initialOpen={false}>
-    <form id="add-ship" className="control-form" onSubmit={handleSubmit}>
-      <label className="control-label">
-        Name
-        <input
-          className="control-name-input control-input"
-          name="name"
-          type="text"
-          onChange={handleChange}
-          value={addShip.name}
+      <form id="add-ship" className="control-form" onSubmit={handleSubmit}>
+        <label className="control-label">
+          Name
+          <input
+            className="control-name-input control-input"
+            name="name"
+            type="text"
+            onChange={handleChange}
+            value={addShip.name}
+          />
+        </label>
+        <label className="control-label">
+          Position (km)
+          <div className="coordinate-input">
+            <input
+              className="control-input"
+              name="xpos"
+              type="text"
+              value={addShip.xpos}
+              onChange={handleChange}
+            />
+            <input
+              className="control-input"
+              name="ypos"
+              type="text"
+              value={addShip.ypos}
+              onChange={handleChange}
+            />
+            <input
+              className="control-input"
+              name="zpos"
+              type="text"
+              value={addShip.zpos}
+              onChange={handleChange}
+            />
+          </div>
+        </label>
+        <label className="control-label">
+          Velocity (m/s)
+          <div className="coordinate-input">
+            <input
+              className="control-input"
+              name="xvel"
+              type="text"
+              value={addShip.xvel}
+              onChange={handleChange}
+            />
+            <input
+              className="control-input"
+              name="yvel"
+              type="text"
+              value={addShip.yvel}
+              onChange={handleChange}
+            />
+            <input
+              className="control-input"
+              name="zvel"
+              type="text"
+              value={addShip.zvel}
+              onChange={handleChange}
+            />
+          </div>
+        </label>
+        <ShipDesignList
+          shipDesignName={addShip.design}
+          setShipDesignName={(design) =>
+            addShipUpdate({ ...addShip, design: design })
+          }
+          shipDesigns={args.shipDesignTemplates}
         />
-      </label>
-      <label className="control-label">
-        Position (km)
-        <div className="coordinate-input">
-          <input
-            className="control-input"
-            name="xpos"
-            type="text"
-            value={addShip.xpos}
-            onChange={handleChange}
-          />
-          <input
-            className="control-input"
-            name="ypos"
-            type="text"
-            value={addShip.ypos}
-            onChange={handleChange}
-          />
-          <input
-            className="control-input"
-            name="zpos"
-            type="text"
-            value={addShip.zpos}
-            onChange={handleChange}
-          />
-        </div>
-      </label>
-      <label className="control-label">
-        Velocity (m/s)
-        <div className="coordinate-input">
-          <input
-            className="control-input"
-            name="xvel"
-            type="text"
-            value={addShip.xvel}
-            onChange={handleChange}
-          />
-          <input
-            className="control-input"
-            name="yvel"
-            type="text"
-            value={addShip.yvel}
-            onChange={handleChange}
-          />
-          <input
-            className="control-input"
-            name="zvel"
-            type="text"
-            value={addShip.zvel}
-            onChange={handleChange}
-          />
-        </div>
-      </label>
-      <ShipDesignList
-        shipDesignName={addShip.design}
-        setShipDesignName={(design) =>
-          addShipUpdate({ ...addShip, design: design })
-        }
-        shipDesigns={args.shipDesignTemplates}
-      />
-      <hr />
-      <CrewBuilder shipName={addShip.name} updateCrew={(crew: Crew) => addShipUpdate({ ...addShip, crew: crew })} shipDesign={args.shipDesignTemplates[addShip.design]}/>
-      <input
-        className="control-input control-button blue-button"
-        type="submit"
-        value="Add"
-      />
-    </form>
+        <hr />
+        <CrewBuilder
+          shipName={addShip.name}
+          updateCrew={(crew: Crew) => addShipUpdate({ ...addShip, crew: crew })}
+          shipDesign={args.shipDesignTemplates[addShip.design]}
+        />
+        <input
+          className="control-input control-button blue-button"
+          type="submit"
+          value="Add"
+        />
+      </form>
     </Accordion>
   );
 }
@@ -382,8 +361,8 @@ export function Controls(args: {
     fireActions: { [key: string]: FireState },
     callback: EntityRefreshCallback
   ) => void;
-  computerShipName: string | null;
-  setComputerShipName: (ship: string | null) => void;
+  computerShip: Ship | null;
+  setComputerShip: (ship: Ship | null) => void;
   shipDesignTemplates: ShipDesignTemplates;
   getAndShowPlan: (
     entity_name: string | null,
@@ -398,9 +377,8 @@ export function Controls(args: {
   showRange: string | null;
   setShowRange: (target: string | null) => void;
 }) {
-
   // fire_actions is, for each ship, all weapons grouped together by kind and mount.
-  // This allows them to be displayed as a single button with a count, and 
+  // This allows them to be displayed as a single button with a count, and
   // track how many are used.
   const [fire_actions, setFireActions] = useState(
     {} as {
@@ -418,30 +396,25 @@ export function Controls(args: {
     }
   );
 
-  const [fire_target, setFireTarget] = useState("");
+  const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
   const serverEntities = useContext(EntitiesServerContext);
 
-  const computerShip = serverEntities.entities.ships.find(
-    (ship) => ship.name === args.computerShipName
-  );
-
-  const computerShipDesign = computerShip
-    ? args.shipDesignTemplates[computerShip.design]
+  const computerShipDesign = args.computerShip
+    ? args.shipDesignTemplates[args.computerShip.design]
     : null;
 
   if (
     computerShipDesign &&
-    args.computerShipName &&
-    !fire_actions[args.computerShipName]
+    args.computerShip &&
+    !fire_actions[args.computerShip.name]
   ) {
     const compressed_weapons = computerShipDesign.compressedWeapons();
     setFireActions({
       ...fire_actions,
-      [args.computerShipName]: { weapons: compressed_weapons, state: [] },
+      [args.computerShip.name]: { weapons: compressed_weapons, state: [] },
     });
   }
-
 
   function handleFireCommand(attacker: string, target: string, weapon: string) {
     if (!computerShipDesign) {
@@ -531,172 +504,171 @@ export function Controls(args: {
               designName: string,
               crew: Crew
             ) =>
-              addShip(
-                name,
-                position,
-                velocity,
-                acceleration,
-                designName,
-                crew,
-              )
+              addShip(name, position, velocity, acceleration, designName, crew)
             }
             shipDesignTemplates={args.shipDesignTemplates}
           />
         )}
       <hr />
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
-        <ShipList 
-        computerShipName={args.computerShipName}
-        setComputerShipName={(ship) => {
-          args.setShowRange(null);
-          args.setComputerShipName(ship);
-          setFireTarget("");
-        }}
-        setCameraPos={args.setCameraPos}
-        camera={args.camera}
-      />
-      {computerShip && (
-        <>
-          <div className="vital-stats-bloc">
-            <div className="stats-bloc-entry">
-              <h2>Design</h2>
-              <pre className="plan-accel-text">{computerShip.design}</pre>
+        <ShipList
+          computerShip={args.computerShip}
+          setComputerShip={(ship) => {
+            args.setShowRange(null);
+            args.setComputerShip(ship);
+            setFireTarget(null);
+          }}
+          setCameraPos={args.setCameraPos}
+          camera={args.camera}
+        />
+        {args.computerShip && (
+          <>
+            <div className="vital-stats-bloc">
+              <div className="stats-bloc-entry">
+                <h2>Design</h2>
+                <pre className="plan-accel-text">
+                  {args.computerShip.design}
+                </pre>
+              </div>
+              <div className="stats-bloc-entry">
+                <h2>Hull</h2>
+                <pre className="plan-accel-text">{`${
+                  args.computerShip.current_hull
+                }(${
+                  args.shipDesignTemplates[args.computerShip.design].hull
+                })`}</pre>
+              </div>
+              <div className="stats-bloc-entry">
+                <h2>Armor</h2>
+                <pre className="plan-accel-text">{`${
+                  args.computerShip.current_armor
+                }(${
+                  args.shipDesignTemplates[args.computerShip.design].armor
+                })`}</pre>
+              </div>
             </div>
-            <div className="stats-bloc-entry">
-              <h2>Hull</h2>
-              <pre className="plan-accel-text">{`${computerShip.current_hull}(${
-                args.shipDesignTemplates[computerShip.design].hull
-              })`}</pre>
+            <div className="vital-stats-bloc">
+              <div className="stats-bloc-entry">
+                <h2>Man</h2>
+                <pre className="plan-accel-text">{`${
+                  args.computerShip.current_maneuver
+                }(${
+                  args.shipDesignTemplates[args.computerShip.design].maneuver
+                })`}</pre>
+              </div>
+              <div className="stats-bloc-entry">
+                <h2>Jmp</h2>
+                <pre className="plan-accel-text">{`${
+                  args.computerShip.current_jump
+                }(${
+                  args.shipDesignTemplates[args.computerShip.design].jump
+                })`}</pre>
+              </div>
+              <div className="stats-bloc-entry">
+                <h2>Power</h2>
+                <pre className="plan-accel-text">{`${
+                  args.computerShip.current_power
+                }(${
+                  args.shipDesignTemplates[args.computerShip.design].power
+                })`}</pre>
+              </div>
+              <div className="stats-bloc-entry">
+                <h2>Sensors</h2>
+                <pre className="plan-accel-text">
+                  {args.computerShip.current_sensors}
+                </pre>
+              </div>
             </div>
-            <div className="stats-bloc-entry">
-              <h2>Armor</h2>
-              <pre className="plan-accel-text">{`${
-                computerShip.current_armor
-              }(${args.shipDesignTemplates[computerShip.design].armor})`}</pre>
-            </div>
-          </div>
-          <div className="vital-stats-bloc">
-            <div className="stats-bloc-entry">
-              <h2>Man</h2>
-              <pre className="plan-accel-text">{`${
-                computerShip.current_maneuver
-              }(${
-                args.shipDesignTemplates[computerShip.design].maneuver
-              })`}</pre>
-            </div>
-            <div className="stats-bloc-entry">
-              <h2>Jmp</h2>
-              <pre className="plan-accel-text">{`${computerShip.current_jump}(${
-                args.shipDesignTemplates[computerShip.design].jump
-              })`}</pre>
-            </div>
-            <div className="stats-bloc-entry">
-              <h2>Power</h2>
-              <pre className="plan-accel-text">{`${
-                computerShip.current_power
-              }(${args.shipDesignTemplates[computerShip.design].power})`}</pre>
-            </div>
-            <div className="stats-bloc-entry">
-              <h2>Sensors</h2>
+            <h2 className="control-form">Current Position</h2>
+            <div style={{ display: "flex", justifyContent: "space-around" }}>
               <pre className="plan-accel-text">
-                {computerShip.current_sensors}
+                {"(" +
+                  (args.computerShip.position[0] / POSITION_SCALE).toFixed(0) +
+                  ", " +
+                  (args.computerShip.position[1] / POSITION_SCALE).toFixed(0) +
+                  ", " +
+                  (args.computerShip.position[2] / POSITION_SCALE).toFixed(0) +
+                  ")"}
               </pre>
+              <span>
+                <input
+                  type="checkbox"
+                  checked={args.showRange !== null}
+                  onChange={() => {
+                    if (args.showRange === null && args.computerShip) {
+                      args.setShowRange(args.computerShip.name);
+                    } else {
+                      args.setShowRange(null);
+                    }
+                  }}
+                />
+                &nbsp;Ranges
+              </span>
             </div>
-          </div>
-          <h2 className="control-form">Current Position</h2>
-          <div style={{ display: "flex", justifyContent: "space-around" }}>
-            <pre className="plan-accel-text">
-              {"(" +
-                (computerShip.position[0] / POSITION_SCALE).toFixed(0) +
-                ", " +
-                (computerShip.position[1] / POSITION_SCALE).toFixed(0) +
-                ", " +
-                (computerShip.position[2] / POSITION_SCALE).toFixed(0) +
-                ")"}
-            </pre>
-            <span>
-              <input
-                type="checkbox"
-                checked={args.showRange !== null}
-                onChange={() => {
-                  if (args.showRange === null) {
-                    args.setShowRange(computerShip.name);
-                  } else {
-                    args.setShowRange(null);
-                  }
-                }}
-              />
-              &nbsp;Ranges
-            </span>
-          </div>
-          <h2 className="control-form">
-            Current Plan (s @ m/s<sup>2</sup>)
-          </h2>
-          <NavigationPlan plan={computerShip.plan} />
-          <hr />
-          <div className="control-form">
-            <label className="control-label">
-              <h2>Fire Control</h2>
-              <div className="control-launch-div">
-                Target:
-                <select
-                  className="control-name-input control-input"
-                  name="fire_target"
-                  id="fire-target"
-                  value={fire_target}
-                  onChange={(e) => setFireTarget(e.target.value)}>
-                  <option key="none" value=""></option>
-                  {serverEntities.entities.ships
-                    .filter((candidate) => candidate.name !== computerShip.name)
-                    .map((notMeShip) => (
-                      <option key={notMeShip.name} value={notMeShip.name}>
-                        {notMeShip.name}&nbsp;(
-                        {findRangeBand(
+            <h2 className="control-form">
+              Current Plan (s @ m/s<sup>2</sup>)
+            </h2>
+            <NavigationPlan plan={args.computerShip.plan} />
+            <hr />
+            <div className="control-form">
+              <label className="control-label">
+                <h2>Fire Control</h2>
+                <div className="control-launch-div">
+                  Target:
+                  <EntitySelector
+                    filter={[EntitySelectorType.Ship]}
+                    onChange={setFireTarget}
+                    current={fireTarget}
+                    exclude={args.computerShip.name}
+                    formatter={(name, entity) => {
+                      if (args.computerShip) {
+                        return `${name} (${findRangeBand(
                           vectorDistance(
-                            computerShip.position,
-                            notMeShip.position
+                            args.computerShip.position,
+                            entity.position
                           )
-                        )}
+                        )})`;
+                      } else {
+                        return "";
+                      }
+                    }}
+                  />
+                </div>
+                <div className="weapon-list">
+                  {fire_actions[args.computerShip.name] &&
+                    Object.values(fire_actions[args.computerShip.name].weapons).map(
+                      (weapon, id) =>
+                        weapon.kind !== "Sand" && (
+                          <WeaponButton
+                            key={"weapon-" + args.computerShip?.name + "-" + id}
+                            weapon={weapon.kind}
+                            mount={weapon.mount}
+                            count={weapon.total - weapon.used}
+                            onClick={() => {
+                              handleFireCommand(
+                                args.computerShip ? args.computerShip.name : "",
+                                fireTarget ? fireTarget.name : "",
+                                new Weapon(weapon.kind, weapon.mount).toString()
+                              );
+                            }}
+                            disable={!fireTarget}
+                          />
                         )
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="weapon-list">
-                {fire_actions[computerShip.name] &&
-                  Object.values(fire_actions[computerShip.name].weapons).map(
-                    (weapon, id) =>
-                      weapon.kind !== "Sand" &&(
-                        <WeaponButton
-                          key={"weapon-" + computerShip.name + "-" + id}
-                          weapon={weapon.kind}
-                          mount={weapon.mount}
-                          count={weapon.total - weapon.used}
-                          onClick={() => {
-                            handleFireCommand(
-                              computerShip.name,
-                              fire_target,
-                              new Weapon(weapon.kind, weapon.mount).toString()
-                            );
-                          }}
-                          disable={fire_target.length === 0}
-                        />
-                      )
-                  )}
-              </div>
-            </label>
-          </div>
-        </>
-      )}
-      {computerShip &&
-        computerShipDesign &&
-        (fire_actions[computerShip.name]?.state || []).length > 0 && (
-          <FireActions
-            actions={fire_actions[computerShip?.name].state || []}
-            design={computerShipDesign}
-            computerShipName={computerShip.name}
-          />
+                    )}
+                </div>
+              </label>
+            </div>
+          </>
         )}
+        {args.computerShip &&
+          computerShipDesign &&
+          (fire_actions[args.computerShip.name]?.state || []).length > 0 && (
+            <FireActions
+              actions={fire_actions[args.computerShip?.name].state || []}
+              design={computerShipDesign}
+              computerShipName={args.computerShip.name}
+            />
+          )}
       </Accordion>
       <button
         className="control-input control-button blue-button button-next-round"
@@ -714,7 +686,7 @@ export function Controls(args: {
           );
           setFireActions({});
           args.setShowRange(null);
-          args.setComputerShipName(null);
+          //args.setComputerShip(null);
         }}>
         Next Round
       </button>

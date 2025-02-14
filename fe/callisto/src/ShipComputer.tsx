@@ -1,7 +1,6 @@
 import React from "react";
-import { useContext, useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
-  EntitiesServerContext,
   FlightPathResult,
   Ship,
   Planet,
@@ -16,8 +15,8 @@ import { setPlan, setCrewActions } from "./ServerManager";
 import { EntitySelectorType, EntitySelector } from "./EntitySelector";
 
 export function ShipComputer(args: {
-  shipName: string;
-  setComputerShipName: (shipName: string | null) => void;
+  ship: Ship;
+  setComputerShip: (ship: Ship | null) => void;
   proposedPlan: FlightPathResult | null;
   resetProposedPlan: () => void;
   getAndShowPlan: (
@@ -28,11 +27,9 @@ export function ShipComputer(args: {
     standoff: number
   ) => void;
 }) {
-  const serverEntities = useContext(EntitiesServerContext);
-
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
   const ship =
-    serverEntities.entities.ships.find((ship) => ship.name === args.shipName) ||
+    args.ship ||
     new Ship(
       "Error",
       [0, 0, 0],
@@ -54,9 +51,33 @@ export function ShipComputer(args: {
 
   if (ship == null) {
     console.error(
-      `(ShipComputer) Unable to find ship of name "${args.shipName}!`
+      `(ShipComputer) Unable to find ship of name "${args.ship}!`
     );
   }
+
+  const [currentNavTarget, setCurrentNavTarget] = useState<Entity | null>(null);
+
+  useEffect(() => {
+    if (currentNavTarget == null) {
+      setNavigationTarget(initNavigationTargetState);
+      return;
+    }
+
+    const standoff = currentNavTarget instanceof Planet ? (((currentNavTarget as Planet).radius * 1.1) / POSITION_SCALE).toFixed(1) : "1000";
+
+    setNavigationTarget({
+      p_x: (currentNavTarget.position[0] / POSITION_SCALE).toFixed(0),
+      p_y: (currentNavTarget.position[1] / POSITION_SCALE).toFixed(0),
+      p_z: (currentNavTarget.position[2] / POSITION_SCALE).toFixed(0),
+      v_x: currentNavTarget.velocity[0].toFixed(1),
+      v_y: currentNavTarget.velocity[1].toFixed(1),
+      v_z: currentNavTarget.velocity[2].toFixed(1),
+      standoff,
+    });
+
+    // Also implicitly compute a plan since most of the time this is what the user wants.
+    args.getAndShowPlan(ship.name, currentNavTarget.position, currentNavTarget.velocity, currentNavTarget.velocity, Number(standoff));
+  }, [currentNavTarget]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.
@@ -123,36 +144,10 @@ export function ShipComputer(args: {
     console.log(
       `Computing route for ${ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} with standoff ${standoff}`
     );
+
+    // Called directly - usually when the user has specifically modified the values.
+    // Can also be called implicitly in handleNavTargetSelect
     args.getAndShowPlan(ship.name, end_pos, end_vel, target_vel, standoff);
-  }
-
-  function handleNavTargetSelect(entity: Entity | null) {
-    if (entity == null) {
-      setNavigationTarget(initNavigationTargetState);
-      return;
-    }
-
-    const p_x = (entity.position[0] / POSITION_SCALE).toFixed(0);
-    const p_y = (entity.position[1] / POSITION_SCALE).toFixed(0);
-    const p_z = (entity.position[2] / POSITION_SCALE).toFixed(0);
-    const v_x = entity.velocity[0].toFixed(1);
-    const v_y = entity.velocity[1].toFixed(1);
-    const v_z = entity.velocity[2].toFixed(1);
-    const standoff = (
-      entity instanceof Ship
-        ? 1000
-        : ((entity as Planet).radius * 1.1) / POSITION_SCALE
-    ).toFixed(1);
-
-    setNavigationTarget({
-      p_x,
-      p_y,
-      p_z,
-      v_x,
-      v_y,
-      v_z,
-      standoff,
-    });
   }
 
   function handleAssignPlan() {
@@ -330,7 +325,7 @@ export function ShipComputer(args: {
       <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
         <label className="control-label" style={{ display: "flex" }}>
           Nav Target:
-          <EntitySelector filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]} onChange={handleNavTargetSelect} exclude={ship.name} />
+          <EntitySelector filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]} current={currentNavTarget} onChange={setCurrentNavTarget} exclude={ship.name} />
         </label>
         <div className="target-details-div">
           <label className="control-label">
@@ -421,7 +416,7 @@ export function ShipComputer(args: {
         className="control-input control-button blue-button"
         onClick={() => {
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
-          args.setComputerShipName(null);
+          args.setComputerShip(null);
         }}>
         Close
       </button>

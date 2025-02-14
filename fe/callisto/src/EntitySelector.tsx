@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useContext, useState } from "react";
+import { useContext } from "react";
 import { Entity } from "./Universal";
 import { EntitiesServerContext } from "./Universal";
 
@@ -12,26 +12,23 @@ export enum EntitySelectorType {
 interface EntitySelectorProps {
   filter: EntitySelectorType[];
   onChange: (entity: Entity | null) => void;
+  current: Entity | null;
   exclude?: string;
-  initial?: string;
+  formatter?: (name: string, entity: Entity) => string;
 }
 
-export const EntitySelector: React.FC<EntitySelectorProps> = ({filter, onChange, exclude, initial}) => {
+export const EntitySelector: React.FC<EntitySelectorProps> = ({
+  filter,
+  onChange,
+  current,
+  exclude,
+  formatter,
+}) => {
   const entities = useContext(EntitiesServerContext).entities;
-  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
 
-  if (initial !== undefined) {
-    const initial_entity =
-      entities.ships.find((ship) => ship.name === initial) ||
-      entities.planets.find((planet) => planet.name === initial) ||
-      entities.missiles.find((missile) => missile.name === initial);
-
-    if (initial_entity !== undefined) {
-      setSelectedEntity(initial_entity);
-    } else {
-      console.error(`(EntitySelector) Initial entity ${initial} not found!`);
-    }
-  }
+  // Create a formatter that handles one not being provided.
+  const nf = (name: string, entity: Entity) =>
+    formatter ? formatter(name, entity) : name;
 
   function handleSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
@@ -39,7 +36,6 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({filter, onChange,
     if (filter.includes(EntitySelectorType.Ship)) {
       const shipTarget = entities.ships.find((ship) => ship.name === value);
       if (shipTarget != null) {
-        setSelectedEntity(shipTarget);
         onChange(shipTarget);
         return;
       }
@@ -50,7 +46,6 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({filter, onChange,
         (planet) => planet.name === value
       );
       if (planetTarget != null) {
-        setSelectedEntity(planetTarget);
         onChange(planetTarget);
         return;
       }
@@ -61,43 +56,47 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({filter, onChange,
         (missile) => missile.name === value
       );
       if (missileTarget != null) {
-        setSelectedEntity(missileTarget);
         onChange(missileTarget);
         return;
       }
     }
 
-    setSelectedEntity(null);
     onChange(null);
   }
 
   return (
-    <select
-      className="select-dropdown control-name-input control-input"
-      name="entity_selector"
-      value={selectedEntity ? selectedEntity.name : ""}
-      onChange={handleSelectChange}>
-      <option key="none" value=""></option>
-      {filter.includes(EntitySelectorType.Ship) &&
-        entities.ships
-          .filter((candidate) => candidate.name !== exclude)
-          .map((notMeShip) => (
-            <option key={notMeShip.name} value={notMeShip.name}>
-              {notMeShip.name}
-            </option>
-          ))}
-      {filter.includes(EntitySelectorType.Planet) &&
-        entities.planets.map((planet) => (
-          <option key={planet.name} value={planet.name}>
-            {planet.name}
-          </option>
-        ))}
-      {filter.includes(EntitySelectorType.Missile) &&
-        entities.missiles.map((missile) => (
-          <option key={missile.name} value={missile.name}>
-            {missile.name}
-          </option>
-        ))}
-    </select>
+    <>
+      <select
+        className="select-dropdown control-name-input control-input"
+        name="entity_selector"
+        value={current ? current.name : ""}
+        onChange={handleSelectChange}>
+        <option key="el-none" value=""></option>
+        {filter.includes(EntitySelectorType.Ship) &&
+          entities.ships
+            .filter((candidate) => candidate.name !== exclude)
+            .map((notMeShip) => (
+              <option key={"els"+notMeShip.name} value={notMeShip.name}>
+                {nf(notMeShip.name, notMeShip)}
+              </option>
+            ))}
+        {filter.includes(EntitySelectorType.Planet) &&
+          entities.planets
+            .filter((candidate) => candidate.name !== exclude)
+            .map((planet) => (
+              <option key={"elp-"+planet.name} value={planet.name}>
+                {nf(planet.name, planet)}
+              </option>
+            ))}
+        {filter.includes(EntitySelectorType.Missile) &&
+          entities.missiles
+            .filter((candidate) => candidate.name !== exclude)
+            .map((missile) => (
+              <option key={"elm-"+missile.name} value={missile.name}>
+                {nf(missile.name, missile)}
+              </option>
+            ))}
+      </select>
+    </>
   );
 };
