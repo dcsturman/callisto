@@ -242,10 +242,7 @@ fn generic_on_request(
 
     if let Some((key, email)) = valid_pair {
         // We have a logged in user with a valid email, so record that.
-        debug!(
-            "(on_request) Found valid email {} for session key: {}",
-            email, key
-        );
+        debug!("(on_request) Found valid email {}", email,);
         (response, key.clone(), Some(email.clone()))
     } else if cookies.is_empty() {
         // The case where we need to create a new session key.
