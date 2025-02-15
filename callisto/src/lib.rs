@@ -62,107 +62,91 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 ///
 // Note the lifetimes do seem to be needed and the implicit_hasher rule has impact across
 // a lot of the codebase.  So excluding those two clippy warnings.
-#[allow(
-    clippy::too_many_lines,
-    clippy::needless_lifetimes,
-    clippy::implicit_hasher
-)]
+#[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
 pub async fn handle_request(
-    message: RequestMsg,
-    server: &mut Server,
-    session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+  message: RequestMsg,
+  server: &mut Server,
+  session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Vec<ResponseMsg> {
-    info!("(handle_request) Request: {:?}", message);
+  info!("(handle_request) Request: {:?}", message);
 
-    // If the connection has not logged in yet, that is the priority.
-    // Nothing else is processed until login is complete.
-    if !server.validated_user()
-        && !matches!(message, RequestMsg::Login(_))
-        && !matches!(message, RequestMsg::Quit)
-    {
-        return vec![ResponseMsg::PleaseLogin];
-    }
+  // If the connection has not logged in yet, that is the priority.
+  // Nothing else is processed until login is complete.
+  if !server.validated_user() && !matches!(message, RequestMsg::Login(_)) && !matches!(message, RequestMsg::Quit) {
+    return vec![ResponseMsg::PleaseLogin];
+  }
 
-    match message {
-        RequestMsg::Login(login_msg) => {
-            // But we put all this business logic into [Server.login](Server::login) rather than
-            // split it up between the two locations.
-            // Our role here is just to repackage the response and put it on the wire.
-            server
-                .login(login_msg, &session_keys)
-                .await
-                .map_or_else(error_msg, |auth_response| {
-                    // Now that we are successfully logged in, we can send back the design templates and entities - no need to wait to be asked.
-                    build_successful_auth_msgs(auth_response, server, &session_keys)
-                })
-        }
-        RequestMsg::AddShip(ship) => response_with_update(server, server.add_ship(ship)),
-        RequestMsg::SetCrewActions(request) => {
-            response_with_update(server, server.set_crew_actions(&request))
-        }
-        RequestMsg::AddPlanet(planet) => response_with_update(server, server.add_planet(planet)),
-        RequestMsg::Remove(name) => response_with_update(server, server.remove(&name)),
-        RequestMsg::SetPlan(plan) => response_with_update(server, server.set_plan(&plan)),
-        RequestMsg::Update(fire_actions) => {
-            let effects = server.update(&fire_actions);
-            vec![
-                ResponseMsg::Effects(effects),
-                ResponseMsg::EntityResponse(server.clone_entities()),
-            ]
-        }
-        RequestMsg::ComputePath(path_goal) => server
-            .compute_path(&path_goal)
-            .map_or_else(error_msg, |path| vec![ResponseMsg::FlightPath(path)]),
-        RequestMsg::LoadScenario(scenario_name) => {
-            simple_response(server.load_scenario(&scenario_name).await)
-        }
-        RequestMsg::Logout => {
-            info!("Received and processing logout request.");
-            server.logout(&session_keys);
-            let users = session_keys
-                .lock()
-                .unwrap()
-                .values()
-                .filter_map(Clone::clone)
-                .collect();
-            vec![ResponseMsg::LogoutResponse, ResponseMsg::Users(users)]
-        }
-        RequestMsg::Quit => {
-            if !server.in_test_mode() {
-                warn!("Receiving a quit request in non-test mode.  Ignoring.");
-            }
-            info!("Received and processing quit request.");
-            panic!("Time to exit");
-        }
-        RequestMsg::EntitiesRequest => {
-            info!("Received and processing get request.");
-            let json = server.get_entities();
-            vec![ResponseMsg::EntityResponse(json)]
-        }
-        RequestMsg::DesignTemplateRequest => {
-            info!("Received and processing get designs request.");
-            let template_msg = server.get_designs();
-            vec![ResponseMsg::DesignTemplateResponse(template_msg)]
-        }
+  match message {
+    RequestMsg::Login(login_msg) => {
+      // But we put all this business logic into [Server.login](Server::login) rather than
+      // split it up between the two locations.
+      // Our role here is just to repackage the response and put it on the wire.
+      server
+        .login(login_msg, &session_keys)
+        .await
+        .map_or_else(error_msg, |auth_response| {
+          // Now that we are successfully logged in, we can send back the design templates and entities - no need to wait to be asked.
+          build_successful_auth_msgs(auth_response, server, &session_keys)
+        })
     }
+    RequestMsg::AddShip(ship) => response_with_update(server, server.add_ship(ship)),
+    RequestMsg::SetCrewActions(request) => response_with_update(server, server.set_crew_actions(&request)),
+    RequestMsg::AddPlanet(planet) => response_with_update(server, server.add_planet(planet)),
+    RequestMsg::Remove(name) => response_with_update(server, server.remove(&name)),
+    RequestMsg::SetPlan(plan) => response_with_update(server, server.set_plan(&plan)),
+    RequestMsg::Update(fire_actions) => {
+      let effects = server.update(&fire_actions);
+      vec![
+        ResponseMsg::Effects(effects),
+        ResponseMsg::EntityResponse(server.clone_entities()),
+      ]
+    }
+    RequestMsg::ComputePath(path_goal) => server
+      .compute_path(&path_goal)
+      .map_or_else(error_msg, |path| vec![ResponseMsg::FlightPath(path)]),
+    RequestMsg::LoadScenario(scenario_name) => simple_response(server.load_scenario(&scenario_name).await),
+    RequestMsg::Logout => {
+      info!("Received and processing logout request.");
+      server.logout(&session_keys);
+      let users = session_keys.lock().unwrap().values().filter_map(Clone::clone).collect();
+      vec![ResponseMsg::LogoutResponse, ResponseMsg::Users(users)]
+    }
+    RequestMsg::Quit => {
+      if !server.in_test_mode() {
+        warn!("Receiving a quit request in non-test mode.  Ignoring.");
+      }
+      info!("Received and processing quit request.");
+      panic!("Time to exit");
+    }
+    RequestMsg::EntitiesRequest => {
+      info!("Received and processing get request.");
+      let json = server.get_entities();
+      vec![ResponseMsg::EntityResponse(json)]
+    }
+    RequestMsg::DesignTemplateRequest => {
+      info!("Received and processing get designs request.");
+      let template_msg = server.get_designs();
+      vec![ResponseMsg::DesignTemplateResponse(template_msg)]
+    }
+  }
 }
 
 #[allow(clippy::unnecessary_wraps)]
 fn error_msg(err_msg: String) -> Vec<ResponseMsg> {
-    vec![ResponseMsg::Error(err_msg)]
+  vec![ResponseMsg::Error(err_msg)]
 }
 
 fn response_with_update(server: &Server, result: Result<String, String>) -> Vec<ResponseMsg> {
-    result.map_or_else(error_msg, |msg| {
-        vec![
-            ResponseMsg::SimpleMsg(msg),
-            ResponseMsg::EntityResponse(server.clone_entities()),
-        ]
-    })
+  result.map_or_else(error_msg, |msg| {
+    vec![
+      ResponseMsg::SimpleMsg(msg),
+      ResponseMsg::EntityResponse(server.clone_entities()),
+    ]
+  })
 }
 
 fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
-    result.map_or_else(error_msg, |msg| vec![ResponseMsg::SimpleMsg(msg)])
+  result.map_or_else(error_msg, |msg| vec![ResponseMsg::SimpleMsg(msg)])
 }
 
 /// Build the list of messages to send back to the client after a successful login.
@@ -181,22 +165,17 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 #[allow(clippy::implicit_hasher)]
 #[must_use]
 pub fn build_successful_auth_msgs(
-    auth_response: AuthResponse,
-    server: &Server,
-    session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  auth_response: AuthResponse,
+  server: &Server,
+  session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Vec<ResponseMsg> {
-    let users: Vec<String> = session_keys
-        .lock()
-        .unwrap()
-        .values()
-        .filter_map(Clone::clone)
-        .collect();
-    vec![
-        ResponseMsg::AuthResponse(auth_response),
-        ResponseMsg::DesignTemplateResponse(server.get_designs()),
-        ResponseMsg::EntityResponse(server.clone_entities()),
-        ResponseMsg::Users(users),
-    ]
+  let users: Vec<String> = session_keys.lock().unwrap().values().filter_map(Clone::clone).collect();
+  vec![
+    ResponseMsg::AuthResponse(auth_response),
+    ResponseMsg::DesignTemplateResponse(server.get_designs()),
+    ResponseMsg::EntityResponse(server.clone_entities()),
+    ResponseMsg::Users(users),
+  ]
 }
 
 /**
@@ -214,41 +193,39 @@ pub fn build_successful_auth_msgs(
  * Will panic with a helpful message if GCS authentication fails.  GCS authentication needs to be handled outside (and prior to)
  * this function.
  */
-pub async fn read_local_or_cloud_file(
-    filename: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // Check if the filename is a GCS path
-    if filename.starts_with("gs://") {
-        // Extract bucket name from the GCS URI
-        let parts: Vec<&str> = filename.split('/').collect();
-        let bucket_name = parts[2];
-        let object_name = parts[3..].join("/");
+pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+  // Check if the filename is a GCS path
+  if filename.starts_with("gs://") {
+    // Extract bucket name from the GCS URI
+    let parts: Vec<&str> = filename.split('/').collect();
+    let bucket_name = parts[2];
+    let object_name = parts[3..].join("/");
 
-        // Create a GCS client
-        let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
-            panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
-        });
+    // Create a GCS client
+    let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
+      panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
+    });
 
-        let client = Client::new(config);
+    let client = Client::new(config);
 
-        // Read the file from GCS
-        let data = client
-            .download_object(
-                &GetObjectRequest {
-                    bucket: bucket_name.to_string(),
-                    object: object_name.to_string(),
-                    ..Default::default()
-                },
-                &Range::default(),
-            )
-            .await?;
-        Ok(data)
-    } else {
-        // Read the file locally
-        let file = File::open(filename)?;
-        let mut buf_reader = BufReader::new(file);
-        let mut content: Vec<u8> = Vec::with_capacity(1024);
-        buf_reader.read_to_end(&mut content)?;
-        Ok(content)
-    }
+    // Read the file from GCS
+    let data = client
+      .download_object(
+        &GetObjectRequest {
+          bucket: bucket_name.to_string(),
+          object: object_name.to_string(),
+          ..Default::default()
+        },
+        &Range::default(),
+      )
+      .await?;
+    Ok(data)
+  } else {
+    // Read the file locally
+    let file = File::open(filename)?;
+    let mut buf_reader = BufReader::new(file);
+    let mut content: Vec<u8> = Vec::with_capacity(1024);
+    buf_reader.read_to_end(&mut content)?;
+    Ok(content)
+  }
 }
