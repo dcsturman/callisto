@@ -25,6 +25,7 @@ import {
   EntityToShowProvider,
   EntityList,
   FlightPathResult,
+  Ship,
   ShipDesignTemplates,
   ViewControlParams,
   DesignTemplatesContext,
@@ -41,7 +42,7 @@ export const GOOGLE_OAUTH_CLIENT_ID: string =
 export function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [email, setEmail] = useState<string | null>(null);
-  const [computerShipName, setComputerShipName] = useState<string | null>(null);
+  const [computerShip, setComputerShip] = useState<Ship | null>(null);
   const [socketReady, setSocketReady] = useState<boolean>(false);
 
   // Logically entities and templates make more sense in the Simulator. However,
@@ -55,24 +56,6 @@ export function App() {
   
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
   const [users, setUsers] = useState<UserList>([] as unknown as UserList);
-
-  console.groupCollapsed("Callisto Config parameters");
-  if (process.env.REACT_APP_CALLISTO_BACKEND) {
-    console.log(
-      "REACT_APP_CALLISTO_BACKEND is set to: " + process.env.REACT_APP_CALLISTO_BACKEND
-    );
-  } else {
-    console.log("REACT_APP_CALLISTO_BACKEND is not set.");
-    console.log("ENV is set to: " + JSON.stringify(process.env));
-  }
-
-  console.log("Running on " + window.location.href);
-  if (process.env.REACT_APP_RUN_TUTORIAL) {
-    console.log("Tutorial is set to run.");
-  } else {
-    console.log("Tutorial is not set to run.");
-  }
-  console.groupEnd();
 
   useEffect(() => {
     setMessageHandlers(
@@ -100,8 +83,8 @@ export function App() {
             email={email}
             socketReady={socketReady}
             setEmail={setEmail}
-            computerShipName={computerShipName}
-            setComputerShipName={setComputerShipName}
+            computerShip={computerShip}
+            setComputerShip={setComputerShip}
             users={users}
             setUsers={setUsers}
           />
@@ -125,8 +108,8 @@ function Simulator({
   email,
   setEmail,
   socketReady,
-  computerShipName,
-  setComputerShipName,
+  computerShip,
+  setComputerShip,
   setUsers,
   users
 }: {
@@ -134,8 +117,8 @@ function Simulator({
   email: string | null;
   setEmail: (email: string | null) => void;
   socketReady: boolean;
-  computerShipName: string | null;
-  setComputerShipName: (ship: string | null) => void;
+  computerShip: Ship | null;
+  setComputerShip: (ship: Ship | null) => void;
   users: UserList;
   setUsers: (users: UserList) => void;
 }) {
@@ -222,6 +205,11 @@ function Simulator({
     };
   });
 
+  let tutorial_ship: Ship | null = entitiesContext.entities.ships.find((ship) => ship.name === "Killer") || null;
+  if (tutorial_ship === undefined) {
+    tutorial_ship = null;
+  }
+
   return (
     <EntityToShowProvider
       value={{
@@ -236,15 +224,15 @@ function Simulator({
                 setRunTutorial={setRunTutorial}
                 stepIndex={stepIndex}
                 setStepIndex={setStepIndex}
-                selectAShip={() => setComputerShipName("Killer")}
+                selectAShip={() => setComputerShip(tutorial_ship)}
                 setAuthenticated={setAuthenticated}
               />
             )}
             <Controls
               nextRound={(fireActions) => nextRound(fireActions)}
               shipDesignTemplates={templatesContext.templates}
-              computerShipName={computerShipName}
-              setComputerShipName={setComputerShipName}
+              computerShip={computerShip}
+              setComputerShip={setComputerShip}
               getAndShowPlan={getAndShowPlan}
               setCameraPos={setCameraPos}
               camera={camera}
@@ -274,10 +262,10 @@ function Simulator({
                   setEmail={setEmail}
                 />
               </div>
-              {computerShipName && (
+              {computerShip && (
                 <ShipComputer
-                  shipName={computerShipName}
-                  setComputerShipName={setComputerShipName}
+                  ship={computerShip}
+                  setComputerShip={setComputerShip}
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
@@ -324,7 +312,7 @@ function Simulator({
                   controlJumpDistance={viewControls.jumpDistance}
                 />
                 <Ships
-                  setComputerShipName={setComputerShipName}
+                  setComputerShip={setComputerShip}
                   showRange={showRange}
                 />
                 <Missiles />
