@@ -123,14 +123,11 @@ impl Server {
       .get(&ship.design)
       .ok_or_else(|| format!("(Server.add_ship) Could not find design {}.", ship.design))?;
 
-    self.entities.lock().unwrap().add_ship(
-      ship.name,
-      ship.position,
-      ship.velocity,
-      ship.acceleration,
-      design,
-      ship.crew,
-    );
+    self
+      .entities
+      .lock()
+      .unwrap()
+      .add_ship(ship.name, ship.position, ship.velocity, design, ship.crew);
 
     Ok("Add ship action executed".to_string())
   }

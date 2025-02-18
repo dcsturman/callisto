@@ -837,7 +837,7 @@ mod tests {
   use super::*;
   use crate::entity::Vec3;
   use crate::payloads::FireAction;
-  use crate::ship::{BaySize, FlightPlan, Weapon, WeaponMount, WeaponType};
+  use crate::ship::{BaySize, Weapon, WeaponMount, WeaponType};
   use crate::ship::{Ship, ShipDesignTemplate};
   use cgmath::{MetricSpace, Zero};
 
@@ -894,7 +894,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(-1000.0, 1000.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(attacker_design),
       None,
     );
@@ -902,7 +901,6 @@ mod tests {
       "Target".to_string(),
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(target_design),
       None,
     );
@@ -974,7 +972,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::zero(),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1025,7 +1022,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::zero(),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(design),
       None,
     );
@@ -1218,7 +1214,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &attacker_design,
       None,
     );
@@ -1227,7 +1222,6 @@ mod tests {
       "Defender".to_string(),
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &defender_design,
       None,
     );
@@ -1307,7 +1301,6 @@ mod tests {
         "Defender".to_string(),
         Vec3::new(1000.0, 0.0, 0.0),
         Vec3::zero(),
-        FlightPlan::default(),
         &defender_design,
         None,
       );
@@ -1361,7 +1354,6 @@ mod tests {
         "Defender".to_string(),
         Vec3::new(1000.0, 0.0, 0.0),
         Vec3::zero(),
-        FlightPlan::default(),
         &defender_design,
         None,
       );
@@ -1408,7 +1400,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1416,7 +1407,6 @@ mod tests {
       "Defender".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1458,7 +1448,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1467,7 +1456,6 @@ mod tests {
       // Position defender very far away (beyond weapon range)
       Vec3::new(6_000_000.0, 6_000_000.0, 6_000_000.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1499,7 +1487,6 @@ mod tests {
       // Position defender very far away (beyond weapon range)
       Vec3::new(1_000_000.0, 1_000_000.0, 1_000_000.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );

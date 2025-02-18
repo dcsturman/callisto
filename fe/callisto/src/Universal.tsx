@@ -1,4 +1,5 @@
 import { createContext } from "react";
+import { Crew } from "./CrewBuilder";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -34,6 +35,8 @@ export class Ship extends Entity {
   dodge_thrust: number = 0;
   assist_gunners: boolean = false;
 
+  crew: Crew;
+
   constructor(
     name: string,
     position: [number, number, number],
@@ -66,11 +69,32 @@ export class Ship extends Entity {
     this.active_weapons = active_weapons;
     this.dodge_thrust = dodge_thrust;
     this.assist_gunners = assist_gunners;
+    this.crew = new Crew(active_weapons.length);
   }
 
+  static default(): Ship {
+    return new Ship(
+      "New Ship",
+      [0, 0, 0],
+      [0, 0, 0],
+      [[[0, 0, 0], 0], null],
+      "Buccaneer",
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      "",
+      [true, true],
+      0,
+      false
+    );
+  }
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   static parse(json: any): Ship {
-    return new Ship(
+    const ship = new Ship(
       json.name,
       json.position,
       json.velocity,
@@ -88,6 +112,8 @@ export class Ship extends Entity {
       json.dodge_thrust,
       json.assist_gunners
     );
+    ship.crew.parse(json.crew);
+    return ship;
   }
 }
 

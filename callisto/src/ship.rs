@@ -56,7 +56,7 @@ pub struct Ship {
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
-  crew: Crew,
+  pub crew: Crew,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -178,7 +178,6 @@ impl Ship {
     name: String,
     position: Vec3,
     velocity: Vec3,
-    plan: FlightPlan,
     design: &Arc<ShipDesignTemplate>,
     crew: Option<Crew>,
   ) -> Self {
@@ -186,7 +185,7 @@ impl Ship {
       name,
       position,
       velocity,
-      plan,
+      plan: FlightPlan::default(),
       design: design.clone(),
       current_hull: design.hull,
       current_armor: design.armor,
@@ -781,7 +780,7 @@ fn renormalize(orig: Vec3, limit: f64) -> Vec3 {
 }
 impl Default for FlightPlan {
   fn default() -> Self {
-    FlightPlan(AccelPair(Vec3::zero(), 0), None)
+    FlightPlan(AccelPair(Vec3::zero(), 10000), None)
   }
 }
 
@@ -1105,13 +1104,11 @@ mod tests {
   fn test_ship_setters_and_getters() {
     let initial_position = Vec3::new(0.0, 0.0, 0.0);
     let initial_velocity = Vec3::new(1.0, 1.0, 1.0);
-    let initial_plan = FlightPlan::default();
 
     let mut ship = Ship::new(
       "TestShip".to_string(),
       initial_position,
       initial_velocity,
-      initial_plan.clone(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1120,7 +1117,6 @@ mod tests {
     assert_eq!(ship.get_name(), "TestShip");
     assert_eq!(ship.get_position(), initial_position);
     assert_eq!(ship.get_velocity(), initial_velocity);
-    assert_eq!(ship.plan, initial_plan);
 
     // Test setters
     let new_name = "UpdatedShip".to_string();
@@ -1297,13 +1293,11 @@ mod tests {
   fn test_ship_set_flight_plan() {
     let initial_position = Vec3::new(0.0, 0.0, 0.0);
     let initial_velocity = Vec3::new(1.0, 1.0, 1.0);
-    let initial_plan = FlightPlan::default();
 
     let mut ship = Ship::new(
       "TestShip".to_string(),
       initial_position,
       initial_velocity,
-      initial_plan.clone(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1355,7 +1349,6 @@ mod tests {
       "ship1".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1363,7 +1356,6 @@ mod tests {
       "ship2".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1399,7 +1391,7 @@ mod tests {
     let flight_plan = FlightPlan::default();
 
     let mut iter = flight_plan.iter();
-    assert_eq!(iter.next(), Some(AccelPair(Vec3::zero(), 0)));
+    assert_eq!(iter.next(), Some(AccelPair(Vec3::zero(), 10000)));
     assert_eq!(iter.next(), None);
 
     // Test case 4: FlightPlan with zero acceleration
@@ -1432,7 +1424,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1471,7 +1462,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       Some(Crew::new()),
     );
@@ -1492,7 +1482,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       Some(Crew::new()),
     );
@@ -1641,14 +1630,7 @@ mod tests {
     });
 
     // Create a ship with lower current values
-    let mut ship = Ship::new(
-      "TestShip".to_string(),
-      Vec3::zero(),
-      Vec3::zero(),
-      FlightPlan::default(),
-      &design,
-      None,
-    );
+    let mut ship = Ship::new("TestShip".to_string(), Vec3::zero(), Vec3::zero(), &design, None);
 
     // Manually set current values to be lower than design values
     ship.current_hull = 50; // Lower than design.hull (100)

@@ -35,8 +35,6 @@ pub struct AddShipMsg {
   pub position: Vec3,
   #[serde_as(as = "Vec3asVec")]
   pub velocity: Vec3,
-  #[serde_as(as = "Vec3asVec")]
-  pub acceleration: Vec3,
   pub design: String,
   pub crew: Option<Crew>,
 }
@@ -243,7 +241,6 @@ mod tests {
       name: "ship1".to_string(),
       position: Vec3::zero(),
       velocity: Vec3::zero(),
-      acceleration: Vec3::zero(),
       design: default_template_name.clone(),
       crew: None,
     };
@@ -251,7 +248,6 @@ mod tests {
         "name": "ship1",
         "position": [0.0, 0.0, 0.0],
         "velocity": [0.0, 0.0, 0.0],
-        "acceleration": [0.0, 0.0, 0.0],
         "design": "Buccaneer"
     });
 
@@ -269,7 +265,6 @@ mod tests {
       name: "ship1".to_string(),
       position: Vec3::zero(),
       velocity: Vec3::zero(),
-      acceleration: Vec3::zero(),
       design: default_template_name.clone(),
       crew: Some(crew),
     };
@@ -277,7 +272,6 @@ mod tests {
         "name": "ship1",
         "position": [0.0, 0.0, 0.0],
         "velocity": [0.0, 0.0, 0.0],
-        "acceleration": [0.0, 0.0, 0.0],
         "design": "Buccaneer",
         "crew": {
             "pilot": 2,

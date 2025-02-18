@@ -205,7 +205,7 @@ impl Entity for Missile {
 mod tests {
   use super::*;
   use crate::entity::Vec3;
-  use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
+  use crate::ship::{Ship, ShipDesignTemplate};
   use cgmath::Zero;
   use std::sync::{Arc, RwLock};
 
@@ -220,7 +220,6 @@ mod tests {
         String::from("target1"),
         Vec3::zero(),
         Vec3::zero(),
-        FlightPlan::default(),
         &Arc::new(ShipDesignTemplate::default()),
         None,
       ))),

@@ -3,12 +3,12 @@ import {
   EntityRefreshCallback,
   EntityList,
   FlightPathResult,
+  Ship,
   ShipDesignTemplates,
   ShipDesignTemplate,
 } from "./Universal";
 import { FireActionMsg } from "./Controls";
 import { Effect } from "./Effects";
-import { Crew } from "./CrewBuilder";
 import { UserList } from "./UserList";
 
 export const CALLISTO_BACKEND =
@@ -186,27 +186,13 @@ export function login(code: string) {
   socket.send(JSON.stringify(payload));
 }
 
-export function addShip(
-  name: string,
-  position: [number, number, number],
-  velocity: [number, number, number],
-  acceleration: [number, number, number],
-  design: string,
-  crew: Crew
-) {
+export function addShip(ship: Ship) {
   console.log(
-    `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
+    `Adding Ship ${ship.name}: Position ${ship.position}, Velocity ${ship.velocity}`
   );
 
   const payload = {
-    AddShip: {
-      name: name,
-      position: position,
-      velocity: velocity,
-      acceleration: acceleration,
-      design: design,
-      crew: crew,
-    },
+    AddShip: { name: ship.name, position: ship.position, velocity: ship.velocity, design: ship.design, crew: ship.crew },
   };
 
   socket.send(JSON.stringify(payload));
@@ -341,6 +327,11 @@ function handleEntities(
   setEntities: (entities: EntityList) => void
 ) {
   const entities = EntityList.parse(json);
+  console.groupCollapsed("Received Entities: ");
+  for (const v of entities.ships) {
+    console.log(` ${JSON.stringify(v)}`);
+  }
+  console.groupEnd();
   setEntities(entities);
 }
 

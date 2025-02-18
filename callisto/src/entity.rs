@@ -142,24 +142,38 @@ impl Entities {
     Ok(entities)
   }
 
+  /// Add a ship to the entities.
+  ///
+  /// # Arguments
+  /// * `name` - The name of the ship.
+  /// * `position` - The position of the ship.
+  /// * `velocity` - The velocity of the ship.
+  /// * `design` - The design of the ship.
+  /// * `crew` - The crew of the ship.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read an existing ship that is being modified.
   pub fn add_ship(
     &mut self,
     name: String,
     position: Vec3,
     velocity: Vec3,
-    acceleration: Vec3,
     design: &Arc<ShipDesignTemplate>,
     crew: Option<Crew>,
   ) {
-    let ship = Ship::new(
-      name.clone(),
-      position,
-      velocity,
-      FlightPlan::acceleration(acceleration),
-      design,
-      crew,
-    );
-    self.ships.insert(name, Arc::new(RwLock::new(ship)));
+    if let Some(ship) = self.ships.get(&name) {
+      // If the ship already exists, then just update appropriate values.
+      let mut ship = ship.write().unwrap();
+      ship.set_position(position);
+      ship.set_velocity(velocity);
+      ship.design = design.clone();
+      ship.crew = crew.unwrap_or_default();
+      ship.fixup_current_values();
+    } else {
+      // Create a new ship and add it to the ship table
+      let ship = Arc::new(RwLock::new(Ship::new(name.clone(), position, velocity, design, crew)));
+      self.ships.insert(name, ship);
+    };
   }
 
   /// Add a planet to the entities.
@@ -739,7 +753,6 @@ mod tests {
       String::from("Ship1"),
       Vec3::new(1.0, 2.0, 3.0),
       Vec3::zero(),
-      Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -748,7 +761,6 @@ mod tests {
     entities.add_ship(
       String::from("Ship2"),
       Vec3::new(4.0, 5.0, 6.0),
-      Vec3::zero(),
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
@@ -806,7 +818,6 @@ mod tests {
       String::from("Ship1"),
       Vec3::new(1.0, 2.0, 3.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
@@ -814,14 +825,12 @@ mod tests {
       String::from("Ship2"),
       Vec3::new(4.0, 5.0, 6.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
     entities.add_ship(
       String::from("Ship3"),
       Vec3::new(7.0, 8.0, 9.0),
-      Vec3::zero(),
       Vec3::zero(),
       &design,
       None,
@@ -845,7 +854,6 @@ mod tests {
       String::from("Ship1"),
       Vec3::new(1000.0, 2000.0, 3000.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
@@ -853,14 +861,12 @@ mod tests {
       String::from("Ship2"),
       Vec3::new(4000.0, 5000.0, 6000.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
     entities.add_ship(
       String::from("Ship3"),
       Vec3::new(7000.0, 8000.0, 9000.0),
-      Vec3::zero(),
       Vec3::zero(),
       &design,
       None,
@@ -936,7 +942,6 @@ mod tests {
       String::from("Ship1"),
       Vec3::new(1.0, 2.0, 3.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
@@ -949,7 +954,6 @@ mod tests {
     entities.add_ship(
       String::from("Ship2"),
       Vec3::new(4.0, 5.0, 6.0),
-      Vec3::zero(),
       Vec3::zero(),
       &design,
       None,
@@ -1015,7 +1019,6 @@ mod tests {
       String::from("Ship1"),
       Vec3::new(300.0, 200.0, 300.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
@@ -1023,7 +1026,6 @@ mod tests {
     entities.add_ship(
       String::from("Ship2"),
       Vec3::new(800.0, 500.0, 300.0),
-      Vec3::zero(),
       Vec3::zero(),
       &design,
       None,
@@ -1284,7 +1286,6 @@ mod tests {
       String::from("Ship1"),
       Vec3::new(1000.0, 2000.0, 3000.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
@@ -1292,14 +1293,12 @@ mod tests {
       String::from("Ship2"),
       Vec3::new(4000.0, 5000.0, 6000.0),
       Vec3::zero(),
-      Vec3::zero(),
       &design,
       None,
     );
     entities.add_ship(
       String::from("Ship3"),
       Vec3::new(7000.0, 8000.0, 9000.0),
-      Vec3::zero(),
       Vec3::zero(),
       &design,
       None,
@@ -1383,7 +1382,6 @@ mod tests {
       "Ship1".to_string(),
       Vec3::new(1.0, 2.0, 3.0),
       Vec3::new(0.1, 0.2, 0.3),
-      Vec3::new(2.0, 0.0, 3.0),
       &design,
       None,
     );
@@ -1391,7 +1389,6 @@ mod tests {
       "Ship1".to_string(),
       Vec3::new(1.0, 2.0, 3.0),
       Vec3::new(0.1, 0.2, 0.3),
-      Vec3::new(2.0, 0.0, 3.0),
       &design,
       None,
     );
@@ -1444,7 +1441,6 @@ mod tests {
       "Ship2".to_string(),
       Vec3::new(10.0, 11.0, 12.0),
       Vec3::new(1.0, 1.1, 1.2),
-      Vec3::new(1.0, 1.1, 1.2),
       &design,
       None,
     );
@@ -1457,7 +1453,6 @@ mod tests {
     entities2.add_ship(
       "Ship2".to_string(),
       Vec3::new(10.0, 11.0, 12.0),
-      Vec3::new(1.0, 1.1, 1.2),
       Vec3::new(1.0, 1.1, 1.2),
       &design,
       None,
@@ -1545,7 +1540,6 @@ mod tests {
       String::from("Ship1"),
       Vec3::new(1.0, 2.0, 3.0),
       Vec3::zero(),
-      Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1583,7 +1577,6 @@ mod tests {
     entities.add_ship(
       String::from("Ship1"),
       Vec3::new(1.0, 2.0, 3.0),
-      Vec3::zero(),
       Vec3::zero(),
       &design,
       None,
@@ -1672,7 +1665,6 @@ mod tests {
     entities.add_ship(
       String::from("TestShip"),
       Vec3::new(0.0, 0.0, 0.0),
-      Vec3::zero(),
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,

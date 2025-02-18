@@ -51,7 +51,7 @@ async fn test_simple_get() {
 async fn test_add_ship() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
-  let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,0.0],"design":"Buccaneer","current_hull":160,
+  let ship = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer","current_hull":160,
          "current_armor":5,
          "current_power":300,
          "current_maneuver":3,
@@ -943,13 +943,11 @@ async fn test_get_entities() {
   let ship_name = "TestShip".to_string();
   let ship_position = Vec3::new(1.0, 2.0, 3.0);
   let ship_velocity = Vec3::new(4.0, 5.0, 6.0);
-  let ship_acceleration = Vec3::new(0.0, 0.0, 0.0);
   server
     .add_ship(AddShipMsg {
       name: ship_name.clone(),
       position: ship_position,
       velocity: ship_velocity,
-      acceleration: ship_acceleration,
       design: ShipDesignTemplate::default().name.to_string(),
       crew: None,
     })
