@@ -1,10 +1,8 @@
-import React, { useContext, useState } from "react";
+import React, { useState } from "react";
 import * as THREE from "three";
 import { Accordion } from "./Accordion";
 import { AddShip } from "./AddShip";
 import {
-  EntitiesServerContext,
-  EntityRefreshCallback,
   Ship,
   ViewControlParams,
   Entity,
@@ -27,7 +25,7 @@ import {
 import { NavigationPlan } from "./ShipComputer";
 import { WeaponButton, FireActions } from "./WeaponUse";
 
-class FireAction {
+export class FireAction {
   target: string;
   weapon_id: number;
   called_shot_system: string | null;
@@ -35,6 +33,17 @@ class FireAction {
     this.weapon_id = weapon_id;
     this.target = target;
     this.called_shot_system = null;
+  }
+
+  toJSON() {
+    console.log("************************************* in FireAction.toJson()");
+    return {
+      FireAction: {
+        weapon_id: this.weapon_id,
+        target: this.target,
+        called_shot_system: this.called_shot_system,
+      },
+    };
   }
 }
 
@@ -82,7 +91,6 @@ function ShipList(args: {
 export function Controls(args: {
   nextRound: (
     fireActions: { [key: string]: FireState },
-    callback: EntityRefreshCallback
   ) => void;
   computerShip: Ship | null;
   setComputerShip: (ship: Ship | null) => void;
@@ -119,9 +127,9 @@ export function Controls(args: {
     }
   );
 
-  const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
-  const serverEntities = useContext(EntitiesServerContext);
+
+  const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
   const computerShipDesign = args.computerShip
     ? args.shipDesignTemplates[args.computerShip.design]
@@ -400,7 +408,6 @@ export function Controls(args: {
             Object.entries(fire_actions).reduce((acc, [key, value]) => {
               return { ...acc, [key]: value.state };
             }, {} as { [key: string]: FireState }),
-            serverEntities.handler
           );
           setFireActions({});
           args.setShowRange(null);

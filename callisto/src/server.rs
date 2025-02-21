@@ -10,8 +10,7 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
-  RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg,
+  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg, RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 

@@ -17,7 +17,7 @@ import {
 } from "./ServerManager";
 import { Users, UserList } from "./UserList";
 
-import { ShipComputer } from "./ShipComputer";
+import { ShipComputer, SensorState, SensorAction } from "./ShipComputer";
 
 import {
   Entity,
@@ -143,6 +143,11 @@ function Simulator({
   const [showRange, setShowRange] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
+  const [sensor_actions, setSensorActions] = useState(
+    {} as {
+      [actor: string]: SensorState;
+    }
+  );
 
   useEffect(() => {
     if (socketReady) {
@@ -229,7 +234,7 @@ function Simulator({
               />
             )}
             <Controls
-              nextRound={(fireActions) => nextRound(fireActions)}
+              nextRound={(fireActions) => nextRound(fireActions, sensor_actions)}
               shipDesignTemplates={templatesContext.templates}
               computerShip={computerShip}
               setComputerShip={setComputerShip}
@@ -269,6 +274,14 @@ function Simulator({
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
+                  sensor_action={sensor_actions[computerShip.name] || {action: SensorAction.None, target: ""}}
+                  setSensorAction={(action) => setSensorActions({...sensor_actions, [computerShip.name]: action})}
+                  sensor_locks={entitiesContext.entities.ships.reduce((acc, ship) => {
+                    if (ship.sensor_locks.includes(computerShip.name)) {
+                      acc.push(ship.name);
+                    }
+                    return acc;
+                  }, [] as string[])}
                 />
               )}
               {showResults && (

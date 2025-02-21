@@ -128,7 +128,6 @@ pub enum ShipAction {
     target: String,
   },
 }
-
 pub type ShipActionMsg = Vec<(String, Vec<ShipAction>)>;
 
 pub const EMPTY_FIRE_ACTIONS_MSG: ShipActionMsg = vec![];

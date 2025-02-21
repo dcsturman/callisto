@@ -15,6 +15,41 @@ import { setPlan, setCrewActions } from "./ServerManager";
 
 import { EntitySelectorType, EntitySelector } from "./EntitySelector";
 
+export enum SensorAction {
+  None,
+  JamMissiles,
+  BreakSensorLock,
+  SensorLock,
+  JamComms,
+}
+
+export class SensorState {
+  action: SensorAction = SensorAction.JamMissiles;
+  target: string = "";
+
+  constructor(action: SensorAction, target: string) {
+    this.action = action;
+    this.target = target;
+  }
+
+  toJSON() {
+    switch (this.action) {
+      case SensorAction.None:
+        return undefined;
+      case SensorAction.JamMissiles:
+        return "JamMissiles";
+      case SensorAction.BreakSensorLock:
+        return { BreakSensorLock: { target: this.target } };
+      case SensorAction.SensorLock:
+        return { SensorLock: { target: this.target } };
+      case SensorAction.JamComms:
+        return { JamComms: { target: this.target } };
+    }
+  }
+}
+
+export type SensorActionMsg = { [key: string]: SensorState };
+
 export function ShipComputer(args: {
   ship: Ship;
   setComputerShip: (ship: Ship | null) => void;
@@ -27,9 +62,10 @@ export function ShipComputer(args: {
     target_vel: [number, number, number] | null,
     standoff: number
   ) => void;
+  sensor_action: SensorState;
+  setSensorAction: (action: SensorState) => void;
+  sensor_locks: string[];
 }) {
-  const serverEntities = useContext(EntitiesServerContext);
-
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
   const ship =
     args.ship ||
@@ -49,7 +85,8 @@ export function ShipComputer(args: {
       "",
       [],
       0,
-      false
+      false,
+      []
     );
 
   if (ship == null) {
@@ -268,20 +305,19 @@ export function ShipComputer(args: {
     );
   }
 
-  function crewActions(): JSX.Element {
-    function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function pilotActions(): JSX.Element {
+    function handleCrewActionSubmit(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
       ship.dodge_thrust = agility;
       setCrewActions(ship.name, agility, assistGunners);
     }
-
     return (
       <>
-        <h2 className="control-form">Crew Actions</h2>
+        <h2 className="control-form">Pilot Actions</h2>
         <form
           id="crew-actions-form"
           className="control-form"
-          onSubmit={handleSubmit}>
+          onSubmit={handleCrewActionSubmit}>
           <div className="crew-actions-form-container">
             <label className="control-label">Dodge</label>
             <input
@@ -296,26 +332,6 @@ export function ShipComputer(args: {
               checked={assistGunners}
               onChange={() => setAssistGunners(!assistGunners)}
             />
-            <label className="control-label">Sensors</label>
-            <select className="control-input">
-              <option value="jam-missiles">Jam Missiles</option>
-              <option value="break-sensor-lock">Break Sensor Lock</option>
-              {serverEntities.entities.ships
-                .filter((s) => s.name !== ship.name)
-                .map((s) => (
-                  <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
-                    {"Sensor Lock: " + s.name}
-                  </option>
-                ))}
-
-              {serverEntities.entities.ships
-                .filter((s) => s.name !== ship.name)
-                .map((s) => (
-                  <option key={s.name + "-jam-comms"} value={"jc-" + s.name}>
-                    {"Jam Sensors: " + s.name}
-                  </option>
-                ))}
-            </select>
           </div>
           <input
             className="control-input control-button blue-button"
@@ -332,7 +348,13 @@ export function ShipComputer(args: {
   return (
     <div id="computer-window" className="computer-window">
       <h1>{title}</h1>
-      {crewActions()}
+      {pilotActions()}
+      <SensorActionChooser
+        ship={ship}
+        sensor_action={args.sensor_action}
+        setSensorAction={args.setSensorAction}
+        sensor_locks={args.sensor_locks}
+      />
       <hr />
       {accelerationManager()}
       <hr />
@@ -460,6 +482,103 @@ export function ShipComputer(args: {
     </div>
   );
 }
+
+function sensorActionToString(action: SensorState): string {
+  switch (action.action) {
+    case SensorAction.None:
+      return "none";
+    case SensorAction.JamMissiles:
+      return "jam-missiles";
+    case SensorAction.BreakSensorLock:
+      return "bsl-" + action.target;
+    case SensorAction.SensorLock:
+      return "sl-" + action.target;
+    case SensorAction.JamComms:
+      return "jc-" + action.target;
+  }
+}
+interface SensorActionChooserProps {
+  ship: Ship;
+  sensor_action: SensorState;
+  setSensorAction: (action: SensorState) => void;
+  sensor_locks: string[];
+}
+
+const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
+  ship,
+  sensor_action,
+  setSensorAction,
+  sensor_locks,
+}) => {
+  function handleSensorActionChange(
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) {
+    const value = event.target.value;
+    if (value === "none") {
+      setSensorAction(new SensorState(SensorAction.None, ""));
+      return;
+    } else if (value === "jam-missiles") {
+      setSensorAction(new SensorState(SensorAction.JamMissiles, ""));
+    } else if (value.startsWith("bsl-")) {
+      setSensorAction(
+        new SensorState(SensorAction.BreakSensorLock, value.substring(4))
+      );
+    } else if (value.startsWith("sl-")) {
+      setSensorAction(
+        new SensorState(SensorAction.SensorLock, value.substring(3))
+      );
+    } else if (value.startsWith("jc-")) {
+      setSensorAction(
+        new SensorState(SensorAction.JamComms, value.substring(3))
+      );
+    }
+  }
+  const serverEntities = useContext(EntitiesServerContext);
+
+  return (
+    <div className="control-label">
+      <h2 className="control-label">Sensor Actions</h2>
+      <select
+        className="sensor-action-select control-input "
+        value={sensorActionToString(sensor_action)}
+        onChange={handleSensorActionChange}>
+        <option value="none"></option>
+        <option value="jam-missiles">Jam Missiles</option>
+        {sensor_locks.map((s) => (
+          <option key={s + "-break-sensor-lock"} value={"bsl-" + s}>
+            {"Break Sensor Lock: " + s}
+          </option>
+        ))}
+        {serverEntities.entities.ships
+          .filter((s) => s.name !== ship.name && !serverEntities.entities.ships.find((s) => ship.name === s.name)?.sensor_locks.includes(s.name))
+          .map((s) => (
+            <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
+              {"Sensor Lock: " + s.name}
+            </option>
+          ))}
+
+        {serverEntities.entities.ships
+          .filter((s) => s.name !== ship.name)
+          .map((s) => (
+            <option key={s.name + "-jam-comms"} value={"jc-" + s.name}>
+              {"Jam Sensors: " + s.name}
+            </option>
+          ))}
+      </select>
+      {ship.sensor_locks.length > 0 && (
+        <>
+          <div className="control-label">
+            <h3 className="control-label">Sensor Locks</h3>
+            <span className="plan-accel-text">
+              {" "}
+              {serverEntities.entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export function NavigationPlan(args: {
   plan: [Acceleration, Acceleration | null];

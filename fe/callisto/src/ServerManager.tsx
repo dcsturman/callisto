@@ -7,7 +7,8 @@ import {
   ShipDesignTemplates,
   ShipDesignTemplate,
 } from "./Universal";
-import { FireActionMsg } from "./Controls";
+import { FireActionMsg, FireAction } from "./Controls";
+import { SensorActionMsg, SensorState } from "./ShipComputer";
 import { Effect } from "./Effects";
 import { UserList } from "./UserList";
 
@@ -204,7 +205,7 @@ export function setCrewActions(
   assist_gunners: boolean
 ) {
   const payload = {
-    SetCrewActions: {
+    SetPilotActions: {
       ship_name: target,
       dodge_thrust: dodge,
       assist_gunners: assist_gunners,
@@ -242,8 +243,22 @@ export async function setPlan(
   socket.send(JSON.stringify(payload));
 }
 
-export function nextRound(fireActions: FireActionMsg) {
-  const payload = { Update: Object.entries(fireActions) };
+// Issue - sensorState isn't an array, its a Map
+export function nextRound(fireActions: FireActionMsg, sensorActions: SensorActionMsg) {
+  type ShipActionMsg =  { [key: string]: (FireAction | SensorState)[] };
+  const internal: ShipActionMsg = fireActions;
+
+  for (const [ship_name, actionState] of Object.entries(sensorActions)) {
+    if (internal[ship_name]) {
+      internal[ship_name] = [...internal[ship_name], actionState];
+    } else {
+      internal[ship_name] = [actionState];
+    }
+    
+  }
+  
+  const payload = { Update: Object.entries(internal)};
+  console.log("(nextRound) Sending payload: " + JSON.stringify(payload));
   socket.send(JSON.stringify(payload));
 }
 

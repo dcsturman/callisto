@@ -563,6 +563,7 @@ impl Entities {
                   .sensor_locks
                   .push(target.clone());
               }
+              debug!("***************(sensor_actions) Sensor lock on {target} established by {ship_name}: {:?}.", self.ships.get(ship_name).unwrap().read().unwrap().sensor_locks);
               vec![EffectMsg::Message {
                 content: format!("Sensor lock on {target} established by {ship_name}."),
               }]

@@ -38,7 +38,7 @@ use callisto::debug;
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use callisto::payloads::{
   AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
-  ShipAction, SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+  SetPilotActions, SetPlanMsg, ShipAction, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -1094,7 +1094,7 @@ async fn integration_malformed_requests() {
         target: "nonexistent_target".to_string(),
         called_shot_system: None,
       }],
-    )]),
+  )]),
   )
   .await;
   assert!(
