@@ -1,7 +1,8 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, FireAction};
+use crate::payloads::{EffectMsg, ShipAction};
+use rand::seq::SliceRandom;
 use rand::RngCore;
 
 use serde_with::serde_as;
@@ -9,7 +10,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
-use crate::combat::{attack, create_sand_counts, do_fire_actions};
+use crate::combat::{attack, create_sand_counts, do_fire_actions, roll_dice};
 use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::Planet;
@@ -154,12 +155,7 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read an existing ship that is being modified.
   pub fn add_ship(
-    &mut self,
-    name: String,
-    position: Vec3,
-    velocity: Vec3,
-    design: &Arc<ShipDesignTemplate>,
-    crew: Option<Crew>,
+    &mut self, name: String, position: Vec3, velocity: Vec3, design: &Arc<ShipDesignTemplate>, crew: Option<Crew>,
   ) {
     if let Some(ship) = self.ships.get(&name) {
       // If the ship already exists, then just update appropriate values.
@@ -192,13 +188,7 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read a planet.
   pub fn add_planet(
-    &mut self,
-    name: String,
-    position: Vec3,
-    color: String,
-    primary: Option<String>,
-    radius: f64,
-    mass: f64,
+    &mut self, name: String, position: Vec3, color: String, primary: Option<String>, radius: f64, mass: f64,
   ) -> Result<(), String> {
     debug!(
       "Add planet {} with position {:?},  color {:?}, primary {}, radius {:?}, mass {:?}, ",
@@ -228,16 +218,7 @@ impl Entities {
       ));
     }
 
-    let entity = Planet::new(
-      name.clone(),
-      position,
-      color,
-      radius,
-      mass,
-      primary,
-      primary_ptr,
-      dependency,
-    );
+    let entity = Planet::new(name.clone(), position, color, radius, mass, primary, primary_ptr, dependency);
 
     debug!("Added planet with fixed gravity wells {:?}", entity);
     self.planets.insert(name, Arc::new(RwLock::new(entity)));
@@ -336,10 +317,7 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
   pub fn fire_actions(
-    &mut self,
-    fire_actions: &[(String, Vec<FireAction>)],
-    ship_snapshot: &HashMap<String, Ship>,
-    rng: &mut dyn RngCore,
+    &mut self, fire_actions: &[(String, Vec<ShipAction>)], ship_snapshot: &HashMap<String, Ship>, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Create a snapshot of all the sand capabilities of each ship.
     let mut sand_counts = create_sand_counts(ship_snapshot);
@@ -403,6 +381,7 @@ impl Entities {
       a_ent.get_name().partial_cmp(b_ent.get_name()).unwrap()
     });
 
+    // Now update all (remaining) missiles.
     let mut effects = sorted_missiles
       .into_iter()
       .filter_map(|missile| {
@@ -517,6 +496,182 @@ impl Entities {
     }
 
     effects
+  }
+
+  /// Do all sensor actions.  These activities are done before any combat in a round
+  /// as they impact combat in that round (remove missiles, etc).
+  ///
+  /// # Arguments
+  /// * `actions` - The actions to perform, already reduced to just the sensor actions.
+  /// * `rng` - The random number generator to use.
+  ///
+  /// # Returns
+  /// A list of all the effects resulting from the sensor actions.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  pub fn sensor_actions(&mut self, actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    // First build a table that, for each ship, notes all the ships that have senor locks on it (i.e. we're reversing
+    // the structure).  That is for any ship name (entry), provide a list of every ship that has a sensor lock on the entry.
+    // We do this once, up front, to avoid rebuilding on each ShipAction::BreakSensorLock action.
+    let mut reverse_sensor_locks = HashMap::<String, Vec<String>>::new();
+    for ship in self.ships.values() {
+      for sensor_lock in &ship.read().unwrap().sensor_locks {
+        reverse_sensor_locks
+          .entry(sensor_lock.clone())
+          .or_default()
+          .push(ship.read().unwrap().get_name().to_string());
+      }
+    }
+
+    let mut effects = Vec::<EffectMsg>::new();
+
+    for (ship_name, actions) in actions {
+      let crew_sensor_skill = {
+        let Some(ship_rw) = self.ships.get(ship_name) else {
+          // Just in case the ship is no longer there (unlikely) warn and continue on to the next ship.
+          warn!("(Entity.do_sensor_actions) Cannot find ship {} for sensor actions.", ship_name);
+          continue;
+        };
+
+        ship_rw.read().unwrap().crew.get_sensors()
+      };
+
+      // Process the actions for each ship.
+      for action in actions {
+        effects.append(&mut match action {
+          ShipAction::JamMissiles => self.jam_missiles(ship_name, crew_sensor_skill, rng),
+          ShipAction::BreakSensorLock { target } => {
+            self.break_sensor_lock(ship_name, crew_sensor_skill, target, &reverse_sensor_locks, rng)
+          }
+
+          ShipAction::SensorLock { target } => {
+            // Check if sensor lock is achieved.
+            let check = i16::from(roll_dice(2, rng) + crew_sensor_skill) - 8;
+            if check > 0 {
+              // If there is sensor lock, record it.
+              // Scope the write lock so we don't hold it - its the only place we need to write.
+              {
+                // The unwrap after the get is safe as if the ship didn't exist the `continue` up
+                // above would have triggered.
+                self
+                  .ships
+                  .get(ship_name)
+                  .unwrap()
+                  .write()
+                  .unwrap()
+                  .sensor_locks
+                  .push(target.clone());
+              }
+              vec![EffectMsg::Message {
+                content: format!("Sensor lock on {target} established by {ship_name}."),
+              }]
+            } else {
+              vec![EffectMsg::Message {
+                content: format!("Sensor lock on {target} not established by {ship_name}."),
+              }]
+            }
+          }
+          ShipAction::JamComms { target } => {
+            let Some(opposing_ship) = self.ships.get(target) else {
+              warn!("(Entity.do_sensor_actions) Cannot find target {} for jamming comms.", target);
+              return Vec::default();
+            };
+            let opposed_skill = opposing_ship.read().unwrap().crew.get_sensors();
+            let check = i16::from(roll_dice(2, rng) + crew_sensor_skill) - i16::from(opposed_skill + roll_dice(2, rng));
+            if check >= 0 {
+              vec![EffectMsg::Message {
+                content: format!("{ship_name} is jamming comms on {target}."),
+              }]
+            } else {
+              vec![EffectMsg::Message {
+                content: format!("{ship_name} failed to jam comms on {target}."),
+              }]
+            }
+          }
+          ShipAction::FireAction { .. } => {
+            error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
+            Vec::default()
+          }
+        });
+      }
+    }
+    effects
+  }
+
+  fn jam_missiles(&mut self, ship_name: &String, crew_sensor_skill: u8, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let mut effects = Vec::<EffectMsg>::new();
+    // Find all missiles targeting this ship.
+    let targeting_missiles = self
+      .missiles
+      .iter()
+      .filter(|(_, missile)| missile.read().unwrap().target == *ship_name)
+      .map(|(missile_name, _missile)| missile_name.clone())
+      .collect::<Vec<_>>();
+    let dice = roll_dice(2, rng);
+    let check = i16::from(dice + crew_sensor_skill) - 10;
+    if check >= 0 {
+      // Deal with effect needing to allow one missile impact when the roll is made exactly.
+      // Cast is safe because from above check >= 0.
+      #[allow(clippy::cast_sign_loss)]
+      let num_missiles = (check as usize).min(1);
+      // Randomly pick the missiles that are destroyed.
+      let destroyed = targeting_missiles.choose_multiple(rng, num_missiles).collect::<Vec<_>>();
+      // Create for each destroyed missile an effect (exhaustion) and message.
+      effects.append(
+        &mut destroyed
+          .iter()
+          .flat_map(|missile_name| {
+            let dead_missile = self.missiles.remove(missile_name.as_str()).unwrap();
+            let missile = dead_missile.read().unwrap();
+            [
+              EffectMsg::ExhaustedMissile {
+                position: missile.get_position(),
+              },
+              EffectMsg::Message {
+                content: format!("Missile {} destroyed by jamming.", missile.get_name()),
+              },
+            ]
+          })
+          .collect::<Vec<_>>(),
+      );
+      // Remove the destroyed missiles from the list of all missiles.
+    } else {
+      // If the EW check failed, just let the users know.
+      effects.push(EffectMsg::Message {
+        content: format!("Missile jamming attempt by {ship_name} failed."),
+      });
+    }
+    effects
+  }
+
+  fn break_sensor_lock(
+    &self, ship_name: &String, crew_sensor_skill: u8, target: &str,
+    reverse_sensor_locks: &HashMap<String, Vec<String>>, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
+    // Check if the target of the BreakSensorLock has a sensor lock on this ship.
+    // Get the list of every ship with a sensor lock on current ship; make sure the target of the BreakSensorLock is in that list.
+    let valid_lock = reverse_sensor_locks
+      .get(ship_name)
+      .and_then(|ships_with_locks| ships_with_locks.iter().find(|&s| *s == target));
+    if valid_lock.is_some() {
+      let opposing_ship = self.ships.get(target).unwrap();
+      let opposed_skill = opposing_ship.read().unwrap().crew.get_sensors();
+      // Make an opposed check - this ship vs the one with the lock..
+      let check = i16::from(roll_dice(2, rng) + crew_sensor_skill) - i16::from(opposed_skill + roll_dice(2, rng));
+      if check >= 0 {
+        opposing_ship.write().unwrap().sensor_locks.retain(|s| s != ship_name);
+        vec![EffectMsg::Message {
+          content: format!("Sensor lock on {target} broken by {ship_name}."),
+        }]
+      } else {
+        vec![EffectMsg::Message {
+          content: format!("Sensor lock on {target} not broken by {ship_name}."),
+        }]
+      }
+    } else {
+      Vec::default()
+    }
   }
 
   /// Validate the entity data structure, performing some important post-load checks.
@@ -653,11 +808,7 @@ impl Serialize for Entities {
     }
 
     let mut entities = Entities {
-      ships: self
-        .ships
-        .values()
-        .map(|s| s.read().unwrap().clone())
-        .collect::<Vec<Ship>>(),
+      ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
       missiles: self
         .missiles
         .values()
@@ -672,15 +823,11 @@ impl Serialize for Entities {
 
     //The following sort_by is not necessary and adds inefficiency BUT ensures we serialize each item in the same order
     //each time. This makes writing tests a lot easier!
-    entities
-      .ships
-      .sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    entities.ships.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
     entities
       .missiles
       .sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
-    entities
-      .planets
-      .sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    entities.planets.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
 
     entities.serialize(serializer)
   }
@@ -735,12 +882,13 @@ pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::crew::{Crew, Skills};
   use crate::debug;
   use crate::ship::{config_test_ship_templates, ShipDesignTemplate};
   use assert_json_diff::assert_json_eq;
   use cgmath::assert_relative_eq;
   use cgmath::{Vector2, Zero};
-  use rand::rngs::SmallRng;
+  use rand::rngs::{mock::StepRng, SmallRng};
   use rand::SeedableRng;
   use serde_json::json;
 
@@ -788,10 +936,7 @@ mod tests {
 
     // Test Debug trait
     let debug_output = format!("{entities:?}");
-    assert_eq!(
-      display_output, debug_output,
-      "Display and Debug outputs should be identical"
-    );
+    assert_eq!(display_output, debug_output, "Display and Debug outputs should be identical");
 
     // Test empty Entities
     let empty_entities = Entities::new();
@@ -814,27 +959,9 @@ mod tests {
     let _ = pretty_env_logger::try_init();
     let mut entities = Entities::new();
     let design = Arc::new(ShipDesignTemplate::default());
-    entities.add_ship(
-      String::from("Ship1"),
-      Vec3::new(1.0, 2.0, 3.0),
-      Vec3::zero(),
-      &design,
-      None,
-    );
-    entities.add_ship(
-      String::from("Ship2"),
-      Vec3::new(4.0, 5.0, 6.0),
-      Vec3::zero(),
-      &design,
-      None,
-    );
-    entities.add_ship(
-      String::from("Ship3"),
-      Vec3::new(7.0, 8.0, 9.0),
-      Vec3::zero(),
-      &design,
-      None,
-    );
+    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
+    entities.add_ship(String::from("Ship2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), &design, None);
+    entities.add_ship(String::from("Ship3"), Vec3::new(7.0, 8.0, 9.0), Vec3::zero(), &design, None);
 
     assert_eq!(entities.ships.get("Ship1").unwrap().read().unwrap().get_name(), "Ship1");
     assert_eq!(entities.ships.get("Ship2").unwrap().read().unwrap().get_name(), "Ship2");
@@ -932,32 +1059,14 @@ mod tests {
       6.96e8,
       1.989e30,
     )?;
-    assert!(
-      entities.validate(),
-      "Entities with a single valid planet should be valid"
-    );
+    assert!(entities.validate(), "Entities with a single valid planet should be valid");
 
     // Test 3: Add a valid ship
-    entities.add_ship(
-      String::from("Ship1"),
-      Vec3::new(1.0, 2.0, 3.0),
-      Vec3::zero(),
-      &design,
-      None,
-    );
-    assert!(
-      entities.validate(),
-      "Entities with a valid planet and ship should be valid"
-    );
+    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
+    assert!(entities.validate(), "Entities with a valid planet and ship should be valid");
 
     // Test 4: Add a second ship
-    entities.add_ship(
-      String::from("Ship2"),
-      Vec3::new(4.0, 5.0, 6.0),
-      Vec3::zero(),
-      &design,
-      None,
-    );
+    entities.add_ship(String::from("Ship2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), &design, None);
     assert!(
       entities.validate(),
       "Entities with a valid planet and two ships should be valid"
@@ -985,10 +1094,7 @@ mod tests {
     entities
       .planets
       .insert(String::from("InvalidPlanet2"), Arc::new(RwLock::new(planet)));
-    assert!(
-      !entities.validate(),
-      "Entities with an invalid primary_ptr should be invalid"
-    );
+    assert!(!entities.validate(), "Entities with an invalid primary_ptr should be invalid");
 
     // Test 6: Fix the invalid primary_ptr
     {
@@ -1068,14 +1174,7 @@ mod tests {
     let mut entities = Entities::new();
 
     // Create some planets and see if they move.
-    entities.add_planet(
-      String::from("Sun"),
-      Vec3::zero(),
-      String::from("blue"),
-      None,
-      6.371e6,
-      6e24,
-    )?;
+    entities.add_planet(String::from("Sun"), Vec3::zero(), String::from("blue"), None, 6.371e6, 6e24)?;
 
     // Update the planet a few times
     let ship_snapshot = deep_clone(&entities.ships);
@@ -1319,6 +1418,7 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "sensor_locks": []
         },
         {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
         "current_hull":160,
@@ -1333,6 +1433,7 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "sensor_locks": []
         },
         {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
         "current_hull":160,
@@ -1347,6 +1448,7 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "sensor_locks": []
         }],
     "missiles":[],
     "planets":[
@@ -1422,10 +1524,7 @@ mod tests {
       .write()
       .unwrap()
       .set_position(Vec3::new(1.1, 2.1, 3.1));
-    assert_ne!(
-      entities1, entities2,
-      "Entities should not be equal after modifying a ship"
-    );
+    assert_ne!(entities1, entities2, "Entities should not be equal after modifying a ship");
 
     // Reset entities2
     entities2
@@ -1474,10 +1573,7 @@ mod tests {
 
     // Test with a different missile
     entities1.launch_missile("Ship1", "Ship2").unwrap();
-    assert_ne!(
-      entities1, entities2,
-      "Entities should not be equal with different missiles"
-    );
+    assert_ne!(entities1, entities2, "Entities should not be equal with different missiles");
 
     // Add the same missile to entities2
     entities2.launch_missile("Ship1", "Ship2").unwrap();
@@ -1492,10 +1588,7 @@ mod tests {
       .write()
       .unwrap()
       .set_position(Vec3::new(7.0 + 1e-32, 8.0, 9.0));
-    assert_eq!(
-      entities1, entities3,
-      "Entities should be equal within floating-point precision"
-    );
+    assert_eq!(entities1, entities3, "Entities should be equal within floating-point precision");
 
     // Test with a significant change
     entities3
@@ -1519,10 +1612,7 @@ mod tests {
       .write()
       .unwrap()
       .set_velocity(Vec3::new(0.41, 0.51, 0.61));
-    assert_ne!(
-      entities1, entities4,
-      "Entities should not be equal after velocity change"
-    );
+    assert_ne!(entities1, entities4, "Entities should not be equal after velocity change");
 
     Ok(())
   }
@@ -1574,13 +1664,7 @@ mod tests {
     let mut entities = Entities::new();
     let design = Arc::new(ShipDesignTemplate::default());
 
-    entities.add_ship(
-      String::from("Ship1"),
-      Vec3::new(1.0, 2.0, 3.0),
-      Vec3::zero(),
-      &design,
-      None,
-    );
+    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
 
     // Test launching a missile with an invalid target
     assert!(
@@ -1694,5 +1778,197 @@ mod tests {
     // Test setting flight plan for non-existent ship
     let result = entities.set_flight_plan("NonExistentShip", &plan);
     assert!(result.is_err(), "Setting flight plan for non-existent ship should fail");
+  }
+
+  fn create_test_ship_sensors(name: &str, sensor_skill: u8) -> Ship {
+    let mut crew = Crew::default();
+    crew.set_skill(Skills::Sensors, sensor_skill);
+    let mut ship = Ship::default();
+    ship.crew = crew;
+    ship.set_name(name.to_string());
+    ship
+  }
+
+  fn create_test_missile(name: &str, target: &str) -> Missile {
+    let mut missile = Missile::default();
+    missile.set_name(name.to_string());
+    missile.target = target.to_string();
+    missile
+  }
+
+  #[test_log::test]
+  fn test_jam_missiles() {
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
+
+    debug!("(test_jam_missiles) roll1 = {} roll2={}", crate::combat::roll(&mut rng), crate::combat::roll(&mut rng));
+    // Create a ship with good sensor skills
+    let ship = create_test_ship_sensors("defender", 4);
+    entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
+
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
+
+    // Create missiles targeting the defender
+    let missile1 = create_test_missile("missile1", "defender");
+    let missile2 = create_test_missile("missile2", "defender");
+    entities
+      .missiles
+      .insert("missile1".to_string(), Arc::new(RwLock::new(missile1)));
+    entities
+      .missiles
+      .insert("missile2".to_string(), Arc::new(RwLock::new(missile2)));
+
+    entities.fixup_pointers().unwrap();
+
+    let effects = entities.sensor_actions(&actions, &mut rng);
+
+    // With a roll of 6 and sensor skill of 4, check should be positive
+    // resulting in successful jamming
+    assert_eq!(entities.missiles.len(), 1); // Only one missile should be destroyed due to check result
+    assert_eq!(effects.len(), 2); // One message for jamming success and one for missile destruction
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("destroyed by jamming")
+    )));
+
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(1, 0); // Will always roll 1 for predictable results
+    let ship = create_test_ship_sensors("defender", 4);
+    entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
+
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
+
+    // Create missiles targeting the defender
+    let missile1 = create_test_missile("missile1", "defender");
+    let missile2 = create_test_missile("missile2", "defender");
+    entities
+      .missiles
+      .insert("missile1".to_string(), Arc::new(RwLock::new(missile1)));
+    entities
+      .missiles
+      .insert("missile2".to_string(), Arc::new(RwLock::new(missile2)));
+
+    entities.fixup_pointers().unwrap();
+
+    let effects = entities.sensor_actions(&actions, &mut rng);
+
+    // With a roll of 1 and sensor skill of 4, check should be negative
+    // resulting in failed jamming
+    assert_eq!(entities.missiles.len(), 2); // No missiles should be destroyed due to check result
+    assert_eq!(effects.len(), 1); // Only one message for jamming failure
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("jamming attempt by defender failed")
+    )));
+  }
+
+  #[test_log::test]
+  fn test_sensor_lock() {
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(1, 0); // Will always roll 2 for predictable results
+
+    // Create two ships
+    let ship1 = create_test_ship_sensors("attacker", 4);
+    let ship2 = create_test_ship_sensors("target", 2);
+
+    let actions = vec![(
+      "attacker".to_string(),
+      vec![ShipAction::SensorLock {
+        target: "target".to_string(),
+      }],
+    )];
+    entities.ships.insert("attacker".to_string(), Arc::new(RwLock::new(ship1)));
+    entities.ships.insert("target".to_string(), Arc::new(RwLock::new(ship2)));
+
+    let effects = entities.sensor_actions(&actions, &mut rng);
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("not established by")
+    )));
+    let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
+
+    let effects = entities.sensor_actions(&actions, &mut rng);
+
+    // With a roll of 6 and sensor skill of 4, the lock should be established
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("lock on target established by")
+    )));
+
+    let attacker = entities.ships.get("attacker").unwrap().read().unwrap();
+
+    assert!(attacker.sensor_locks.contains(&"target".to_string()));
+  }
+
+  #[test]
+  fn test_break_sensor_lock() {
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(6, 0);
+
+    // Create two ships
+    let ship1 = create_test_ship_sensors("defender", 4);
+    let mut ship2 = create_test_ship_sensors("attacker", 2);
+
+    // Set up initial sensor lock
+    ship2.sensor_locks.push("defender".to_string());
+    let actions = vec![(
+      "defender".to_string(),
+      vec![ShipAction::BreakSensorLock {
+        target: "attacker".to_string(),
+      }],
+    )];
+
+    entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship1)));
+    entities.ships.insert("attacker".to_string(), Arc::new(RwLock::new(ship2.clone())));
+
+    let effects = entities.sensor_actions(&actions, &mut rng);
+
+    // Check that the lock was broken
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("broken by")
+    )));
+
+    {
+      let attacker = entities.ships.get("attacker").unwrap().read().unwrap();
+      assert!(attacker.sensor_locks.is_empty());
+    }
+
+    let mut rng = StepRng::new(1, 1); // Increment rolls to have attacker win (they roll second)
+    entities.ships.get("attacker").unwrap().write().unwrap().sensor_locks.push("defender".to_string());
+    let effects = entities.sensor_actions(&actions, &mut rng);
+
+    // Check that the lock was not broken
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("not broken by")
+    )));
+  }
+
+  #[test]
+  fn test_jam_comms() {
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(0, 0); // Will always roll 1 for predictable results
+
+    // Create two ships
+    let ship1 = create_test_ship_sensors("jammer", 2);
+    let ship2 = create_test_ship_sensors("target", 3);
+
+    let actions = vec![(
+      "jammer".to_string(),
+      vec![ShipAction::JamComms {
+        target: "target".to_string(),
+      }],
+    )];
+
+    entities.ships.insert("jammer".to_string(), Arc::new(RwLock::new(ship1)));
+    entities.ships.insert("target".to_string(), Arc::new(RwLock::new(ship2)));
+
+    let effects = entities.sensor_actions(&actions, &mut rng);
+
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("failed to jam comms on")
+    )));
+
+    let mut rng = StepRng::new(4, 1); // Going past 6 on second two rolls ensures jammer wins
+    let effects = entities.sensor_actions(&actions, &mut rng);
+    // With high sensor skill and good roll, jamming should succeed
+    assert!(effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("is jamming comms on")
+    )));
   }
 }

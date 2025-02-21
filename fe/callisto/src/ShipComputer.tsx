@@ -1,10 +1,11 @@
 import React from "react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useContext } from "react";
 import {
   FlightPathResult,
   Ship,
   Planet,
   Entity,
+  EntitiesServerContext,
   DEFAULT_ACCEL_DURATION,
   Acceleration,
   POSITION_SCALE,
@@ -27,6 +28,8 @@ export function ShipComputer(args: {
     standoff: number
   ) => void;
 }) {
+  const serverEntities = useContext(EntitiesServerContext);
+
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
   const ship =
     args.ship ||
@@ -50,9 +53,7 @@ export function ShipComputer(args: {
     );
 
   if (ship == null) {
-    console.error(
-      `(ShipComputer) Unable to find ship of name "${args.ship}!`
-    );
+    console.error(`(ShipComputer) Unable to find ship of name "${args.ship}!`);
   }
 
   const [currentNavTarget, setCurrentNavTarget] = useState<Entity | null>(null);
@@ -63,7 +64,13 @@ export function ShipComputer(args: {
       return;
     }
 
-    const standoff = currentNavTarget instanceof Planet ? (((currentNavTarget as Planet).radius * 1.1) / POSITION_SCALE).toFixed(1) : "1000";
+    const standoff =
+      currentNavTarget instanceof Planet
+        ? (
+            ((currentNavTarget as Planet).radius * 1.1) /
+            POSITION_SCALE
+          ).toFixed(1)
+        : "1000";
 
     setNavigationTarget({
       p_x: (currentNavTarget.position[0] / POSITION_SCALE).toFixed(0),
@@ -76,7 +83,13 @@ export function ShipComputer(args: {
     });
 
     // Also implicitly compute a plan since most of the time this is what the user wants.
-    args.getAndShowPlan(ship.name, currentNavTarget.position, currentNavTarget.velocity, currentNavTarget.velocity, Number(standoff));
+    args.getAndShowPlan(
+      ship.name,
+      currentNavTarget.position,
+      currentNavTarget.velocity,
+      currentNavTarget.velocity,
+      Number(standoff)
+    );
   }, [currentNavTarget]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
@@ -277,13 +290,32 @@ export function ShipComputer(args: {
               value={agility.toString()}
               onChange={(event) => setDodge(Number(event.target.value))}
             />
-
             <label className="control-label">Assist Gunner</label>
             <input
               type="checkbox"
               checked={assistGunners}
               onChange={() => setAssistGunners(!assistGunners)}
             />
+            <label className="control-label">Sensors</label>
+            <select className="control-input">
+              <option value="jam-missiles">Jam Missiles</option>
+              <option value="break-sensor-lock">Break Sensor Lock</option>
+              {serverEntities.entities.ships
+                .filter((s) => s.name !== ship.name)
+                .map((s) => (
+                  <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
+                    {"Sensor Lock: " + s.name}
+                  </option>
+                ))}
+
+              {serverEntities.entities.ships
+                .filter((s) => s.name !== ship.name)
+                .map((s) => (
+                  <option key={s.name + "-jam-comms"} value={"jc-" + s.name}>
+                    {"Jam Sensors: " + s.name}
+                  </option>
+                ))}
+            </select>
           </div>
           <input
             className="control-input control-button blue-button"
@@ -325,7 +357,12 @@ export function ShipComputer(args: {
       <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
         <label className="control-label" style={{ display: "flex" }}>
           Nav Target:
-          <EntitySelector filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]} current={currentNavTarget} onChange={setCurrentNavTarget} exclude={ship.name} />
+          <EntitySelector
+            filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
+            current={currentNavTarget}
+            onChange={setCurrentNavTarget}
+            exclude={ship.name}
+          />
         </label>
         <div className="target-details-div">
           <label className="control-label">

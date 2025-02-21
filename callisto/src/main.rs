@@ -101,8 +101,7 @@ pub type SubStream = TlsStream<TcpStream>;
 /// # Returns
 /// A tuple of the websocket stream, the session key, and an optional email address.  The email address we `Some(email)` if this user has previously logged in.
 async fn handle_connection(
-  stream: TcpStream,
-  #[cfg(not(feature = "no_tls_upgrade"))] acceptor: Arc<TlsAcceptor>,
+  stream: TcpStream, #[cfg(not(feature = "no_tls_upgrade"))] acceptor: Arc<TlsAcceptor>,
   session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Result<(WebSocketStream<SubStream>, String, Option<String>), String> {
   #[cfg(not(feature = "no_tls_upgrade"))]
@@ -188,10 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   if test_mode {
     info!("(main) Server in TEST mode.");
   } else {
-    info!(
-      "(main) Server in standard mode.  Referring frontend = {}",
-      args.web_server
-    );
+    info!("(main) Server in standard mode.  Referring frontend = {}", args.web_server);
   }
 
   if test_mode {

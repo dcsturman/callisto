@@ -34,6 +34,7 @@ export class Ship extends Entity {
   active_weapons: boolean[] = [];
   dodge_thrust: number = 0;
   assist_gunners: boolean = false;
+  sensor_target: string = "";
 
   crew: Crew;
 

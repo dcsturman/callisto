@@ -56,6 +56,10 @@ pub struct Ship {
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
+  pub sensor_locks: Vec<String>,
+
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default)]
   pub crew: Crew,
 
   #[derivative(PartialEq = "ignore")]
@@ -175,11 +179,7 @@ pub enum ShipSystem {
 impl Ship {
   #[must_use]
   pub fn new(
-    name: String,
-    position: Vec3,
-    velocity: Vec3,
-    design: &Arc<ShipDesignTemplate>,
-    crew: Option<Crew>,
+    name: String, position: Vec3, velocity: Vec3, design: &Arc<ShipDesignTemplate>, crew: Option<Crew>,
   ) -> Self {
     Ship {
       name,
@@ -196,6 +196,7 @@ impl Ship {
       current_crew: design.crew,
       current_sensors: design.sensors,
       active_weapons: vec![true; design.weapons.len()],
+      sensor_locks: vec![],
       crit_level: [0; 11],
       attack_dm: 0,
       crew: crew.unwrap_or_default(),
@@ -281,8 +282,8 @@ impl Ship {
   }
 
   #[must_use]
-  pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
-    &self.design.weapons[weapon_id as usize]
+  pub fn get_weapon(&self, weapon_id: usize) -> &Weapon {
+    &self.design.weapons[weapon_id]
   }
 
   #[must_use]
@@ -356,7 +357,7 @@ impl Ship {
   pub fn get_assist_gunners(&self) -> bool {
     self.assist_gunners
   }
-  pub fn reset_crew_actions(&mut self) {
+  pub fn reset_pilot_actions(&mut self) {
     self.dodge_thrust = 0;
     self.assist_gunners = false;
   }
@@ -370,6 +371,14 @@ impl Ship {
 impl PartialOrd for Ship {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
     self.name.partial_cmp(&other.name)
+  }
+}
+
+impl Default for Ship {
+  fn default() -> Self {
+    let mut ship = Ship::new("Default".to_string(), Vec3::zero(), Vec3::zero(), &Arc::new(ShipDesignTemplate::default()), None);
+    ship.fixup_current_values();
+    ship
   }
 }
 
@@ -428,11 +437,7 @@ impl Entity for Ship {
         let duration = duration as f64;
         self.velocity += accel * G * duration;
         self.position += (old_velocity + self.velocity) / 2.0 * duration;
-        debug!(
-          "(Ship.update) Accelerate at {:0.3?} m/s for time {}",
-          accel * G,
-          duration
-        );
+        debug!("(Ship.update) Accelerate at {:0.3?} m/s for time {}", accel * G, duration);
         debug!(
           "(Ship.update) New velocity: {:0.0?} New position: {:0.0?}",
           self.velocity, self.position
@@ -1452,7 +1457,7 @@ mod tests {
     assert!(format!("{err}").contains("Invalid thrust attempted:"));
 
     // Test resetting agility
-    ship.reset_crew_actions();
+    ship.reset_pilot_actions();
     assert_eq!(ship.get_dodge_thrust(), 0);
   }
 

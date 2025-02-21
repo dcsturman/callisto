@@ -44,12 +44,7 @@ impl Missile {
   ///
   /// Panics if the lock cannot be obtained to read the target ship.
   pub fn new(
-    name: String,
-    source: String,
-    target: String,
-    target_ptr: Arc<RwLock<Ship>>,
-    position: Vec3,
-    velocity: Vec3,
+    name: String, source: String, target: String, target_ptr: Arc<RwLock<Ship>>, position: Vec3, velocity: Vec3,
     burns: i32,
   ) -> Self {
     // We need to construct an initial route for the missile primarily so
@@ -197,6 +192,21 @@ impl Entity for Missile {
       Some(UpdateAction::ExhaustedMissile {
         name: self.name.clone(),
       })
+    }
+  }
+}
+
+impl Default for Missile {
+  fn default() -> Self {
+    Missile {
+      name: "Default Missile".to_string(),
+      position: Vec3::zero(),
+      velocity: Vec3::zero(),
+      source: "Default Source".to_string(),
+      target: "Default Target".to_string(),
+      target_ptr: None,
+      acceleration: Vec3::zero(),
+      burns: 0,
     }
   }
 }

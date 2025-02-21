@@ -54,10 +54,8 @@ use crate::{debug, error, info, warn};
 #[allow(clippy::too_many_lines)]
 pub async fn processor(
   mut connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
-  auth_template: Box<dyn Authenticator>,
-  entities: Arc<Mutex<Entities>>,
-  session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
-  test_mode: bool,
+  auth_template: Box<dyn Authenticator>, entities: Arc<Mutex<Entities>>,
+  session_keys: Arc<Mutex<HashMap<String, Option<String>>>>, test_mode: bool,
 ) {
   // All the data shared between authenticators.
   let mut connections = Vec::<Connection>::new();
@@ -152,12 +150,7 @@ pub async fn processor(
           let response = handle_request(parsed_message, &mut connections[index].server, session_keys.clone()).await;
           // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
           // but do not actually ever send it to the client (who has logged out!)
-          if response
-            .iter()
-            .filter(|msg| matches!(msg, ResponseMsg::LogoutResponse))
-            .count()
-            > 0
-          {
+          if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {
             // User has logged out.  Close the connection.
             debug!(
               "(processor) User logged out.  Closing connection. Now {} connections.",
@@ -198,9 +191,7 @@ pub async fn processor(
             connections[index]
               .stream
               .send(Message::Text(
-                serde_json::to_string(&message)
-                  .expect("Failed to serialize response")
-                  .into(),
+                serde_json::to_string(&message).expect("Failed to serialize response").into(),
               ))
               .await
               .unwrap_or_else(|e| {
@@ -221,10 +212,7 @@ pub async fn processor(
         });
         // Mark this stream for deletion
         connections.remove(index);
-        debug!(
-          "(processor) Removed connection.  Now {} connections.",
-          connections.len()
-        );
+        debug!("(processor) Removed connection.  Now {} connections.", connections.len());
       }
       Some((index, res)) => {
         error!("(processor) Unexpected message on connection {index}: {res:?}");
@@ -249,13 +237,9 @@ fn is_broadcast_message(message: &ResponseMsg) -> bool {
 #[allow(clippy::borrowed_box)]
 #[must_use]
 async fn build_connection(
-  auth_template: &Box<dyn Authenticator>,
-  session_key: &str,
-  session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
-  email: Option<&String>,
-  stream: WebSocketStream<SubStream>,
-  entities: &Arc<Mutex<Entities>>,
-  test_mode: bool,
+  auth_template: &Box<dyn Authenticator>, session_key: &str,
+  session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>, email: Option<&String>,
+  stream: WebSocketStream<SubStream>, entities: &Arc<Mutex<Entities>>, test_mode: bool,
 ) -> Option<Connection> {
   let mut authenticator = clone_box(auth_template.as_ref());
   authenticator.set_session_key(session_key);
