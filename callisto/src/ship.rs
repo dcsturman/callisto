@@ -376,7 +376,13 @@ impl PartialOrd for Ship {
 
 impl Default for Ship {
   fn default() -> Self {
-    let mut ship = Ship::new("Default".to_string(), Vec3::zero(), Vec3::zero(), &Arc::new(ShipDesignTemplate::default()), None);
+    let mut ship = Ship::new(
+      "Default".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &Arc::new(ShipDesignTemplate::default()),
+      None,
+    );
     ship.fixup_current_values();
     ship
   }

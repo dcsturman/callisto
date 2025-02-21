@@ -23,7 +23,7 @@ use crate::authentication::Authenticator;
 use crate::build_successful_auth_msgs;
 use crate::entity::Entities;
 use crate::handle_request;
-use crate::payloads::{AuthResponse, ResponseMsg, ShipActionMsg};
+use crate::payloads::{AuthResponse, ResponseMsg};
 use crate::server::Server;
 
 #[cfg(feature = "no_tls_upgrade")]
@@ -165,8 +165,6 @@ pub async fn processor(
             .filter(|msg| !matches!(msg, ResponseMsg::LogoutResponse))
             .collect()
         } else {
-          let fake: ShipActionMsg = vec![("ship1".to_string(), vec![crate::payloads::ShipAction::FireAction{ weapon_id: 0, target: "ship2".to_string(), called_shot_system: None }, crate::payloads::ShipAction::SensorLock{ target: "ship2".to_string() }])];
-          debug!("(handle_connection) ******************* should be {}", serde_json::to_string(&fake).unwrap());
           vec![ResponseMsg::Error(format!("Malformed message: {text}"))]
         };
 

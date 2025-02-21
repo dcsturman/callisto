@@ -7,7 +7,7 @@ use rand::RngCore;
 
 use crate::combat_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::entity::Entity;
-use crate::payloads::{EffectMsg, ShipAction, LaunchMissileMsg};
+use crate::payloads::{EffectMsg, LaunchMissileMsg, ShipAction};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
 use crate::{debug, error};
 
@@ -613,7 +613,12 @@ pub fn do_fire_actions<S: BuildHasher>(
   let effects = actions
     .iter()
     .flat_map(|action| {
-      let ShipAction::FireAction{ weapon_id, target, called_shot_system } = action else {
+      let ShipAction::FireAction {
+        weapon_id,
+        target,
+        called_shot_system,
+      } = action
+      else {
         error!("(Combat.do_fire_actions) Expected FireAction but got {:?}.", action);
         return vec![];
       };

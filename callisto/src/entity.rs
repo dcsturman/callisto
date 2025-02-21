@@ -563,7 +563,10 @@ impl Entities {
                   .sensor_locks
                   .push(target.clone());
               }
-              debug!("***************(sensor_actions) Sensor lock on {target} established by {ship_name}: {:?}.", self.ships.get(ship_name).unwrap().read().unwrap().sensor_locks);
+              debug!(
+                "***************(sensor_actions) Sensor lock on {target} established by {ship_name}: {:?}.",
+                self.ships.get(ship_name).unwrap().read().unwrap().sensor_locks
+              );
               vec![EffectMsg::Message {
                 content: format!("Sensor lock on {target} established by {ship_name}."),
               }]
@@ -1802,7 +1805,11 @@ mod tests {
     let mut entities = Entities::default();
     let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
 
-    debug!("(test_jam_missiles) roll1 = {} roll2={}", crate::combat::roll(&mut rng), crate::combat::roll(&mut rng));
+    debug!(
+      "(test_jam_missiles) roll1 = {} roll2={}",
+      crate::combat::roll(&mut rng),
+      crate::combat::roll(&mut rng)
+    );
     // Create a ship with good sensor skills
     let ship = create_test_ship_sensors("defender", 4);
     entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
@@ -1916,7 +1923,9 @@ mod tests {
     )];
 
     entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship1)));
-    entities.ships.insert("attacker".to_string(), Arc::new(RwLock::new(ship2.clone())));
+    entities
+      .ships
+      .insert("attacker".to_string(), Arc::new(RwLock::new(ship2.clone())));
 
     let effects = entities.sensor_actions(&actions, &mut rng);
 
@@ -1931,7 +1940,14 @@ mod tests {
     }
 
     let mut rng = StepRng::new(1, 1); // Increment rolls to have attacker win (they roll second)
-    entities.ships.get("attacker").unwrap().write().unwrap().sensor_locks.push("defender".to_string());
+    entities
+      .ships
+      .get("attacker")
+      .unwrap()
+      .write()
+      .unwrap()
+      .sensor_locks
+      .push("defender".to_string());
     let effects = entities.sensor_actions(&actions, &mut rng);
 
     // Check that the lock was not broken

@@ -1094,7 +1094,7 @@ async fn integration_malformed_requests() {
         target: "nonexistent_target".to_string(),
         called_shot_system: None,
       }],
-  )]),
+    )]),
   )
   .await;
   assert!(

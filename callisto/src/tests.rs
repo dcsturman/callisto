@@ -702,7 +702,7 @@ async fn test_big_fight() {
     })
     .collect::<Vec<EffectMsg>>();
 
-  effects.sort_by_key(|a|serde_json::to_string(a).unwrap());
+  effects.sort_by_key(|a| serde_json::to_string(a).unwrap());
 
   assert_json_eq!(
     effects

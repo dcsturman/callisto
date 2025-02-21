@@ -36,7 +36,6 @@ export class FireAction {
   }
 
   toJSON() {
-    console.log("************************************* in FireAction.toJson()");
     return {
       FireAction: {
         weapon_id: this.weapon_id,

@@ -10,7 +10,8 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg, RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg
+  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
+  RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -141,27 +142,27 @@ impl Server {
   /// Panics if the lock cannot be obtained to read the entities or we cannot obtain a write
   /// lock on the ship in question.
   pub fn set_pilot_actions(&self, request: &SetPilotActions) -> Result<String, String> {
-      let entities = self
-        .entities
-        .lock()
-        .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+    let entities = self
+      .entities
+      .lock()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
-      let mut ship = entities
-        .ships
-        .get(&request.ship_name)
-        .ok_or("Unable to find ship to set agility for.".to_string())?
-        .write()
-        .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or("Unable to find ship to set agility for.".to_string())?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
-      // Go through each possible action in SetCrewActions, one by one.
-      if request.dodge_thrust.is_some() || request.assist_gunners.is_some() {
-        ship
-          .set_pilot_actions(request.dodge_thrust, request.assist_gunners)
-          .map_err(|e| e.get_msg())?;
-      }
-
-      Ok("Set crew action executed".to_string())
+    // Go through each possible action in SetCrewActions, one by one.
+    if request.dodge_thrust.is_some() || request.assist_gunners.is_some() {
+      ship
+        .set_pilot_actions(request.dodge_thrust, request.assist_gunners)
+        .map_err(|e| e.get_msg())?;
     }
+
+    Ok("Set crew action executed".to_string())
+  }
 
   /// Gets the current entities and returns them in a `Result`.
   ///
@@ -284,29 +285,25 @@ impl Server {
     // Was very explicit with types here (more than necessary) to make it easier to read and understand.
     // Also: did this before grabbing the entities lock as I'm not sure how expensive this is.
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions): (
-      Vec<(String, Vec<ShipAction>)>,
-      Vec<(String, Vec<ShipAction>)>,
-    ) = actions.iter().map(|(ship_name, actions)| {
-      let (f_actions, s_actions): (
-        Vec<Option<ShipAction>>,
-        Vec<Option<ShipAction>>,
-      ) = 
-        actions
+    let (fire_actions, sensor_actions): (Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>) = actions
+      .iter()
+      .map(|(ship_name, actions)| {
+        let (f_actions, s_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = actions
           .iter()
           .map(|action| match action {
             ShipAction::FireAction { .. } => (Some(action.clone()), None),
-            ShipAction::JamMissiles |
-            ShipAction::BreakSensorLock { .. } |
-            ShipAction::SensorLock { .. } |
-            ShipAction::JamComms { .. } => (None, Some(action.clone())),
+            ShipAction::JamMissiles
+            | ShipAction::BreakSensorLock { .. }
+            | ShipAction::SensorLock { .. }
+            | ShipAction::JamComms { .. } => (None, Some(action.clone())),
           })
           .unzip();
-      (
-        (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-        (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-      )
-    }).unzip();
+        (
+          (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+          (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        )
+      })
+      .unzip();
 
     // Grab the lock on entities
     let mut entities = self
