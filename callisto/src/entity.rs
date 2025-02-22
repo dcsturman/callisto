@@ -15,6 +15,7 @@ use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::read_local_or_cloud_file;
+use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
 
@@ -527,71 +528,27 @@ impl Entities {
     let mut effects = Vec::<EffectMsg>::new();
 
     for (ship_name, actions) in actions {
-      let crew_sensor_skill = {
-        let Some(ship_rw) = self.ships.get(ship_name) else {
-          // Just in case the ship is no longer there (unlikely) warn and continue on to the next ship.
-          warn!("(Entity.do_sensor_actions) Cannot find ship {} for sensor actions.", ship_name);
-          continue;
-        };
-
-        ship_rw.read().unwrap().crew.get_sensors()
-      };
-
       // Process the actions for each ship.
       for action in actions {
         effects.append(&mut match action {
-          ShipAction::JamMissiles => self.jam_missiles(ship_name, crew_sensor_skill, rng),
+          ShipAction::JamMissiles => self.jam_missiles(ship_name, rng),
           ShipAction::BreakSensorLock { target } => {
-            self.break_sensor_lock(ship_name, crew_sensor_skill, target, &reverse_sensor_locks, rng)
+            self.break_sensor_lock(ship_name, target, &reverse_sensor_locks, rng)
           }
 
           ShipAction::SensorLock { target } => {
-            // Check if sensor lock is achieved.
-            let check = i16::from(roll_dice(2, rng) + crew_sensor_skill) - 8;
-            if check > 0 {
-              // If there is sensor lock, record it.
-              // Scope the write lock so we don't hold it - its the only place we need to write.
-              {
-                // The unwrap after the get is safe as if the ship didn't exist the `continue` up
-                // above would have triggered.
-                self
-                  .ships
-                  .get(ship_name)
-                  .unwrap()
-                  .write()
-                  .unwrap()
-                  .sensor_locks
-                  .push(target.clone());
-              }
-              debug!(
-                "***************(sensor_actions) Sensor lock on {target} established by {ship_name}: {:?}.",
-                self.ships.get(ship_name).unwrap().read().unwrap().sensor_locks
-              );
-              vec![EffectMsg::Message {
-                content: format!("Sensor lock on {target} established by {ship_name}."),
-              }]
-            } else {
-              vec![EffectMsg::Message {
-                content: format!("Sensor lock on {target} not established by {ship_name}."),
-              }]
-            }
+            if !self.ships.contains_key(target) {
+              warn!("(Entity.do_sensor_actions) Cannot find target {} for sensor lock.", target);
+              return Vec::default();
+            };
+            self.sensor_lock(ship_name, target, rng)
           }
           ShipAction::JamComms { target } => {
-            let Some(opposing_ship) = self.ships.get(target) else {
+            if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for jamming comms.", target);
               return Vec::default();
             };
-            let opposed_skill = opposing_ship.read().unwrap().crew.get_sensors();
-            let check = i16::from(roll_dice(2, rng) + crew_sensor_skill) - i16::from(opposed_skill + roll_dice(2, rng));
-            if check >= 0 {
-              vec![EffectMsg::Message {
-                content: format!("{ship_name} is jamming comms on {target}."),
-              }]
-            } else {
-              vec![EffectMsg::Message {
-                content: format!("{ship_name} failed to jam comms on {target}."),
-              }]
-            }
+            self.jam_comms(ship_name, target, rng)
           }
           ShipAction::FireAction { .. } => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
@@ -603,7 +560,76 @@ impl Entities {
     effects
   }
 
-  fn jam_missiles(&mut self, ship_name: &String, crew_sensor_skill: u8, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  fn sensor_stealth_modifiers(&self, attack_ship_name: &str, target_ship_name: &str) -> i16 {
+    let attack_ship = self.ships.get(attack_ship_name).unwrap().read().unwrap();
+    let target_ship = self.ships.get(target_ship_name).unwrap().read().unwrap();
+
+    // The result has to be negative.  You never get a bonus for "bad" stealth.
+    if target_ship.design.stealth.is_some() {
+      let delta_tl = i16::from(attack_ship.design.tl) - i16::from(target_ship.design.tl);
+      (stealth_mod(target_ship.design.stealth) + delta_tl).min(0)
+    } else {
+      0
+    }
+  }
+
+  // Quality modifiers are the level of sensors as well as skill of the crew
+  fn sensor_quality_modifiers(&self, ship_name: &str) -> i16 {
+    let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(ship.crew.get_sensors())
+  }
+
+  fn sensor_lock(&mut self, ship_name: &String, target: &str, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    // Check if sensor lock is achieved.
+    let check = i16::from(roll_dice(2, rng))
+      + self.sensor_quality_modifiers(ship_name)
+      + self.sensor_stealth_modifiers(ship_name, target)
+      - 8;
+
+    if check > 0 {
+      // If there is sensor lock, record it.
+      // Scope the write lock so we don't hold it - its the only place we need to write.
+      {
+        // The unwrap after the get is safe as if the ship didn't exist the `continue` up
+        // above would have triggered.
+        self
+          .ships
+          .get(ship_name)
+          .unwrap()
+          .write()
+          .unwrap()
+          .sensor_locks
+          .push(target.to_string());
+      }
+      vec![EffectMsg::Message {
+        content: format!("Sensor lock on {target} established by {ship_name}."),
+      }]
+    } else {
+      vec![EffectMsg::Message {
+        content: format!("Sensor lock on {target} not established by {ship_name}."),
+      }]
+    }
+  }
+
+  fn jam_comms(&self, ship_name: &String, target: &str, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let check = i16::from(roll_dice(2, rng))
+      + self.sensor_quality_modifiers(ship_name)
+      + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      - i16::from(roll_dice(2, rng))
+      - self.sensor_quality_modifiers(target)
+      - countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures);
+
+    if check >= 0 {
+      vec![EffectMsg::Message {
+        content: format!("{ship_name} is jamming comms on {target}."),
+      }]
+    } else {
+      vec![EffectMsg::Message {
+        content: format!("{ship_name} failed to jam comms on {target}."),
+      }]
+    }
+  }
+  fn jam_missiles(&mut self, ship_name: &String, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
     let mut effects = Vec::<EffectMsg>::new();
     // Find all missiles targeting this ship.
     let targeting_missiles = self
@@ -612,8 +638,13 @@ impl Entities {
       .filter(|(_, missile)| missile.read().unwrap().target == *ship_name)
       .map(|(missile_name, _missile)| missile_name.clone())
       .collect::<Vec<_>>();
+
     let dice = roll_dice(2, rng);
-    let check = i16::from(dice + crew_sensor_skill) - 10;
+    let check = i16::from(dice)
+      + self.sensor_quality_modifiers(ship_name)
+      + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      - 10;
+
     if check >= 0 {
       // Deal with effect needing to allow one missile impact when the roll is made exactly.
       // Cast is safe because from above check >= 0.
@@ -650,8 +681,7 @@ impl Entities {
   }
 
   fn break_sensor_lock(
-    &self, ship_name: &String, crew_sensor_skill: u8, target: &str,
-    reverse_sensor_locks: &HashMap<String, Vec<String>>, rng: &mut dyn RngCore,
+    &self, ship_name: &String, target: &str, reverse_sensor_locks: &HashMap<String, Vec<String>>, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Check if the target of the BreakSensorLock has a sensor lock on this ship.
     // Get the list of every ship with a sensor lock on current ship; make sure the target of the BreakSensorLock is in that list.
@@ -659,12 +689,23 @@ impl Entities {
       .get(ship_name)
       .and_then(|ships_with_locks| ships_with_locks.iter().find(|&s| *s == target));
     if valid_lock.is_some() {
-      let opposing_ship = self.ships.get(target).unwrap();
-      let opposed_skill = opposing_ship.read().unwrap().crew.get_sensors();
       // Make an opposed check - this ship vs the one with the lock..
-      let check = i16::from(roll_dice(2, rng) + crew_sensor_skill) - i16::from(opposed_skill + roll_dice(2, rng));
+      let check = i16::from(roll_dice(2, rng)) + self.sensor_quality_modifiers(ship_name)
+        + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+        - self.sensor_quality_modifiers(target)
+        // In this case the steal modifiers (which will be negative or 0) are a bonus.
+        - self.sensor_stealth_modifiers(ship_name, target)
+        - countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures)
+        - i16::from(roll_dice(2, rng));
       if check >= 0 {
-        opposing_ship.write().unwrap().sensor_locks.retain(|s| s != ship_name);
+        self
+          .ships
+          .get(target)
+          .unwrap()
+          .write()
+          .unwrap()
+          .sensor_locks
+          .retain(|s| s != ship_name);
         vec![EffectMsg::Message {
           content: format!("Sensor lock on {target} broken by {ship_name}."),
         }]
@@ -1874,7 +1915,7 @@ mod tests {
     let mut rng = StepRng::new(1, 0); // Will always roll 2 for predictable results
 
     // Create two ships
-    let ship1 = create_test_ship_sensors("attacker", 4);
+    let ship1 = create_test_ship_sensors("attacker", 2);
     let ship2 = create_test_ship_sensors("target", 2);
 
     let actions = vec![(
@@ -1987,5 +2028,106 @@ mod tests {
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("is jamming comms on")
     )));
+  }
+
+  async fn setup_sensor_test_ships(
+    attack_name: &str, attack_crew_skill: u8, target_name: &str, target_crew_skill: u8, attack_design: &str,
+    target_design: &str,
+  ) -> Entities {
+    const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
+
+    // Load ship templates
+    let templates = crate::ship::load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
+      .await
+      .expect("Unable to load ship template file.");
+
+    // Create entities
+    let mut entities = Entities::new();
+
+    // Create attacker ship
+    let mut attack_ship = Ship::default();
+    attack_ship.set_name(attack_name.to_string());
+    attack_ship.design = templates.get(attack_design).unwrap().clone();
+    attack_ship.current_sensors = attack_ship.design.sensors;
+    let mut attack_crew = Crew::default();
+    attack_crew.set_skill(Skills::Sensors, attack_crew_skill);
+    attack_ship.crew = attack_crew;
+
+    // Create target ship
+    let mut target_ship = Ship::default();
+    target_ship.set_name(target_name.to_string());
+    target_ship.design = templates.get(target_design).unwrap().clone();
+    let mut target_crew = Crew::default();
+    target_crew.set_skill(Skills::Sensors, target_crew_skill);
+    target_ship.crew = target_crew;
+
+    // Add ships to entities
+    entities
+      .ships
+      .insert(attack_name.to_string(), Arc::new(RwLock::new(attack_ship)));
+    entities
+      .ships
+      .insert(target_name.to_string(), Arc::new(RwLock::new(target_ship)));
+
+    entities
+  }
+
+  #[test_log::test(tokio::test)]
+  async fn test_sensor_stealth_modifiers() {
+    let test_cases = [
+      // (attack_design, target_design, skill(ignored), skill (ignored), expected_modifier)
+      ("Free Trader", "Far Trader", 0, 0, 0),  // No stealth - should be 0
+      ("Light Fighter", "Buccaneer", 3, 0, 0), // No stealth - should be 0
+      ("Harrier", "Free Trader", 2, 0, 0),
+      ("Free Trader", "Harrier", 0, 0, -9),
+    ];
+
+    for (attack_design, target_design, attack_skill, target_skill, expected) in test_cases {
+      let entities =
+        setup_sensor_test_ships("attacker", attack_skill, "target", target_skill, attack_design, target_design).await;
+
+      let result = entities.sensor_stealth_modifiers("attacker", "target");
+      assert_eq!(
+            result,
+            expected,
+            "Failed with attack_design={attack_design}, target_design={target_design}, attack_skill={attack_skill},target_skill={target_skill}, expected={expected}",
+        );
+    }
+  }
+
+  #[tokio::test]
+  async fn test_sensor_quality_modifiers() {
+    let test_cases = [
+      // (attack_design, attack_skill, expected_modifier)
+      ("Free Trader", 0, -2),
+      ("Light Fighter", 3, 3),
+      ("Buccaneer", 0, 1),
+      ("Harrier", 2, 4),
+    ];
+
+    for (attack_design, attack_skill, expected) in test_cases {
+      let entities =
+        setup_sensor_test_ships("test_ship", attack_skill, "ignore", 0, attack_design, "Free Trader").await;
+
+      let result = entities.sensor_quality_modifiers("test_ship");
+      assert_eq!(
+        result, expected,
+        "Failed with attack_design={attack_design}, attack_skill={attack_skill}, expected={expected}",
+      );
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+  fn test_sensor_quality_modifiers_invalid_ship() {
+    let entities = Entities::new();
+    entities.sensor_quality_modifiers("nonexistent_ship");
+  }
+
+  #[test]
+  #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
+  fn test_sensor_stealth_modifiers_invalid_ships() {
+    let entities = Entities::new();
+    entities.sensor_stealth_modifiers("nonexistent_attacker", "nonexistent_target");
   }
 }

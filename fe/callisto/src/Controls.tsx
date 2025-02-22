@@ -93,9 +93,7 @@ function ShipList(args: {
 }
 
 export function Controls(args: {
-  nextRound: (
-    fireActions: { [key: string]: FireState },
-  ) => void;
+  nextRound: (fireActions: { [key: string]: FireState }) => void;
   computerShip: Ship | null;
   setComputerShip: (ship: Ship | null) => void;
   shipDesignTemplates: ShipDesignTemplates;
@@ -116,9 +114,7 @@ export function Controls(args: {
   sensorActions: {
     [actor: string]: SensorState;
   };
-  setSensorActions: (actions: {
-    [actor: string]: SensorState;
-  }) => void;
+  setSensorActions: (actions: { [actor: string]: SensorState }) => void;
 }) {
   const viewContext = useContext(ViewContext);
   const serverEntities = useContext(EntitiesServerContext).entities;
@@ -142,15 +138,16 @@ export function Controls(args: {
     }
   );
 
-
-
   const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
   // If there's actually a ship name defined in the Role information, that supercedes
   // any other selection for the computerShip.
   useEffect(() => {
     if (viewContext.shipName) {
-      args.setComputerShip(serverEntities.ships.find((s) => s.name === viewContext.shipName)?? null);
+      args.setComputerShip(
+        serverEntities.ships.find((s) => s.name === viewContext.shipName) ??
+          null
+      );
     }
   }, [viewContext.shipName]);
 
@@ -249,29 +246,28 @@ export function Controls(args: {
       <hr />
       {viewContext.role === ViewMode.General &&
         args.shipDesignTemplates &&
-        Object.keys(args.shipDesignTemplates).length > 0 && (<>
-          <AddShip
-            submitHandler={(
-              ship: Ship
-            ) =>
-              addShip(ship)
-            }
-            shipDesignTemplates={args.shipDesignTemplates}
-          />
-        <hr />
-        </>)
-    }
+        Object.keys(args.shipDesignTemplates).length > 0 && (
+          <>
+            <AddShip
+              submitHandler={(ship: Ship) => addShip(ship)}
+              shipDesignTemplates={args.shipDesignTemplates}
+            />
+            <hr />
+          </>
+        )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
-        {viewContext.shipName || <ShipList
-          computerShip={args.computerShip}
-          setComputerShip={(ship) => {
-            args.setShowRange(null);
-            args.setComputerShip(ship);
-            setFireTarget(null);
-          }}
-          setCameraPos={args.setCameraPos}
-          camera={args.camera}
-        />}
+        {viewContext.shipName || (
+          <ShipList
+            computerShip={args.computerShip}
+            setComputerShip={(ship) => {
+              args.setShowRange(null);
+              args.setComputerShip(ship);
+              setFireTarget(null);
+            }}
+            setCameraPos={args.setCameraPos}
+            camera={args.camera}
+          />
+        )}
         {args.computerShip && (
           <>
             <div className="vital-stats-bloc">
@@ -323,13 +319,47 @@ export function Controls(args: {
                   args.shipDesignTemplates[args.computerShip.design].power
                 })`}</pre>
               </div>
-              <div className="stats-bloc-entry">
-                <h2>Sensors</h2>
-                <pre className="plan-accel-text">
-                  {args.computerShip.current_sensors}
-                </pre>
-              </div>
+              {!args.shipDesignTemplates[args.computerShip.design]
+                .countermeasures &&
+                !args.shipDesignTemplates[args.computerShip.design].stealth && (
+                  <div className="stats-bloc-entry">
+                    <h2>Sensors</h2>
+                    <pre className="plan-accel-text">
+                      {args.computerShip.current_sensors}
+                    </pre>
+                  </div>
+                )}
             </div>
+            {(args.shipDesignTemplates[args.computerShip.design]
+              .countermeasures ||
+              args.shipDesignTemplates[args.computerShip.design].stealth) && (
+              <div className="vital-stats-bloc">
+                <div className="stats-bloc-entry">
+                  <h2>Sensors</h2>
+                  <pre className="plan-accel-text">
+                    {args.computerShip.current_sensors}
+                  </pre>
+                </div>
+                <div className="stats-bloc-entry">
+                  <h2>CM</h2>
+                  <pre className="plan-accel-text">
+                    {
+                      args.shipDesignTemplates[args.computerShip.design]
+                        .countermeasures || "None"
+                    }
+                  </pre>
+                </div>
+                <div className="stats-bloc-entry">
+                  <h2>Stealth</h2>
+                  <pre className="plan-accel-text">
+                    {
+                      args.shipDesignTemplates[args.computerShip.design]
+                        .stealth || "None"
+                    }
+                  </pre>
+                </div>
+              </div>
+            )}
             <h2 className="control-form">Current Position</h2>
             <div style={{ display: "flex", justifyContent: "space-around" }}>
               <pre className="plan-accel-text">
@@ -361,73 +391,100 @@ export function Controls(args: {
             </h2>
             <NavigationPlan plan={args.computerShip.plan} />
             <hr />
-            {[ViewMode.Pilot, ViewMode.Sensors].includes(viewContext.role) && args.computerShip && ( 
-              <Accordion title={`${args.computerShip.name} ${ViewMode[viewContext.role]} Controls`} initialOpen={true}>   
-              <ShipComputer
-                  ship={args.computerShip}
-                  setComputerShip={args.setComputerShip}
-                  proposedPlan={args.proposedPlan}
-                  resetProposedPlan={args.resetProposedPlan}
-                  getAndShowPlan={args.getAndShowPlan}
-                  sensor_action={args.sensorActions[args.computerShip.name] || {action: SensorAction.None, target: ""}}
-                  setSensorAction={(action) => args.setSensorActions({...args.sensorActions, [args.computerShip!.name]: action})}
-                  sensor_locks={serverEntities.ships.reduce((acc, ship) => {
-                    if (ship.sensor_locks.includes(args.computerShip!.name)) {
-                      acc.push(ship.name);
+            {[ViewMode.Pilot, ViewMode.Sensors].includes(viewContext.role) &&
+              args.computerShip && (
+                <Accordion
+                  title={`${args.computerShip.name} ${
+                    ViewMode[viewContext.role]
+                  } Controls`}
+                  initialOpen={true}>
+                  <ShipComputer
+                    ship={args.computerShip}
+                    setComputerShip={args.setComputerShip}
+                    proposedPlan={args.proposedPlan}
+                    resetProposedPlan={args.resetProposedPlan}
+                    getAndShowPlan={args.getAndShowPlan}
+                    sensor_action={
+                      args.sensorActions[args.computerShip.name] || {
+                        action: SensorAction.None,
+                        target: "",
+                      }
                     }
-                    return acc;
-                  }, [] as string[])}
-                />
+                    setSensorAction={(action) =>
+                      args.setSensorActions({
+                        ...args.sensorActions,
+                        [args.computerShip!.name]: action,
+                      })
+                    }
+                    sensor_locks={serverEntities.ships.reduce((acc, ship) => {
+                      if (ship.sensor_locks.includes(args.computerShip!.name)) {
+                        acc.push(ship.name);
+                      }
+                      return acc;
+                    }, [] as string[])}
+                  />
                 </Accordion>
               )}
             {[ViewMode.Gunner, ViewMode.General].includes(viewContext.role) && (
-            <div className="control-form">
-              <Accordion title={`${args.computerShip.name} Fire Controls`} initialOpen={true}>
-                <div className="control-launch-div">
-                  Target:
-                  <EntitySelector
-                    filter={[EntitySelectorType.Ship]}
-                    onChange={setFireTarget}
-                    current={fireTarget}
-                    exclude={args.computerShip.name}
-                    formatter={(name, entity) => {
-                      if (args.computerShip) {
-                        return `${name} (${findRangeBand(
-                          vectorDistance(
-                            args.computerShip.position,
-                            entity.position
+              <div className="control-form">
+                <Accordion
+                  title={`${args.computerShip.name} Fire Controls`}
+                  initialOpen={true}>
+                  <div className="control-launch-div">
+                    Target:
+                    <EntitySelector
+                      filter={[EntitySelectorType.Ship]}
+                      onChange={setFireTarget}
+                      current={fireTarget}
+                      exclude={args.computerShip.name}
+                      formatter={(name, entity) => {
+                        if (args.computerShip) {
+                          return `${name} (${findRangeBand(
+                            vectorDistance(
+                              args.computerShip.position,
+                              entity.position
+                            )
+                          )})`;
+                        } else {
+                          return "";
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="weapon-list">
+                    {fire_actions[args.computerShip.name] &&
+                      Object.values(
+                        fire_actions[args.computerShip.name].weapons
+                      ).map(
+                        (weapon, id) =>
+                          weapon.kind !== "Sand" && (
+                            <WeaponButton
+                              key={
+                                "weapon-" + args.computerShip?.name + "-" + id
+                              }
+                              weapon={weapon.kind}
+                              mount={weapon.mount}
+                              count={weapon.total - weapon.used}
+                              onClick={() => {
+                                handleFireCommand(
+                                  args.computerShip
+                                    ? args.computerShip.name
+                                    : "",
+                                  fireTarget ? fireTarget.name : "",
+                                  new Weapon(
+                                    weapon.kind,
+                                    weapon.mount
+                                  ).toString()
+                                );
+                              }}
+                              disable={!fireTarget}
+                            />
                           )
-                        )})`;
-                      } else {
-                        return "";
-                      }
-                    }}
-                  />
-                </div>
-                <div className="weapon-list">
-                  {fire_actions[args.computerShip.name] &&
-                    Object.values(fire_actions[args.computerShip.name].weapons).map(
-                      (weapon, id) =>
-                        weapon.kind !== "Sand" && (
-                          <WeaponButton
-                            key={"weapon-" + args.computerShip?.name + "-" + id}
-                            weapon={weapon.kind}
-                            mount={weapon.mount}
-                            count={weapon.total - weapon.used}
-                            onClick={() => {
-                              handleFireCommand(
-                                args.computerShip ? args.computerShip.name : "",
-                                fireTarget ? fireTarget.name : "",
-                                new Weapon(weapon.kind, weapon.mount).toString()
-                              );
-                            }}
-                            disable={!fireTarget}
-                          />
-                        )
-                    )}
-                </div>
-              </Accordion>
-            </div>)}
+                      )}
+                  </div>
+                </Accordion>
+              </div>
+            )}
           </>
         )}
         {args.computerShip &&
@@ -451,7 +508,7 @@ export function Controls(args: {
           args.nextRound(
             Object.entries(fire_actions).reduce((acc, [key, value]) => {
               return { ...acc, [key]: value.state };
-            }, {} as { [key: string]: FireState }),
+            }, {} as { [key: string]: FireState })
           );
           setFireActions({});
           args.setShowRange(null);

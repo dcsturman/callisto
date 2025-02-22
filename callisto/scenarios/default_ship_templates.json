@@ -150,6 +150,7 @@
         "fuel": 42,
         "crew": 11,
         "sensors": "Advanced",
+        "countermeasures": "Military",
         "stealth": "Advanced",
         "computer": 20,
         "weapons": [
@@ -316,6 +317,7 @@
         "fuel": 6,
         "crew": 13,
         "sensors": "Improved",
+        "countermeasures": "Standard",
         "computer": 35,
         "weapons": [
             {
@@ -341,6 +343,7 @@
         "fuel": 1236,
         "crew": 97,
         "sensors": "Advanced",
+        "countermeasures": "Standard",
         "computer": 70,
         "weapons": [
             {

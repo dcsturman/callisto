@@ -94,6 +94,7 @@ pub struct ShipDesignTemplate {
   pub crew: u32,
   pub sensors: Sensors,
   pub stealth: Option<Stealth>,
+  pub countermeasures: Option<CounterMeasures>,
   pub computer: u32,
   pub weapons: Vec<Weapon>,
   pub tl: u8,
@@ -161,6 +162,13 @@ pub enum Stealth {
   Advanced,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum CounterMeasures {
+  Standard, 
+  Military
+}
+
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, FromRepr, Deserialize, Serialize)]
 pub enum ShipSystem {
   Sensors = 0,
@@ -919,6 +927,7 @@ impl Default for ShipDesignTemplate {
       crew: 11,
       sensors: Sensors::Improved,
       stealth: None,
+      countermeasures: None,
       computer: 5,
       weapons: vec![
         Weapon {
@@ -1626,6 +1635,7 @@ mod tests {
       crew: 20,
       sensors: Sensors::Military,
       stealth: None,
+      countermeasures: None,
       computer: 10,
       weapons: vec![
         Weapon {
@@ -1767,6 +1777,7 @@ mod tests {
       crew: 20,
       sensors: Sensors::Military,
       stealth: None,
+      countermeasures: None,
       computer: 10,
       weapons: vec![],
       tl: 12,

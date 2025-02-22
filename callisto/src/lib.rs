@@ -1,6 +1,5 @@
 pub mod authentication;
 pub mod combat;
-mod combat_tables;
 mod computer;
 pub mod crew;
 pub mod entity;
@@ -8,6 +7,7 @@ pub mod missile;
 pub mod payloads;
 pub mod planet;
 pub mod processor;
+mod rules_tables;
 pub mod server;
 pub mod ship;
 

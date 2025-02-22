@@ -5,9 +5,9 @@ use std::sync::{Arc, RwLock};
 use cgmath::InnerSpace;
 use rand::RngCore;
 
-use crate::combat_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::entity::Entity;
 use crate::payloads::{EffectMsg, LaunchMissileMsg, ShipAction};
+use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
 use crate::{debug, error};
 

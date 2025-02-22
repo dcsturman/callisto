@@ -355,6 +355,8 @@ export class ShipDesignTemplate {
   fuel: number;
   crew: number;
   sensors: string;
+  stealth: string | null;
+  countermeasures: string | null;  
   computer: number;
   weapons: Weapon[];
   tl: number;
@@ -372,6 +374,8 @@ export class ShipDesignTemplate {
     t.fuel = json.fuel;
     t.crew = json.crew;
     t.sensors = json.sensors;
+    t.stealth = json.stealth;
+    t.countermeasures = json.countermeasures;
     t.computer = json.computer;
     /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     t.weapons = json.weapons.map((w: any) => Weapon.parse(w));
@@ -390,6 +394,8 @@ export class ShipDesignTemplate {
     this.fuel = 0;
     this.crew = 0;
     this.sensors = "";
+    this.stealth = null;
+    this.countermeasures = null;
     this.computer = 0;
     this.weapons = [];
     this.tl = 0;
