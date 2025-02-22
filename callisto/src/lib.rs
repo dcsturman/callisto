@@ -1,6 +1,5 @@
 pub mod authentication;
 pub mod combat;
-mod combat_tables;
 mod computer;
 pub mod crew;
 pub mod entity;
@@ -8,6 +7,7 @@ pub mod missile;
 pub mod payloads;
 pub mod planet;
 pub mod processor;
+mod rules_tables;
 pub mod server;
 pub mod ship;
 
@@ -64,9 +64,7 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 // a lot of the codebase.  So excluding those two clippy warnings.
 #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
 pub async fn handle_request(
-  message: RequestMsg,
-  server: &mut Server,
-  session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+  message: RequestMsg, server: &mut Server, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Vec<ResponseMsg> {
   info!("(handle_request) Request: {:?}", message);
 
@@ -90,7 +88,7 @@ pub async fn handle_request(
         })
     }
     RequestMsg::AddShip(ship) => response_with_update(server, server.add_ship(ship)),
-    RequestMsg::SetCrewActions(request) => response_with_update(server, server.set_crew_actions(&request)),
+    RequestMsg::SetPilotActions(request) => response_with_update(server, server.set_pilot_actions(&request)),
     RequestMsg::AddPlanet(planet) => response_with_update(server, server.add_planet(planet)),
     RequestMsg::Remove(name) => response_with_update(server, server.remove(&name)),
     RequestMsg::SetPlan(plan) => response_with_update(server, server.set_plan(&plan)),
@@ -165,9 +163,7 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 #[allow(clippy::implicit_hasher)]
 #[must_use]
 pub fn build_successful_auth_msgs(
-  auth_response: AuthResponse,
-  server: &Server,
-  session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  auth_response: AuthResponse, server: &Server, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
 ) -> Vec<ResponseMsg> {
   let users: Vec<String> = session_keys.lock().unwrap().values().filter_map(Clone::clone).collect();
   vec![

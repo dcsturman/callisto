@@ -35,24 +35,22 @@ pub struct AddShipMsg {
   pub position: Vec3,
   #[serde_as(as = "Vec3asVec")]
   pub velocity: Vec3,
-  #[serde_as(as = "Vec3asVec")]
-  pub acceleration: Vec3,
   pub design: String,
   pub crew: Option<Crew>,
 }
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
-pub struct SetCrewActions {
+pub struct SetPilotActions {
   pub ship_name: String,
   pub dodge_thrust: Option<u8>,
   pub assist_gunners: Option<bool>,
 }
 
-impl SetCrewActions {
+impl SetPilotActions {
   #[must_use]
   pub fn new(ship_name: &str) -> Self {
-    SetCrewActions {
+    SetPilotActions {
       ship_name: ship_name.to_string(),
       dodge_thrust: None,
       assist_gunners: None,
@@ -107,21 +105,32 @@ pub struct ComputePathMsg {
 
 pub type FlightPathMsg = FlightPathResult;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FireAction {
-  pub weapon_id: u32,
-  pub target: String,
-  #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        //with = "::serde_with::rust::unwrap_or_skip"
-    )]
-  pub called_shot_system: Option<ShipSystem>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ShipAction {
+  FireAction {
+    weapon_id: usize,
+    target: String,
+    #[serde(
+      default,
+      skip_serializing_if = "Option::is_none",
+      //with = "::serde_with::rust::unwrap_or_skip"
+  )]
+    called_shot_system: Option<ShipSystem>,
+  },
+  JamMissiles,
+  BreakSensorLock {
+    target: String,
+  },
+  SensorLock {
+    target: String,
+  },
+  JamComms {
+    target: String,
+  },
 }
+pub type ShipActionMsg = Vec<(String, Vec<ShipAction>)>;
 
-pub type FireActionsMsg = Vec<(String, Vec<FireAction>)>;
-
-pub const EMPTY_FIRE_ACTIONS_MSG: FireActionsMsg = vec![];
+pub const EMPTY_FIRE_ACTIONS_MSG: ShipActionMsg = vec![];
 
 // We don't currently need this explicit type to document the response to a ListEntities (GET) request
 // So including here as a comment for completeness.
@@ -153,6 +162,7 @@ pub enum EffectMsg {
     content: String,
   },
 }
+
 impl EffectMsg {
   #[must_use]
   pub fn message(content: String) -> EffectMsg {
@@ -198,8 +208,8 @@ pub enum RequestMsg {
   Remove(RemoveEntityMsg),
   SetPlan(SetPlanMsg),
   ComputePath(ComputePathMsg),
-  SetCrewActions(SetCrewActions),
-  Update(FireActionsMsg),
+  SetPilotActions(SetPilotActions),
+  Update(ShipActionMsg),
   LoadScenario(LoadScenarioMsg),
   EntitiesRequest,
   DesignTemplateRequest,
@@ -243,7 +253,6 @@ mod tests {
       name: "ship1".to_string(),
       position: Vec3::zero(),
       velocity: Vec3::zero(),
-      acceleration: Vec3::zero(),
       design: default_template_name.clone(),
       crew: None,
     };
@@ -251,7 +260,6 @@ mod tests {
         "name": "ship1",
         "position": [0.0, 0.0, 0.0],
         "velocity": [0.0, 0.0, 0.0],
-        "acceleration": [0.0, 0.0, 0.0],
         "design": "Buccaneer"
     });
 
@@ -269,7 +277,6 @@ mod tests {
       name: "ship1".to_string(),
       position: Vec3::zero(),
       velocity: Vec3::zero(),
-      acceleration: Vec3::zero(),
       design: default_template_name.clone(),
       crew: Some(crew),
     };
@@ -277,7 +284,6 @@ mod tests {
         "name": "ship1",
         "position": [0.0, 0.0, 0.0],
         "velocity": [0.0, 0.0, 0.0],
-        "acceleration": [0.0, 0.0, 0.0],
         "design": "Buccaneer",
         "crew": {
             "pilot": 2,
@@ -378,7 +384,7 @@ mod tests {
     let msg = vec![
       (
         "ship1".to_string(),
-        vec![FireAction {
+        vec![ShipAction::FireAction {
           weapon_id: 0,
           target: "ship2".to_string(),
           called_shot_system: None,
@@ -386,7 +392,7 @@ mod tests {
       ),
       (
         "ship2".to_string(),
-        vec![FireAction {
+        vec![ShipAction::FireAction {
           weapon_id: 1,
           target: "ship1".to_string(),
           called_shot_system: None,
@@ -396,18 +402,18 @@ mod tests {
     let json = json!([
         [
             "ship1", [
-                {
+                { "FireAction" : {
                     "weapon_id": 0,
                     "target": "ship2"
-                }
+                }}
             ]
         ],
         [
             "ship2", [
-                {
+                { "FireAction" : {
                     "weapon_id": 1,
                     "target": "ship1"
-                }
+                }}
             ]
         ]
     ]);

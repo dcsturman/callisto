@@ -5,9 +5,9 @@ use std::sync::{Arc, RwLock};
 use cgmath::InnerSpace;
 use rand::RngCore;
 
-use crate::combat_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::entity::Entity;
-use crate::payloads::{EffectMsg, FireAction, LaunchMissileMsg};
+use crate::payloads::{EffectMsg, LaunchMissileMsg, ShipAction};
+use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
 use crate::{debug, error};
 
@@ -60,13 +60,8 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 /// (e.g. finding the index number of a ship in a list after ensuring its in the list).
 #[allow(clippy::too_many_lines)]
 pub fn attack(
-  hit_mod: i32,
-  damage_mod: i32,
-  attacker: &Ship,
-  defender: &mut Ship,
-  weapon: &Weapon,
-  called_shot_system: Option<&ShipSystem>,
-  rng: &mut dyn RngCore,
+  hit_mod: i32, damage_mod: i32, attacker: &Ship, defender: &mut Ship, weapon: &Weapon,
+  called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let attacker_name = attacker.get_name();
 
@@ -285,11 +280,7 @@ pub fn attack(
   let prev_crits = u64::from(defender.get_max_hull_points() - current_hull) / crit_threshold;
   let secondary_crit = u64::from(defender.get_max_hull_points() - current_hull + damage) / crit_threshold - prev_crits;
 
-  debug!(
-    "(Combat.attack) Secondary crits {} to {}.",
-    secondary_crit,
-    defender.get_name()
-  );
+  debug!("(Combat.attack) Secondary crits {} to {}.", secondary_crit, defender.get_name());
 
   // Add a level 1 crit for each secondary crit.
   for _ in 0..secondary_crit {
@@ -301,10 +292,7 @@ pub fn attack(
 }
 
 fn do_critical(
-  crit_level: u8,
-  defender: &mut Ship,
-  called_shot_system: Option<&ShipSystem>,
-  rng: &mut dyn RngCore,
+  crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let location = if let Some(system) = called_shot_system {
     *system
@@ -315,11 +303,7 @@ fn do_critical(
 
   let effects = apply_crit(crit_level, location, defender, rng);
 
-  debug!(
-    "(Combat.do_critical) {} suffers crits: {:?}.",
-    defender.get_name(),
-    effects
-  );
+  debug!("(Combat.do_critical) {} suffers crits: {:?}.", defender.get_name(), effects);
 
   effects
 }
@@ -604,14 +588,11 @@ fn find_range_band(distance: u32) -> Range {
 ///
 /// # Panics
 /// Panics if the lock cannot be obtained to read a ship.
-/// Also, if we check that sandcasters are available but then cannot pop an element from the `sand_counts` list.
+/// Also, if we check that sand casters are available but then cannot pop an element from the `sand_counts` list.
 #[allow(clippy::too_many_lines)]
 pub fn do_fire_actions<S: BuildHasher>(
-  attacker: &Ship,
-  ships: &mut HashMap<String, Arc<RwLock<Ship>>, S>,
-  sand_counts: &mut HashMap<String, Vec<i32>, S>,
-  actions: &[FireAction],
-  rng: &mut dyn RngCore,
+  attacker: &Ship, ships: &mut HashMap<String, Arc<RwLock<Ship>>, S>, sand_counts: &mut HashMap<String, Vec<i32>, S>,
+  actions: &[ShipAction], rng: &mut dyn RngCore,
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
   let mut new_missiles = vec![];
 
@@ -632,35 +613,42 @@ pub fn do_fire_actions<S: BuildHasher>(
   let effects = actions
     .iter()
     .flat_map(|action| {
+      let ShipAction::FireAction {
+        weapon_id,
+        target,
+        called_shot_system,
+      } = action
+      else {
+        error!("(Combat.do_fire_actions) Expected FireAction but got {:?}.", action);
+        return vec![];
+      };
+
       debug!(
         "(Combat.do_fire_actions) Process fire action for {}: {:?}.",
         attacker.get_name(),
         action
       );
 
-      if !attacker.active_weapons[action.weapon_id as usize] {
-        debug!("(Combat.do_fire_actions) Weapon {} is disabled.", action.weapon_id);
+      if !attacker.active_weapons[*weapon_id] {
+        debug!("(Combat.do_fire_actions) Weapon {} is disabled.", weapon_id);
         return vec![];
       }
 
-      let weapon = attacker.get_weapon(action.weapon_id);
-      let gunnery_skill = i32::from(attacker.get_crew().get_gunnery(action.weapon_id as usize));
+      let weapon = attacker.get_weapon(*weapon_id);
+      let gunnery_skill = i32::from(attacker.get_crew().get_gunnery(*weapon_id));
       debug!(
         "(Combat.do_fire_actions) Gunnery skill for weapon #{} is {}.",
-        action.weapon_id, gunnery_skill
+        weapon_id, gunnery_skill
       );
 
-      let target = ships.get(&action.target);
+      let target_ship = ships.get(target);
 
-      if target.is_none() {
-        debug!(
-          "(Combat.do_fire_actions) No such target {} for fire action.",
-          action.target
-        );
+      if target_ship.is_none() {
+        debug!("(Combat.do_fire_actions) No such target {} for fire action.", target);
         return vec![];
       }
 
-      let mut target = target.unwrap().write().unwrap();
+      let mut target = target_ship.unwrap().write().unwrap();
 
       debug!(
         "(Combat.do_fire_actions) {} attacking {} with {:?}.",
@@ -767,7 +755,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             attacker,
             &mut target,
             weapon,
-            action.called_shot_system.as_ref(),
+            called_shot_system.as_ref(),
             rng,
           ));
           effects
@@ -786,7 +774,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             attacker,
             &mut target,
             weapon,
-            action.called_shot_system.as_ref(),
+            called_shot_system.as_ref(),
             rng,
           )
         }
@@ -836,8 +824,7 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
 mod tests {
   use super::*;
   use crate::entity::Vec3;
-  use crate::payloads::FireAction;
-  use crate::ship::{BaySize, FlightPlan, Weapon, WeaponMount, WeaponType};
+  use crate::ship::{BaySize, Weapon, WeaponMount, WeaponType};
   use crate::ship::{Ship, ShipDesignTemplate};
   use cgmath::{MetricSpace, Zero};
 
@@ -894,7 +881,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(-1000.0, 1000.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(attacker_design),
       None,
     );
@@ -902,7 +888,6 @@ mod tests {
       "Target".to_string(),
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(target_design),
       None,
     );
@@ -912,32 +897,32 @@ mod tests {
     let mut sand_counts = create_sand_counts(&crate::entity::deep_clone(&ships));
 
     let actions = vec![
-      FireAction {
+      ShipAction::FireAction {
         weapon_id: 0,
         target: "Target".to_string(),
         called_shot_system: None,
       }, // Beam Turret
-      FireAction {
+      ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
       }, // Missile Turret
-      FireAction {
+      ShipAction::FireAction {
         weapon_id: 2,
         target: "Target".to_string(),
         called_shot_system: None,
       }, // Missile Barbette
-      FireAction {
+      ShipAction::FireAction {
         weapon_id: 3,
         target: "Target".to_string(),
         called_shot_system: None,
       }, // Missile Bay (Small)
-      FireAction {
+      ShipAction::FireAction {
         weapon_id: 4,
         target: "Target".to_string(),
         called_shot_system: None,
       }, // Missile Bay (Medium)
-      FireAction {
+      ShipAction::FireAction {
         weapon_id: 5,
         target: "Target".to_string(),
         called_shot_system: None,
@@ -974,7 +959,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::zero(),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1021,14 +1005,7 @@ mod tests {
     };
 
     // Reset ship
-    ship = Ship::new(
-      "TestShip".to_string(),
-      Vec3::zero(),
-      Vec3::zero(),
-      FlightPlan::default(),
-      &Arc::new(design),
-      None,
-    );
+    ship = Ship::new("TestShip".to_string(), Vec3::zero(), Vec3::zero(), &Arc::new(design), None);
 
     // Test Armor critical hits
     for level in 1..=6 {
@@ -1121,10 +1098,7 @@ mod tests {
       }
 
       if level >= 4 {
-        assert!(
-          effects.len() > 1,
-          "Should have additional hull damage effect for level 4+"
-        );
+        assert!(effects.len() > 1, "Should have additional hull damage effect for level 4+");
       }
 
       // Reset crit level for next iteration
@@ -1218,7 +1192,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &attacker_design,
       None,
     );
@@ -1227,7 +1200,6 @@ mod tests {
       "Defender".to_string(),
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &defender_design,
       None,
     );
@@ -1288,10 +1260,7 @@ mod tests {
         _ => panic!("Unexpected weapon type"),
       }
       // Check for damage
-      assert!(
-        defender.get_current_hull_points() < starting_hull,
-        "Damage should be applied."
-      );
+      assert!(defender.get_current_hull_points() < starting_hull, "Damage should be applied.");
 
       debug!(
         "(test.test_attack) Damage: {}.  Hull: {}.  Armor: {}.",
@@ -1307,7 +1276,6 @@ mod tests {
         "Defender".to_string(),
         Vec3::new(1000.0, 0.0, 0.0),
         Vec3::zero(),
-        FlightPlan::default(),
         &defender_design,
         None,
       );
@@ -1361,7 +1329,6 @@ mod tests {
         "Defender".to_string(),
         Vec3::new(1000.0, 0.0, 0.0),
         Vec3::zero(),
-        FlightPlan::default(),
         &defender_design,
         None,
       );
@@ -1408,7 +1375,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1416,7 +1382,6 @@ mod tests {
       "Defender".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1458,7 +1423,6 @@ mod tests {
       "Attacker".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1467,7 +1431,6 @@ mod tests {
       // Position defender very far away (beyond weapon range)
       Vec3::new(6_000_000.0, 6_000_000.0, 6_000_000.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1499,7 +1462,6 @@ mod tests {
       // Position defender very far away (beyond weapon range)
       Vec3::new(1_000_000.0, 1_000_000.0, 1_000_000.0),
       Vec3::zero(),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );

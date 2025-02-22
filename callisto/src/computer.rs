@@ -50,11 +50,7 @@ pub struct FlightParams {
 
 impl FlightParams {
   pub fn new(
-    start_pos: Vec3,
-    end_pos: Vec3,
-    start_vel: Vec3,
-    end_vel: Vec3,
-    target_velocity: Option<Vec3>,
+    start_pos: Vec3, end_pos: Vec3, start_vel: Vec3, end_vel: Vec3, target_velocity: Option<Vec3>,
     max_acceleration: f64,
   ) -> Self {
     FlightParams {
@@ -191,10 +187,7 @@ impl FlightParams {
         if norm < SOLVE_TOLERANCE {
           answer
         } else {
-          warn!(
-            "Unable to solve flight path with params: {:?} with norm: {:0.4?}.",
-            self, norm
-          );
+          warn!("Unable to solve flight path with params: {:?} with norm: {:0.4?}.", self, norm);
           // This attempt didn't work. On to the next one (and skip all the use of the answer)
           continue;
         }
@@ -504,10 +497,7 @@ impl TargetParams {
 impl Problem for TargetParams {
   type Field = f64;
   fn domain(&self) -> Domain<Self::Field> {
-    Domain::rect(
-      vec![-100.0, -100.0, -100.0, 0.0],
-      vec![100.0, 100.0, 100.0, f64::INFINITY],
-    )
+    Domain::rect(vec![-100.0, -100.0, -100.0, 0.0], vec![100.0, 100.0, 100.0, f64::INFINITY])
   }
 }
 
@@ -862,26 +852,10 @@ mod tests {
 
     for _ in 0..100 {
       // Generate random parameters
-      let start_pos = Vec3::new(
-        rng.gen_range(-1e8..1e8),
-        rng.gen_range(-1e8..1e8),
-        rng.gen_range(-1e8..1e8),
-      );
-      let end_pos = Vec3::new(
-        rng.gen_range(-1e8..1e8),
-        rng.gen_range(-1e8..1e8),
-        rng.gen_range(-1e8..1e8),
-      );
-      let start_vel = Vec3::new(
-        rng.gen_range(-1e3..1e3),
-        rng.gen_range(-1e3..1e3),
-        rng.gen_range(-1e3..1e3),
-      );
-      let end_vel = Vec3::new(
-        rng.gen_range(-1e3..1e3),
-        rng.gen_range(-1e3..1e3),
-        rng.gen_range(-1e3..1e3),
-      );
+      let start_pos = Vec3::new(rng.gen_range(-1e8..1e8), rng.gen_range(-1e8..1e8), rng.gen_range(-1e8..1e8));
+      let end_pos = Vec3::new(rng.gen_range(-1e8..1e8), rng.gen_range(-1e8..1e8), rng.gen_range(-1e8..1e8));
+      let start_vel = Vec3::new(rng.gen_range(-1e3..1e3), rng.gen_range(-1e3..1e3), rng.gen_range(-1e3..1e3));
+      let end_vel = Vec3::new(rng.gen_range(-1e3..1e3), rng.gen_range(-1e3..1e3), rng.gen_range(-1e3..1e3));
       let max_acceleration = rng.gen_range(1.0..10.0) * G;
 
       let params = FlightParams {
@@ -928,12 +902,7 @@ mod tests {
     let result = params.compute_flight_path().unwrap();
 
     // Assertions
-    assert_eq!(
-      result.path.len(),
-      1,
-      "Path should only have start point {:?}:",
-      result.path
-    );
+    assert_eq!(result.path.len(), 1, "Path should only have start point {:?}:", result.path);
     assert_relative_eq!(result.path[0], current_pos);
     assert_relative_eq!(result.end_velocity, current_vel);
 

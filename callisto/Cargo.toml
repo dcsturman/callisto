@@ -38,6 +38,7 @@ futures-util = "0.3.31"
 futures = "0.3.31"
 pem = "3.0.4"
 dyn-clone = "1.0.18"
+itertools = "0.14.0"
 
 [dev-dependencies]
 test-log="*"

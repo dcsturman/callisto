@@ -33,9 +33,7 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
   /// Authenticates a Google user with the provided code
   /// Returns a tuple of (session_key, user_profile) on success
   async fn authenticate_user(
-    &mut self,
-    code: &str,
-    session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>>;
 
   /// Checks if this socket has been validated, i.e. has successfully logged in.
@@ -123,9 +121,7 @@ impl GoogleAuthenticator {
   /// If the `users_file` or `secret_file` cannot be read.
   #[must_use]
   pub fn new(
-    web_server: &str,
-    credentials: Arc<GoogleCredentials>,
-    google_keys: Arc<GooglePublicKeys>,
+    web_server: &str, credentials: Arc<GoogleCredentials>, google_keys: Arc<GooglePublicKeys>,
     authorized_users: Arc<Vec<String>>,
   ) -> Self {
     GoogleAuthenticator {
@@ -193,9 +189,7 @@ impl GoogleAuthenticator {
 }
 
 fn generic_on_request(
-  session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
-  request: &Request,
-  response: Response,
+  session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>, request: &Request, response: Response,
 ) -> (Response, String, Option<String>) {
   let cookies = request
     .headers()
@@ -287,9 +281,7 @@ impl Authenticator for GoogleAuthenticator {
   }
 
   async fn authenticate_user(
-    &mut self,
-    code: &str,
-    session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>> {
     // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
     // Look up the profile.  Then return the session key and profile.
@@ -387,10 +379,7 @@ impl Authenticator for GoogleAuthenticator {
         .insert(self.session_key.clone().unwrap(), Some(email.clone()));
     }
 
-    info!(
-      "(Authenticator.authenticate_google_user) Validated login for user {}",
-      email
-    );
+    info!("(Authenticator.authenticate_google_user) Validated login for user {}", email);
     self.email = Some(email.clone());
     Ok(email)
   }
@@ -468,9 +457,7 @@ impl Authenticator for MockAuthenticator {
   }
 
   async fn authenticate_user(
-    &mut self,
-    code: &str,
-    session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>> {
     if code != Self::mock_valid_code() {
       return Err(Box::new(InvalidKeyError {}));
@@ -620,11 +607,7 @@ pub(crate) mod tests {
       .expect("Authentication should succeed");
 
     assert_eq!(email, "test@example.com");
-    assert_eq!(
-      session_keys.lock().unwrap().len(),
-      1,
-      "Session keys should have one entry"
-    );
+    assert_eq!(session_keys.lock().unwrap().len(), 1, "Session keys should have one entry");
 
     // Test if user is now validated.
     assert!(mock_auth.validated_user(), "User should be validated");

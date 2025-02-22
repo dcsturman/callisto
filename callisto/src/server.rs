@@ -10,8 +10,8 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FireActionsMsg, FlightPathMsg, LoadScenarioMsg,
-  LoginMsg, RemoveEntityMsg, SetCrewActions, SetPlanMsg, ShipDesignTemplateMsg,
+  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
+  RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 
@@ -64,9 +64,7 @@ impl Server {
   /// # Errors
   /// Returns an error if the user cannot be authenticated.
   pub async fn login(
-    &mut self,
-    login: LoginMsg,
-    session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+    &mut self, login: LoginMsg, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<AuthResponse, String> {
     info!("(Server.login) Received and processing login request.",);
 
@@ -123,14 +121,11 @@ impl Server {
       .get(&ship.design)
       .ok_or_else(|| format!("(Server.add_ship) Could not find design {}.", ship.design))?;
 
-    self.entities.lock().unwrap().add_ship(
-      ship.name,
-      ship.position,
-      ship.velocity,
-      ship.acceleration,
-      design,
-      ship.crew,
-    );
+    self
+      .entities
+      .lock()
+      .unwrap()
+      .add_ship(ship.name, ship.position, ship.velocity, design, ship.crew);
 
     Ok("Add ship action executed".to_string())
   }
@@ -146,7 +141,7 @@ impl Server {
   /// # Panics
   /// Panics if the lock cannot be obtained to read the entities or we cannot obtain a write
   /// lock on the ship in question.
-  pub fn set_crew_actions(&self, request: &SetCrewActions) -> Result<String, String> {
+  pub fn set_pilot_actions(&self, request: &SetPilotActions) -> Result<String, String> {
     let entities = self
       .entities
       .lock()
@@ -165,6 +160,7 @@ impl Server {
         .set_pilot_actions(request.dodge_thrust, request.assist_gunners)
         .map_err(|e| e.get_msg())?;
     }
+
     Ok("Set crew action executed".to_string())
   }
 
@@ -279,10 +275,35 @@ impl Server {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read the entities.
-  pub fn update(&mut self, fire_actions: &FireActionsMsg) -> Vec<EffectMsg> {
+  pub fn update(&mut self, actions: &ShipActionMsg) -> Vec<EffectMsg> {
     let mut rng = get_rng(self.test_mode);
 
-    debug!("(/update) Fire actions: {:?}", fire_actions);
+    debug!("(/update) Ship actions: {:?}", actions);
+
+    // Sort all the actions by type.  This big messy functional action sorts through all the ship actions and creates
+    // three vectors of vectors with all the fire actions in the first, the pilot actions in the second, the sensor actions in the third.
+    // Was very explicit with types here (more than necessary) to make it easier to read and understand.
+    // Also: did this before grabbing the entities lock as I'm not sure how expensive this is.
+    #[allow(clippy::type_complexity)]
+    let (fire_actions, sensor_actions): (Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>) = actions
+      .iter()
+      .map(|(ship_name, actions)| {
+        let (f_actions, s_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = actions
+          .iter()
+          .map(|action| match action {
+            ShipAction::FireAction { .. } => (Some(action.clone()), None),
+            ShipAction::JamMissiles
+            | ShipAction::BreakSensorLock { .. }
+            | ShipAction::SensorLock { .. }
+            | ShipAction::JamComms { .. } => (None, Some(action.clone())),
+          })
+          .unzip();
+        (
+          (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+          (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        )
+      })
+      .unzip();
 
     // Grab the lock on entities
     let mut entities = self
@@ -295,21 +316,23 @@ impl Server {
     // or destroyed they still get to take their actions.
     let ship_snapshot: HashMap<String, Ship> = deep_clone(&entities.ships);
 
+    // First process all sensor actions. They can remove missiles and change modifiers for ship combat.
+    let mut effects = entities.sensor_actions(&sensor_actions, &mut rng);
+
     // 1. This method will make a clone of all ships to use as attacker while impacting damage on the primary copy of ships.  This way ships still get ot attack
     // even when damaged.  This gives us a "simultaneous" attack semantics.
     // 2. Add all new missiles into the entities structure.
     // 3. Then update all the entities.  Note this means ship movement is after combat so a ship with degraded maneuver might not move as much as expected.
     // Its not clear to me if this is the right order - or should they move then take damage - but we'll do it this way for now.
     // 3. Return a set of effects
-
-    let mut effects = entities.fire_actions(fire_actions, &ship_snapshot, &mut rng);
+    effects.append(&mut entities.fire_actions(&fire_actions, &ship_snapshot, &mut rng));
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
 
     // 5. Reset all ship agility setting as the round is over.
     for ship in entities.ships.values() {
-      ship.write().unwrap().reset_crew_actions();
+      ship.write().unwrap().reset_pilot_actions();
     }
 
     effects
@@ -327,10 +350,7 @@ impl Server {
   /// # Panics
   /// Panics if the lock cannot be obtained to read the entities.
   pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<FlightPathMsg, String> {
-    info!(
-      "(/compute_path) Received and processing compute path request. {:?}",
-      msg
-    );
+    info!("(/compute_path) Received and processing compute path request. {:?}", msg);
 
     debug!(
       "(/compute_path) Computing path for entity: {} End pos: {:?} End vel: {:?}",
@@ -397,14 +417,9 @@ impl Server {
   /// Panics if the lock cannot be obtained to write the entities.  Not clear when this might happen,
   /// especially given this routine is run only on server initialization.
   pub async fn load_scenario(&self, msg: &LoadScenarioMsg) -> Result<String, String> {
-    info!(
-      "(/load_scenario) Received and processing load scenario request. {:?}",
-      msg
-    );
+    info!("(/load_scenario) Received and processing load scenario request. {:?}", msg);
 
-    let entities = Entities::load_from_file(&msg.scenario_name)
-      .await
-      .map_err(|e| e.to_string())?;
+    let entities = Entities::load_from_file(&msg.scenario_name).await.map_err(|e| e.to_string())?;
     *self.entities.lock().unwrap() = entities;
 
     Ok("Load scenario action executed".to_string())

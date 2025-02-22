@@ -44,12 +44,7 @@ impl Missile {
   ///
   /// Panics if the lock cannot be obtained to read the target ship.
   pub fn new(
-    name: String,
-    source: String,
-    target: String,
-    target_ptr: Arc<RwLock<Ship>>,
-    position: Vec3,
-    velocity: Vec3,
+    name: String, source: String, target: String, target_ptr: Arc<RwLock<Ship>>, position: Vec3, velocity: Vec3,
     burns: i32,
   ) -> Self {
     // We need to construct an initial route for the missile primarily so
@@ -201,11 +196,26 @@ impl Entity for Missile {
   }
 }
 
+impl Default for Missile {
+  fn default() -> Self {
+    Missile {
+      name: "Default Missile".to_string(),
+      position: Vec3::zero(),
+      velocity: Vec3::zero(),
+      source: "Default Source".to_string(),
+      target: "Default Target".to_string(),
+      target_ptr: None,
+      acceleration: Vec3::zero(),
+      burns: 0,
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::entity::Vec3;
-  use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
+  use crate::ship::{Ship, ShipDesignTemplate};
   use cgmath::Zero;
   use std::sync::{Arc, RwLock};
 
@@ -220,7 +230,6 @@ mod tests {
         String::from("target1"),
         Vec3::zero(),
         Vec3::zero(),
-        FlightPlan::default(),
         &Arc::new(ShipDesignTemplate::default()),
         None,
       ))),
