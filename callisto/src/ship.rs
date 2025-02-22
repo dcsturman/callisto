@@ -164,8 +164,8 @@ pub enum Stealth {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum CounterMeasures {
-  Standard, 
-  Military
+  Standard,
+  Military,
 }
 
 #[must_use]
