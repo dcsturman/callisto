@@ -37,8 +37,8 @@ use callisto::debug;
 
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use callisto::payloads::{
-  AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, FireAction, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
-  SetCrewActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+  AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
+  SetPilotActions, SetPlanMsg, ShipAction, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -57,20 +57,13 @@ fn get_next_port() -> u16 {
 }
 
 async fn spawn_server(
-  port: u16,
-  test_mode: bool,
-  scenario: Option<String>,
-  design_file: Option<String>,
-  auto_kill: bool,
+  port: u16, test_mode: bool, scenario: Option<String>, design_file: Option<String>, auto_kill: bool,
 ) -> Result<Child, io::Error> {
   let mut handle = Command::new(SERVER_PATH);
   let mut handle = handle
     .env("RUST_LOG", var("RUST_LOG").unwrap_or_else(|_| String::new()))
     .env("RUSTFLAGS", var("RUSTFLAGS").unwrap_or_else(|_| String::new()))
-    .env(
-      "CARGO_LLVM_COV",
-      var("CARGO_LLVM_COV").unwrap_or_else(|_| String::new()),
-    )
+    .env("CARGO_LLVM_COV", var("CARGO_LLVM_COV").unwrap_or_else(|_| String::new()))
     .env(
       "CARGO_LLVM_COV_SHOW_ENV",
       var("CARGO_LLVM_COV_SHOW_ENV").unwrap_or_else(|_| String::new()),
@@ -144,10 +137,7 @@ async fn open_socket(port: u16) -> Result<MyWebSocket, Error> {
 }
 
 async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
-  stream
-    .send(serde_json::to_string(&request).unwrap().into())
-    .await
-    .unwrap();
+  stream.send(serde_json::to_string(&request).unwrap().into()).await.unwrap();
 
   let reply = stream
     .next()
@@ -338,7 +328,6 @@ async fn integration_add_ship() {
     name: "ship1".to_string(),
     position: [0.0, 0.0, 0.0].into(),
     velocity: [0.0, 0.0, 0.0].into(),
-    acceleration: [0.0, 0.0, 0.0].into(),
     design: "Buccaneer".to_string(),
     crew: None,
   };
@@ -360,7 +349,8 @@ async fn integration_add_ship() {
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],10000]],
+         "design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -373,6 +363,7 @@ async fn integration_add_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "sensor_locks": []
         }],
         "missiles":[],
         "planets":[]});
@@ -402,7 +393,6 @@ async fn integration_add_planet_ship() {
       name: "ship1".to_string(),
       position: [0.0, 2000.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -418,7 +408,6 @@ async fn integration_add_planet_ship() {
       name: "ship2".to_string(),
       position: [10000.0, 10000.0, 10000.0].into(),
       velocity: [10000.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -444,6 +433,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -459,6 +449,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "sensor_locks": []
         }],
           "missiles":[],
           "planets":[]});
@@ -509,6 +500,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -524,6 +516,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "sensor_locks": []
         }]});
 
     assert_json_eq!(entities, compare);
@@ -574,6 +567,7 @@ async fn integration_add_planet_ship() {
      "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
      "dodge_thrust":0,
      "assist_gunners":false,
+     "sensor_locks": []
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
      "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -589,6 +583,7 @@ async fn integration_add_planet_ship() {
      "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
      "dodge_thrust":0,
      "assist_gunners":false,
+     "sensor_locks": []
     }]});
 
     assert_json_eq!(&entities, &compare);
@@ -618,7 +613,6 @@ async fn integration_update_ship() {
       name: "ship1".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [1000.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -663,7 +657,6 @@ async fn integration_update_missile() {
       name: "ship1".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [1000.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "System Defense Boat".to_string(),
       crew: None,
     }),
@@ -678,7 +671,6 @@ async fn integration_update_missile() {
       name: "ship2".to_string(),
       position: [5000.0, 0.0, 5000.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "System Defense Boat".to_string(),
       crew: None,
     }),
@@ -689,7 +681,7 @@ async fn integration_update_missile() {
 
   let fire_actions = vec![(
     "ship1".to_string(),
-    vec![FireAction {
+    vec![ShipAction::FireAction {
       weapon_id: 1,
       target: "ship2".to_string(),
       called_shot_system: None,
@@ -698,10 +690,7 @@ async fn integration_update_missile() {
 
   let effects = rpc(&mut stream, RequestMsg::Update(fire_actions)).await;
   if let ResponseMsg::Effects(effects) = effects {
-    let filtered_effects: Vec<_> = effects
-      .iter()
-      .filter(|e| !matches!(e, EffectMsg::Message { .. }))
-      .collect();
+    let filtered_effects: Vec<_> = effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect();
 
     let compare = vec![EffectMsg::ShipImpact {
       position: Vec3::new(5000.0, 0.0, 5000.0),
@@ -728,6 +717,7 @@ async fn integration_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "sensor_locks": []
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
@@ -743,6 +733,7 @@ async fn integration_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "sensor_locks": []
             }],
             "missiles":[],"planets":[]});
 
@@ -773,7 +764,6 @@ async fn integration_remove_ship() {
       name: "ship1".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -817,7 +807,6 @@ async fn integration_set_acceleration() {
       name: "ship1".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -875,7 +864,6 @@ async fn integration_compute_path_basic() {
       name: "ship1".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -961,7 +949,6 @@ async fn integration_compute_path_with_standoff() {
       name: "ship1".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -1047,7 +1034,6 @@ async fn integration_malformed_requests() {
       name: "bad_ship".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "NonexistentDesign".to_string(),
       crew: None,
     }),
@@ -1103,7 +1089,7 @@ async fn integration_malformed_requests() {
     &mut stream,
     RequestMsg::Update(vec![(
       "nonexistent_ship".to_string(),
-      vec![FireAction {
+      vec![ShipAction::FireAction {
         weapon_id: 0,
         target: "nonexistent_target".to_string(),
         called_shot_system: None,
@@ -1128,7 +1114,7 @@ async fn integration_bad_requests() {
   let _ = test_authenticate(&mut stream).await.unwrap();
 
   // Test setting crew actions for non-existent ship
-  let msg = RequestMsg::SetCrewActions(SetCrewActions {
+  let msg = RequestMsg::SetPilotActions(SetPilotActions {
     ship_name: "ship1".to_string(),
     dodge_thrust: Some(3),
     assist_gunners: Some(true),
@@ -1164,8 +1150,8 @@ async fn integration_bad_requests() {
   // Test fire action with invalid weapon_id
   let msg = RequestMsg::Update(vec![(
     "ship1".to_string(),
-    vec![FireAction {
-      weapon_id: u32::MAX,
+    vec![ShipAction::FireAction {
+      weapon_id: usize::MAX,
       target: "ship2".to_string(),
       called_shot_system: None,
     }],
@@ -1300,7 +1286,6 @@ async fn integration_set_crew_actions() {
       name: "test_ship".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: Some(crew),
     }),
@@ -1330,7 +1315,7 @@ async fn integration_set_crew_actions() {
   // Test successful crew actions set
   let message = rpc(
     &mut stream,
-    RequestMsg::SetCrewActions(SetCrewActions {
+    RequestMsg::SetPilotActions(SetPilotActions {
       ship_name: "test_ship".to_string(),
       dodge_thrust: Some(1),
       assist_gunners: Some(true),
@@ -1344,7 +1329,7 @@ async fn integration_set_crew_actions() {
   // Test setting crew actions for non-existent ship
   let message = rpc(
     &mut stream,
-    RequestMsg::SetCrewActions(SetCrewActions {
+    RequestMsg::SetPilotActions(SetPilotActions {
       ship_name: "nonexistent_ship".to_string(),
       dodge_thrust: Some(1),
       assist_gunners: Some(true),
@@ -1376,7 +1361,6 @@ async fn integration_multi_client_test() {
       name: "ship1".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -1389,7 +1373,6 @@ async fn integration_multi_client_test() {
       name: "ship2".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -1408,7 +1391,6 @@ async fn integration_multi_client_test() {
       name: "ship3".to_string(),
       position: [0.0, 0.0, 0.0].into(),
       velocity: [0.0, 0.0, 0.0].into(),
-      acceleration: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
     }),
@@ -1438,26 +1420,14 @@ async fn integration_create_regular_server() {
   assert!(server1.try_wait().unwrap().is_none());
 
   // Test server with scenario
-  let mut server2 = spawn_server(
-    port_2,
-    false,
-    Some("./tests/test-scenario.json".to_string()),
-    None,
-    true,
-  )
-  .await
-  .unwrap();
+  let mut server2 = spawn_server(port_2, false, Some("./tests/test-scenario.json".to_string()), None, true)
+    .await
+    .unwrap();
   assert!(server2.try_wait().unwrap().is_none());
 
   // Test server with design file
-  let mut server3 = spawn_server(
-    port_3,
-    false,
-    None,
-    Some("./tests/test_templates.json".to_string()),
-    true,
-  )
-  .await
-  .unwrap();
+  let mut server3 = spawn_server(port_3, false, None, Some("./tests/test_templates.json".to_string()), true)
+    .await
+    .unwrap();
   assert!(server3.try_wait().unwrap().is_none());
 }

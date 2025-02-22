@@ -56,7 +56,11 @@ pub struct Ship {
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
-  crew: Crew,
+  pub sensor_locks: Vec<String>,
+
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default)]
+  pub crew: Crew,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -90,6 +94,7 @@ pub struct ShipDesignTemplate {
   pub crew: u32,
   pub sensors: Sensors,
   pub stealth: Option<Stealth>,
+  pub countermeasures: Option<CounterMeasures>,
   pub computer: u32,
   pub weapons: Vec<Weapon>,
   pub tl: u8,
@@ -157,6 +162,13 @@ pub enum Stealth {
   Advanced,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum CounterMeasures {
+  Standard,
+  Military,
+}
+
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, FromRepr, Deserialize, Serialize)]
 pub enum ShipSystem {
   Sensors = 0,
@@ -175,18 +187,13 @@ pub enum ShipSystem {
 impl Ship {
   #[must_use]
   pub fn new(
-    name: String,
-    position: Vec3,
-    velocity: Vec3,
-    plan: FlightPlan,
-    design: &Arc<ShipDesignTemplate>,
-    crew: Option<Crew>,
+    name: String, position: Vec3, velocity: Vec3, design: &Arc<ShipDesignTemplate>, crew: Option<Crew>,
   ) -> Self {
     Ship {
       name,
       position,
       velocity,
-      plan,
+      plan: FlightPlan::default(),
       design: design.clone(),
       current_hull: design.hull,
       current_armor: design.armor,
@@ -197,6 +204,7 @@ impl Ship {
       current_crew: design.crew,
       current_sensors: design.sensors,
       active_weapons: vec![true; design.weapons.len()],
+      sensor_locks: vec![],
       crit_level: [0; 11],
       attack_dm: 0,
       crew: crew.unwrap_or_default(),
@@ -282,8 +290,8 @@ impl Ship {
   }
 
   #[must_use]
-  pub fn get_weapon(&self, weapon_id: u32) -> &Weapon {
-    &self.design.weapons[weapon_id as usize]
+  pub fn get_weapon(&self, weapon_id: usize) -> &Weapon {
+    &self.design.weapons[weapon_id]
   }
 
   #[must_use]
@@ -357,7 +365,7 @@ impl Ship {
   pub fn get_assist_gunners(&self) -> bool {
     self.assist_gunners
   }
-  pub fn reset_crew_actions(&mut self) {
+  pub fn reset_pilot_actions(&mut self) {
     self.dodge_thrust = 0;
     self.assist_gunners = false;
   }
@@ -371,6 +379,20 @@ impl Ship {
 impl PartialOrd for Ship {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
     self.name.partial_cmp(&other.name)
+  }
+}
+
+impl Default for Ship {
+  fn default() -> Self {
+    let mut ship = Ship::new(
+      "Default".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &Arc::new(ShipDesignTemplate::default()),
+      None,
+    );
+    ship.fixup_current_values();
+    ship
   }
 }
 
@@ -429,11 +451,7 @@ impl Entity for Ship {
         let duration = duration as f64;
         self.velocity += accel * G * duration;
         self.position += (old_velocity + self.velocity) / 2.0 * duration;
-        debug!(
-          "(Ship.update) Accelerate at {:0.3?} m/s for time {}",
-          accel * G,
-          duration
-        );
+        debug!("(Ship.update) Accelerate at {:0.3?} m/s for time {}", accel * G, duration);
         debug!(
           "(Ship.update) New velocity: {:0.0?} New position: {:0.0?}",
           self.velocity, self.position
@@ -781,7 +799,7 @@ fn renormalize(orig: Vec3, limit: f64) -> Vec3 {
 }
 impl Default for FlightPlan {
   fn default() -> Self {
-    FlightPlan(AccelPair(Vec3::zero(), 0), None)
+    FlightPlan(AccelPair(Vec3::zero(), 10000), None)
   }
 }
 
@@ -909,6 +927,7 @@ impl Default for ShipDesignTemplate {
       crew: 11,
       sensors: Sensors::Improved,
       stealth: None,
+      countermeasures: None,
       computer: 5,
       weapons: vec![
         Weapon {
@@ -1105,13 +1124,11 @@ mod tests {
   fn test_ship_setters_and_getters() {
     let initial_position = Vec3::new(0.0, 0.0, 0.0);
     let initial_velocity = Vec3::new(1.0, 1.0, 1.0);
-    let initial_plan = FlightPlan::default();
 
     let mut ship = Ship::new(
       "TestShip".to_string(),
       initial_position,
       initial_velocity,
-      initial_plan.clone(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1120,7 +1137,6 @@ mod tests {
     assert_eq!(ship.get_name(), "TestShip");
     assert_eq!(ship.get_position(), initial_position);
     assert_eq!(ship.get_velocity(), initial_velocity);
-    assert_eq!(ship.plan, initial_plan);
 
     // Test setters
     let new_name = "UpdatedShip".to_string();
@@ -1297,13 +1313,11 @@ mod tests {
   fn test_ship_set_flight_plan() {
     let initial_position = Vec3::new(0.0, 0.0, 0.0);
     let initial_velocity = Vec3::new(1.0, 1.0, 1.0);
-    let initial_plan = FlightPlan::default();
 
     let mut ship = Ship::new(
       "TestShip".to_string(),
       initial_position,
       initial_velocity,
-      initial_plan.clone(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1355,7 +1369,6 @@ mod tests {
       "ship1".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1363,7 +1376,6 @@ mod tests {
       "ship2".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1399,7 +1411,7 @@ mod tests {
     let flight_plan = FlightPlan::default();
 
     let mut iter = flight_plan.iter();
-    assert_eq!(iter.next(), Some(AccelPair(Vec3::zero(), 0)));
+    assert_eq!(iter.next(), Some(AccelPair(Vec3::zero(), 10000)));
     assert_eq!(iter.next(), None);
 
     // Test case 4: FlightPlan with zero acceleration
@@ -1432,7 +1444,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
     );
@@ -1461,7 +1472,7 @@ mod tests {
     assert!(format!("{err}").contains("Invalid thrust attempted:"));
 
     // Test resetting agility
-    ship.reset_crew_actions();
+    ship.reset_pilot_actions();
     assert_eq!(ship.get_dodge_thrust(), 0);
   }
 
@@ -1471,7 +1482,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       Some(Crew::new()),
     );
@@ -1492,7 +1502,6 @@ mod tests {
       "TestShip".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
-      FlightPlan::default(),
       &Arc::new(ShipDesignTemplate::default()),
       Some(Crew::new()),
     );
@@ -1626,6 +1635,7 @@ mod tests {
       crew: 20,
       sensors: Sensors::Military,
       stealth: None,
+      countermeasures: None,
       computer: 10,
       weapons: vec![
         Weapon {
@@ -1641,14 +1651,7 @@ mod tests {
     });
 
     // Create a ship with lower current values
-    let mut ship = Ship::new(
-      "TestShip".to_string(),
-      Vec3::zero(),
-      Vec3::zero(),
-      FlightPlan::default(),
-      &design,
-      None,
-    );
+    let mut ship = Ship::new("TestShip".to_string(), Vec3::zero(), Vec3::zero(), &design, None);
 
     // Manually set current values to be lower than design values
     ship.current_hull = 50; // Lower than design.hull (100)
@@ -1774,6 +1777,7 @@ mod tests {
       crew: 20,
       sensors: Sensors::Military,
       stealth: None,
+      countermeasures: None,
       computer: 10,
       weapons: vec![],
       tl: 12,

@@ -1,4 +1,5 @@
 import { createContext } from "react";
+import { Crew } from "./CrewBuilder";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -33,6 +34,9 @@ export class Ship extends Entity {
   active_weapons: boolean[] = [];
   dodge_thrust: number = 0;
   assist_gunners: boolean = false;
+  sensor_locks: string[] = [];
+
+  crew: Crew;
 
   constructor(
     name: string,
@@ -50,7 +54,8 @@ export class Ship extends Entity {
     current_sensors: string,
     active_weapons: boolean[],
     dodge_thrust: number,
-    assist_gunners: boolean
+    assist_gunners: boolean,
+    sensor_locks: string[]
   ) {
     super(name, position, velocity);
     this.plan = plan;
@@ -66,11 +71,34 @@ export class Ship extends Entity {
     this.active_weapons = active_weapons;
     this.dodge_thrust = dodge_thrust;
     this.assist_gunners = assist_gunners;
+    this.sensor_locks = sensor_locks;
+    this.crew = new Crew(active_weapons.length);
   }
 
+  static default(): Ship {
+    return new Ship(
+      "New Ship",
+      [0, 0, 0],
+      [0, 0, 0],
+      [[[0, 0, 0], 0], null],
+      "Buccaneer",
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      "",
+      [true, true],
+      0,
+      false,
+      []
+    );
+  }
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   static parse(json: any): Ship {
-    return new Ship(
+    const ship = new Ship(
       json.name,
       json.position,
       json.velocity,
@@ -86,8 +114,11 @@ export class Ship extends Entity {
       json.current_sensors,
       json.active_weapons,
       json.dodge_thrust,
-      json.assist_gunners
+      json.assist_gunners,
+      json.sensor_locks
     );
+    ship.crew.parse(json.crew);
+    return ship;
   }
 }
 
@@ -209,6 +240,7 @@ export class EntityList {
 };
 export type EntityRefreshCallback = (entities: EntityList) => void;
 
+// Contexts used throughout
 export const EntitiesServerContext = createContext<{
   entities: EntityList;
   handler: EntityRefreshCallback;
@@ -228,6 +260,23 @@ export const EntityToShowContext = createContext<{
 }>({entityToShow: null, setEntityToShow: () => {}});
 
 export const EntityToShowProvider = EntityToShowContext.Provider;
+
+export enum ViewMode {
+  General,
+  Pilot,
+  Sensors,
+  Gunner,
+  Observer
+}
+
+export const ViewContext = createContext<{
+  role: ViewMode;
+  setRole: (role: ViewMode) => void;
+  shipName: string | null;
+  setShipName: (ship_name: string | null) => void;
+}>({role: ViewMode.General, setRole: () => {}, shipName: null, setShipName: () => {}});
+
+export const ViewContextProvider = ViewContext.Provider;
 
 export class FlightPathResult {
   path: [number, number, number][];
@@ -306,6 +355,8 @@ export class ShipDesignTemplate {
   fuel: number;
   crew: number;
   sensors: string;
+  stealth: string | null;
+  countermeasures: string | null;  
   computer: number;
   weapons: Weapon[];
   tl: number;
@@ -323,6 +374,8 @@ export class ShipDesignTemplate {
     t.fuel = json.fuel;
     t.crew = json.crew;
     t.sensors = json.sensors;
+    t.stealth = json.stealth;
+    t.countermeasures = json.countermeasures;
     t.computer = json.computer;
     /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     t.weapons = json.weapons.map((w: any) => Weapon.parse(w));
@@ -341,6 +394,8 @@ export class ShipDesignTemplate {
     this.fuel = 0;
     this.crew = 0;
     this.sensors = "";
+    this.stealth = null;
+    this.countermeasures = null;
     this.computer = 0;
     this.weapons = [];
     this.tl = 0;

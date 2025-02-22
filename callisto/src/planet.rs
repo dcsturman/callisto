@@ -72,14 +72,8 @@ impl Planet {
   #[allow(clippy::too_many_arguments)]
   #[must_use]
   pub fn new(
-    name: String,
-    position: Vec3,
-    color: String,
-    radius: f64,
-    mass: f64,
-    primary: Option<String>,
-    primary_ptr: &Option<Arc<RwLock<Planet>>>,
-    dependency: u32,
+    name: String, position: Vec3, color: String, radius: f64, mass: f64, primary: Option<String>,
+    primary_ptr: &Option<Arc<RwLock<Planet>>>, dependency: u32,
   ) -> Self {
     let mut p = Planet {
       name,

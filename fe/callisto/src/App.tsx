@@ -17,7 +17,7 @@ import {
 } from "./ServerManager";
 import { Users, UserList } from "./UserList";
 
-import { ShipComputer } from "./ShipComputer";
+import { ShipComputer, SensorState, SensorAction } from "./ShipComputer";
 
 import {
   Entity,
@@ -31,9 +31,14 @@ import {
   DesignTemplatesContext,
   EntitiesServerContext,
   DesignTemplatesProvider,
+  ViewMode,
+  ViewContextProvider,
 } from "./Universal";
 
+import { RoleChooser } from "./Role";
+
 import "./index.css";
+
 import { Tutorial } from "./Tutorial";
 
 export const GOOGLE_OAUTH_CLIENT_ID: string =
@@ -126,6 +131,9 @@ function Simulator({
   const entitiesContext = useContext(EntitiesServerContext);
   const templatesContext = useContext(DesignTemplatesContext);
 
+  const [role, setRole] = useState<ViewMode>(ViewMode.General);
+  const [shipName, setShipName] = useState<string | null>(null);
+
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(
     null
@@ -143,6 +151,11 @@ function Simulator({
   const [showRange, setShowRange] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
+  const [sensor_actions, setSensorActions] = useState(
+    {} as {
+      [actor: string]: SensorState;
+    }
+  );
 
   useEffect(() => {
     if (socketReady) {
@@ -216,6 +229,7 @@ function Simulator({
         entityToShow: entityToShow,
         setEntityToShow: setEntityToShow,
       }}>
+        <ViewContextProvider value={{role: role, setRole: (role) => setRole(role), shipName: shipName, setShipName: setShipName}}>
       <>
           <div className="mainscreen-container">
             {!process.env.REACT_APP_RUN_TUTORIAL || (
@@ -228,8 +242,8 @@ function Simulator({
                 setAuthenticated={setAuthenticated}
               />
             )}
-            <Controls
-              nextRound={(fireActions) => nextRound(fireActions)}
+            {role !== ViewMode.Observer && <Controls
+              nextRound={(fireActions) => nextRound(fireActions, sensor_actions)}
               shipDesignTemplates={templatesContext.templates}
               computerShip={computerShip}
               setComputerShip={setComputerShip}
@@ -239,12 +253,17 @@ function Simulator({
               setAuthenticated={setAuthenticated}
               showRange={showRange}
               setShowRange={setShowRange}
-            />
+              proposedPlan={proposedPlan}
+              resetProposedPlan={resetProposedPlan}
+              sensorActions={sensor_actions}
+              setSensorActions={setSensorActions}
+            />}
             <div className="mainscreen-container">
+              {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && 
               <ViewControls
                 viewControls={viewControls}
                 setViewControls={setViewControls}
-              />
+              />}
               <div className="admin-button-window">
                 {!process.env.REACT_APP_RUN_TUTORIAL || (
                   <button
@@ -256,19 +275,28 @@ function Simulator({
                   </button>
                 )}
                 <Users users={users} email={email}/>
+                <RoleChooser />
                 <Logout
                   setAuthenticated={setAuthenticated}
                   email={email}
                   setEmail={setEmail}
                 />
               </div>
-              {computerShip && (
+              {role === ViewMode.General && computerShip && (
                 <ShipComputer
                   ship={computerShip}
                   setComputerShip={setComputerShip}
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
+                  sensor_action={sensor_actions[computerShip.name] || {action: SensorAction.None, target: ""}}
+                  setSensorAction={(action) => setSensorActions({...sensor_actions, [computerShip.name]: action})}
+                  sensor_locks={entitiesContext.entities.ships.reduce((acc, ship) => {
+                    if (ship.sensor_locks.includes(computerShip.name)) {
+                      acc.push(ship.name);
+                    }
+                    return acc;
+                  }, [] as string[])}
                 />
               )}
               {showResults && (
@@ -325,6 +353,7 @@ function Simulator({
           </div>
       </>
       {entityToShow && <EntityInfoWindow entity={entityToShow} />}
+      </ViewContextProvider>
     </EntityToShowProvider>
   );
 }

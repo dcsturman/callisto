@@ -1,18 +1,56 @@
 import React from "react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useContext } from "react";
 import {
   FlightPathResult,
   Ship,
   Planet,
   Entity,
+  EntitiesServerContext,
   DEFAULT_ACCEL_DURATION,
   Acceleration,
   POSITION_SCALE,
+  ViewContext,
+  ViewMode
 } from "./Universal";
 
 import { setPlan, setCrewActions } from "./ServerManager";
 
 import { EntitySelectorType, EntitySelector } from "./EntitySelector";
+
+export enum SensorAction {
+  None,
+  JamMissiles,
+  BreakSensorLock,
+  SensorLock,
+  JamComms,
+}
+
+export class SensorState {
+  action: SensorAction = SensorAction.JamMissiles;
+  target: string = "";
+
+  constructor(action: SensorAction, target: string) {
+    this.action = action;
+    this.target = target;
+  }
+
+  toJSON() {
+    switch (this.action) {
+      case SensorAction.None:
+        return undefined;
+      case SensorAction.JamMissiles:
+        return "JamMissiles";
+      case SensorAction.BreakSensorLock:
+        return { BreakSensorLock: { target: this.target } };
+      case SensorAction.SensorLock:
+        return { SensorLock: { target: this.target } };
+      case SensorAction.JamComms:
+        return { JamComms: { target: this.target } };
+    }
+  }
+}
+
+export type SensorActionMsg = { [key: string]: SensorState };
 
 export function ShipComputer(args: {
   ship: Ship;
@@ -26,7 +64,12 @@ export function ShipComputer(args: {
     target_vel: [number, number, number] | null,
     standoff: number
   ) => void;
+  sensor_action: SensorState;
+  setSensorAction: (action: SensorState) => void;
+  sensor_locks: string[];
 }) {
+  const viewContext = useContext(ViewContext);
+
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
   const ship =
     args.ship ||
@@ -46,13 +89,12 @@ export function ShipComputer(args: {
       "",
       [],
       0,
-      false
+      false,
+      []
     );
 
   if (ship == null) {
-    console.error(
-      `(ShipComputer) Unable to find ship of name "${args.ship}!`
-    );
+    console.error(`(ShipComputer) Unable to find ship of name "${args.ship}!`);
   }
 
   const [currentNavTarget, setCurrentNavTarget] = useState<Entity | null>(null);
@@ -63,7 +105,13 @@ export function ShipComputer(args: {
       return;
     }
 
-    const standoff = currentNavTarget instanceof Planet ? (((currentNavTarget as Planet).radius * 1.1) / POSITION_SCALE).toFixed(1) : "1000";
+    const standoff =
+      currentNavTarget instanceof Planet
+        ? (
+            ((currentNavTarget as Planet).radius * 1.1) /
+            POSITION_SCALE
+          ).toFixed(1)
+        : "1000";
 
     setNavigationTarget({
       p_x: (currentNavTarget.position[0] / POSITION_SCALE).toFixed(0),
@@ -76,7 +124,13 @@ export function ShipComputer(args: {
     });
 
     // Also implicitly compute a plan since most of the time this is what the user wants.
-    args.getAndShowPlan(ship.name, currentNavTarget.position, currentNavTarget.velocity, currentNavTarget.velocity, Number(standoff));
+    args.getAndShowPlan(
+      ship.name,
+      currentNavTarget.position,
+      currentNavTarget.velocity,
+      currentNavTarget.velocity,
+      Number(standoff)
+    );
   }, [currentNavTarget]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
@@ -255,20 +309,19 @@ export function ShipComputer(args: {
     );
   }
 
-  function crewActions(): JSX.Element {
-    function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function pilotActions(): JSX.Element {
+    function handleCrewActionSubmit(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
       ship.dodge_thrust = agility;
       setCrewActions(ship.name, agility, assistGunners);
     }
-
     return (
       <>
-        <h2 className="control-form">Crew Actions</h2>
+        <h2 className="control-form">Pilot Actions</h2>
         <form
           id="crew-actions-form"
           className="control-form"
-          onSubmit={handleSubmit}>
+          onSubmit={handleCrewActionSubmit}>
           <div className="crew-actions-form-container">
             <label className="control-label">Dodge</label>
             <input
@@ -277,7 +330,6 @@ export function ShipComputer(args: {
               value={agility.toString()}
               onChange={(event) => setDodge(Number(event.target.value))}
             />
-
             <label className="control-label">Assist Gunner</label>
             <input
               type="checkbox"
@@ -295,13 +347,20 @@ export function ShipComputer(args: {
     );
   }
 
-  const title = ship.name + " Nav";
+  const title = ship.name + " Controls";
 
   return (
     <div id="computer-window" className="computer-window">
-      <h1>{title}</h1>
-      {crewActions()}
+      {viewContext.role === ViewMode.General && <h1>{title}</h1>}
+      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && pilotActions()}
+      {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && <SensorActionChooser
+        ship={ship}
+        sensor_action={args.sensor_action}
+        setSensorAction={args.setSensorAction}
+        sensor_locks={args.sensor_locks}
+      />}
       <hr />
+      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && <>
       {accelerationManager()}
       <hr />
       <button
@@ -325,7 +384,12 @@ export function ShipComputer(args: {
       <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
         <label className="control-label" style={{ display: "flex" }}>
           Nav Target:
-          <EntitySelector filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]} current={currentNavTarget} onChange={setCurrentNavTarget} exclude={ship.name} />
+          <EntitySelector
+            filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
+            current={currentNavTarget}
+            onChange={setCurrentNavTarget}
+            exclude={ship.name}
+          />
         </label>
         <div className="target-details-div">
           <label className="control-label">
@@ -412,17 +476,116 @@ export function ShipComputer(args: {
           </button>
         </div>
       )}
-      <button
+          </>}
+      {viewContext.role === ViewMode.General && !viewContext.shipName && <button
         className="control-input control-button blue-button"
         onClick={() => {
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
           args.setComputerShip(null);
         }}>
         Close
-      </button>
+      </button>}
     </div>
+
   );
 }
+
+function sensorActionToString(action: SensorState): string {
+  switch (action.action) {
+    case SensorAction.None:
+      return "none";
+    case SensorAction.JamMissiles:
+      return "jam-missiles";
+    case SensorAction.BreakSensorLock:
+      return "bsl-" + action.target;
+    case SensorAction.SensorLock:
+      return "sl-" + action.target;
+    case SensorAction.JamComms:
+      return "jc-" + action.target;
+  }
+}
+interface SensorActionChooserProps {
+  ship: Ship;
+  sensor_action: SensorState;
+  setSensorAction: (action: SensorState) => void;
+  sensor_locks: string[];
+}
+
+const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
+  ship,
+  sensor_action,
+  setSensorAction,
+  sensor_locks,
+}) => {
+  function handleSensorActionChange(
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) {
+    const value = event.target.value;
+    if (value === "none") {
+      setSensorAction(new SensorState(SensorAction.None, ""));
+      return;
+    } else if (value === "jam-missiles") {
+      setSensorAction(new SensorState(SensorAction.JamMissiles, ""));
+    } else if (value.startsWith("bsl-")) {
+      setSensorAction(
+        new SensorState(SensorAction.BreakSensorLock, value.substring(4))
+      );
+    } else if (value.startsWith("sl-")) {
+      setSensorAction(
+        new SensorState(SensorAction.SensorLock, value.substring(3))
+      );
+    } else if (value.startsWith("jc-")) {
+      setSensorAction(
+        new SensorState(SensorAction.JamComms, value.substring(3))
+      );
+    }
+  }
+  const serverEntities = useContext(EntitiesServerContext);
+
+  return (
+    <div className="control-label">
+      <h2 className="control-label">Sensor Actions</h2>
+      <select
+        className="sensor-action-select control-input "
+        value={sensorActionToString(sensor_action)}
+        onChange={handleSensorActionChange}>
+        <option value="none"></option>
+        <option value="jam-missiles">Jam Missiles</option>
+        {sensor_locks.map((s) => (
+          <option key={s + "-break-sensor-lock"} value={"bsl-" + s}>
+            {"Break Sensor Lock: " + s}
+          </option>
+        ))}
+        {serverEntities.entities.ships
+          .filter((s) => s.name !== ship.name && !serverEntities.entities.ships.find((s) => ship.name === s.name)?.sensor_locks.includes(s.name))
+          .map((s) => (
+            <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
+              {"Sensor Lock: " + s.name}
+            </option>
+          ))}
+
+        {serverEntities.entities.ships
+          .filter((s) => s.name !== ship.name)
+          .map((s) => (
+            <option key={s.name + "-jam-comms"} value={"jc-" + s.name}>
+              {"Jam Sensors: " + s.name}
+            </option>
+          ))}
+      </select>
+      {ship.sensor_locks.length > 0 && (
+        <>
+          <div className="control-label">
+            <h3 className="control-label">Sensor Locks</h3>
+            <span className="plan-accel-text">
+              {" "}
+              {serverEntities.entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export function NavigationPlan(args: {
   plan: [Acceleration, Acceleration | null];

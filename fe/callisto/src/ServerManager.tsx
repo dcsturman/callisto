@@ -3,12 +3,13 @@ import {
   EntityRefreshCallback,
   EntityList,
   FlightPathResult,
+  Ship,
   ShipDesignTemplates,
   ShipDesignTemplate,
 } from "./Universal";
-import { FireActionMsg } from "./Controls";
+import { FireActionMsg, FireAction } from "./Controls";
+import { SensorActionMsg, SensorState } from "./ShipComputer";
 import { Effect } from "./Effects";
-import { Crew } from "./CrewBuilder";
 import { UserList } from "./UserList";
 
 export const CALLISTO_BACKEND =
@@ -186,27 +187,13 @@ export function login(code: string) {
   socket.send(JSON.stringify(payload));
 }
 
-export function addShip(
-  name: string,
-  position: [number, number, number],
-  velocity: [number, number, number],
-  acceleration: [number, number, number],
-  design: string,
-  crew: Crew
-) {
+export function addShip(ship: Ship) {
   console.log(
-    `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Acceleration ${acceleration}`
+    `Adding Ship ${ship.name}: Position ${ship.position}, Velocity ${ship.velocity}`
   );
 
   const payload = {
-    AddShip: {
-      name: name,
-      position: position,
-      velocity: velocity,
-      acceleration: acceleration,
-      design: design,
-      crew: crew,
-    },
+    AddShip: { name: ship.name, position: ship.position, velocity: ship.velocity, design: ship.design, crew: ship.crew },
   };
 
   socket.send(JSON.stringify(payload));
@@ -218,7 +205,7 @@ export function setCrewActions(
   assist_gunners: boolean
 ) {
   const payload = {
-    SetCrewActions: {
+    SetPilotActions: {
       ship_name: target,
       dodge_thrust: dodge,
       assist_gunners: assist_gunners,
@@ -256,8 +243,22 @@ export async function setPlan(
   socket.send(JSON.stringify(payload));
 }
 
-export function nextRound(fireActions: FireActionMsg) {
-  const payload = { Update: Object.entries(fireActions) };
+// Issue - sensorState isn't an array, its a Map
+export function nextRound(fireActions: FireActionMsg, sensorActions: SensorActionMsg) {
+  type ShipActionMsg =  { [key: string]: (FireAction | SensorState)[] };
+  const internal: ShipActionMsg = fireActions;
+
+  for (const [ship_name, actionState] of Object.entries(sensorActions)) {
+    if (internal[ship_name]) {
+      internal[ship_name] = [...internal[ship_name], actionState];
+    } else {
+      internal[ship_name] = [actionState];
+    }
+    
+  }
+  
+  const payload = { Update: Object.entries(internal)};
+  console.log("(nextRound) Sending payload: " + JSON.stringify(payload));
   socket.send(JSON.stringify(payload));
 }
 
@@ -341,6 +342,11 @@ function handleEntities(
   setEntities: (entities: EntityList) => void
 ) {
   const entities = EntityList.parse(json);
+  console.groupCollapsed("Received Entities: ");
+  for (const v of entities.ships) {
+    console.log(` ${JSON.stringify(v)}`);
+  }
+  console.groupEnd();
   setEntities(entities);
 }
 
