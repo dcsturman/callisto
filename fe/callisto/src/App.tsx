@@ -31,9 +31,14 @@ import {
   DesignTemplatesContext,
   EntitiesServerContext,
   DesignTemplatesProvider,
+  ViewMode,
+  ViewContextProvider,
 } from "./Universal";
 
+import { RoleChooser } from "./Role";
+
 import "./index.css";
+
 import { Tutorial } from "./Tutorial";
 
 export const GOOGLE_OAUTH_CLIENT_ID: string =
@@ -125,6 +130,9 @@ function Simulator({
 
   const entitiesContext = useContext(EntitiesServerContext);
   const templatesContext = useContext(DesignTemplatesContext);
+
+  const [role, setRole] = useState<ViewMode>(ViewMode.General);
+  const [shipName, setShipName] = useState<string | null>(null);
 
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(
@@ -221,6 +229,7 @@ function Simulator({
         entityToShow: entityToShow,
         setEntityToShow: setEntityToShow,
       }}>
+        <ViewContextProvider value={{role: role, setRole: (role) => setRole(role), shipName: shipName, setShipName: setShipName}}>
       <>
           <div className="mainscreen-container">
             {!process.env.REACT_APP_RUN_TUTORIAL || (
@@ -233,7 +242,7 @@ function Simulator({
                 setAuthenticated={setAuthenticated}
               />
             )}
-            <Controls
+            {role !== ViewMode.Observer && <Controls
               nextRound={(fireActions) => nextRound(fireActions, sensor_actions)}
               shipDesignTemplates={templatesContext.templates}
               computerShip={computerShip}
@@ -244,12 +253,17 @@ function Simulator({
               setAuthenticated={setAuthenticated}
               showRange={showRange}
               setShowRange={setShowRange}
-            />
+              proposedPlan={proposedPlan}
+              resetProposedPlan={resetProposedPlan}
+              sensorActions={sensor_actions}
+              setSensorActions={setSensorActions}
+            />}
             <div className="mainscreen-container">
+              {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && 
               <ViewControls
                 viewControls={viewControls}
                 setViewControls={setViewControls}
-              />
+              />}
               <div className="admin-button-window">
                 {!process.env.REACT_APP_RUN_TUTORIAL || (
                   <button
@@ -261,13 +275,14 @@ function Simulator({
                   </button>
                 )}
                 <Users users={users} email={email}/>
+                <RoleChooser />
                 <Logout
                   setAuthenticated={setAuthenticated}
                   email={email}
                   setEmail={setEmail}
                 />
               </div>
-              {computerShip && (
+              {role === ViewMode.General && computerShip && (
                 <ShipComputer
                   ship={computerShip}
                   setComputerShip={setComputerShip}
@@ -338,6 +353,7 @@ function Simulator({
           </div>
       </>
       {entityToShow && <EntityInfoWindow entity={entityToShow} />}
+      </ViewContextProvider>
     </EntityToShowProvider>
   );
 }

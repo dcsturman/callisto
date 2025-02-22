@@ -240,6 +240,7 @@ export class EntityList {
 };
 export type EntityRefreshCallback = (entities: EntityList) => void;
 
+// Contexts used throughout
 export const EntitiesServerContext = createContext<{
   entities: EntityList;
   handler: EntityRefreshCallback;
@@ -259,6 +260,23 @@ export const EntityToShowContext = createContext<{
 }>({entityToShow: null, setEntityToShow: () => {}});
 
 export const EntityToShowProvider = EntityToShowContext.Provider;
+
+export enum ViewMode {
+  General,
+  Pilot,
+  Sensors,
+  Gunner,
+  Observer
+}
+
+export const ViewContext = createContext<{
+  role: ViewMode;
+  setRole: (role: ViewMode) => void;
+  shipName: string | null;
+  setShipName: (ship_name: string | null) => void;
+}>({role: ViewMode.General, setRole: () => {}, shipName: null, setShipName: () => {}});
+
+export const ViewContextProvider = ViewContext.Provider;
 
 export class FlightPathResult {
   path: [number, number, number][];

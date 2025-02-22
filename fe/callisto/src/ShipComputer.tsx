@@ -9,6 +9,8 @@ import {
   DEFAULT_ACCEL_DURATION,
   Acceleration,
   POSITION_SCALE,
+  ViewContext,
+  ViewMode
 } from "./Universal";
 
 import { setPlan, setCrewActions } from "./ServerManager";
@@ -66,6 +68,8 @@ export function ShipComputer(args: {
   setSensorAction: (action: SensorState) => void;
   sensor_locks: string[];
 }) {
+  const viewContext = useContext(ViewContext);
+
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
   const ship =
     args.ship ||
@@ -343,19 +347,20 @@ export function ShipComputer(args: {
     );
   }
 
-  const title = ship.name + " Nav";
+  const title = ship.name + " Controls";
 
   return (
     <div id="computer-window" className="computer-window">
-      <h1>{title}</h1>
-      {pilotActions()}
-      <SensorActionChooser
+      {viewContext.role === ViewMode.General && <h1>{title}</h1>}
+      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && pilotActions()}
+      {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && <SensorActionChooser
         ship={ship}
         sensor_action={args.sensor_action}
         setSensorAction={args.setSensorAction}
         sensor_locks={args.sensor_locks}
-      />
+      />}
       <hr />
+      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && <>
       {accelerationManager()}
       <hr />
       <button
@@ -471,15 +476,17 @@ export function ShipComputer(args: {
           </button>
         </div>
       )}
-      <button
+          </>}
+      {viewContext.role === ViewMode.General && !viewContext.shipName && <button
         className="control-input control-button blue-button"
         onClick={() => {
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
           args.setComputerShip(null);
         }}>
         Close
-      </button>
+      </button>}
     </div>
+
   );
 }
 

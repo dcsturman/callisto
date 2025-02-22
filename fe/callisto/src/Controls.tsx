@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext, useEffect } from "react";
 import * as THREE from "three";
 import { Accordion } from "./Accordion";
 import { AddShip } from "./AddShip";
@@ -6,8 +6,12 @@ import {
   Ship,
   ViewControlParams,
   Entity,
+  EntitiesServerContext,
+  FlightPathResult,
   Planet,
   ShipDesignTemplates,
+  ViewContext,
+  ViewMode,
   Weapon,
   WeaponMount,
   POSITION_SCALE,
@@ -24,6 +28,7 @@ import {
 } from "./Util";
 import { NavigationPlan } from "./ShipComputer";
 import { WeaponButton, FireActions } from "./WeaponUse";
+import { ShipComputer, SensorAction, SensorState } from "./ShipComputer";
 
 export class FireAction {
   target: string;
@@ -106,7 +111,18 @@ export function Controls(args: {
   setAuthenticated: (authenticated: boolean) => void;
   showRange: string | null;
   setShowRange: (target: string | null) => void;
+  proposedPlan: FlightPathResult | null;
+  resetProposedPlan: () => void;
+  sensorActions: {
+    [actor: string]: SensorState;
+  };
+  setSensorActions: (actions: {
+    [actor: string]: SensorState;
+  }) => void;
 }) {
+  const viewContext = useContext(ViewContext);
+  const serverEntities = useContext(EntitiesServerContext).entities;
+
   // fire_actions is, for each ship, all weapons grouped together by kind and mount.
   // This allows them to be displayed as a single button with a count, and
   // track how many are used.
@@ -129,6 +145,14 @@ export function Controls(args: {
 
 
   const [fireTarget, setFireTarget] = useState<Entity | null>(null);
+
+  // If there's actually a ship name defined in the Role information, that supercedes
+  // any other selection for the computerShip.
+  useEffect(() => {
+    if (viewContext.shipName) {
+      args.setComputerShip(serverEntities.ships.find((s) => s.name === viewContext.shipName)?? null);
+    }
+  }, [viewContext.shipName]);
 
   const computerShipDesign = args.computerShip
     ? args.shipDesignTemplates[args.computerShip.design]
@@ -223,8 +247,9 @@ export function Controls(args: {
     <div className="controls-pane">
       <h1>Controls</h1>
       <hr />
-      {args.shipDesignTemplates &&
-        Object.keys(args.shipDesignTemplates).length > 0 && (
+      {viewContext.role === ViewMode.General &&
+        args.shipDesignTemplates &&
+        Object.keys(args.shipDesignTemplates).length > 0 && (<>
           <AddShip
             submitHandler={(
               ship: Ship
@@ -233,10 +258,11 @@ export function Controls(args: {
             }
             shipDesignTemplates={args.shipDesignTemplates}
           />
-        )}
-      <hr />
+        <hr />
+        </>)
+    }
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
-        <ShipList
+        {viewContext.shipName || <ShipList
           computerShip={args.computerShip}
           setComputerShip={(ship) => {
             args.setShowRange(null);
@@ -245,7 +271,7 @@ export function Controls(args: {
           }}
           setCameraPos={args.setCameraPos}
           camera={args.camera}
-        />
+        />}
         {args.computerShip && (
           <>
             <div className="vital-stats-bloc">
@@ -335,9 +361,28 @@ export function Controls(args: {
             </h2>
             <NavigationPlan plan={args.computerShip.plan} />
             <hr />
+            {[ViewMode.Pilot, ViewMode.Sensors].includes(viewContext.role) && args.computerShip && ( 
+              <Accordion title={`${args.computerShip.name} ${ViewMode[viewContext.role]} Controls`} initialOpen={true}>   
+              <ShipComputer
+                  ship={args.computerShip}
+                  setComputerShip={args.setComputerShip}
+                  proposedPlan={args.proposedPlan}
+                  resetProposedPlan={args.resetProposedPlan}
+                  getAndShowPlan={args.getAndShowPlan}
+                  sensor_action={args.sensorActions[args.computerShip.name] || {action: SensorAction.None, target: ""}}
+                  setSensorAction={(action) => args.setSensorActions({...args.sensorActions, [args.computerShip!.name]: action})}
+                  sensor_locks={serverEntities.ships.reduce((acc, ship) => {
+                    if (ship.sensor_locks.includes(args.computerShip!.name)) {
+                      acc.push(ship.name);
+                    }
+                    return acc;
+                  }, [] as string[])}
+                />
+                </Accordion>
+              )}
+            {[ViewMode.Gunner, ViewMode.General].includes(viewContext.role) && (
             <div className="control-form">
-              <label className="control-label">
-                <h2>Fire Control</h2>
+              <Accordion title={`${args.computerShip.name} Fire Controls`} initialOpen={true}>
                 <div className="control-launch-div">
                   Target:
                   <EntitySelector
@@ -381,8 +426,8 @@ export function Controls(args: {
                         )
                     )}
                 </div>
-              </label>
-            </div>
+              </Accordion>
+            </div>)}
           </>
         )}
         {args.computerShip &&
