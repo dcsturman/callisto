@@ -60,22 +60,7 @@ function ShipList(args: {
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
 }) {
-  function moveCameraToShip() {
-    if (args.camera == null) {
-      console.log("Cannot move camera because camera object in Three is null.");
-      return;
-    }
-    if (args.computerShip) {
-      const downCamera = new THREE.Vector3(0, 0, 40);
-      downCamera.applyQuaternion(args.camera.quaternion);
-      const new_camera_pos = new THREE.Vector3(
-        args.computerShip.position[0] * SCALE,
-        args.computerShip.position[1] * SCALE,
-        args.computerShip.position[2] * SCALE
-      ).add(downCamera);
-      args.setCameraPos(new_camera_pos);
-    }
-  }
+
 
   return (
     <div className="control-launch-div">
@@ -85,11 +70,42 @@ function ShipList(args: {
         onChange={(entity) => args.setComputerShip(entity as Ship)}
         current={args.computerShip}
       />
-      <button className="control-input blue-button" onClick={moveCameraToShip}>
-        Go
-      </button>
+      <GoButton camera={args.camera} computerShip={args.computerShip} setCameraPos={args.setCameraPos} />
     </div>
   );
+}
+
+interface GoButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  camera: THREE.Camera | null;
+  computerShip: Ship | null;
+  setCameraPos: (pos: THREE.Vector3) => void;
+}
+
+export const GoButton: React.FC<GoButtonProps> = ({camera, computerShip, setCameraPos, ...props}) => {
+  return (
+    <button className="control-input blue-button" {...props} onClick={() => moveCameraToShip(camera, computerShip, setCameraPos)}>
+      Go
+    </button>
+  );
+};
+
+function moveCameraToShip(camera: THREE.Camera | null, computerShip: Ship | null, setCameraPos: (pos: THREE.Vector3) => void) {
+  if (camera == null) {
+    console.log("Cannot move camera because camera object in Three is null.");
+    return;
+  }
+  if (computerShip) {
+    const downCamera = new THREE.Vector3(0, 0, 40);
+    downCamera.applyQuaternion(camera.quaternion);
+    const new_camera_pos = new THREE.Vector3(
+      computerShip.position[0] * SCALE,
+      computerShip.position[1] * SCALE,
+      computerShip.position[2] * SCALE
+    ).add(downCamera);
+    setCameraPos(new_camera_pos);
+  } else {
+    console.log("Cannot move camera because no ship is selected.");
+  }
 }
 
 export function Controls(args: {
@@ -256,7 +272,7 @@ export function Controls(args: {
           </>
         )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
-        {viewContext.shipName || (
+        {viewContext.shipName === null ? (
           <ShipList
             computerShip={args.computerShip}
             setComputerShip={(ship) => {
@@ -267,7 +283,7 @@ export function Controls(args: {
             setCameraPos={args.setCameraPos}
             camera={args.camera}
           />
-        )}
+        ) : <GoButton camera={args.camera} computerShip={args.computerShip} setCameraPos={args.setCameraPos} style={{width: "100%", height: "24px", margin: "0px", padding: "0px"}}/>}
         {args.computerShip && (
           <>
             <div className="vital-stats-bloc">

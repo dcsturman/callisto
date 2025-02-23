@@ -77,6 +77,16 @@ export function App() {
     } 
   }, [socketReady]);
 
+  useEffect(() => {
+
+    if (computerShip) {
+      const ship = entities.ships.find((ship) => ship.name === computerShip.name);
+      if (ship) {
+        setComputerShip(ship)
+      }
+    }
+  }, [entities.ships]);
+
   return (
     <EntitiesServerProvider value={{ entities: entities, handler: setEntities }}>
     <DesignTemplatesProvider value={{templates: templates, handler: setTemplates}}>
