@@ -60,8 +60,6 @@ function ShipList(args: {
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
 }) {
-
-
   return (
     <div className="control-launch-div">
       <h2 className="ship-list-label">Ship: </h2>
@@ -70,7 +68,11 @@ function ShipList(args: {
         onChange={(entity) => args.setComputerShip(entity as Ship)}
         current={args.computerShip}
       />
-      <GoButton camera={args.camera} computerShip={args.computerShip} setCameraPos={args.setCameraPos} />
+      <GoButton
+        camera={args.camera}
+        computerShip={args.computerShip}
+        setCameraPos={args.setCameraPos}
+      />
     </div>
   );
 }
@@ -81,15 +83,27 @@ interface GoButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   setCameraPos: (pos: THREE.Vector3) => void;
 }
 
-export const GoButton: React.FC<GoButtonProps> = ({camera, computerShip, setCameraPos, ...props}) => {
+export const GoButton: React.FC<GoButtonProps> = ({
+  camera,
+  computerShip,
+  setCameraPos,
+  ...props
+}) => {
   return (
-    <button className="control-input blue-button" {...props} onClick={() => moveCameraToShip(camera, computerShip, setCameraPos)}>
+    <button
+      className="control-input blue-button"
+      {...props}
+      onClick={() => moveCameraToShip(camera, computerShip, setCameraPos)}>
       Go
     </button>
   );
 };
 
-function moveCameraToShip(camera: THREE.Camera | null, computerShip: Ship | null, setCameraPos: (pos: THREE.Vector3) => void) {
+function moveCameraToShip(
+  camera: THREE.Camera | null,
+  computerShip: Ship | null,
+  setCameraPos: (pos: THREE.Vector3) => void
+) {
   if (camera == null) {
     console.log("Cannot move camera because camera object in Three is null.");
     return;
@@ -283,7 +297,19 @@ export function Controls(args: {
             setCameraPos={args.setCameraPos}
             camera={args.camera}
           />
-        ) : <GoButton camera={args.camera} computerShip={args.computerShip} setCameraPos={args.setCameraPos} style={{width: "100%", height: "24px", margin: "0px", padding: "0px"}}/>}
+        ) : (
+          <GoButton
+            camera={args.camera}
+            computerShip={args.computerShip}
+            setCameraPos={args.setCameraPos}
+            style={{
+              width: "100%",
+              height: "24px",
+              margin: "0px",
+              padding: "0px",
+            }}
+          />
+        )}
         {args.computerShip && (
           <>
             <div className="vital-stats-bloc">
@@ -359,19 +385,15 @@ export function Controls(args: {
                 <div className="stats-bloc-entry">
                   <h2>CM</h2>
                   <pre className="plan-accel-text">
-                    {
-                      args.shipDesignTemplates[args.computerShip.design]
-                        .countermeasures || "None"
-                    }
+                    {args.shipDesignTemplates[args.computerShip.design]
+                      .countermeasures || "None"}
                   </pre>
                 </div>
                 <div className="stats-bloc-entry">
                   <h2>Stealth</h2>
                   <pre className="plan-accel-text">
-                    {
-                      args.shipDesignTemplates[args.computerShip.design]
-                        .stealth || "None"
-                    }
+                    {args.shipDesignTemplates[args.computerShip.design]
+                      .stealth || "None"}
                   </pre>
                 </div>
               </div>
