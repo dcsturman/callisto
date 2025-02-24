@@ -6,11 +6,12 @@ import {
   Ship,
   ShipDesignTemplates,
   ShipDesignTemplate,
+  ViewMode,
 } from "./Universal";
 import { FireActionMsg, FireAction } from "./Controls";
 import { SensorActionMsg, SensorState } from "./ShipComputer";
 import { Effect } from "./Effects";
-import { UserList } from "./UserList";
+import { UserList, UserContext } from "./UserList";
 
 export const CALLISTO_BACKEND =
   process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
@@ -298,6 +299,16 @@ export function loadScenario(scenario_name: string) {
   socket.send(JSON.stringify(payload));
 }
 
+export function setRole(role: ViewMode, ship: string | null) {
+  if (ship !== null) {
+    const payload = { SetRole: { role: ViewMode[role], ship: ship } };
+    socket.send(JSON.stringify(payload));
+  } else {
+    const payload = { SetRole: { role: ViewMode[role] } };
+    socket.send(JSON.stringify(payload));
+  }
+}
+
 export function getEntities() {
   socket.send(ENTITIES_REQUEST);
 }
@@ -363,6 +374,31 @@ function handleEffect(json: object[], setEvents: (effects: Effect[]) => void) {
   setEvents(effects);
 }
 
-function handleUsers(json: [string], setUsers: (users: UserList) => void) {
-  setUsers(json);
+function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
+  console.log("(handleUsers) Received users: " + JSON.stringify(json));
+  const users: UserList = [];
+  for (const user of json) {
+    const c: UserContext = {} as UserContext;
+    c.email = user.email;
+    switch (user.role as unknown as string) {
+      case "General":
+        c.role = ViewMode.General as ViewMode;
+        break;
+      case "Pilot":
+        c.role = ViewMode.Pilot as ViewMode;
+        break;
+      case "Sensors":
+        c.role = ViewMode.Sensors as ViewMode;
+        break;
+      case "Gunner":
+        c.role = ViewMode.Gunner as ViewMode;
+        break;
+      case "Observer":
+        c.role = ViewMode.Observer as ViewMode;
+        break;
+    }
+    c.ship = user.ship;
+    users.push(c);
+  }
+  setUsers(users);
 }

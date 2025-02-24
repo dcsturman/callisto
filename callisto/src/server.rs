@@ -10,11 +10,11 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
+  AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
   RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
-
+use crate::payloads::Role;
 use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
@@ -22,6 +22,10 @@ use crate::{debug, info, warn};
 pub struct Server {
   entities: Arc<Mutex<Entities>>,
   authenticator: Box<dyn Authenticator>,
+  // Role this user might have assumed
+  role: Role,
+  // Ship this user may have assumed a crew position on.
+  ship: Option<String>,
   test_mode: bool,
 }
 
@@ -31,6 +35,8 @@ impl Server {
       entities,
       authenticator,
       test_mode,
+      role: Role::General,
+      ship: None,
     }
   }
 
@@ -423,6 +429,22 @@ impl Server {
     *self.entities.lock().unwrap() = entities;
 
     Ok("Load scenario action executed".to_string())
+  }
+
+  #[must_use]
+  pub fn get_email(&self) -> Option<String> {
+    self.authenticator.get_email()
+  }
+
+  #[must_use]
+  pub fn get_role(&self) -> (Role, Option<String>) {
+    (self.role, self.ship.clone())
+  }
+
+  pub fn set_role(&mut self, msg: &ChangeRole) -> Result<String, String> {
+    self.role = msg.role;
+    self.ship = msg.ship.clone();
+    Ok("Role set".to_string())
   }
 }
 

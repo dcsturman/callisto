@@ -9,9 +9,9 @@ export enum EntitySelectorType {
   Missile,
 }
 
-interface EntitySelectorProps {
+type EntitySelectorProps = JSX.IntrinsicElements["select"] & {
   filter: EntitySelectorType[];
-  onChange: (entity: Entity | null) => void;
+  setChoice: (entity: Entity | null) => void;
   current: Entity | null;
   exclude?: string;
   formatter?: (name: string, entity: Entity) => string;
@@ -19,10 +19,11 @@ interface EntitySelectorProps {
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
   filter,
-  onChange,
+  setChoice,
   current,
   exclude,
   formatter,
+  ...props
 }) => {
   const entities = useContext(EntitiesServerContext).entities;
 
@@ -30,13 +31,14 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   const nf = (name: string, entity: Entity) =>
     formatter ? formatter(name, entity) : name;
 
+
   function handleSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
 
     if (filter.includes(EntitySelectorType.Ship)) {
       const shipTarget = entities.ships.find((ship) => ship.name === value);
       if (shipTarget != null) {
-        onChange(shipTarget);
+        setChoice(shipTarget);
         return;
       }
     }
@@ -46,7 +48,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         (planet) => planet.name === value
       );
       if (planetTarget != null) {
-        onChange(planetTarget);
+        setChoice(planetTarget);
         return;
       }
     }
@@ -56,21 +58,22 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         (missile) => missile.name === value
       );
       if (missileTarget != null) {
-        onChange(missileTarget);
+        setChoice(missileTarget);
         return;
       }
     }
 
-    onChange(null);
+    setChoice(null);
   }
 
   return (
     <>
       <select
-        className="select-dropdown control-name-input control-input"
+        className={"select-dropdown control-name-input control-input"}
         name="entity_selector"
         value={current ? current.name : ""}
-        onChange={handleSelectChange}>
+        onChange={handleSelectChange}
+        {...props}>
         <option key="el-none" value=""></option>
         {filter.includes(EntitySelectorType.Ship) &&
           entities.ships

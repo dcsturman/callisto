@@ -183,6 +183,31 @@ pub struct LoadScenarioMsg {
 
 pub type ShipDesignTemplateMsg = HashMap<String, ShipDesignTemplate>;
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum Role {
+  General = 0,
+  Pilot,
+  Sensors,
+  Gunner,
+  Observer,
+}
+
+#[serde_as]
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserData {
+  pub email: String,
+  pub role: Role,
+  pub ship: Option<String>,
+}
+
+#[serde_as]
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChangeRole {
+  pub role: Role,
+  pub ship: Option<String>,
+}
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
@@ -209,6 +234,7 @@ pub enum RequestMsg {
   SetPlan(SetPlanMsg),
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),
+  SetRole(ChangeRole),
   Update(ShipActionMsg),
   LoadScenario(LoadScenarioMsg),
   EntitiesRequest,
@@ -224,7 +250,7 @@ pub enum ResponseMsg {
   EntityResponse(Entities),
   FlightPath(FlightPathMsg),
   Effects(Vec<EffectMsg>),
-  Users(Vec<String>),
+  Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
   SimpleMsg(String),
   // LogoutResponse is a faux message never sent back.  However,

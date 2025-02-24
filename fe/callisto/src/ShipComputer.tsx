@@ -387,7 +387,7 @@ export function ShipComputer(args: {
           <EntitySelector
             filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
             current={currentNavTarget}
-            onChange={setCurrentNavTarget}
+            setChoice={setCurrentNavTarget}
             exclude={ship.name}
           />
         </label>

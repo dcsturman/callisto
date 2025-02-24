@@ -65,7 +65,7 @@ function ShipList(args: {
       <h2 className="ship-list-label">Ship: </h2>
       <EntitySelector
         filter={[EntitySelectorType.Ship]}
-        onChange={(entity) => args.setComputerShip(entity as Ship)}
+        setChoice={(entity) => args.setComputerShip(entity as Ship)}
         current={args.computerShip}
       />
       <GoButton
@@ -472,7 +472,7 @@ export function Controls(args: {
                     Target:
                     <EntitySelector
                       filter={[EntitySelectorType.Ship]}
-                      onChange={setFireTarget}
+                      setChoice={setFireTarget}
                       current={fireTarget}
                       exclude={args.computerShip.name}
                       formatter={(name, entity) => {

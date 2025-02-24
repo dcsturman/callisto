@@ -60,7 +60,7 @@ export function App() {
   });
   
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
-  const [users, setUsers] = useState<UserList>([] as unknown as UserList);
+  const [users, setUsers] = useState<UserList>([]);
 
   useEffect(() => {
     setMessageHandlers(
