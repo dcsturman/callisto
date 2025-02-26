@@ -10,6 +10,7 @@ pub mod processor;
 mod rules_tables;
 pub mod server;
 pub mod ship;
+pub mod action;
 
 #[macro_use]
 mod cov_util;
@@ -120,8 +121,12 @@ pub async fn handle_request(
         msgs
       }
     }
-    RequestMsg::Update(fire_actions) => {
-      let effects = server.update(&fire_actions);
+    RequestMsg::ModifyActions(ship_actions) => {
+      let effects = server.merge_actions(ship_actions);
+      response_with_update(server,effects)
+    },
+    RequestMsg::Update => {
+      let effects = server.update();
       vec![
         ResponseMsg::Effects(effects),
         ResponseMsg::EntityResponse(server.clone_entities()),

@@ -12,13 +12,12 @@ import { Effect, Explosions, ResultsWindow } from "./Effects";
 import {
   setMessageHandlers,
   startWebsocket,
-  nextRound,
   computeFlightPath,
 } from "./ServerManager";
 import { Users, UserList } from "./UserList";
 
-import { ShipComputer, SensorState, SensorAction } from "./ShipComputer";
-
+import { ShipComputer} from "./ShipComputer";
+import { ActionsContextComponent } from "./Actions";
 import {
   Entity,
   EntitiesServerProvider,
@@ -58,7 +57,7 @@ export function App() {
     planets: [],
     missiles: [],
   });
-  
+
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
   const [users, setUsers] = useState<UserList>([]);
 
@@ -70,50 +69,55 @@ export function App() {
       setEntities,
       () => {},
       () => {},
-      setUsers,
+      setUsers
     );
     if (!socketReady) {
       startWebsocket(setSocketReady);
-    } 
+    }
   }, [socketReady]);
 
   useEffect(() => {
-
     if (computerShip) {
-      const ship = entities.ships.find((ship) => ship.name === computerShip.name);
+      const ship = entities.ships.find(
+        (ship) => ship.name === computerShip.name
+      );
       if (ship) {
-        setComputerShip(ship)
+        setComputerShip(ship);
       }
     }
-  }, [entities.ships]);
+  }, [entities.ships, computerShip]);
 
   return (
-    <EntitiesServerProvider value={{ entities: entities, handler: setEntities }}>
-    <DesignTemplatesProvider value={{templates: templates, handler: setTemplates}}>
-    <div>
-      {authenticated && socketReady ? (
-        <>
-          <Simulator
-            setAuthenticated={setAuthenticated}
-            email={email}
-            socketReady={socketReady}
-            setEmail={setEmail}
-            computerShip={computerShip}
-            setComputerShip={setComputerShip}
-            users={users}
-            setUsers={setUsers}
-          />
-        </>
-      ) : socketReady ? (
-        <Authentication
-          setAuthenticated={setAuthenticated}
-          setEmail={setEmail}
-        />
-      ) : (
-        <div>Waiting for socket to open...</div>
-      )}
-    </div>
-    </DesignTemplatesProvider>
+    <EntitiesServerProvider
+      value={{ entities: entities, handler: setEntities }}>
+      <DesignTemplatesProvider
+        value={{ templates: templates, handler: setTemplates }}>
+        <ActionsContextComponent>
+          <div>
+            {authenticated && socketReady ? (
+              <>
+                <Simulator
+                  setAuthenticated={setAuthenticated}
+                  email={email}
+                  socketReady={socketReady}
+                  setEmail={setEmail}
+                  computerShip={computerShip}
+                  setComputerShip={setComputerShip}
+                  users={users}
+                  setUsers={setUsers}
+                />
+              </>
+            ) : socketReady ? (
+              <Authentication
+                setAuthenticated={setAuthenticated}
+                setEmail={setEmail}
+              />
+            ) : (
+              <div>Waiting for socket to open...</div>
+            )}
+          </div>
+        </ActionsContextComponent>
+      </DesignTemplatesProvider>
     </EntitiesServerProvider>
   );
 }
@@ -126,9 +130,9 @@ function Simulator({
   computerShip,
   setComputerShip,
   setUsers,
-  users
+  users,
 }: {
-    setAuthenticated: (authenticated: boolean) => void;
+  setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
   socketReady: boolean;
@@ -137,7 +141,6 @@ function Simulator({
   users: UserList;
   setUsers: (users: UserList) => void;
 }) {
-
   const entitiesContext = useContext(EntitiesServerContext);
   const templatesContext = useContext(DesignTemplatesContext);
 
@@ -161,11 +164,6 @@ function Simulator({
   const [showRange, setShowRange] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
-  const [sensor_actions, setSensorActions] = useState(
-    {} as {
-      [actor: string]: SensorState;
-    }
-  );
 
   useEffect(() => {
     if (socketReady) {
@@ -179,10 +177,17 @@ function Simulator({
           setEvents(effects);
           setShowResults(true);
         },
-        setUsers,
+        setUsers
       );
     }
-  }, [socketReady, setAuthenticated, setEmail,templatesContext.handler, entitiesContext.handler, setUsers]);
+  }, [
+    socketReady,
+    setAuthenticated,
+    setEmail,
+    templatesContext.handler,
+    entitiesContext.handler,
+    setUsers,
+  ]);
 
   const getAndShowPlan = (
     entity_name: string | null,
@@ -228,7 +233,9 @@ function Simulator({
     };
   });
 
-  let tutorial_ship: Ship | null = entitiesContext.entities.ships.find((ship) => ship.name === "Killer") || null;
+  let tutorial_ship: Ship | null =
+    entitiesContext.entities.ships.find((ship) => ship.name === "Killer") ||
+    null;
   if (tutorial_ship === undefined) {
     tutorial_ship = null;
   }
@@ -239,8 +246,14 @@ function Simulator({
         entityToShow: entityToShow,
         setEntityToShow: setEntityToShow,
       }}>
-        <ViewContextProvider value={{role: role, setRole: (role) => setRole(role), shipName: shipName, setShipName: setShipName}}>
-      <>
+      <ViewContextProvider
+        value={{
+          role: role,
+          setRole: (role) => setRole(role),
+          shipName: shipName,
+          setShipName: setShipName,
+        }}>
+        <>
           <div className="mainscreen-container">
             {!process.env.REACT_APP_RUN_TUTORIAL || (
               <Tutorial
@@ -252,28 +265,30 @@ function Simulator({
                 setAuthenticated={setAuthenticated}
               />
             )}
-            {role !== ViewMode.Observer && <Controls
-              nextRound={(fireActions) => nextRound(fireActions, sensor_actions)}
-              shipDesignTemplates={templatesContext.templates}
-              computerShip={computerShip}
-              setComputerShip={setComputerShip}
-              getAndShowPlan={getAndShowPlan}
-              setCameraPos={setCameraPos}
-              camera={camera}
-              setAuthenticated={setAuthenticated}
-              showRange={showRange}
-              setShowRange={setShowRange}
-              proposedPlan={proposedPlan}
-              resetProposedPlan={resetProposedPlan}
-              sensorActions={sensor_actions}
-              setSensorActions={setSensorActions}
-            />}
+            {role !== ViewMode.Observer && (
+              <Controls
+                shipDesignTemplates={templatesContext.templates}
+                computerShip={computerShip}
+                setComputerShip={setComputerShip}
+                getAndShowPlan={getAndShowPlan}
+                setCameraPos={setCameraPos}
+                camera={camera}
+                setAuthenticated={setAuthenticated}
+                showRange={showRange}
+                setShowRange={setShowRange}
+                proposedPlan={proposedPlan}
+                resetProposedPlan={resetProposedPlan}
+              />
+            )}
             <div className="mainscreen-container">
-              {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && 
-              <ViewControls
-                viewControls={viewControls}
-                setViewControls={setViewControls}
-              />}
+              {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(
+                role
+              ) && (
+                <ViewControls
+                  viewControls={viewControls}
+                  setViewControls={setViewControls}
+                />
+              )}
               <div className="admin-button-window">
                 {!process.env.REACT_APP_RUN_TUTORIAL || (
                   <button
@@ -284,7 +299,7 @@ function Simulator({
                     Exit Tutorial
                   </button>
                 )}
-                <Users users={users} email={email}/>
+                <Users users={users} email={email} />
                 <RoleChooser />
                 <Logout
                   setAuthenticated={setAuthenticated}
@@ -299,14 +314,15 @@ function Simulator({
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
-                  sensor_action={sensor_actions[computerShip.name] || {action: SensorAction.None, target: ""}}
-                  setSensorAction={(action) => setSensorActions({...sensor_actions, [computerShip.name]: action})}
-                  sensor_locks={entitiesContext.entities.ships.reduce((acc, ship) => {
-                    if (ship.sensor_locks.includes(computerShip.name)) {
-                      acc.push(ship.name);
-                    }
-                    return acc;
-                  }, [] as string[])}
+                  sensorLocks={entitiesContext.entities.ships.reduce(
+                    (acc, ship) => {
+                      if (ship.sensor_locks.includes(computerShip.name)) {
+                        acc.push(ship.name);
+                      }
+                      return acc;
+                    },
+                    [] as string[]
+                  )}
                 />
               )}
               {showResults && (
@@ -361,8 +377,8 @@ function Simulator({
               </Canvas>
             </div>
           </div>
-      </>
-      {entityToShow && <EntityInfoWindow entity={entityToShow} />}
+        </>
+        {entityToShow && <EntityInfoWindow entity={entityToShow} />}
       </ViewContextProvider>
     </EntityToShowProvider>
   );

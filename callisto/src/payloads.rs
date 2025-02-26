@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::Entities;
-use super::ship::{ShipDesignTemplate, ShipSystem};
+use super::ship::ShipDesignTemplate;
+use super::action::ShipActionList;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Display;
@@ -104,31 +105,7 @@ pub struct ComputePathMsg {
 }
 
 pub type FlightPathMsg = FlightPathResult;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ShipAction {
-  FireAction {
-    weapon_id: usize,
-    target: String,
-    #[serde(
-      default,
-      skip_serializing_if = "Option::is_none",
-      //with = "::serde_with::rust::unwrap_or_skip"
-  )]
-    called_shot_system: Option<ShipSystem>,
-  },
-  JamMissiles,
-  BreakSensorLock {
-    target: String,
-  },
-  SensorLock {
-    target: String,
-  },
-  JamComms {
-    target: String,
-  },
-}
-pub type ShipActionMsg = Vec<(String, Vec<ShipAction>)>;
+pub type ShipActionMsg = ShipActionList;
 
 pub const EMPTY_FIRE_ACTIONS_MSG: ShipActionMsg = vec![];
 
@@ -235,7 +212,8 @@ pub enum RequestMsg {
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),
   SetRole(ChangeRole),
-  Update(ShipActionMsg),
+  ModifyActions(ShipActionMsg),
+  Update,
   LoadScenario(LoadScenarioMsg),
   EntitiesRequest,
   DesignTemplateRequest,
@@ -264,6 +242,7 @@ pub enum ResponseMsg {
 #[cfg(test)]
 mod tests {
   use crate::ship::ShipDesignTemplate;
+  use crate::action::ShipAction;
 
   use super::*;
   use crate::crew::Skills;

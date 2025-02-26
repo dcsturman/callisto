@@ -8,10 +8,9 @@ import {
   ShipDesignTemplate,
   ViewMode,
 } from "./Universal";
-import { FireActionMsg, FireAction } from "./Controls";
-import { SensorActionMsg, SensorState } from "./ShipComputer";
 import { Effect } from "./Effects";
 import { UserList, UserContext } from "./UserList";
+import { ActionType, actionPayload } from "./Actions";
 
 export const CALLISTO_BACKEND =
   process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
@@ -20,6 +19,7 @@ export const CALLISTO_BACKEND =
 // This message (a simple enum on the rust server side) is just a string.
 const DESIGN_TEMPLATE_REQUEST = '"DesignTemplateRequest"';
 const ENTITIES_REQUEST = '"EntitiesRequest"';
+const UPDATE_REQUEST = 'Update';
 const LOGOUT_REQUEST = '"Logout"';
 
 // Define the (global) websocket
@@ -244,21 +244,17 @@ export async function setPlan(
   socket.send(JSON.stringify(payload));
 }
 
-// Issue - sensorState isn't an array, its a Map
-export function nextRound(fireActions: FireActionMsg, sensorActions: SensorActionMsg) {
-  type ShipActionMsg =  { [key: string]: (FireAction | SensorState)[] };
-  const internal: ShipActionMsg = fireActions;
-
-  for (const [ship_name, actionState] of Object.entries(sensorActions)) {
-    if (internal[ship_name]) {
-      internal[ship_name] = [...internal[ship_name], actionState];
-    } else {
-      internal[ship_name] = [actionState];
-    }
-    
+export function updateActions(actions: ActionType) {
+  if (Object.entries(actions).length === 0) {
+    return;
   }
-  
-  const payload = { Update: Object.entries(internal)};
+  const payload = { ModifyActions: actionPayload(actions)};
+  console.log("(updateActions) Sending payload: " + JSON.stringify(payload));
+  socket.send(JSON.stringify(payload));
+}
+
+export function nextRound() {
+  const payload = UPDATE_REQUEST;
   console.log("(nextRound) Sending payload: " + JSON.stringify(payload));
   socket.send(JSON.stringify(payload));
 }

@@ -1,5 +1,6 @@
 import { createContext } from "react";
 import { Crew } from "./CrewBuilder";
+import { CompressedWeaponType } from "./Actions";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -402,14 +403,7 @@ export class ShipDesignTemplate {
   }
 
   compressedWeapons() {
-    const initial_acc: {
-      [weapon: string]: {
-        kind: string;
-        mount: WeaponMount;
-        used: number;
-        total: number;
-      };
-    } = {};
+    const initial_acc: CompressedWeaponType = {};
 
     return this.weapons.reduce(
       (accumulator, weapon) => {

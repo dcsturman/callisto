@@ -7,7 +7,7 @@ import {
   Ship,
   SHIP_SYSTEMS
 } from "./Universal";
-import { FireState } from "./Controls";
+import { FireState } from "./Actions";
 
 // Icons for each type of weapon
 import { ReactComponent as Turret1 } from "./icons/turret1.svg";

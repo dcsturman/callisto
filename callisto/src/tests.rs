@@ -254,14 +254,15 @@ async fn test_add_planet_ship() {
 #[test(tokio::test)]
 async fn test_update_ship() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship =
     r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  let response = server.update(&EMPTY_FIRE_ACTIONS_MSG);
+  server.merge_actions(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+  let response = server.update();
   assert_eq!(response, Vec::new());
 
   let response = server.get_entities_json();
@@ -278,7 +279,7 @@ async fn test_update_ship() {
 #[test(tokio::test)]
 async fn test_update_missile() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -289,7 +290,8 @@ async fn test_update_missile() {
   assert_eq!(response, "Add ship action executed");
 
   let fire_missile = json!([["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  let response = server.update(&serde_json::from_str(&fire_missile).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap()).unwrap();
+  let response = server.update();
 
   let compare = json!([
       {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
@@ -514,7 +516,7 @@ async fn test_compute_path_with_standoff() {
 #[test(tokio::test)]
 async fn test_exhausted_missile() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Create two ships with one to fire at the other.
   let ship =
@@ -530,7 +532,8 @@ async fn test_exhausted_missile() {
 
   // Fire a missile
   let fire_actions = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}] ]]).to_string();
-  let response = server.update(&serde_json::from_str(&fire_actions).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap()).unwrap();
+  let response = server.update();
 
   // First round 3 missiles are launched due to triple turret
   assert_eq!(response.len(), 1);
@@ -541,12 +544,13 @@ async fn test_exhausted_missile() {
 
   // Second to 8th round nothing happens.
   for round in 0..9 {
-    let response = server.update(&EMPTY_FIRE_ACTIONS_MSG);
+    server.merge_actions(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+    let response = server.update();
     assert_eq!(response, Vec::new(), "Round {round}");
   }
 
   // 9th round missile should exhaust itself.
-  let response = server.update(&EMPTY_FIRE_ACTIONS_MSG);
+  let response = server.update();
   assert_eq!(
     response
       .iter()
@@ -560,7 +564,7 @@ async fn test_exhausted_missile() {
 #[test(tokio::test)]
 async fn test_destroy_ship() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -581,7 +585,8 @@ async fn test_destroy_ship() {
   ]]])
   .to_string();
 
-  let effects = server.update(&serde_json::from_str(&fire_actions).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap()).unwrap();
+  let effects = server.update();
 
   // For this test we don't worry about all the specific damage effects, but just check for messages related to
   // ship destruction.
@@ -596,7 +601,7 @@ async fn test_destroy_ship() {
 #[test(tokio::test)]
 async fn test_called_shot() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Gazelle class is a good test for this as it has 2 Particle Barbettes (likely to cause a crit) and 2 triple beams (also capable of called shots)
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
@@ -618,7 +623,8 @@ async fn test_called_shot() {
   ]]])
   .to_string();
 
-  let effects = server.update(&serde_json::from_str(&fire_actions).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap()).unwrap();
+  let effects = server.update();
 
   // First ensure there is at least one critical hit that matches.
   assert!(
@@ -656,7 +662,7 @@ async fn test_called_shot() {
 #[test(tokio::test)]
 async fn test_big_fight() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -680,7 +686,8 @@ async fn test_big_fight() {
       {"FireAction" :{"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
-  let mut effects = server.update(&serde_json::from_str(&fire_actions.to_string()).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap()).unwrap();
+  let mut effects = server.update();
 
   let compare = json!([
       {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
@@ -746,7 +753,7 @@ async fn test_big_fight() {
 #[test(tokio::test)]
 async fn test_fight_with_crew() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Ship 1 has a capable crew.
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", 
@@ -780,7 +787,8 @@ async fn test_fight_with_crew() {
       {"FireAction" : {"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
-  let mut effects = server.update(&serde_json::from_str(&fire_actions.to_string()).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap()).unwrap();
+  let mut effects = server.update();
 
   let compare = json!([
       {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
@@ -845,7 +853,7 @@ async fn test_fight_with_crew() {
 #[test(tokio::test)]
 async fn test_slugfest() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
   // Boost weapon #10 as its firing a pules laser at the harrier.
@@ -909,7 +917,8 @@ async fn test_slugfest() {
       ]]
   ]);
 
-  let _response = server.update(&serde_json::from_str(&fire_actions.to_string()).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap()).unwrap();
+  let _response = server.update();
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
@@ -998,7 +1007,7 @@ async fn test_get_designs() {
 #[test(tokio::test)]
 async fn test_missile_impact_close() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Add the firing ship
   let firing_ship =
@@ -1013,7 +1022,8 @@ async fn test_missile_impact_close() {
 
   // Fire a missile within impact range.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  let effects = server.update(&serde_json::from_str(&fire_missile).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap()).unwrap();
+  let effects = server.update();
 
   // Check for impact effect
   assert!(
@@ -1043,7 +1053,8 @@ async fn test_missile_impact_close() {
 
   // Fire a missile that should get there in one round.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  let effects = server.update(&serde_json::from_str(&fire_missile).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap()).unwrap();
+  let effects = server.update();
 
   // Check for impact effect
   assert!(

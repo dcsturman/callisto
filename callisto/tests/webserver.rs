@@ -36,9 +36,10 @@ use serde_json::json;
 use callisto::debug;
 
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
+use callisto::action::ShipAction;
 use callisto::payloads::{
   AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
-  SetPilotActions, SetPlanMsg, ShipAction, EMPTY_FIRE_ACTIONS_MSG,
+  SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -137,6 +138,7 @@ async fn open_socket(port: u16) -> Result<MyWebSocket, Error> {
 }
 
 async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
+  debug!("(webservers.rpc) Sending request: {request:?}");
   stream.send(serde_json::to_string(&request).unwrap().into()).await.unwrap();
 
   let reply = stream
@@ -144,6 +146,7 @@ async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
     .await
     .unwrap_or_else(|| panic!("No response from server for request: {request:?}."))
     .unwrap_or_else(|err| panic!("Receiving error from server {err:?} in response to request: {request:?}."));
+  debug!("(webservers.rpc) Received response: {reply:?}");
   let body = serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap();
   body
 }
@@ -622,7 +625,9 @@ async fn integration_update_ship() {
   assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
   drain_entity_response(&mut stream).await;
 
-  let response = rpc(&mut stream, RequestMsg::Update(EMPTY_FIRE_ACTIONS_MSG)).await;
+  let _response = rpc(&mut stream, RequestMsg::ModifyActions(EMPTY_FIRE_ACTIONS_MSG)).await;
+  drain_entity_response(&mut stream).await;
+  let response = rpc(&mut stream, RequestMsg::Update).await;
   assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
 
   let entities = drain_entity_response(&mut stream).await;
@@ -688,7 +693,9 @@ async fn integration_update_missile() {
     }],
   )];
 
-  let effects = rpc(&mut stream, RequestMsg::Update(fire_actions)).await;
+  let _response = rpc(&mut stream, RequestMsg::ModifyActions(fire_actions)).await;
+  drain_entity_response(&mut stream).await;
+  let effects = rpc(&mut stream, RequestMsg::Update).await;
   if let ResponseMsg::Effects(effects) = effects {
     let filtered_effects: Vec<_> = effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect();
 
@@ -1085,9 +1092,9 @@ async fn integration_malformed_requests() {
   assert!(matches!(message, ResponseMsg::Error(_)));
 
   // Test fire action with invalid parameters
-  let message = rpc(
+  let _response = rpc(
     &mut stream,
-    RequestMsg::Update(vec![(
+    RequestMsg::ModifyActions(vec![(
       "nonexistent_ship".to_string(),
       vec![ShipAction::FireAction {
         weapon_id: 0,
@@ -1097,6 +1104,8 @@ async fn integration_malformed_requests() {
     )]),
   )
   .await;
+  drain_entity_response(&mut stream).await;
+  let message = rpc(&mut stream, RequestMsg::Update).await;
   assert!(
     matches!(&message, ResponseMsg::Effects(x) if x.is_empty()),
     "Expected empty effects for invalid fire action, got {message:?}"
@@ -1146,9 +1155,9 @@ async fn integration_bad_requests() {
   });
   let response = rpc(&mut stream, msg).await;
   assert!(matches!(response, ResponseMsg::Error(_)));
-
+  
   // Test fire action with invalid weapon_id
-  let msg = RequestMsg::Update(vec![(
+  let msg = RequestMsg::ModifyActions(vec![(
     "ship1".to_string(),
     vec![ShipAction::FireAction {
       weapon_id: usize::MAX,
@@ -1156,7 +1165,11 @@ async fn integration_bad_requests() {
       called_shot_system: None,
     }],
   )]);
-  let response = rpc(&mut stream, msg).await;
+  let _response = rpc(&mut stream, msg).await;
+    drain_entity_response(&mut stream).await;
+  
+  let response = rpc(&mut stream, RequestMsg::Update).await;
+
   assert!(
     matches!(&response, ResponseMsg::Effects(x) if x.is_empty()),
     "Expected empty effects for invalid weapon_id. Instead got {response:?}"

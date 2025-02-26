@@ -11,10 +11,11 @@ use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
-  RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg,
+  RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 use crate::payloads::Role;
+use crate::action::{ShipAction, merge};
 use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
@@ -273,17 +274,38 @@ impl Server {
       .map(|()| "Set acceleration action executed".to_string())
   }
 
+  /// Merge in new actions (orders) for ships in the next round.  These may come for the same ship from
+  /// different clients depending on how the clients are being used.  We save these till the next update action.
+  /// 
+  /// # Returns
+  /// 
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read the entities.
+  pub fn merge_actions(&self, actions: ShipActionMsg) -> Result<String, String> {
+    let mut entities = self.entities.lock().unwrap();
+    merge(&mut entities.actions, actions);
+    Ok("Actions added.".to_string())
+  }
+
   /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
   /// (e.g. move a ship, planet or missile) as well as new fire actions.
   ///
   /// # Arguments
   /// * `fire_actions` - The fire actions to execute.
   ///
-  /// # Panics
+  /// # Panics  
   /// Panics if the lock cannot be obtained to read the entities.
-  pub fn update(&mut self, actions: &ShipActionMsg) -> Vec<EffectMsg> {
+  #[must_use]
+  pub fn update(&self) -> Vec<EffectMsg> {
     let mut rng = get_rng(self.test_mode);
 
+    // Grab the lock on entities
+    let mut entities = self
+    .entities
+    .lock()
+    .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let actions = &entities.actions;
     debug!("(/update) Ship actions: {:?}", actions);
 
     // Sort all the actions by type.  This big messy functional action sorts through all the ship actions and creates
@@ -293,7 +315,11 @@ impl Server {
     #[allow(clippy::type_complexity)]
     let (fire_actions, sensor_actions): (Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>) = actions
       .iter()
-      .map(|(ship_name, actions)| {
+      .filter_map(|(ship_name, actions)| {
+        if !entities.ships.contains_key(ship_name) {
+          warn!("(update) Cannot find ship {} for actions.", ship_name);
+          return None;
+        }
         let (f_actions, s_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = actions
           .iter()
           .map(|action| match action {
@@ -304,18 +330,12 @@ impl Server {
             | ShipAction::JamComms { .. } => (None, Some(action.clone())),
           })
           .unzip();
-        (
+        Some((
           (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
           (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-        )
+        ))
       })
       .unzip();
-
-    // Grab the lock on entities
-    let mut entities = self
-      .entities
-      .lock()
-      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
@@ -340,6 +360,7 @@ impl Server {
     for ship in entities.ships.values() {
       ship.write().unwrap().reset_pilot_actions();
     }
+    entities.actions.clear();
 
     effects
   }

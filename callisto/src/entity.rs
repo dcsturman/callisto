@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, ShipAction};
+use crate::payloads::EffectMsg;
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -18,6 +18,7 @@ use crate::read_local_or_cloud_file;
 use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
+use crate::action::{ShipAction, ShipActionList};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn};
@@ -55,6 +56,11 @@ pub struct Entities {
   pub missiles: HashMap<String, Arc<RwLock<Missile>>>,
   pub planets: HashMap<String, Arc<RwLock<Planet>>>,
   pub next_missile_id: u32,
+
+  // Actions queued up for when the turn ends.  They aren't
+  // part of the ongoing state so we do not send them back to the client currently.
+  // That might change in the future (say we have a view on all pending actions)
+  pub(crate) actions: ShipActionList,
 }
 
 impl PartialEq for Entities {
@@ -88,6 +94,7 @@ impl Entities {
       missiles: HashMap::new(),
       planets: HashMap::new(),
       next_missile_id: 0,
+      actions: vec![],
     }
   }
 
@@ -912,6 +919,7 @@ impl<'de> Deserialize<'de> for Entities {
         .map(|e| (e.get_name().to_string(), Arc::new(RwLock::new(e))))
         .collect(),
       next_missile_id: 0,
+      actions: vec![],
     })
   }
 }

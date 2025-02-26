@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useRef, useEffect, useContext } from "react";
+import { useState, useRef, useEffect, useContext, useMemo } from "react";
 import {
   FlightPathResult,
   Ship,
@@ -14,43 +14,10 @@ import {
 } from "./Universal";
 
 import { setPlan, setCrewActions } from "./ServerManager";
-
+import { ActionContext, SensorState, SensorAction, newSensorState } from "./Actions";
 import { EntitySelectorType, EntitySelector } from "./EntitySelector";
 
-export enum SensorAction {
-  None,
-  JamMissiles,
-  BreakSensorLock,
-  SensorLock,
-  JamComms,
-}
 
-export class SensorState {
-  action: SensorAction = SensorAction.JamMissiles;
-  target: string = "";
-
-  constructor(action: SensorAction, target: string) {
-    this.action = action;
-    this.target = target;
-  }
-
-  toJSON() {
-    switch (this.action) {
-      case SensorAction.None:
-        return undefined;
-      case SensorAction.JamMissiles:
-        return "JamMissiles";
-      case SensorAction.BreakSensorLock:
-        return { BreakSensorLock: { target: this.target } };
-      case SensorAction.SensorLock:
-        return { SensorLock: { target: this.target } };
-      case SensorAction.JamComms:
-        return { JamComms: { target: this.target } };
-    }
-  }
-}
-
-export type SensorActionMsg = { [key: string]: SensorState };
 
 export function ShipComputer(args: {
   ship: Ship;
@@ -64,9 +31,7 @@ export function ShipComputer(args: {
     target_vel: [number, number, number] | null,
     standoff: number
   ) => void;
-  sensor_action: SensorState;
-  setSensorAction: (action: SensorState) => void;
-  sensor_locks: string[];
+  sensorLocks: string[];
 }) {
   const viewContext = useContext(ViewContext);
 
@@ -98,6 +63,17 @@ export function ShipComputer(args: {
   }
 
   const [currentNavTarget, setCurrentNavTarget] = useState<Entity | null>(null);
+
+  const initNavigationTargetState = useMemo(() => 
+    { return {
+    p_x: "0",
+    p_y: "0",
+    p_z: "0",
+    v_x: "0",
+    v_y: "0",
+    v_z: "0",
+    standoff: "0",
+  }}, []);
 
   useEffect(() => {
     if (currentNavTarget == null) {
@@ -131,7 +107,7 @@ export function ShipComputer(args: {
       currentNavTarget.velocity,
       Number(standoff)
     );
-  }, [currentNavTarget]);
+  }, [currentNavTarget, ship.name, initNavigationTargetState, args]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.
@@ -139,16 +115,6 @@ export function ShipComputer(args: {
   const [assistGunners, setAssistGunners] = useState(ship.assist_gunners);
 
   const selectRef = useRef<HTMLSelectElement>(null);
-
-  const initNavigationTargetState = {
-    p_x: "0",
-    p_y: "0",
-    p_z: "0",
-    v_x: "0",
-    v_y: "0",
-    v_z: "0",
-    standoff: "0",
-  };
 
   const [navigationTarget, setNavigationTarget] = useState(
     initNavigationTargetState
@@ -355,9 +321,7 @@ export function ShipComputer(args: {
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && pilotActions()}
       {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && <SensorActionChooser
         ship={ship}
-        sensor_action={args.sensor_action}
-        setSensorAction={args.setSensorAction}
-        sensor_locks={args.sensor_locks}
+        sensorLocks={args.sensorLocks}
       />}
       <hr />
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && <>
@@ -504,39 +468,45 @@ function sensorActionToString(action: SensorState): string {
       return "jc-" + action.target;
   }
 }
+
 interface SensorActionChooserProps {
   ship: Ship;
-  sensor_action: SensorState;
-  setSensorAction: (action: SensorState) => void;
-  sensor_locks: string[];
+  sensorLocks: string[];
 }
 
 const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
   ship,
-  sensor_action,
-  setSensorAction,
-  sensor_locks,
+  sensorLocks,
 }) => {
+  const actionContext = useContext(ActionContext);
+  const [currentSensor, setCurrentSensor] = useState(actionContext.actions[ship.name]?.sensor || newSensorState(SensorAction.None, ""));
+
+  useEffect(() => {
+    if (actionContext.actions[ship.name] && actionContext.actions[ship.name].sensor) {
+      setCurrentSensor(actionContext.actions[ship.name].sensor);
+    }
+  }, [actionContext.actions, ship.name]);
+
   function handleSensorActionChange(
     event: React.ChangeEvent<HTMLSelectElement>
   ) {
     const value = event.target.value;
     if (value === "none") {
-      setSensorAction(new SensorState(SensorAction.None, ""));
+      actionContext.setSensorAction(ship.name, newSensorState(SensorAction.None, ""));
       return;
     } else if (value === "jam-missiles") {
-      setSensorAction(new SensorState(SensorAction.JamMissiles, ""));
+      actionContext.setSensorAction(ship.name, newSensorState(SensorAction.JamMissiles, ""));
     } else if (value.startsWith("bsl-")) {
-      setSensorAction(
-        new SensorState(SensorAction.BreakSensorLock, value.substring(4))
+      actionContext.setSensorAction(ship.name,
+        newSensorState(SensorAction.BreakSensorLock, value.substring(4))
       );
     } else if (value.startsWith("sl-")) {
-      setSensorAction(
-        new SensorState(SensorAction.SensorLock, value.substring(3))
+      actionContext.setSensorAction(ship.name,
+        newSensorState(SensorAction.SensorLock, value.substring(3))
       );
     } else if (value.startsWith("jc-")) {
-      setSensorAction(
-        new SensorState(SensorAction.JamComms, value.substring(3))
+      actionContext.setSensorAction(ship.name,
+        newSensorState(SensorAction.JamComms, value.substring(3))
       );
     }
   }
@@ -547,11 +517,11 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
       <h2 className="control-label">Sensor Actions</h2>
       <select
         className="sensor-action-select control-input "
-        value={sensorActionToString(sensor_action)}
+        value={sensorActionToString(currentSensor)}
         onChange={handleSensorActionChange}>
         <option value="none"></option>
         <option value="jam-missiles">Jam Missiles</option>
-        {sensor_locks.map((s) => (
+        {sensorLocks.map((s) => (
           <option key={s + "-break-sensor-lock"} value={"bsl-" + s}>
             {"Break Sensor Lock: " + s}
           </option>
