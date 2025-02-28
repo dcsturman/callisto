@@ -5,6 +5,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { FlyControls } from "@react-three/drei";
 
 import { Authentication, Logout } from "./Authentication";
+import { ActionType } from "./Actions";
 import SpaceView from "./Spaceview";
 import { Ships, Missiles, Route } from "./Ships";
 import { EntityInfoWindow, Controls, ViewControls } from "./Controls";
@@ -17,7 +18,7 @@ import {
 import { Users, UserList } from "./UserList";
 
 import { ShipComputer} from "./ShipComputer";
-import { ActionsContextComponent } from "./Actions";
+import { ActionsContextComponent, ActionContext } from "./Actions";
 import {
   Entity,
   EntitiesServerProvider,
@@ -59,21 +60,27 @@ export function App() {
   });
 
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
+
+  const [actions, setActions] = useState<ActionType>({});
+
   const [users, setUsers] = useState<UserList>([]);
 
   useEffect(() => {
-    setMessageHandlers(
-      setEmail,
-      setAuthenticated,
-      setTemplates,
-      setEntities,
-      () => {},
-      () => {},
-      setUsers
-    );
     if (!socketReady) {
+      setMessageHandlers(
+        setEmail,
+        setAuthenticated,
+        setTemplates,
+        setEntities,
+        setActions,
+        () => {},
+        () => {},
+        setUsers
+      );
+
       startWebsocket(setSocketReady);
     }
+
   }, [socketReady]);
 
   useEffect(() => {
@@ -92,7 +99,7 @@ export function App() {
       value={{ entities: entities, handler: setEntities }}>
       <DesignTemplatesProvider
         value={{ templates: templates, handler: setTemplates }}>
-        <ActionsContextComponent>
+        <ActionsContextComponent actions={actions} setActions={setActions}>
           <div>
             {authenticated && socketReady ? (
               <>
@@ -143,6 +150,7 @@ function Simulator({
 }) {
   const entitiesContext = useContext(EntitiesServerContext);
   const templatesContext = useContext(DesignTemplatesContext);
+  const actionsContext = useContext(ActionContext);
 
   const [role, setRole] = useState<ViewMode>(ViewMode.General);
   const [shipName, setShipName] = useState<string | null>(null);
@@ -167,11 +175,14 @@ function Simulator({
 
   useEffect(() => {
     if (socketReady) {
+      console.log("************* RESET RESET RESET RESET RESET");
+      console.log("************** The actionHandler is " + actionsContext.setActions);
       setMessageHandlers(
         setEmail,
         setAuthenticated,
         templatesContext.handler,
         entitiesContext.handler,
+        actionsContext.setActions,
         setProposedPlan,
         (effects: Effect[]) => {
           setEvents(effects);

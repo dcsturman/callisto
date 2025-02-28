@@ -41,7 +41,7 @@ async fn test_simple_get() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
   let body = server.get_entities_json();
-  assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[]}"#);
+  assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
 }
 
 /**
@@ -78,7 +78,7 @@ async fn test_add_ship() {
         "assist_gunners":false,
         "sensor_locks": [],
         }],
-        "missiles":[],"planets":[]});
+        "missiles":[],"planets":[],"actions":[]});
 
   assert_json_eq!(entities, compare);
 }
@@ -137,7 +137,8 @@ async fn test_add_planet_ship() {
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
 
   assert_json_eq!(entities, compare);
 
@@ -156,6 +157,7 @@ async fn test_add_planet_ship() {
     "gravity_radius_025": 9_036_820.097_086_99,
     "gravity_radius_2": 3_194_998.385_506_543}],
   "missiles":[],
+  "actions":[],
   "ships":[
       {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -201,6 +203,7 @@ async fn test_add_planet_ship() {
 
   let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
   let compare = json!({"missiles":[],
+  "actions":[],
   "planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
       "color":"red","radius":1.5e6,"mass":3e24,
@@ -340,7 +343,7 @@ async fn test_update_missile() {
              "assist_gunners":false,
              "sensor_locks": []
             }],
-             "missiles":[],"planets":[]});
+             "missiles":[],"planets":[],"actions":[]});
 
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
@@ -362,7 +365,7 @@ async fn test_remove_ship() {
 
   let entities = server.get_entities_json();
 
-  assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[]}"#);
+  assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
 
   // Try remove with non-existent ship
   let response = server.remove(&"ship2".to_string());
@@ -746,7 +749,8 @@ async fn test_big_fight() {
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
 
@@ -846,7 +850,8 @@ async fn test_fight_with_crew() {
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
 

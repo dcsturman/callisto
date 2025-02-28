@@ -8,18 +8,17 @@ import {
   ShipDesignTemplate,
   ViewMode,
 } from "./Universal";
-import { Effect } from "./Effects";
-import { UserList, UserContext } from "./UserList";
-import { ActionType, actionPayload } from "./Actions";
+import {Effect} from "./Effects";
+import {UserList, UserContext} from "./UserList";
+import {ActionType, actionPayload, payloadToAction} from "./Actions";
 
-export const CALLISTO_BACKEND =
-  process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
+export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
 
 // Message structures
 // This message (a simple enum on the rust server side) is just a string.
 const DESIGN_TEMPLATE_REQUEST = '"DesignTemplateRequest"';
 const ENTITIES_REQUEST = '"EntitiesRequest"';
-const UPDATE_REQUEST = 'Update';
+const UPDATE_REQUEST = "Update";
 const LOGOUT_REQUEST = '"Logout"';
 
 // Define the (global) websocket
@@ -38,6 +37,9 @@ let setTemplates: (templates: ShipDesignTemplates) => void = () => {
 let setEntities: EntityRefreshCallback = () => {
   console.error("Calling default implementation of setEntities()");
 };
+let setActions: (actions: ActionType) => void = () => {
+  console.error("Calling default implementation of setActions()");
+};
 let setFlightPath: (plan: FlightPathResult) => void = () => {
   console.error("Calling default implementation of setFlightPath()");
 };
@@ -54,10 +56,7 @@ let setUsers: (users: UserList) => void = () => {
 
 export function startWebsocket(setReady: (ready: boolean) => void) {
   console.log("(ServerManager.startWebsocket) Trying to establish websocket.");
-    const stripped_name = CALLISTO_BACKEND.replace("https://", "").replace(
-    "http://",
-    ""
-  );
+  const stripped_name = CALLISTO_BACKEND.replace("https://", "").replace("http://", "");
 
   if (socket === undefined || socket.readyState === WebSocket.CLOSED) {
     setReady(false);
@@ -71,10 +70,10 @@ export function startWebsocket(setReady: (ready: boolean) => void) {
     console.log("(ServerManager.startWebsocket.onopen) Socket opened");
     setReady(true);
   };
-  socket.onclose = (event: CloseEvent) => { 
-    console.log("(ServerManager.startWebsocket.onclose) Socket closed")
-    setReady(false); 
-    handleClose(event) 
+  socket.onclose = (event: CloseEvent) => {
+    console.log("(ServerManager.startWebsocket.onclose) Socket closed");
+    setReady(false);
+    handleClose(event);
   };
   socket.onmessage = handleMessage;
 }
@@ -88,25 +87,40 @@ export function setMessageHandlers(
   authenticated: (authenticated: boolean) => void,
   templates: (templates: ShipDesignTemplates) => void,
   entities: (entities: EntityList) => void,
+  actions: (actions: ActionType) => void,
   flightPath: (plan: FlightPathResult) => void,
   effects: (effects: Effect[]) => void,
   users: (users: UserList) => void
 ) {
-  setEmail = email;
-  setAuthenticated = authenticated;
-  setTemplates = templates;
-  setEntities = entities;
-  setFlightPath = flightPath;
-  setEffects = effects;
-  setUsers = users;
+  if (email) {
+    setEmail = email;
+  }
+  if (authenticated) {
+    setAuthenticated = authenticated;
+  }
+  if (templates) {
+    setTemplates = templates;
+  }
+  if (entities) {
+    setEntities = entities;
+  }
+  if (actions) {
+    setActions = actions;
+  }
+  if (flightPath) {
+    setFlightPath = flightPath;
+  }
+  if (effects) {
+    setEffects = effects;
+  }
+  if (users) {
+    setUsers = users;
+  }
 }
 
 const handleClose = (event: CloseEvent) => {
   const msg =
-    "(ServerManager.handleClose) Socket closed: " +
-    event.code +
-    " Reason: " +
-    event.reason;
+    "(ServerManager.handleClose) Socket closed: " + event.code + " Reason: " + event.reason;
   if (event.wasClean) {
     console.log(msg);
   } else {
@@ -142,7 +156,7 @@ const handleMessage = (event: MessageEvent) => {
 
   if ("EntityResponse" in json) {
     const response = json.EntityResponse;
-    handleEntities(response, setEntities);
+    handleEntities(response, setEntities, setActions);
     return;
   }
 
@@ -165,9 +179,7 @@ const handleMessage = (event: MessageEvent) => {
   }
 
   if ("LaunchMissile" in json) {
-    console.error(
-      "LaunchMissile currently deprecated. Should never receive this message."
-    );
+    console.error("LaunchMissile currently deprecated. Should never receive this message.");
   }
 
   if ("SimpleMsg" in json) {
@@ -184,27 +196,27 @@ const handleMessage = (event: MessageEvent) => {
 // Functions called to communicate to the server
 //
 export function login(code: string) {
-  const payload = { Login: { code: code } };
+  const payload = {Login: {code: code}};
   socket.send(JSON.stringify(payload));
 }
 
 export function addShip(ship: Ship) {
-  console.log(
-    `Adding Ship ${ship.name}: Position ${ship.position}, Velocity ${ship.velocity}`
-  );
+  console.log(`Adding Ship ${ship.name}: Position ${ship.position}, Velocity ${ship.velocity}`);
 
   const payload = {
-    AddShip: { name: ship.name, position: ship.position, velocity: ship.velocity, design: ship.design, crew: ship.crew },
+    AddShip: {
+      name: ship.name,
+      position: ship.position,
+      velocity: ship.velocity,
+      design: ship.design,
+      crew: ship.crew,
+    },
   };
 
   socket.send(JSON.stringify(payload));
 }
 
-export function setCrewActions(
-  target: string,
-  dodge: number,
-  assist_gunners: boolean
-) {
+export function setCrewActions(target: string, dodge: number, assist_gunners: boolean) {
   const payload = {
     SetPilotActions: {
       ship_name: target,
@@ -226,10 +238,7 @@ export function removeEntity(target: string) {
   socket.send(JSON.stringify(payload));
 }
 
-export async function setPlan(
-  target: string,
-  plan: [Acceleration, Acceleration | null]
-) {
+export async function setPlan(target: string, plan: [Acceleration, Acceleration | null]) {
   let plan_arr = [];
 
   // Since the Rust backend just expects null values in flight plans to be skipped
@@ -239,7 +248,7 @@ export async function setPlan(
   } else {
     plan_arr = [plan[0], plan[1]];
   }
-  const payload = { SetPlan: { name: target, plan: plan_arr } };
+  const payload = {SetPlan: {name: target, plan: plan_arr}};
 
   socket.send(JSON.stringify(payload));
 }
@@ -248,8 +257,10 @@ export function updateActions(actions: ActionType) {
   if (Object.entries(actions).length === 0) {
     return;
   }
-  const payload = { ModifyActions: actionPayload(actions)};
-  console.log("(updateActions) Sending payload: " + JSON.stringify(payload));
+  console.group("(updateActions) Sending actions: ");
+  console.log(JSON.stringify(actions));
+  console.groupEnd();
+  const payload = {ModifyActions: actionPayload(actions)};
   socket.send(JSON.stringify(payload));
 }
 
@@ -291,16 +302,16 @@ export function computeFlightPath(
 }
 
 export function loadScenario(scenario_name: string) {
-  const payload = { LoadScenario: { scenario_name: scenario_name } };
+  const payload = {LoadScenario: {scenario_name: scenario_name}};
   socket.send(JSON.stringify(payload));
 }
 
 export function setRole(role: ViewMode, ship: string | null) {
   if (ship !== null) {
-    const payload = { SetRole: { role: ViewMode[role], ship: ship } };
+    const payload = {SetRole: {role: ViewMode[role], ship: ship}};
     socket.send(JSON.stringify(payload));
   } else {
-    const payload = { SetRole: { role: ViewMode[role] } };
+    const payload = {SetRole: {role: ViewMode[role]}};
     socket.send(JSON.stringify(payload));
   }
 }
@@ -320,18 +331,13 @@ export function logout() {
 //
 // Functions to handle incoming messages that are more complex than a few lines.
 //
-function handleTemplates(
-  json: object,
-  setTemplates: (templates: ShipDesignTemplates) => void
-) {
-  const templates: { [key: string]: ShipDesignTemplate } = {};
+function handleTemplates(json: object, setTemplates: (templates: ShipDesignTemplates) => void) {
+  const templates: {[key: string]: ShipDesignTemplate} = {};
 
   // First coerce the free-form json we receive into a formal templates object
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   Object.entries(json).forEach((entry: [string, any]) => {
-    const currentTemplate: ShipDesignTemplate = ShipDesignTemplate.parse(
-      entry[1]
-    );
+    const currentTemplate: ShipDesignTemplate = ShipDesignTemplate.parse(entry[1]);
     templates[entry[0]] = currentTemplate;
   });
 
@@ -346,21 +352,45 @@ function handleTemplates(
 
 function handleEntities(
   json: object,
-  setEntities: (entities: EntityList) => void
+  setEntities: (entities: EntityList) => void,
+  setActions: (actions: ActionType) => void
 ) {
   const entities = EntityList.parse(json);
   console.groupCollapsed("Received Entities: ");
+  console.groupCollapsed("Ships: ");
   for (const v of entities.ships) {
     console.log(` ${JSON.stringify(v)}`);
   }
   console.groupEnd();
+  console.groupCollapsed("Missiles: ");
+  for (const v of entities.missiles) {
+    console.log(` ${JSON.stringify(v)}`);
+  }
+  console.groupEnd();
+  console.groupCollapsed("Planets: ");
+  for (const v of entities.planets) {
+    console.log(` ${JSON.stringify(v)}`);
+  }
+  console.groupEnd();
+  console.groupEnd();
   setEntities(entities);
+  if (Object.hasOwn(json, "actions")) {
+    const actions = (json as {actions: object[]}).actions;
+    const parsed_actions = payloadToAction(actions);
+    setActions(parsed_actions);
+
+    console.groupCollapsed("Received Actions: ");
+    console.log(JSON.stringify(actions));
+    console.groupEnd();
+  } else {
+    console.group("**** tmp debug full entities");
+    console.log(JSON.stringify(json));
+    console.groupEnd();
+    setActions({});
+  }
 }
 
-function handleFlightPath(
-  json: object,
-  setProposedPlan: (plan: FlightPathResult) => void
-) {
+function handleFlightPath(json: object, setProposedPlan: (plan: FlightPathResult) => void) {
   const path = FlightPathResult.parse(json);
   setProposedPlan(path);
 }

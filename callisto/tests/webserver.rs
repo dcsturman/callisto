@@ -369,7 +369,8 @@ async fn integration_add_ship() {
          "sensor_locks": []
         }],
         "missiles":[],
-        "planets":[]});
+        "planets":[],
+        "actions":[]});
 
     assert_json_eq!(entities, compare);
   }
@@ -455,7 +456,8 @@ async fn integration_add_planet_ship() {
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
 
     assert_json_eq!(entities, compare);
   } else {
@@ -488,6 +490,7 @@ async fn integration_add_planet_ship() {
       "gravity_radius_025": 9_036_820.097_086_99,
       "gravity_radius_2": 3_194_998.385_506_543}],
     "missiles":[],
+    "actions":[],
     "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
@@ -545,6 +548,7 @@ async fn integration_add_planet_ship() {
 
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"missiles":[],
+    "actions":[],
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
         "color":"red","radius":1.5e6,"mass":3e24,
@@ -626,7 +630,12 @@ async fn integration_update_ship() {
   drain_entity_response(&mut stream).await;
 
   let _response = rpc(&mut stream, RequestMsg::ModifyActions(EMPTY_FIRE_ACTIONS_MSG)).await;
-  drain_entity_response(&mut stream).await;
+  let entity_msg = drain_entity_response(&mut stream).await;
+  let ResponseMsg::EntityResponse(entities) = entity_msg else {
+    panic!("Expected EntityResponse");
+  };
+  assert!(entities.actions.is_empty(),"Expected an empty action list");
+
   let response = rpc(&mut stream, RequestMsg::Update).await;
   assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
 
@@ -694,7 +703,13 @@ async fn integration_update_missile() {
   )];
 
   let _response = rpc(&mut stream, RequestMsg::ModifyActions(fire_actions)).await;
-  drain_entity_response(&mut stream).await;
+  let entity_msg =drain_entity_response(&mut stream).await;
+  if let ResponseMsg::EntityResponse(entities) = entity_msg {
+    assert!(entities.actions.iter().any(|(name, _)| name == "ship1"),"Expected ship1 in actions");
+  } else {
+    panic!("Expected EntityResponse");
+  }
+
   let effects = rpc(&mut stream, RequestMsg::Update).await;
   if let ResponseMsg::Effects(effects) = effects {
     let filtered_effects: Vec<_> = effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect();
@@ -742,7 +757,7 @@ async fn integration_update_missile() {
              "assist_gunners":false,
              "sensor_locks": []
             }],
-            "missiles":[],"planets":[]});
+            "missiles":[],"planets":[],"actions":[]});
 
     assert_json_eq!(entities, compare);
   } else {

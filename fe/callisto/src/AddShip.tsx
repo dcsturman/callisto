@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useContext } from "react";
-import { CrewBuilder, Crew } from "./CrewBuilder";
+import React, {useState, useRef, useEffect, useContext} from "react";
+import {CrewBuilder, Crew} from "./CrewBuilder";
 import {
   POSITION_SCALE,
   DesignTemplatesContext,
@@ -8,18 +8,18 @@ import {
   Weapon,
   WeaponMount,
 } from "./Universal";
-import { Accordion } from "./Accordion";
-import { Tooltip } from "react-tooltip";
-import { CiCircleQuestion } from "react-icons/ci";
-import { unique_ship_name } from "./shipnames";
-import { Ship } from "./Universal";
+import {Accordion} from "./Accordion";
+import {Tooltip} from "react-tooltip";
+import {CiCircleQuestion} from "react-icons/ci";
+import {unique_ship_name} from "./shipnames";
+import {Ship} from "./Universal";
 
 interface AddShipProps {
   submitHandler: (ship: Ship) => void;
   shipDesignTemplates: ShipDesignTemplates;
 }
 
-export const AddShip: React.FC<AddShipProps> = ({ submitHandler }) => {
+export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
   const serverEntities = useContext(EntitiesServerContext);
   const shipNames = serverEntities.entities.ships.map((ship) => ship.name);
 
@@ -43,9 +43,7 @@ export const AddShip: React.FC<AddShipProps> = ({ submitHandler }) => {
   const [addShip, addShipUpdate] = useState(initialTemplate);
 
   useEffect(() => {
-    const current = serverEntities.entities.ships.find(
-      (ship) => ship.name === addShip.name
-    );
+    const current = serverEntities.entities.ships.find((ship) => ship.name === addShip.name);
     if (current != null) {
       const template = {
         name: current.name,
@@ -75,9 +73,7 @@ export const AddShip: React.FC<AddShipProps> = ({ submitHandler }) => {
     if (event.target.name === "name") {
       if (shipNames.includes(event.target.value)) {
         event.target.style.color = "green";
-        const ship = serverEntities.entities.ships.find(
-          (ship) => ship.name === event.target.value
-        );
+        const ship = serverEntities.entities.ships.find((ship) => ship.name === event.target.value);
         if (ship != null) {
           addShipUpdate({
             name: event.target.value,
@@ -93,7 +89,7 @@ export const AddShip: React.FC<AddShipProps> = ({ submitHandler }) => {
         }
       }
     }
-    addShipUpdate({ ...addShip, [event.target.name]: event.target.value });
+    addShipUpdate({...addShip, [event.target.name]: event.target.value});
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -112,15 +108,13 @@ export const AddShip: React.FC<AddShipProps> = ({ submitHandler }) => {
     ];
 
     const design: string = addShip.design;
-    addShipUpdate({ ...addShip, design: design });
+    addShipUpdate({...addShip, design: design});
 
     const crew = addShip.crew;
     console.log(
       `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Design ${design}`
     );
-    const ship =
-      serverEntities.entities.ships.find((ship) => ship.name === name) ||
-      Ship.default();
+    const ship = serverEntities.entities.ships.find((ship) => ship.name === name) || Ship.default();
 
     ship.name = name;
     ship.position = position;
@@ -134,10 +128,7 @@ export const AddShip: React.FC<AddShipProps> = ({ submitHandler }) => {
   }
 
   return (
-    <Accordion
-      id="add-ship-header"
-      title="Add or Update Ship"
-      initialOpen={false}>
+    <Accordion id="add-ship-header" title="Add or Update Ship" initialOpen={false}>
       <form id="add-ship" className="control-form" onSubmit={handleSubmit}>
         <label className="control-label">
           Name
@@ -204,15 +195,13 @@ export const AddShip: React.FC<AddShipProps> = ({ submitHandler }) => {
         </label>
         <ShipDesignList
           shipDesignName={addShip.design}
-          setShipDesignName={(design) =>
-            addShipUpdate({ ...addShip, design: design })
-          }
+          setShipDesignName={(design) => addShipUpdate({...addShip, design: design})}
           shipDesigns={shipDesignTemplates}
         />
         <hr />
         <CrewBuilder
           shipName={addShip.name}
-          updateCrew={(crew: Crew) => addShipUpdate({ ...addShip, crew: crew })}
+          updateCrew={(crew: Crew) => addShipUpdate({...addShip, crew: crew})}
           shipDesign={shipDesignTemplates[addShip.design]}
         />
         <input
@@ -233,22 +222,16 @@ function ShipDesignList(args: {
   const selectRef = useRef<HTMLSelectElement>(null);
   useEffect(() => {
     if (selectRef.current != null) {
-      selectRef.current.value =
-        (args.shipDesignName && args.shipDesignName) || "";
+      selectRef.current.value = (args.shipDesignName && args.shipDesignName) || "";
     }
   }, [args.shipDesignName]);
 
-  function handleDesignListSelectChange(
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) {
+  function handleDesignListSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     args.setShipDesignName(value);
   }
 
-  function shipDesignDetails(render: {
-    content: string | null;
-    activeAnchor: HTMLElement | null;
-  }) {
+  function shipDesignDetails(render: {content: string | null; activeAnchor: HTMLElement | null}) {
     if (render.content == null) {
       return <></>;
     }
@@ -258,16 +241,10 @@ function ShipDesignList(args: {
     }
 
     const compressed = Object.values(design.compressedWeapons());
-    const describeWeapon = (weapon: {
-      kind: string;
-      mount: WeaponMount;
-      used: number;
-      total: number;
-    }) => {
+    const describeWeapon = (weapon: {kind: string; mount: WeaponMount; total: number}) => {
       const weapon_name = new Weapon(weapon.kind, weapon.mount).toString();
 
-      const [quant, suffix] =
-        weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
+      const [quant, suffix] = weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
       return `${quant} ${weapon_name}${suffix}`;
     };
 
@@ -280,19 +257,15 @@ function ShipDesignList(args: {
     } else if (compressed.length === 1) {
       weaponDesc = ["Weapons are ", describeWeapon(compressed[0])];
     } else {
-      weaponDesc.push(
-        "and " + describeWeapon(compressed[compressed.length - 1])
-      );
+      weaponDesc.push("and " + describeWeapon(compressed[compressed.length - 1]));
       weaponDesc = ["Weapons are "].concat(weaponDesc);
     }
     return (
       <>
         <h3>{design.name}</h3>
         <div className="ship-design-description-tooltip">
-          {design.displacement} tons with {design.hull} hull points and{" "}
-          {design.armor} armor.&nbsp;
-          {design.power} power back {design.maneuver}G thrust and jump{" "}
-          {design.jump}. {weaponDesc}.
+          {design.displacement} tons with {design.hull} hull points and {design.armor} armor.&nbsp;
+          {design.power} power back {design.maneuver}G thrust and jump {design.jump}. {weaponDesc}.
         </div>
       </>
     );
@@ -326,9 +299,7 @@ function ShipDesignList(args: {
             .map((design) => (
               <option
                 key={design.name + "-ship_list"}
-                value={
-                  design.name
-                }>{`${design.name} (${design.displacement})`}</option>
+                value={design.name}>{`${design.name} (${design.displacement})`}</option>
             ))}
         </select>
         <Tooltip

@@ -57,10 +57,10 @@ pub struct Entities {
   pub planets: HashMap<String, Arc<RwLock<Planet>>>,
   pub next_missile_id: u32,
 
-  // Actions queued up for when the turn ends.  They aren't
-  // part of the ongoing state so we do not send them back to the client currently.
-  // That might change in the future (say we have a view on all pending actions)
-  pub(crate) actions: ShipActionList,
+  // Actions queued up for when the turn ends.
+  // They are more ephemeral than the objects above, but are global state
+  // so we store them here so that Entities the single global-state object for a server.
+  pub actions: ShipActionList,
 }
 
 impl PartialEq for Entities {
@@ -857,6 +857,7 @@ impl Serialize for Entities {
       ships: Vec<Ship>,
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
+      actions: ShipActionList,
     }
 
     let mut entities = Entities {
@@ -871,6 +872,7 @@ impl Serialize for Entities {
         .values()
         .map(|p| p.read().unwrap().clone())
         .collect::<Vec<Planet>>(),
+      actions: self.actions.clone(),
     };
 
     //The following sort_by is not necessary and adds inefficiency BUT ensures we serialize each item in the same order
@@ -880,6 +882,7 @@ impl Serialize for Entities {
       .missiles
       .sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
     entities.planets.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    entities.actions.sort_by_key(|a| a.0.clone());
 
     entities.serialize(serializer)
   }
@@ -899,6 +902,8 @@ impl<'de> Deserialize<'de> for Entities {
       missiles: Vec<Missile>,
       #[serde(default)]
       planets: Vec<Planet>,
+      #[serde(default)]
+      actions: ShipActionList,
     }
 
     let guts = Entities::deserialize(deserializer)?;
@@ -919,7 +924,7 @@ impl<'de> Deserialize<'de> for Entities {
         .map(|e| (e.get_name().to_string(), Arc::new(RwLock::new(e))))
         .collect(),
       next_missile_id: 0,
-      actions: vec![],
+      actions: guts.actions,
     })
   }
 }
@@ -1504,6 +1509,7 @@ mod tests {
         "sensor_locks": []
         }],
     "missiles":[],
+    "actions":[],
     "planets":[
         {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,
         "gravity_radius_1":6_375_069.342_849_095,"gravity_radius_05":9_015_709.525_726_125,"gravity_radius_025":12_750_138.685_698_19},

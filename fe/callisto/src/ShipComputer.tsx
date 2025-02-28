@@ -479,12 +479,9 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
   sensorLocks,
 }) => {
   const actionContext = useContext(ActionContext);
-  const [currentSensor, setCurrentSensor] = useState(actionContext.actions[ship.name]?.sensor || newSensorState(SensorAction.None, ""));
 
-  useEffect(() => {
-    if (actionContext.actions[ship.name] && actionContext.actions[ship.name].sensor) {
-      setCurrentSensor(actionContext.actions[ship.name].sensor);
-    }
+  const currentSensor = useMemo(() => {
+    return actionContext.actions[ship.name]?.sensor || newSensorState(SensorAction.None, "");
   }, [actionContext.actions, ship.name]);
 
   function handleSensorActionChange(

@@ -1,8 +1,8 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useContext, useEffect } from "react";
 import * as THREE from "three";
 import { Accordion } from "./Accordion";
 import { AddShip } from "./AddShip";
-import { ActionContext, newFireAction } from "./Actions";
+import { ActionContext } from "./Actions";
 import {
   Ship,
   ViewControlParams,
@@ -13,7 +13,6 @@ import {
   ShipDesignTemplates,
   ViewContext,
   ViewMode,
-  Weapon,
   POSITION_SCALE,
   SCALE,
 } from "./Universal";
@@ -23,11 +22,9 @@ import { EntitySelector, EntitySelectorType } from "./EntitySelector";
 import {
   scaleVector,
   vectorToString,
-  findRangeBand,
-  vectorDistance,
 } from "./Util";
 import { NavigationPlan } from "./ShipComputer";
-import { WeaponButton, FireActions } from "./WeaponUse";
+import { FireActions, FireControl } from "./WeaponUse";
 import { ShipComputer } from "./ShipComputer";
 
 function ShipList(args: {
@@ -120,7 +117,6 @@ export function Controls(args: {
   const actionContext = useContext(ActionContext);
   const viewContext = useContext(ViewContext);
   const serverEntities = useContext(EntitiesServerContext).entities;
-  const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
   // If there's actually a ship name defined in the Role information, that supersedes
   // any other selection for the computerShip.
@@ -136,68 +132,6 @@ export function Controls(args: {
   const computerShipDesign = args.computerShip
     ? args.shipDesignTemplates[args.computerShip.design]
     : null;
-
-  function handleFireCommand(attacker: string, target: string, weapon: string) {
-    if (!computerShipDesign) {
-      console.error(
-        "(Controls.handleFireCommand) No computer ship design for " +
-          attacker +
-          "."
-      );
-      return;
-    }
-
-    if (
-      actionContext.actions[attacker]?.fire?.weapons[weapon]?.used ===
-      actionContext.actions[attacker]?.fire?.weapons[weapon]?.total
-    ) {
-      console.log(
-        "(Controls.handleFireCommand) No more weapons of type " +
-          weapon +
-          " for " +
-          attacker +
-          "."
-      );
-      return;
-    }
-    let nth_weapon = actionContext.actions[attacker].fire.weapons[weapon].used;
-    actionContext.fireWeapon(attacker, weapon);
-
-    let weapon_position = 0;
-    for (; weapon_position < args.shipDesignTemplates[computerShipDesign.name].weapons.length; weapon_position++) {
-      if (
-        args.shipDesignTemplates[computerShipDesign.name].weapons[
-          weapon_position
-        ].toString() === weapon
-      ) {
-        nth_weapon -= 1;
-        if (nth_weapon === 0) {
-          break;
-        }
-      }
-    }
-
-    // Check error conditions out of that loop.
-    if (
-      weapon_position ===
-        args.shipDesignTemplates[computerShipDesign.name].weapons.length ||
-      nth_weapon !== 0
-    ) {
-      console.error(
-        "(Controls.handleFireCommand) Could not find " +
-          actionContext.actions[attacker].fire.weapons[weapon].used +
-          "th weapon " +
-          weapon +
-          " for " +
-          attacker +
-          "."
-      );
-      return;
-    }
-
-    const new_fire_action = newFireAction(target, weapon_position);
-    actionContext.addFireAction(attacker, new_fire_action);
-  }
 
   return (
     <div className="controls-pane">
@@ -221,7 +155,6 @@ export function Controls(args: {
             setComputerShip={(ship) => {
               args.setShowRange(null);
               args.setComputerShip(ship);
-              setFireTarget(null);
             }}
             setCameraPos={args.setCameraPos}
             camera={args.camera}
@@ -385,58 +318,7 @@ export function Controls(args: {
                 <Accordion
                   title={`${args.computerShip.name} Fire Controls`}
                   initialOpen={true}>
-                  <div className="control-launch-div">
-                    Target:
-                    <EntitySelector
-                      filter={[EntitySelectorType.Ship]}
-                      setChoice={setFireTarget}
-                      current={fireTarget}
-                      exclude={args.computerShip.name}
-                      formatter={(name, entity) => {
-                        if (args.computerShip) {
-                          return `${name} (${findRangeBand(
-                            vectorDistance(
-                              args.computerShip.position,
-                              entity.position
-                            )
-                          )})`;
-                        } else {
-                          return "";
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="weapon-list"> 
-                    {actionContext.actions[args.computerShip.name]?.fire?.weapons &&
-                      Object.values(
-                        actionContext.actions[args.computerShip.name].fire.weapons
-                      ).map(
-                        (weapon, id) =>
-                          weapon.kind !== "Sand" && (
-                            <WeaponButton
-                              key={
-                                "weapon-" + args.computerShip?.name + "-" + id
-                              }
-                              weapon={weapon.kind}
-                              mount={weapon.mount}
-                              count={weapon.total - weapon.used}
-                              onClick={() => {
-                                handleFireCommand(
-                                  args.computerShip
-                                    ? args.computerShip.name
-                                    : "",
-                                  fireTarget ? fireTarget.name : "",
-                                  new Weapon(
-                                    weapon.kind,
-                                    weapon.mount
-                                  ).toString()
-                                );
-                              }}
-                              disable={!fireTarget}
-                            />
-                          )
-                      )}
-                  </div>
+                  <FireControl computerShip={args.computerShip} />
                 </Accordion>
               </div>
             )}
@@ -444,9 +326,9 @@ export function Controls(args: {
         )}
         {args.computerShip &&
           computerShipDesign &&
-          (actionContext.actions[args.computerShip.name]?.fire?.state || []).length > 0 && (
+          (actionContext.actions[args.computerShip.name]?.fire || []).length > 0 && (
             <FireActions
-              actions={actionContext.actions[args.computerShip?.name].fire.state || []}
+              actions={actionContext.actions[args.computerShip?.name].fire || []}
               design={computerShipDesign}
               computerShipName={args.computerShip.name}
             />
@@ -461,7 +343,6 @@ export function Controls(args: {
           // Strip out the details on the weapons and provide an object with just
           // the name of each possible actor and the FireState they produced during the round.
           nextRound();
-          actionContext.resetActions();
           args.setShowRange(null);
           //args.setComputerShip(null);
         }}>

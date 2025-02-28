@@ -1,6 +1,5 @@
 import { createContext } from "react";
 import { Crew } from "./CrewBuilder";
-import { CompressedWeaponType } from "./Actions";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -345,6 +344,14 @@ export class Weapon {
 
 }
 
+export type CompressedWeaponType = {
+  [weapon: string]: {
+    kind: string;
+    mount: WeaponMount;
+    total: number;
+  };
+};
+
 export class ShipDesignTemplate {
   name: string;
   displacement: number;
@@ -413,7 +420,6 @@ export class ShipDesignTemplate {
           accumulator[weapon.toString()] = {
             kind: weapon.kind,
             mount: weapon.mount,
-            used: 0,
             total: 1,
           };
         }
@@ -421,6 +427,25 @@ export class ShipDesignTemplate {
       },
       initial_acc
     );
+  }
+
+  // Find the weapon_id of the nth with a given name.  This is part of going 
+  // backwards from compress weapons to the actual weapon IDs (as the server has
+  // no idea about compressed weapons).
+  findNthWeapon(weapon_name: string, n: number) {
+    for (let count = 0; count < this.weapons.length; count++) {
+      if (this.weapons[count].toString() === weapon_name) {
+        n -= 1;
+        if (n === 0) {
+          return count;
+        }
+      }
+    }
+    return -1;
+  }
+
+  getWeaponName(weapon_id: number) {
+    return this.weapons[weapon_id].toString();
   }
 }
 

@@ -1,13 +1,16 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useMemo, useEffect } from "react";
 import { findRangeBand } from "./Util";
 import {
+  Entity,
   ShipDesignTemplate,
   WeaponMount,
   EntitiesServerContext,
+  DesignTemplatesContext,
   Ship,
-  SHIP_SYSTEMS
+  SHIP_SYSTEMS,
 } from "./Universal";
-import { FireState } from "./Actions";
+import { EntitySelector, EntitySelectorType } from "./EntitySelector";
+import { FireState, ActionContext } from "./Actions";
 
 // Icons for each type of weapon
 import { ReactComponent as Turret1 } from "./icons/turret1.svg";
@@ -37,7 +40,7 @@ export const WeaponButton = (props: {
   mount: WeaponMount;
   count: number;
   onClick: () => void;
-  disable: boolean;
+  disabled: boolean;
 }) => {
   if (typeof props.mount === "string") {
     return (
@@ -48,8 +51,7 @@ export const WeaponButton = (props: {
           data-tooltip-content={`${props.weapon} Barbette`}
           data-tooltip-delay-show={700}
           onClick={props.onClick}
-          disabled={props.disable}
-          >
+          disabled={props.disabled}>
           <Barbette
             className="weapon-symbol barbette-button"
             style={{
@@ -58,10 +60,7 @@ export const WeaponButton = (props: {
           />
           <span className="weapon-symbol-count">{props.count}</span>
         </button>
-        <Tooltip
-          id={props.weapon + props.mount}
-          className="tooltip-body weapon-button-tooltip"
-        />
+        <Tooltip id={props.weapon + props.mount} className="tooltip-body weapon-button-tooltip" />
       </>
     );
   }
@@ -76,7 +75,7 @@ export const WeaponButton = (props: {
             data-tooltip-id={props.weapon + "small-bay"}
             data-tooltip-content={`Small ${props.weapon} Bay`}
             data-tooltip-delay-show={700}
-            disabled={props.disable}>
+            disabled={props.disabled}>
             <SmallBay
               className="weapon-symbol bay-button"
               style={{
@@ -100,7 +99,7 @@ export const WeaponButton = (props: {
             data-tooltip-id={props.weapon + "med-bay"}
             data-tooltip-content={`Medium ${props.weapon} Bay`}
             data-tooltip-delay-show={700}
-            disabled={props.disable}>
+            disabled={props.disabled}>
             <MediumBay
               className="weapon-symbol bay-button"
               style={{
@@ -109,10 +108,7 @@ export const WeaponButton = (props: {
             />
             <span className="weapon-symbol-count">{props.count}</span>
           </button>
-          <Tooltip
-            id={props.weapon + "med-bay"}
-            className="tooltip-body  weapon-button-tooltip"
-          />
+          <Tooltip id={props.weapon + "med-bay"} className="tooltip-body  weapon-button-tooltip" />
         </>
       );
     } else {
@@ -124,7 +120,7 @@ export const WeaponButton = (props: {
             data-tooltip-id={props.weapon + "large-bay"}
             data-tooltip-content={`Large ${props.weapon} Bay`}
             data-tooltip-delay-show={700}
-            disabled={props.disable}>
+            disabled={props.disabled}>
             <LargeBay
               className="weapon-symbol bay-button"
               style={{
@@ -151,7 +147,7 @@ export const WeaponButton = (props: {
             data-tooltip-id={props.weapon + num + "turret"}
             data-tooltip-content={`Single ${props.weapon} Turret`}
             data-tooltip-delay-show={700}
-            disabled={props.disable}>
+            disabled={props.disabled}>
             <Turret1
               className="weapon-symbol turret-button"
               style={{
@@ -176,7 +172,7 @@ export const WeaponButton = (props: {
             data-tooltip-id={props.weapon + num + "turret"}
             data-tooltip-content={`Double ${props.weapon} Turret`}
             data-tooltip-delay-show={700}
-            disabled={props.disable}>
+            disabled={props.disabled}>
             <Turret2
               className="weapon-symbol turret-button"
               style={{
@@ -200,7 +196,7 @@ export const WeaponButton = (props: {
           data-tooltip-id={props.weapon + num + "turret"}
           data-tooltip-content={`Triple ${props.weapon} Turret`}
           data-tooltip-delay-show={700}
-          disabled={props.disable}>
+          disabled={props.disabled}>
           <Turret3
             className="weapon-symbol turret-button"
             style={{
@@ -220,8 +216,8 @@ export const WeaponButton = (props: {
 };
 
 function CalledShotMenu(args: {
-  attacker: Ship,
-  target: Ship,
+  attacker: Ship;
+  target: Ship;
   calledShot: string | null;
   setCalledShot: (system: string | null) => void;
 }) {
@@ -234,27 +230,158 @@ function CalledShotMenu(args: {
   }
 
   return (
-      <select 
-        className="called-shot-menu"
-        name="called_shot_system"
-        value={system ? system : "No called shot"}
-        onChange={(e) => { if (e.target.value === "No called shot") {
+    <select
+      className="called-shot-menu"
+      name="called_shot_system"
+      value={system ? system : "No called shot"}
+      onChange={(e) => {
+        if (e.target.value === "No called shot") {
           args.setCalledShot(null);
           setSystem(null);
         } else {
           args.setCalledShot(e.target.value);
           setSystem(e.target.value);
-        }}}>
-        <option key="none" value="No called shot">No called shot</option>
-        {SHIP_SYSTEMS.map((system) => (
-          <option key={system} value={system}>
-            {system}
-          </option>
-        ))}
-      </select>
+        }
+      }}>
+      <option key="none" value="No called shot">
+        No called shot
+      </option>
+      {SHIP_SYSTEMS.map((system) => (
+        <option key={system} value={system}>
+          {system}
+        </option>
+      ))}
+    </select>
   );
 }
 
+type FireControlProps = {
+  computerShip: Ship;
+};
+
+export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
+  const actionContext = useContext(ActionContext);
+  const designs = useContext(DesignTemplatesContext);
+
+  const weaponDetails = useMemo(() => {
+    return designs.templates[computerShip.design].compressedWeapons();
+  }, [computerShip.design, designs.templates]);
+
+  const availableCounts = useMemo(() => {
+    const counts = {} as { [key: string]: number };
+    const design = designs.templates[computerShip.design];
+    // Count up all the actions by weapon
+    if (actionContext.actions[computerShip.name]?.fire) {
+      for (const action of actionContext.actions[computerShip.name].fire) {
+        counts[design.getWeaponName(action.weapon_id)] = (counts[design.getWeaponName(action.weapon_id)] || 0) + 1;
+      }
+    }
+
+    const available = {} as { [key: string]: number };
+    // Subtract all the counts (if the exist) from the total counts
+    for (const weapon in weaponDetails) {
+      available[weapon] = weaponDetails[weapon].total - (counts[weapon] || 0);
+    }
+    return available;
+  }, [actionContext, computerShip.name, computerShip.design, weaponDetails, designs]);
+
+  const [fireTarget, setFireTarget] = useState<Entity | null>(null);
+
+  useEffect(() => {
+    if (computerShip.name === fireTarget?.name) {
+      setFireTarget(null);
+    }
+  }, [computerShip, fireTarget]);
+
+  function handleFireCommand(attacker: string, target: string, weapon_name: string) {
+    const computerShipDesign = designs.templates[computerShip.design];
+    if (!computerShipDesign) {
+      console.error("(Controls.handleFireCommand) No computer ship design for " + attacker + ".");
+      return;
+    }
+
+    const weapon_id = computerShipDesign.findNthWeapon(weapon_name, weaponDetails[weapon_name].total - availableCounts[weapon_name] + 1);
+    if (availableCounts[weapon_name] === 0) {
+      console.log(
+        "(Controls.handleFireCommand) No more weapons of type " + weapon_id + " for " + attacker + "."
+      );
+      return;
+    }
+    //let nth_weapon = actionContext.actions[attacker].fire.weapons[weapon].used;
+    actionContext.fireWeapon(attacker, weapon_id, target);
+    /*
+    let weapon_position = 0;
+    for (; weapon_position < computerShipDesign.weapons.length; weapon_position++) {
+      if (computerShipDesign.weapons[weapon_position].toString() === weapon) {
+        nth_weapon -= 1;
+        if (nth_weapon === 0) {
+          break;
+        }
+      }
+    }
+    
+    // Check error conditions out of that loop.
+    if (weapon_position === computerShipDesign.weapons.length || nth_weapon !== 0) {
+      console.error(
+        "(Controls.handleFireCommand) Could not find " +
+          actionContext.actions[attacker].fire.weapons[weapon].used +
+          "th weapon " +
+          weapon +
+          " for " +
+          attacker +
+          "."
+      );
+      return;
+    }
+  */
+    //const new_fire_action = newFireAction(target, weapon_position);
+    //actionContext.addFireAction(attacker, new_fire_action);
+  }
+
+  return (
+    <>
+      <div className="control-launch-div">
+        Target:
+        <EntitySelector
+          filter={[EntitySelectorType.Ship]}
+          setChoice={setFireTarget}
+          current={fireTarget}
+          exclude={computerShip.name}
+          formatter={(name, entity) => {
+            if (computerShip) {
+              return `${name} (${findRangeBand(
+                vectorDistance(computerShip.position, entity.position)
+              )})`;
+            } else {
+              return "";
+            }
+          }}
+        />
+      </div>
+      <div className="weapon-list">
+        {Object.entries(designs.templates[computerShip.design].compressedWeapons()).map(
+            ([weapon_name, weapon]) =>
+              !weapon_name.includes("Sand") && (
+                <WeaponButton
+                  key={"weapon-" + computerShip.name + "-" + weapon_name}
+                  weapon={weapon.kind}
+                  mount={weapon.mount}
+                  count={availableCounts[weapon_name]}
+                  onClick={() => {
+                    handleFireCommand(
+                      computerShip.name,
+                      fireTarget ? fireTarget.name : "",
+                      weapon_name
+                    );
+                  }}
+                  disabled={!fireTarget}
+                />
+              )
+          )}
+      </div>
+    </>
+  );
+};
 export function FireActions(args: {
   actions: FireState;
   design: ShipDesignTemplate;
@@ -265,37 +392,52 @@ export function FireActions(args: {
     (ship) => ship.name === args.computerShipName
   );
 
+
   return (
     <div className="control-form">
       <h2>Fire Actions</h2>
-      {args.actions.map((action, index) =>
-        ["Beam", "Pulse", "Particle"].includes(
-          args.design.weapons[action.weapon_id].kind
-        ) ? (
+      {args.actions.map((action, index) => {
+        let kind = null;
+        if (args.design.weapons[action.weapon_id].kind === "Beam") {
+          kind = "Beam";
+        } else if (args.design.weapons[action.weapon_id].kind === "Pulse") {
+          kind = "Pulse";
+        } else if (args.design.weapons[action.weapon_id].kind === "Particle") {
+          kind = "Particle";
+        } else {
+          kind = "Missile";
+        };
+
+        return ["Beam", "Pulse", "Particle"].includes(kind) ?  (
           <div className="fire-actions-div" key={index + "_fire_img"}>
             <p>
-            <RayIcon
-              className="beam-type-icon"
-              style={{
-                fill: WEAPON_COLORS[args.design.weapons[action.weapon_id].kind],
-              }}
-            />{" "}
-            to {action.target}
+              <RayIcon
+                className="beam-type-icon"
+                style={{
+                  fill: WEAPON_COLORS[kind],
+                }}
+              />{" "}
+              to {action.target}
             </p>
-            <CalledShotMenu attacker={computerShip!} target={serverEntities.entities.ships.find((ship) => ship.name === action.target)!} calledShot={action.called_shot_system} setCalledShot={(system) => action.called_shot_system = system} />
-            </div>
+            <CalledShotMenu
+              attacker={computerShip!}
+              target={serverEntities.entities.ships.find((ship) => ship.name === action.target)!}
+              calledShot={action.called_shot_system}
+              setCalledShot={(system) => (action.called_shot_system = system)}
+            />
+          </div>
         ) : (
           <p key={index + "_fire_img"}>
             <MissileIcon
               className="missile-type-icon"
               style={{
-                fill: WEAPON_COLORS[args.design.weapons[action.weapon_id].kind],
+                fill: WEAPON_COLORS[kind],
               }}
             />{" "}
             to {action.target}
           </p>
         )
-      )}
+      })}
     </div>
   );
 }
