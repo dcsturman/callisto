@@ -35,8 +35,8 @@ use serde_json::json;
 
 use callisto::debug;
 
-use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use callisto::action::ShipAction;
+use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use callisto::payloads::{
   AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
   SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
@@ -634,7 +634,7 @@ async fn integration_update_ship() {
   let ResponseMsg::EntityResponse(entities) = entity_msg else {
     panic!("Expected EntityResponse");
   };
-  assert!(entities.actions.is_empty(),"Expected an empty action list");
+  assert!(entities.actions.is_empty(), "Expected an empty action list");
 
   let response = rpc(&mut stream, RequestMsg::Update).await;
   assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
@@ -703,9 +703,12 @@ async fn integration_update_missile() {
   )];
 
   let _response = rpc(&mut stream, RequestMsg::ModifyActions(fire_actions)).await;
-  let entity_msg =drain_entity_response(&mut stream).await;
+  let entity_msg = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entity_msg {
-    assert!(entities.actions.iter().any(|(name, _)| name == "ship1"),"Expected ship1 in actions");
+    assert!(
+      entities.actions.iter().any(|(name, _)| name == "ship1"),
+      "Expected ship1 in actions"
+    );
   } else {
     panic!("Expected EntityResponse");
   }
@@ -1170,7 +1173,7 @@ async fn integration_bad_requests() {
   });
   let response = rpc(&mut stream, msg).await;
   assert!(matches!(response, ResponseMsg::Error(_)));
-  
+
   // Test fire action with invalid weapon_id
   let msg = RequestMsg::ModifyActions(vec![(
     "ship1".to_string(),
@@ -1181,8 +1184,8 @@ async fn integration_bad_requests() {
     }],
   )]);
   let _response = rpc(&mut stream, msg).await;
-    drain_entity_response(&mut stream).await;
-  
+  drain_entity_response(&mut stream).await;
+
   let response = rpc(&mut stream, RequestMsg::Update).await;
 
   assert!(

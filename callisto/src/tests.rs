@@ -264,7 +264,7 @@ async fn test_update_ship() {
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  server.merge_actions(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+  server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
   let response = server.update();
   assert_eq!(response, Vec::new());
 
@@ -293,7 +293,7 @@ async fn test_update_missile() {
   assert_eq!(response, "Add ship action executed");
 
   let fire_missile = json!([["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  server.merge_actions(serde_json::from_str(&fire_missile).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
   let response = server.update();
 
   let compare = json!([
@@ -535,7 +535,7 @@ async fn test_exhausted_missile() {
 
   // Fire a missile
   let fire_actions = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}] ]]).to_string();
-  server.merge_actions(serde_json::from_str(&fire_actions).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let response = server.update();
 
   // First round 3 missiles are launched due to triple turret
@@ -547,7 +547,7 @@ async fn test_exhausted_missile() {
 
   // Second to 8th round nothing happens.
   for round in 0..9 {
-    server.merge_actions(EMPTY_FIRE_ACTIONS_MSG).unwrap();
+    server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
     let response = server.update();
     assert_eq!(response, Vec::new(), "Round {round}");
   }
@@ -588,7 +588,7 @@ async fn test_destroy_ship() {
   ]]])
   .to_string();
 
-  server.merge_actions(serde_json::from_str(&fire_actions).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
   // For this test we don't worry about all the specific damage effects, but just check for messages related to
@@ -626,7 +626,7 @@ async fn test_called_shot() {
   ]]])
   .to_string();
 
-  server.merge_actions(serde_json::from_str(&fire_actions).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
   // First ensure there is at least one critical hit that matches.
@@ -689,7 +689,7 @@ async fn test_big_fight() {
       {"FireAction" :{"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
-  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let mut effects = server.update();
 
   let compare = json!([
@@ -791,7 +791,7 @@ async fn test_fight_with_crew() {
       {"FireAction" : {"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
-  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let mut effects = server.update();
 
   let compare = json!([
@@ -922,7 +922,7 @@ async fn test_slugfest() {
       ]]
   ]);
 
-  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let _response = server.update();
 
   let response = server.get_entities_json();
@@ -1027,7 +1027,7 @@ async fn test_missile_impact_close() {
 
   // Fire a missile within impact range.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  server.merge_actions(serde_json::from_str(&fire_missile).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
   let effects = server.update();
 
   // Check for impact effect
@@ -1058,7 +1058,7 @@ async fn test_missile_impact_close() {
 
   // Fire a missile that should get there in one round.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  server.merge_actions(serde_json::from_str(&fire_missile).unwrap()).unwrap();
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
   let effects = server.update();
 
   // Check for impact effect

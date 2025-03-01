@@ -40,10 +40,10 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
     crew: new Crew(Object.values(shipDesignTemplates)[0].weapons.length),
   };
 
-  const [addShip, addShipUpdate] = useState(initialTemplate);
+  const [addShip, setAddShip] = useState(initialTemplate);
 
   useEffect(() => {
-    const current = serverEntities.entities.ships.find((ship) => ship.name === addShip.name);
+    const current = serverEntities.entities.ships.find((ship) => ship.name === addShip.name) || null;
     if (current != null) {
       const template = {
         name: current.name,
@@ -56,11 +56,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
         design: current.design,
         crew: current.crew,
       };
-      addShipUpdate(template);
-    } else {
-      const template = initialTemplate;
-      template.name = addShip.name;
-      addShipUpdate(template);
+      setAddShip(template);
     }
   }, [addShip.name, serverEntities.entities.ships]);
 
@@ -75,7 +71,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
         event.target.style.color = "green";
         const ship = serverEntities.entities.ships.find((ship) => ship.name === event.target.value);
         if (ship != null) {
-          addShipUpdate({
+          setAddShip({
             name: event.target.value,
             xpos: (ship.position[0] / POSITION_SCALE).toString(),
             ypos: (ship.position[1] / POSITION_SCALE).toString(),
@@ -89,7 +85,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
         }
       }
     }
-    addShipUpdate({...addShip, [event.target.name]: event.target.value});
+    setAddShip({...addShip, [event.target.name]: event.target.value});
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -108,7 +104,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
     ];
 
     const design: string = addShip.design;
-    addShipUpdate({...addShip, design: design});
+    setAddShip({...addShip, design: design});
 
     const crew = addShip.crew;
     console.log(
@@ -123,7 +119,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
     ship.crew = crew;
 
     submitHandler(ship);
-    addShipUpdate(initialTemplate);
+    setAddShip(initialTemplate);
     shipNameRef.current!.style.color = "black";
   }
 
@@ -195,13 +191,13 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
         </label>
         <ShipDesignList
           shipDesignName={addShip.design}
-          setShipDesignName={(design) => addShipUpdate({...addShip, design: design})}
+          setShipDesignName={(design) => setAddShip({...addShip, design: design})}
           shipDesigns={shipDesignTemplates}
         />
         <hr />
         <CrewBuilder
           shipName={addShip.name}
-          updateCrew={(crew: Crew) => addShipUpdate({...addShip, crew: crew})}
+          updateCrew={(crew: Crew) => setAddShip({...addShip, crew: crew})}
           shipDesign={shipDesignTemplates[addShip.design]}
         />
         <input

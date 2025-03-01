@@ -199,9 +199,7 @@ pub async fn processor(
                 });
             }
           } else {
-            debug!(
-              "(processor) Sending message {message:?} to connection {index}."
-            );
+            debug!("(processor) Sending message {message:?} to connection {index}.");
             connections[index]
               .stream
               .send(Message::Text(

@@ -1,3 +1,4 @@
+pub mod action;
 pub mod authentication;
 pub mod combat;
 mod computer;
@@ -10,7 +11,6 @@ pub mod processor;
 mod rules_tables;
 pub mod server;
 pub mod ship;
-pub mod action;
 
 #[macro_use]
 mod cov_util;
@@ -107,7 +107,7 @@ pub async fn handle_request(
           "Attempt to set role without being logged in.  Ignoring.".to_string(),
         )]
       } else {
-        let mut msgs = simple_response(server.set_role(&role));
+        let mut msgs = simple_response(Ok(server.set_role(&role)));
         let mut revised_context: Vec<UserData> = context
           .into_iter()
           .filter(|c| server.get_email().is_some_and(|email| c.email != email))
@@ -123,8 +123,8 @@ pub async fn handle_request(
     }
     RequestMsg::ModifyActions(ship_actions) => {
       let effects = server.merge_actions(ship_actions);
-      response_with_update(server,effects)
-    },
+      response_with_update(server, Ok(effects))
+    }
     RequestMsg::Update => {
       let effects = server.update();
       vec![

@@ -21,7 +21,7 @@ import { EntitySelectorType, EntitySelector } from "./EntitySelector";
 
 export function ShipComputer(args: {
   ship: Ship;
-  setComputerShip: (ship: Ship | null) => void;
+  setComputerShipName: (ship_name: string | null) => void;
   proposedPlan: FlightPathResult | null;
   resetProposedPlan: () => void;
   getAndShowPlan: (
@@ -36,7 +36,7 @@ export function ShipComputer(args: {
   const viewContext = useContext(ViewContext);
 
   // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
-  const ship =
+  const ship = useMemo(() =>
     args.ship ||
     new Ship(
       "Error",
@@ -56,7 +56,7 @@ export function ShipComputer(args: {
       0,
       false,
       []
-    );
+    ),[args.ship]);
 
   if (ship == null) {
     console.error(`(ShipComputer) Unable to find ship of name "${args.ship}!`);
@@ -109,16 +109,17 @@ export function ShipComputer(args: {
     );
   }, [currentNavTarget, ship.name, initNavigationTargetState, args]);
 
-  // Used only in the agility setting control, but that control isn't technically a React component
-  // so need to define this here.
-  const [agility, setDodge] = useState(ship.dodge_thrust);
-  const [assistGunners, setAssistGunners] = useState(ship.assist_gunners);
-
   const selectRef = useRef<HTMLSelectElement>(null);
 
+  
   const [navigationTarget, setNavigationTarget] = useState(
     initNavigationTargetState
   );
+
+  // Used only in the agility setting control, but that control isn't technically a React component
+  // so need to define this here.
+  const assistGunners = useMemo(() => ship.assist_gunners, [ship]);
+  const agility = useMemo(() => ship.dodge_thrust, [ship]);
 
   const startAccel = [
     ship?.plan[0][0][0].toString(),
@@ -276,39 +277,37 @@ export function ShipComputer(args: {
   }
 
   function pilotActions(): JSX.Element {
-    function handleCrewActionSubmit(event: React.FormEvent<HTMLFormElement>) {
-      event.preventDefault();
-      ship.dodge_thrust = agility;
-      setCrewActions(ship.name, agility, assistGunners);
+
+    function handleCrewActionChange(dodge: number, assist: boolean) {
+      if (dodge === undefined) {
+        dodge = 0;
+      } 
+      ship.dodge_thrust = dodge;
+      ship.assist_gunners = assist;
+      setCrewActions(ship.name, dodge, assist);
     }
     return (
       <>
         <h2 className="control-form">Pilot Actions</h2>
-        <form
+        <div
           id="crew-actions-form"
-          className="control-form"
-          onSubmit={handleCrewActionSubmit}>
+          className="control-form">
           <div className="crew-actions-form-container">
             <label className="control-label">Dodge</label>
             <input
               className="control-input"
               type="text"
               value={agility.toString()}
-              onChange={(event) => setDodge(Number(event.target.value))}
+              onChange={(event) => handleCrewActionChange(Number(event.target.value), assistGunners)}
             />
             <label className="control-label">Assist Gunner</label>
             <input
               type="checkbox"
               checked={assistGunners}
-              onChange={() => setAssistGunners(!assistGunners)}
+              onChange={() => handleCrewActionChange(agility, !assistGunners)}
             />
           </div>
-          <input
-            className="control-input control-button blue-button"
-            type="submit"
-            value="Set"
-          />
-        </form>
+        </div>
       </>
     );
   }
@@ -445,7 +444,7 @@ export function ShipComputer(args: {
         className="control-input control-button blue-button"
         onClick={() => {
           args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
-          args.setComputerShip(null);
+          args.setComputerShipName(null);
         }}>
         Close
       </button>}

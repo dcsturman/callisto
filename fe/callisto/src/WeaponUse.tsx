@@ -307,35 +307,7 @@ export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
       );
       return;
     }
-    //let nth_weapon = actionContext.actions[attacker].fire.weapons[weapon].used;
     actionContext.fireWeapon(attacker, weapon_id, target);
-    /*
-    let weapon_position = 0;
-    for (; weapon_position < computerShipDesign.weapons.length; weapon_position++) {
-      if (computerShipDesign.weapons[weapon_position].toString() === weapon) {
-        nth_weapon -= 1;
-        if (nth_weapon === 0) {
-          break;
-        }
-      }
-    }
-    
-    // Check error conditions out of that loop.
-    if (weapon_position === computerShipDesign.weapons.length || nth_weapon !== 0) {
-      console.error(
-        "(Controls.handleFireCommand) Could not find " +
-          actionContext.actions[attacker].fire.weapons[weapon].used +
-          "th weapon " +
-          weapon +
-          " for " +
-          attacker +
-          "."
-      );
-      return;
-    }
-  */
-    //const new_fire_action = newFireAction(target, weapon_position);
-    //actionContext.addFireAction(attacker, new_fire_action);
   }
 
   return (
@@ -388,10 +360,15 @@ export function FireActions(args: {
   computerShipName: string;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
+  const actionsContext = useContext(ActionContext);
+
   const computerShip = serverEntities.entities.ships.find(
     (ship) => ship.name === args.computerShipName
   );
 
+  const onClick = (weapon_id: number) => {
+    actionsContext.unfireWeapon(args.computerShipName, weapon_id);
+  }
 
   return (
     <div className="control-form">
@@ -409,7 +386,7 @@ export function FireActions(args: {
         };
 
         return ["Beam", "Pulse", "Particle"].includes(kind) ?  (
-          <div className="fire-actions-div" key={index + "_fire_img"}>
+          <div className="fire-actions-div" key={index + "_fire_img"} onClick={() => onClick(action.weapon_id)}>
             <p>
               <RayIcon
                 className="beam-type-icon"
@@ -427,15 +404,17 @@ export function FireActions(args: {
             />
           </div>
         ) : (
-          <p key={index + "_fire_img"}>
-            <MissileIcon
-              className="missile-type-icon"
-              style={{
-                fill: WEAPON_COLORS[kind],
-              }}
-            />{" "}
-            to {action.target}
-          </p>
+          <div key={index + "_fire_img"} onClick={() => onClick(action.weapon_id)}>
+            <p>
+              <MissileIcon
+                className="missile-type-icon"
+                style={{
+                  fill: WEAPON_COLORS[kind],
+                }}
+              />{" "}
+              to {action.target}
+            </p>
+          </div>
         )
       })}
     </div>

@@ -29,7 +29,7 @@ import { ShipComputer } from "./ShipComputer";
 
 function ShipList(args: {
   computerShip: Ship | null;
-  setComputerShip: (ship: Ship | null) => void;
+  setComputerShipName: (ship: string | null) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
 }) {
@@ -38,7 +38,7 @@ function ShipList(args: {
       <h2 className="ship-list-label">Ship: </h2>
       <EntitySelector
         filter={[EntitySelectorType.Ship]}
-        setChoice={(entity) => args.setComputerShip(entity as Ship)}
+        setChoice={(entity) => args.setComputerShipName(entity?.name || null)}
         current={args.computerShip}
       />
       <GoButton
@@ -97,7 +97,7 @@ function moveCameraToShip(
 
 export function Controls(args: {
   computerShip: Ship | null;
-  setComputerShip: (ship: Ship | null) => void;
+  setComputerShipName: (ship_name: string | null) => void;
   shipDesignTemplates: ShipDesignTemplates;
   getAndShowPlan: (
     entity_name: string | null,
@@ -122,10 +122,7 @@ export function Controls(args: {
   // any other selection for the computerShip.
   useEffect(() => {
     if (viewContext.shipName) {
-      args.setComputerShip(
-        serverEntities.ships.find((s) => s.name === viewContext.shipName) ??
-          null
-      );
+      args.setComputerShipName(viewContext.shipName);
     }
   }, [viewContext.shipName, serverEntities.ships, args]);
 
@@ -152,9 +149,9 @@ export function Controls(args: {
         {viewContext.shipName === null ? (
           <ShipList
             computerShip={args.computerShip}
-            setComputerShip={(ship) => {
+            setComputerShipName={(ship_name) => {
               args.setShowRange(null);
-              args.setComputerShip(ship);
+              args.setComputerShipName(ship_name);
             }}
             setCameraPos={args.setCameraPos}
             camera={args.camera}
@@ -300,7 +297,7 @@ export function Controls(args: {
                   initialOpen={true}>
                   <ShipComputer
                     ship={args.computerShip}
-                    setComputerShip={args.setComputerShip}
+                    setComputerShipName={args.setComputerShipName}
                     proposedPlan={args.proposedPlan}
                     resetProposedPlan={args.resetProposedPlan}
                     getAndShowPlan={args.getAndShowPlan}

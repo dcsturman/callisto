@@ -189,6 +189,7 @@ const handleMessage = (event: MessageEvent) => {
 
   if ("Error" in json) {
     console.error("Received Error: " + json.Error);
+    alert(json.Error);
   }
 };
 
@@ -266,7 +267,6 @@ export function updateActions(actions: ActionType) {
 
 export function nextRound() {
   const payload = UPDATE_REQUEST;
-  console.log("(nextRound) Sending payload: " + JSON.stringify(payload));
   socket.send(JSON.stringify(payload));
 }
 
@@ -383,7 +383,6 @@ function handleEntities(
     console.log(JSON.stringify(actions));
     console.groupEnd();
   } else {
-    console.group("**** tmp debug full entities");
     console.log(JSON.stringify(json));
     console.groupEnd();
     setActions({});

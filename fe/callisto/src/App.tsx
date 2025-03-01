@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState, useContext, useMemo } from "react";
 import * as React from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
@@ -47,7 +47,6 @@ export const GOOGLE_OAUTH_CLIENT_ID: string =
 export function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [email, setEmail] = useState<string | null>(null);
-  const [computerShip, setComputerShip] = useState<Ship | null>(null);
   const [socketReady, setSocketReady] = useState<boolean>(false);
 
   // Logically entities and templates make more sense in the Simulator. However,
@@ -83,17 +82,6 @@ export function App() {
 
   }, [socketReady]);
 
-  useEffect(() => {
-    if (computerShip) {
-      const ship = entities.ships.find(
-        (ship) => ship.name === computerShip.name
-      );
-      if (ship) {
-        setComputerShip(ship);
-      }
-    }
-  }, [entities.ships, computerShip]);
-
   return (
     <EntitiesServerProvider
       value={{ entities: entities, handler: setEntities }}>
@@ -108,8 +96,6 @@ export function App() {
                   email={email}
                   socketReady={socketReady}
                   setEmail={setEmail}
-                  computerShip={computerShip}
-                  setComputerShip={setComputerShip}
                   users={users}
                   setUsers={setUsers}
                 />
@@ -134,8 +120,6 @@ function Simulator({
   email,
   setEmail,
   socketReady,
-  computerShip,
-  setComputerShip,
   setUsers,
   users,
 }: {
@@ -143,8 +127,6 @@ function Simulator({
   email: string | null;
   setEmail: (email: string | null) => void;
   socketReady: boolean;
-  computerShip: Ship | null;
-  setComputerShip: (ship: Ship | null) => void;
   users: UserList;
   setUsers: (users: UserList) => void;
 }) {
@@ -172,11 +154,16 @@ function Simulator({
   const [showRange, setShowRange] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
+  const [computerShipName, setComputerShipName] = useState<string | null>(null);
+
+  const computerShip = useMemo(() => {
+    return entitiesContext.entities.ships.find(
+      (ship) => ship.name === computerShipName
+    ) || null;
+  }, [entitiesContext.entities.ships, computerShipName]);
 
   useEffect(() => {
     if (socketReady) {
-      console.log("************* RESET RESET RESET RESET RESET");
-      console.log("************** The actionHandler is " + actionsContext.setActions);
       setMessageHandlers(
         setEmail,
         setAuthenticated,
@@ -197,6 +184,7 @@ function Simulator({
     setEmail,
     templatesContext.handler,
     entitiesContext.handler,
+    actionsContext.setActions,
     setUsers,
   ]);
 
@@ -272,7 +260,7 @@ function Simulator({
                 setRunTutorial={setRunTutorial}
                 stepIndex={stepIndex}
                 setStepIndex={setStepIndex}
-                selectAShip={() => setComputerShip(tutorial_ship)}
+                selectAShip={() => setComputerShipName(tutorial_ship?.name ?? null)}
                 setAuthenticated={setAuthenticated}
               />
             )}
@@ -280,7 +268,7 @@ function Simulator({
               <Controls
                 shipDesignTemplates={templatesContext.templates}
                 computerShip={computerShip}
-                setComputerShip={setComputerShip}
+                setComputerShipName={setComputerShipName}
                 getAndShowPlan={getAndShowPlan}
                 setCameraPos={setCameraPos}
                 camera={camera}
@@ -321,7 +309,7 @@ function Simulator({
               {role === ViewMode.General && computerShip && (
                 <ShipComputer
                   ship={computerShip}
-                  setComputerShip={setComputerShip}
+                  setComputerShipName={setComputerShipName}
                   proposedPlan={proposedPlan}
                   resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
@@ -377,7 +365,7 @@ function Simulator({
                   controlJumpDistance={viewControls.jumpDistance}
                 />
                 <Ships
-                  setComputerShip={setComputerShip}
+                  setComputerShipName={setComputerShipName}
                   showRange={showRange}
                 />
                 <Missiles />

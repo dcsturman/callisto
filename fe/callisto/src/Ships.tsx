@@ -43,7 +43,6 @@ let labelFont: Font | null = null;
 new FontLoader().load(
   "/assets/Orbitron_Regular.json",
   (font) => {
-    console.log("(Ships) Loaded Orbitron font.");
     labelFont = font;
   },
   () => {},
@@ -55,7 +54,7 @@ new FontLoader().load(
 function Ship(args: {
   ship: ShipType;
   index: number;
-  setComputerShip: (ship: ShipType | null) => void;
+  setComputerShipName: (ship_name: string | null) => void;
   showRange: string | null;
 }) {
   const entityToShow = useContext(EntityToShowContext);
@@ -69,7 +68,7 @@ function Ship(args: {
     textRef.current?.lookAt(camera.position);
   });
   function handleShipClick() {
-    args.setComputerShip(args.ship);
+    args.setComputerShipName(args.ship.name);
   }
 
   const showRange = args.showRange && args.showRange === args.ship.name;
@@ -144,7 +143,7 @@ function Ship(args: {
 }
 
 export function Ships(args: {
-  setComputerShip: (ship: ShipType | null) => void;
+  setComputerShipName: (ship_name: string | null) => void;
   showRange: string | null;
 }) {
   const serverEntities = useContext(EntitiesServerContext);
@@ -155,7 +154,7 @@ export function Ships(args: {
           key={ship.name}
           ship={ship}
           index={index}
-          setComputerShip={args.setComputerShip}
+          setComputerShipName={args.setComputerShipName}
           showRange={args.showRange}
         />
       ))}
@@ -166,8 +165,6 @@ export function Ships(args: {
 export function Missile(args: { missile: MissileType; index: number }) {
   const entityToShow = useContext(EntityToShowContext);
   const labelRef = useRef<Group>(null);
-
-  console.log("(Ships.Missile) Missile: " + JSON.stringify(args.missile));
 
   return (
     <>

@@ -557,7 +557,8 @@ impl Entities {
             };
             self.jam_comms(ship_name, target, rng)
           }
-          ShipAction::FireAction { .. } => {
+          ShipAction::FireAction { .. } |
+          ShipAction::DeleteFireAction { .. } => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }

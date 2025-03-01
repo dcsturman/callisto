@@ -4,11 +4,11 @@
  */
 use std::collections::HashMap;
 
+use super::action::ShipActionList;
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::Entities;
 use super::ship::ShipDesignTemplate;
-use super::action::ShipActionList;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Display;
@@ -241,8 +241,8 @@ pub enum ResponseMsg {
 
 #[cfg(test)]
 mod tests {
-  use crate::ship::ShipDesignTemplate;
   use crate::action::ShipAction;
+  use crate::ship::ShipDesignTemplate;
 
   use super::*;
   use crate::crew::Skills;

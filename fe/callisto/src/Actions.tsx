@@ -6,6 +6,7 @@ export type ActionType = {
   [actor: string]: {
     sensor: SensorState;
     fire: FireState;
+    unfire: UnfireState;
   };
 };
 
@@ -22,11 +23,13 @@ export const ActionContext = createContext<{
     target: string,
     called_shot_system?: string
   ) => void;
+  unfireWeapon: (shipName: string, weapon_id: number) => void;
 }>({
   actions: {},
   setActions: () => {},
   setSensorAction: () => {},
   fireWeapon: () => {},
+  unfireWeapon: () => {},
 });
 
 const ActionContextProvider = ActionContext.Provider;
@@ -38,7 +41,13 @@ export type FireAction = {
 };
 
 export type FireState = FireAction[];
-export type FireActionMsg = {[key: string]: FireState};
+//export type FireActionMsg = {[key: string]: FireState};
+
+export type UnfireAction = {
+  weapon_id: number;
+};
+
+export type UnfireState = UnfireAction[];
 
 export type SensorState = {
   action: SensorAction;
@@ -61,12 +70,12 @@ export function newSensorState(action: SensorAction, target: string) {
   return {action: action, target: target};
 }
 
-type ActionsContextComponent =  {
+type ActionsContextComponentProps =  {
   actions: ActionType;
   setActions: (actions: ActionType) => void;
 }
 
-export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsContextComponent>> = ({actions, setActions, children}) => {
+export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsContextComponentProps>> = ({actions, setActions, children}) => {
   const serverEntities = useContext(EntitiesServerContext);
 
   const setSensorAction = (shipName: string, action: SensorState) => {
@@ -111,6 +120,19 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
     updateActions(next);
   };
 
+  const unfireWeapon = (shipName: string, weapon_id: number) => {
+    const new_action: UnfireAction = {weapon_id: weapon_id};
+    const next = {
+      ...actions,
+      [shipName]: {
+        ...actions[shipName],
+        unfire: [...actions[shipName]?.unfire??[], new_action],
+      },
+    };
+    setActions(next);
+    updateActions(next);
+  };
+
   return (
     <ActionContextProvider
       value={{
@@ -118,6 +140,7 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
         setActions,
         setSensorAction,
         fireWeapon,
+        unfireWeapon,
       }}>
       {children}
     </ActionContextProvider>
@@ -126,9 +149,12 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
 
 export function actionPayload(actions: ActionType) {
   return Object.entries(actions).map(([key, value]) => {
-    const fire_actions: (object | string)[] = value.fire
+    let fire_actions: (object | string)[] = value.fire
       ? value.fire.map((fireAction) => fireActionPayload(fireAction))
       : [];
+    if (value.unfire) {
+      fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
+    }
     const sensor_action = value.sensor ? sensorActionPayload(value.sensor): null;
     if (sensor_action) {
       fire_actions.push(sensor_action);
@@ -162,6 +188,14 @@ function fireActionPayload(fireAction: FireAction) {
   };
 }
 
+function unfireActionPayload(unfireAction: UnfireAction) {
+  return {
+    DeleteFireAction: {
+      weapon_id: unfireAction.weapon_id,
+    },
+  };
+}
+
 export function payloadToAction(payload: object[]): ActionType {
   const result = {} as ActionType;
   for (const entry of payload) {
@@ -169,6 +203,7 @@ export function payloadToAction(payload: object[]): ActionType {
     const actions = value as (
       | string
       | {FireAction: object}
+      | {DeleteFireAction: object}
       | {BreakSensorLock: string}
       | {SensorLock: string}
       | {JamComms: string}

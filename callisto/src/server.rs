@@ -6,16 +6,16 @@ use cgmath::InnerSpace;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
+use crate::action::{merge, ShipAction};
 use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
+use crate::payloads::Role;
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
-  RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
+  AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg,
+  LoginMsg, RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
-use crate::payloads::Role;
-use crate::action::{ShipAction, merge};
 use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
@@ -276,15 +276,16 @@ impl Server {
 
   /// Merge in new actions (orders) for ships in the next round.  These may come for the same ship from
   /// different clients depending on how the clients are being used.  We save these till the next update action.
-  /// 
+  ///
   /// # Returns
-  /// 
+  ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read the entities.
-  pub fn merge_actions(&self, actions: ShipActionMsg) -> Result<String, String> {
+  #[allow(clippy::must_use_candidate)]
+  pub fn merge_actions(&self, actions: ShipActionMsg) -> String {
     let mut entities = self.entities.lock().unwrap();
-    merge(&mut entities.actions, actions);
-    Ok("Actions added.".to_string())
+    merge(&mut entities, actions);
+    "Actions added.".to_string()
   }
 
   /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
@@ -301,9 +302,9 @@ impl Server {
 
     // Grab the lock on entities
     let mut entities = self
-    .entities
-    .lock()
-    .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+      .entities
+      .lock()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
     let actions = &entities.actions;
     debug!("(/update) Ship actions: {:?}", actions);
@@ -323,7 +324,8 @@ impl Server {
         let (f_actions, s_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = actions
           .iter()
           .map(|action| match action {
-            ShipAction::FireAction { .. } => (Some(action.clone()), None),
+            ShipAction::FireAction { .. } |
+            ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None),
             ShipAction::JamMissiles
             | ShipAction::BreakSensorLock { .. }
             | ShipAction::SensorLock { .. }
@@ -462,10 +464,10 @@ impl Server {
     (self.role, self.ship.clone())
   }
 
-  pub fn set_role(&mut self, msg: &ChangeRole) -> Result<String, String> {
+  pub fn set_role(&mut self, msg: &ChangeRole) -> String {
     self.role = msg.role;
-    self.ship = msg.ship.clone();
-    Ok("Role set".to_string())
+    self.ship.clone_from(&msg.ship);
+    "Role set".to_string()
   }
 }
 

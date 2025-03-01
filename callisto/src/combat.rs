@@ -5,11 +5,11 @@ use std::sync::{Arc, RwLock};
 use cgmath::InnerSpace;
 use rand::RngCore;
 
+use crate::action::ShipAction;
 use crate::entity::Entity;
 use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
-use crate::action::ShipAction;
 use crate::{debug, error};
 
 const DIE_SIZE: u32 = 6;

@@ -56,7 +56,7 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
 
   const serverEntities = useContext(EntitiesServerContext);
 
-  const [customCrew, customCrewUpdate] = useState(initialCrew);
+  const [customCrew, setCustomCrew] = useState(initialCrew);
   const [currentGunId, setCurrentGunId] = useState(1);
   const [currentShipName, setCurrentShipName] = useState(shipName);
 
@@ -66,12 +66,12 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
         serverEntities.entities.ships.find((ship) => ship.name === shipName)
           ?.crew || initialCrew;
       if (new_crew !== customCrew) {
-        customCrewUpdate(new_crew);
+        setCustomCrew(new_crew);
         updateCrew(new_crew);
       }
       setCurrentShipName(shipName);
     }
-  }, [shipName, initialCrew, serverEntities.entities.ships, currentShipName]);
+  }, [shipName, initialCrew, serverEntities.entities.ships, currentShipName, customCrew, updateCrew]);
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;
@@ -84,12 +84,12 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
       // array of course want to start at 0
       gunneryValues[currentGunId - 1] = Number(value);
       const new_crew = { ...customCrew, [name]: gunneryValues } as Crew;
-      customCrewUpdate(new_crew);
+      setCustomCrew(new_crew);
       updateCrew(new_crew);
     } else {
       // For other properties, convert to number
       const new_crew = { ...customCrew, [name]: Number(value) } as Crew;
-      customCrewUpdate(new_crew);
+      setCustomCrew(new_crew);
       updateCrew(new_crew);
     }
   }
