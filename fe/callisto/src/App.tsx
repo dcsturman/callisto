@@ -188,7 +188,7 @@ function Simulator({
     setUsers,
   ]);
 
-  const getAndShowPlan = (
+  const getAndShowPlan = useMemo(()=> (
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number],
@@ -203,7 +203,7 @@ function Simulator({
       target_vel,
       standoff
     );
-  };
+  },[setProposedPlan]);
 
   const resetProposedPlan = () => {
     setProposedPlan(null);

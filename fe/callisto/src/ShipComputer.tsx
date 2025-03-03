@@ -18,8 +18,7 @@ import { ActionContext, SensorState, SensorAction, newSensorState } from "./Acti
 import { EntitySelectorType, EntitySelector } from "./EntitySelector";
 
 
-
-export function ShipComputer(args: {
+type ShipComputerProps = {
   ship: Ship;
   setComputerShipName: (ship_name: string | null) => void;
   proposedPlan: FlightPathResult | null;
@@ -32,35 +31,17 @@ export function ShipComputer(args: {
     standoff: number
   ) => void;
   sensorLocks: string[];
-}) {
+};
+
+export const ShipComputer: React.FC<ShipComputerProps> = ({
+  ship,
+  setComputerShipName,
+  proposedPlan,
+  resetProposedPlan,
+  getAndShowPlan,
+  sensorLocks
+}) => {
   const viewContext = useContext(ViewContext);
-
-  // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
-  const ship = useMemo(() =>
-    args.ship ||
-    new Ship(
-      "Error",
-      [0, 0, 0],
-      [0, 0, 0],
-      [[[0, 0, 0], 0], null],
-      "Buccaneer",
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      "",
-      [],
-      0,
-      false,
-      []
-    ),[args.ship]);
-
-  if (ship == null) {
-    console.error(`(ShipComputer) Unable to find ship of name "${args.ship}!`);
-  }
 
   const [currentNavTarget, setCurrentNavTarget] = useState<Entity | null>(null);
 
@@ -100,18 +81,16 @@ export function ShipComputer(args: {
     });
 
     // Also implicitly compute a plan since most of the time this is what the user wants.
-    args.getAndShowPlan(
+    getAndShowPlan(
       ship.name,
       currentNavTarget.position,
       currentNavTarget.velocity,
       currentNavTarget.velocity,
       Number(standoff)
     );
-  }, [currentNavTarget, ship.name, initNavigationTargetState, args]);
+  }, [currentNavTarget, ship.name, initNavigationTargetState, getAndShowPlan]);
 
   const selectRef = useRef<HTMLSelectElement>(null);
-
-  
   const [navigationTarget, setNavigationTarget] = useState(
     initNavigationTargetState
   );
@@ -168,20 +147,20 @@ export function ShipComputer(args: {
 
     // Called directly - usually when the user has specifically modified the values.
     // Can also be called implicitly in handleNavTargetSelect
-    args.getAndShowPlan(ship.name, end_pos, end_vel, target_vel, standoff);
+    getAndShowPlan(ship.name, end_pos, end_vel, target_vel, standoff);
   }
 
   function handleAssignPlan() {
-    if (args.proposedPlan == null) {
+    if (proposedPlan == null) {
       console.error(`(Controls.handleAssignPlan) No current plan`);
     } else {
       setComputerAccel({
-        x: args.proposedPlan.plan[0][0][0].toString(),
-        y: args.proposedPlan.plan[0][0][1].toString(),
-        z: args.proposedPlan.plan[0][0][2].toString(),
+        x: proposedPlan.plan[0][0][0].toString(),
+        y: proposedPlan.plan[0][0][1].toString(),
+        z: proposedPlan.plan[0][0][2].toString(),
       });
-      setPlan(ship.name, args.proposedPlan.plan).then(() =>
-        args.resetProposedPlan()
+      setPlan(ship.name, proposedPlan.plan).then(() =>
+        resetProposedPlan()
       );
 
       if (selectRef.current !== null) {
@@ -215,14 +194,14 @@ export function ShipComputer(args: {
           setColor("control-input-y", "black");
           setColor("control-input-z", "black");
 
-          args.resetProposedPlan();
+          resetProposedPlan();
         })
         .catch(() => {
           setColor("control-input-x", "red");
           setColor("control-input-y", "red");
           setColor("control-input-z", "red");
 
-          args.resetProposedPlan();
+          resetProposedPlan();
         });
     }
 
@@ -320,7 +299,7 @@ export function ShipComputer(args: {
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && pilotActions()}
       {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && <SensorActionChooser
         ship={ship}
-        sensorLocks={args.sensorLocks}
+        sensorLocks={sensorLocks}
       />}
       <hr />
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && <>
@@ -338,7 +317,7 @@ export function ShipComputer(args: {
             v_z: "0",
             standoff: "0",
           });
-          args.getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, 0);
+          getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, 0);
         }}>
         Full Stop
       </button>
@@ -428,10 +407,10 @@ export function ShipComputer(args: {
           value="Compute"
         />
       </form>
-      {args.proposedPlan && (
+      {proposedPlan && (
         <div>
           <h2 className="control-form">Proposed Plan</h2>
-          <NavigationPlan plan={args.proposedPlan.plan} />
+          <NavigationPlan plan={proposedPlan.plan} />
           <button
             className="control-input control-button blue-button"
             onClick={handleAssignPlan}>
@@ -443,15 +422,15 @@ export function ShipComputer(args: {
       {viewContext.role === ViewMode.General && !viewContext.shipName && <button
         className="control-input control-button blue-button"
         onClick={() => {
-          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
-          args.setComputerShipName(null);
+          getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
+          setComputerShipName(null);
         }}>
         Close
       </button>}
     </div>
 
   );
-}
+};
 
 function sensorActionToString(action: SensorState): string {
   switch (action.action) {
