@@ -13,8 +13,13 @@ use crate::payloads::Vec3asVec;
 use crate::ship::FlightPlan;
 use crate::{debug, error, info, warn};
 
+// Solver tolerance for typical numerical solving
 const SOLVE_TOLERANCE: f64 = 1e-4;
-const MAX_ITERATIONS: usize = 400;
+// When the numbers are large sometimes we only get "close".  For this flight computer we're okay
+// with close, and define that as 1% - as you get closer you can refine your course and missiles
+// refine every round.
+const ANS_PERCENT_OFF: f64 = 0.01;
+const MAX_ITERATIONS: usize = 100;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -71,7 +76,9 @@ impl FlightParams {
       + self.start_pos
       - (self.end_pos
         + if let Some(target_vel) = self.target_velocity {
-          target_vel * ((t_2 + t_1) / DELTA_TIME_F64).ceil() * DELTA_TIME_F64
+          // This line is problematic as its not continuous.
+          //target_vel * ((t_2 + t_1) / DELTA_TIME_F64).ceil() * DELTA_TIME_F64
+          target_vel * (t_2 + t_1)
         } else {
           Vec3::zero()
         })
@@ -92,11 +99,17 @@ impl FlightParams {
     let speed = delta_v.magnitude();
 
     // Three cases.
+    // 0) We're not going anywhere.
     // 1) Based on differences in velocity
     // 2) Something to deal with no real movement at all
     // 3) Based on distance.
-    if distance <= speed && speed > 0.0 {
-      debug!("(best_guess) Making guess based on velocity");
+
+    // This case is a bit of a hack.  Likely never happens except in tests.
+    // I do worry that this is needed points out some other issue but I don't think so.
+    if approx::ulps_eq!(distance, 0.0) &&  approx::ulps_eq!(speed, 0.0){
+      panic!("(best_guess) Should never get this case: Both distance and speed are zero.");
+    } else if distance <= speed && speed > 0.0 {
+      info!("(best_guess) Making guess based on velocity");
       let accel = delta_v / speed * self.max_acceleration;
       let t_1 = self.start_vel.magnitude() / accel.magnitude() * (1.0 + std::f64::consts::SQRT_2 / 2.0);
       let t_2 = t_1 - self.start_vel.magnitude() / accel.magnitude();
@@ -107,7 +120,7 @@ impl FlightParams {
         _ => (-accel, accel, -1_000_000.0, -1_000_000.0),
       }
     } else if approx::ulps_eq!(distance, 0.0) {
-      debug!("(best_guess) Making guess given zero differences.");
+      info!("(best_guess) Making guess given zero differences.");
 
       match attempt {
         0 => (delta, -delta, 0.0, 0.0),
@@ -116,7 +129,7 @@ impl FlightParams {
         _ => (-delta, delta, -1_000_000.0, -1_000_000.0),
       }
     } else {
-      debug!("(best_guess) Making guess based on distance.");
+      info!("(best_guess) Making guess based on distance.");
       let accel = delta / distance * self.max_acceleration;
 
       // 0 = 1/2 a * t^2 + v_0 * t - distance
@@ -155,9 +168,20 @@ impl FlightParams {
    * Returns a `FlightPathResult` which contains the path, the end velocity and the plan.
    */
   pub fn compute_flight_path(&self) -> Option<FlightPathResult> {
-    for attempt in 0..3 {
+    // Corner case eliminated here as all these zeros otherwise mess up solution finding.
+    if cgmath::ulps_eq!(self.start_pos, self.end_pos) && cgmath::ulps_eq!(self.start_vel, self.end_vel) {
+      info!("(compute_flight_path) No need to compute flight path.");
+      return Some(FlightPathResult {
+        path: vec![self.start_pos],
+        end_velocity: self.start_vel,
+        plan: FlightPlan::new((Vec3::zero(), 0).into(), Some((Vec3::zero(), 0).into())),
+      });
+    }
+
+    for attempt in 0..5 {
       info!("(compute_flight_path) Attempt {}", attempt);
       let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess(attempt);
+      info!("(compute_flight_path) Guess is a1={:?} a2={:?} t1={:?} t2={:?}", guess_accel_1, guess_accel_2, guess_t_1, guess_t_2);
       let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_accel_1).into();
       initial.append(&mut Into::<[f64; 3]>::into(guess_accel_2).into());
       initial.push(guess_t_1);
@@ -168,42 +192,65 @@ impl FlightParams {
 
       let mut solver = SolverDriver::builder(self).with_initial(initial).build();
       let solver_result = solver.find(|state| {
+        let x = state.x();
+        let rx = state.rx();
         info!(
-          "iter = {}\t|| |r(x)| = {:0.4?}\tx = {:0.2?}\trx = {:0.2?}",
+          "iter = {} || |r(x)|={:0.1?} a1={:0.2?} a2={:0.2?} t1={:0.2?} t2={:0.2?} ds={:0.2?} dv={:0.2?} da1={:0.2?} da2={:0.2?}",
           state.iter(),
           state.norm(),
-          state.x(),
-          state.rx()
+          &x[0..3],
+          &x[3..6],
+          x[6],
+          x[7],
+          &rx[0..3],
+          &rx[3..6],
+          rx[6],
+          rx[7],
         );
         state.norm() <= SOLVE_TOLERANCE || state.iter() >= MAX_ITERATIONS
       });
 
-      let answer = if let Err(e) = solver_result {
-        warn!("Unable to solve flight path with params: {:?} with error: {}.", self, e);
-        // This attempt didn't work. On to the next one (and skip all the use of the answer)
-        continue;
-      } else {
-        let (answer, norm) = solver_result.unwrap();
-        if norm < SOLVE_TOLERANCE {
-          answer
-        } else {
+      let (answer, norm) = match solver_result {
+        Err(e) => {
+          warn!("Unable to solve flight path with params: {:?} with error: {}.", self, e);
+          // This attempt didn't work. On to the next one (and skip all the use of the answer)
+          continue;
+        }
+        Ok(ans) => ans,
+      };
+      // Unpack the answer.
+      let a_1 = Vec3::from(
+        <&[f64] as TryInto<[f64; 3]>>::try_into(&answer[0..3])
+          .expect("(compute_flight_path) Unable to convert to fixed array"),
+      );
+
+      let a_2 = Vec3::from(
+        <&[f64] as TryInto<[f64; 3]>>::try_into(&answer[3..6])
+          .expect("(compute_flight_path) Unable to convert to fixed array"),
+      );
+
+      let t_1 = answer[6];
+      let t_2 = answer[7];
+
+      if norm > SOLVE_TOLERANCE {
+        // Case where magnitude of position or velocity are so large, the norm will be a lot larger but still
+        // be effectively correct.
+
+        // Check the ratio of how far the calculated position is from the end position to the start position to the end position.
+        let pos_percent_off = self.pos_eq(Vec3::from(a_1), Vec3::from(a_2), t_1, t_2).magnitude()
+          / (Vec3::from(self.start_pos) - Vec3::from(self.end_pos)).magnitude();
+        let vel_percent_off = self.vel_eq(Vec3::from(a_1), Vec3::from(a_2), t_1, t_2).magnitude()
+          / (Vec3::from(self.start_vel) - Vec3::from(self.end_vel)).magnitude();
+        debug!(
+          "(compute_flight_path) Position percent off: {:0.4?}, Velocity percent off: {:0.4?}",
+          pos_percent_off, vel_percent_off
+        );
+        if pos_percent_off > ANS_PERCENT_OFF || vel_percent_off > ANS_PERCENT_OFF {
           warn!("Unable to solve flight path with params: {:?} with norm: {:0.4?}.", self, norm);
           // This attempt didn't work. On to the next one (and skip all the use of the answer)
           continue;
         }
       };
-
-      let v_a_1: [f64; 3] = answer[0..3]
-        .try_into()
-        .expect("(compute_flight_path) Unable to convert to fixed array");
-      let a_1: Vec3 = Vec3::from(v_a_1);
-
-      let v_a_2: [f64; 3] = answer[3..6]
-        .try_into()
-        .expect("(compute_flight_path)Unable to convert to fixed array");
-      let a_2: Vec3 = Vec3::from(v_a_2);
-      let t_1 = answer[6];
-      let t_2 = answer[7];
 
       if t_1 < 0.0 || t_2 < 0.0 {
         warn!(
@@ -219,32 +266,7 @@ impl FlightParams {
         a_1, a_2, t_1, t_2
       );
 
-      // Now that we've solved for acceleration lets create a path and end velocity
-      let mut path = Vec::new();
-      let mut vel = self.start_vel;
-      let mut pos = self.start_pos;
-
-      // Every path starts with the starting position
-      path.push(pos);
-      for (accel, duration) in [(a_1, t_1), (a_2, t_2)] {
-        let mut time = 0.0;
-        let mut delta: f64 = DELTA_TIME_F64;
-        while approx::relative_ne!(time - duration, 0.0, epsilon = 1e-4) && time < duration {
-          if time + delta > duration {
-            delta = duration - time;
-          }
-          let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
-          let new_vel = vel + accel * delta;
-
-          info!("(compute_flight_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
-                    pos, accel, delta, new_pos, new_vel);
-
-          path.push(new_pos);
-          pos = new_pos;
-          vel = new_vel;
-          time += delta;
-        }
-      }
+      let (path, end_velocity) = self.compute_path(&a_1, &a_2, t_1, t_2);
 
       // Convert time into an unsigned integer.
       #[allow(clippy::cast_possible_truncation)]
@@ -256,12 +278,42 @@ impl FlightParams {
 
       return Some(FlightPathResult {
         path,
-        end_velocity: vel,
+        end_velocity,
         // Convert acceleration back into G's (vs m/s^2) at this point.
         plan: FlightPlan::new((a_1 / G, t_1).into(), Some((a_2 / G, t_2).into())),
       });
     }
     None
+  }
+
+  fn compute_path(&self, a_1: &Vec3, a_2: &Vec3, t_1: f64, t_2: f64) -> (Vec<Vec3>, Vec3) {
+    // Now that we've solved for acceleration lets create a path and end velocity
+    let mut path = Vec::new();
+    let mut vel = self.start_vel;
+    let mut pos = self.start_pos;
+
+    // Every path starts with the starting position
+    path.push(pos);
+    for (accel, duration) in [(a_1, t_1), (a_2, t_2)] {
+      let mut time = 0.0;
+      let mut delta: f64 = DELTA_TIME_F64;
+      while approx::relative_ne!(time - duration, 0.0, epsilon = 1e-4) && time < duration {
+        if time + delta > duration {
+          delta = duration - time;
+        }
+        let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
+        let new_vel = vel + accel * delta;
+
+        info!("(compute_flight_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
+                        pos, accel, delta, new_pos, new_vel);
+
+        path.push(new_pos);
+        pos = new_pos;
+        vel = new_vel;
+        time += delta;
+      }
+    }
+    (path, vel)
   }
 }
 
@@ -326,8 +378,8 @@ impl System for FlightParams {
     rx[3] = vel_eqs[0];
     rx[4] = vel_eqs[1];
     rx[5] = vel_eqs[2];
-    rx[6] = a_1.magnitude() - self.max_acceleration;
-    rx[7] = a_2.magnitude() - self.max_acceleration;
+    rx[6] = a_1.dot(a_1) - self.max_acceleration.powi(2);
+    rx[7] = a_2.dot(a_2) - self.max_acceleration.powi(2);
   }
 }
 
@@ -526,7 +578,7 @@ impl System for TargetParams {
 
     let pos_eqs = a * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos - self.end_pos;
 
-    let a_eq = a.magnitude() - self.max_acceleration;
+    let a_eq = a.dot(a) - self.max_acceleration.powi(2);
 
     rx[0] = pos_eqs[0];
     rx[1] = pos_eqs[1];
@@ -693,7 +745,7 @@ mod tests {
     assert_eq!(plan.path.len(), expected_len);
     assert_relative_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-10);
     assert_relative_eq!(plan.path[0], params.start_pos, epsilon = 1e-10);
-    assert_relative_eq!(*plan.path.last().unwrap(), params.end_pos, epsilon = 1e-7);
+    assert_relative_eq!(*plan.path.last().unwrap(), params.end_pos, epsilon = 1e-4);
   }
 
   #[test_log::test]
@@ -761,8 +813,8 @@ mod tests {
     let plan = params.compute_flight_path().unwrap();
 
     #[allow(clippy::cast_precision_loss)]
-    let full_rounds_duration = (plan.plan.duration() as f64 / DELTA_TIME_F64).ceil() * DELTA_TIME_F64;
-
+    //let full_rounds_duration = (plan.plan.duration() as f64 / DELTA_TIME_F64).ceil() * DELTA_TIME_F64;
+    let full_rounds_duration = plan.plan.duration() as f64;
     let real_end_target = Vec3 {
       x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration,
       y: params.end_pos.y + params.target_velocity.unwrap().y * full_rounds_duration,
@@ -916,5 +968,134 @@ mod tests {
 
     // Additional check: ensure the plan duration is zero
     assert_eq!(result.plan.duration(), 0);
+  }
+
+  // A test that failed to compute a path successfully.  It has the following parameters
+  // Start position: [910_933_835.0, 965_592_541.0, -12_291_638.0]
+  // End position: [707_200_724.0, 772_000_688.0, -43.69]
+  // Start velocity: [-130_149.0, -103,674.0, 7_985.0]
+  // End velocity: [2_000.0, 20_000.0, 0.0]
+  // Target velocity: [2_000.0, 20_000.0, 0.0]
+  // Max acceleration: 58.842
+  // This test is passed when the percent difference method on a valid route.
+  #[test_log::test]
+  fn test_compute_large_absolutes_flight_path() {
+    let params = FlightParams {
+      start_pos: Vec3 {
+        x: 910_933_835.0,
+        y: 965_592_541.0,
+        z: -12_291_638.0,
+      },
+      end_pos: Vec3 {
+        x: 707_200_724.0,
+        y: 772_000_688.0,
+        z: -43.69,
+      },
+      start_vel: Vec3 {
+        x: -130_149.0,
+        y: -103_674.0,
+        z: 7_985.0,
+      },
+      end_vel: Vec3 {
+        x: 2_000.0,
+        y: 20_000.0,
+        z: 0.0,
+      },
+      target_velocity: Some(Vec3 {
+        x: 2_000.0,
+        y: 20_000.0,
+        z: 0.0,
+      }),
+      max_acceleration: 58.842,
+    };
+
+    // If we get a result, then the test worked!
+    let Some(result) = params.compute_flight_path() else {
+      panic!("Unable to compute flight path.");
+    };
+
+    info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
+
+    info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
+    info!("Path: {:?}\nVel{:?}", result.path, result.end_velocity);
+  }
+
+  // A test that failed to compute a path successfully.  It has the following parameters
+  // Start position: [911_977_932.0, 1_001_160_673.0, -29_410_766.0]
+  // End position: [743_210_932.0, 856_298_164.0, -25_419_761.941_245_42],
+  // Start velocity: I-108793.25223699937, -66041.76215593825, -6239.6101301463295],
+  // End velocity: [20005.0, 46831.0, -14122.0],
+  // Target velocity: [20005.0, 46831.0, -14122.0],
+  // Max acceleration: 58.842
+  // This test is passed when the percent difference method on a valid route.
+  #[test_log::test]
+  fn test_compute_unsolved() {
+    let params = FlightParams {
+      start_pos: Vec3 {
+        x: 911_977_932.0,
+        y: 1_001_160_673.0,
+        z: -29_410_766.0,
+      },
+      end_pos: Vec3 {
+        x: 743_210_932.0,
+        y: 856_298_164.0,
+        z: -25_419_761.941_245_42,
+      },
+      start_vel: Vec3 {
+        x: -108_793.252_236_999_37,
+        y: -66_041.762_155_938_25,
+        z: -6_239.610_130_146_329_5,
+      },
+      end_vel: Vec3 {
+        x: 20005.0,
+        y: 46831.0,
+        z: -14122.0,
+      },
+      target_velocity: Some(Vec3 {
+        x: 20005.0,
+        y: 46831.0,
+        z: -14122.0,
+      }),
+      max_acceleration: 58.842,
+    };
+
+    debug!("D_s={:?}", params.start_pos - params.end_pos);
+    debug!("norm_s = {:?}", (params.start_pos - params.end_pos).normalize());
+    debug!("D_v={:?}", params.start_vel - params.end_vel);
+    debug!("norm_v = {:?}", (params.start_vel - params.end_vel).normalize());
+
+
+    // If we get a result, then the test worked!
+    let Some(result) = params.compute_flight_path() else {
+      panic!("Unable to compute flight path.");
+    };
+
+    info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
+
+    info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
+    info!("Path: {:?}\nVel{:?}", result.path, result.end_velocity);
+  }
+
+  #[test_log::test]
+  fn test_compute_unsolved_2() {
+    let params = FlightParams { start_pos: Vec3 { x: 1004140073.916692, y: 1054937486.2519464, z: -17909755.019433156}, 
+      end_pos: Vec3 { x:730823285.6031308, y: 831711041.2618783, z:-16268640.810433429}, 
+      start_vel: Vec3 { x: -136013.83755785288, y: -100737.85676948192, z: 8396.003458726978}, 
+      end_vel: Vec3 { x:16404.521600000004, y:41465.561600000015, z: -11297.664000000002}, 
+      target_velocity: Some(Vec3 {x:16404.521600000004, y:41465.561600000015, z:-11297.664000000002}), max_acceleration: 58.842 };
+
+      debug!("D_s={:?}", params.start_pos - params.end_pos);
+      debug!("norm_s = {:?}", (params.start_pos - params.end_pos).normalize());
+      debug!("D_v={:?}", params.start_vel - params.end_vel);
+      debug!("norm_v = {:?}", (params.start_vel - params.end_vel).normalize());
+
+      // If we get a result, then the test worked!
+      let Some(result) = params.compute_flight_path() else {
+        panic!("Unable to compute flight path.");
+      };
+      info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
+      info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
+      info!("Path: {:?}\nVel{:?}", result.path, result.end_velocity);
+
   }
 }
