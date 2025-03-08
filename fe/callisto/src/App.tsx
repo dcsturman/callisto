@@ -205,10 +205,6 @@ function Simulator({
     );
   },[setProposedPlan]);
 
-  const resetProposedPlan = () => {
-    setProposedPlan(null);
-  };
-
   const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
 
   function downHandler({ key }: { key: string }) {
@@ -276,7 +272,6 @@ function Simulator({
                 showRange={showRange}
                 setShowRange={setShowRange}
                 proposedPlan={proposedPlan}
-                resetProposedPlan={resetProposedPlan}
               />
             )}
             <div className="mainscreen-container">
@@ -311,7 +306,6 @@ function Simulator({
                   ship={computerShip}
                   setComputerShipName={setComputerShipName}
                   proposedPlan={proposedPlan}
-                  resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
                   sensorLocks={entitiesContext.entities.ships.reduce(
                     (acc, ship) => {

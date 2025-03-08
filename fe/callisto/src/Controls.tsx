@@ -112,7 +112,6 @@ export function Controls(args: {
   showRange: string | null;
   setShowRange: (target: string | null) => void;
   proposedPlan: FlightPathResult | null;
-  resetProposedPlan: () => void;
 }) {
   const actionContext = useContext(ActionContext);
   const viewContext = useContext(ViewContext);
@@ -299,7 +298,6 @@ export function Controls(args: {
                     ship={args.computerShip}
                     setComputerShipName={args.setComputerShipName}
                     proposedPlan={args.proposedPlan}
-                    resetProposedPlan={args.resetProposedPlan}
                     getAndShowPlan={args.getAndShowPlan}
                     sensorLocks={serverEntities.ships.reduce((acc, ship) => {
                       if (ship.sensor_locks.includes(args.computerShip!.name)) {

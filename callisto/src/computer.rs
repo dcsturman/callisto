@@ -19,7 +19,7 @@ const SOLVE_TOLERANCE: f64 = 1e-4;
 // with close, and define that as 1% - as you get closer you can refine your course and missiles
 // refine every round.
 const ANS_PERCENT_OFF: f64 = 0.01;
-const MAX_ITERATIONS: usize = 100;
+const MAX_ITERATIONS: usize = 400;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -106,7 +106,7 @@ impl FlightParams {
 
     // This case is a bit of a hack.  Likely never happens except in tests.
     // I do worry that this is needed points out some other issue but I don't think so.
-    if approx::ulps_eq!(distance, 0.0) &&  approx::ulps_eq!(speed, 0.0){
+    if approx::ulps_eq!(distance, 0.0) && approx::ulps_eq!(speed, 0.0) {
       panic!("(best_guess) Should never get this case: Both distance and speed are zero.");
     } else if distance <= speed && speed > 0.0 {
       info!("(best_guess) Making guess based on velocity");
@@ -181,7 +181,10 @@ impl FlightParams {
     for attempt in 0..5 {
       info!("(compute_flight_path) Attempt {}", attempt);
       let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess(attempt);
-      info!("(compute_flight_path) Guess is a1={:?} a2={:?} t1={:?} t2={:?}", guess_accel_1, guess_accel_2, guess_t_1, guess_t_2);
+      info!(
+        "(compute_flight_path) Guess is a1={:?} a2={:?} t1={:?} t2={:?}",
+        guess_accel_1, guess_accel_2, guess_t_1, guess_t_2
+      );
       let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_accel_1).into();
       initial.append(&mut Into::<[f64; 3]>::into(guess_accel_2).into());
       initial.push(guess_t_1);
@@ -212,19 +215,19 @@ impl FlightParams {
 
       let (answer, norm) = match solver_result {
         Err(e) => {
-          warn!("Unable to solve flight path with params: {:?} with error: {}.", self, e);
+          warn!("Unable to solve flight path with params: {self:?} with error: {e}.");
           // This attempt didn't work. On to the next one (and skip all the use of the answer)
           continue;
         }
         Ok(ans) => ans,
       };
       // Unpack the answer.
-      let a_1 = Vec3::from(
+      let mut a_1 = Vec3::from(
         <&[f64] as TryInto<[f64; 3]>>::try_into(&answer[0..3])
           .expect("(compute_flight_path) Unable to convert to fixed array"),
       );
 
-      let a_2 = Vec3::from(
+      let mut a_2 = Vec3::from(
         <&[f64] as TryInto<[f64; 3]>>::try_into(&answer[3..6])
           .expect("(compute_flight_path) Unable to convert to fixed array"),
       );
@@ -253,18 +256,20 @@ impl FlightParams {
       };
 
       if t_1 < 0.0 || t_2 < 0.0 {
-        warn!(
-          "(compute_flight_path) Unable to solve flight path with params: {:?} with negative time.",
-          self
-        );
-        // This attempt didn't work. On to the next one (and skip all the use of the answer)
+        warn!("(compute_flight_path) Unable to solve flight path with params: {self:?} with negative time.");
         continue;
       }
 
-      info!(
-        "(compute_flight_path) Computed path with a_1: {:?}, a_2: {:?}, t_1: {:?}, t_2: {:?}",
-        a_1, a_2, t_1, t_2
-      );
+      info!("(compute_flight_path) Computed path with a_1: {a_1:?}, a_2: {a_2:?}, t_1: {t_1:?}, t_2: {t_2:?}");
+
+      // Debugging only...
+      if a_1.magnitude() > self.max_acceleration || a_2.magnitude() > self.max_acceleration {
+        warn!("(compute_flight_path) Path acceleration greater than max.  a_1: {a_1:?}, a_2: {a_2:?}");
+        // Trim the accelerations.
+        a_1 = a_1.normalize() * (self.max_acceleration - 0.1).max(0.0);
+        a_2 = a_2.normalize() * (self.max_acceleration - 0.1).max(0.0);
+        info!("(compute_flight_path) Trimmed path to a_1: {a_1:?}, a_2: {a_2:?}");
+      }
 
       let (path, end_velocity) = self.compute_path(&a_1, &a_2, t_1, t_2);
 
@@ -344,8 +349,8 @@ impl Problem for FlightParams {
  * The solver will find an x that gives us minimal error.  In particular it finds r(x) where:
  * The first three values of r(x) (by x, y, z) are the difference between the target position and the actual position.
  * The next three values of r(x) (by x, y, z) are the difference between the target velocity and the actual velocity.
- * The seventh value is the difference between the first acceleration magnitude and the max acceleration.
- * The eighth value is the difference between the second acceleration magnitude and the max acceleration.
+ * The seventh value is the difference between the first acceleration magnitude and the max acceleration, squared.
+ * The eighth value is the difference between the second acceleration magnitude and the max acceleration, squared.
  */
 impl System for FlightParams {
   // Evaluation of the system (computing the residuals).
@@ -1064,7 +1069,6 @@ mod tests {
     debug!("D_v={:?}", params.start_vel - params.end_vel);
     debug!("norm_v = {:?}", (params.start_vel - params.end_vel).normalize());
 
-
     // If we get a result, then the test worked!
     let Some(result) = params.compute_flight_path() else {
       panic!("Unable to compute flight path.");
@@ -1078,24 +1082,140 @@ mod tests {
 
   #[test_log::test]
   fn test_compute_unsolved_2() {
-    let params = FlightParams { start_pos: Vec3 { x: 1004140073.916692, y: 1054937486.2519464, z: -17909755.019433156}, 
-      end_pos: Vec3 { x:730823285.6031308, y: 831711041.2618783, z:-16268640.810433429}, 
-      start_vel: Vec3 { x: -136013.83755785288, y: -100737.85676948192, z: 8396.003458726978}, 
-      end_vel: Vec3 { x:16404.521600000004, y:41465.561600000015, z: -11297.664000000002}, 
-      target_velocity: Some(Vec3 {x:16404.521600000004, y:41465.561600000015, z:-11297.664000000002}), max_acceleration: 58.842 };
+    let params = FlightParams {
+      start_pos: Vec3 {
+        x: 1_004_140_073.916_692,
+        y: 1_054_937_486.251_946_4,
+        z: -17_909_755.019_433_156,
+      },
+      end_pos: Vec3 {
+        x: 730_823_285.603_130_8,
+        y: 831_711_041.261_878_3,
+        z: -16_268_640.810_433_429,
+      },
+      start_vel: Vec3 {
+        x: -136_013.837_557_852_88,
+        y: -100_737.856_769_481_92,
+        z: 8_396.003_458_726_978,
+      },
+      end_vel: Vec3 {
+        x: 16_404.521_600_000_004,
+        y: 41_465.561_600_000_015,
+        z: -11_297.664_000_000_002,
+      },
+      target_velocity: Some(Vec3 {
+        x: 16_404.521_600_000_004,
+        y: 41_465.561_600_000_015,
+        z: -11_297.664_000_000_002,
+      }),
+      max_acceleration: 58.842,
+    };
 
-      debug!("D_s={:?}", params.start_pos - params.end_pos);
-      debug!("norm_s = {:?}", (params.start_pos - params.end_pos).normalize());
-      debug!("D_v={:?}", params.start_vel - params.end_vel);
-      debug!("norm_v = {:?}", (params.start_vel - params.end_vel).normalize());
+    debug!("D_s={:?}", params.start_pos - params.end_pos);
+    debug!("norm_s = {:?}", (params.start_pos - params.end_pos).normalize());
+    debug!("D_v={:?}", params.start_vel - params.end_vel);
+    debug!("norm_v = {:?}", (params.start_vel - params.end_vel).normalize());
 
-      // If we get a result, then the test worked!
-      let Some(result) = params.compute_flight_path() else {
-        panic!("Unable to compute flight path.");
-      };
-      info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
-      info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
-      info!("Path: {:?}\nVel{:?}", result.path, result.end_velocity);
+    // If we get a result, then the test worked!
+    let Some(result) = params.compute_flight_path() else {
+      panic!("Unable to compute flight path.");
+    };
+    info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
+    info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
+    info!("Path: {:?}\nVel{:?}", result.path, result.end_velocity);
+  }
 
+  // Another hard case with these parameters:
+  // FlightParams {
+  //   start_pos: Vector3 [1640287738.7807088, 2784954239.0147567, -346247399.6906175],
+  //   end_pos: Vector3 [1991332342.53655, 3373502889.264817, -664233816.1570541],
+  //   start_vel: Vector3 [109068.54522619587, 185979.0946917855, -67225.83646958838],
+  //   end_vel: Vector3 [-40601.31144820167, -65405.92202694659, 71383.6073708256],
+  //   target_velocity: Some(Vector3 [-40601.31144820167, -65405.92202694659, 71383.6073708256]), max_acceleration: 58.842 }
+  #[test_log::test]
+  fn test_compute_unsolved_3() {
+    let params = FlightParams {
+      start_pos: Vec3 {
+        x: 1_640_287_738.780_708_8,
+        y: 2_784_954_239.014_756_7,
+        z: -346_247_399.690_617_5,
+      },
+      end_pos: Vec3 {
+        x: 1_991_332_342.536_55,
+        y: 3_373_502_889.264_817,
+        z: -664_233_816.157_054_1,
+      },
+      start_vel: Vec3 {
+        x: 109_068.545_226_195_87,
+        y: 185_979.094_691_785_5,
+        z: -67_225.836_469_588_38,
+      },
+      end_vel: Vec3 {
+        x: -40_601.311_448_201_67,
+        y: -65_405.922_026_946_59,
+        z: 71_383.607_370_825_6,
+      },
+      target_velocity: Some(Vec3 {
+        x: -40_601.311_448_201_67,
+        y: -65_405.922_026_946_59,
+        z: 71_383.607_370_825_6,
+      }),
+      max_acceleration: 58.842,
+    };
+
+    // If we get a result, then the test worked!
+    let Some(result) = params.compute_flight_path() else {
+      panic!("Unable to compute flight path.");
+    };
+    info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
+    info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
+    info!("Path: {:?}\nVel{:?}", result.path, result.end_velocity);
+  }
+
+  // Another test with:
+  // FlightParams { start_pos: Vector3 [906717888.588974, 1015658806.334491, -28797065.3460416], 
+  // end_pos: Vector3 [746331550.4825101, 892271718.3666573, -26701355.966099627], 
+  // start_vel: Vector3 [-109143.90001247398, -57926.015143822726, -6962.14849300116], 
+  // end_vel: Vector3 [19299.5, 46478.9, -14828.2], 
+  // target_velocity: Some(Vector3 [19299.5, 46478.9, -14828.2]), 
+  // max_acceleration: 58.842 }
+  #[test_log::test]
+  fn test_compute_unsolved_4() {
+    let params = FlightParams {
+      start_pos: Vec3 {
+        x: 906_717_888.588_974,
+        y: 1_015_658_806.334_491,
+        z: -28_797_065.346_041_6,
+      },
+      end_pos: Vec3 {
+        x: 746_331_550.482_510_1,
+        y: 892_271_718.366_657_3,
+        z: -26_701_355.966_099_627,
+      },
+      start_vel: Vec3 {
+        x: -109_143.900_012_473_98,
+        y: -57_926.015_143_822_726,
+        z: -6_962.148_493_001_16,
+      },
+      end_vel: Vec3 {
+        x: 19_299.5,
+        y: 46_478.9,
+        z: -14_828.2,
+      },
+      target_velocity: Some(Vec3 {
+        x: 19_299.5,
+        y: 46_478.9,
+        z: -14_828.2,
+      }),
+      max_acceleration: 58.842,
+    };
+
+    // If we get a result, then the test worked!
+    let Some(result) = params.compute_flight_path() else {
+      panic!("Unable to compute flight path.");
+    };
+    info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
+    info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
+    info!("Path: {:?}\nVel{:?}", result.path, result.end_velocity);
   }
 }
