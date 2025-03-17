@@ -117,21 +117,28 @@ pub fn attack(
     ))];
   };
 
+  let lock_mod = if attacker.sensor_locks.contains(&defender.get_name().to_string()) {
+    2
+  } else {
+    0
+  };
+
   debug!(
-        "(Combat.attack) Ship {} attacking with {:?} against {} with hit mod {}, weapon hit mod {}, range mod {}, defense mod {}",
+        "(Combat.attack) Ship {} attacking with {:?} against {} with hit mod {}, weapon hit mod {}, range mod {}, lock mod {}, defense mod {}",
         attacker_name,
         weapon,
         defender.get_name(),
         hit_mod,
         HIT_WEAPON_MOD[weapon.kind as usize],
         range_mod,
+        lock_mod,
         defensive_modifier
     );
 
   let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
 
   let roll = i32::from(roll_dice(2, rng));
-  let hit_roll = roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + defensive_modifier;
+  let hit_roll = roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + lock_mod + defensive_modifier;
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(
