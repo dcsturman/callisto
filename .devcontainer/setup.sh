@@ -9,6 +9,8 @@ apt-get install -y \
   zsh \
   vim \
   build-essential \
+  pkg-config \
+  libssl-dev \
   openssl
 
 ## Install rustup and common components
