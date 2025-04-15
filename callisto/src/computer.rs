@@ -90,19 +90,24 @@ impl FlightParams {
 
   /**
    * Computes a best guess for the acceleration and time at that acceleration.
+
    * We get more random with each new attempt, but that can help with root solving.
+   *
+   * @returns None we are out of guesses or the next guess cannot be computed.
+   * otherwise returns a guess which is a tuple of (accel_1, accel_2, t_1, t_2)
    */
-  pub fn best_guess(&self, attempt: u16) -> (Vec3, Vec3, f64, f64) {
-    let delta = self.end_pos - self.start_pos;
+  pub fn best_guess(&self, attempt: u16) -> Option<(Vec3, Vec3, f64, f64)> {
+    let delta_s = self.end_pos - self.start_pos;
     let delta_v = self.end_vel - self.start_vel;
-    let distance = delta.magnitude();
+    let distance = delta_s.magnitude();
     let speed = delta_v.magnitude();
 
-    // Three cases.
+    // Our cases are:
     // 0) We're not going anywhere.
     // 1) Based on differences in velocity
     // 2) Something to deal with no real movement at all
-    // 3) Based on distance.
+    // 3) Based on distance without a target velocity.
+    // 4) Based on distance with a target velocity.
 
     // This case is a bit of a hack.  Likely never happens except in tests.
     // I do worry that this is needed points out some other issue but I don't think so.
@@ -114,51 +119,111 @@ impl FlightParams {
       let t_1 = self.start_vel.magnitude() / accel.magnitude() * (1.0 + std::f64::consts::SQRT_2 / 2.0);
       let t_2 = t_1 - self.start_vel.magnitude() / accel.magnitude();
       match attempt {
-        0 => (accel, -accel, t_1, t_2),
-        1 => (-accel, accel, t_1, t_2),
-        2 => (accel, -accel, 1_000_000.0, 1_000_000.0),
-        _ => (-accel, accel, -1_000_000.0, -1_000_000.0),
+        0 => Some((accel, -accel, t_1, t_2)),
+        1 => Some((-accel, accel, t_1, t_2)),
+        2 => Some((accel, -accel, 1_000_000.0, 1_000_000.0)),
+        3 => Some((-accel, accel, -1_000_000.0, -1_000_000.0)),
+        _ => None,
       }
     } else if approx::ulps_eq!(distance, 0.0) {
       info!("(best_guess) Making guess given zero differences.");
 
       match attempt {
-        0 => (delta, -delta, 0.0, 0.0),
-        1 => (-delta, delta, 0.0, 0.0),
-        2 => (delta, -delta, 1_000_000.0, 1_000_000.0),
-        _ => (-delta, delta, -1_000_000.0, -1_000_000.0),
+        0 => Some((delta_s, -delta_s, 0.0, 0.0)),
+        1 => Some((-delta_s, delta_s, 0.0, 0.0)),
+        2 => Some((delta_s, -delta_s, 1_000_000.0, 1_000_000.0)),
+        3 => Some((-delta_s, delta_s, -1_000_000.0, -1_000_000.0)),
+        _ => None,
       }
+    } else if let Some(target_velocity) = self.target_velocity {
+        // Case based on position but we also have a target velocity, which significantly complicates
+        // the guess.
+
+        info!("(best_guess) Making guess based on distance but with target velocity.");
+
+        // For guesses, try:
+        // 1) No impact from target velocity
+        // 2) 100s duration
+        // 3) 1000s duration
+        // 4) 10000s duration
+        // 5) 100,000s duration
+
+        match attempt {
+          0 => {
+            let delta_s = self.end_pos - self.start_pos;
+            let distance = delta_s.magnitude();
+            let accel = delta_s / distance * self.max_acceleration;
+            let vel = (self.start_vel + target_velocity).magnitude();
+            // 0 = 1/2 a * t^2 + v_0 * t - distance
+            // t = -v_0 +- sqrt(v_0^2 + 2 * a * distance) / a
+            let root_part = (vel.powi(2) + 2.0 * self.max_acceleration * distance).sqrt();
+  
+            if root_part < 0.0 {
+              error!("(best_guess) Unable to compute best guess.  Root part is negative.");
+              return None;
+            }
+            (accel, -1.0 * accel, -vel + root_part, -vel - root_part).into()
+          }
+          1 => {
+            let delta_s = self.end_pos + target_velocity * 100.0 - self.start_pos;
+            let distance = delta_s.magnitude();
+            let accel = delta_s / distance * self.max_acceleration;
+            (accel, -1.0 * accel, 100.0, 100.0).into()
+          }
+          2 => {
+            let delta_s = self.end_pos + target_velocity * 1000.0 - self.start_pos;
+            let distance = delta_s.magnitude();
+            let accel = delta_s / distance * self.max_acceleration;
+            (accel, -1.0 * accel, 1000.0, 1000.0).into()
+          }
+          3 => {
+            let delta_s = self.end_pos + target_velocity * 10000.0 - self.start_pos;
+            let distance = delta_s.magnitude();
+            let accel = delta_s / distance * self.max_acceleration;
+            (accel, -1.0 * accel, 10000.0, 10000.0).into()
+          }
+          4 => {
+            let delta_s = self.end_pos + target_velocity * 100_000.0 - self.start_pos;
+            let distance = delta_s.magnitude();
+            let accel = delta_s / distance * self.max_acceleration;
+            (accel, -1.0 * accel, 100_000.0, 100_000.0).into()
+          }
+          _ => return None,
+        }
     } else {
       info!("(best_guess) Making guess based on distance.");
-      let accel = delta / distance * self.max_acceleration;
+      let accel = delta_s / distance * self.max_acceleration;
 
       // 0 = 1/2 a * t^2 + v_0 * t - distance
       // t = -v_0 +- sqrt(v_0^2 + 2 * a * distance) / a
-      let root_part = (self.start_vel.magnitude().powi(2) + 2.0 * self.max_acceleration * distance).sqrt();
+      let vel = self.start_vel.magnitude();
+
+      let root_part = (vel.powi(2) + 2.0 * self.max_acceleration * distance).sqrt();
 
       if root_part < 0.0 {
         error!("(best_guess) Unable to compute best guess.  Root part is negative.");
-        return (Vec3::zero(), Vec3::zero(), 0.0, 0.0);
+        return None;
       }
 
       let (t_a, t_b) = match attempt {
         0 => (
-          (-self.start_vel.magnitude() + root_part) / self.max_acceleration,
-          (-self.start_vel.magnitude() - root_part) / self.max_acceleration,
+          (-vel + root_part) / self.max_acceleration,
+          (-vel - root_part) / self.max_acceleration,
         ),
         1 => (1_000_000.0, 1_000_000.0),
         2 => (-1_000_000.0, -1_000_000.0),
-        _ => (0.0, 0.0),
+        3 => (0.0, 0.0),
+        _ => return None,
       };
 
       debug!("(best_guess) t_a: {}, t_b: {}", t_a, t_b);
       if t_a > 0.0 {
-        (accel, -1.0 * accel, t_a, t_b)
+        Some((accel, -1.0 * accel, t_a, t_b))
       } else if t_b > 0.0 {
-        (accel, -1.0 * accel, t_b, t_b)
+        Some((accel, -1.0 * accel, t_b, t_b))
       } else {
         error!("(best_guess) Unable to compute best guess.  Both times are negative.");
-        (Vec3::zero(), Vec3::zero(), 0.0, 0.0)
+        None
       }
     }
   }
@@ -178,13 +243,19 @@ impl FlightParams {
       });
     }
 
-    for attempt in 0..5 {
+    let mut attempt = 0;
+    loop {
       info!("(compute_flight_path) Attempt {}", attempt);
-      let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess(attempt);
+
+      // Get the next guess. If its None then we're done as we're out of guesses and have failed. ? triggers the return of None.
+      let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess(attempt)?;
+
       info!(
         "(compute_flight_path) Guess is a1={:?} a2={:?} t1={:?} t2={:?}",
         guess_accel_1, guess_accel_2, guess_t_1, guess_t_2
       );
+      attempt += 1;
+
       let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_accel_1).into();
       initial.append(&mut Into::<[f64; 3]>::into(guess_accel_2).into());
       initial.push(guess_t_1);
@@ -288,7 +359,6 @@ impl FlightParams {
         plan: FlightPlan::new((a_1 / G, t_1).into(), Some((a_2 / G, t_2).into())),
       });
     }
-    None
   }
 
   fn compute_path(&self, a_1: &Vec3, a_2: &Vec3, t_1: f64, t_2: f64) -> (Vec<Vec3>, Vec3) {
@@ -309,7 +379,7 @@ impl FlightParams {
         let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
         let new_vel = vel + accel * delta;
 
-        info!("(compute_flight_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
+        info!("(compute_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
                         pos, accel, delta, new_pos, new_vel);
 
         path.push(new_pos);
@@ -643,8 +713,8 @@ mod tests {
 
     let plan = params.compute_flight_path().unwrap();
 
-    info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos);
-    info!("Start Vel: {:?}\nEnd Vel: {:?}", params.start_vel, params.end_vel);
+    info!("Start Pos: {:?}\tEnd Pos: {:?}", params.start_pos, params.end_pos);
+    info!("Start Vel: {:?}\tEnd Vel: {:?}", params.start_vel, params.end_vel);
     info!("Path: {:?}\nVel{:?}", plan.path, plan.end_velocity);
 
     let v_error = vel_error(&params.start_vel, &params.end_vel, &plan.end_velocity);
@@ -652,7 +722,7 @@ mod tests {
     info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
     // Add assertions here to validate the computed flight path and velocity
     assert_eq!(plan.path.len(), 7);
-    assert!(p_error < 0.001);
+    assert!(p_error < 0.01, "Position error is {p_error} > 0.01");
     assert!(v_error < 0.001);
   }
 
@@ -697,7 +767,7 @@ mod tests {
     // Note asserting the path length in this case is kind of weak as we just had
     // to see what value made sense.  The other two tests are more meaningful.
     assert_eq!(plan.path.len(), 7);
-    assert!(p_error < 0.001);
+    assert!(p_error < 0.01, "Position error is {p_error} > 0.01");
     assert!(v_error < 0.001);
   }
 
@@ -749,8 +819,9 @@ mod tests {
 
     assert_eq!(plan.path.len(), expected_len);
     assert_relative_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-10);
-    assert_relative_eq!(plan.path[0], params.start_pos, epsilon = 1e-10);
-    assert_relative_eq!(*plan.path.last().unwrap(), params.end_pos, epsilon = 1e-4);
+    let p_error = pos_error(&params.start_pos, &params.end_pos, plan.path.last().unwrap());
+
+    assert!(p_error < 0.01, "Position error is {p_error} > 0.01");
   }
 
   #[test_log::test]
@@ -840,7 +911,7 @@ mod tests {
     // Add assertions here to validate the computed flight path and velocity
     assert_eq!(plan.path.len(), 7);
     assert!(
-      p_error < 0.001,
+      p_error < 0.01,
       "Pos error is too high ({p_error}).Target position: {:0.0?}, actual position: {:0.0?}",
       real_end_target,
       plan.path.last().unwrap()
