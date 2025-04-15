@@ -386,7 +386,8 @@ export function FireActions(args: {
         };
 
         return ["Beam", "Pulse", "Particle"].includes(kind) ?  (
-          <div className="fire-actions-div" key={index + "_fire_img"} onClick={() => onClick(action.weapon_id)}>
+          <div className="fire-actions-div" key={index + "_fire_img"}>
+            <div onClick={() => onClick(action.weapon_id)}>
             <p>
               <RayIcon
                 className="beam-type-icon"
@@ -396,6 +397,7 @@ export function FireActions(args: {
               />{" "}
               to {action.target}
             </p>
+            </div>
             <CalledShotMenu
               attacker={computerShip!}
               target={serverEntities.entities.ships.find((ship) => ship.name === action.target)!}

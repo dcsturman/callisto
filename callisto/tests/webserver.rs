@@ -33,7 +33,7 @@ use tokio_tungstenite::Connector;
 
 use serde_json::json;
 
-use callisto::debug;
+use callisto::{error, debug};
 
 use callisto::action::ShipAction;
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
@@ -1098,6 +1098,8 @@ async fn integration_malformed_requests() {
     "Expected error for invalid compute path request, got {message:?}"
   );
 
+  // This isn't an error but want to print this warning at the same log level as errors.
+  error!("(integration_malformed_requests) Expect an error to occur after this from server (Failed to parse, expected f64)");
   // Test invalid flight plan
   let message = rpc(
     &mut stream,
@@ -1108,7 +1110,6 @@ async fn integration_malformed_requests() {
   )
   .await;
   assert!(matches!(message, ResponseMsg::Error(_)));
-
   // Test fire action with invalid parameters
   let _response = rpc(
     &mut stream,
