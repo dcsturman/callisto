@@ -24,6 +24,7 @@ type ShipComputerProps = {
     end_pos: [number, number, number],
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null,
+    target_accel: [number, number, number] | null,
     standoff: number
   ) => void;
   sensorLocks: string[];
@@ -47,6 +48,9 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       v_x: "0",
       v_y: "0",
       v_z: "0",
+      a_x: "0",
+      a_y: "0",
+      a_z: "0",
       standoff: "0",
     };
   }, []);
@@ -78,7 +82,8 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       standoff = (planet.radius * 1.1 / POSITION_SCALE).toFixed(1);
     } 
 
-    const entity = planet || serverEntities.ships.find((ship) => ship.name === currentNavTarget);
+    const target_ship: Ship | undefined = serverEntities.ships.find((ship) => ship.name === currentNavTarget);
+    const entity = planet || target_ship;
 
     if (entity == null) {
       console.error(`(ShipComputer) Unable to find entity ${currentNavTarget}`);
@@ -92,6 +97,9 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       v_x: entity.velocity[0].toFixed(1),
       v_y: entity.velocity[1].toFixed(1),
       v_z: entity.velocity[2].toFixed(1),
+      a_x: target_ship ? target_ship.plan[0][0][0].toFixed(1) : "0",
+      a_y: target_ship ? target_ship.plan[0][0][1].toFixed(1) : "0",
+      a_z: target_ship ? target_ship.plan[0][0][2].toFixed(1) : "0",
       standoff,
     });
 
@@ -101,6 +109,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       entity.position,
       entity.velocity,
       entity.velocity,
+      target_ship ? target_ship.plan[0][0] : null,
       Number(standoff)
     );
   }, [currentNavTarget, serverEntities, ship.name, initNavigationTargetState, getAndShowPlan]);
@@ -157,7 +166,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
 
     // Called directly - usually when the user has specifically modified the values.
     // Can also be called implicitly in handleNavTargetSelect
-    getAndShowPlan(ship.name, end_pos, end_vel, target_vel, standoff);
+    getAndShowPlan(ship.name, end_pos, end_vel, target_vel, null, standoff);
   }
 
   function handleAssignPlan() {
@@ -196,7 +205,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
     return (
       <>
         <h2 className="control-form">
-          Set Accel (m/s<sup>2</sup>)
+          Set Accel (G&apos;s)
         </h2>
         <form
           key={ship.name + "-accel-setter"}
@@ -293,9 +302,12 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
                 v_x: "0",
                 v_y: "0",
                 v_z: "0",
+                a_x: "0",
+                a_y: "0",
+                a_z: "0",
                 standoff: "0",
               });
-              getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, 0);
+              getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, null, 0);
             }}>
             Full Stop
           </button>
@@ -364,6 +376,32 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
                   />
                 </div>
               </label>
+              <label className="control-label">
+                <span>Target Accel (G&apos;s)</span>
+                <div style={{display: "flex"}} className="coordinate-input">
+                  <input
+                    className="control-input"
+                    name="a_x"
+                    type="text"
+                    value={navigationTarget.a_x}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="a_y"
+                    type="text"
+                    value={navigationTarget.a_y}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="a_z"
+                    type="text"
+                    value={navigationTarget.a_z}
+                    onChange={handleNavigationChange}
+                  />
+                </div>
+              </label>
               <label
                 className="control-label"
                 style={{display: "flex", justifyContent: "space-between"}}>
@@ -402,7 +440,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
         <button
           className="control-input control-button blue-button"
           onClick={() => {
-            getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
+            getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, null, 0);
             setComputerShipName(null);
           }}>
           Close

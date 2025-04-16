@@ -193,6 +193,7 @@ function Simulator({
     end_pos: [number, number, number],
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null = null,
+    target_accel: [number, number, number] | null = null,
     standoff: number = 0
   ) => {
     computeFlightPath(
@@ -201,6 +202,7 @@ function Simulator({
       end_vel,
       setProposedPlan,
       target_vel,
+      target_accel,
       standoff
     );
   },[setProposedPlan]);

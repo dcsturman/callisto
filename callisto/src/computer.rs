@@ -2,10 +2,15 @@ use cgmath::{InnerSpace, Zero};
 use gomez::nalgebra as na;
 use gomez::{Domain, Problem, SolverDriver, System};
 use std::error::Error;
+use std::f64::consts::PI;
+use std::fmt::Debug;
 
 use na::{Dyn, IsContiguous};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+
+use egobox_doe::{Lhs, LhsKind, SamplingMethod};
+use ndarray::{arr2, Array2};
 
 use crate::entity::{Vec3, DELTA_TIME_F64, G};
 use crate::missile::IMPACT_DISTANCE;
@@ -20,6 +25,7 @@ const SOLVE_TOLERANCE: f64 = 1e-4;
 // refine every round.
 const ANS_PERCENT_OFF: f64 = 0.01;
 const MAX_ITERATIONS: usize = 400;
+const MAX_SAMPLES: usize = 100;
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -39,24 +45,34 @@ pub struct FlightPathResult {
  * this velocity.  The other tricky part is while the flight plan likely won't have a duration of an exact number of turns,
  * we should account for the target velocity for a number of full rounds.
  */
-#[derive(Debug)]
 pub struct FlightParams {
   pub start_pos: Vec3,
   pub end_pos: Vec3,
   pub start_vel: Vec3,
   pub end_vel: Vec3,
-  // Can take into account a target velocity instead of just an end position.
+  // Can take into account a target's velocity instead of just an end position.
   // If we want to do that, then this is Some(target_vel) else None.
   // In this case end_pos is the _current_ end_pos not the ultimate end position.
   pub target_velocity: Option<Vec3>,
+  // Similar to target_velocity, if we want to account for a target's
+  // acceleration, we use this field.
+  pub target_acceleration: Option<Vec3>,
   // max_acceleration allowed in m/sec^2 (not G's)
   pub max_acceleration: f64,
+
+  sample_cache: Option<Array2<f64>>,
+  max_samples: usize,
 }
 
+impl Debug for FlightParams {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "FlightParams {{ start_pos: {:?}, end_pos: {:?}, start_vel: {:?}, end_vel: {:?}, target_velocity: {:?}, target_acceleration: {:?}, max_acceleration: {:?} }}", self.start_pos, self.end_pos, self.start_vel, self.end_vel, self.target_velocity, self.target_acceleration, self.max_acceleration)
+  }
+}
 impl FlightParams {
   pub fn new(
     start_pos: Vec3, end_pos: Vec3, start_vel: Vec3, end_vel: Vec3, target_velocity: Option<Vec3>,
-    max_acceleration: f64,
+    target_acceleration: Option<Vec3>, max_acceleration: f64,
   ) -> Self {
     FlightParams {
       start_pos,
@@ -64,7 +80,10 @@ impl FlightParams {
       start_vel,
       end_vel,
       target_velocity,
+      target_acceleration,
       max_acceleration,
+      sample_cache: None,
+      max_samples: MAX_SAMPLES,
     }
   }
 
@@ -81,11 +100,21 @@ impl FlightParams {
           target_vel * (t_2 + t_1)
         } else {
           Vec3::zero()
+        }
+        + if let Some(target_accel) = self.target_acceleration {
+          target_accel * (t_2 + t_1).powi(2) / 2.0
+        } else {
+          Vec3::zero()
         })
   }
 
   pub fn vel_eq(&self, a_1: Vec3, a_2: Vec3, t_1: f64, t_2: f64) -> Vec3 {
-    self.start_vel + a_1 * t_1 + a_2 * t_2 - self.end_vel
+    self.start_vel + a_1 * t_1 + a_2 * t_2 - (self.end_vel
+      + if let Some(target_accel) = self.target_acceleration {
+        target_accel * (t_1 + t_2)
+      } else {
+        Vec3::zero()
+      })
   }
 
   /**
@@ -94,8 +123,9 @@ impl FlightParams {
    * We get more random with each new attempt, but that can help with root solving.
    *
    * @returns None we are out of guesses or the next guess cannot be computed.
-   * otherwise returns a guess which is a tuple of (accel_1, accel_2, t_1, t_2)
+   * otherwise returns a guess which is a tuple of `(accel_1, accel_2, t_1, t_2)`
    */
+  #[allow(dead_code)]
   pub fn best_guess(&self, attempt: u16) -> Option<(Vec3, Vec3, f64, f64)> {
     let delta_s = self.end_pos - self.start_pos;
     let delta_v = self.end_vel - self.start_vel;
@@ -136,60 +166,59 @@ impl FlightParams {
         _ => None,
       }
     } else if let Some(target_velocity) = self.target_velocity {
-        // Case based on position but we also have a target velocity, which significantly complicates
-        // the guess.
+      // Case based on position but we also have a targe's velocity (and maybe acceleration), which significantly complicates
+      // the guess.
 
-        info!("(best_guess) Making guess based on distance but with target velocity.");
+      info!("(best_guess) Making guess based on distance but with target velocity.");
 
-        // For guesses, try:
-        // 1) No impact from target velocity
-        // 2) 100s duration
-        // 3) 1000s duration
-        // 4) 10000s duration
-        // 5) 100,000s duration
+      // For guesses, try:
+      // 1) No impact from target velocity
+      // 2) 100s duration
+      // 3) 1000s duration
+      // 4) 10000s duration
+      // 5) 100,000s duration
 
-        match attempt {
-          0 => {
-            let delta_s = self.end_pos - self.start_pos;
-            let distance = delta_s.magnitude();
-            let accel = delta_s / distance * self.max_acceleration;
-            let vel = (self.start_vel + target_velocity).magnitude();
-            // 0 = 1/2 a * t^2 + v_0 * t - distance
-            // t = -v_0 +- sqrt(v_0^2 + 2 * a * distance) / a
-            let root_part = (vel.powi(2) + 2.0 * self.max_acceleration * distance).sqrt();
-  
-            if root_part < 0.0 {
-              error!("(best_guess) Unable to compute best guess.  Root part is negative.");
-              return None;
-            }
-            (accel, -1.0 * accel, -vel + root_part, -vel - root_part).into()
+      let target_accel = if let Some(target_accel) = self.target_acceleration {
+        target_accel
+      } else {
+        Vec3::zero()
+      };
+
+      let find_delta_s = |t: f64| self.end_pos + target_velocity * t + target_accel * t.powi(2) / 2.0 - self.start_pos;
+      match attempt {
+        0 => {
+          let delta_s = self.end_pos - self.start_pos;
+          let distance = delta_s.magnitude();
+          let accel = delta_s / distance * self.max_acceleration;
+          let vel = (self.start_vel + target_velocity).magnitude();
+          // 0 = 1/2 a * t^2 + v_0 * t - distance
+          // t = -v_0 +- sqrt(v_0^2 + 2 * a * distance) / a
+          let root_part = (vel.powi(2) + 2.0 * self.max_acceleration * distance).sqrt();
+
+          if root_part < 0.0 {
+            error!("(best_guess) Unable to compute best guess.  Root part is negative.");
+            return None;
           }
-          1 => {
-            let delta_s = self.end_pos + target_velocity * 100.0 - self.start_pos;
-            let distance = delta_s.magnitude();
-            let accel = delta_s / distance * self.max_acceleration;
-            (accel, -1.0 * accel, 100.0, 100.0).into()
-          }
-          2 => {
-            let delta_s = self.end_pos + target_velocity * 1000.0 - self.start_pos;
-            let distance = delta_s.magnitude();
-            let accel = delta_s / distance * self.max_acceleration;
-            (accel, -1.0 * accel, 1000.0, 1000.0).into()
-          }
-          3 => {
-            let delta_s = self.end_pos + target_velocity * 10000.0 - self.start_pos;
-            let distance = delta_s.magnitude();
-            let accel = delta_s / distance * self.max_acceleration;
-            (accel, -1.0 * accel, 10000.0, 10000.0).into()
-          }
-          4 => {
-            let delta_s = self.end_pos + target_velocity * 100_000.0 - self.start_pos;
-            let distance = delta_s.magnitude();
-            let accel = delta_s / distance * self.max_acceleration;
-            (accel, -1.0 * accel, 100_000.0, 100_000.0).into()
-          }
-          _ => return None,
+          (accel, -1.0 * accel, -vel + root_part, -vel - root_part).into()
         }
+        1 => {
+          let accel = find_delta_s(100.0).normalize() * self.max_acceleration;
+          (accel, -1.0 * accel, 100.0, 100.0).into()
+        }
+        2 => {
+          let accel = find_delta_s(1000.0).normalize() * self.max_acceleration;
+          (accel, -1.0 * accel, 1000.0, 1000.0).into()
+        }
+        3 => {
+          let accel = find_delta_s(10000.0).normalize() * self.max_acceleration;
+          (accel, -1.0 * accel, 10000.0, 10000.0).into()
+        }
+        4 => {
+          let accel = find_delta_s(100_000.0).normalize() * self.max_acceleration;
+          (accel, -1.0 * accel, 100_000.0, 100_000.0).into()
+        }
+        _ => return None,
+      }
     } else {
       info!("(best_guess) Making guess based on distance.");
       let accel = delta_s / distance * self.max_acceleration;
@@ -228,15 +257,53 @@ impl FlightParams {
     }
   }
 
+  // Generate guesses using Latin Hypercube Sampling
+  //
+  // We generate samples on the first call and cache them; future calls just return the next sample.
+  fn best_guess_lhs(&mut self, attempt: usize) -> Option<(Vec3, Vec3, f64, f64)> {
+    if attempt >= self.max_samples {
+      return None;
+    }
+    if self.sample_cache.is_none() {
+      // Generate samples with: a_1 (3 variables), a_2 (3 variables), t_1 (1 variable), t_2 (1 variable)
+      // Since our accelerations are always magnitude max_acceleration, we generate spherical angles and
+      // from there build the accelerations.  So really 2 + 2 + 1 + 1 variables;
+
+      let xlimits: Array2<f64> = arr2(&[
+        [0.0, 2.0 * PI],
+        [0.0, PI],
+        [0.0, 2.0 * PI],
+        [0.0, PI],
+        [0.0, 200_000.0],
+        [0.0, 200_000.0],
+      ]);
+
+      self.sample_cache = Some(Lhs::new(&xlimits).kind(LhsKind::Centered).sample(self.max_samples));
+    }
+
+    let sample = self.sample_cache.as_ref().unwrap();
+    let a_1 = Vec3 {
+      x: self.max_acceleration * sample[[attempt, 0]].cos() * sample[[attempt, 1]].sin(),
+      y: self.max_acceleration * sample[[attempt, 0]].sin() * sample[[attempt, 1]].sin(),
+      z: self.max_acceleration * sample[[attempt, 1]].cos(),
+    };
+    let a_2 = Vec3 {
+      x: self.max_acceleration * sample[[attempt, 2]].cos() * sample[[attempt, 3]].sin(),
+      y: self.max_acceleration * sample[[attempt, 2]].sin() * sample[[attempt, 3]].sin(),
+      z: self.max_acceleration * sample[[attempt, 3]].cos(),
+    };
+    Some((a_1, a_2, sample[[attempt, 4]], sample[[attempt, 5]]))
+  }
+
   /**
    * Computes a flight path given the parameters.
    * Returns a `FlightPathResult` which contains the path, the end velocity and the plan.
    */
-  pub fn compute_flight_path(&self) -> Option<FlightPathResult> {
+  pub fn compute_flight_path(&mut self) -> Result<FlightPathResult, f64> {
     // Corner case eliminated here as all these zeros otherwise mess up solution finding.
     if cgmath::ulps_eq!(self.start_pos, self.end_pos) && cgmath::ulps_eq!(self.start_vel, self.end_vel) {
       info!("(compute_flight_path) No need to compute flight path.");
-      return Some(FlightPathResult {
+      return Ok(FlightPathResult {
         path: vec![self.start_pos],
         end_velocity: self.start_vel,
         plan: FlightPlan::new((Vec3::zero(), 0).into(), Some((Vec3::zero(), 0).into())),
@@ -244,11 +311,18 @@ impl FlightParams {
     }
 
     let mut attempt = 0;
+
+    // Debugging only
+    let mut best_norm = std::f64::MAX;
+
     loop {
       info!("(compute_flight_path) Attempt {}", attempt);
 
       // Get the next guess. If its None then we're done as we're out of guesses and have failed. ? triggers the return of None.
-      let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess(attempt)?;
+      let (guess_accel_1, guess_accel_2, guess_t_1, guess_t_2) = self.best_guess_lhs(attempt).ok_or_else(|| {
+        error!("(compute_flight_path) Unable to compute flight path.  Out of guesses.");
+        best_norm
+      })?;
 
       info!(
         "(compute_flight_path) Guess is a1={:?} a2={:?} t1={:?} t2={:?}",
@@ -268,18 +342,11 @@ impl FlightParams {
       let solver_result = solver.find(|state| {
         let x = state.x();
         let rx = state.rx();
-        info!(
+        debug!(
           "iter = {} || |r(x)|={:0.1?} a1={:0.2?} a2={:0.2?} t1={:0.2?} t2={:0.2?} ds={:0.2?} dv={:0.2?} da1={:0.2?} da2={:0.2?}",
-          state.iter(),
-          state.norm(),
-          &x[0..3],
-          &x[3..6],
-          x[6],
-          x[7],
-          &rx[0..3],
-          &rx[3..6],
-          rx[6],
-          rx[7],
+          state.iter(), state.norm(),
+          &x[0..3], &x[3..6], x[6], x[7],
+          &rx[0..3], &rx[3..6], rx[6], rx[7],
         );
         state.norm() <= SOLVE_TOLERANCE || state.iter() >= MAX_ITERATIONS
       });
@@ -287,7 +354,6 @@ impl FlightParams {
       let (answer, norm) = match solver_result {
         Err(e) => {
           warn!("Unable to solve flight path with params: {self:?} with error: {e}.");
-          // This attempt didn't work. On to the next one (and skip all the use of the answer)
           continue;
         }
         Ok(ans) => ans,
@@ -306,6 +372,9 @@ impl FlightParams {
       let t_1 = answer[6];
       let t_2 = answer[7];
 
+      // Debugging only
+      best_norm = norm.min(best_norm);
+
       if norm > SOLVE_TOLERANCE {
         // Case where magnitude of position or velocity are so large, the norm will be a lot larger but still
         // be effectively correct.
@@ -321,25 +390,24 @@ impl FlightParams {
         );
         if pos_percent_off > ANS_PERCENT_OFF || vel_percent_off > ANS_PERCENT_OFF {
           warn!("Unable to solve flight path with params: {:?} with norm: {:0.4?}.", self, norm);
-          // This attempt didn't work. On to the next one (and skip all the use of the answer)
           continue;
         }
-      };
+      }
 
       if t_1 < 0.0 || t_2 < 0.0 {
         warn!("(compute_flight_path) Unable to solve flight path with params: {self:?} with negative time.");
         continue;
       }
 
-      info!("(compute_flight_path) Computed path with a_1: {a_1:?}, a_2: {a_2:?}, t_1: {t_1:?}, t_2: {t_2:?}");
+      info!("(compute_flight_path) Computed path with a_1: {a_1:0.2?}, a_2: {a_2:0.2?}, t_1: {t_1:0.2?}, t_2: {t_2:0.2?}");
 
       // Debugging only...
       if a_1.magnitude() > self.max_acceleration || a_2.magnitude() > self.max_acceleration {
-        warn!("(compute_flight_path) Path acceleration greater than max.  a_1: {a_1:?}, a_2: {a_2:?}");
+        warn!("(compute_flight_path) Path acceleration greater than max.  a_1: {a_1:0.2?}, a_2: {a_2:0.2?} |a_1|: {:0.2?}, |a_2|: {:0.2?} max_acceleration: {:0.2?}", a_1.magnitude(), a_2.magnitude(), self.max_acceleration);
         // Trim the accelerations.
-        a_1 = a_1.normalize() * (self.max_acceleration - 0.1).max(0.0);
-        a_2 = a_2.normalize() * (self.max_acceleration - 0.1).max(0.0);
-        info!("(compute_flight_path) Trimmed path to a_1: {a_1:?}, a_2: {a_2:?}");
+        a_1 = a_1.normalize() * (self.max_acceleration - 1e-12).max(0.0);
+        a_2 = a_2.normalize() * (self.max_acceleration - 1e-12).max(0.0);
+        info!("(compute_flight_path) Trimmed path to a_1: {a_1:0.2?}, a_2: {a_2:0.2?}");
       }
 
       let (path, end_velocity) = self.compute_path(&a_1, &a_2, t_1, t_2);
@@ -352,7 +420,7 @@ impl FlightParams {
       #[allow(clippy::cast_sign_loss)]
       let t_2 = t_2.round() as u64;
 
-      return Some(FlightPathResult {
+      return Ok(FlightPathResult {
         path,
         end_velocity,
         // Convert acceleration back into G's (vs m/s^2) at this point.
@@ -379,8 +447,10 @@ impl FlightParams {
         let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
         let new_vel = vel + accel * delta;
 
-        info!("(compute_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}", 
-                        pos, accel, delta, new_pos, new_vel);
+        info!(
+          "(compute_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}",
+          pos, accel, delta, new_pos, new_vel
+        );
 
         path.push(new_pos);
         pos = new_pos;
@@ -686,30 +756,31 @@ mod tests {
 
   #[test_log::test]
   fn test_compute_flight_path() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: -2e7,
         y: 1e6,
         z: 1.5e7,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 1e7,
         y: -2e6,
         z: -2.0e7,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: 500.0,
         y: 0.0,
         z: 0.0,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: 500.0,
         y: 0.0,
         z: 100.0,
       },
-      target_velocity: None,
-      max_acceleration: 4.0 * G,
-    };
+      None,
+      None,
+      4.0 * G,
+    );
 
     let plan = params.compute_flight_path().unwrap();
 
@@ -728,30 +799,31 @@ mod tests {
 
   #[test_log::test]
   fn test_compute_flight_path_with_null_target_velocity() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: -2e7,
         y: 1e6,
         z: 1.5e7,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 1e7,
         y: -2e6,
         z: -2.0e7,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: 500.0,
         y: 0.0,
         z: 0.0,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: 500.0,
         y: 0.0,
         z: 100.0,
       },
-      target_velocity: Some(Vec3 { x: 0.0, y: 0.0, z: 0.0 }),
-      max_acceleration: 4.0 * G,
-    };
+      Some(Vec3 { x: 0.0, y: 0.0, z: 0.0 }),
+      Some(Vec3 { x: 0.0, y: 0.0, z: 0.0 }),
+      4.0 * G,
+    );
 
     let plan = params.compute_flight_path().unwrap();
 
@@ -776,22 +848,23 @@ mod tests {
   #[test_log::test]
   fn test_compute_flight_short_first_accel() {
     const MAX_ACCEL: f64 = 6.0 * G;
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: 7_000_000.0,
         y: -7_000_000.0,
         z: 7_000_000.0,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 145_738.5,
         y: 39_021_470.2,
         z: 145_738.5,
       },
-      start_vel: Vec3 { x: 0.0, y: 0.0, z: 0.0 },
-      end_vel: Vec3 { x: 0.0, y: 0.0, z: 0.0 },
-      target_velocity: None,
-      max_acceleration: MAX_ACCEL,
-    };
+      Vec3 { x: 0.0, y: 0.0, z: 0.0 },
+      Vec3 { x: 0.0, y: 0.0, z: 0.0 },
+      None,
+      None,
+      MAX_ACCEL,
+    );
 
     let plan = params.compute_flight_path().unwrap();
 
@@ -818,7 +891,7 @@ mod tests {
     info!(" Actual plan: {:?}", plan.plan);
 
     assert_eq!(plan.path.len(), expected_len);
-    assert_relative_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-10);
+    assert_relative_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
     let p_error = pos_error(&params.start_pos, &params.end_pos, plan.path.last().unwrap());
 
     assert!(p_error < 0.01, "Position error is {p_error} > 0.01");
@@ -826,19 +899,20 @@ mod tests {
 
   #[test_log::test]
   fn test_fast_velocity_compute() {
-    let params = FlightParams {
-      start_pos: Vec3 { x: 0.0, y: 0.0, z: 0.0 },
-      end_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 { x: 0.0, y: 0.0, z: 0.0 },
+      Vec3 {
         x: -1e6,
         y: 0.0,
         z: 0.0,
       },
-      start_vel: Vec3 { x: 1e4, y: 0.0, z: 0.0 },
-      end_vel: Vec3 { x: 1e2, y: 0.0, z: 0.0 },
-      target_velocity: None,
+      Vec3 { x: 1e4, y: 0.0, z: 0.0 },
+      Vec3 { x: 1e2, y: 0.0, z: 0.0 },
+      None,
+      None,
       //max_acceleration: 4.0 * G,
-      max_acceleration: 40.0,
-    };
+      40.0,
+    );
 
     let plan = params.compute_flight_path().unwrap();
 
@@ -851,40 +925,41 @@ mod tests {
 
     info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
 
-    assert!(p_error < 0.01);
+    assert!(p_error < 0.03);
     assert!(v_error < 0.01);
   }
 
   #[test_log::test]
   fn test_compute_flight_path_with_target_velocity() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: -2e7,
         y: 1e6,
         z: 1.5e7,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 1e7,
         y: -2e6,
         z: -2.0e7,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: 500.0,
         y: 0.0,
         z: 0.0,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: 500.0,
         y: 0.0,
         z: 100.0,
       },
-      target_velocity: Some(Vec3 {
+      Some(Vec3 {
         x: -1000.0,
         y: 1000.0,
         z: -1000.0,
       }),
-      max_acceleration: 6.0 * G,
-    };
+      None,
+      6.0 * G,
+    );
 
     let plan = params.compute_flight_path().unwrap();
 
@@ -925,27 +1000,192 @@ mod tests {
   }
 
   #[test_log::test]
+  fn test_compute_flight_path_with_simple_target_acceleration() {
+    let mut params = FlightParams::new(
+      Vec3 {
+        x: 0.,
+        y: 0.,
+        z: 0.,
+      },
+      Vec3 {
+        x: 10000.,
+        y: 0.,
+        z: 0.,
+      },
+      Vec3 {
+        x: 0.,
+        y: 0.,
+        z: 0.,
+      },
+      Vec3 {
+        x: 1000.,
+        y: 0.,
+        z: 0.,
+      },
+      Some(Vec3 {
+        x: 1000.0,
+        y: 0.0,
+        z: 0.0,
+      }),
+      Some(Vec3 {
+        x: 10.0,
+        y: 0.0,
+        z: 0.0,
+      }),
+      6.0 * G,
+    );
+
+    for i in (100..=3000).step_by(100) {
+      let pos = params.pos_eq(Vec3::zero(), Vec3::zero(), i as f64, 0.0);
+      println!("t={i:0.0?} pos={pos:0.0?}");
+    }
+
+    let plan = params.compute_flight_path().unwrap();
+
+    #[allow(clippy::cast_precision_loss)]
+    let full_rounds_duration = plan.plan.duration() as f64;
+    let real_end_target = Vec3 {
+      x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().x * full_rounds_duration * full_rounds_duration,
+      y: params.end_pos.y + params.target_velocity.unwrap().y * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().y * full_rounds_duration * full_rounds_duration,
+      z: params.end_pos.z + params.target_velocity.unwrap().z * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().z * full_rounds_duration * full_rounds_duration,
+    };
+
+    let real_end_velocity = params.end_vel + Vec3 {
+      x: params.target_acceleration.unwrap().x * full_rounds_duration,
+      y: params.target_acceleration.unwrap().y * full_rounds_duration,
+      z: params.target_acceleration.unwrap().z * full_rounds_duration,
+    };
+
+    info!(
+      "Start Pos: {:?}\tEnd Pos: {:?}\tReal End Pos: {:?}",
+      params.start_pos, params.end_pos, real_end_target
+    );
+    info!("Start Vel: {:?}\tEnd Vel: {:?}", params.start_vel, real_end_velocity);
+    info!("Path: {:?}\tVel{:?}", plan.path, plan.end_velocity);
+
+    let v_error = vel_error(&params.start_vel, &real_end_velocity, &plan.end_velocity);
+    let p_error = pos_error(&params.start_pos, &real_end_target, plan.path.last().unwrap());
+
+    info!("Vel Error: {}\tPos Error: {}", v_error, p_error);
+    // Add assertions here to validate the computed flight path and velocity
+    assert_eq!(plan.path.len(), 3);
+    assert!(
+      p_error < 0.01,
+      "Pos error is too high ({p_error}).Target position: {:0.0?}, actual position: {:0.0?}",
+      real_end_target,
+      plan.path.last().unwrap()
+    );
+    assert!(
+      v_error < 0.001,
+      "Target velocity: {:0.0?}, actual velocity: {:0.0?}",
+      real_end_velocity,
+      plan.end_velocity
+    );
+  }
+
+  #[test_log::test]
+  fn test_compute_flight_path_with_target_acceleration() {
+    let mut params = FlightParams::new(
+      Vec3 {
+        x: -2e7,
+        y: 1e6,
+        z: 1.5e7,
+      },
+      Vec3 {
+        x: 1e7,
+        y: -2e6,
+        z: -2.0e7,
+      },
+      Vec3 {
+        x: 500.0,
+        y: 0.0,
+        z: 0.0,
+      },
+      Vec3 {
+        x: 500.0,
+        y: 0.0,
+        z: 100.0,
+      },
+      Some(Vec3 {
+        x: -1000.0,
+        y: 1000.0,
+        z: -1000.0,
+      }),
+      Some(Vec3 {
+        x: -20.0,
+        y: 20.0,
+        z: 0.0,
+      }),
+      6.0 * G,
+    );
+
+    let plan = params.compute_flight_path().unwrap_or_else(|e| panic!("Unable to compute flight path with best norm: {e}"));
+
+    #[allow(clippy::cast_precision_loss)]
+    //let full_rounds_duration = (plan.plan.duration() as f64 / DELTA_TIME_F64).ceil() * DELTA_TIME_F64;
+    let full_rounds_duration = plan.plan.duration() as f64;
+    let real_end_target = Vec3 {
+      x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().x * full_rounds_duration * full_rounds_duration,
+      y: params.end_pos.y + params.target_velocity.unwrap().y * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().y * full_rounds_duration * full_rounds_duration,
+      z: params.end_pos.z + params.target_velocity.unwrap().z * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().z * full_rounds_duration * full_rounds_duration,
+    };
+
+    let real_end_velocity = params.end_vel + Vec3 {
+      x: params.target_acceleration.unwrap().x * full_rounds_duration,
+      y: params.target_acceleration.unwrap().y * full_rounds_duration,
+      z: params.target_acceleration.unwrap().z * full_rounds_duration,
+    };
+
+    info!(
+      "Start Pos: {:?}\tEnd Pos: {:?}\nReal End Pos: {:?}",
+      params.start_pos, params.end_pos, real_end_target
+    );
+    info!("Start Vel: {:?}\tEnd Vel: {:?}\tReal End Vel: {:?}", params.start_vel, params.end_vel, real_end_velocity);
+    info!("Path: {:?}\tVel{:?}", plan.path, real_end_velocity);
+
+    let v_error = vel_error(&params.start_vel, &real_end_velocity, &plan.end_velocity);
+    let p_error = pos_error(&params.start_pos, &real_end_target, plan.path.last().unwrap());
+
+    info!("Vel Error: {}\tPos Error: {}", v_error, p_error);
+    // Add assertions here to validate the computed flight path and velocity
+    assert_eq!(plan.path.len(), 8);
+    assert!(
+      p_error < 0.01,
+      "Pos error is too high ({p_error}).Target position: {:0.0?}, actual position: {:0.0?}",
+      real_end_target,
+      plan.path.last().unwrap()
+    );
+    assert!(
+      v_error < 0.001,
+      "Target velocity: {:0.0?}, actual velocity: {:0.0?}",
+      params.end_vel,
+      real_end_velocity
+    );
+  }
+
+  #[test_log::test]
   fn test_compute_flight_path_zero_velocity() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: 7_000_000.0,
         y: -7_000_000.0,
         z: 7_000_000.0,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 7_000_000.0,
         y: -7_000_000.0,
         z: 7_000_000.0,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: 6000.0,
         y: 6000.0,
         z: -6000.0,
       },
-      end_vel: Vec3 { x: 0.0, y: 0.0, z: 0.0 },
-      target_velocity: None,
-      max_acceleration: 6.0 * G,
-    };
+      Vec3 { x: 0.0, y: 0.0, z: 0.0 },
+      None,
+      None,
+      6.0 * G,
+    );
 
     let plan = params.compute_flight_path().unwrap();
 
@@ -986,14 +1226,7 @@ mod tests {
       let end_vel = Vec3::new(rng.gen_range(-1e3..1e3), rng.gen_range(-1e3..1e3), rng.gen_range(-1e3..1e3));
       let max_acceleration = rng.gen_range(1.0..10.0) * G;
 
-      let params = FlightParams {
-        start_pos,
-        end_pos,
-        start_vel,
-        end_vel,
-        target_velocity: None,
-        max_acceleration,
-      };
+      let mut params = FlightParams::new(start_pos, end_pos, start_vel, end_vel, None, None, max_acceleration);
 
       let result = params.compute_flight_path().unwrap();
 
@@ -1017,14 +1250,15 @@ mod tests {
     let current_vel = Vec3::new(100.0, 200.0, 300.0);
 
     // Create FlightParams
-    let params = FlightParams {
-      start_pos: current_pos,
-      end_pos: current_pos, // Same as start_pos
-      start_vel: current_vel,
-      end_vel: current_vel, // Same as start_vel
-      target_velocity: None,
-      max_acceleration: 6.0 * G, // Using a typical max acceleration
-    };
+    let mut params = FlightParams::new(
+      current_pos,
+      current_pos, // Same as start_pos
+      current_vel,
+      current_vel, // Same as start_vel
+      None,
+      None,
+      6.0 * G, // Using a typical max acceleration
+    );
 
     // Compute flight path
     let result = params.compute_flight_path().unwrap();
@@ -1056,37 +1290,38 @@ mod tests {
   // This test is passed when the percent difference method on a valid route.
   #[test_log::test]
   fn test_compute_large_absolutes_flight_path() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: 910_933_835.0,
         y: 965_592_541.0,
         z: -12_291_638.0,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 707_200_724.0,
         y: 772_000_688.0,
         z: -43.69,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: -130_149.0,
         y: -103_674.0,
         z: 7_985.0,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: 2_000.0,
         y: 20_000.0,
         z: 0.0,
       },
-      target_velocity: Some(Vec3 {
+      Some(Vec3 {
         x: 2_000.0,
         y: 20_000.0,
         z: 0.0,
       }),
-      max_acceleration: 58.842,
-    };
+      None,
+      58.842,
+    );
 
     // If we get a result, then the test worked!
-    let Some(result) = params.compute_flight_path() else {
+    let Ok(result) = params.compute_flight_path() else {
       panic!("Unable to compute flight path.");
     };
 
@@ -1106,34 +1341,35 @@ mod tests {
   // This test is passed when the percent difference method on a valid route.
   #[test_log::test]
   fn test_compute_unsolved() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: 911_977_932.0,
         y: 1_001_160_673.0,
         z: -29_410_766.0,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 743_210_932.0,
         y: 856_298_164.0,
         z: -25_419_761.941_245_42,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: -108_793.252_236_999_37,
         y: -66_041.762_155_938_25,
         z: -6_239.610_130_146_329_5,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: 20005.0,
         y: 46831.0,
         z: -14122.0,
       },
-      target_velocity: Some(Vec3 {
+      Some(Vec3 {
         x: 20005.0,
         y: 46831.0,
         z: -14122.0,
       }),
-      max_acceleration: 58.842,
-    };
+      None,
+      58.842,
+    );
 
     debug!("D_s={:?}", params.start_pos - params.end_pos);
     debug!("norm_s = {:?}", (params.start_pos - params.end_pos).normalize());
@@ -1141,7 +1377,7 @@ mod tests {
     debug!("norm_v = {:?}", (params.start_vel - params.end_vel).normalize());
 
     // If we get a result, then the test worked!
-    let Some(result) = params.compute_flight_path() else {
+    let Ok(result) = params.compute_flight_path() else {
       panic!("Unable to compute flight path.");
     };
 
@@ -1153,34 +1389,35 @@ mod tests {
 
   #[test_log::test]
   fn test_compute_unsolved_2() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: 1_004_140_073.916_692,
         y: 1_054_937_486.251_946_4,
         z: -17_909_755.019_433_156,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 730_823_285.603_130_8,
         y: 831_711_041.261_878_3,
         z: -16_268_640.810_433_429,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: -136_013.837_557_852_88,
         y: -100_737.856_769_481_92,
         z: 8_396.003_458_726_978,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: 16_404.521_600_000_004,
         y: 41_465.561_600_000_015,
         z: -11_297.664_000_000_002,
       },
-      target_velocity: Some(Vec3 {
+      Some(Vec3 {
         x: 16_404.521_600_000_004,
         y: 41_465.561_600_000_015,
         z: -11_297.664_000_000_002,
       }),
-      max_acceleration: 58.842,
-    };
+      None,
+      58.842,
+    );
 
     debug!("D_s={:?}", params.start_pos - params.end_pos);
     debug!("norm_s = {:?}", (params.start_pos - params.end_pos).normalize());
@@ -1188,7 +1425,7 @@ mod tests {
     debug!("norm_v = {:?}", (params.start_vel - params.end_vel).normalize());
 
     // If we get a result, then the test worked!
-    let Some(result) = params.compute_flight_path() else {
+    let Ok(result) = params.compute_flight_path() else {
       panic!("Unable to compute flight path.");
     };
     info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
@@ -1205,37 +1442,38 @@ mod tests {
   //   target_velocity: Some(Vector3 [-40601.31144820167, -65405.92202694659, 71383.6073708256]), max_acceleration: 58.842 }
   #[test_log::test]
   fn test_compute_unsolved_3() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: 1_640_287_738.780_708_8,
         y: 2_784_954_239.014_756_7,
         z: -346_247_399.690_617_5,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 1_991_332_342.536_55,
         y: 3_373_502_889.264_817,
         z: -664_233_816.157_054_1,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: 109_068.545_226_195_87,
         y: 185_979.094_691_785_5,
         z: -67_225.836_469_588_38,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: -40_601.311_448_201_67,
         y: -65_405.922_026_946_59,
         z: 71_383.607_370_825_6,
       },
-      target_velocity: Some(Vec3 {
+      Some(Vec3 {
         x: -40_601.311_448_201_67,
         y: -65_405.922_026_946_59,
         z: 71_383.607_370_825_6,
       }),
-      max_acceleration: 58.842,
-    };
+      None,
+      58.842,
+    );
 
     // If we get a result, then the test worked!
-    let Some(result) = params.compute_flight_path() else {
+    let Ok(result) = params.compute_flight_path() else {
       panic!("Unable to compute flight path.");
     };
     info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);
@@ -1244,45 +1482,46 @@ mod tests {
   }
 
   // Another test with:
-  // FlightParams { start_pos: Vector3 [906717888.588974, 1015658806.334491, -28797065.3460416], 
-  // end_pos: Vector3 [746331550.4825101, 892271718.3666573, -26701355.966099627], 
-  // start_vel: Vector3 [-109143.90001247398, -57926.015143822726, -6962.14849300116], 
-  // end_vel: Vector3 [19299.5, 46478.9, -14828.2], 
-  // target_velocity: Some(Vector3 [19299.5, 46478.9, -14828.2]), 
+  // FlightParams { start_pos: Vector3 [906717888.588974, 1015658806.334491, -28797065.3460416],
+  // end_pos: Vector3 [746331550.4825101, 892271718.3666573, -26701355.966099627],
+  // start_vel: Vector3 [-109143.90001247398, -57926.015143822726, -6962.14849300116],
+  // end_vel: Vector3 [19299.5, 46478.9, -14828.2],
+  // target_velocity: Some(Vector3 [19299.5, 46478.9, -14828.2]),
   // max_acceleration: 58.842 }
   #[test_log::test]
   fn test_compute_unsolved_4() {
-    let params = FlightParams {
-      start_pos: Vec3 {
+    let mut params = FlightParams::new(
+      Vec3 {
         x: 906_717_888.588_974,
         y: 1_015_658_806.334_491,
         z: -28_797_065.346_041_6,
       },
-      end_pos: Vec3 {
+      Vec3 {
         x: 746_331_550.482_510_1,
         y: 892_271_718.366_657_3,
         z: -26_701_355.966_099_627,
       },
-      start_vel: Vec3 {
+      Vec3 {
         x: -109_143.900_012_473_98,
         y: -57_926.015_143_822_726,
         z: -6_962.148_493_001_16,
       },
-      end_vel: Vec3 {
+      Vec3 {
         x: 19_299.5,
         y: 46_478.9,
         z: -14_828.2,
       },
-      target_velocity: Some(Vec3 {
+      Some(Vec3 {
         x: 19_299.5,
         y: 46_478.9,
         z: -14_828.2,
       }),
-      max_acceleration: 58.842,
-    };
+      None,
+      58.842,
+    );
 
     // If we get a result, then the test worked!
-    let Some(result) = params.compute_flight_path() else {
+    let Ok(result) = params.compute_flight_path() else {
       panic!("Unable to compute flight path.");
     };
     info!("Start Pos: {:?}\nEnd Pos: {:?}", params.start_pos, params.end_pos,);

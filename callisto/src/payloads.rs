@@ -101,6 +101,7 @@ pub struct ComputePathMsg {
         with = "::serde_with:: As :: < Option < Vec3asVec > >"
     )]
   pub target_velocity: Option<Vec3>,
+  pub target_acceleration: Option<Vec3>,
   pub standoff_distance: f64,
 }
 
@@ -311,6 +312,7 @@ mod tests {
       end_pos: Vec3::zero(),
       end_vel: Vec3::zero(),
       target_velocity: None,
+      target_acceleration: None,
       standoff_distance: 0.0,
     };
 
@@ -335,6 +337,7 @@ mod tests {
         y: 20.0,
         z: 30.0,
       }),
+      target_acceleration: None,
       standoff_distance: 100.0,
     };
 
@@ -350,6 +353,37 @@ mod tests {
     assert_eq!(json_str2, json2.to_string());
 
     let _response_msg2 = serde_json::from_str::<ComputePathMsg>(json_str2.as_str()).unwrap();
+
+    let msg3 = ComputePathMsg {
+      entity_name: "ship1".to_string(),
+      end_pos: Vec3::zero(),
+      end_vel: Vec3::zero(),
+      target_velocity: Some(Vec3 {
+        x: 10.0,
+        y: 20.0,
+        z: 30.0,
+      }),
+      target_acceleration: Some(Vec3 {
+        x: -10.0,
+        y: 0.,
+        z: 0.,
+      }),
+      standoff_distance: 100.0,
+    };
+
+    let json3 = json!({
+        "entity_name": "ship1",
+        "end_pos": [0.0, 0.0, 0.0],
+        "end_vel": [0.0, 0.0, 0.0],
+        "target_velocity": [10.0, 20.0, 30.0],
+        "target_acceleration": [-10.0, 0.0, 0.0],
+        "standoff_distance": 100.0,
+    });
+
+    let json_str3 = serde_json::to_string(&msg3).unwrap();
+    assert_eq!(json_str3, json3.to_string());
+
+    let _response_msg3 = serde_json::from_str::<ComputePathMsg>(json_str3.as_str()).unwrap();
   }
 
   #[test_log::test]

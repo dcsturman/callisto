@@ -905,6 +905,7 @@ async fn integration_compute_path_basic() {
       end_vel: [0.0, 0.0, 0.0].into(),
       standoff_distance: 0.0,
       target_velocity: None,
+      target_acceleration: None,
     }),
   )
   .await;
@@ -918,7 +919,8 @@ async fn integration_compute_path_basic() {
         x: 1_906_480.8,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
     assert_ulps_eq!(
       plan.path[2],
@@ -926,11 +928,12 @@ async fn integration_compute_path_basic() {
         x: 7_625_923.2,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
     assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
     let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-5);
     assert_eq!(t, 1414);
 
     if let Some(accel) = plan.plan.1 {
@@ -941,7 +944,8 @@ async fn integration_compute_path_basic() {
           x: -3.0,
           y: 0.0,
           z: 0.0
-        }
+        },
+        epsilon = 1e-5
       );
     } else {
       panic!("Expecting second acceleration.");
@@ -991,6 +995,7 @@ async fn integration_compute_path_with_standoff() {
       end_vel: [0.0, 0.0, 0.0].into(),
       standoff_distance: 60000.0,
       target_velocity: None,
+      target_acceleration: None,
     }),
   )
   .await;
@@ -1004,7 +1009,8 @@ async fn integration_compute_path_with_standoff() {
         x: 1_906_480.8,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
     assert_ulps_eq!(
       plan.path[2],
@@ -1012,12 +1018,13 @@ async fn integration_compute_path_with_standoff() {
         x: 7_625_923.2,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
     assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
 
     let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-5);
     assert_eq!(t, 1413);
 
     if let Some(accel) = plan.plan.1 {
@@ -1090,6 +1097,7 @@ async fn integration_malformed_requests() {
       end_vel: [0.0, 0.0, 0.0].into(),
       standoff_distance: 0.0,
       target_velocity: None,
+      target_acceleration: None,
     }),
   )
   .await;

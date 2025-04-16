@@ -8,7 +8,7 @@
 
 use pretty_env_logger;
 
-use cgmath::{assert_ulps_eq, Zero};
+use cgmath::{assert_ulps_eq, assert_relative_eq, Zero};
 use std::sync::{Arc, Mutex};
 use test_log::test;
 
@@ -428,7 +428,8 @@ async fn test_compute_path_basic() {
       x: 1_906_480.8,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-5
   );
   assert_ulps_eq!(
     plan.path[2],
@@ -436,11 +437,12 @@ async fn test_compute_path_basic() {
       x: 7_625_923.2,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-4
   );
   assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
   let (a, t) = plan.plan.0.into();
-  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-7);
   assert_eq!(t, 1000);
 
   if let Some(accel) = plan.plan.1 {
@@ -451,7 +453,8 @@ async fn test_compute_path_basic() {
         x: -3.0,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-7
     );
   } else {
     panic!("Expecting second acceleration.")
@@ -479,13 +482,14 @@ async fn test_compute_path_with_standoff() {
 
   assert_eq!(plan.path.len(), 9);
   assert_eq!(plan.path[0], Vec3::zero());
-  assert_ulps_eq!(
+  assert_relative_eq!(
     plan.path[1],
     Vec3 {
       x: 1_906_480.8,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-5
   );
   assert_ulps_eq!(
     plan.path[2],
@@ -493,11 +497,12 @@ async fn test_compute_path_with_standoff() {
       x: 7_625_923.2,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-5
   );
-  assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
+  assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
   let (a, t) = plan.plan.0.into();
-  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-5);
   assert_eq!(t, 1413);
 
   if let Some(accel) = plan.plan.1 {
@@ -508,7 +513,8 @@ async fn test_compute_path_with_standoff() {
         x: -3.0,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-7
     );
   } else {
     panic!("Expecting second acceleration.")

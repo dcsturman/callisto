@@ -104,6 +104,7 @@ export function Controls(args: {
     end_pos: [number, number, number],
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null,
+    target_accel: [number, number, number] | null,
     standoff: number
   ) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
@@ -256,8 +257,22 @@ export function Controls(args: {
                 </div>
               </div>
             )}
-            <h2 className="control-form">Current Position</h2>
-            <div style={{ display: "flex", justifyContent: "space-around" }}>
+             <span>
+                <h2>Show Ranges&nbsp;
+                <input
+                  type="checkbox"
+                  checked={args.showRange !== null}
+                  onChange={() => {
+                    if (args.showRange === null && args.computerShip) {
+                      args.setShowRange(args.computerShip.name);
+                    } else {
+                      args.setShowRange(null);
+                    }
+                  }}
+                /></h2>
+              </span>
+            <h2 className="control-form">Current Position (km)</h2>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">
                 {"(" +
                   (args.computerShip.position[0] / POSITION_SCALE).toFixed(0) +
@@ -282,8 +297,20 @@ export function Controls(args: {
                 &nbsp;Ranges
               </span>
             </div>
+            <h2 className="control-form">Current Velocity (m/s)</h2>
+            <div style={{ display: "flex" }}>
+              <pre className="plan-accel-text">
+                {"(" +
+                  args.computerShip.velocity[0].toFixed(0) +
+                  ", " +
+                  args.computerShip.velocity[1].toFixed(0) +
+                  ", " +
+                  args.computerShip.velocity[2].toFixed(0) +
+                  ")"}
+              </pre>
+            </div>
             <h2 className="control-form">
-              Current Plan (s @ m/s<sup>2</sup>)
+              Current Plan (s @ G&apos;s)
             </h2>
             <NavigationPlan plan={args.computerShip.plan} />
             <hr />
@@ -334,7 +361,7 @@ export function Controls(args: {
         // Reset the computer and route on the next round.  If this gets any more complex move it into its
         // own function.
         onClick={() => {
-          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
+          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, null, 0);
           // Strip out the details on the weapons and provide an object with just
           // the name of each possible actor and the FireState they produced during the round.
           nextRound();
@@ -413,7 +440,7 @@ export function EntityInfoWindow(args: { entity: Entity }) {
         {isPlanet ? (
           <p>Radius (km): {radiusKm}</p>
         ) : isShip ? (
-          <p> Acceleration (G): {vectorToString(ship_next_accel)}</p>
+          <p> Acceleration (G): {vectorToString(ship_next_accel, 2)}</p>
         ) : (
           <></>
         )}

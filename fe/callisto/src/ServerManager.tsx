@@ -3,6 +3,7 @@ import {
   EntityRefreshCallback,
   EntityList,
   FlightPathResult,
+  G,
   Ship,
   ShipDesignTemplates,
   ShipDesignTemplate,
@@ -276,18 +277,26 @@ export function computeFlightPath(
   end_vel: [number, number, number],
   setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
+  target_accel: [number, number, number] | null = null,
   standoff: number | null = null
 ) {
   if (entity_name == null) {
     setProposedPlan(null);
     return;
   }
+
+  // If there is a target acceleration, convert it to m/s^2 from G's
+  if (target_accel != null) {
+    target_accel = [target_accel[0] * G, target_accel[1] * G, target_accel[2] * G];
+  }
+
   const payload = {
     ComputePath: {
       entity_name: entity_name,
       end_pos: end_pos,
       end_vel: end_vel,
       target_velocity: target_vel,
+      target_acceleration: target_accel,
       standoff_distance: standoff,
     },
   };

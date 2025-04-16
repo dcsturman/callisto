@@ -381,9 +381,9 @@ impl Server {
   pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<FlightPathMsg, String> {
     info!("(/compute_path) Received and processing compute path request. {:?}", msg);
 
-    debug!(
-      "(/compute_path) Computing path for entity: {} End pos: {:?} End vel: {:?}",
-      msg.entity_name, msg.end_pos, msg.end_vel
+    info!(
+      "(/compute_path) Computing path for entity: {} End pos: {:?} End vel: {:?} Target vel: {:?} Target accel: {:?}",
+      msg.entity_name, msg.end_pos, msg.end_vel, msg.target_velocity, msg.target_acceleration
     );
     // Do this in a block to clean up the lock as soon as possible.
     let (start_pos, start_vel, max_accel) = {
@@ -412,18 +412,19 @@ impl Server {
                     (adjusted_end_pos - msg.end_pos).magnitude());
     }
 
-    let params = FlightParams::new(
+    let mut params = FlightParams::new(
       start_pos,
       adjusted_end_pos,
       start_vel,
       msg.end_vel,
       msg.target_velocity,
+      msg.target_acceleration,
       max_accel,
     );
 
     debug!("(/compute_path) Call computer with params: {:?}", params);
 
-    let Some(plan) = params.compute_flight_path() else {
+    let Ok(plan) = params.compute_flight_path() else {
       return Err(format!("Unable to compute flight path: {params:?}"));
     };
 
