@@ -15,6 +15,9 @@ import {setPlan, setCrewActions} from "./ServerManager";
 import {ActionContext, SensorState, SensorAction, newSensorState} from "./Actions";
 import {EntitySelectorType, EntitySelector} from "./EntitySelector";
 
+// Distance in km for standoff from another ship.
+const DEFAULT_SHIP_STANDOFF_DISTANCE: number = 10;
+
 type ShipComputerProps = {
   ship: Ship;
   setComputerShipName: (ship_name: string | null) => void;
@@ -75,7 +78,8 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       return;
     }
 
-    let standoff = "1000";
+    let standoff = DEFAULT_SHIP_STANDOFF_DISTANCE.toString();
+    
     const planet = serverEntities.planets.find((planet) => planet.name === currentNavTarget);
 
     if (planet) { 

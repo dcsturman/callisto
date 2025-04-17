@@ -402,7 +402,7 @@ export function FireActions(args: {
               attacker={computerShip!}
               target={serverEntities.entities.ships.find((ship) => ship.name === action.target)!}
               calledShot={action.called_shot_system}
-              setCalledShot={(system) => (action.called_shot_system = system)}
+              setCalledShot={(system) => (actionsContext.updateFireCalledShot(args.computerShipName, index, system))}
             />
           </div>
         ) : (

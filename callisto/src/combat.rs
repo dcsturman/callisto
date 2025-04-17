@@ -10,7 +10,7 @@ use crate::entity::Entity;
 use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
-use crate::{debug, error};
+use crate::{debug, error, info};
 
 const DIE_SIZE: u32 = 6;
 const STANDARD_ROLL_THRESHOLD: i32 = 8;
@@ -123,17 +123,18 @@ pub fn attack(
     0
   };
 
-  debug!(
-        "(Combat.attack) Ship {} attacking with {:?} against {} with hit mod {}, weapon hit mod {}, range mod {}, lock mod {}, defense mod {}",
-        attacker_name,
-        weapon,
+  info!(
+        "(Combat.attack) Ship {attacker_name} attacking with {weapon:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
         defender.get_name(),
-        hit_mod,
-        HIT_WEAPON_MOD[weapon.kind as usize],
-        range_mod,
-        lock_mod,
-        defensive_modifier
+        HIT_WEAPON_MOD[weapon.kind as usize]
     );
+
+  if called_shot_system.is_some() {
+    info!(
+      "(Combat.attack) Called shot system is {:?}.",
+      called_shot_system.unwrap()
+    );
+  }
 
   let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
 
@@ -156,10 +157,7 @@ pub fn attack(
   let effect: u32 = u32::try_from(hit_roll - STANDARD_ROLL_THRESHOLD).unwrap_or(0);
 
   debug!(
-    "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and hits {}.",
-    attacker_name,
-    roll,
-    effect,
+    "(Combat.attack) {attacker_name}'s attack roll is {roll}, giving effect {effect}, and hits {}.",
     defender.get_name()
   );
 
@@ -303,15 +301,18 @@ fn do_critical(
   crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let location = if let Some(system) = called_shot_system {
+    debug!("(Combat.do_critical) Critical on called shot system {system:?}.");
     *system
   } else {
-    ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
-      .expect("(combat.apply_crit) Unable to convert a roll to ship system.")
+    let loc = ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
+      .expect("(combat.apply_crit) Unable to convert a roll to ship system.");
+    debug!("(Combat.do_critical) Critical on called shot system {loc:?}.");
+    loc
   };
 
   let effects = apply_crit(crit_level, location, defender, rng);
 
-  debug!("(Combat.do_critical) {} suffers crits: {:?}.", defender.get_name(), effects);
+  info!("(Combat.do_critical) {} suffers crits: {:?}.", defender.get_name(), effects);
 
   effects
 }

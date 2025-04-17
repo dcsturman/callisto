@@ -23,12 +23,14 @@ export const ActionContext = createContext<{
     target: string,
     called_shot_system?: string
   ) => void;
+  updateFireCalledShot: (shipName: string, index: number, system: string | null) => void;
   unfireWeapon: (shipName: string, weapon_id: number) => void;
 }>({
   actions: {},
   setActions: () => {},
   setSensorAction: () => {},
   fireWeapon: () => {},
+  updateFireCalledShot: () => {},
   unfireWeapon: () => {},
 });
 
@@ -120,6 +122,13 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
     updateActions(next);
   };
 
+  const updateFireCalledShot = (shipName: string, index: number, system: string | null) => {
+    actions[shipName].fire[index].called_shot_system = system;
+    console.log("(actions) Updating called shot system to " + system + "resulting in " + JSON.stringify(actions));
+    setActions(actions);
+    updateActions(actions);
+  };
+
   const unfireWeapon = (shipName: string, weapon_id: number) => {
     const new_action: UnfireAction = {weapon_id: weapon_id};
     const next = {
@@ -140,6 +149,7 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
         setActions,
         setSensorAction,
         fireWeapon,
+        updateFireCalledShot,
         unfireWeapon,
       }}>
       {children}
