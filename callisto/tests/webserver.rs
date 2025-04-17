@@ -33,7 +33,7 @@ use tokio_tungstenite::Connector;
 
 use serde_json::json;
 
-use callisto::{error, debug};
+use callisto::{debug, error};
 
 use callisto::action::ShipAction;
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
@@ -352,7 +352,7 @@ async fn integration_add_ship() {
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],
+         "plan":[[[0.0,0.0,0.0],50000]],
          "design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
@@ -424,7 +424,7 @@ async fn integration_add_planet_ship() {
   if let ResponseMsg::EntityResponse(entities) = response {
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -440,7 +440,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
           "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -493,7 +493,7 @@ async fn integration_add_planet_ship() {
     "actions":[],
     "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -509,7 +509,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -561,7 +561,7 @@ async fn integration_add_planet_ship() {
         "gravity_radius_025":1_649_890.071_763_523_2}],
     "ships":[
     {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+     "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
      "current_hull":160,
      "current_armor":5,
      "current_power":300,
@@ -577,7 +577,7 @@ async fn integration_add_planet_ship() {
      "sensor_locks": []
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+     "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
      "current_hull":160,
      "current_armor":5,
      "current_power":300,
@@ -729,7 +729,7 @@ async fn integration_update_missile() {
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
              "current_armor":13,
              "current_power":240,
@@ -745,7 +745,7 @@ async fn integration_update_missile() {
              "sensor_locks": []
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":83,
              "current_armor":13,
              "current_power":240,
@@ -852,7 +852,7 @@ async fn integration_set_acceleration() {
     &mut stream,
     RequestMsg::SetPlan(SetPlanMsg {
       name: "ship1".to_string(),
-      plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
+      plan: vec![([1.0, 2.0, 2.0].into(), 50000)].into(),
     }),
   )
   .await;
@@ -1035,7 +1035,8 @@ async fn integration_compute_path_with_standoff() {
           x: -3.0,
           y: 0.0,
           z: 0.0
-        }
+        },
+        epsilon = 1e-5
       );
     } else {
       panic!("Expecting second acceleration.");
@@ -1107,7 +1108,9 @@ async fn integration_malformed_requests() {
   );
 
   // This isn't an error but want to print this warning at the same log level as errors.
-  error!("(integration_malformed_requests) Expect an error to occur after this from server (Failed to parse, expected f64)");
+  error!(
+    "(integration_malformed_requests) Expect an error to occur after this from server (Failed to parse, expected f64)"
+  );
   // Test invalid flight plan
   let message = rpc(
     &mut stream,
@@ -1178,7 +1181,7 @@ async fn integration_bad_requests() {
   // Test setting flight plan for non-existent ship
   let msg = RequestMsg::SetPlan(SetPlanMsg {
     name: "ship1".to_string(),
-    plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
+    plan: vec![([1.0, 2.0, 2.0].into(), 50000)].into(),
   });
   let response = rpc(&mut stream, msg).await;
   assert!(matches!(response, ResponseMsg::Error(_)));

@@ -33,11 +33,11 @@ pub enum ShipAction {
 pub type ShipActionList = Vec<(String, Vec<ShipAction>)>;
 
 /// Merge the new actions into the existing actions in the entities.
-/// 
+///
 /// # Arguments
 /// * `entities` - The entities to merge the actions into.  We pass this as we need both ship data and the existing actions.
 /// * `new_actions` - The new actions to merge into the entities.
-/// 
+///
 /// # Panics
 /// Panics if the lock cannot be obtained to read a ship.
 pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
@@ -79,17 +79,25 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             // Find a _similar_ weapon to the one being deleted and delete the highest number of that (to avoid race conditions)
             let mut sorted_similar_weapon_id = current_actions
               .iter()
-              .filter_map(|action| 
-                if let ShipAction::FireAction{weapon_id: id, ..} = action { 
-                  if templates.weapons[*id] == *weapon { Some(*id) } else { None }
-                } else { None })
+              .filter_map(|action| {
+                if let ShipAction::FireAction { weapon_id: id, .. } = action {
+                  if templates.weapons[*id] == *weapon {
+                    Some(*id)
+                  } else {
+                    None
+                  }
+                } else {
+                  None
+                }
+              })
               .collect::<Vec<_>>();
             sorted_similar_weapon_id.sort_unstable();
             let max_similar_weapon_id = sorted_similar_weapon_id.last().unwrap();
 
             // Retain everything except the FireAction with the highest number of the similar weapon
-            current_actions
-              .retain(|action| !matches!(action, ShipAction::FireAction{weapon_id, ..} if max_similar_weapon_id == weapon_id));
+            current_actions.retain(
+              |action| !matches!(action, ShipAction::FireAction{weapon_id, ..} if max_similar_weapon_id == weapon_id),
+            );
           }
         }
       }

@@ -324,8 +324,7 @@ impl Server {
         let (f_actions, s_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = actions
           .iter()
           .map(|action| match action {
-            ShipAction::FireAction { .. } |
-            ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None),
+            ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None),
             ShipAction::JamMissiles
             | ShipAction::BreakSensorLock { .. }
             | ShipAction::SensorLock { .. }

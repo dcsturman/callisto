@@ -8,7 +8,7 @@
 
 use pretty_env_logger;
 
-use cgmath::{assert_ulps_eq, assert_relative_eq, Zero};
+use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
 use std::sync::{Arc, Mutex};
 use test_log::test;
 
@@ -69,7 +69,7 @@ async fn test_add_ship() {
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],
+  let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, 
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, 
         "current_sensors": "Improved", "active_weapons": [true, true, true, true],
@@ -105,7 +105,7 @@ async fn test_add_planet_ship() {
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
   let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -121,7 +121,7 @@ async fn test_add_planet_ship() {
          "sensor_locks": []
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -160,7 +160,7 @@ async fn test_add_planet_ship() {
   "actions":[],
   "ships":[
       {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -176,7 +176,7 @@ async fn test_add_planet_ship() {
        "sensor_locks": []
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -216,7 +216,7 @@ async fn test_add_planet_ship() {
       "gravity_radius_025":1_649_890.071_763_523_2}],
   "ships":[
       {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -232,7 +232,7 @@ async fn test_add_planet_ship() {
        "sensor_locks": []
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -312,7 +312,7 @@ async fn test_update_missile() {
   let compare = json!(
         {"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
              "current_armor":13,
              "current_power":240,
@@ -328,7 +328,7 @@ async fn test_update_missile() {
              "sensor_locks": []
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":83,
              "current_armor":13,
              "current_power":240,
@@ -393,7 +393,7 @@ async fn test_set_acceleration() {
   assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
   assert!(!flight_plan.has_second());
 
-  let response = server.set_plan(&serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#).unwrap());
+  let response = server.set_plan(&serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],50000]]}"#).unwrap());
   assert!(response.is_ok());
 
   let response = server.get_entities_json();
@@ -731,7 +731,7 @@ async fn test_big_fight() {
   let entities = server.get_entities_json();
   let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":96,"current_armor":3,
          "current_power":540,"current_maneuver":4,
          "current_jump":5,"current_fuel":128,
@@ -743,7 +743,7 @@ async fn test_big_fight() {
          "sensor_locks": []
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":135,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
@@ -832,7 +832,7 @@ async fn test_fight_with_crew() {
   let entities = server.get_entities_json();
   let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":169,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
@@ -844,7 +844,7 @@ async fn test_fight_with_crew() {
          "sensor_locks": []
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":47,"current_armor":3,
          "current_power":540,"current_maneuver":5,
          "current_jump":4,"current_fuel":126,

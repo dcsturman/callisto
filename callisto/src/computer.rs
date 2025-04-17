@@ -18,6 +18,9 @@ use crate::payloads::Vec3asVec;
 use crate::ship::FlightPlan;
 use crate::{debug, error, info, warn};
 
+// Wiggle room when setting thrust limits as floating point numbers can make reasonable conversations not work.
+pub const MAX_ACCEL_WIGGLE_ROOM: f64 = 0.1 * G;
+
 // Solver tolerance for typical numerical solving
 const SOLVE_TOLERANCE: f64 = 1e-4;
 // When the numbers are large sometimes we only get "close".  For this flight computer we're okay
@@ -109,22 +112,23 @@ impl FlightParams {
   }
 
   pub fn vel_eq(&self, a_1: Vec3, a_2: Vec3, t_1: f64, t_2: f64) -> Vec3 {
-    self.start_vel + a_1 * t_1 + a_2 * t_2 - (self.end_vel
-      + if let Some(target_accel) = self.target_acceleration {
-        target_accel * (t_1 + t_2)
-      } else {
-        Vec3::zero()
-      })
+    self.start_vel + a_1 * t_1 + a_2 * t_2
+      - (self.end_vel
+        + if let Some(target_accel) = self.target_acceleration {
+          target_accel * (t_1 + t_2)
+        } else {
+          Vec3::zero()
+        })
   }
 
   /**
-   * Computes a best guess for the acceleration and time at that acceleration.
+  * Computes a best guess for the acceleration and time at that acceleration.
 
-   * We get more random with each new attempt, but that can help with root solving.
-   *
-   * @returns None we are out of guesses or the next guess cannot be computed.
-   * otherwise returns a guess which is a tuple of `(accel_1, accel_2, t_1, t_2)`
-   */
+  * We get more random with each new attempt, but that can help with root solving.
+  *
+  * @returns None we are out of guesses or the next guess cannot be computed.
+  * otherwise returns a guess which is a tuple of `(accel_1, accel_2, t_1, t_2)`
+  */
   #[allow(dead_code)]
   pub fn best_guess(&self, attempt: u16) -> Option<(Vec3, Vec3, f64, f64)> {
     let delta_s = self.end_pos - self.start_pos;
@@ -399,10 +403,14 @@ impl FlightParams {
         continue;
       }
 
-      info!("(compute_flight_path) Computed path with a_1: {a_1:0.2?}, a_2: {a_2:0.2?}, t_1: {t_1:0.2?}, t_2: {t_2:0.2?}");
+      info!(
+        "(compute_flight_path) Computed path with a_1: {a_1:0.2?}, a_2: {a_2:0.2?}, t_1: {t_1:0.2?}, t_2: {t_2:0.2?}"
+      );
 
       // Debugging only...
-      if a_1.magnitude() > self.max_acceleration || a_2.magnitude() > self.max_acceleration {
+      if a_1.magnitude() > self.max_acceleration + MAX_ACCEL_WIGGLE_ROOM
+        || a_2.magnitude() > self.max_acceleration + MAX_ACCEL_WIGGLE_ROOM
+      {
         warn!("(compute_flight_path) Path acceleration greater than max.  a_1: {a_1:0.2?}, a_2: {a_2:0.2?} |a_1|: {:0.2?}, |a_2|: {:0.2?} max_acceleration: {:0.2?}", a_1.magnitude(), a_2.magnitude(), self.max_acceleration);
         // Trim the accelerations.
         a_1 = a_1.normalize() * (self.max_acceleration - 1e-12).max(0.0);
@@ -1002,26 +1010,14 @@ mod tests {
   #[test_log::test]
   fn test_compute_flight_path_with_simple_target_acceleration() {
     let mut params = FlightParams::new(
-      Vec3 {
-        x: 0.,
-        y: 0.,
-        z: 0.,
-      },
+      Vec3 { x: 0., y: 0., z: 0. },
       Vec3 {
         x: 10000.,
         y: 0.,
         z: 0.,
       },
-      Vec3 {
-        x: 0.,
-        y: 0.,
-        z: 0.,
-      },
-      Vec3 {
-        x: 1000.,
-        y: 0.,
-        z: 0.,
-      },
+      Vec3 { x: 0., y: 0., z: 0. },
+      Vec3 { x: 1000., y: 0., z: 0. },
       Some(Vec3 {
         x: 1000.0,
         y: 0.0,
@@ -1045,16 +1041,23 @@ mod tests {
     #[allow(clippy::cast_precision_loss)]
     let full_rounds_duration = plan.plan.duration() as f64;
     let real_end_target = Vec3 {
-      x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().x * full_rounds_duration * full_rounds_duration,
-      y: params.end_pos.y + params.target_velocity.unwrap().y * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().y * full_rounds_duration * full_rounds_duration,
-      z: params.end_pos.z + params.target_velocity.unwrap().z * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().z * full_rounds_duration * full_rounds_duration,
+      x: params.end_pos.x
+        + params.target_velocity.unwrap().x * full_rounds_duration
+        + 0.5 * params.target_acceleration.unwrap().x * full_rounds_duration * full_rounds_duration,
+      y: params.end_pos.y
+        + params.target_velocity.unwrap().y * full_rounds_duration
+        + 0.5 * params.target_acceleration.unwrap().y * full_rounds_duration * full_rounds_duration,
+      z: params.end_pos.z
+        + params.target_velocity.unwrap().z * full_rounds_duration
+        + 0.5 * params.target_acceleration.unwrap().z * full_rounds_duration * full_rounds_duration,
     };
 
-    let real_end_velocity = params.end_vel + Vec3 {
-      x: params.target_acceleration.unwrap().x * full_rounds_duration,
-      y: params.target_acceleration.unwrap().y * full_rounds_duration,
-      z: params.target_acceleration.unwrap().z * full_rounds_duration,
-    };
+    let real_end_velocity = params.end_vel
+      + Vec3 {
+        x: params.target_acceleration.unwrap().x * full_rounds_duration,
+        y: params.target_acceleration.unwrap().y * full_rounds_duration,
+        z: params.target_acceleration.unwrap().z * full_rounds_duration,
+      };
 
     info!(
       "Start Pos: {:?}\tEnd Pos: {:?}\tReal End Pos: {:?}",
@@ -1119,28 +1122,40 @@ mod tests {
       6.0 * G,
     );
 
-    let plan = params.compute_flight_path().unwrap_or_else(|e| panic!("Unable to compute flight path with best norm: {e}"));
+    let plan = params
+      .compute_flight_path()
+      .unwrap_or_else(|e| panic!("Unable to compute flight path with best norm: {e}"));
 
     #[allow(clippy::cast_precision_loss)]
     //let full_rounds_duration = (plan.plan.duration() as f64 / DELTA_TIME_F64).ceil() * DELTA_TIME_F64;
     let full_rounds_duration = plan.plan.duration() as f64;
     let real_end_target = Vec3 {
-      x: params.end_pos.x + params.target_velocity.unwrap().x * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().x * full_rounds_duration * full_rounds_duration,
-      y: params.end_pos.y + params.target_velocity.unwrap().y * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().y * full_rounds_duration * full_rounds_duration,
-      z: params.end_pos.z + params.target_velocity.unwrap().z * full_rounds_duration + 0.5 * params.target_acceleration.unwrap().z * full_rounds_duration * full_rounds_duration,
+      x: params.end_pos.x
+        + params.target_velocity.unwrap().x * full_rounds_duration
+        + 0.5 * params.target_acceleration.unwrap().x * full_rounds_duration * full_rounds_duration,
+      y: params.end_pos.y
+        + params.target_velocity.unwrap().y * full_rounds_duration
+        + 0.5 * params.target_acceleration.unwrap().y * full_rounds_duration * full_rounds_duration,
+      z: params.end_pos.z
+        + params.target_velocity.unwrap().z * full_rounds_duration
+        + 0.5 * params.target_acceleration.unwrap().z * full_rounds_duration * full_rounds_duration,
     };
 
-    let real_end_velocity = params.end_vel + Vec3 {
-      x: params.target_acceleration.unwrap().x * full_rounds_duration,
-      y: params.target_acceleration.unwrap().y * full_rounds_duration,
-      z: params.target_acceleration.unwrap().z * full_rounds_duration,
-    };
+    let real_end_velocity = params.end_vel
+      + Vec3 {
+        x: params.target_acceleration.unwrap().x * full_rounds_duration,
+        y: params.target_acceleration.unwrap().y * full_rounds_duration,
+        z: params.target_acceleration.unwrap().z * full_rounds_duration,
+      };
 
     info!(
       "Start Pos: {:?}\tEnd Pos: {:?}\nReal End Pos: {:?}",
       params.start_pos, params.end_pos, real_end_target
     );
-    info!("Start Vel: {:?}\tEnd Vel: {:?}\tReal End Vel: {:?}", params.start_vel, params.end_vel, real_end_velocity);
+    info!(
+      "Start Vel: {:?}\tEnd Vel: {:?}\tReal End Vel: {:?}",
+      params.start_vel, params.end_vel, real_end_velocity
+    );
     info!("Path: {:?}\tVel{:?}", plan.path, real_end_velocity);
 
     let v_error = vel_error(&params.start_vel, &real_end_velocity, &plan.end_velocity);

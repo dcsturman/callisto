@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
+use crate::action::{ShipAction, ShipActionList};
 use crate::combat::{attack, create_sand_counts, do_fire_actions, roll_dice};
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -18,7 +19,6 @@ use crate::read_local_or_cloud_file;
 use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
 use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
-use crate::action::{ShipAction, ShipActionList};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn};
@@ -26,7 +26,7 @@ use crate::{debug, error, info, warn};
 pub const DELTA_TIME: u64 = 360;
 pub const DELTA_TIME_F64: f64 = 360.0;
 
-pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
+pub const DEFAULT_ACCEL_DURATION: u64 = 50000;
 // We will use 4 sig figs for every physics constant we import.
 // This is the value of 1 (earth) gravity in m/s^2
 pub const G: f64 = 9.807_000_000;
@@ -557,8 +557,7 @@ impl Entities {
             };
             self.jam_comms(ship_name, target, rng)
           }
-          ShipAction::FireAction { .. } |
-          ShipAction::DeleteFireAction { .. } => {
+          ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }
@@ -1063,13 +1062,13 @@ mod tests {
     let acceleration2 = Vec3::new(2.0, 1.0, -2.0);
     let acceleration3 = Vec3::new(-1.0, -1.0, -0.0);
     entities
-      .set_flight_plan("Ship1", &FlightPlan((acceleration1, 10000).into(), None))
+      .set_flight_plan("Ship1", &FlightPlan((acceleration1, 50000).into(), None))
       .unwrap();
     entities
-      .set_flight_plan("Ship2", &FlightPlan((acceleration2, 10000).into(), None))
+      .set_flight_plan("Ship2", &FlightPlan((acceleration2, 50000).into(), None))
       .unwrap();
     entities
-      .set_flight_plan("Ship3", &FlightPlan((acceleration3, 10000).into(), None))
+      .set_flight_plan("Ship3", &FlightPlan((acceleration3, 50000).into(), None))
       .unwrap();
 
     // Update the entities a few times
@@ -1464,7 +1463,7 @@ mod tests {
 
     let cmp = json!({
     "ships":[
-        {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+        {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
         "current_armor":5,
         "current_power":300,
@@ -1479,7 +1478,7 @@ mod tests {
         "assist_gunners":false,
         "sensor_locks": []
         },
-        {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+        {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
         "current_armor":5,
         "current_power":300,
@@ -1494,7 +1493,7 @@ mod tests {
         "assist_gunners":false,
         "sensor_locks": []
         },
-        {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+        {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
         "current_armor":5,
         "current_power":300,
@@ -1752,10 +1751,10 @@ mod tests {
     // Test 1: Valid file
     let scenario = json!({"ships":[
             {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
@@ -1767,10 +1766,10 @@ mod tests {
     // Test 2: Add missile with a non-existent target
     let bad_scenario = json!({"ships":[
             {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
              {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
@@ -1786,10 +1785,10 @@ mod tests {
     // Test3: Add a planet with a non-existent primary
     let bad_scenario = json!({"ships":[
             {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 

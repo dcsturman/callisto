@@ -95,12 +95,16 @@ pub struct ComputePathMsg {
   #[serde_as(as = "Vec3asVec")]
   pub end_vel: Vec3,
   #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        //with = "::serde_with::rust::unwrap_or_skip"
-        with = "::serde_with:: As :: < Option < Vec3asVec > >"
-    )]
+    default,
+    skip_serializing_if = "Option::is_none",
+    with = "::serde_with:: As :: < Option < Vec3asVec > >"
+)]
   pub target_velocity: Option<Vec3>,
+  #[serde(
+  default,
+  skip_serializing_if = "Option::is_none",
+  with = "::serde_with:: As :: < Option < Vec3asVec > >"
+  )]
   pub target_acceleration: Option<Vec3>,
   pub standoff_distance: f64,
 }
@@ -363,11 +367,7 @@ mod tests {
         y: 20.0,
         z: 30.0,
       }),
-      target_acceleration: Some(Vec3 {
-        x: -10.0,
-        y: 0.,
-        z: 0.,
-      }),
+      target_acceleration: Some(Vec3 { x: -10.0, y: 0., z: 0. }),
       standoff_distance: 100.0,
     };
 

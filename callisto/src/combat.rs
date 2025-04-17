@@ -123,6 +123,8 @@ pub fn attack(
     0
   };
 
+  let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
+
   info!(
         "(Combat.attack) Ship {attacker_name} attacking with {weapon:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
         defender.get_name(),
@@ -130,16 +132,12 @@ pub fn attack(
     );
 
   if called_shot_system.is_some() {
-    info!(
-      "(Combat.attack) Called shot system is {:?}.",
-      called_shot_system.unwrap()
-    );
+    info!("(Combat.attack) Called shot system is {:?}.", called_shot_system.unwrap());
   }
 
-  let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
-
   let roll = i32::from(roll_dice(2, rng));
-  let hit_roll = roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + lock_mod + defensive_modifier;
+  let hit_roll =
+    roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + lock_mod + defensive_modifier;
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
+use crate::computer::MAX_ACCEL_WIGGLE_ROOM;
 use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
@@ -444,17 +445,32 @@ impl Entity for Ship {
       self.plan.ensure_thrust_limit(max_thrust);
       let moves = self.plan.advance_time(DELTA_TIME);
 
+      // left_over will be any time left after the last acceleration.  We apply last velocity only after the
+      // last acceleration as otherwise the accelerations are applied back to back. i.e. when you take
+      // your foot off the accelerator cruise at last velocity.
+      let mut left_over = 0.;
       for ap in moves.iter() {
         let old_velocity: Vec3 = self.velocity;
         let (accel, duration) = ap.into();
         #[allow(clippy::cast_precision_loss)]
-        let duration = duration as f64;
+        let duration: f64 = duration as f64;
         self.velocity += accel * G * duration;
         self.position += (old_velocity + self.velocity) / 2.0 * duration;
-        debug!("(Ship.update) Accelerate at {:0.3?} m/s for time {}", accel * G, duration);
+        left_over = (DELTA_TIME_F64 - duration).max(0.);
+
+        debug!("(Ship.update) Accelerate at {:0.3?} m/s^2 for time {}", accel * G, duration);
         debug!(
           "(Ship.update) New velocity: {:0.0?} New position: {:0.0?}",
           self.velocity, self.position
+        );
+      }
+
+      // Don't compare just to zero as there will be roundoff.
+      if left_over > 0.1 {
+        self.position += self.velocity * left_over;
+        debug!(
+          "(Ship.update) Then cruise at {:0.3?} m/s for time {} to position {:0.0?}",
+          self.velocity, left_over, self.position
         );
       }
     }
@@ -768,7 +784,7 @@ impl From<AccelPair> for (Vec3, u64) {
 impl AccelPair {
   #[must_use]
   pub fn in_limits(&self, limit: f64) -> bool {
-    self.0.magnitude() <= limit || approx::relative_eq!(&self.0.magnitude(), &limit, max_relative = 1e-3)
+    self.0.magnitude() <= limit + MAX_ACCEL_WIGGLE_ROOM || approx::relative_eq!(&self.0.magnitude(), &limit, max_relative = 1e-3)
   }
 }
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -799,7 +815,7 @@ fn renormalize(orig: Vec3, limit: f64) -> Vec3 {
 }
 impl Default for FlightPlan {
   fn default() -> Self {
-    FlightPlan(AccelPair(Vec3::zero(), 10000), None)
+    FlightPlan(AccelPair(Vec3::zero(), DEFAULT_ACCEL_DURATION), None)
   }
 }
 
@@ -841,13 +857,14 @@ impl FlightPlan {
     self.0 .1 == 0 || self.0 .0 == Vec3::zero()
   }
 
+  // Ensure the thrust limit on a flight plan. Limit is in m/s^2 (not G's)
   pub fn ensure_thrust_limit(&mut self, limit: f64) {
-    if self.0 .0.magnitude() > limit {
+    if self.0 .0.magnitude() > limit + MAX_ACCEL_WIGGLE_ROOM {
       self.0 .0 = renormalize(self.0 .0, limit);
     }
 
     if let Some(second) = &self.1 {
-      if second.0.magnitude() > limit {
+      if second.0.magnitude() > limit + MAX_ACCEL_WIGGLE_ROOM {
         self.set_second(renormalize(second.0, limit), second.1);
       }
     }
@@ -1186,7 +1203,7 @@ mod tests {
     assert_eq!(flight_plan.1, Some(AccelPair(accel2, time2)));
 
     // Test overwriting first acceleration
-    let new_accel1 = Vec3::new(4.0, 5.0, 6.0);
+    let new_accel1 = Vec3::new(4.0, 5.0, 6.0) * G;
     let new_time1 = 2000;
     flight_plan.set_first(new_accel1, new_time1);
 
@@ -1196,7 +1213,7 @@ mod tests {
 
     // Test overwriting second acceleration
     flight_plan.set_second(accel2, time2);
-    let new_accel2 = Vec3::new(-3.0, -4.0, -5.0);
+    let new_accel2 = Vec3::new(-3.0, -4.0, -5.0) * G;
     let new_time2 = 4000;
     flight_plan.set_second(new_accel2, new_time2);
 
@@ -1210,60 +1227,60 @@ mod tests {
     let mut flight_plan = FlightPlan::default();
 
     // Test case 1: Acceleration within limit
-    let accel1 = Vec3::new(3.0, 4.0, 0.0); // magnitude 5
+    let accel1 = Vec3::new(3.0, 4.0, 0.0) * G; // magnitude 5
     let time1 = 5000;
     flight_plan.set_first(accel1, time1);
-    flight_plan.set_second(Vec3::new(1.0, 2.0, 2.0), 3000); // magnitude 3
+    flight_plan.set_second(Vec3::new(1.0, 2.0, 2.0) * G, 3000); // magnitude 3
 
-    flight_plan.ensure_thrust_limit(6.0);
+    flight_plan.ensure_thrust_limit(6.0 * G);
 
     assert_ulps_eq!(flight_plan.0 .0, accel1);
     assert_eq!(flight_plan.0 .1, time1);
-    assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(1.0, 2.0, 2.0));
+    assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(1.0, 2.0, 2.0) * G);
     assert_eq!(flight_plan.1.as_ref().unwrap().1, 3000);
 
     // Test case 2: First acceleration exceeds limit
-    let accel2 = Vec3::new(6.0, 8.0, 0.0); // magnitude 10
+    let accel2 = Vec3::new(6.0, 8.0, 0.0) * G; // magnitude 10
     flight_plan.set_first(accel2, time1);
-    flight_plan.set_second(Vec3::new(1.0, 2.0, 2.0), 3000); // magnitude 3
+    flight_plan.set_second(Vec3::new(1.0, 2.0, 2.0) * G, 3000); // magnitude 3
 
-    flight_plan.ensure_thrust_limit(6.0);
+    flight_plan.ensure_thrust_limit(6.0 * G);
 
-    let expected_accel2 = accel2.normalize() * 6.0;
+    let expected_accel2 = accel2.normalize() * 6.0 * G;
     assert_ulps_eq!(flight_plan.0 .0, expected_accel2);
     assert_eq!(flight_plan.0 .1, time1);
-    assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(1.0, 2.0, 2.0));
+    assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(1.0, 2.0, 2.0) * G);
     assert_eq!(flight_plan.1.as_ref().unwrap().1, 3000);
 
     // Test case 3: Second acceleration exceeds limit
-    flight_plan.set_second(Vec3::new(4.0, 4.0, 4.0), 2000); // magnitude ~6.93
+    flight_plan.set_second(Vec3::new(4.0, 4.0, 4.0) * G, 2000); // magnitude ~6.93G
 
-    flight_plan.ensure_thrust_limit(6.0);
+    flight_plan.ensure_thrust_limit(6.0 * G);
 
     assert_ulps_eq!(flight_plan.0 .0, expected_accel2);
     assert_eq!(flight_plan.0 .1, time1);
-    let expected_accel3 = Vec3::new(4.0, 4.0, 4.0).normalize() * 6.0;
+    let expected_accel3 = Vec3::new(4.0, 4.0, 4.0).normalize() * 6.0 * G;
     assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, expected_accel3);
     assert_eq!(flight_plan.1.as_ref().unwrap().1, 2000);
 
     // Test case 4: Both accelerations exceed limit
-    flight_plan.set_first(Vec3::new(10.0, 0.0, 0.0), 1000);
-    flight_plan.set_second(Vec3::new(0.0, 8.0, 6.0), 1500);
+    flight_plan.set_first(Vec3::new(10.0, 0.0, 0.0) * G , 1000);
+    flight_plan.set_second(Vec3::new(0.0, 8.0, 6.0) * G, 1500);
 
-    flight_plan.ensure_thrust_limit(4.0);
+    flight_plan.ensure_thrust_limit(4.0 * G);
 
-    assert_ulps_eq!(flight_plan.0 .0, Vec3::new(4.0, 0.0, 0.0));
+    assert_ulps_eq!(flight_plan.0 .0, Vec3::new(4.0, 0.0, 0.0) * G);
     assert_eq!(flight_plan.0 .1, 1000);
-    assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(0.0, 3.2, 2.4));
+    assert_ulps_eq!(flight_plan.1.as_ref().unwrap().0, Vec3::new(0.0, 3.2, 2.4) * G);
     assert_eq!(flight_plan.1.as_ref().unwrap().1, 1500);
   }
 
   #[test_log::test]
   fn test_flight_plan_advance_time() {
     let mut flight_plan = FlightPlan::default();
-    let accel1 = Vec3::new(1.0, 2.0, 3.0);
+    let accel1 = Vec3::new(1.0, 2.0, 3.0) * G;
     let time1 = 5000;
-    let accel2 = Vec3::new(-2.0, -1.0, 0.0);
+    let accel2 = Vec3::new(-2.0, -1.0, 0.0) * G;
     let time2 = 3000;
     flight_plan.set_first(accel1, time1);
     flight_plan.set_second(accel2, time2);
@@ -1411,7 +1428,7 @@ mod tests {
     let flight_plan = FlightPlan::default();
 
     let mut iter = flight_plan.iter();
-    assert_eq!(iter.next(), Some(AccelPair(Vec3::zero(), 10000)));
+    assert_eq!(iter.next(), Some(AccelPair(Vec3::zero(), DEFAULT_ACCEL_DURATION)));
     assert_eq!(iter.next(), None);
 
     // Test case 4: FlightPlan with zero acceleration
