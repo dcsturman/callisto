@@ -317,7 +317,7 @@ impl FlightParams {
     let mut attempt = 0;
 
     // Debugging only
-    let mut best_norm = std::f64::MAX;
+    let mut best_norm = f64::MAX;
 
     loop {
       info!("(compute_flight_path) Attempt {}", attempt);
@@ -1032,7 +1032,7 @@ mod tests {
     );
 
     for i in (100..=3000).step_by(100) {
-      let pos = params.pos_eq(Vec3::zero(), Vec3::zero(), i as f64, 0.0);
+      let pos = params.pos_eq(Vec3::zero(), Vec3::zero(), f64::from(i), 0.0);
       println!("t={i:0.0?} pos={pos:0.0?}");
     }
 
