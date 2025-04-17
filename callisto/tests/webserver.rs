@@ -911,7 +911,7 @@ async fn integration_compute_path_basic() {
   .await;
 
   if let ResponseMsg::FlightPath(plan) = message {
-    assert_eq!(plan.path.len(), 9);
+    assert_eq!(plan.path.len(), 10);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
       plan.path[1],
@@ -1001,7 +1001,7 @@ async fn integration_compute_path_with_standoff() {
   .await;
 
   if let ResponseMsg::FlightPath(plan) = message {
-    assert_eq!(plan.path.len(), 9);
+    assert_eq!(plan.path.len(), 10);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
       plan.path[1],

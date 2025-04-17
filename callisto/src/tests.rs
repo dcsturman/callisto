@@ -420,7 +420,7 @@ async fn test_compute_path_basic() {
   let path_request = r#"{"entity_name":"ship1","end_pos":[29430000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#;
   let plan = server.compute_path(&serde_json::from_str(path_request).unwrap()).unwrap();
 
-  assert_eq!(plan.path.len(), 7);
+  assert_eq!(plan.path.len(), 8);
   assert_eq!(plan.path[0], Vec3::zero());
   assert_ulps_eq!(
     plan.path[1],
@@ -480,7 +480,7 @@ async fn test_compute_path_with_standoff() {
     )
     .unwrap();
 
-  assert_eq!(plan.path.len(), 9);
+  assert_eq!(plan.path.len(), 10);
   assert_eq!(plan.path[0], Vec3::zero());
   assert_relative_eq!(
     plan.path[1],

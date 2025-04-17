@@ -443,27 +443,43 @@ impl FlightParams {
     let mut vel = self.start_vel;
     let mut pos = self.start_pos;
 
+    let mut left_over_time = 0.;
     // Every path starts with the starting position
     path.push(pos);
     for (accel, duration) in [(a_1, t_1), (a_2, t_2)] {
+      // Clock to advance through everything.
       let mut time = 0.0;
-      let mut delta: f64 = DELTA_TIME_F64;
+
       while approx::relative_ne!(time - duration, 0.0, epsilon = 1e-4) && time < duration {
-        if time + delta > duration {
-          delta = duration - time;
+        // Time step to use at the current acceleration.
+        // By default is the time for a turn `DELTA_TIME_F64` but when we don't
+        // have enough time left in this acceleration period, we reduce it.
+        let mut step: f64 = DELTA_TIME_F64;
+
+        // If we have left over time from the last acceleration period, use that up first to keep us
+        // on DELTA_TIME boundaries.
+        if left_over_time > 0. {
+          step = left_over_time;
+          left_over_time = 0.;
         }
-        let new_pos = pos + vel * delta + accel * delta * delta / 2.0;
-        let new_vel = vel + accel * delta;
+        // If we don't have enough time left in this acceleration period, reduce the time step.
+        // Save the rest of the time in left_over_time so that we are always having an ending on a DELTA_TIME boundary.
+        if time + step > duration {
+          step = duration - time;
+          left_over_time = (DELTA_TIME_F64 - step).max(0.);
+        }
+        let new_pos = pos + vel * step + accel * step * step / 2.0;
+        let new_vel = vel + accel * step;
 
         info!(
           "(compute_path)\tAccelerate from {:0.0?} at {:0.1?} m/s^2 for {:0.0?}s. New Pos: {:0.0?}, New Vel: {:0.0?}",
-          pos, accel, delta, new_pos, new_vel
+          pos, accel, step, new_pos, new_vel
         );
 
         path.push(new_pos);
         pos = new_pos;
         vel = new_vel;
-        time += delta;
+        time += step;
       }
     }
     (path, vel)
@@ -800,7 +816,7 @@ mod tests {
     let p_error = pos_error(&params.start_pos, &params.end_pos, plan.path.last().unwrap());
     info!("Vel Error: {}\nPos Error: {}", v_error, p_error);
     // Add assertions here to validate the computed flight path and velocity
-    assert_eq!(plan.path.len(), 7);
+    assert_eq!(plan.path.len(), 8);
     assert!(p_error < 0.01, "Position error is {p_error} > 0.01");
     assert!(v_error < 0.001);
   }
@@ -846,7 +862,7 @@ mod tests {
     // Add assertions here to validate the computed flight path and velocity
     // Note asserting the path length in this case is kind of weak as we just had
     // to see what value made sense.  The other two tests are more meaningful.
-    assert_eq!(plan.path.len(), 7);
+    assert_eq!(plan.path.len(), 8);
     assert!(p_error < 0.01, "Position error is {p_error} > 0.01");
     assert!(v_error < 0.001);
   }
@@ -1214,7 +1230,7 @@ mod tests {
 
     info!("Vel Error: {}\tPos Error: {}", v_error, p_error);
     // Add assertions here to validate the computed flight path and velocity
-    assert_eq!(plan.path.len(), 3);
+    assert_eq!(plan.path.len(), 4);
     assert!(
       p_error < 0.001,
       "Pos error is too high ({p_error}).Target position: {:0.0?}, actual position: {:0.0?}",
