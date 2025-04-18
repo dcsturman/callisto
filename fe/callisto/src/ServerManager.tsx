@@ -20,6 +20,7 @@ export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "http:
 const DESIGN_TEMPLATE_REQUEST = '"DesignTemplateRequest"';
 const ENTITIES_REQUEST = '"EntitiesRequest"';
 const UPDATE_REQUEST = "Update";
+const RESET_REQUEST = '"Reset"';
 const LOGOUT_REQUEST = '"Logout"';
 
 // Define the (global) websocket
@@ -333,6 +334,11 @@ export function getTemplates() {
   socket.send(DESIGN_TEMPLATE_REQUEST);
 }
 
+export function resetServer() {
+  if (window.confirm("Are you sure you want to reset the server?")) {
+    socket.send(RESET_REQUEST);
+  }
+}
 export function logout() {
   socket.send(LOGOUT_REQUEST);
 }

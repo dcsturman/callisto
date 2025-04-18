@@ -108,6 +108,37 @@ impl Entities {
     self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
   }
 
+  /// Do a deep copy from one `Entities` to another.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
+  pub fn deep_copy(&self, dest: &mut Self) {
+    dest.ships.clear();
+    dest.missiles.clear();
+    dest.planets.clear();
+
+    for ship in self.ships.values() {
+      let ship = ship.read().unwrap();
+      dest.ships.insert(ship.get_name().to_string(), Arc::new(RwLock::new(ship.clone())));
+    }
+
+    for missile in self.missiles.values() {
+      let missile = missile.read().unwrap();
+      dest.missiles.insert(missile.get_name().to_string(), Arc::new(RwLock::new(missile.clone())));
+    }
+
+    for planet in self.planets.values() {
+      let planet = planet.read().unwrap();
+      dest.planets.insert(planet.get_name().to_string(), Arc::new(RwLock::new(planet.clone())));
+    }
+
+    dest.next_missile_id = self.next_missile_id;
+    dest.actions.clone_from(&self.actions);
+
+    dest.fixup_pointers().unwrap();
+    dest.reset_gravity_wells();
+  }
+
   /// Load a scenario file.  A scenario file is just a JSON encoding of a set of entities.
   /// After loading the file, the pointers are fixed up and the gravity wells are reset.
   /// # Arguments

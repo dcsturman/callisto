@@ -95,6 +95,8 @@ pub async fn handle_request(
           build_successful_auth_msgs(auth_response, server, context)
         })
     }
+
+    RequestMsg::Reset => response_with_update(server, server.reset()),
     RequestMsg::AddShip(ship) => response_with_update(server, server.add_ship(ship)),
     RequestMsg::SetPilotActions(request) => response_with_update(server, server.set_pilot_actions(&request)),
     RequestMsg::AddPlanet(planet) => response_with_update(server, server.add_planet(planet)),

@@ -22,6 +22,7 @@ use crate::{debug, info, warn};
 // Add function beyond what Entities does and provides an API to our server.
 pub struct Server {
   entities: Arc<Mutex<Entities>>,
+  initial_scenario: Entities,
   authenticator: Box<dyn Authenticator>,
   // Role this user might have assumed
   role: Role,
@@ -30,10 +31,26 @@ pub struct Server {
   test_mode: bool,
 }
 
+// TODO: Separate server and user - its all mixed together here.
 impl Server {
+  /// Create a new server.
+  ///
+  /// # Panics
+  /// If the lock cannot be obtained to read the entities.
   pub fn new(entities: Arc<Mutex<Entities>>, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
+    let mut initial_scenario = Entities {
+      ships: HashMap::new(),
+      missiles: HashMap::new(),
+      planets: HashMap::new(),
+      next_missile_id: 0,
+      actions: vec![],
+    };
+
+    entities.lock().unwrap().deep_copy(&mut initial_scenario);
+
     Server {
       entities,
+      initial_scenario,
       authenticator,
       test_mode,
       role: Role::General,
@@ -84,6 +101,24 @@ impl Server {
     debug!("(Server.login) Authenticated user {} with session key.", email);
 
     Ok(AuthResponse { email })
+  }
+
+  /// Reset a server to its initial configuration.
+  ///
+  /// # Errors
+  /// Returns an error if the user is not in the General role.
+  ///
+  /// # Panics
+  /// Panics if the lock on entities cannot be obtained.
+  pub fn reset(&self) -> Result<String, String> {
+    if self.role == Role::General {
+      info!("(Server.reset) Received and processing reset request: Resetting server!");
+      self.initial_scenario.deep_copy(&mut self.entities.lock().unwrap());
+      Ok("Server reset.".to_string())
+    } else {
+      warn!("(Server.reset) Received and processing reset request: Ignoring reset request as not in General role.");
+      Err("Not GM. Cannot reset server!".to_string())
+    }
   }
 
   /// Logs a user out by clearing the session key and email.

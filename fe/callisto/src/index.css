@@ -600,3 +600,9 @@ input {
   margin: 0px;
   margin-left: 2px;
 }
+
+.reset-and-logout-buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
