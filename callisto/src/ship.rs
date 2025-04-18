@@ -425,7 +425,7 @@ impl Entity for Ship {
   fn update(&mut self) -> Option<UpdateAction> {
     debug!("(Ship.update) Updating ship {:?}", self.name);
 
-    // If our ship is blow up, just return that effect (no need to do anything else)
+    // If our ship is blown up, just return that effect (no need to do anything else)
     if self.current_hull == 0 {
       debug!("(Ship.update) Ship {} is destroyed.", self.name);
       return Some(UpdateAction::ShipDestroyed);
@@ -448,7 +448,7 @@ impl Entity for Ship {
       // left_over will be any time left after the last acceleration.  We apply last velocity only after the
       // last acceleration as otherwise the accelerations are applied back to back. i.e. when you take
       // your foot off the accelerator cruise at last velocity.
-      let mut left_over = 0.;
+      let mut left_over = DELTA_TIME_F64;
       for ap in moves.iter() {
         let old_velocity: Vec3 = self.velocity;
         let (accel, duration) = ap.into();
@@ -456,7 +456,7 @@ impl Entity for Ship {
         let duration: f64 = duration as f64;
         self.velocity += accel * G * duration;
         self.position += (old_velocity + self.velocity) / 2.0 * duration;
-        left_over = (DELTA_TIME_F64 - duration).max(0.);
+        left_over = (left_over - duration).max(0.);
 
         debug!("(Ship.update) Accelerate at {:0.3?} m/s^2 for time {}", accel * G, duration);
         debug!(
