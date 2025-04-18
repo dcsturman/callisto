@@ -107,6 +107,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       standoff,
     });
 
+    console.log(`*********************** (ShipComputer.useEffect) implicitly build plan for ${ship.name} to target ${entity.name}.  Target ship plan = ${target_ship?.plan}`);
     // Also implicitly compute a plan since most of the time this is what the user wants.
     getAndShowPlan(
       ship.name,
@@ -162,15 +163,22 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       Number(navigationTarget.v_z),
     ];
 
+    const target_accel: [number, number, number] | null = [
+      Number(navigationTarget.a_x),
+      Number(navigationTarget.a_y),
+      Number(navigationTarget.a_z),
+    ];
+
     const standoff = Number(navigationTarget.standoff) * POSITION_SCALE;
 
     console.log(
       `Computing route for ${ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} with standoff ${standoff}`
     );
+    console.log(`*********************** (ShipComputer.handleNavigationSubmit) explicitly build plan for ${ship.name} with target ${JSON.stringify(navigationTarget)}`);
 
     // Called directly - usually when the user has specifically modified the values.
     // Can also be called implicitly in handleNavTargetSelect
-    getAndShowPlan(ship.name, end_pos, end_vel, target_vel, null, standoff);
+    getAndShowPlan(ship.name, end_pos, end_vel, target_vel, target_accel, standoff);
   }
 
   function handleAssignPlan() {
