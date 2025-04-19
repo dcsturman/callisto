@@ -279,7 +279,7 @@ function Simulator({
                 <RoleChooser />
                 <div className="reset-and-logout-buttons">
                   <Logout setAuthenticated={setAuthenticated} email={email} setEmail={setEmail} />
-                  {role === ViewMode.General && <button className="blue-button" onClick={resetServer}>Reset</button>}
+                  {role === ViewMode.General && shipName == null && <button className="blue-button" onClick={resetServer}>Reset</button>}
                 </div>
               </div>
               {role === ViewMode.General && computerShip && (

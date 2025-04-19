@@ -111,7 +111,7 @@ impl Server {
   /// # Panics
   /// Panics if the lock on entities cannot be obtained.
   pub fn reset(&self) -> Result<String, String> {
-    if self.role == Role::General {
+    if self.role == Role::General && self.ship.is_none() {
       info!("(Server.reset) Received and processing reset request: Resetting server!");
       self.initial_scenario.deep_copy(&mut self.entities.lock().unwrap());
       Ok("Server reset.".to_string())
