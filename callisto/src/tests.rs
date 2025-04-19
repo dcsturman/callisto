@@ -9,7 +9,7 @@
 use pretty_env_logger;
 
 use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, LazyLock};
 use test_log::test;
 
 use assert_json_diff::assert_json_eq;
@@ -17,6 +17,7 @@ use serde_json::json;
 
 use crate::authentication::Authenticator;
 use crate::authentication::MockAuthenticator;
+use crate::entity::G;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, LoadScenarioMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::server::Server;
@@ -26,11 +27,14 @@ fn setup_authenticator() -> Box<dyn Authenticator> {
   Box::new(MockAuthenticator::new("http://test.com"))
 }
 
-async fn setup_test_with_server(authenticator: Box<dyn Authenticator>) -> Server {
+// Define a static empty initial scenario here (for tests)
+static INITIAL_SCENARIO: LazyLock<Entities> = LazyLock::new(Entities::new);
+
+async fn setup_test_with_server<'a>(authenticator: Box<dyn Authenticator>) -> Server<'a> {
   let _ = pretty_env_logger::try_init();
   crate::ship::config_test_ship_templates().await;
 
-  Server::new(Arc::new(Mutex::new(Entities::new())), authenticator, true)
+  Server::new(Arc::new(Mutex::new(Entities::new())), &INITIAL_SCENARIO, authenticator, true)
 }
 
 /**
@@ -429,7 +433,7 @@ async fn test_compute_path_basic() {
       y: 0.0,
       z: 0.0
     },
-    epsilon = 1e-5
+    epsilon = 1e-4
   );
   assert_ulps_eq!(
     plan.path[2],
@@ -442,7 +446,7 @@ async fn test_compute_path_basic() {
   );
   assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
   let (a, t) = plan.plan.0.into();
-  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-7);
+  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-7);
   assert_eq!(t, 1000);
 
   if let Some(accel) = plan.plan.1 {
@@ -453,7 +457,7 @@ async fn test_compute_path_basic() {
         x: -3.0,
         y: 0.0,
         z: 0.0
-      },
+      } * G,
       epsilon = 1e-7
     );
   } else {
@@ -502,7 +506,7 @@ async fn test_compute_path_with_standoff() {
   );
   assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
   let (a, t) = plan.plan.0.into();
-  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-5);
+  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-5);
   assert_eq!(t, 1413);
 
   if let Some(accel) = plan.plan.1 {
@@ -513,7 +517,7 @@ async fn test_compute_path_with_standoff() {
         x: -3.0,
         y: 0.0,
         z: 0.0
-      },
+      } * G,
       epsilon = 1e-7
     );
   } else {

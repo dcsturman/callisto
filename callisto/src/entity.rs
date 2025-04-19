@@ -347,7 +347,7 @@ impl Entities {
   /// # Arguments
   /// * `fire_actions` - The fire actions to process.
   /// * `ship_snapshot` - A snapshot of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
-  ///     a ship that was destroyed earlier in the round.
+  ///  a ship that was destroyed earlier in the round.
   /// * `rng` - The random number generator to use.
   ///
   /// # Returns
@@ -1089,9 +1089,9 @@ mod tests {
     );
 
     // Assign random accelerations to entities
-    let acceleration1 = Vec3::new(1.0, 1.0, 1.0);
-    let acceleration2 = Vec3::new(2.0, 1.0, -2.0);
-    let acceleration3 = Vec3::new(-1.0, -1.0, -0.0);
+    let acceleration1 = Vec3::new(1.0, 1.0, 1.0) * G;
+    let acceleration2 = Vec3::new(2.0, 1.0, -2.0) * G;
+    let acceleration3 = Vec3::new(-1.0, -1.0, -0.0) * G;
     entities
       .set_flight_plan("Ship1", &FlightPlan((acceleration1, 50000).into(), None))
       .unwrap();

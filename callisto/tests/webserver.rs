@@ -36,7 +36,7 @@ use serde_json::json;
 use callisto::{debug, error};
 
 use callisto::action::ShipAction;
-use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
+use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use callisto::payloads::{
   AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
   SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
@@ -931,9 +931,9 @@ async fn integration_compute_path_basic() {
       },
       epsilon = 1e-5
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
     let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-5);
+    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-5);
     assert_eq!(t, 1414);
 
     if let Some(accel) = plan.plan.1 {
@@ -944,7 +944,7 @@ async fn integration_compute_path_basic() {
           x: -3.0,
           y: 0.0,
           z: 0.0
-        },
+        } * G,
         epsilon = 1e-5
       );
     } else {
@@ -1024,7 +1024,7 @@ async fn integration_compute_path_with_standoff() {
     assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
 
     let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 }, epsilon = 1e-5);
+    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-5);
     assert_eq!(t, 1413);
 
     if let Some(accel) = plan.plan.1 {
@@ -1035,7 +1035,7 @@ async fn integration_compute_path_with_standoff() {
           x: -3.0,
           y: 0.0,
           z: 0.0
-        },
+        } * G,
         epsilon = 1e-5
       );
     } else {

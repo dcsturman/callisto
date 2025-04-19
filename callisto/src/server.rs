@@ -20,9 +20,9 @@ use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
-pub struct Server {
+pub struct Server<'a> {
   entities: Arc<Mutex<Entities>>,
-  initial_scenario: Entities,
+  initial_scenario: &'a Entities,
   authenticator: Box<dyn Authenticator>,
   // Role this user might have assumed
   role: Role,
@@ -32,22 +32,12 @@ pub struct Server {
 }
 
 // TODO: Separate server and user - its all mixed together here.
-impl Server {
+impl<'a> Server<'a> {
   /// Create a new server.
   ///
   /// # Panics
   /// If the lock cannot be obtained to read the entities.
-  pub fn new(entities: Arc<Mutex<Entities>>, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
-    let mut initial_scenario = Entities {
-      ships: HashMap::new(),
-      missiles: HashMap::new(),
-      planets: HashMap::new(),
-      next_missile_id: 0,
-      actions: vec![],
-    };
-
-    entities.lock().unwrap().deep_copy(&mut initial_scenario);
-
+  pub fn new(entities: Arc<Mutex<Entities>>, initial_scenario: &'a Entities, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
     Server {
       entities,
       initial_scenario,
@@ -466,7 +456,7 @@ impl Server {
     debug!(
       "(/compute_path) Plan has real acceleration of {} vs max_accel of {}",
       plan.plan.0 .0.magnitude(),
-      max_accel / G
+      max_accel
     );
 
     Ok(plan)
@@ -529,7 +519,8 @@ mod tests {
     let mock_auth = MockAuthenticator::new("http://web.test.com");
     let authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
-    let mut server = Server::new(Arc::new(Mutex::new(Entities::new())), authenticator, false);
+    let initial_scenario = Entities::new();
+    let mut server = Server::new(Arc::new(Mutex::new(Entities::new())), &initial_scenario, authenticator, false);
 
     // Try a login
     let login_msg = LoginMsg {

@@ -51,8 +51,9 @@ impl Missile {
     // it can be shown in the UX once creation of the missile returns.
     let target_pos = target_ptr.read().unwrap().get_position();
     let target_vel = target_ptr.read().unwrap().get_velocity();
+    let target_accel = target_ptr.read().unwrap().get_acceleration();
 
-    let params = TargetParams::new(position, target_pos, velocity, target_vel, MAX_MISSILE_ACCELERATION);
+    let params = TargetParams::new(position, target_pos, velocity, target_vel, target_accel,MAX_MISSILE_ACCELERATION);
 
     debug!(
             "(Missile.new) Creating initial missile acceleration and calling targeting computer for missile {} with params: {:?}",
@@ -121,6 +122,7 @@ impl Entity for Missile {
         target.get_position(),
         self.velocity,
         target.get_velocity(),
+        target.get_acceleration(),
         MAX_MISSILE_ACCELERATION,
       );
 
@@ -167,7 +169,7 @@ impl Entity for Missile {
       // time is very large.
       #[allow(clippy::cast_precision_loss)]
       let time = time as f64;
-      self.velocity += accel * G * time;
+      self.velocity += accel * time;
       self.position += (old_velocity + self.velocity) / 2.0 * time;
       self.burns -= 1;
 

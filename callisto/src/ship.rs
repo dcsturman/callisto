@@ -239,7 +239,7 @@ impl Ship {
     // Its legal as long as the magnitudes in the flight plan are less than the max of the maneuverability rating
     // and the powerplant rating.
     // We use the current maneuverability rating in case the ship took damage
-    let max_accel = f64::from(self.max_acceleration());
+    let max_accel = f64::from(self.max_acceleration()) * G;
     debug!(
       "(Ship.set_flight_plan) ship: {}, max_accel: {} new_plan: {:?} with magnitude on first accel of {}",
       self.name,
@@ -262,6 +262,13 @@ impl Ship {
     } else {
       Err("Flight plan has first acceleration that exceeds max acceleration".to_string())
     }
+  }
+
+  /// Helper function when you just want the current acceleration. Avoids having to take apart the flight plan
+  /// outside this impl.
+  #[must_use]
+  pub fn get_acceleration(&self) -> Vec3 {
+    self.plan.0 .0
   }
 
   #[must_use]
@@ -442,7 +449,7 @@ impl Entity for Ship {
       // Adjust time in case max acceleration has changed due to combat damage.  Note this might be simplistic and require a new plan but that is up
       // to the user to notice and fix.
       let max_thrust = f64::from(self.max_acceleration());
-      self.plan.ensure_thrust_limit(max_thrust);
+      self.plan.ensure_thrust_limit(max_thrust * G);
       let moves = self.plan.advance_time(DELTA_TIME);
 
       // left_over will be any time left after the last acceleration.  We apply last velocity only after the
@@ -454,14 +461,14 @@ impl Entity for Ship {
         let (accel, duration) = ap.into();
         #[allow(clippy::cast_precision_loss)]
         let duration: f64 = duration as f64;
-        self.velocity += accel * G * duration;
+        self.velocity += accel * duration;
         self.position += (old_velocity + self.velocity) / 2.0 * duration;
         left_over = (left_over - duration).max(0.);
 
-        debug!("(Ship.update) Accelerate at {:0.3?} m/s^2 for time {}", accel * G, duration);
+        debug!("(Ship.update) Accelerate {} at {:0.3?} m/s^2 for time {}", self.name, accel, duration);
         debug!(
-          "(Ship.update) New velocity: {:0.0?} New position: {:0.0?}",
-          self.velocity, self.position
+          "(Ship.update) For ship {}: New velocity: {:0.0?} New position: {:0.0?}",
+          self.name, self.velocity, self.position
         );
       }
 
@@ -469,8 +476,8 @@ impl Entity for Ship {
       if left_over > 0.1 {
         self.position += self.velocity * left_over;
         debug!(
-          "(Ship.update) Then cruise at {:0.3?} m/s for time {} to position {:0.0?}",
-          self.velocity, left_over, self.position
+          "(Ship.update) {} cruises at {:0.3?} m/s for time {} to position {:0.0?}",
+          self.name, self.velocity, left_over, self.position
         );
       }
     }
@@ -1363,12 +1370,12 @@ mod tests {
     assert_eq!(ship.plan, zero_accel_plan);
 
     // Test case 5: Set a flight plan with acceleration at the ship's limit
-    let max_accel = f64::from(ship.max_acceleration());
+    let max_accel = f64::from(ship.max_acceleration()) * G;
     let max_accel_plan = FlightPlan::new(
       AccelPair(Vec3::new(max_accel, 0.0, 0.0), 5000),
       Some(AccelPair(Vec3::new(0.0, max_accel, 0.0), 3000)),
     );
-    assert!(ship.set_flight_plan(&max_accel_plan).is_ok());
+    assert!(ship.set_flight_plan(&max_accel_plan).is_ok(),"Setting flight plan to {max_accel_plan:?} failed.");
     assert_eq!(ship.plan, max_accel_plan);
 
     // Test case 6: Set a flight plan with a second acceleration exceeding ship's capabilities

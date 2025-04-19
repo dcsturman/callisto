@@ -59,6 +59,9 @@ pub async fn processor(
 ) {
   // All the data shared between authenticators.
   let mut connections = Vec::<Connection>::new();
+
+  let mut initial_scenario = Entities::new();
+  entities.lock().unwrap().deep_copy(&mut initial_scenario);
   loop {
     // Build the contexts in case we create a connection.
     let current_contexts = build_context(&connections).clone();
@@ -77,6 +80,7 @@ pub async fn processor(
           email.as_ref(),
           stream,
           &entities,
+          &initial_scenario,
           test_mode,
         )
         .await
@@ -110,6 +114,7 @@ pub async fn processor(
                 email.as_ref(),
                 stream,
                 &entities,
+                &initial_scenario,
                 test_mode,
             ).await else {
                 continue;
@@ -252,8 +257,8 @@ fn build_context(connections: &[Connection]) -> Vec<UserData> {
     })
     .collect::<Vec<UserData>>()
 }
-struct Connection {
-  server: Server,
+struct Connection<'a> {
+  server: Server<'a>,
   stream: WebSocketStream<SubStream>,
 }
 
@@ -263,15 +268,15 @@ fn is_broadcast_message(message: &ResponseMsg) -> bool {
 
 #[allow(clippy::borrowed_box)]
 #[must_use]
-async fn build_connection(
+async fn build_connection<'a>(
   auth_template: &Box<dyn Authenticator>, session_key: &str, mut context: Vec<UserData>, email: Option<&String>,
-  stream: WebSocketStream<SubStream>, entities: &Arc<Mutex<Entities>>, test_mode: bool,
-) -> Option<Connection> {
+  stream: WebSocketStream<SubStream>, entities: &Arc<Mutex<Entities>>, initial_scenario: &'a Entities, test_mode: bool,
+) -> Option<Connection<'a>> {
   let mut authenticator = clone_box(auth_template.as_ref());
   authenticator.set_session_key(session_key);
   authenticator.set_email(email);
   let mut connection = Connection {
-    server: Server::new(entities.clone(), authenticator, test_mode),
+    server: Server::new(entities.clone(), initial_scenario, authenticator, test_mode),
     stream,
   };
 

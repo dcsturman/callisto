@@ -64,8 +64,8 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 // Note the lifetimes do seem to be needed and the implicit_hasher rule has impact across
 // a lot of the codebase.  So excluding those two clippy warnings.
 #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
-pub async fn handle_request(
-  message: RequestMsg, server: &mut Server, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+pub async fn handle_request<'a>(
+  message: RequestMsg, server: &mut Server<'a>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
   mut context: Vec<UserData>,
 ) -> Vec<ResponseMsg> {
   info!("(handle_request) Request: {:?}", message);

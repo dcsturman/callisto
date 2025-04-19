@@ -27,7 +27,7 @@ const SOLVE_TOLERANCE: f64 = 1e-4;
 // with close, and define that as 1% - as you get closer you can refine your course and missiles
 // refine every round.
 const ANS_PERCENT_OFF: f64 = 0.01;
-const MAX_ITERATIONS: usize = 400;
+const MAX_ITERATIONS: usize = 100;
 const MAX_SAMPLES: usize = 100;
 
 #[serde_as]
@@ -418,7 +418,7 @@ impl FlightParams {
         info!("(compute_flight_path) Trimmed path to a_1: {a_1:0.2?}, a_2: {a_2:0.2?}");
       }
 
-      let (path, end_velocity) = self.compute_path(&a_1, &a_2, t_1, t_2);
+      let (path, end_velocity) = self.build_path(&a_1, &a_2, t_1, t_2);
 
       // Convert time into an unsigned integer.
       #[allow(clippy::cast_possible_truncation)]
@@ -431,13 +431,13 @@ impl FlightParams {
       return Ok(FlightPathResult {
         path,
         end_velocity,
-        // Convert acceleration back into G's (vs m/s^2) at this point.
-        plan: FlightPlan::new((a_1 / G, t_1).into(), Some((a_2 / G, t_2).into())),
+        // The server always works in m/s^2; UX must convert.
+        plan: FlightPlan::new((a_1, t_1).into(), Some((a_2, t_2).into())),
       });
     }
   }
 
-  fn compute_path(&self, a_1: &Vec3, a_2: &Vec3, t_1: f64, t_2: f64) -> (Vec<Vec3>, Vec3) {
+  fn build_path(&self, a_1: &Vec3, a_2: &Vec3, t_1: f64, t_2: f64) -> (Vec<Vec3>, Vec3) {
     // Now that we've solved for acceleration lets create a path and end velocity
     let mut path = Vec::new();
     let mut vel = self.start_vel;
@@ -558,16 +558,18 @@ pub struct TargetParams {
   pub end_pos: Vec3,
   pub start_vel: Vec3,
   pub target_vel: Vec3,
+  pub target_accel: Vec3,
   pub max_acceleration: f64,
 }
 
 impl TargetParams {
-  pub fn new(start_pos: Vec3, end_pos: Vec3, start_vel: Vec3, target_vel: Vec3, max_acceleration: f64) -> Self {
+  pub fn new(start_pos: Vec3, end_pos: Vec3, start_vel: Vec3, target_vel: Vec3, target_accel: Vec3, max_acceleration: f64) -> Self {
     TargetParams {
       start_pos,
       end_pos,
       start_vel,
       target_vel,
+      target_accel,
       max_acceleration,
     }
   }
@@ -591,7 +593,13 @@ impl TargetParams {
     Ok(res.into())
   }
 
-  fn compute_path(&self, answer: &[f64]) -> Vec<Vec3> {
+  /// Build a discrete path (turn by turn) for the missile.
+  /// 
+  /// Unlike the ship case this is simple as there is a simple, constant acceleration.
+  /// 
+  /// # Arguments Takes an answer from the solver (slice of `f64`).
+  /// # Returns a list of positions.
+  fn build_path(&self, answer: &[f64]) -> Vec<Vec3> {
     let mut path = Vec::new();
     let mut vel = self.start_vel;
     let mut pos = self.start_pos;
@@ -615,6 +623,9 @@ impl TargetParams {
     path
   }
 
+  /// Compute the flight path for the missile using the Gomez solver based on the parameters to this `TargetPath` struct.
+  /// 
+  /// # Returns a `FlightPathResult` which contains the acceleration, the end velocity and the plan.
   pub fn compute_target_path(&self) -> Option<FlightPathResult> {
     let delta = self.end_pos - self.start_pos;
     let distance = delta.magnitude();
@@ -622,7 +633,7 @@ impl TargetParams {
     // Simple but important case where we are launching the missile within impact difference.
     // i.e. it doesn't need to go anywhere.
     if (self.start_pos - self.end_pos).magnitude() < IMPACT_DISTANCE {
-      info!("(compute_target_path) No need to compute flight path.");
+      info!("(compute_target_path) No need to compute flight path because missile is within impact distance.");
       return Some(FlightPathResult {
         path: vec![self.start_pos, self.end_pos],
         end_velocity: self.start_vel,
@@ -635,18 +646,20 @@ impl TargetParams {
     let guess_a = (delta / distance * self.max_acceleration).map(|a| if a.is_nan() { 0.0 } else { a });
 
     let guess_t = (2.0 * distance / self.max_acceleration).sqrt();
+
     debug!(
       "(compute_target_path) time guess is {} based on distance = {}, max_accel = {}",
       guess_t, distance, self.max_acceleration
     );
-
+        
     let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_a).into();
     initial.push(guess_t);
 
     // Our first attempt is if this target can be reached in one round (DELTA_TIME).  In this case,
-    // we ignore target velocity.
+    // we ignore target velocity and acceleration.
     let mut first_attempt = self.clone();
     first_attempt.target_vel = Vec3::zero();
+    first_attempt.target_accel = Vec3::zero();
 
     match first_attempt.solve(&initial) {
       Ok(result) if result[3] <= DELTA_TIME_F64 => {
@@ -671,13 +684,13 @@ impl TargetParams {
           warn!("(compute_target_path) First attempt worked we might be going too fast to detect impact!");
         }
         Some(FlightPathResult {
-          path: first_attempt.compute_path(&result),
+          path: first_attempt.build_path(&result),
           end_velocity: self.start_vel + a * t,
-          plan: FlightPlan::new((a / G, t_u64).into(), None),
+          plan: FlightPlan::new((a, t_u64).into(), None),
         })
       }
       Ok(_result) => {
-        debug!("Second attempt (couldn't get there in one round) taking into account target velocity.");
+        debug!("Second attempt (couldn't get there in one round) taking into account target velocity and acceleration.");
         // Now solve with our original params (vs first_attempt)
         self.solve(&initial).map_or_else(
           |e| {
@@ -700,9 +713,9 @@ impl TargetParams {
             let t_u64 = t.round() as u64;
             debug!("(compute_target_path) Second attempt worked.",);
             Some(FlightPathResult {
-              path: self.compute_path(&result),
+              path: self.build_path(&result),
               end_velocity: self.start_vel + a * t,
-              plan: FlightPlan::new((a / G, t_u64).into(), None),
+              plan: FlightPlan::new((a, t_u64).into(), None),
             })
           },
         )
@@ -745,7 +758,9 @@ impl System for TargetParams {
     };
     let t = x[3];
 
-    let pos_eqs = a * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos - self.end_pos;
+    // Position takes into account (current) acceleration and velocity of target.  Unlike with FlightParams, however,
+    // we don't care what velocity we _end_ at so the equation is much simpler.
+    let pos_eqs = (a - self.target_accel) * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos - self.end_pos;
 
     let a_eq = a.dot(a) - self.max_acceleration.powi(2);
 
@@ -1264,9 +1279,9 @@ mod tests {
       // Check that the magnitudes of accelerations are within the limit
       for accel_pair in result.plan.iter() {
         assert!(
-          accel_pair.in_limits(params.max_acceleration / G),
+          accel_pair.in_limits(params.max_acceleration),
           "Acceleration magnitude ({}) exceeds max acceleration ({}) for params: {:?}",
-          accel_pair.0.magnitude() * G,
+          accel_pair.0.magnitude(),
           params.max_acceleration,
           params
         );

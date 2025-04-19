@@ -246,10 +246,11 @@ export async function setPlan(target: string, plan: [Acceleration, Acceleration 
 
   // Since the Rust backend just expects null values in flight plans to be skipped
   // we have to custom build the body.
+  // Convert all accelerations to m/s^2 from G's
   if (plan[1] == null) {
-    plan_arr = [plan[0]];
+    plan_arr[0] = [[plan[0][0][0]*G, plan[0][0][1]*G, plan[0][0][2]*G], plan[0][1]];
   } else {
-    plan_arr = [plan[0], plan[1]];
+    plan_arr = [[[plan[0][0][0]*G, plan[0][0][1]*G, plan[0][0][2]*G], plan[0][1]], [[plan[1][0][0]*G, plan[1][0][1]*G, plan[1][0][2]*G], plan[1][1]]];
   }
   const payload = {SetPlan: {name: target, plan: plan_arr}};
 
@@ -371,6 +372,15 @@ function handleEntities(
   setActions: (actions: ActionType) => void
 ) {
   const entities = EntityList.parse(json);
+
+  // Convert all ship plans to G's from m/s^2
+  entities.ships.forEach((ship) => {
+    ship.plan[0][0] = [ship.plan[0][0][0] / G, ship.plan[0][0][1] / G, ship.plan[0][0][2] / G];
+    if (ship.plan[1] != null) {
+      ship.plan[1][0] = [ship.plan[1][0][0] / G, ship.plan[1][0][1] / G, ship.plan[1][0][2] / G];
+    }
+  });
+
   console.groupCollapsed("Received Entities: ");
   console.groupCollapsed("Ships: ");
   for (const v of entities.ships) {
@@ -406,6 +416,13 @@ function handleEntities(
 
 function handleFlightPath(json: object, setProposedPlan: (plan: FlightPathResult) => void) {
   const path = FlightPathResult.parse(json);
+
+  // Convert all accelerations in FlightPath from m/s^2 to G's
+  path.plan[0][0] = [path.plan[0][0][0] / G, path.plan[0][0][1] / G, path.plan[0][0][2] / G];
+  if (path.plan[1] != null) {
+    path.plan[1][0] = [path.plan[1][0][0] / G, path.plan[1][0][1] / G, path.plan[1][0][2] / G];
+  }
+  
   setProposedPlan(path);
 }
 
