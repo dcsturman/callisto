@@ -563,7 +563,9 @@ pub struct TargetParams {
 }
 
 impl TargetParams {
-  pub fn new(start_pos: Vec3, end_pos: Vec3, start_vel: Vec3, target_vel: Vec3, target_accel: Vec3, max_acceleration: f64) -> Self {
+  pub fn new(
+    start_pos: Vec3, end_pos: Vec3, start_vel: Vec3, target_vel: Vec3, target_accel: Vec3, max_acceleration: f64,
+  ) -> Self {
     TargetParams {
       start_pos,
       end_pos,
@@ -594,9 +596,9 @@ impl TargetParams {
   }
 
   /// Build a discrete path (turn by turn) for the missile.
-  /// 
+  ///
   /// Unlike the ship case this is simple as there is a simple, constant acceleration.
-  /// 
+  ///
   /// # Arguments Takes an answer from the solver (slice of `f64`).
   /// # Returns a list of positions.
   fn build_path(&self, answer: &[f64]) -> Vec<Vec3> {
@@ -624,7 +626,7 @@ impl TargetParams {
   }
 
   /// Compute the flight path for the missile using the Gomez solver based on the parameters to this `TargetPath` struct.
-  /// 
+  ///
   /// # Returns a `FlightPathResult` which contains the acceleration, the end velocity and the plan.
   pub fn compute_target_path(&self) -> Option<FlightPathResult> {
     let delta = self.end_pos - self.start_pos;
@@ -651,7 +653,7 @@ impl TargetParams {
       "(compute_target_path) time guess is {} based on distance = {}, max_accel = {}",
       guess_t, distance, self.max_acceleration
     );
-        
+
     let mut initial: Vec<f64> = Into::<[f64; 3]>::into(guess_a).into();
     initial.push(guess_t);
 
@@ -690,7 +692,9 @@ impl TargetParams {
         })
       }
       Ok(_result) => {
-        debug!("Second attempt (couldn't get there in one round) taking into account target velocity and acceleration.");
+        debug!(
+          "Second attempt (couldn't get there in one round) taking into account target velocity and acceleration."
+        );
         // Now solve with our original params (vs first_attempt)
         self.solve(&initial).map_or_else(
           |e| {
@@ -760,7 +764,8 @@ impl System for TargetParams {
 
     // Position takes into account (current) acceleration and velocity of target.  Unlike with FlightParams, however,
     // we don't care what velocity we _end_ at so the equation is much simpler.
-    let pos_eqs = (a - self.target_accel) * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos - self.end_pos;
+    let pos_eqs =
+      (a - self.target_accel) * t * t / 2.0 + (self.start_vel - self.target_vel) * t + self.start_pos - self.end_pos;
 
     let a_eq = a.dot(a) - self.max_acceleration.powi(2);
 

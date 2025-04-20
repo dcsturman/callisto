@@ -340,29 +340,33 @@ impl<'a> Server<'a> {
     // ships making jump attempts in the third
     // Was very explicit with types here (more than necessary) to make it easier to read and understand.
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, jump_actions): (Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>) = multiunzip(actions
-      .iter()
-      .filter_map(|(ship_name, actions)| {
-        if !entities.ships.contains_key(ship_name) {
-          warn!("(update) Cannot find ship {} for actions.", ship_name);
-          return None;
-        }
-        let (f_actions, s_actions, j_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = multiunzip(actions
-          .iter()
-          .map(|action| match action {
-            ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None),
-            ShipAction::JamMissiles
-            | ShipAction::BreakSensorLock { .. }
-            | ShipAction::SensorLock { .. }
-            | ShipAction::JamComms { .. } => (None, Some(action.clone()), None),
-            ShipAction::Jump => (None, None, Some(action.clone())),
-          }));
-        Some((
-          (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-          (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-          (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-        ))
+    let (fire_actions, sensor_actions, jump_actions): (
+      Vec<(String, Vec<ShipAction>)>,
+      Vec<(String, Vec<ShipAction>)>,
+      Vec<(String, Vec<ShipAction>)>,
+    ) = multiunzip(actions.iter().filter_map(|(ship_name, actions)| {
+      if !entities.ships.contains_key(ship_name) {
+        warn!("(update) Cannot find ship {} for actions.", ship_name);
+        return None;
+      }
+      let (f_actions, s_actions, j_actions): (
+        Vec<Option<ShipAction>>,
+        Vec<Option<ShipAction>>,
+        Vec<Option<ShipAction>>,
+      ) = multiunzip(actions.iter().map(|action| match action {
+        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None),
+        ShipAction::JamMissiles
+        | ShipAction::BreakSensorLock { .. }
+        | ShipAction::SensorLock { .. }
+        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None),
+        ShipAction::Jump => (None, None, Some(action.clone())),
       }));
+      Some((
+        (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+      ))
+    }));
 
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged

@@ -53,7 +53,14 @@ impl Missile {
     let target_vel = target_ptr.read().unwrap().get_velocity();
     let target_accel = target_ptr.read().unwrap().get_acceleration();
 
-    let params = TargetParams::new(position, target_pos, velocity, target_vel, target_accel,MAX_MISSILE_ACCELERATION);
+    let params = TargetParams::new(
+      position,
+      target_pos,
+      velocity,
+      target_vel,
+      target_accel,
+      MAX_MISSILE_ACCELERATION,
+    );
 
     debug!(
             "(Missile.new) Creating initial missile acceleration and calling targeting computer for missile {} with params: {:?}",

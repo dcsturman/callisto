@@ -530,7 +530,7 @@ async fn integration_add_planet_ship() {
          "sensor_locks": []
         }]});
 
-        assert_json_eq!(entities, compare);
+    assert_json_eq!(entities, compare);
   } else {
     panic!("Improper response to entities request received.");
   }

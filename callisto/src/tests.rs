@@ -9,7 +9,7 @@
 use pretty_env_logger;
 
 use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
-use std::sync::{Arc, Mutex, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex};
 use test_log::test;
 
 use assert_json_diff::assert_json_eq;

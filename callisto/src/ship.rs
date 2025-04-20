@@ -479,7 +479,10 @@ impl Entity for Ship {
         self.position += (old_velocity + self.velocity) / 2.0 * duration;
         left_over = (left_over - duration).max(0.);
 
-        debug!("(Ship.update) Accelerate {} at {:0.3?} m/s^2 for time {}", self.name, accel, duration);
+        debug!(
+          "(Ship.update) Accelerate {} at {:0.3?} m/s^2 for time {}",
+          self.name, accel, duration
+        );
         debug!(
           "(Ship.update) For ship {}: New velocity: {:0.0?} New position: {:0.0?}",
           self.name, self.velocity, self.position
@@ -805,7 +808,8 @@ impl From<AccelPair> for (Vec3, u64) {
 impl AccelPair {
   #[must_use]
   pub fn in_limits(&self, limit: f64) -> bool {
-    self.0.magnitude() <= limit + MAX_ACCEL_WIGGLE_ROOM || approx::relative_eq!(&self.0.magnitude(), &limit, max_relative = 1e-3)
+    self.0.magnitude() <= limit + MAX_ACCEL_WIGGLE_ROOM
+      || approx::relative_eq!(&self.0.magnitude(), &limit, max_relative = 1e-3)
   }
 }
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1285,7 +1289,7 @@ mod tests {
     assert_eq!(flight_plan.1.as_ref().unwrap().1, 2000);
 
     // Test case 4: Both accelerations exceed limit
-    flight_plan.set_first(Vec3::new(10.0, 0.0, 0.0) * G , 1000);
+    flight_plan.set_first(Vec3::new(10.0, 0.0, 0.0) * G, 1000);
     flight_plan.set_second(Vec3::new(0.0, 8.0, 6.0) * G, 1500);
 
     flight_plan.ensure_thrust_limit(4.0 * G);
@@ -1389,7 +1393,10 @@ mod tests {
       AccelPair(Vec3::new(max_accel, 0.0, 0.0), 5000),
       Some(AccelPair(Vec3::new(0.0, max_accel, 0.0), 3000)),
     );
-    assert!(ship.set_flight_plan(&max_accel_plan).is_ok(),"Setting flight plan to {max_accel_plan:?} failed.");
+    assert!(
+      ship.set_flight_plan(&max_accel_plan).is_ok(),
+      "Setting flight plan to {max_accel_plan:?} failed."
+    );
     assert_eq!(ship.plan, max_accel_plan);
 
     // Test case 6: Set a flight plan with a second acceleration exceeding ship's capabilities

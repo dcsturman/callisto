@@ -803,17 +803,17 @@ impl Entities {
   }
 
   /// Attempt to jump all ships that have jump actions.
-  /// 
+  ///
   /// We assume (for now) a prior successful Astrogation check.  All that remains is the engineering check.
   /// Engineering check cannot stop you from jumping but can cause a misjump on failure.
-  /// 
+  ///
   /// # Arguments
   /// * `jump_actions` - The jump actions to process.
   /// * `rng` - The random number generator to use for engineering jump checks.
-  /// 
+  ///
   /// # Returns
   /// * A list of all the effects resulting from the jump attempts.
-  /// 
+  ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
   pub fn attempt_jumps(&mut self, jump_actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
@@ -850,7 +850,7 @@ impl Entities {
         }
       }
     }
-    
+
     for ship_name in jumped_ships {
       self.ships.remove(&ship_name);
     }
