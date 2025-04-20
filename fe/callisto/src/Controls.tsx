@@ -1,7 +1,8 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useContext, useEffect } from "react";
 import * as THREE from "three";
 import { Accordion } from "./Accordion";
 import { AddShip } from "./AddShip";
+import { ActionContext } from "./Actions";
 import {
   Ship,
   ViewControlParams,
@@ -12,51 +13,23 @@ import {
   ShipDesignTemplates,
   ViewContext,
   ViewMode,
-  Weapon,
-  WeaponMount,
   POSITION_SCALE,
   SCALE,
 } from "./Universal";
 
-import { addShip } from "./ServerManager";
+import { addShip, nextRound } from "./ServerManager";
 import { EntitySelector, EntitySelectorType } from "./EntitySelector";
 import {
   scaleVector,
   vectorToString,
-  findRangeBand,
-  vectorDistance,
 } from "./Util";
 import { NavigationPlan } from "./ShipComputer";
-import { WeaponButton, FireActions } from "./WeaponUse";
-import { ShipComputer, SensorAction, SensorState } from "./ShipComputer";
-
-export class FireAction {
-  target: string;
-  weapon_id: number;
-  called_shot_system: string | null;
-  constructor(target: string, weapon_id: number) {
-    this.weapon_id = weapon_id;
-    this.target = target;
-    this.called_shot_system = null;
-  }
-
-  toJSON() {
-    return {
-      FireAction: {
-        weapon_id: this.weapon_id,
-        target: this.target,
-        called_shot_system: this.called_shot_system,
-      },
-    };
-  }
-}
-
-export type FireState = FireAction[];
-export type FireActionMsg = { [key: string]: FireState };
+import { FireActions, FireControl } from "./WeaponUse";
+import { ShipComputer } from "./ShipComputer";
 
 function ShipList(args: {
   computerShip: Ship | null;
-  setComputerShip: (ship: Ship | null) => void;
+  setComputerShipName: (ship: string | null) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
   camera: THREE.Camera | null;
 }) {
@@ -65,7 +38,7 @@ function ShipList(args: {
       <h2 className="ship-list-label">Ship: </h2>
       <EntitySelector
         filter={[EntitySelectorType.Ship]}
-        onChange={(entity) => args.setComputerShip(entity as Ship)}
+        setChoice={(entity) => args.setComputerShipName(entity?.name || null)}
         current={args.computerShip}
       />
       <GoButton
@@ -123,15 +96,15 @@ function moveCameraToShip(
 }
 
 export function Controls(args: {
-  nextRound: (fireActions: { [key: string]: FireState }) => void;
   computerShip: Ship | null;
-  setComputerShip: (ship: Ship | null) => void;
+  setComputerShipName: (ship_name: string | null) => void;
   shipDesignTemplates: ShipDesignTemplates;
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null,
+    target_accel: [number, number, number] | null,
     standoff: number
   ) => void;
   setCameraPos: (pos: THREE.Vector3) => void;
@@ -140,135 +113,22 @@ export function Controls(args: {
   showRange: string | null;
   setShowRange: (target: string | null) => void;
   proposedPlan: FlightPathResult | null;
-  resetProposedPlan: () => void;
-  sensorActions: {
-    [actor: string]: SensorState;
-  };
-  setSensorActions: (actions: { [actor: string]: SensorState }) => void;
 }) {
+  const actionContext = useContext(ActionContext);
   const viewContext = useContext(ViewContext);
   const serverEntities = useContext(EntitiesServerContext).entities;
 
-  // fire_actions is, for each ship, all weapons grouped together by kind and mount.
-  // This allows them to be displayed as a single button with a count, and
-  // track how many are used.
-  const [fire_actions, setFireActions] = useState(
-    {} as {
-      [actor: string]: {
-        weapons: {
-          [weapon: string]: {
-            kind: string;
-            mount: WeaponMount;
-            used: number;
-            total: number;
-          };
-        };
-        state: FireState;
-      };
-    }
-  );
-
-  const [fireTarget, setFireTarget] = useState<Entity | null>(null);
-
-  // If there's actually a ship name defined in the Role information, that supercedes
+  // If there's actually a ship name defined in the Role information, that supersedes
   // any other selection for the computerShip.
   useEffect(() => {
     if (viewContext.shipName) {
-      args.setComputerShip(
-        serverEntities.ships.find((s) => s.name === viewContext.shipName) ??
-          null
-      );
+      args.setComputerShipName(viewContext.shipName);
     }
-  }, [viewContext.shipName]);
+  }, [viewContext.shipName, serverEntities.ships, args]);
 
   const computerShipDesign = args.computerShip
     ? args.shipDesignTemplates[args.computerShip.design]
     : null;
-
-  if (
-    computerShipDesign &&
-    args.computerShip &&
-    !fire_actions[args.computerShip.name]
-  ) {
-    const compressed_weapons = computerShipDesign.compressedWeapons();
-    setFireActions({
-      ...fire_actions,
-      [args.computerShip.name]: { weapons: compressed_weapons, state: [] },
-    });
-  }
-
-  function handleFireCommand(attacker: string, target: string, weapon: string) {
-    if (!computerShipDesign) {
-      console.error(
-        "(Controls.handleFireCommand) No computer ship design for " +
-          attacker +
-          "."
-      );
-      return;
-    }
-
-    if (
-      fire_actions[attacker]?.weapons[weapon]?.used ===
-      fire_actions[attacker]?.weapons[weapon]?.total
-    ) {
-      console.log(
-        "(Controls.handleFireCommand) No more weapons of type " +
-          weapon +
-          " for " +
-          attacker +
-          "."
-      );
-      return;
-    }
-    fire_actions[attacker].weapons[weapon].used += 1;
-
-    let nth_weapon = fire_actions[attacker].weapons[weapon].used;
-    let weapon_position = 0;
-    for (
-      ;
-      weapon_position <
-      args.shipDesignTemplates[computerShipDesign.name].weapons.length;
-      weapon_position++
-    ) {
-      if (
-        args.shipDesignTemplates[computerShipDesign.name].weapons[
-          weapon_position
-        ].toString() === weapon
-      ) {
-        nth_weapon -= 1;
-        if (nth_weapon === 0) {
-          break;
-        }
-      }
-    }
-
-    // Check error conditions out of that loop.
-    if (
-      weapon_position ===
-        args.shipDesignTemplates[computerShipDesign.name].weapons.length ||
-      nth_weapon !== 0
-    ) {
-      console.error(
-        "(Controls.handleFireCommand) Could not find " +
-          fire_actions[attacker].weapons[weapon].used +
-          "th weapon " +
-          weapon +
-          " for " +
-          attacker +
-          "."
-      );
-      return;
-    }
-
-    const new_fire_action = new FireAction(target, weapon_position);
-    setFireActions({
-      ...fire_actions,
-      [attacker]: {
-        ...fire_actions[attacker],
-        state: [...fire_actions[attacker].state, new_fire_action],
-      },
-    });
-  }
 
   return (
     <div className="controls-pane">
@@ -289,10 +149,9 @@ export function Controls(args: {
         {viewContext.shipName === null ? (
           <ShipList
             computerShip={args.computerShip}
-            setComputerShip={(ship) => {
+            setComputerShipName={(ship_name) => {
               args.setShowRange(null);
-              args.setComputerShip(ship);
-              setFireTarget(null);
+              args.setComputerShipName(ship_name);
             }}
             setCameraPos={args.setCameraPos}
             camera={args.camera}
@@ -398,8 +257,22 @@ export function Controls(args: {
                 </div>
               </div>
             )}
-            <h2 className="control-form">Current Position</h2>
-            <div style={{ display: "flex", justifyContent: "space-around" }}>
+             <span>
+                <h2>Show Ranges&nbsp;
+                <input
+                  type="checkbox"
+                  checked={args.showRange !== null}
+                  onChange={() => {
+                    if (args.showRange === null && args.computerShip) {
+                      args.setShowRange(args.computerShip.name);
+                    } else {
+                      args.setShowRange(null);
+                    }
+                  }}
+                /></h2>
+              </span>
+            <h2 className="control-form">Current Position (km)</h2>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">
                 {"(" +
                   (args.computerShip.position[0] / POSITION_SCALE).toFixed(0) +
@@ -424,8 +297,20 @@ export function Controls(args: {
                 &nbsp;Ranges
               </span>
             </div>
+            <h2 className="control-form">Current Velocity (m/s)</h2>
+            <div style={{ display: "flex" }}>
+              <pre className="plan-accel-text">
+                {"(" +
+                  args.computerShip.velocity[0].toFixed(0) +
+                  ", " +
+                  args.computerShip.velocity[1].toFixed(0) +
+                  ", " +
+                  args.computerShip.velocity[2].toFixed(0) +
+                  ")"}
+              </pre>
+            </div>
             <h2 className="control-form">
-              Current Plan (s @ m/s<sup>2</sup>)
+              Current Plan (s @ G&apos;s)
             </h2>
             <NavigationPlan plan={args.computerShip.plan} />
             <hr />
@@ -438,23 +323,10 @@ export function Controls(args: {
                   initialOpen={true}>
                   <ShipComputer
                     ship={args.computerShip}
-                    setComputerShip={args.setComputerShip}
+                    setComputerShipName={args.setComputerShipName}
                     proposedPlan={args.proposedPlan}
-                    resetProposedPlan={args.resetProposedPlan}
                     getAndShowPlan={args.getAndShowPlan}
-                    sensor_action={
-                      args.sensorActions[args.computerShip.name] || {
-                        action: SensorAction.None,
-                        target: "",
-                      }
-                    }
-                    setSensorAction={(action) =>
-                      args.setSensorActions({
-                        ...args.sensorActions,
-                        [args.computerShip!.name]: action,
-                      })
-                    }
-                    sensor_locks={serverEntities.ships.reduce((acc, ship) => {
+                    sensorLocks={serverEntities.ships.reduce((acc, ship) => {
                       if (ship.sensor_locks.includes(args.computerShip!.name)) {
                         acc.push(ship.name);
                       }
@@ -468,58 +340,7 @@ export function Controls(args: {
                 <Accordion
                   title={`${args.computerShip.name} Fire Controls`}
                   initialOpen={true}>
-                  <div className="control-launch-div">
-                    Target:
-                    <EntitySelector
-                      filter={[EntitySelectorType.Ship]}
-                      onChange={setFireTarget}
-                      current={fireTarget}
-                      exclude={args.computerShip.name}
-                      formatter={(name, entity) => {
-                        if (args.computerShip) {
-                          return `${name} (${findRangeBand(
-                            vectorDistance(
-                              args.computerShip.position,
-                              entity.position
-                            )
-                          )})`;
-                        } else {
-                          return "";
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="weapon-list">
-                    {fire_actions[args.computerShip.name] &&
-                      Object.values(
-                        fire_actions[args.computerShip.name].weapons
-                      ).map(
-                        (weapon, id) =>
-                          weapon.kind !== "Sand" && (
-                            <WeaponButton
-                              key={
-                                "weapon-" + args.computerShip?.name + "-" + id
-                              }
-                              weapon={weapon.kind}
-                              mount={weapon.mount}
-                              count={weapon.total - weapon.used}
-                              onClick={() => {
-                                handleFireCommand(
-                                  args.computerShip
-                                    ? args.computerShip.name
-                                    : "",
-                                  fireTarget ? fireTarget.name : "",
-                                  new Weapon(
-                                    weapon.kind,
-                                    weapon.mount
-                                  ).toString()
-                                );
-                              }}
-                              disable={!fireTarget}
-                            />
-                          )
-                      )}
-                  </div>
+                  <FireControl computerShip={args.computerShip} />
                 </Accordion>
               </div>
             )}
@@ -527,9 +348,9 @@ export function Controls(args: {
         )}
         {args.computerShip &&
           computerShipDesign &&
-          (fire_actions[args.computerShip.name]?.state || []).length > 0 && (
+          (actionContext.actions[args.computerShip.name]?.fire || []).length > 0 && (
             <FireActions
-              actions={fire_actions[args.computerShip?.name].state || []}
+              actions={actionContext.actions[args.computerShip?.name].fire || []}
               design={computerShipDesign}
               computerShipName={args.computerShip.name}
             />
@@ -540,15 +361,10 @@ export function Controls(args: {
         // Reset the computer and route on the next round.  If this gets any more complex move it into its
         // own function.
         onClick={() => {
-          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
+          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, null, 0);
           // Strip out the details on the weapons and provide an object with just
           // the name of each possible actor and the FireState they produced during the round.
-          args.nextRound(
-            Object.entries(fire_actions).reduce((acc, [key, value]) => {
-              return { ...acc, [key]: value.state };
-            }, {} as { [key: string]: FireState })
-          );
-          setFireActions({});
+          nextRound();
           args.setShowRange(null);
           //args.setComputerShip(null);
         }}>
@@ -624,7 +440,7 @@ export function EntityInfoWindow(args: { entity: Entity }) {
         {isPlanet ? (
           <p>Radius (km): {radiusKm}</p>
         ) : isShip ? (
-          <p> Acceleration (G): {vectorToString(ship_next_accel)}</p>
+          <p> Acceleration (G): {vectorToString(ship_next_accel, 2)}</p>
         ) : (
           <></>
         )}

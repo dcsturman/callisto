@@ -23,7 +23,7 @@ use crate::authentication::Authenticator;
 use crate::build_successful_auth_msgs;
 use crate::entity::Entities;
 use crate::handle_request;
-use crate::payloads::{AuthResponse, ResponseMsg};
+use crate::payloads::{AuthResponse, ResponseMsg, Role, UserData};
 use crate::server::Server;
 
 #[cfg(feature = "no_tls_upgrade")]
@@ -43,7 +43,7 @@ use crate::{debug, error, info, warn};
 ///
 /// # Arguments
 /// * `connection_receiver` - A channel to receive new connections from the acceptor thread.  It takes a fully upgraded secure websocket stream,
-///     as well as any already authenticated email and session key (due to http cookies on the connection).
+///   as well as any already authenticated email and session key (due to http cookies on the connection).
 /// * `auth_template` - A template [Authenticator], i.e. one without session key or email set.  We use this to clone on each new connection, and then set the session key and email.
 /// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs in (to update this info)
 /// * `test_mode` - Whether we are in test mode.  Test mode disables authentication and ensures a deterministic seed for each random number generator.
@@ -60,20 +60,27 @@ pub async fn processor(
   // All the data shared between authenticators.
   let mut connections = Vec::<Connection>::new();
 
+  let mut initial_scenario = Entities::new();
+  entities.lock().unwrap().deep_copy(&mut initial_scenario);
   loop {
+    // Build the contexts in case we create a connection.
+    let current_contexts = build_context(&connections).clone();
+
     // If there are no connections, then we wait for one to come in.
     // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
     // TODO: Violating DRY here in a big way.  How do I fix it?
     if connections.is_empty() {
       let next_connection = connection_receiver.next().await;
+
       if let Some((stream, session_key, email)) = next_connection {
         let Some(connection) = build_connection(
           &auth_template,
           &session_key,
-          &session_keys,
+          current_contexts,
           email.as_ref(),
           stream,
           &entities,
+          &initial_scenario,
           test_mode,
         )
         .await
@@ -94,7 +101,6 @@ pub async fn processor(
       .enumerate()
       .map(|(i, c)| Box::pin(async move { (i, c.stream.next().await) }))
       .collect::<FuturesUnordered<_>>();
-
     // Wait on either a new connection or a message from an existing connection, whichever comes first.
     // Return the next message to process if there is one.
     let to_do = select! {
@@ -104,10 +110,11 @@ pub async fn processor(
             let Some(connection) = build_connection(
                 &auth_template,
                 &session_key,
-                &session_keys,
+                current_contexts,
                 email.as_ref(),
                 stream,
                 &entities,
+                &initial_scenario,
                 test_mode,
             ).await else {
                 continue;
@@ -145,29 +152,38 @@ pub async fn processor(
     match to_do {
       Some((index, Ok(Message::Text(text)))) => {
         debug!("(handle_connection) Received message: {text}");
-        let response = if let Ok(parsed_message) = serde_json::from_str(&text) {
-          // TODO: I think we move handle_request into the server, but lets come back to that.
-          let response = handle_request(parsed_message, &mut connections[index].server, session_keys.clone()).await;
-          // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
-          // but do not actually ever send it to the client (who has logged out!)
-          if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {
-            // User has logged out.  Close the connection.
-            debug!(
-              "(processor) User logged out.  Closing connection. Now {} connections.",
-              connections.len() - 1
-            );
-            connections[index].stream.close(None).await.unwrap_or_else(|e| {
-              error!("(handle_connection) Failed to close connection as directed by logout: {e:?}");
-            });
+        let response = match serde_json::from_str(&text) {
+          Ok(parsed_message) => {
+            // TODO: I think we move handle_request into the server, but lets come back to that.
+            let response = handle_request(
+              parsed_message,
+              &mut connections[index].server,
+              session_keys.clone(),
+              current_contexts,
+            )
+            .await;
+            // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
+            // but do not actually ever send it to the client (who has logged out!)
+            if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {
+              // User has logged out.  Close the connection.
+              debug!(
+                "(processor) User logged out.  Closing connection. Now {} connections.",
+                connections.len() - 1
+              );
+              connections[index].stream.close(None).await.unwrap_or_else(|e| {
+                error!("(handle_connection) Failed to close connection as directed by logout: {e:?}");
+              });
+            }
+            response
+              .into_iter()
+              .filter(|msg| !matches!(msg, ResponseMsg::LogoutResponse))
+              .collect()
           }
-          response
-            .into_iter()
-            .filter(|msg| !matches!(msg, ResponseMsg::LogoutResponse))
-            .collect()
-        } else {
-          vec![ResponseMsg::Error(format!("Malformed message: {text}"))]
+          Err(e) => {
+            error!("(handle_connection) Failed to parse message: {e:?}");
+            vec![ResponseMsg::Error(format!("Failed to parse message: {e:?}"))]
+          }
         };
-
         debug!("(handle_connection) Response(s): {response:?}");
 
         // Send the response
@@ -188,6 +204,7 @@ pub async fn processor(
                 });
             }
           } else {
+            debug!("(processor) Sending message {message:?} to connection {index}.");
             connections[index]
               .stream
               .send(Message::Text(
@@ -219,14 +236,28 @@ pub async fn processor(
       }
       None => {
         warn!("(processor) Strange `None` response from message stream.  Ignoring");
-        continue;
       }
     }
   }
 }
 
-struct Connection {
-  server: Server,
+fn build_context(connections: &[Connection]) -> Vec<UserData> {
+  connections
+    .iter()
+    .filter_map(|c| {
+      c.server.get_email().map(|email| {
+        let (role, ship) = c.server.get_role();
+        UserData {
+          email: email.clone(),
+          role,
+          ship,
+        }
+      })
+    })
+    .collect::<Vec<UserData>>()
+}
+struct Connection<'a> {
+  server: Server<'a>,
   stream: WebSocketStream<SubStream>,
 }
 
@@ -235,33 +266,39 @@ fn is_broadcast_message(message: &ResponseMsg) -> bool {
 }
 
 #[allow(clippy::borrowed_box)]
+#[allow(clippy::too_many_arguments)]
 #[must_use]
-async fn build_connection(
-  auth_template: &Box<dyn Authenticator>, session_key: &str,
-  session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>, email: Option<&String>,
-  stream: WebSocketStream<SubStream>, entities: &Arc<Mutex<Entities>>, test_mode: bool,
-) -> Option<Connection> {
+async fn build_connection<'a>(
+  auth_template: &Box<dyn Authenticator>, session_key: &str, mut context: Vec<UserData>, email: Option<&String>,
+  stream: WebSocketStream<SubStream>, entities: &Arc<Mutex<Entities>>, initial_scenario: &'a Entities, test_mode: bool,
+) -> Option<Connection<'a>> {
   let mut authenticator = clone_box(auth_template.as_ref());
   authenticator.set_session_key(session_key);
   authenticator.set_email(email);
   let mut connection = Connection {
-    server: Server::new(entities.clone(), authenticator, test_mode),
+    server: Server::new(entities.clone(), initial_scenario, authenticator, test_mode),
     stream,
   };
 
   if let Some(email) = email {
+    // Create this addition to all the context.
+    context.push(UserData {
+      email: email.clone(),
+      role: Role::General,
+      ship: None,
+    });
     // If we got a successful Some(email) then we need to fake like this was a log in by
     // letting the client know auth was successful, but also sending any initialization messages.
     // We use [build_successful_auth_msgs] to keep this list of messages the same as if it was in response
     // to a login message.
-    let msgs = build_successful_auth_msgs(AuthResponse { email: email.clone() }, &connection.server, session_keys);
+    let msgs = build_successful_auth_msgs(AuthResponse { email: email.clone() }, &connection.server, context);
     let mut okay = true;
     for msg in msgs {
       let encoded_message: Utf8Bytes = serde_json::to_string(&msg).unwrap().into();
       if connection.stream.send(Message::Text(encoded_message)).await.is_err() {
         okay = false;
         break;
-      };
+      }
     }
     if okay {
       Some(connection)

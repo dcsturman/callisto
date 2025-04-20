@@ -574,6 +574,7 @@ input {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
+  cursor: pointer;
 }
 
 .called-shot-menu {
@@ -591,4 +592,17 @@ input {
   width: 100%;
   margin: 2px;
   padding: 2px;
+}
+
+.role-input {
+  font-size: 8pt;
+  height: 20px;
+  margin: 0px;
+  margin-left: 2px;
+}
+
+.reset-and-logout-buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
 }

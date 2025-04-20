@@ -1,3 +1,4 @@
+pub mod action;
 pub mod authentication;
 pub mod combat;
 mod computer;
@@ -29,7 +30,7 @@ use google_cloud_storage::http::objects::get::GetObjectRequest;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-use payloads::{AuthResponse, RequestMsg, ResponseMsg};
+use payloads::{AuthResponse, RequestMsg, ResponseMsg, Role, UserData};
 use server::Server;
 
 pub const STATUS_INVALID_TOKEN: u16 = 498;
@@ -45,7 +46,7 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 /// * `message`: - Incoming message of type [`RequestMsg`]
 /// * `server` - The [`Server`] struct presenting the server for this connection.
 /// * `session_keys` - The session keys for all connections.  It is needed so the login flow can update it with proper login information.  This isn't local
-///         to this connection per se because this could be a reconnect of a previous connection.
+///   to this connection per se because this could be a reconnect of a previous connection.
 /// * `test_mode` - Whether we are in test mode.  Test mode disables authentication and ensures a deterministic seed for each random number generator.
 ///
 /// # Returns
@@ -64,7 +65,8 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 // a lot of the codebase.  So excluding those two clippy warnings.
 #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
 pub async fn handle_request(
-  message: RequestMsg, server: &mut Server, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+  message: RequestMsg, server: &mut Server<'_>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+  mut context: Vec<UserData>,
 ) -> Vec<ResponseMsg> {
   info!("(handle_request) Request: {:?}", message);
 
@@ -83,17 +85,50 @@ pub async fn handle_request(
         .login(login_msg, &session_keys)
         .await
         .map_or_else(error_msg, |auth_response| {
-          // Now that we are successfully logged in, we can send back the design templates and entities - no need to wait to be asked.
-          build_successful_auth_msgs(auth_response, server, &session_keys)
+          // Add ourselves to the context as we weren't included when we weren't logged in.
+          context.push(UserData {
+            email: auth_response.email.clone(),
+            role: Role::General,
+            ship: None,
+          });
+          // Now that we are successfully logged in, we can send back the design templates, entities, and users - no need to wait to be asked.
+          build_successful_auth_msgs(auth_response, server, context)
         })
     }
+
+    RequestMsg::Reset => response_with_update(server, server.reset()),
     RequestMsg::AddShip(ship) => response_with_update(server, server.add_ship(ship)),
     RequestMsg::SetPilotActions(request) => response_with_update(server, server.set_pilot_actions(&request)),
     RequestMsg::AddPlanet(planet) => response_with_update(server, server.add_planet(planet)),
     RequestMsg::Remove(name) => response_with_update(server, server.remove(&name)),
     RequestMsg::SetPlan(plan) => response_with_update(server, server.set_plan(&plan)),
-    RequestMsg::Update(fire_actions) => {
-      let effects = server.update(&fire_actions);
+    RequestMsg::SetRole(role) => {
+      if server.get_email().is_none() {
+        error!("(handle_request) Attempt to set role without being logged in.  Ignoring.");
+        vec![ResponseMsg::Error(
+          "Attempt to set role without being logged in.  Ignoring.".to_string(),
+        )]
+      } else {
+        let mut msgs = simple_response(Ok(server.set_role(&role)));
+        let mut revised_context: Vec<UserData> = context
+          .into_iter()
+          .filter(|c| server.get_email().is_some_and(|email| c.email != email))
+          .collect();
+        revised_context.push(UserData {
+          email: server.get_email().unwrap(),
+          role: role.role,
+          ship: role.ship,
+        });
+        msgs.push(ResponseMsg::Users(revised_context));
+        msgs
+      }
+    }
+    RequestMsg::ModifyActions(ship_actions) => {
+      let effects = server.merge_actions(ship_actions);
+      response_with_update(server, Ok(effects))
+    }
+    RequestMsg::Update => {
+      let effects = server.update();
       vec![
         ResponseMsg::Effects(effects),
         ResponseMsg::EntityResponse(server.clone_entities()),
@@ -106,8 +141,7 @@ pub async fn handle_request(
     RequestMsg::Logout => {
       info!("Received and processing logout request.");
       server.logout(&session_keys);
-      let users = session_keys.lock().unwrap().values().filter_map(Clone::clone).collect();
-      vec![ResponseMsg::LogoutResponse, ResponseMsg::Users(users)]
+      vec![ResponseMsg::LogoutResponse, ResponseMsg::Users(context.clone())]
     }
     RequestMsg::Quit => {
       if !server.in_test_mode() {
@@ -163,14 +197,13 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 #[allow(clippy::implicit_hasher)]
 #[must_use]
 pub fn build_successful_auth_msgs(
-  auth_response: AuthResponse, server: &Server, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  auth_response: AuthResponse, server: &Server, context: Vec<UserData>,
 ) -> Vec<ResponseMsg> {
-  let users: Vec<String> = session_keys.lock().unwrap().values().filter_map(Clone::clone).collect();
   vec![
     ResponseMsg::AuthResponse(auth_response),
     ResponseMsg::DesignTemplateResponse(server.get_designs()),
     ResponseMsg::EntityResponse(server.clone_entities()),
-    ResponseMsg::Users(users),
+    ResponseMsg::Users(context),
   ]
 }
 

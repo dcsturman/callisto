@@ -96,7 +96,7 @@ pub type SubStream = TlsStream<TcpStream>;
 /// * `stream` - The raw TCP stream to upgrade.
 /// * `acceptor` - The TLS acceptor to use to upgrade the stream. (only when `no_tls_upgrade` is not enabled)
 /// * `session_keys` - The session keys to use for authentication.  This is a map of session keys to email addresses.  This is used to authenticate the user.  Its included
-///     here because on connection we can see any `HttpCookie` on the request.  We use that in case a connection drops and reconnects so we don't need to force a re-login.
+///   here because on connection we can see any `HttpCookie` on the request.  We use that in case a connection drops and reconnects so we don't need to force a re-login.
 ///
 /// # Returns
 /// A tuple of the websocket stream, the session key, and an optional email address.  The email address we `Some(email)` if this user has previously logged in.
@@ -220,13 +220,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   info!("(main) Loaded ship templates.");
 
   // Build the main entities table that will be the state of our server.
-  let entities = Arc::new(Mutex::new(if let Some(file_name) = args.scenario_file {
+  let initial_scenario = if let Some(file_name) = args.scenario_file {
     Entities::load_from_file(&file_name)
       .await
       .unwrap_or_else(|e| panic!("Issue loading scenario file {file_name}: {e}"))
   } else {
     Entities::new()
-  }));
+  };
+
+  let mut entities = Entities::new();
+  initial_scenario.deep_copy(&mut entities);
+
+  let entities = Arc::new(Mutex::new(entities));
 
   info!("Starting with scenario entities: {:?}", entities.lock().unwrap());
 
@@ -294,7 +299,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       }
       Err(e) => {
         warn!("(main) Server at {addr} failed to establish websocket connection from {peer_addr}: {e}");
-        continue;
       }
     }
   }

@@ -4,10 +4,11 @@
  */
 use std::collections::HashMap;
 
+use super::action::ShipActionList;
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::Entities;
-use super::ship::{ShipDesignTemplate, ShipSystem};
+use super::ship::ShipDesignTemplate;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Display;
@@ -94,41 +95,22 @@ pub struct ComputePathMsg {
   #[serde_as(as = "Vec3asVec")]
   pub end_vel: Vec3,
   #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        //with = "::serde_with::rust::unwrap_or_skip"
-        with = "::serde_with:: As :: < Option < Vec3asVec > >"
-    )]
+    default,
+    skip_serializing_if = "Option::is_none",
+    with = "::serde_with:: As :: < Option < Vec3asVec > >"
+  )]
   pub target_velocity: Option<Vec3>,
+  #[serde(
+    default,
+    skip_serializing_if = "Option::is_none",
+    with = "::serde_with:: As :: < Option < Vec3asVec > >"
+  )]
+  pub target_acceleration: Option<Vec3>,
   pub standoff_distance: f64,
 }
 
 pub type FlightPathMsg = FlightPathResult;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ShipAction {
-  FireAction {
-    weapon_id: usize,
-    target: String,
-    #[serde(
-      default,
-      skip_serializing_if = "Option::is_none",
-      //with = "::serde_with::rust::unwrap_or_skip"
-  )]
-    called_shot_system: Option<ShipSystem>,
-  },
-  JamMissiles,
-  BreakSensorLock {
-    target: String,
-  },
-  SensorLock {
-    target: String,
-  },
-  JamComms {
-    target: String,
-  },
-}
-pub type ShipActionMsg = Vec<(String, Vec<ShipAction>)>;
+pub type ShipActionMsg = ShipActionList;
 
 pub const EMPTY_FIRE_ACTIONS_MSG: ShipActionMsg = vec![];
 
@@ -183,6 +165,31 @@ pub struct LoadScenarioMsg {
 
 pub type ShipDesignTemplateMsg = HashMap<String, ShipDesignTemplate>;
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum Role {
+  General = 0,
+  Pilot,
+  Sensors,
+  Gunner,
+  Observer,
+}
+
+#[serde_as]
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserData {
+  pub email: String,
+  pub role: Role,
+  pub ship: Option<String>,
+}
+
+#[serde_as]
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChangeRole {
+  pub role: Role,
+  pub ship: Option<String>,
+}
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
@@ -209,10 +216,13 @@ pub enum RequestMsg {
   SetPlan(SetPlanMsg),
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),
-  Update(ShipActionMsg),
+  SetRole(ChangeRole),
+  ModifyActions(ShipActionMsg),
+  Update,
   LoadScenario(LoadScenarioMsg),
   EntitiesRequest,
   DesignTemplateRequest,
+  Reset,
   Logout,
   Quit,
 }
@@ -224,7 +234,7 @@ pub enum ResponseMsg {
   EntityResponse(Entities),
   FlightPath(FlightPathMsg),
   Effects(Vec<EffectMsg>),
-  Users(Vec<String>),
+  Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
   SimpleMsg(String),
   // LogoutResponse is a faux message never sent back.  However,
@@ -237,6 +247,7 @@ pub enum ResponseMsg {
 
 #[cfg(test)]
 mod tests {
+  use crate::action::ShipAction;
   use crate::ship::ShipDesignTemplate;
 
   use super::*;
@@ -306,6 +317,7 @@ mod tests {
       end_pos: Vec3::zero(),
       end_vel: Vec3::zero(),
       target_velocity: None,
+      target_acceleration: None,
       standoff_distance: 0.0,
     };
 
@@ -330,6 +342,7 @@ mod tests {
         y: 20.0,
         z: 30.0,
       }),
+      target_acceleration: None,
       standoff_distance: 100.0,
     };
 
@@ -345,6 +358,33 @@ mod tests {
     assert_eq!(json_str2, json2.to_string());
 
     let _response_msg2 = serde_json::from_str::<ComputePathMsg>(json_str2.as_str()).unwrap();
+
+    let msg3 = ComputePathMsg {
+      entity_name: "ship1".to_string(),
+      end_pos: Vec3::zero(),
+      end_vel: Vec3::zero(),
+      target_velocity: Some(Vec3 {
+        x: 10.0,
+        y: 20.0,
+        z: 30.0,
+      }),
+      target_acceleration: Some(Vec3 { x: -10.0, y: 0., z: 0. }),
+      standoff_distance: 100.0,
+    };
+
+    let json3 = json!({
+        "entity_name": "ship1",
+        "end_pos": [0.0, 0.0, 0.0],
+        "end_vel": [0.0, 0.0, 0.0],
+        "target_velocity": [10.0, 20.0, 30.0],
+        "target_acceleration": [-10.0, 0.0, 0.0],
+        "standoff_distance": 100.0,
+    });
+
+    let json_str3 = serde_json::to_string(&msg3).unwrap();
+    assert_eq!(json_str3, json3.to_string());
+
+    let _response_msg3 = serde_json::from_str::<ComputePathMsg>(json_str3.as_str()).unwrap();
   }
 
   #[test_log::test]
