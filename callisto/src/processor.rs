@@ -43,7 +43,7 @@ use crate::{debug, error, info, warn};
 ///
 /// # Arguments
 /// * `connection_receiver` - A channel to receive new connections from the acceptor thread.  It takes a fully upgraded secure websocket stream,
-///     as well as any already authenticated email and session key (due to http cookies on the connection).
+///   as well as any already authenticated email and session key (due to http cookies on the connection).
 /// * `auth_template` - A template [Authenticator], i.e. one without session key or email set.  We use this to clone on each new connection, and then set the session key and email.
 /// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs in (to update this info)
 /// * `test_mode` - Whether we are in test mode.  Test mode disables authentication and ensures a deterministic seed for each random number generator.
@@ -236,7 +236,6 @@ pub async fn processor(
       }
       None => {
         warn!("(processor) Strange `None` response from message stream.  Ignoring");
-        continue;
       }
     }
   }
@@ -267,6 +266,7 @@ fn is_broadcast_message(message: &ResponseMsg) -> bool {
 }
 
 #[allow(clippy::borrowed_box)]
+#[allow(clippy::too_many_arguments)]
 #[must_use]
 async fn build_connection<'a>(
   auth_template: &Box<dyn Authenticator>, session_key: &str, mut context: Vec<UserData>, email: Option<&String>,
@@ -298,7 +298,7 @@ async fn build_connection<'a>(
       if connection.stream.send(Message::Text(encoded_message)).await.is_err() {
         okay = false;
         break;
-      };
+      }
     }
     if okay {
       Some(connection)

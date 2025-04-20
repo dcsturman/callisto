@@ -214,7 +214,7 @@ impl Entities {
       // Create a new ship and add it to the ship table
       let ship = Arc::new(RwLock::new(Ship::new(name.clone(), position, velocity, design, crew)));
       self.ships.insert(name, ship);
-    };
+    }
   }
 
   /// Add a planet to the entities.
@@ -353,7 +353,7 @@ impl Entities {
   /// # Arguments
   /// * `fire_actions` - The fire actions to process.
   /// * `ship_snapshot` - A snapshot of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
-  ///  a ship that was destroyed earlier in the round.
+  ///   a ship that was destroyed earlier in the round.
   /// * `rng` - The random number generator to use.
   ///
   /// # Returns
@@ -623,14 +623,14 @@ impl Entities {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for sensor lock.", target);
               return Vec::default();
-            };
+            }
             self.sensor_lock(ship_name, target, rng)
           }
           ShipAction::JamComms { target } => {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for jamming comms.", target);
               return Vec::default();
-            };
+            }
             self.jam_comms(ship_name, target, rng)
           }
           ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } | ShipAction::Jump => {
@@ -802,6 +802,20 @@ impl Entities {
     }
   }
 
+  /// Attempt to jump all ships that have jump actions.
+  /// 
+  /// We assume (for now) a prior successful Astrogation check.  All that remains is the engineering check.
+  /// Engineering check cannot stop you from jumping but can cause a misjump on failure.
+  /// 
+  /// # Arguments
+  /// * `jump_actions` - The jump actions to process.
+  /// * `rng` - The random number generator to use for engineering jump checks.
+  /// 
+  /// # Returns
+  /// * A list of all the effects resulting from the jump attempts.
+  /// 
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
   pub fn attempt_jumps(&mut self, jump_actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
     let mut effects = Vec::<EffectMsg>::new();
     let mut jumped_ships = Vec::<String>::new();
@@ -828,7 +842,7 @@ impl Entities {
             });
           } else {
             effects.push(EffectMsg::Message {
-              content: format!("{ship_name} jumped but with issues. Effect is {}", check),
+              content: format!("{ship_name} jumped but with issues. Effect is {check}"),
             });
           }
 
@@ -840,7 +854,7 @@ impl Entities {
     for ship_name in jumped_ships {
       self.ships.remove(&ship_name);
     }
-    
+
     effects
   }
 

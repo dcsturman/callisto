@@ -49,7 +49,7 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 /// * `damage_mod` - The damage modifier to use (positive or negative).
 /// * `attacker` - The ship that is attacking.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod`.
 /// * `defender` - The ship that is being attacked.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod` (e.g. armor) as
-///     well as to apply damage.
+///   well as to apply damage.
 /// * `weapon` - The weapon being used.  This is used to get the weapon type and mount.
 /// * `rng` - The random number generator to use.
 ///
@@ -585,7 +585,7 @@ fn find_range_band(distance: u32) -> Range {
 /// # Arguments
 /// * `attacker` - The ship that is attacking.  This is used to get the attacker's position and sensors.
 /// * `ships` - A clone of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
-///     a ship that was destroyed earlier in the round.
+///   a ship that was destroyed earlier in the round.
 /// * `sand_counts` - A snapshot of all the sand capabilities of each ship.
 /// * `actions` - The fire actions to process.
 /// * `rng` - The random number generator to use.

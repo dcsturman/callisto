@@ -96,7 +96,7 @@ pub type SubStream = TlsStream<TcpStream>;
 /// * `stream` - The raw TCP stream to upgrade.
 /// * `acceptor` - The TLS acceptor to use to upgrade the stream. (only when `no_tls_upgrade` is not enabled)
 /// * `session_keys` - The session keys to use for authentication.  This is a map of session keys to email addresses.  This is used to authenticate the user.  Its included
-///     here because on connection we can see any `HttpCookie` on the request.  We use that in case a connection drops and reconnects so we don't need to force a re-login.
+///   here because on connection we can see any `HttpCookie` on the request.  We use that in case a connection drops and reconnects so we don't need to force a re-login.
 ///
 /// # Returns
 /// A tuple of the websocket stream, the session key, and an optional email address.  The email address we `Some(email)` if this user has previously logged in.
@@ -299,7 +299,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       }
       Err(e) => {
         warn!("(main) Server at {addr} failed to establish websocket connection from {peer_addr}: {e}");
-        continue;
       }
     }
   }

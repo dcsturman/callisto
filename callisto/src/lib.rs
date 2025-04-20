@@ -46,7 +46,7 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 /// * `message`: - Incoming message of type [`RequestMsg`]
 /// * `server` - The [`Server`] struct presenting the server for this connection.
 /// * `session_keys` - The session keys for all connections.  It is needed so the login flow can update it with proper login information.  This isn't local
-///         to this connection per se because this could be a reconnect of a previous connection.
+///   to this connection per se because this could be a reconnect of a previous connection.
 /// * `test_mode` - Whether we are in test mode.  Test mode disables authentication and ensures a deterministic seed for each random number generator.
 ///
 /// # Returns
@@ -64,8 +64,8 @@ pub const STATUS_INVALID_TOKEN: u16 = 498;
 // Note the lifetimes do seem to be needed and the implicit_hasher rule has impact across
 // a lot of the codebase.  So excluding those two clippy warnings.
 #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
-pub async fn handle_request<'a>(
-  message: RequestMsg, server: &mut Server<'a>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+pub async fn handle_request(
+  message: RequestMsg, server: &mut Server<'_>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
   mut context: Vec<UserData>,
 ) -> Vec<ResponseMsg> {
   info!("(handle_request) Request: {:?}", message);
