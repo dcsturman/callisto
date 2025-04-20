@@ -34,6 +34,7 @@ export class Ship extends Entity {
   active_weapons: boolean[] = [];
   dodge_thrust: number = 0;
   assist_gunners: boolean = false;
+  can_jump: boolean = false;
   sensor_locks: string[] = [];
 
   crew: Crew;
@@ -55,6 +56,7 @@ export class Ship extends Entity {
     active_weapons: boolean[],
     dodge_thrust: number,
     assist_gunners: boolean,
+    can_jump: boolean,
     sensor_locks: string[]
   ) {
     super(name, position, velocity);
@@ -72,6 +74,7 @@ export class Ship extends Entity {
     this.dodge_thrust = dodge_thrust;
     this.assist_gunners = assist_gunners;
     this.sensor_locks = sensor_locks;
+    this.can_jump = can_jump;
     this.crew = new Crew(active_weapons.length);
   }
 
@@ -92,6 +95,7 @@ export class Ship extends Entity {
       "",
       [true, true],
       0,
+      false,
       false,
       []
     );
@@ -115,6 +119,7 @@ export class Ship extends Entity {
       json.active_weapons,
       json.dodge_thrust,
       json.assist_gunners,
+      json.can_jump,
       json.sensor_locks
     );
     ship.crew.parse(json.crew);

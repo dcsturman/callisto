@@ -71,6 +71,10 @@ pub struct Ship {
   #[serde(default)]
   assist_gunners: bool,
 
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default)]
+  can_jump: bool,
+
   // Index by turning ShipSystem enum into usize.
   // Skip these in both serializing and deserializing
   // as we don't expect them when loading from a file and
@@ -211,6 +215,7 @@ impl Ship {
       crew: crew.unwrap_or_default(),
       dodge_thrust: 0,
       assist_gunners: false,
+      can_jump: false,
     }
   }
 
@@ -309,6 +314,15 @@ impl Ship {
 
   pub fn get_crew_mut(&mut self) -> &mut Crew {
     &mut self.crew
+  }
+
+  pub fn enable_jump(&mut self) {
+    self.can_jump = true;
+  }
+
+  #[must_use]
+  pub fn can_jump(&self) -> bool {
+    self.can_jump
   }
 
   /// Set possible pilot actions for the next round. These include allocating thrust to dodging as

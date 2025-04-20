@@ -3,6 +3,7 @@ use std::result::Result;
 use std::sync::{Arc, Mutex};
 
 use cgmath::InnerSpace;
+use itertools::multiunzip;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
@@ -37,7 +38,10 @@ impl<'a> Server<'a> {
   ///
   /// # Panics
   /// If the lock cannot be obtained to read the entities.
-  pub fn new(entities: Arc<Mutex<Entities>>, initial_scenario: &'a Entities, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
+  pub fn new(
+    entities: Arc<Mutex<Entities>>, initial_scenario: &'a Entities, authenticator: Box<dyn Authenticator>,
+    test_mode: bool,
+  ) -> Self {
     Server {
       entities,
       initial_scenario,
@@ -316,9 +320,6 @@ impl<'a> Server<'a> {
   /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
   /// (e.g. move a ship, planet or missile) as well as new fire actions.
   ///
-  /// # Arguments
-  /// * `fire_actions` - The fire actions to execute.
-  ///
   /// # Panics  
   /// Panics if the lock cannot be obtained to read the entities.
   #[must_use]
@@ -335,33 +336,33 @@ impl<'a> Server<'a> {
     debug!("(/update) Ship actions: {:?}", actions);
 
     // Sort all the actions by type.  This big messy functional action sorts through all the ship actions and creates
-    // three vectors of vectors with all the fire actions in the first, the pilot actions in the second, the sensor actions in the third.
+    // three vectors with all the fire actions for each ship in the first, the sensor actions for each ship in the second, and
+    // ships making jump attempts in the third
     // Was very explicit with types here (more than necessary) to make it easier to read and understand.
-    // Also: did this before grabbing the entities lock as I'm not sure how expensive this is.
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions): (Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>) = actions
+    let (fire_actions, sensor_actions, jump_actions): (Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>) = multiunzip(actions
       .iter()
       .filter_map(|(ship_name, actions)| {
         if !entities.ships.contains_key(ship_name) {
           warn!("(update) Cannot find ship {} for actions.", ship_name);
           return None;
         }
-        let (f_actions, s_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = actions
+        let (f_actions, s_actions, j_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = multiunzip(actions
           .iter()
           .map(|action| match action {
-            ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None),
+            ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None),
             ShipAction::JamMissiles
             | ShipAction::BreakSensorLock { .. }
             | ShipAction::SensorLock { .. }
-            | ShipAction::JamComms { .. } => (None, Some(action.clone())),
-          })
-          .unzip();
+            | ShipAction::JamComms { .. } => (None, Some(action.clone()), None),
+            ShipAction::Jump => (None, None, Some(action.clone())),
+          }));
         Some((
           (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
           (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+          (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         ))
-      })
-      .unzip();
+      }));
 
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
@@ -382,7 +383,10 @@ impl<'a> Server<'a> {
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
 
-    // 5. Reset all ship agility setting as the round is over.
+    // 5. Attempt jumps at end of round.
+    effects.append(&mut entities.attempt_jumps(&jump_actions, &mut rng));
+
+    // 6. Reset all ship agility setting as the round is over.
     for ship in entities.ships.values() {
       ship.write().unwrap().reset_pilot_actions();
     }

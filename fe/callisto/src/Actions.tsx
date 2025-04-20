@@ -7,6 +7,7 @@ export type ActionType = {
     sensor: SensorState;
     fire: FireState;
     unfire: UnfireState;
+    jump: boolean;
   };
 };
 
@@ -25,6 +26,7 @@ export const ActionContext = createContext<{
   ) => void;
   updateFireCalledShot: (shipName: string, index: number, system: string | null) => void;
   unfireWeapon: (shipName: string, weapon_id: number) => void;
+  attemptJump: (shipName: string) => void;
 }>({
   actions: {},
   setActions: () => {},
@@ -32,6 +34,7 @@ export const ActionContext = createContext<{
   fireWeapon: () => {},
   updateFireCalledShot: () => {},
   unfireWeapon: () => {},
+  attemptJump: () => {},
 });
 
 const ActionContextProvider = ActionContext.Provider;
@@ -142,6 +145,15 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
     updateActions(next);
   };
 
+  const attemptJump = (shipName: string) => {
+    const next = {
+      ...actions,
+      [shipName]: {...actions[shipName], jump: true},
+    };
+    setActions(next);
+    updateActions(next);
+  };
+
   return (
     <ActionContextProvider
       value={{
@@ -151,6 +163,7 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
         fireWeapon,
         updateFireCalledShot,
         unfireWeapon,
+        attemptJump,
       }}>
       {children}
     </ActionContextProvider>
@@ -169,6 +182,11 @@ export function actionPayload(actions: ActionType) {
     if (sensor_action) {
       fire_actions.push(sensor_action);
     }
+
+    if (value.jump) {
+      fire_actions.push("Jump");
+    }
+
     return [key, fire_actions];
   });
 }
@@ -217,6 +235,7 @@ export function payloadToAction(payload: object[]): ActionType {
       | {BreakSensorLock: string}
       | {SensorLock: string}
       | {JamComms: string}
+      | {Jump: string}
     )[];
     console.log(`(payloadToAction) Received actions for ${shipName}: ${JSON.stringify(actions)}`);
     if (!actions) {
@@ -239,7 +258,9 @@ export function payloadToAction(payload: object[]): ActionType {
     result[shipName] = {...result[shipName], fire: fire_actions};
 
     const sensor_action = actions.filter(
-      (action) => !((typeof action === "object") && Object.hasOwn(action, "FireAction"))
+      (action) => {
+        return !(((typeof action === "object") && Object.hasOwn(action, "FireAction")) || (typeof action === "string" && action === "Jump"));
+      }
     );
     
     if (sensor_action.length === 1) {
@@ -261,6 +282,11 @@ export function payloadToAction(payload: object[]): ActionType {
         );
       }
       result[shipName] = {...result[shipName], sensor: s};
+    }
+
+    const jump_action = actions.filter((action) => action === "Jump");
+    if (jump_action.length === 1) {
+      result[shipName] = {...result[shipName], jump: true};
     }
   }
   return result;

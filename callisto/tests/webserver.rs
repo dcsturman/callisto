@@ -366,6 +366,7 @@ async fn integration_add_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }],
         "missiles":[],
@@ -437,6 +438,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -453,6 +455,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }],
           "missiles":[],
@@ -506,6 +509,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -522,10 +526,11 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }]});
 
-    assert_json_eq!(entities, compare);
+        assert_json_eq!(entities, compare);
   } else {
     panic!("Improper response to entities request received.");
   }
@@ -574,6 +579,7 @@ async fn integration_add_planet_ship() {
      "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
      "dodge_thrust":0,
      "assist_gunners":false,
+     "can_jump":false,
      "sensor_locks": []
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -590,6 +596,7 @@ async fn integration_add_planet_ship() {
      "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
      "dodge_thrust":0,
      "assist_gunners":false,
+     "can_jump":false,
      "sensor_locks": []
     }]});
 
@@ -742,6 +749,7 @@ async fn integration_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -758,6 +766,7 @@ async fn integration_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             }],
             "missiles":[],"planets":[],"actions":[]});

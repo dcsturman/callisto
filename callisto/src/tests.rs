@@ -80,6 +80,7 @@ async fn test_add_ship() {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": [],
         }],
         "missiles":[],"planets":[],"actions":[]});
@@ -122,6 +123,7 @@ async fn test_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -138,6 +140,7 @@ async fn test_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }],
           "missiles":[],
@@ -177,6 +180,7 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -193,6 +197,7 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       }]});
 
@@ -233,6 +238,7 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -249,6 +255,7 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       }]});
 
@@ -329,6 +336,7 @@ async fn test_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -345,6 +353,7 @@ async fn test_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             }],
              "missiles":[],"planets":[],"actions":[]});
@@ -744,6 +753,7 @@ async fn test_big_fight() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -756,6 +766,7 @@ async fn test_big_fight() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         }],
           "missiles":[],
@@ -845,6 +856,7 @@ async fn test_fight_with_crew() {
          "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -857,6 +869,7 @@ async fn test_fight_with_crew() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         }],
           "missiles":[],

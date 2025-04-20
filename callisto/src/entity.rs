@@ -119,17 +119,23 @@ impl Entities {
 
     for ship in self.ships.values() {
       let ship = ship.read().unwrap();
-      dest.ships.insert(ship.get_name().to_string(), Arc::new(RwLock::new(ship.clone())));
+      dest
+        .ships
+        .insert(ship.get_name().to_string(), Arc::new(RwLock::new(ship.clone())));
     }
 
     for missile in self.missiles.values() {
       let missile = missile.read().unwrap();
-      dest.missiles.insert(missile.get_name().to_string(), Arc::new(RwLock::new(missile.clone())));
+      dest
+        .missiles
+        .insert(missile.get_name().to_string(), Arc::new(RwLock::new(missile.clone())));
     }
 
     for planet in self.planets.values() {
       let planet = planet.read().unwrap();
-      dest.planets.insert(planet.get_name().to_string(), Arc::new(RwLock::new(planet.clone())));
+      dest
+        .planets
+        .insert(planet.get_name().to_string(), Arc::new(RwLock::new(planet.clone())));
     }
 
     dest.next_missile_id = self.next_missile_id;
@@ -384,13 +390,49 @@ impl Entities {
     effects
   }
 
+  /// Check which ships are jump enabled.  This is done at the end of each round.  It is done
+  /// by checking if the ship is more than 100 diameters (200 radii) away from every planet.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write a ship or read a planet.
+  pub fn check_jump_enabled(&mut self) {
+    // Check which ships are jump enabled.
+    for ship in self.ships.values() {
+      let readable_ship = ship.read().unwrap();
+      // Is every planet more than 100 diameters (200 radii) away?
+      let can_jump = self.planets.values().all(|planet| {
+        let planet = planet.read().unwrap();
+        (readable_ship.get_position() - planet.get_position()).magnitude() > planet.radius * 200.0
+      });
+
+      // If ship can jump, note it in entities.
+      if !can_jump || readable_ship.current_jump == 0 {
+        debug!(
+          "(Entity.check_jump_enabled) Ship {} is NOT jump enabled.",
+          readable_ship.get_name()
+        );
+        continue;
+      }
+
+      drop(readable_ship);
+
+      let mut ship = ship.write().unwrap();
+      ship.enable_jump();
+      debug!("(Entity.check_jump_enabled) Ship {} jump enabled.", ship.get_name());
+    }
+  }
+
   /// Update all entities.  This is typically done at the end of a round to advance a turn.
-  /// It returns all the effects resulting from the actions of the update.
+  /// It returns all the effects resulting from the actions of the update.  This happens after `fire_actions`
+  /// so all missiles should already be launched and will get to move here.  Update in the order:
+  /// 1. Planets
+  /// 2. Missiles
+  /// 3. Ships
   ///
   /// # Arguments
   /// * `ship_snapshot` - A snapshot of the ships at the start of the round.  This is used to ensure that
-  ///     any damage applied is simultaneous.  The snapshot is worked off of and real damage or other effects
-  ///     are applied to the actual entities.
+  ///   any damage applied is simultaneous.  The snapshot is worked off of and real damage or other effects
+  ///   are applied to the actual entities.
   /// * `rng` - A random number generator.
   ///
   /// # Panics
@@ -496,6 +538,7 @@ impl Entities {
       .collect::<Vec<_>>();
 
     let mut cleanup_ships_list = Vec::<String>::new();
+
     effects.append(
       &mut self
         .ships
@@ -534,6 +577,8 @@ impl Entities {
       self.ships.remove(name);
     }
 
+    // Update which ships are jump enabled
+    self.check_jump_enabled();
     effects
   }
 
@@ -588,7 +633,7 @@ impl Entities {
             };
             self.jam_comms(ship_name, target, rng)
           }
-          ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => {
+          ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } | ShipAction::Jump => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }
@@ -755,6 +800,48 @@ impl Entities {
     } else {
       Vec::default()
     }
+  }
+
+  pub fn attempt_jumps(&mut self, jump_actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let mut effects = Vec::<EffectMsg>::new();
+    let mut jumped_ships = Vec::<String>::new();
+    for (ship_name, actions) in jump_actions {
+      // If there is even a single jump action (really should never be more than one) then attempt jump.
+      if !actions.is_empty() {
+        let Some(ship) = self.ships.get(ship_name) else {
+          warn!("(Entity.attempt_jumps) Cannot find ship {} for jump.", ship_name);
+          continue;
+        };
+
+        let ship = ship.read().unwrap();
+
+        if ship.can_jump() && ship.current_fuel > ship.design.hull / 10 {
+          // We intentionally skip the Astrogation check for now as there isn't astrogation skill in the simulation.
+          // Also it could have happened at any time before this so its confusing.
+          // Thus only relevant skill is engineering_jump.
+          // The check should be an Easy (4+) check. However, in combat its rushed so its a Routine (6+) check.
+          let check = i16::from(roll_dice(2, rng)) + i16::from(ship.crew.get_engineering_jump()) - 6;
+
+          if check >= 0 {
+            effects.push(EffectMsg::Message {
+              content: format!("{ship_name} jumps successfully!"),
+            });
+          } else {
+            effects.push(EffectMsg::Message {
+              content: format!("{ship_name} jumped but with issues. Effect is {}", check),
+            });
+          }
+
+          jumped_ships.push(ship_name.clone());
+        }
+      }
+    }
+    
+    for ship_name in jumped_ships {
+      self.ships.remove(&ship_name);
+    }
+    
+    effects
   }
 
   /// Validate the entity data structure, performing some important post-load checks.
@@ -1507,6 +1594,7 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": []
         },
         {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -1522,6 +1610,7 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": []
         },
         {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -1537,6 +1626,7 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": []
         }],
     "missiles":[],

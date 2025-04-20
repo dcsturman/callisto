@@ -42,6 +42,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
 }) => {
   const viewContext = useContext(ViewContext);
   const serverEntities = useContext(EntitiesServerContext).entities;
+  const actionContext = useContext(ActionContext);
 
   const initNavigationTargetState = useMemo(() => {
     return {
@@ -127,13 +128,6 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
 
   const startAccel = [ship?.plan[0][0][0], ship?.plan[0][0][1], ship?.plan[0][0][2]];
 
-  // TODO: Consider making all this unsupervised to make entry easier.
-  const [computerAccel, setComputerAccel] = useState({
-    x: startAccel[0],
-    y: startAccel[1],
-    z: startAccel[2],
-  });
-
   // This is where we convert from string back into number, and thus
   // we only do this precision-losing conversion when a human enters a new value.
   // We do not do such conversions based on values from the server.
@@ -193,33 +187,36 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
     if (proposedPlan == null) {
       console.error(`(Controls.handleAssignPlan) No current plan`);
     } else {
-      setComputerAccel({
-        x: proposedPlan.plan[0][0][0],
-        y: proposedPlan.plan[0][0][1],
-        z: proposedPlan.plan[0][0][2],
-      });
+      (document.getElementById("set-accel-input-x") as HTMLInputElement).value = proposedPlan.plan[0][0][0].toString();
+      (document.getElementById("set-accel-input-y") as HTMLInputElement).value = proposedPlan.plan[0][0][1].toString();
+      (document.getElementById("set-accel-input-z") as HTMLInputElement).value = proposedPlan.plan[0][0][2].toString();
+      
       setPlan(ship.name, proposedPlan.plan);
     }
   }
 
+  function checkNumericInput(id: string): number {
+    const element = document.getElementById(id) as HTMLInputElement;
+    const value = Number(element.value);
+    if (isNaN(value)) {
+      window.alert(`Invalid input: '${element.value}' is not a number.`);
+      element.value = "0";
+      return 0;
+    }
+    return value;
+  }
   // Intentionally defining as a function that returns JSX vs a true component.  If I use a true component then
   // we lose focus on each key stroke.  But I do need accelerationManager nested inside ShipComputer as we want to share
   // the computerAccel state between this component and the navigation computer functionality.
   function accelerationManager(): JSX.Element {
     function handleSetAcceleration(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
-      const x = computerAccel.x;
-      const y = computerAccel.y;
-      const z = computerAccel.z;
+
+      const x = checkNumericInput("set-accel-input-x");
+      const y = checkNumericInput("set-accel-input-y");
+      const z = checkNumericInput("set-accel-input-z");
 
       setPlan(ship.name, [[[x, y, z], DEFAULT_ACCEL_DURATION], null]);
-    }
-
-    function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-      setComputerAccel({
-        ...computerAccel,
-        [event.target.name]: Number(event.target.value),
-      });
     }
 
     return (
@@ -231,27 +228,24 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
           onSubmit={handleSetAcceleration}>
           <input
             className="control-input"
-            id="control-input-x"
+            id="set-accel-input-x"
             name="x"
             type="text"
-            onChange={handleChange}
-            value={computerAccel.x}
+            defaultValue={startAccel[0].toString()}
           />
           <input
             className="control-input"
-            id="control-input-y"
+            id="set-accel-input-y"
             name="y"
             type="text"
-            onChange={handleChange}
-            value={computerAccel.y}
+            defaultValue={startAccel[1].toString()}
           />
           <input
             className="control-input"
-            id="control-input-z"
+            id="set-accel-input-z"
             name="z"
             type="text"
-            onChange={handleChange}
-            value={computerAccel.z}
+            defaultValue={startAccel[2].toString()}
           />
           <input className="control-input control-button blue-button" type="submit" value="Set" />
         </form>
@@ -294,6 +288,13 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
     );
   }
 
+  function attemptJump() {
+    const name = ship.name;
+    if (window.confirm(`Are you sure you want to have ${name} attempt a jump?`)) {
+      actionContext.attemptJump(name);
+    }
+  }
+
   const title = ship.name + " Controls";
 
   // TODO: Full Stop is not correct, but needs server-side functions.  Should just get to 0 velocity and not care about position.
@@ -305,6 +306,11 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
       {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && (
         <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
       )}
+      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && 
+        <button className="control-input control-button blue-button" disabled={!ship.can_jump} onClick={attemptJump}>
+          Jump
+        </button>
+      }
       <hr />
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && (
         <>

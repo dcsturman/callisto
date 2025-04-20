@@ -149,8 +149,6 @@ impl Entity for Missile {
       // It might not be for full DELTA_TIME but that is okay.
       // We don't actually save the path anywhere as we will recompute each round.
       // We do save the current acceleration just for display purposes.
-      // In the future its possible to have "dumb missiles" in which case we'll need to treat this
-      // as a precomputed path instead.
       let next = path.plan.advance_time(DELTA_TIME);
 
       assert!(

@@ -28,6 +28,7 @@ pub enum ShipAction {
   JamComms {
     target: String,
   },
+  Jump,
 }
 
 pub type ShipActionList = Vec<(String, Vec<ShipAction>)>;
@@ -55,8 +56,8 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
           | ShipAction::BreakSensorLock { .. }
           | ShipAction::SensorLock { .. }
           | ShipAction::JamComms { .. } => {
-            // Strip out all sensor actions, leaving just the FireActions
-            current_actions.retain(|action| matches!(action, ShipAction::FireAction { .. }));
+            // Strip out all sensor actions, leaving just the non-sensor actions
+            current_actions.retain(|action| matches!(action, ShipAction::FireAction { .. } | ShipAction::Jump));
             current_actions.push(next_action.clone());
           }
           // Each fire action is added to the list of fire actions, but only if it is not already there
@@ -98,6 +99,13 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             current_actions.retain(
               |action| !matches!(action, ShipAction::FireAction{weapon_id, ..} if max_similar_weapon_id == weapon_id),
             );
+          }
+          // When merging ensure only one Jump action remains in the merged list.  Should never actually happen
+          // because there's no way to remove a jump action (but UX may be buggy and add it twice).
+          ShipAction::Jump => {
+            if !current_actions.iter().any(|action| matches!(action, ShipAction::Jump)) {
+              current_actions.push(next_action.clone());
+            }
           }
         }
       }
