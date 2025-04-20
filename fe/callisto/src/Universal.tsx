@@ -34,6 +34,7 @@ export class Ship extends Entity {
   active_weapons: boolean[] = [];
   dodge_thrust: number = 0;
   assist_gunners: boolean = false;
+  can_jump: boolean = false;
   sensor_locks: string[] = [];
 
   crew: Crew;
@@ -55,6 +56,7 @@ export class Ship extends Entity {
     active_weapons: boolean[],
     dodge_thrust: number,
     assist_gunners: boolean,
+    can_jump: boolean,
     sensor_locks: string[]
   ) {
     super(name, position, velocity);
@@ -72,6 +74,7 @@ export class Ship extends Entity {
     this.dodge_thrust = dodge_thrust;
     this.assist_gunners = assist_gunners;
     this.sensor_locks = sensor_locks;
+    this.can_jump = can_jump;
     this.crew = new Crew(active_weapons.length);
   }
 
@@ -92,6 +95,7 @@ export class Ship extends Entity {
       "",
       [true, true],
       0,
+      false,
       false,
       []
     );
@@ -115,6 +119,7 @@ export class Ship extends Entity {
       json.active_weapons,
       json.dodge_thrust,
       json.assist_gunners,
+      json.can_jump,
       json.sensor_locks
     );
     ship.crew.parse(json.crew);
@@ -344,6 +349,14 @@ export class Weapon {
 
 }
 
+export type CompressedWeaponType = {
+  [weapon: string]: {
+    kind: string;
+    mount: WeaponMount;
+    total: number;
+  };
+};
+
 export class ShipDesignTemplate {
   name: string;
   displacement: number;
@@ -402,14 +415,7 @@ export class ShipDesignTemplate {
   }
 
   compressedWeapons() {
-    const initial_acc: {
-      [weapon: string]: {
-        kind: string;
-        mount: WeaponMount;
-        used: number;
-        total: number;
-      };
-    } = {};
+    const initial_acc: CompressedWeaponType = {};
 
     return this.weapons.reduce(
       (accumulator, weapon) => {
@@ -419,7 +425,6 @@ export class ShipDesignTemplate {
           accumulator[weapon.toString()] = {
             kind: weapon.kind,
             mount: weapon.mount,
-            used: 0,
             total: 1,
           };
         }
@@ -427,6 +432,25 @@ export class ShipDesignTemplate {
       },
       initial_acc
     );
+  }
+
+  // Find the weapon_id of the nth with a given name.  This is part of going 
+  // backwards from compress weapons to the actual weapon IDs (as the server has
+  // no idea about compressed weapons).
+  findNthWeapon(weapon_name: string, n: number) {
+    for (let count = 0; count < this.weapons.length; count++) {
+      if (this.weapons[count].toString() === weapon_name) {
+        n -= 1;
+        if (n === 0) {
+          return count;
+        }
+      }
+    }
+    return -1;
+  }
+
+  getWeaponName(weapon_id: number) {
+    return this.weapons[weapon_id].toString();
   }
 }
 
@@ -442,7 +466,7 @@ export const SCALE = 1e-6; // 1 unit = 100km or 1e6m
 // Be sure TURN_IN_SECONDS and G match the constants in entity.rs
 export const TURN_IN_SECONDS = 360;
 export const G = 9.807;
-export const DEFAULT_ACCEL_DURATION = 10000;
+export const DEFAULT_ACCEL_DURATION = 50000;
 // Not to be confused with SCALE, POSITION_SCALE is the degree vector values for position should be scaled.
 // i.e. rather than having users enter meters, they enter position in kilometers.  Thus a 1000.0 scale.
 export const POSITION_SCALE = 1000.0;

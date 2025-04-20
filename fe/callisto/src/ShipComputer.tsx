@@ -1,103 +1,71 @@
 import React from "react";
-import { useState, useRef, useEffect, useContext } from "react";
+import {useState, useEffect, useContext, useMemo} from "react";
 import {
   FlightPathResult,
   Ship,
-  Planet,
-  Entity,
   EntitiesServerContext,
   DEFAULT_ACCEL_DURATION,
   Acceleration,
   POSITION_SCALE,
   ViewContext,
-  ViewMode
+  ViewMode,
 } from "./Universal";
 
-import { setPlan, setCrewActions } from "./ServerManager";
+import {setPlan, setCrewActions} from "./ServerManager";
+import {ActionContext, SensorState, SensorAction, newSensorState} from "./Actions";
+import {EntitySelectorType, EntitySelector} from "./EntitySelector";
 
-import { EntitySelectorType, EntitySelector } from "./EntitySelector";
+// Distance in km for standoff from another ship.
+const DEFAULT_SHIP_STANDOFF_DISTANCE: number = 10;
 
-export enum SensorAction {
-  None,
-  JamMissiles,
-  BreakSensorLock,
-  SensorLock,
-  JamComms,
-}
-
-export class SensorState {
-  action: SensorAction = SensorAction.JamMissiles;
-  target: string = "";
-
-  constructor(action: SensorAction, target: string) {
-    this.action = action;
-    this.target = target;
-  }
-
-  toJSON() {
-    switch (this.action) {
-      case SensorAction.None:
-        return undefined;
-      case SensorAction.JamMissiles:
-        return "JamMissiles";
-      case SensorAction.BreakSensorLock:
-        return { BreakSensorLock: { target: this.target } };
-      case SensorAction.SensorLock:
-        return { SensorLock: { target: this.target } };
-      case SensorAction.JamComms:
-        return { JamComms: { target: this.target } };
-    }
-  }
-}
-
-export type SensorActionMsg = { [key: string]: SensorState };
-
-export function ShipComputer(args: {
+type ShipComputerProps = {
   ship: Ship;
-  setComputerShip: (ship: Ship | null) => void;
+  setComputerShipName: (ship_name: string | null) => void;
   proposedPlan: FlightPathResult | null;
-  resetProposedPlan: () => void;
   getAndShowPlan: (
     entity_name: string | null,
     end_pos: [number, number, number],
     end_vel: [number, number, number],
     target_vel: [number, number, number] | null,
+    target_accel: [number, number, number] | null,
     standoff: number
   ) => void;
-  sensor_action: SensorState;
-  setSensorAction: (action: SensorState) => void;
-  sensor_locks: string[];
-}) {
+  sensorLocks: string[];
+};
+
+export const ShipComputer: React.FC<ShipComputerProps> = ({
+  ship,
+  setComputerShipName,
+  proposedPlan,
+  getAndShowPlan,
+  sensorLocks,
+}) => {
   const viewContext = useContext(ViewContext);
+  const serverEntities = useContext(EntitiesServerContext).entities;
+  const actionContext = useContext(ActionContext);
 
-  // A bit of a hack to make ship defined.  If we get here and it cannot find the ship in the entities table something is very very wrong.
-  const ship =
-    args.ship ||
-    new Ship(
-      "Error",
-      [0, 0, 0],
-      [0, 0, 0],
-      [[[0, 0, 0], 0], null],
-      "Buccaneer",
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      "",
-      [],
-      0,
-      false,
-      []
-    );
+  const initNavigationTargetState = useMemo(() => {
+    return {
+      p_x: 0.0,
+      p_y: 0.0,
+      p_z: 0.0,
+      v_x: 0.0,
+      v_y: 0.0,
+      v_z: 0.0,
+      a_x: 0.0,
+      a_y: 0.0,
+      a_z: 0.0,
+      standoff: 0.0,
+    };
+  }, []);
 
-  if (ship == null) {
-    console.error(`(ShipComputer) Unable to find ship of name "${args.ship}!`);
-  }
-
-  const [currentNavTarget, setCurrentNavTarget] = useState<Entity | null>(null);
+  // Its important to differentiate the following two similar states.
+  // CurrentNavTarget is the entity currently being used as the navigation target.
+  // navigationTarget holds the raw coordinates of a navigation target.  So
+  // when currentNavTarget changes so will navigationTarget.  However, the position, velocity, standoff
+  // of navigationTarget can then be changed to tweak/alter the navigation target.
+  const [currentNavTarget, setCurrentNavTarget] = useState<string | null>(null);
+  const [navigationTarget, setNavigationTarget] = useState(initNavigationTargetState);
 
   useEffect(() => {
     if (currentNavTarget == null) {
@@ -105,72 +73,76 @@ export function ShipComputer(args: {
       return;
     }
 
-    const standoff =
-      currentNavTarget instanceof Planet
-        ? (
-            ((currentNavTarget as Planet).radius * 1.1) /
-            POSITION_SCALE
-          ).toFixed(1)
-        : "1000";
+    if (currentNavTarget === ship.name) {
+      setNavigationTarget(initNavigationTargetState);
+      setCurrentNavTarget(null);
+      return;
+    }
+
+    let standoff = DEFAULT_SHIP_STANDOFF_DISTANCE;
+
+    const planet = serverEntities.planets.find((planet) => planet.name === currentNavTarget);
+
+    if (planet) {
+      standoff = (planet.radius * 1.1) / POSITION_SCALE;
+    }
+
+    const target_ship: Ship | undefined = serverEntities.ships.find(
+      (ship) => ship.name === currentNavTarget
+    );
+    const entity = planet || target_ship;
+
+    if (entity == null) {
+      console.error(`(ShipComputer) Unable to find entity ${currentNavTarget}`);
+      return;
+    }
 
     setNavigationTarget({
-      p_x: (currentNavTarget.position[0] / POSITION_SCALE).toFixed(0),
-      p_y: (currentNavTarget.position[1] / POSITION_SCALE).toFixed(0),
-      p_z: (currentNavTarget.position[2] / POSITION_SCALE).toFixed(0),
-      v_x: currentNavTarget.velocity[0].toFixed(1),
-      v_y: currentNavTarget.velocity[1].toFixed(1),
-      v_z: currentNavTarget.velocity[2].toFixed(1),
+      p_x: entity.position[0],
+      p_y: entity.position[1],
+      p_z: entity.position[2],
+      v_x: entity.velocity[0],
+      v_y: entity.velocity[1],
+      v_z: entity.velocity[2],
+      a_x: target_ship ? target_ship.plan[0][0][0] : 0.0,
+      a_y: target_ship ? target_ship.plan[0][0][1] : 0.0,
+      a_z: target_ship ? target_ship.plan[0][0][2] : 0.0,
       standoff,
     });
 
     // Also implicitly compute a plan since most of the time this is what the user wants.
-    args.getAndShowPlan(
+    getAndShowPlan(
       ship.name,
-      currentNavTarget.position,
-      currentNavTarget.velocity,
-      currentNavTarget.velocity,
-      Number(standoff)
+      entity.position,
+      entity.velocity,
+      entity.velocity,
+      target_ship ? target_ship.plan[0][0] : null,
+      standoff
     );
-  }, [currentNavTarget]);
+  }, [currentNavTarget, serverEntities, ship.name, initNavigationTargetState, getAndShowPlan]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.
-  const [agility, setDodge] = useState(ship.dodge_thrust);
-  const [assistGunners, setAssistGunners] = useState(ship.assist_gunners);
+  const assistGunners = useMemo(() => ship.assist_gunners, [ship]);
+  const agility = useMemo(() => ship.dodge_thrust, [ship]);
 
-  const selectRef = useRef<HTMLSelectElement>(null);
+  const startAccel = [ship?.plan[0][0][0], ship?.plan[0][0][1], ship?.plan[0][0][2]];
 
-  const initNavigationTargetState = {
-    p_x: "0",
-    p_y: "0",
-    p_z: "0",
-    v_x: "0",
-    v_y: "0",
-    v_z: "0",
-    standoff: "0",
-  };
-
-  const [navigationTarget, setNavigationTarget] = useState(
-    initNavigationTargetState
-  );
-
-  const startAccel = [
-    ship?.plan[0][0][0].toString(),
-    ship?.plan[0][0][1].toString(),
-    ship?.plan[0][0][2].toString(),
-  ];
-
-  const [computerAccel, setComputerAccel] = useState({
-    x: startAccel[0],
-    y: startAccel[1],
-    z: startAccel[2],
-  });
-
+  // This is where we convert from string back into number, and thus
+  // we only do this precision-losing conversion when a human enters a new value.
+  // We do not do such conversions based on values from the server.
   function handleNavigationChange(event: React.ChangeEvent<HTMLInputElement>) {
-    setNavigationTarget({
-      ...navigationTarget,
-      [event.target.name]: event.target.value,
-    });
+    if (event.target.name === "p_x" || event.target.name === "p_y" || event.target.name === "p_z") {
+      setNavigationTarget({
+        ...navigationTarget,
+        [event.target.name]: Number(event.target.value) * POSITION_SCALE,
+      });
+    } else {
+      setNavigationTarget({
+        ...navigationTarget,
+        [event.target.name]: Number(event.target.value),
+      });
+    }
   }
 
   function handleNavigationSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -178,317 +150,329 @@ export function ShipComputer(args: {
     event.preventDefault();
 
     const end_pos: [number, number, number] = [
-      Number(navigationTarget.p_x) * POSITION_SCALE,
-      Number(navigationTarget.p_y) * POSITION_SCALE,
-      Number(navigationTarget.p_z) * POSITION_SCALE,
+      navigationTarget.p_x,
+      navigationTarget.p_y,
+      navigationTarget.p_z,
     ];
     const end_vel: [number, number, number] = [
-      Number(navigationTarget.v_x),
-      Number(navigationTarget.v_y),
-      Number(navigationTarget.v_z),
+      navigationTarget.v_x,
+      navigationTarget.v_y,
+      navigationTarget.v_z,
     ];
     const target_vel: [number, number, number] | null = [
-      Number(navigationTarget.v_x),
-      Number(navigationTarget.v_y),
-      Number(navigationTarget.v_z),
+      navigationTarget.v_x,
+      navigationTarget.v_y,
+      navigationTarget.v_z,
     ];
 
-    const standoff = Number(navigationTarget.standoff) * POSITION_SCALE;
+    const target_accel: [number, number, number] | null = [
+      navigationTarget.a_x,
+      navigationTarget.a_y,
+      navigationTarget.a_z,
+    ];
+
+    // TODO: Get rid of POSITION_SCALE and move to display
+    const standoff = navigationTarget.standoff * POSITION_SCALE;
 
     console.log(
-      `Computing route for ${ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} with standoff ${standoff}`
+      `Computing route for ${ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} target acceleration ${target_accel} with standoff ${standoff}`
     );
 
     // Called directly - usually when the user has specifically modified the values.
     // Can also be called implicitly in handleNavTargetSelect
-    args.getAndShowPlan(ship.name, end_pos, end_vel, target_vel, standoff);
+    getAndShowPlan(ship.name, end_pos, end_vel, target_vel, target_accel, standoff);
   }
 
   function handleAssignPlan() {
-    if (args.proposedPlan == null) {
+    if (proposedPlan == null) {
       console.error(`(Controls.handleAssignPlan) No current plan`);
     } else {
-      setComputerAccel({
-        x: args.proposedPlan.plan[0][0][0].toString(),
-        y: args.proposedPlan.plan[0][0][1].toString(),
-        z: args.proposedPlan.plan[0][0][2].toString(),
-      });
-      setPlan(ship.name, args.proposedPlan.plan).then(() =>
-        args.resetProposedPlan()
-      );
-
-      if (selectRef.current !== null) {
-        selectRef.current.value = "";
-      }
-
-      setNavigationTarget(initNavigationTargetState);
+      (document.getElementById("set-accel-input-x") as HTMLInputElement).value = proposedPlan.plan[0][0][0].toString();
+      (document.getElementById("set-accel-input-y") as HTMLInputElement).value = proposedPlan.plan[0][0][1].toString();
+      (document.getElementById("set-accel-input-z") as HTMLInputElement).value = proposedPlan.plan[0][0][2].toString();
+      
+      setPlan(ship.name, proposedPlan.plan);
     }
   }
 
+  function checkNumericInput(id: string): number {
+    const element = document.getElementById(id) as HTMLInputElement;
+    const value = Number(element.value);
+    if (isNaN(value)) {
+      window.alert(`Invalid input: '${element.value}' is not a number.`);
+      element.value = "0";
+      return 0;
+    }
+    return value;
+  }
   // Intentionally defining as a function that returns JSX vs a true component.  If I use a true component then
   // we lose focus on each key stroke.  But I do need accelerationManager nested inside ShipComputer as we want to share
   // the computerAccel state between this component and the navigation computer functionality.
   function accelerationManager(): JSX.Element {
     function handleSetAcceleration(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
-      const x = Number(computerAccel.x);
-      const y = Number(computerAccel.y);
-      const z = Number(computerAccel.z);
 
-      const setColor = (id: string, color: string) => {
-        const elem = document.getElementById(id);
-        if (elem !== null) {
-          elem.style.color = color;
-        }
-      };
+      const x = checkNumericInput("set-accel-input-x");
+      const y = checkNumericInput("set-accel-input-y");
+      const z = checkNumericInput("set-accel-input-z");
 
-      setPlan(ship.name, [[[x, y, z], DEFAULT_ACCEL_DURATION], null])
-        .then(() => {
-          setColor("control-input-x", "black");
-          setColor("control-input-y", "black");
-          setColor("control-input-z", "black");
-
-          args.resetProposedPlan();
-        })
-        .catch(() => {
-          setColor("control-input-x", "red");
-          setColor("control-input-y", "red");
-          setColor("control-input-z", "red");
-
-          args.resetProposedPlan();
-        });
-    }
-
-    function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-      setComputerAccel({
-        ...computerAccel,
-        [event.target.name]: event.target.value,
-      });
+      setPlan(ship.name, [[[x, y, z], DEFAULT_ACCEL_DURATION], null]);
     }
 
     return (
       <>
-        <h2 className="control-form">
-          Set Accel (m/s<sup>2</sup>)
-        </h2>
+        <h2 className="control-form">Set Accel (G&apos;s)</h2>
         <form
           key={ship.name + "-accel-setter"}
           className="as-form"
           onSubmit={handleSetAcceleration}>
           <input
             className="control-input"
-            id="control-input-x"
+            id="set-accel-input-x"
             name="x"
             type="text"
-            onChange={handleChange}
-            value={computerAccel.x}
+            defaultValue={startAccel[0].toString()}
           />
           <input
             className="control-input"
-            id="control-input-y"
+            id="set-accel-input-y"
             name="y"
             type="text"
-            onChange={handleChange}
-            value={computerAccel.y}
+            defaultValue={startAccel[1].toString()}
           />
           <input
             className="control-input"
-            id="control-input-z"
+            id="set-accel-input-z"
             name="z"
             type="text"
-            onChange={handleChange}
-            value={computerAccel.z}
+            defaultValue={startAccel[2].toString()}
           />
-          <input
-            className="control-input control-button blue-button"
-            type="submit"
-            value="Set"
-          />
+          <input className="control-input control-button blue-button" type="submit" value="Set" />
         </form>
       </>
     );
   }
 
   function pilotActions(): JSX.Element {
-    function handleCrewActionSubmit(event: React.FormEvent<HTMLFormElement>) {
-      event.preventDefault();
-      ship.dodge_thrust = agility;
-      setCrewActions(ship.name, agility, assistGunners);
+    function handleCrewActionChange(dodge: number, assist: boolean) {
+      if (dodge === undefined) {
+        dodge = 0;
+      }
+      ship.dodge_thrust = dodge;
+      ship.assist_gunners = assist;
+      setCrewActions(ship.name, dodge, assist);
     }
     return (
       <>
         <h2 className="control-form">Pilot Actions</h2>
-        <form
-          id="crew-actions-form"
-          className="control-form"
-          onSubmit={handleCrewActionSubmit}>
+        <div id="crew-actions-form" className="control-form">
           <div className="crew-actions-form-container">
             <label className="control-label">Dodge</label>
             <input
               className="control-input"
               type="text"
               value={agility.toString()}
-              onChange={(event) => setDodge(Number(event.target.value))}
+              onChange={(event) =>
+                handleCrewActionChange(Number(event.target.value), assistGunners)
+              }
             />
             <label className="control-label">Assist Gunner</label>
             <input
               type="checkbox"
               checked={assistGunners}
-              onChange={() => setAssistGunners(!assistGunners)}
+              onChange={() => handleCrewActionChange(agility, !assistGunners)}
             />
           </div>
-          <input
-            className="control-input control-button blue-button"
-            type="submit"
-            value="Set"
-          />
-        </form>
+        </div>
       </>
     );
   }
 
+  function attemptJump() {
+    const name = ship.name;
+    if (window.confirm(`Are you sure you want to have ${name} attempt a jump?`)) {
+      actionContext.attemptJump(name);
+    }
+  }
+
   const title = ship.name + " Controls";
 
+  // TODO: Full Stop is not correct, but needs server-side functions.  Should just get to 0 velocity and not care about position.
+  // Current version tries to stop at the current position.
   return (
     <div id="computer-window" className="computer-window">
       {viewContext.role === ViewMode.General && <h1>{title}</h1>}
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && pilotActions()}
-      {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && <SensorActionChooser
-        ship={ship}
-        sensor_action={args.sensor_action}
-        setSensorAction={args.setSensorAction}
-        sensor_locks={args.sensor_locks}
-      />}
+      {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && (
+        <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
+      )}
+      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && 
+        <button className="control-input control-button blue-button" disabled={!ship.can_jump} onClick={attemptJump}>
+          Jump
+        </button>
+      }
       <hr />
-      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && <>
-      {accelerationManager()}
-      <hr />
-      <button
-        className="control-input control-button blue-button"
-        onClick={() => {
-          setNavigationTarget({
-            p_x: (ship.position[0] / POSITION_SCALE).toString(),
-            p_y: (ship.position[1] / POSITION_SCALE).toString(),
-            p_z: (ship.position[2] / POSITION_SCALE).toString(),
-            v_x: "0",
-            v_y: "0",
-            v_z: "0",
-            standoff: "0",
-          });
-          args.getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, 0);
-        }}>
-        Full Stop
-      </button>
-      <hr />
-      <h2 className="control-form">Navigation</h2>
-      <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
-        <label className="control-label" style={{ display: "flex" }}>
-          Nav Target:
-          <EntitySelector
-            filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
-            current={currentNavTarget}
-            onChange={setCurrentNavTarget}
-            exclude={ship.name}
-          />
-        </label>
-        <div className="target-details-div">
-          <label className="control-label">
-            Target Position (km)
-            <div style={{ display: "flex" }} className="coordinate-input">
-              <input
-                className="control-input"
-                name="p_x"
-                type="text"
-                value={navigationTarget.p_x}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="p_y"
-                type="text"
-                value={navigationTarget.p_y}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="p_z"
-                type="text"
-                value={navigationTarget.p_z}
-                onChange={handleNavigationChange}
-              />
-            </div>
-          </label>
-          <label className="control-label">
-            Target Velocity (m/s)
-            <div style={{ display: "flex" }} className="coordinate-input">
-              <input
-                className="control-input"
-                name="v_x"
-                type="text"
-                value={navigationTarget.v_x}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="v_y"
-                type="text"
-                value={navigationTarget.v_y}
-                onChange={handleNavigationChange}
-              />
-              <input
-                className="control-input"
-                name="v_z"
-                type="text"
-                value={navigationTarget.v_z}
-                onChange={handleNavigationChange}
-              />
-            </div>
-          </label>
-          <label
-            className="control-label"
-            style={{ display: "flex", justifyContent: "space-between" }}>
-            Standoff (km)
-            <div className="coordinate-input">
-              <input
-                className="control-input standoff-input"
-                name="standoff"
-                type="text"
-                value={navigationTarget.standoff}
-                onChange={handleNavigationChange}
-              />
-            </div>
-          </label>
-        </div>
-        <input
-          className="control-input control-button blue-button"
-          type="submit"
-          value="Compute"
-        />
-      </form>
-      {args.proposedPlan && (
-        <div>
-          <h2 className="control-form">Proposed Plan</h2>
-          <NavigationPlan plan={args.proposedPlan.plan} />
+      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && (
+        <>
+          {accelerationManager()}
+          <hr />
           <button
             className="control-input control-button blue-button"
-            onClick={handleAssignPlan}>
-            Assign Plan
+            onClick={() => {
+              setNavigationTarget({
+                p_x: ship.position[0],
+                p_y: ship.position[1],
+                p_z: ship.position[2],
+                v_x: 0,
+                v_y: 0,
+                v_z: 0,
+                a_x: 0,
+                a_y: 0,
+                a_z: 0,
+                standoff: 0,
+              });
+              getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, null, 0);
+            }}>
+            Full Stop
           </button>
-        </div>
+          <hr />
+          <h2 className="control-form">Navigation</h2>
+          <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
+            <label className="control-label" style={{display: "flex"}}>
+              Nav Target:
+              <EntitySelector
+                filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
+                current={currentNavTarget}
+                setChoice={(entity) => setCurrentNavTarget(entity?.name ?? null)}
+                exclude={ship.name}
+              />
+            </label>
+            <div className="target-details-div">
+              <label className="control-label">
+                Target Position (km)
+                <div style={{display: "flex"}} className="coordinate-input">
+                  <input
+                    className="control-input"
+                    name="p_x"
+                    type="text"
+                    value={(navigationTarget.p_x / POSITION_SCALE).toFixed(0)}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="p_y"
+                    type="text"
+                    value={(navigationTarget.p_y / POSITION_SCALE).toFixed(0)}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="p_z"
+                    type="text"
+                    value={(navigationTarget.p_z / POSITION_SCALE).toFixed(0)}
+                    onChange={handleNavigationChange}
+                  />
+                </div>
+              </label>
+              <label className="control-label">
+                Target Velocity (m/s)
+                <div style={{display: "flex"}} className="coordinate-input">
+                  <input
+                    className="control-input"
+                    name="v_x"
+                    type="text"
+                    value={navigationTarget.v_x.toFixed(1)}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="v_y"
+                    type="text"
+                    value={navigationTarget.v_y.toFixed(1)}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="v_z"
+                    type="text"
+                    value={navigationTarget.v_z.toFixed(1)}
+                    onChange={handleNavigationChange}
+                  />
+                </div>
+              </label>
+              <label className="control-label">
+                <span>Target Accel (G&apos;s)</span>
+                <div style={{display: "flex"}} className="coordinate-input">
+                  <input
+                    className="control-input"
+                    name="a_x"
+                    type="text"
+                    value={navigationTarget.a_x.toFixed(1)}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="a_y"
+                    type="text"
+                    value={navigationTarget.a_y.toFixed(1)}
+                    onChange={handleNavigationChange}
+                  />
+                  <input
+                    className="control-input"
+                    name="a_z"
+                    type="text"
+                    value={navigationTarget.a_z.toFixed(1)}
+                    onChange={handleNavigationChange}
+                  />
+                </div>
+              </label>
+              <label
+                className="control-label"
+                style={{display: "flex", justifyContent: "space-between"}}>
+                Standoff (km)
+                <div className="coordinate-input">
+                  <input
+                    className="control-input standoff-input"
+                    name="standoff"
+                    type="text"
+                    value={navigationTarget.standoff.toFixed(0)}
+                    onChange={handleNavigationChange}
+                  />
+                </div>
+              </label>
+            </div>
+            <input
+              className="control-input control-button blue-button"
+              type="submit"
+              value="Compute"
+            />
+          </form>
+          {proposedPlan && (
+            <div>
+              <h2 className="control-form">Proposed Plan</h2>
+              <NavigationPlan plan={proposedPlan.plan} />
+              <button
+                className="control-input control-button blue-button"
+                onClick={handleAssignPlan}>
+                Assign Plan
+              </button>
+            </div>
+          )}
+        </>
       )}
-          </>}
-      {viewContext.role === ViewMode.General && !viewContext.shipName && <button
-        className="control-input control-button blue-button"
-        onClick={() => {
-          args.getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, 0);
-          args.setComputerShip(null);
-        }}>
-        Close
-      </button>}
+      {viewContext.role === ViewMode.General && !viewContext.shipName && (
+        <button
+          className="control-input control-button blue-button"
+          onClick={() => {
+            getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, null, 0);
+            setComputerShipName(null);
+          }}>
+          Close
+        </button>
+      )}
     </div>
-
   );
-}
+};
 
 function sensorActionToString(action: SensorState): string {
   switch (action.action) {
@@ -504,39 +488,40 @@ function sensorActionToString(action: SensorState): string {
       return "jc-" + action.target;
   }
 }
+
 interface SensorActionChooserProps {
   ship: Ship;
-  sensor_action: SensorState;
-  setSensorAction: (action: SensorState) => void;
-  sensor_locks: string[];
+  sensorLocks: string[];
 }
 
-const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
-  ship,
-  sensor_action,
-  setSensorAction,
-  sensor_locks,
-}) => {
-  function handleSensorActionChange(
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) {
+const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLocks}) => {
+  const actionContext = useContext(ActionContext);
+
+  const currentSensor = useMemo(() => {
+    return actionContext.actions[ship.name]?.sensor || newSensorState(SensorAction.None, "");
+  }, [actionContext.actions, ship.name]);
+
+  function handleSensorActionChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     if (value === "none") {
-      setSensorAction(new SensorState(SensorAction.None, ""));
+      actionContext.setSensorAction(ship.name, newSensorState(SensorAction.None, ""));
       return;
     } else if (value === "jam-missiles") {
-      setSensorAction(new SensorState(SensorAction.JamMissiles, ""));
+      actionContext.setSensorAction(ship.name, newSensorState(SensorAction.JamMissiles, ""));
     } else if (value.startsWith("bsl-")) {
-      setSensorAction(
-        new SensorState(SensorAction.BreakSensorLock, value.substring(4))
+      actionContext.setSensorAction(
+        ship.name,
+        newSensorState(SensorAction.BreakSensorLock, value.substring(4))
       );
     } else if (value.startsWith("sl-")) {
-      setSensorAction(
-        new SensorState(SensorAction.SensorLock, value.substring(3))
+      actionContext.setSensorAction(
+        ship.name,
+        newSensorState(SensorAction.SensorLock, value.substring(3))
       );
     } else if (value.startsWith("jc-")) {
-      setSensorAction(
-        new SensorState(SensorAction.JamComms, value.substring(3))
+      actionContext.setSensorAction(
+        ship.name,
+        newSensorState(SensorAction.JamComms, value.substring(3))
       );
     }
   }
@@ -547,17 +532,23 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
       <h2 className="control-label">Sensor Actions</h2>
       <select
         className="sensor-action-select control-input "
-        value={sensorActionToString(sensor_action)}
+        value={sensorActionToString(currentSensor)}
         onChange={handleSensorActionChange}>
         <option value="none"></option>
         <option value="jam-missiles">Jam Missiles</option>
-        {sensor_locks.map((s) => (
+        {sensorLocks.map((s) => (
           <option key={s + "-break-sensor-lock"} value={"bsl-" + s}>
             {"Break Sensor Lock: " + s}
           </option>
         ))}
         {serverEntities.entities.ships
-          .filter((s) => s.name !== ship.name && !serverEntities.entities.ships.find((s) => ship.name === s.name)?.sensor_locks.includes(s.name))
+          .filter(
+            (s) =>
+              s.name !== ship.name &&
+              !serverEntities.entities.ships
+                .find((s) => ship.name === s.name)
+                ?.sensor_locks.includes(s.name)
+          )
           .map((s) => (
             <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
               {"Sensor Lock: " + s.name}
@@ -578,7 +569,9 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
             <h3 className="control-label">Sensor Locks</h3>
             <span className="plan-accel-text">
               {" "}
-              {serverEntities.entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
+              {serverEntities.entities.ships
+                .find((s) => ship.name === s.name)
+                ?.sensor_locks.join(", ")}
             </span>
           </div>
         </>
@@ -587,10 +580,10 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({
   );
 };
 
-export function NavigationPlan(args: {
-  plan: [Acceleration, Acceleration | null];
-}) {
+export function NavigationPlan(args: {plan: [Acceleration, Acceleration | null]}) {
   function prettyPrintAccel(accel: Acceleration) {
+    // explicitly round down acceleration so if user is copy/pasting they
+    // don't get an "acceleration too high" error.
     const ax = accel[0][0].toFixed(2).padStart(5, " ");
     const ay = accel[0][1].toFixed(2).padStart(6, " ");
     const az = accel[0][2].toFixed(2).padStart(6, " ");

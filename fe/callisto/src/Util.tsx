@@ -18,8 +18,8 @@ export function addVector(a: [number, number, number], b: [number, number, numbe
   return a.map((x, i) => x + b[i]) as [number, number, number];
 }
 
-export function vectorToString(v: [number, number, number]) {
-  return `${v[0].toFixed(0)}, ${v[1].toFixed(0)}, ${v[2].toFixed(0)}`;
+export function vectorToString(v: [number, number, number], precision: number = 0) {
+  return `${v[0].toFixed(precision)}, ${v[1].toFixed(precision)}, ${v[2].toFixed(precision)}`;
 }
 
 export function vectorDistance(a: [number, number, number], b: [number, number, number]) {

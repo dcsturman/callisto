@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useContext } from "react";
+import { useContext, useMemo } from "react";
 import { Entity } from "./Universal";
 import { EntitiesServerContext } from "./Universal";
 
@@ -9,26 +9,61 @@ export enum EntitySelectorType {
   Missile,
 }
 
-interface EntitySelectorProps {
+type EntitySelectorProps = JSX.IntrinsicElements["select"] & {
   filter: EntitySelectorType[];
-  onChange: (entity: Entity | null) => void;
-  current: Entity | null;
+  setChoice: (entity: Entity | null) => void;
+  current: Entity | string | null;
   exclude?: string;
   formatter?: (name: string, entity: Entity) => string;
 }
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
   filter,
-  onChange,
+  setChoice,
   current,
   exclude,
   formatter,
+  ...props
 }) => {
   const entities = useContext(EntitiesServerContext).entities;
+
+  const currentEntity: Entity | null = useMemo(() => {
+    if (current == null) {
+      return null;
+    }
+
+    if (typeof current === "string") {
+      if (filter.includes(EntitySelectorType.Ship)) {
+        const ship = entities.ships.find((ship) => ship.name === current) || null;
+        if (ship) {
+          return ship;
+        }
+      }
+
+      if (filter.includes(EntitySelectorType.Planet)) {
+        const planet = entities.planets.find((planet) => planet.name === current) || null;
+        if (planet) {
+          return planet;
+        }
+      }
+
+      if (filter.includes(EntitySelectorType.Missile)) {
+        const missile = entities.missiles.find((missile) => missile.name === current) || null;
+        if (missile) {
+          return missile;
+        }
+      }
+    }  else {
+      return current;
+    }
+
+    return null;
+  }, [current, entities]);
 
   // Create a formatter that handles one not being provided.
   const nf = (name: string, entity: Entity) =>
     formatter ? formatter(name, entity) : name;
+
 
   function handleSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
@@ -36,7 +71,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
     if (filter.includes(EntitySelectorType.Ship)) {
       const shipTarget = entities.ships.find((ship) => ship.name === value);
       if (shipTarget != null) {
-        onChange(shipTarget);
+        setChoice(shipTarget);
         return;
       }
     }
@@ -46,7 +81,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         (planet) => planet.name === value
       );
       if (planetTarget != null) {
-        onChange(planetTarget);
+        setChoice(planetTarget);
         return;
       }
     }
@@ -56,21 +91,22 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         (missile) => missile.name === value
       );
       if (missileTarget != null) {
-        onChange(missileTarget);
+        setChoice(missileTarget);
         return;
       }
     }
 
-    onChange(null);
+    setChoice(null);
   }
 
   return (
     <>
       <select
-        className="select-dropdown control-name-input control-input"
+        className={"select-dropdown control-name-input control-input"}
         name="entity_selector"
-        value={current ? current.name : ""}
-        onChange={handleSelectChange}>
+        value={currentEntity ? currentEntity.name : ""}
+        onChange={handleSelectChange}
+        {...props}>
         <option key="el-none" value=""></option>
         {filter.includes(EntitySelectorType.Ship) &&
           entities.ships

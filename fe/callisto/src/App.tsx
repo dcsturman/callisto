@@ -1,24 +1,20 @@
-import { useEffect, useState, useContext } from "react";
+import {useEffect, useState, useContext, useMemo} from "react";
 import * as React from "react";
 import * as THREE from "three";
-import { Canvas, useThree } from "@react-three/fiber";
-import { FlyControls } from "@react-three/drei";
+import {Canvas, useThree} from "@react-three/fiber";
+import {FlyControls} from "@react-three/drei";
 
-import { Authentication, Logout } from "./Authentication";
+import {Authentication, Logout} from "./Authentication";
+import {ActionType} from "./Actions";
 import SpaceView from "./Spaceview";
-import { Ships, Missiles, Route } from "./Ships";
-import { EntityInfoWindow, Controls, ViewControls } from "./Controls";
-import { Effect, Explosions, ResultsWindow } from "./Effects";
-import {
-  setMessageHandlers,
-  startWebsocket,
-  nextRound,
-  computeFlightPath,
-} from "./ServerManager";
-import { Users, UserList } from "./UserList";
+import {Ships, Missiles, Route} from "./Ships";
+import {EntityInfoWindow, Controls, ViewControls} from "./Controls";
+import {Effect, Explosions, ResultsWindow} from "./Effects";
+import {setMessageHandlers, startWebsocket, computeFlightPath, resetServer} from "./ServerManager";
+import {Users, UserList} from "./UserList";
 
-import { ShipComputer, SensorState, SensorAction } from "./ShipComputer";
-
+import {ShipComputer} from "./ShipComputer";
+import {ActionsContextComponent, ActionContext} from "./Actions";
 import {
   Entity,
   EntitiesServerProvider,
@@ -35,11 +31,11 @@ import {
   ViewContextProvider,
 } from "./Universal";
 
-import { RoleChooser } from "./Role";
+import {RoleChooser} from "./Role";
 
 import "./index.css";
 
-import { Tutorial } from "./Tutorial";
+import {Tutorial} from "./Tutorial";
 
 export const GOOGLE_OAUTH_CLIENT_ID: string =
   process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
@@ -47,7 +43,6 @@ export const GOOGLE_OAUTH_CLIENT_ID: string =
 export function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [email, setEmail] = useState<string | null>(null);
-  const [computerShip, setComputerShip] = useState<Ship | null>(null);
   const [socketReady, setSocketReady] = useState<boolean>(false);
 
   // Logically entities and templates make more sense in the Simulator. However,
@@ -58,62 +53,54 @@ export function App() {
     planets: [],
     missiles: [],
   });
-  
+
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
-  const [users, setUsers] = useState<UserList>([] as unknown as UserList);
+
+  const [actions, setActions] = useState<ActionType>({});
+
+  const [users, setUsers] = useState<UserList>([]);
 
   useEffect(() => {
-    setMessageHandlers(
-      setEmail,
-      setAuthenticated,
-      setTemplates,
-      setEntities,
-      () => {},
-      () => {},
-      setUsers,
-    );
     if (!socketReady) {
+      setMessageHandlers(
+        setEmail,
+        setAuthenticated,
+        setTemplates,
+        setEntities,
+        setActions,
+        () => {},
+        () => {},
+        setUsers
+      );
+
       startWebsocket(setSocketReady);
-    } 
+    }
   }, [socketReady]);
 
-  useEffect(() => {
-
-    if (computerShip) {
-      const ship = entities.ships.find((ship) => ship.name === computerShip.name);
-      if (ship) {
-        setComputerShip(ship)
-      }
-    }
-  }, [entities.ships]);
-
   return (
-    <EntitiesServerProvider value={{ entities: entities, handler: setEntities }}>
-    <DesignTemplatesProvider value={{templates: templates, handler: setTemplates}}>
-    <div>
-      {authenticated && socketReady ? (
-        <>
-          <Simulator
-            setAuthenticated={setAuthenticated}
-            email={email}
-            socketReady={socketReady}
-            setEmail={setEmail}
-            computerShip={computerShip}
-            setComputerShip={setComputerShip}
-            users={users}
-            setUsers={setUsers}
-          />
-        </>
-      ) : socketReady ? (
-        <Authentication
-          setAuthenticated={setAuthenticated}
-          setEmail={setEmail}
-        />
-      ) : (
-        <div>Waiting for socket to open...</div>
-      )}
-    </div>
-    </DesignTemplatesProvider>
+    <EntitiesServerProvider value={{entities: entities, handler: setEntities}}>
+      <DesignTemplatesProvider value={{templates: templates, handler: setTemplates}}>
+        <ActionsContextComponent actions={actions} setActions={setActions}>
+          <div>
+            {authenticated && socketReady ? (
+              <>
+                <Simulator
+                  setAuthenticated={setAuthenticated}
+                  email={email}
+                  socketReady={socketReady}
+                  setEmail={setEmail}
+                  users={users}
+                  setUsers={setUsers}
+                />
+              </>
+            ) : socketReady ? (
+              <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
+            ) : (
+              <div>Waiting for socket to open...</div>
+            )}
+          </div>
+        </ActionsContextComponent>
+      </DesignTemplatesProvider>
     </EntitiesServerProvider>
   );
 }
@@ -123,36 +110,28 @@ function Simulator({
   email,
   setEmail,
   socketReady,
-  computerShip,
-  setComputerShip,
   setUsers,
-  users
+  users,
 }: {
-    setAuthenticated: (authenticated: boolean) => void;
+  setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
   socketReady: boolean;
-  computerShip: Ship | null;
-  setComputerShip: (ship: Ship | null) => void;
   users: UserList;
   setUsers: (users: UserList) => void;
 }) {
-
   const entitiesContext = useContext(EntitiesServerContext);
   const templatesContext = useContext(DesignTemplatesContext);
+  const actionsContext = useContext(ActionContext);
 
   const [role, setRole] = useState<ViewMode>(ViewMode.General);
   const [shipName, setShipName] = useState<string | null>(null);
 
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
-  const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(
-    null
-  );
+  const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
   const [showResults, setShowResults] = useState<boolean>(false);
   const [events, setEvents] = useState<Effect[] | null>(null);
-  const [cameraPos, setCameraPos] = useState<THREE.Vector3>(
-    new THREE.Vector3(-100, 0, 0)
-  );
+  const [cameraPos, setCameraPos] = useState<THREE.Vector3>(new THREE.Vector3(-100, 0, 0));
   const [camera, setCamera] = useState<THREE.Camera | null>(null);
   const [viewControls, setViewControls] = useState<ViewControlParams>({
     gravityWells: false,
@@ -161,11 +140,11 @@ function Simulator({
   const [showRange, setShowRange] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [runTutorial, setRunTutorial] = useState<boolean>(true);
-  const [sensor_actions, setSensorActions] = useState(
-    {} as {
-      [actor: string]: SensorState;
-    }
-  );
+  const [computerShipName, setComputerShipName] = useState<string | null>(null);
+
+  const computerShip = useMemo(() => {
+    return entitiesContext.entities.ships.find((ship) => ship.name === computerShipName) || null;
+  }, [entitiesContext.entities.ships, computerShipName]);
 
   useEffect(() => {
     if (socketReady) {
@@ -174,48 +153,59 @@ function Simulator({
         setAuthenticated,
         templatesContext.handler,
         entitiesContext.handler,
+        actionsContext.setActions,
         setProposedPlan,
         (effects: Effect[]) => {
           setEvents(effects);
           setShowResults(true);
         },
-        setUsers,
+        setUsers
       );
     }
-  }, [socketReady, setAuthenticated, setEmail,templatesContext.handler, entitiesContext.handler, setUsers]);
+  }, [
+    socketReady,
+    setAuthenticated,
+    setEmail,
+    templatesContext.handler,
+    entitiesContext.handler,
+    actionsContext.setActions,
+    setUsers,
+  ]);
 
-  const getAndShowPlan = (
-    entity_name: string | null,
-    end_pos: [number, number, number],
-    end_vel: [number, number, number],
-    target_vel: [number, number, number] | null = null,
-    standoff: number = 0
-  ) => {
-    computeFlightPath(
-      entity_name,
-      end_pos,
-      end_vel,
-      setProposedPlan,
-      target_vel,
-      standoff
-    );
-  };
+  const getAndShowPlan = useMemo(
+    () =>
+      (
+        entity_name: string | null,
+        end_pos: [number, number, number],
+        end_vel: [number, number, number],
+        target_vel: [number, number, number] | null = null,
+        target_accel: [number, number, number] | null = null,
+        standoff: number = 0
+      ) => {
+        computeFlightPath(
+          entity_name,
+          end_pos,
+          end_vel,
+          setProposedPlan,
+          target_vel,
+          target_accel,
+          standoff
+        );
+      },
+    [setProposedPlan]
+  );
 
-  const resetProposedPlan = () => {
-    setProposedPlan(null);
-  };
+  const [keysHeld, setKeyHeld] = useState({shift: false, slash: false});
 
-  const [keysHeld, setKeyHeld] = useState({ shift: false, slash: false });
-
-  function downHandler({ key }: { key: string }) {
+  function downHandler({key}: {key: string}) {
     if (key === "Shift") {
-      setKeyHeld({ shift: true, slash: keysHeld.slash });
+      setKeyHeld({shift: true, slash: keysHeld.slash});
     }
   }
 
-  function upHandler({ key }: { key: string }) {
+  function upHandler({key}: {key: string}) {
     if (key === "Shift") {
-      setKeyHeld({ shift: false, slash: keysHeld.slash });
+      setKeyHeld({shift: false, slash: keysHeld.slash});
     }
   }
 
@@ -228,7 +218,8 @@ function Simulator({
     };
   });
 
-  let tutorial_ship: Ship | null = entitiesContext.entities.ships.find((ship) => ship.name === "Killer") || null;
+  let tutorial_ship: Ship | null =
+    entitiesContext.entities.ships.find((ship) => ship.name === "Killer") || null;
   if (tutorial_ship === undefined) {
     tutorial_ship = null;
   }
@@ -239,8 +230,14 @@ function Simulator({
         entityToShow: entityToShow,
         setEntityToShow: setEntityToShow,
       }}>
-        <ViewContextProvider value={{role: role, setRole: (role) => setRole(role), shipName: shipName, setShipName: setShipName}}>
-      <>
+      <ViewContextProvider
+        value={{
+          role: role,
+          setRole: (role) => setRole(role),
+          shipName: shipName,
+          setShipName: setShipName,
+        }}>
+        <>
           <div className="mainscreen-container">
             {!process.env.REACT_APP_RUN_TUTORIAL || (
               <Tutorial
@@ -248,60 +245,50 @@ function Simulator({
                 setRunTutorial={setRunTutorial}
                 stepIndex={stepIndex}
                 setStepIndex={setStepIndex}
-                selectAShip={() => setComputerShip(tutorial_ship)}
+                selectAShip={() => setComputerShipName(tutorial_ship?.name ?? null)}
                 setAuthenticated={setAuthenticated}
               />
             )}
-            {role !== ViewMode.Observer && <Controls
-              nextRound={(fireActions) => nextRound(fireActions, sensor_actions)}
-              shipDesignTemplates={templatesContext.templates}
-              computerShip={computerShip}
-              setComputerShip={setComputerShip}
-              getAndShowPlan={getAndShowPlan}
-              setCameraPos={setCameraPos}
-              camera={camera}
-              setAuthenticated={setAuthenticated}
-              showRange={showRange}
-              setShowRange={setShowRange}
-              proposedPlan={proposedPlan}
-              resetProposedPlan={resetProposedPlan}
-              sensorActions={sensor_actions}
-              setSensorActions={setSensorActions}
-            />}
+            {role !== ViewMode.Observer && (
+              <Controls
+                shipDesignTemplates={templatesContext.templates}
+                computerShip={computerShip}
+                setComputerShipName={setComputerShipName}
+                getAndShowPlan={getAndShowPlan}
+                setCameraPos={setCameraPos}
+                camera={camera}
+                setAuthenticated={setAuthenticated}
+                showRange={showRange}
+                setShowRange={setShowRange}
+                proposedPlan={proposedPlan}
+              />
+            )}
             <div className="mainscreen-container">
-              {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && 
-              <ViewControls
-                viewControls={viewControls}
-                setViewControls={setViewControls}
-              />}
+              {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && (
+                <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
+              )}
               <div className="admin-button-window">
                 {!process.env.REACT_APP_RUN_TUTORIAL || (
                   <button
                     className="blue-button"
-                    onClick={() =>
-                      window.location.replace("https://callistoflight.com")
-                    }>
+                    onClick={() => window.location.replace("https://callistoflight.com")}>
                     Exit Tutorial
                   </button>
                 )}
-                <Users users={users} email={email}/>
+                <Users users={users} email={email} />
                 <RoleChooser />
-                <Logout
-                  setAuthenticated={setAuthenticated}
-                  email={email}
-                  setEmail={setEmail}
-                />
+                <div className="reset-and-logout-buttons">
+                  <Logout setAuthenticated={setAuthenticated} email={email} setEmail={setEmail} />
+                  {role === ViewMode.General && shipName == null && <button className="blue-button" onClick={resetServer}>Reset</button>}
+                </div>
               </div>
               {role === ViewMode.General && computerShip && (
                 <ShipComputer
                   ship={computerShip}
-                  setComputerShip={setComputerShip}
+                  setComputerShipName={setComputerShipName}
                   proposedPlan={proposedPlan}
-                  resetProposedPlan={resetProposedPlan}
                   getAndShowPlan={getAndShowPlan}
-                  sensor_action={sensor_actions[computerShip.name] || {action: SensorAction.None, target: ""}}
-                  setSensorAction={(action) => setSensorActions({...sensor_actions, [computerShip.name]: action})}
-                  sensor_locks={entitiesContext.entities.ships.reduce((acc, ship) => {
+                  sensorLocks={entitiesContext.entities.ships.reduce((acc, ship) => {
                     if (ship.sensor_locks.includes(computerShip.name)) {
                       acc.push(ship.name);
                     }
@@ -317,7 +304,7 @@ function Simulator({
                 />
               )}
               <Canvas
-                style={{ position: "absolute" }}
+                style={{position: "absolute"}}
                 className="spaceview-canvas"
                 camera={{
                   fov: 75,
@@ -349,10 +336,7 @@ function Simulator({
                   controlGravityWell={viewControls.gravityWells}
                   controlJumpDistance={viewControls.jumpDistance}
                 />
-                <Ships
-                  setComputerShip={setComputerShip}
-                  showRange={showRange}
-                />
+                <Ships setComputerShipName={setComputerShipName} showRange={showRange} />
                 <Missiles />
                 {events && events.length > 0 && (
                   <Explosions effects={events} setEffects={setEvents} />
@@ -361,8 +345,8 @@ function Simulator({
               </Canvas>
             </div>
           </div>
-      </>
-      {entityToShow && <EntityInfoWindow entity={entityToShow} />}
+        </>
+        {entityToShow && <EntityInfoWindow entity={entityToShow} />}
       </ViewContextProvider>
     </EntityToShowProvider>
   );
@@ -373,7 +357,7 @@ function GrabCamera(args: {
   setCameraPos: (pos: THREE.Vector3) => void;
   setCamera: (camera: THREE.Camera) => void;
 }) {
-  const { camera } = useThree();
+  const {camera} = useThree();
   useEffect(() => {
     args.setCameraPos(camera.position);
   });

@@ -5,11 +5,12 @@ use std::sync::{Arc, RwLock};
 use cgmath::InnerSpace;
 use rand::RngCore;
 
+use crate::action::ShipAction;
 use crate::entity::Entity;
-use crate::payloads::{EffectMsg, LaunchMissileMsg, ShipAction};
+use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
-use crate::{debug, error};
+use crate::{debug, error, info};
 
 const DIE_SIZE: u32 = 6;
 const STANDARD_ROLL_THRESHOLD: i32 = 8;
@@ -48,7 +49,7 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 /// * `damage_mod` - The damage modifier to use (positive or negative).
 /// * `attacker` - The ship that is attacking.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod`.
 /// * `defender` - The ship that is being attacked.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod` (e.g. armor) as
-///     well as to apply damage.
+///   well as to apply damage.
 /// * `weapon` - The weapon being used.  This is used to get the weapon type and mount.
 /// * `rng` - The random number generator to use.
 ///
@@ -116,21 +117,27 @@ pub fn attack(
     ))];
   };
 
-  debug!(
-        "(Combat.attack) Ship {} attacking with {:?} against {} with hit mod {}, weapon hit mod {}, range mod {}, defense mod {}",
-        attacker_name,
-        weapon,
-        defender.get_name(),
-        hit_mod,
-        HIT_WEAPON_MOD[weapon.kind as usize],
-        range_mod,
-        defensive_modifier
-    );
+  let lock_mod = if attacker.sensor_locks.contains(&defender.get_name().to_string()) {
+    2
+  } else {
+    0
+  };
 
   let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
 
+  info!(
+        "(Combat.attack) Ship {attacker_name} attacking with {weapon:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
+        defender.get_name(),
+        HIT_WEAPON_MOD[weapon.kind as usize]
+    );
+
+  if called_shot_system.is_some() {
+    info!("(Combat.attack) Called shot system is {:?}.", called_shot_system.unwrap());
+  }
+
   let roll = i32::from(roll_dice(2, rng));
-  let hit_roll = roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + defensive_modifier;
+  let hit_roll =
+    roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + lock_mod + defensive_modifier;
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(
@@ -148,10 +155,7 @@ pub fn attack(
   let effect: u32 = u32::try_from(hit_roll - STANDARD_ROLL_THRESHOLD).unwrap_or(0);
 
   debug!(
-    "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and hits {}.",
-    attacker_name,
-    roll,
-    effect,
+    "(Combat.attack) {attacker_name}'s attack roll is {roll}, giving effect {effect}, and hits {}.",
     defender.get_name()
   );
 
@@ -295,15 +299,18 @@ fn do_critical(
   crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let location = if let Some(system) = called_shot_system {
+    debug!("(Combat.do_critical) Critical on called shot system {system:?}.");
     *system
   } else {
-    ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
-      .expect("(combat.apply_crit) Unable to convert a roll to ship system.")
+    let loc = ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
+      .expect("(combat.apply_crit) Unable to convert a roll to ship system.");
+    debug!("(Combat.do_critical) Critical on called shot system {loc:?}.");
+    loc
   };
 
   let effects = apply_crit(crit_level, location, defender, rng);
 
-  debug!("(Combat.do_critical) {} suffers crits: {:?}.", defender.get_name(), effects);
+  info!("(Combat.do_critical) {} suffers crits: {:?}.", defender.get_name(), effects);
 
   effects
 }
@@ -578,7 +585,7 @@ fn find_range_band(distance: u32) -> Range {
 /// # Arguments
 /// * `attacker` - The ship that is attacking.  This is used to get the attacker's position and sensors.
 /// * `ships` - A clone of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
-///     a ship that was destroyed earlier in the round.
+///   a ship that was destroyed earlier in the round.
 /// * `sand_counts` - A snapshot of all the sand capabilities of each ship.
 /// * `actions` - The fire actions to process.
 /// * `rng` - The random number generator to use.

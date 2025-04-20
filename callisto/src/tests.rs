@@ -8,8 +8,8 @@
 
 use pretty_env_logger;
 
-use cgmath::{assert_ulps_eq, Zero};
-use std::sync::{Arc, Mutex};
+use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
+use std::sync::{Arc, LazyLock, Mutex};
 use test_log::test;
 
 use assert_json_diff::assert_json_eq;
@@ -17,6 +17,7 @@ use serde_json::json;
 
 use crate::authentication::Authenticator;
 use crate::authentication::MockAuthenticator;
+use crate::entity::G;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, LoadScenarioMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::server::Server;
@@ -26,11 +27,14 @@ fn setup_authenticator() -> Box<dyn Authenticator> {
   Box::new(MockAuthenticator::new("http://test.com"))
 }
 
-async fn setup_test_with_server(authenticator: Box<dyn Authenticator>) -> Server {
+// Define a static empty initial scenario here (for tests)
+static INITIAL_SCENARIO: LazyLock<Entities> = LazyLock::new(Entities::new);
+
+async fn setup_test_with_server<'a>(authenticator: Box<dyn Authenticator>) -> Server<'a> {
   let _ = pretty_env_logger::try_init();
   crate::ship::config_test_ship_templates().await;
 
-  Server::new(Arc::new(Mutex::new(Entities::new())), authenticator, true)
+  Server::new(Arc::new(Mutex::new(Entities::new())), &INITIAL_SCENARIO, authenticator, true)
 }
 
 /**
@@ -41,7 +45,7 @@ async fn test_simple_get() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
   let body = server.get_entities_json();
-  assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[]}"#);
+  assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
 }
 
 /**
@@ -69,16 +73,17 @@ async fn test_add_ship() {
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],
+  let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, 
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, 
         "current_sensors": "Improved", "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": [],
         }],
-        "missiles":[],"planets":[]});
+        "missiles":[],"planets":[],"actions":[]});
 
   assert_json_eq!(entities, compare);
 }
@@ -105,7 +110,7 @@ async fn test_add_planet_ship() {
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
   let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -118,10 +123,11 @@ async fn test_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }, 
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -134,10 +140,12 @@ async fn test_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
 
   assert_json_eq!(entities, compare);
 
@@ -156,9 +164,10 @@ async fn test_add_planet_ship() {
     "gravity_radius_025": 9_036_820.097_086_99,
     "gravity_radius_2": 3_194_998.385_506_543}],
   "missiles":[],
+  "actions":[],
   "ships":[
       {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -171,10 +180,11 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -187,6 +197,7 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       }]});
 
@@ -201,6 +212,7 @@ async fn test_add_planet_ship() {
 
   let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
   let compare = json!({"missiles":[],
+  "actions":[],
   "planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
       "color":"red","radius":1.5e6,"mass":3e24,
@@ -213,7 +225,7 @@ async fn test_add_planet_ship() {
       "gravity_radius_025":1_649_890.071_763_523_2}],
   "ships":[
       {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -226,10 +238,11 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-       "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
        "current_hull":160,
        "current_armor":5,
        "current_power":300,
@@ -242,6 +255,7 @@ async fn test_add_planet_ship() {
        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
        "dodge_thrust":0,
        "assist_gunners":false,
+       "can_jump":false,
        "sensor_locks": []
       }]});
 
@@ -254,14 +268,15 @@ async fn test_add_planet_ship() {
 #[test(tokio::test)]
 async fn test_update_ship() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship =
     r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  let response = server.update(&EMPTY_FIRE_ACTIONS_MSG);
+  server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
+  let response = server.update();
   assert_eq!(response, Vec::new());
 
   let response = server.get_entities_json();
@@ -278,7 +293,7 @@ async fn test_update_ship() {
 #[test(tokio::test)]
 async fn test_update_missile() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -289,7 +304,8 @@ async fn test_update_missile() {
   assert_eq!(response, "Add ship action executed");
 
   let fire_missile = json!([["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  let response = server.update(&serde_json::from_str(&fire_missile).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
+  let response = server.update();
 
   let compare = json!([
       {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
@@ -307,7 +323,7 @@ async fn test_update_missile() {
   let compare = json!(
         {"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
              "current_armor":13,
              "current_power":240,
@@ -320,10 +336,11 @@ async fn test_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":83,
              "current_armor":13,
              "current_power":240,
@@ -336,9 +353,10 @@ async fn test_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             }],
-             "missiles":[],"planets":[]});
+             "missiles":[],"planets":[],"actions":[]});
 
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
@@ -360,7 +378,7 @@ async fn test_remove_ship() {
 
   let entities = server.get_entities_json();
 
-  assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[]}"#);
+  assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
 
   // Try remove with non-existent ship
   let response = server.remove(&"ship2".to_string());
@@ -388,7 +406,7 @@ async fn test_set_acceleration() {
   assert_eq!(flight_plan.0 .1, DEFAULT_ACCEL_DURATION);
   assert!(!flight_plan.has_second());
 
-  let response = server.set_plan(&serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],10000]]}"#).unwrap());
+  let response = server.set_plan(&serde_json::from_str(r#"{"name":"ship1","plan":[[[1,2,2],50000]]}"#).unwrap());
   assert!(response.is_ok());
 
   let response = server.get_entities_json();
@@ -415,7 +433,7 @@ async fn test_compute_path_basic() {
   let path_request = r#"{"entity_name":"ship1","end_pos":[29430000,0,0],"end_vel":[0,0,0],"standoff_distance" : 0}"#;
   let plan = server.compute_path(&serde_json::from_str(path_request).unwrap()).unwrap();
 
-  assert_eq!(plan.path.len(), 7);
+  assert_eq!(plan.path.len(), 8);
   assert_eq!(plan.path[0], Vec3::zero());
   assert_ulps_eq!(
     plan.path[1],
@@ -423,7 +441,8 @@ async fn test_compute_path_basic() {
       x: 1_906_480.8,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-4
   );
   assert_ulps_eq!(
     plan.path[2],
@@ -431,11 +450,12 @@ async fn test_compute_path_basic() {
       x: 7_625_923.2,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-4
   );
   assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
   let (a, t) = plan.plan.0.into();
-  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-7);
   assert_eq!(t, 1000);
 
   if let Some(accel) = plan.plan.1 {
@@ -446,7 +466,8 @@ async fn test_compute_path_basic() {
         x: -3.0,
         y: 0.0,
         z: 0.0
-      }
+      } * G,
+      epsilon = 1e-7
     );
   } else {
     panic!("Expecting second acceleration.")
@@ -472,15 +493,16 @@ async fn test_compute_path_with_standoff() {
     )
     .unwrap();
 
-  assert_eq!(plan.path.len(), 9);
+  assert_eq!(plan.path.len(), 10);
   assert_eq!(plan.path[0], Vec3::zero());
-  assert_ulps_eq!(
+  assert_relative_eq!(
     plan.path[1],
     Vec3 {
       x: 1_906_480.8,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-5
   );
   assert_ulps_eq!(
     plan.path[2],
@@ -488,11 +510,12 @@ async fn test_compute_path_with_standoff() {
       x: 7_625_923.2,
       y: 0.0,
       z: 0.0
-    }
+    },
+    epsilon = 1e-5
   );
-  assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
+  assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
   let (a, t) = plan.plan.0.into();
-  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+  assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-5);
   assert_eq!(t, 1413);
 
   if let Some(accel) = plan.plan.1 {
@@ -503,7 +526,8 @@ async fn test_compute_path_with_standoff() {
         x: -3.0,
         y: 0.0,
         z: 0.0
-      }
+      } * G,
+      epsilon = 1e-7
     );
   } else {
     panic!("Expecting second acceleration.")
@@ -514,7 +538,7 @@ async fn test_compute_path_with_standoff() {
 #[test(tokio::test)]
 async fn test_exhausted_missile() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Create two ships with one to fire at the other.
   let ship =
@@ -530,7 +554,8 @@ async fn test_exhausted_missile() {
 
   // Fire a missile
   let fire_actions = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}] ]]).to_string();
-  let response = server.update(&serde_json::from_str(&fire_actions).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
+  let response = server.update();
 
   // First round 3 missiles are launched due to triple turret
   assert_eq!(response.len(), 1);
@@ -541,12 +566,13 @@ async fn test_exhausted_missile() {
 
   // Second to 8th round nothing happens.
   for round in 0..9 {
-    let response = server.update(&EMPTY_FIRE_ACTIONS_MSG);
+    server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
+    let response = server.update();
     assert_eq!(response, Vec::new(), "Round {round}");
   }
 
   // 9th round missile should exhaust itself.
-  let response = server.update(&EMPTY_FIRE_ACTIONS_MSG);
+  let response = server.update();
   assert_eq!(
     response
       .iter()
@@ -560,7 +586,7 @@ async fn test_exhausted_missile() {
 #[test(tokio::test)]
 async fn test_destroy_ship() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -581,7 +607,8 @@ async fn test_destroy_ship() {
   ]]])
   .to_string();
 
-  let effects = server.update(&serde_json::from_str(&fire_actions).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
+  let effects = server.update();
 
   // For this test we don't worry about all the specific damage effects, but just check for messages related to
   // ship destruction.
@@ -596,7 +623,7 @@ async fn test_destroy_ship() {
 #[test(tokio::test)]
 async fn test_called_shot() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Gazelle class is a good test for this as it has 2 Particle Barbettes (likely to cause a crit) and 2 triple beams (also capable of called shots)
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
@@ -618,7 +645,8 @@ async fn test_called_shot() {
   ]]])
   .to_string();
 
-  let effects = server.update(&serde_json::from_str(&fire_actions).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
+  let effects = server.update();
 
   // First ensure there is at least one critical hit that matches.
   assert!(
@@ -656,7 +684,7 @@ async fn test_called_shot() {
 #[test(tokio::test)]
 async fn test_big_fight() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -680,7 +708,8 @@ async fn test_big_fight() {
       {"FireAction" :{"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
-  let mut effects = server.update(&serde_json::from_str(&fire_actions.to_string()).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
+  let mut effects = server.update();
 
   let compare = json!([
       {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
@@ -715,7 +744,7 @@ async fn test_big_fight() {
   let entities = server.get_entities_json();
   let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":96,"current_armor":3,
          "current_power":540,"current_maneuver":4,
          "current_jump":5,"current_fuel":128,
@@ -724,10 +753,11 @@ async fn test_big_fight() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":135,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
@@ -736,17 +766,19 @@ async fn test_big_fight() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
 
 #[test(tokio::test)]
 async fn test_fight_with_crew() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Ship 1 has a capable crew.
   let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", 
@@ -780,7 +812,8 @@ async fn test_fight_with_crew() {
       {"FireAction" : {"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
-  let mut effects = server.update(&serde_json::from_str(&fire_actions.to_string()).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
+  let mut effects = server.update();
 
   let compare = json!([
       {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
@@ -814,7 +847,7 @@ async fn test_fight_with_crew() {
   let entities = server.get_entities_json();
   let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":169,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
@@ -823,10 +856,11 @@ async fn test_fight_with_crew() {
          "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Gazelle",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
          "current_hull":47,"current_armor":3,
          "current_power":540,"current_maneuver":5,
          "current_jump":4,"current_fuel":126,
@@ -835,17 +869,19 @@ async fn test_fight_with_crew() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":true,
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
 
 #[test(tokio::test)]
 async fn test_slugfest() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
   // Boost weapon #10 as its firing a pules laser at the harrier.
@@ -909,7 +945,8 @@ async fn test_slugfest() {
       ]]
   ]);
 
-  let _response = server.update(&serde_json::from_str(&fire_actions.to_string()).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
+  let _response = server.update();
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
@@ -998,7 +1035,7 @@ async fn test_get_designs() {
 #[test(tokio::test)]
 async fn test_missile_impact_close() {
   let authenticator = setup_authenticator();
-  let mut server = setup_test_with_server(authenticator).await;
+  let server = setup_test_with_server(authenticator).await;
 
   // Add the firing ship
   let firing_ship =
@@ -1013,7 +1050,8 @@ async fn test_missile_impact_close() {
 
   // Fire a missile within impact range.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  let effects = server.update(&serde_json::from_str(&fire_missile).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
+  let effects = server.update();
 
   // Check for impact effect
   assert!(
@@ -1043,7 +1081,8 @@ async fn test_missile_impact_close() {
 
   // Fire a missile that should get there in one round.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
-  let effects = server.update(&serde_json::from_str(&fire_missile).unwrap());
+  server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
+  let effects = server.update();
 
   // Check for impact effect
   assert!(

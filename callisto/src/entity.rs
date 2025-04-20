@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, ShipAction};
+use crate::payloads::EffectMsg;
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
+use crate::action::{ShipAction, ShipActionList};
 use crate::combat::{attack, create_sand_counts, do_fire_actions, roll_dice};
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -25,7 +26,7 @@ use crate::{debug, error, info, warn};
 pub const DELTA_TIME: u64 = 360;
 pub const DELTA_TIME_F64: f64 = 360.0;
 
-pub const DEFAULT_ACCEL_DURATION: u64 = 10000;
+pub const DEFAULT_ACCEL_DURATION: u64 = 50000;
 // We will use 4 sig figs for every physics constant we import.
 // This is the value of 1 (earth) gravity in m/s^2
 pub const G: f64 = 9.807_000_000;
@@ -55,6 +56,11 @@ pub struct Entities {
   pub missiles: HashMap<String, Arc<RwLock<Missile>>>,
   pub planets: HashMap<String, Arc<RwLock<Planet>>>,
   pub next_missile_id: u32,
+
+  // Actions queued up for when the turn ends.
+  // They are more ephemeral than the objects above, but are global state
+  // so we store them here so that Entities the single global-state object for a server.
+  pub actions: ShipActionList,
 }
 
 impl PartialEq for Entities {
@@ -88,6 +94,7 @@ impl Entities {
       missiles: HashMap::new(),
       planets: HashMap::new(),
       next_missile_id: 0,
+      actions: vec![],
     }
   }
 
@@ -99,6 +106,43 @@ impl Entities {
   #[must_use]
   pub fn is_empty(&self) -> bool {
     self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
+  }
+
+  /// Do a deep copy from one `Entities` to another.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
+  pub fn deep_copy(&self, dest: &mut Self) {
+    dest.ships.clear();
+    dest.missiles.clear();
+    dest.planets.clear();
+
+    for ship in self.ships.values() {
+      let ship = ship.read().unwrap();
+      dest
+        .ships
+        .insert(ship.get_name().to_string(), Arc::new(RwLock::new(ship.clone())));
+    }
+
+    for missile in self.missiles.values() {
+      let missile = missile.read().unwrap();
+      dest
+        .missiles
+        .insert(missile.get_name().to_string(), Arc::new(RwLock::new(missile.clone())));
+    }
+
+    for planet in self.planets.values() {
+      let planet = planet.read().unwrap();
+      dest
+        .planets
+        .insert(planet.get_name().to_string(), Arc::new(RwLock::new(planet.clone())));
+    }
+
+    dest.next_missile_id = self.next_missile_id;
+    dest.actions.clone_from(&self.actions);
+
+    dest.fixup_pointers().unwrap();
+    dest.reset_gravity_wells();
   }
 
   /// Load a scenario file.  A scenario file is just a JSON encoding of a set of entities.
@@ -170,7 +214,7 @@ impl Entities {
       // Create a new ship and add it to the ship table
       let ship = Arc::new(RwLock::new(Ship::new(name.clone(), position, velocity, design, crew)));
       self.ships.insert(name, ship);
-    };
+    }
   }
 
   /// Add a planet to the entities.
@@ -309,7 +353,7 @@ impl Entities {
   /// # Arguments
   /// * `fire_actions` - The fire actions to process.
   /// * `ship_snapshot` - A snapshot of all ships state at the start of the round.  Having this snapshot avoid trying to lookup
-  ///     a ship that was destroyed earlier in the round.
+  ///   a ship that was destroyed earlier in the round.
   /// * `rng` - The random number generator to use.
   ///
   /// # Returns
@@ -346,13 +390,49 @@ impl Entities {
     effects
   }
 
+  /// Check which ships are jump enabled.  This is done at the end of each round.  It is done
+  /// by checking if the ship is more than 100 diameters (200 radii) away from every planet.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write a ship or read a planet.
+  pub fn check_jump_enabled(&mut self) {
+    // Check which ships are jump enabled.
+    for ship in self.ships.values() {
+      let readable_ship = ship.read().unwrap();
+      // Is every planet more than 100 diameters (200 radii) away?
+      let can_jump = self.planets.values().all(|planet| {
+        let planet = planet.read().unwrap();
+        (readable_ship.get_position() - planet.get_position()).magnitude() > planet.radius * 200.0
+      });
+
+      // If ship can jump, note it in entities.
+      if !can_jump || readable_ship.current_jump == 0 {
+        debug!(
+          "(Entity.check_jump_enabled) Ship {} is NOT jump enabled.",
+          readable_ship.get_name()
+        );
+        continue;
+      }
+
+      drop(readable_ship);
+
+      let mut ship = ship.write().unwrap();
+      ship.enable_jump();
+      debug!("(Entity.check_jump_enabled) Ship {} jump enabled.", ship.get_name());
+    }
+  }
+
   /// Update all entities.  This is typically done at the end of a round to advance a turn.
-  /// It returns all the effects resulting from the actions of the update.
+  /// It returns all the effects resulting from the actions of the update.  This happens after `fire_actions`
+  /// so all missiles should already be launched and will get to move here.  Update in the order:
+  /// 1. Planets
+  /// 2. Missiles
+  /// 3. Ships
   ///
   /// # Arguments
   /// * `ship_snapshot` - A snapshot of the ships at the start of the round.  This is used to ensure that
-  ///     any damage applied is simultaneous.  The snapshot is worked off of and real damage or other effects
-  ///     are applied to the actual entities.
+  ///   any damage applied is simultaneous.  The snapshot is worked off of and real damage or other effects
+  ///   are applied to the actual entities.
   /// * `rng` - A random number generator.
   ///
   /// # Panics
@@ -458,6 +538,7 @@ impl Entities {
       .collect::<Vec<_>>();
 
     let mut cleanup_ships_list = Vec::<String>::new();
+
     effects.append(
       &mut self
         .ships
@@ -496,6 +577,8 @@ impl Entities {
       self.ships.remove(name);
     }
 
+    // Update which ships are jump enabled
+    self.check_jump_enabled();
     effects
   }
 
@@ -540,17 +623,17 @@ impl Entities {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for sensor lock.", target);
               return Vec::default();
-            };
+            }
             self.sensor_lock(ship_name, target, rng)
           }
           ShipAction::JamComms { target } => {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for jamming comms.", target);
               return Vec::default();
-            };
+            }
             self.jam_comms(ship_name, target, rng)
           }
-          ShipAction::FireAction { .. } => {
+          ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } | ShipAction::Jump => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }
@@ -719,6 +802,62 @@ impl Entities {
     }
   }
 
+  /// Attempt to jump all ships that have jump actions.
+  ///
+  /// We assume (for now) a prior successful Astrogation check.  All that remains is the engineering check.
+  /// Engineering check cannot stop you from jumping but can cause a misjump on failure.
+  ///
+  /// # Arguments
+  /// * `jump_actions` - The jump actions to process.
+  /// * `rng` - The random number generator to use for engineering jump checks.
+  ///
+  /// # Returns
+  /// * A list of all the effects resulting from the jump attempts.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  pub fn attempt_jumps(&mut self, jump_actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let mut effects = Vec::<EffectMsg>::new();
+    let mut jumped_ships = Vec::<String>::new();
+    for (ship_name, actions) in jump_actions {
+      // If there is even a single jump action (really should never be more than one) then attempt jump.
+      if !actions.is_empty() {
+        let Some(ship) = self.ships.get(ship_name) else {
+          warn!("(Entity.attempt_jumps) Cannot find ship {} for jump.", ship_name);
+          continue;
+        };
+
+        let ship = ship.read().unwrap();
+
+        if ship.can_jump() && ship.current_fuel > ship.design.hull / 10 {
+          // We intentionally skip the Astrogation check for now as there isn't astrogation skill in the simulation.
+          // Also it could have happened at any time before this so its confusing.
+          // Thus only relevant skill is engineering_jump.
+          // The check should be an Easy (4+) check. However, in combat its rushed so its a Routine (6+) check.
+          let check = i16::from(roll_dice(2, rng)) + i16::from(ship.crew.get_engineering_jump()) - 6;
+
+          if check >= 0 {
+            effects.push(EffectMsg::Message {
+              content: format!("{ship_name} jumps successfully!"),
+            });
+          } else {
+            effects.push(EffectMsg::Message {
+              content: format!("{ship_name} jumped but with issues. Effect is {check}"),
+            });
+          }
+
+          jumped_ships.push(ship_name.clone());
+        }
+      }
+    }
+
+    for ship_name in jumped_ships {
+      self.ships.remove(&ship_name);
+    }
+
+    effects
+  }
+
   /// Validate the entity data structure, performing some important post-load checks.
   /// These checks include:
   /// * A planet has a named primary iff it has a pointer to that planet.
@@ -850,6 +989,7 @@ impl Serialize for Entities {
       ships: Vec<Ship>,
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
+      actions: ShipActionList,
     }
 
     let mut entities = Entities {
@@ -864,6 +1004,7 @@ impl Serialize for Entities {
         .values()
         .map(|p| p.read().unwrap().clone())
         .collect::<Vec<Planet>>(),
+      actions: self.actions.clone(),
     };
 
     //The following sort_by is not necessary and adds inefficiency BUT ensures we serialize each item in the same order
@@ -873,6 +1014,7 @@ impl Serialize for Entities {
       .missiles
       .sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
     entities.planets.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    entities.actions.sort_by_key(|a| a.0.clone());
 
     entities.serialize(serializer)
   }
@@ -892,6 +1034,8 @@ impl<'de> Deserialize<'de> for Entities {
       missiles: Vec<Missile>,
       #[serde(default)]
       planets: Vec<Planet>,
+      #[serde(default)]
+      actions: ShipActionList,
     }
 
     let guts = Entities::deserialize(deserializer)?;
@@ -912,6 +1056,7 @@ impl<'de> Deserialize<'de> for Entities {
         .map(|e| (e.get_name().to_string(), Arc::new(RwLock::new(e))))
         .collect(),
       next_missile_id: 0,
+      actions: guts.actions,
     })
   }
 }
@@ -1045,17 +1190,17 @@ mod tests {
     );
 
     // Assign random accelerations to entities
-    let acceleration1 = Vec3::new(1.0, 1.0, 1.0);
-    let acceleration2 = Vec3::new(2.0, 1.0, -2.0);
-    let acceleration3 = Vec3::new(-1.0, -1.0, -0.0);
+    let acceleration1 = Vec3::new(1.0, 1.0, 1.0) * G;
+    let acceleration2 = Vec3::new(2.0, 1.0, -2.0) * G;
+    let acceleration3 = Vec3::new(-1.0, -1.0, -0.0) * G;
     entities
-      .set_flight_plan("Ship1", &FlightPlan((acceleration1, 10000).into(), None))
+      .set_flight_plan("Ship1", &FlightPlan((acceleration1, 50000).into(), None))
       .unwrap();
     entities
-      .set_flight_plan("Ship2", &FlightPlan((acceleration2, 10000).into(), None))
+      .set_flight_plan("Ship2", &FlightPlan((acceleration2, 50000).into(), None))
       .unwrap();
     entities
-      .set_flight_plan("Ship3", &FlightPlan((acceleration3, 10000).into(), None))
+      .set_flight_plan("Ship3", &FlightPlan((acceleration3, 50000).into(), None))
       .unwrap();
 
     // Update the entities a few times
@@ -1450,7 +1595,7 @@ mod tests {
 
     let cmp = json!({
     "ships":[
-        {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+        {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
         "current_armor":5,
         "current_power":300,
@@ -1463,9 +1608,10 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": []
         },
-        {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+        {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
         "current_armor":5,
         "current_power":300,
@@ -1478,9 +1624,10 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": []
         },
-        {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+        {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
         "current_armor":5,
         "current_power":300,
@@ -1493,9 +1640,11 @@ mod tests {
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
+        "can_jump":false,
         "sensor_locks": []
         }],
     "missiles":[],
+    "actions":[],
     "planets":[
         {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,
         "gravity_radius_1":6_375_069.342_849_095,"gravity_radius_05":9_015_709.525_726_125,"gravity_radius_025":12_750_138.685_698_19},
@@ -1737,10 +1886,10 @@ mod tests {
     // Test 1: Valid file
     let scenario = json!({"ships":[
             {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
@@ -1752,10 +1901,10 @@ mod tests {
     // Test 2: Add missile with a non-existent target
     let bad_scenario = json!({"ships":[
             {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
              {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
@@ -1771,10 +1920,10 @@ mod tests {
     // Test3: Add a planet with a non-existent primary
     let bad_scenario = json!({"ships":[
             {"name":"ship1","position":[1_000_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":6,"structure":6},
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
              "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 

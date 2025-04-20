@@ -3,34 +3,52 @@ use std::result::Result;
 use std::sync::{Arc, Mutex};
 
 use cgmath::InnerSpace;
+use itertools::multiunzip;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
+use crate::action::{merge, ShipAction};
 use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{deep_clone, Entities, Entity, G};
+use crate::payloads::Role;
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg, LoginMsg,
-  RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipAction, ShipActionMsg, ShipDesignTemplateMsg,
+  AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg,
+  LoginMsg, RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
-
 use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
-pub struct Server {
+pub struct Server<'a> {
   entities: Arc<Mutex<Entities>>,
+  initial_scenario: &'a Entities,
   authenticator: Box<dyn Authenticator>,
+  // Role this user might have assumed
+  role: Role,
+  // Ship this user may have assumed a crew position on.
+  ship: Option<String>,
   test_mode: bool,
 }
 
-impl Server {
-  pub fn new(entities: Arc<Mutex<Entities>>, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
+// TODO: Separate server and user - its all mixed together here.
+impl<'a> Server<'a> {
+  /// Create a new server.
+  ///
+  /// # Panics
+  /// If the lock cannot be obtained to read the entities.
+  pub fn new(
+    entities: Arc<Mutex<Entities>>, initial_scenario: &'a Entities, authenticator: Box<dyn Authenticator>,
+    test_mode: bool,
+  ) -> Self {
     Server {
       entities,
+      initial_scenario,
       authenticator,
       test_mode,
+      role: Role::General,
+      ship: None,
     }
   }
 
@@ -77,6 +95,24 @@ impl Server {
     debug!("(Server.login) Authenticated user {} with session key.", email);
 
     Ok(AuthResponse { email })
+  }
+
+  /// Reset a server to its initial configuration.
+  ///
+  /// # Errors
+  /// Returns an error if the user is not in the General role.
+  ///
+  /// # Panics
+  /// Panics if the lock on entities cannot be obtained.
+  pub fn reset(&self) -> Result<String, String> {
+    if self.role == Role::General && self.ship.is_none() {
+      info!("(Server.reset) Received and processing reset request: Resetting server!");
+      self.initial_scenario.deep_copy(&mut self.entities.lock().unwrap());
+      Ok("Server reset.".to_string())
+    } else {
+      warn!("(Server.reset) Received and processing reset request: Ignoring reset request as not in General role.");
+      Err("Not GM. Cannot reset server!".to_string())
+    }
   }
 
   /// Logs a user out by clearing the session key and email.
@@ -267,49 +303,70 @@ impl Server {
       .map(|()| "Set acceleration action executed".to_string())
   }
 
-  /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
-  /// (e.g. move a ship, planet or missile) as well as new fire actions.
+  /// Merge in new actions (orders) for ships in the next round.  These may come for the same ship from
+  /// different clients depending on how the clients are being used.  We save these till the next update action.
   ///
-  /// # Arguments
-  /// * `fire_actions` - The fire actions to execute.
+  /// # Returns
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read the entities.
-  pub fn update(&mut self, actions: &ShipActionMsg) -> Vec<EffectMsg> {
+  #[allow(clippy::must_use_candidate)]
+  pub fn merge_actions(&self, actions: ShipActionMsg) -> String {
+    let mut entities = self.entities.lock().unwrap();
+    merge(&mut entities, actions);
+    "Actions added.".to_string()
+  }
+
+  /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
+  /// (e.g. move a ship, planet or missile) as well as new fire actions.
+  ///
+  /// # Panics  
+  /// Panics if the lock cannot be obtained to read the entities.
+  #[must_use]
+  pub fn update(&self) -> Vec<EffectMsg> {
     let mut rng = get_rng(self.test_mode);
-
-    debug!("(/update) Ship actions: {:?}", actions);
-
-    // Sort all the actions by type.  This big messy functional action sorts through all the ship actions and creates
-    // three vectors of vectors with all the fire actions in the first, the pilot actions in the second, the sensor actions in the third.
-    // Was very explicit with types here (more than necessary) to make it easier to read and understand.
-    // Also: did this before grabbing the entities lock as I'm not sure how expensive this is.
-    #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions): (Vec<(String, Vec<ShipAction>)>, Vec<(String, Vec<ShipAction>)>) = actions
-      .iter()
-      .map(|(ship_name, actions)| {
-        let (f_actions, s_actions): (Vec<Option<ShipAction>>, Vec<Option<ShipAction>>) = actions
-          .iter()
-          .map(|action| match action {
-            ShipAction::FireAction { .. } => (Some(action.clone()), None),
-            ShipAction::JamMissiles
-            | ShipAction::BreakSensorLock { .. }
-            | ShipAction::SensorLock { .. }
-            | ShipAction::JamComms { .. } => (None, Some(action.clone())),
-          })
-          .unzip();
-        (
-          (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-          (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-        )
-      })
-      .unzip();
 
     // Grab the lock on entities
     let mut entities = self
       .entities
       .lock()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let actions = &entities.actions;
+    debug!("(/update) Ship actions: {:?}", actions);
+
+    // Sort all the actions by type.  This big messy functional action sorts through all the ship actions and creates
+    // three vectors with all the fire actions for each ship in the first, the sensor actions for each ship in the second, and
+    // ships making jump attempts in the third
+    // Was very explicit with types here (more than necessary) to make it easier to read and understand.
+    #[allow(clippy::type_complexity)]
+    let (fire_actions, sensor_actions, jump_actions): (
+      Vec<(String, Vec<ShipAction>)>,
+      Vec<(String, Vec<ShipAction>)>,
+      Vec<(String, Vec<ShipAction>)>,
+    ) = multiunzip(actions.iter().filter_map(|(ship_name, actions)| {
+      if !entities.ships.contains_key(ship_name) {
+        warn!("(update) Cannot find ship {} for actions.", ship_name);
+        return None;
+      }
+      let (f_actions, s_actions, j_actions): (
+        Vec<Option<ShipAction>>,
+        Vec<Option<ShipAction>>,
+        Vec<Option<ShipAction>>,
+      ) = multiunzip(actions.iter().map(|action| match action {
+        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None),
+        ShipAction::JamMissiles
+        | ShipAction::BreakSensorLock { .. }
+        | ShipAction::SensorLock { .. }
+        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None),
+        ShipAction::Jump => (None, None, Some(action.clone())),
+      }));
+      Some((
+        (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+      ))
+    }));
 
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
@@ -330,10 +387,14 @@ impl Server {
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
 
-    // 5. Reset all ship agility setting as the round is over.
+    // 5. Attempt jumps at end of round.
+    effects.append(&mut entities.attempt_jumps(&jump_actions, &mut rng));
+
+    // 6. Reset all ship agility setting as the round is over.
     for ship in entities.ships.values() {
       ship.write().unwrap().reset_pilot_actions();
     }
+    entities.actions.clear();
 
     effects
   }
@@ -352,9 +413,9 @@ impl Server {
   pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<FlightPathMsg, String> {
     info!("(/compute_path) Received and processing compute path request. {:?}", msg);
 
-    debug!(
-      "(/compute_path) Computing path for entity: {} End pos: {:?} End vel: {:?}",
-      msg.entity_name, msg.end_pos, msg.end_vel
+    info!(
+      "(/compute_path) Computing path for entity: {} End pos: {:?} End vel: {:?} Target vel: {:?} Target accel: {:?}",
+      msg.entity_name, msg.end_pos, msg.end_vel, msg.target_velocity, msg.target_acceleration
     );
     // Do this in a block to clean up the lock as soon as possible.
     let (start_pos, start_vel, max_accel) = {
@@ -383,18 +444,19 @@ impl Server {
                     (adjusted_end_pos - msg.end_pos).magnitude());
     }
 
-    let params = FlightParams::new(
+    let mut params = FlightParams::new(
       start_pos,
       adjusted_end_pos,
       start_vel,
       msg.end_vel,
       msg.target_velocity,
+      msg.target_acceleration,
       max_accel,
     );
 
     debug!("(/compute_path) Call computer with params: {:?}", params);
 
-    let Some(plan) = params.compute_flight_path() else {
+    let Ok(plan) = params.compute_flight_path() else {
       return Err(format!("Unable to compute flight path: {params:?}"));
     };
 
@@ -402,7 +464,7 @@ impl Server {
     debug!(
       "(/compute_path) Plan has real acceleration of {} vs max_accel of {}",
       plan.plan.0 .0.magnitude(),
-      max_accel / G
+      max_accel
     );
 
     Ok(plan)
@@ -423,6 +485,22 @@ impl Server {
     *self.entities.lock().unwrap() = entities;
 
     Ok("Load scenario action executed".to_string())
+  }
+
+  #[must_use]
+  pub fn get_email(&self) -> Option<String> {
+    self.authenticator.get_email()
+  }
+
+  #[must_use]
+  pub fn get_role(&self) -> (Role, Option<String>) {
+    (self.role, self.ship.clone())
+  }
+
+  pub fn set_role(&mut self, msg: &ChangeRole) -> String {
+    self.role = msg.role;
+    self.ship.clone_from(&msg.ship);
+    "Role set".to_string()
   }
 }
 
@@ -449,7 +527,8 @@ mod tests {
     let mock_auth = MockAuthenticator::new("http://web.test.com");
     let authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
-    let mut server = Server::new(Arc::new(Mutex::new(Entities::new())), authenticator, false);
+    let initial_scenario = Entities::new();
+    let mut server = Server::new(Arc::new(Mutex::new(Entities::new())), &initial_scenario, authenticator, false);
 
     // Try a login
     let login_msg = LoginMsg {

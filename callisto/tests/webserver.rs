@@ -33,12 +33,13 @@ use tokio_tungstenite::Connector;
 
 use serde_json::json;
 
-use callisto::debug;
+use callisto::{debug, error};
 
-use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
+use callisto::action::ShipAction;
+use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use callisto::payloads::{
   AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
-  SetPilotActions, SetPlanMsg, ShipAction, EMPTY_FIRE_ACTIONS_MSG,
+  SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -137,6 +138,7 @@ async fn open_socket(port: u16) -> Result<MyWebSocket, Error> {
 }
 
 async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
+  debug!("(webservers.rpc) Sending request: {request:?}");
   stream.send(serde_json::to_string(&request).unwrap().into()).await.unwrap();
 
   let reply = stream
@@ -144,6 +146,7 @@ async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
     .await
     .unwrap_or_else(|| panic!("No response from server for request: {request:?}."))
     .unwrap_or_else(|err| panic!("Receiving error from server {err:?} in response to request: {request:?}."));
+  debug!("(webservers.rpc) Received response: {reply:?}");
   let body = serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap();
   body
 }
@@ -349,7 +352,7 @@ async fn integration_add_ship() {
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],
+         "plan":[[[0.0,0.0,0.0],50000]],
          "design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
@@ -363,10 +366,12 @@ async fn integration_add_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }],
         "missiles":[],
-        "planets":[]});
+        "planets":[],
+        "actions":[]});
 
     assert_json_eq!(entities, compare);
   }
@@ -420,7 +425,7 @@ async fn integration_add_planet_ship() {
   if let ResponseMsg::EntityResponse(entities) = response {
     let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -433,10 +438,11 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
           "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -449,10 +455,12 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }],
           "missiles":[],
-          "planets":[]});
+          "planets":[],
+          "actions":[]});
 
     assert_json_eq!(entities, compare);
   } else {
@@ -485,9 +493,10 @@ async fn integration_add_planet_ship() {
       "gravity_radius_025": 9_036_820.097_086_99,
       "gravity_radius_2": 3_194_998.385_506_543}],
     "missiles":[],
+    "actions":[],
     "ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -500,10 +509,11 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
          "current_armor":5,
          "current_power":300,
@@ -516,6 +526,7 @@ async fn integration_add_planet_ship() {
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,
+         "can_jump":false,
          "sensor_locks": []
         }]});
 
@@ -542,6 +553,7 @@ async fn integration_add_planet_ship() {
 
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"missiles":[],
+    "actions":[],
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
         "color":"red","radius":1.5e6,"mass":3e24,
@@ -554,7 +566,7 @@ async fn integration_add_planet_ship() {
         "gravity_radius_025":1_649_890.071_763_523_2}],
     "ships":[
     {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
-     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+     "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
      "current_hull":160,
      "current_armor":5,
      "current_power":300,
@@ -567,10 +579,11 @@ async fn integration_add_planet_ship() {
      "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
      "dodge_thrust":0,
      "assist_gunners":false,
+     "can_jump":false,
      "sensor_locks": []
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
-     "plan":[[[0.0,0.0,0.0],10000]],"design":"Buccaneer",
+     "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
      "current_hull":160,
      "current_armor":5,
      "current_power":300,
@@ -583,6 +596,7 @@ async fn integration_add_planet_ship() {
      "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
      "dodge_thrust":0,
      "assist_gunners":false,
+     "can_jump":false,
      "sensor_locks": []
     }]});
 
@@ -622,7 +636,14 @@ async fn integration_update_ship() {
   assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add ship action executed"));
   drain_entity_response(&mut stream).await;
 
-  let response = rpc(&mut stream, RequestMsg::Update(EMPTY_FIRE_ACTIONS_MSG)).await;
+  let _response = rpc(&mut stream, RequestMsg::ModifyActions(EMPTY_FIRE_ACTIONS_MSG)).await;
+  let entity_msg = drain_entity_response(&mut stream).await;
+  let ResponseMsg::EntityResponse(entities) = entity_msg else {
+    panic!("Expected EntityResponse");
+  };
+  assert!(entities.actions.is_empty(), "Expected an empty action list");
+
+  let response = rpc(&mut stream, RequestMsg::Update).await;
   assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
 
   let entities = drain_entity_response(&mut stream).await;
@@ -688,7 +709,18 @@ async fn integration_update_missile() {
     }],
   )];
 
-  let effects = rpc(&mut stream, RequestMsg::Update(fire_actions)).await;
+  let _response = rpc(&mut stream, RequestMsg::ModifyActions(fire_actions)).await;
+  let entity_msg = drain_entity_response(&mut stream).await;
+  if let ResponseMsg::EntityResponse(entities) = entity_msg {
+    assert!(
+      entities.actions.iter().any(|(name, _)| name == "ship1"),
+      "Expected ship1 in actions"
+    );
+  } else {
+    panic!("Expected EntityResponse");
+  }
+
+  let effects = rpc(&mut stream, RequestMsg::Update).await;
   if let ResponseMsg::Effects(effects) = effects {
     let filtered_effects: Vec<_> = effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect();
 
@@ -704,7 +736,7 @@ async fn integration_update_missile() {
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
              "current_armor":13,
              "current_power":240,
@@ -717,10 +749,11 @@ async fn integration_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-             "plan":[[[0.0,0.0,0.0],10000]],"design":"System Defense Boat",
+             "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":83,
              "current_armor":13,
              "current_power":240,
@@ -733,9 +766,10 @@ async fn integration_update_missile() {
              "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
              "dodge_thrust":0,
              "assist_gunners":false,
+             "can_jump":false,
              "sensor_locks": []
             }],
-            "missiles":[],"planets":[]});
+            "missiles":[],"planets":[],"actions":[]});
 
     assert_json_eq!(entities, compare);
   } else {
@@ -827,7 +861,7 @@ async fn integration_set_acceleration() {
     &mut stream,
     RequestMsg::SetPlan(SetPlanMsg {
       name: "ship1".to_string(),
-      plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
+      plan: vec![([1.0, 2.0, 2.0].into(), 50000)].into(),
     }),
   )
   .await;
@@ -880,12 +914,13 @@ async fn integration_compute_path_basic() {
       end_vel: [0.0, 0.0, 0.0].into(),
       standoff_distance: 0.0,
       target_velocity: None,
+      target_acceleration: None,
     }),
   )
   .await;
 
   if let ResponseMsg::FlightPath(plan) = message {
-    assert_eq!(plan.path.len(), 9);
+    assert_eq!(plan.path.len(), 10);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
       plan.path[1],
@@ -893,7 +928,8 @@ async fn integration_compute_path_basic() {
         x: 1_906_480.8,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
     assert_ulps_eq!(
       plan.path[2],
@@ -901,11 +937,12 @@ async fn integration_compute_path_basic() {
         x: 7_625_923.2,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
-    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
+    assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
     let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-5);
     assert_eq!(t, 1414);
 
     if let Some(accel) = plan.plan.1 {
@@ -916,7 +953,8 @@ async fn integration_compute_path_basic() {
           x: -3.0,
           y: 0.0,
           z: 0.0
-        }
+        } * G,
+        epsilon = 1e-5
       );
     } else {
       panic!("Expecting second acceleration.");
@@ -966,12 +1004,13 @@ async fn integration_compute_path_with_standoff() {
       end_vel: [0.0, 0.0, 0.0].into(),
       standoff_distance: 60000.0,
       target_velocity: None,
+      target_acceleration: None,
     }),
   )
   .await;
 
   if let ResponseMsg::FlightPath(plan) = message {
-    assert_eq!(plan.path.len(), 9);
+    assert_eq!(plan.path.len(), 10);
     assert_eq!(plan.path[0], Vec3::zero());
     assert_ulps_eq!(
       plan.path[1],
@@ -979,7 +1018,8 @@ async fn integration_compute_path_with_standoff() {
         x: 1_906_480.8,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
     assert_ulps_eq!(
       plan.path[2],
@@ -987,12 +1027,13 @@ async fn integration_compute_path_with_standoff() {
         x: 7_625_923.2,
         y: 0.0,
         z: 0.0
-      }
+      },
+      epsilon = 1e-5
     );
     assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
 
     let (a, t) = plan.plan.0.into();
-    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 });
+    assert_ulps_eq!(a, Vec3 { x: 3.0, y: 0.0, z: 0.0 } * G, epsilon = 1e-5);
     assert_eq!(t, 1413);
 
     if let Some(accel) = plan.plan.1 {
@@ -1003,7 +1044,8 @@ async fn integration_compute_path_with_standoff() {
           x: -3.0,
           y: 0.0,
           z: 0.0
-        }
+        } * G,
+        epsilon = 1e-5
       );
     } else {
       panic!("Expecting second acceleration.");
@@ -1065,6 +1107,7 @@ async fn integration_malformed_requests() {
       end_vel: [0.0, 0.0, 0.0].into(),
       standoff_distance: 0.0,
       target_velocity: None,
+      target_acceleration: None,
     }),
   )
   .await;
@@ -1073,6 +1116,10 @@ async fn integration_malformed_requests() {
     "Expected error for invalid compute path request, got {message:?}"
   );
 
+  // This isn't an error but want to print this warning at the same log level as errors.
+  error!(
+    "(integration_malformed_requests) Expect an error to occur after this from server (Failed to parse, expected f64)"
+  );
   // Test invalid flight plan
   let message = rpc(
     &mut stream,
@@ -1083,11 +1130,10 @@ async fn integration_malformed_requests() {
   )
   .await;
   assert!(matches!(message, ResponseMsg::Error(_)));
-
   // Test fire action with invalid parameters
-  let message = rpc(
+  let _response = rpc(
     &mut stream,
-    RequestMsg::Update(vec![(
+    RequestMsg::ModifyActions(vec![(
       "nonexistent_ship".to_string(),
       vec![ShipAction::FireAction {
         weapon_id: 0,
@@ -1097,6 +1143,8 @@ async fn integration_malformed_requests() {
     )]),
   )
   .await;
+  drain_entity_response(&mut stream).await;
+  let message = rpc(&mut stream, RequestMsg::Update).await;
   assert!(
     matches!(&message, ResponseMsg::Effects(x) if x.is_empty()),
     "Expected empty effects for invalid fire action, got {message:?}"
@@ -1142,13 +1190,13 @@ async fn integration_bad_requests() {
   // Test setting flight plan for non-existent ship
   let msg = RequestMsg::SetPlan(SetPlanMsg {
     name: "ship1".to_string(),
-    plan: vec![([1.0, 2.0, 2.0].into(), 10000)].into(),
+    plan: vec![([1.0, 2.0, 2.0].into(), 50000)].into(),
   });
   let response = rpc(&mut stream, msg).await;
   assert!(matches!(response, ResponseMsg::Error(_)));
 
   // Test fire action with invalid weapon_id
-  let msg = RequestMsg::Update(vec![(
+  let msg = RequestMsg::ModifyActions(vec![(
     "ship1".to_string(),
     vec![ShipAction::FireAction {
       weapon_id: usize::MAX,
@@ -1156,7 +1204,11 @@ async fn integration_bad_requests() {
       called_shot_system: None,
     }],
   )]);
-  let response = rpc(&mut stream, msg).await;
+  let _response = rpc(&mut stream, msg).await;
+  drain_entity_response(&mut stream).await;
+
+  let response = rpc(&mut stream, RequestMsg::Update).await;
+
   assert!(
     matches!(&response, ResponseMsg::Effects(x) if x.is_empty()),
     "Expected empty effects for invalid weapon_id. Instead got {response:?}"

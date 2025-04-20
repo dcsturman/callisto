@@ -33,6 +33,7 @@
         "saturnmap",
         "Seedable",
         "serde",
+        "shipnames",
         "signkey",
         "SpaceView",
         "ulps",
