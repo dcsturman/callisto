@@ -10,7 +10,7 @@ use rand::SeedableRng;
 use crate::action::{merge, ShipAction};
 use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
-use crate::entity::{deep_clone, Entities, Entity, G};
+use crate::entity::{Entities, Entity, G};
 use crate::payloads::Role;
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg,
@@ -109,7 +109,7 @@ impl<'a> PlayerManager<'a> {
   pub fn reset(&self) -> Result<String, String> {
     if self.role == Role::General && self.ship.is_none() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
-      self.initial_scenario.deep_copy(&mut self.entities.lock().unwrap());
+      self.initial_scenario.deep_copy_into(&mut self.entities.lock().unwrap());
       Ok("Server reset.".to_string())
     } else {
       warn!(
@@ -375,7 +375,7 @@ impl<'a> PlayerManager<'a> {
     // Take a snapshot of all the ships.  We'll use this for attackers while
     // damage goes directly onto the "official" ships.  But it means if they are damaged
     // or destroyed they still get to take their actions.
-    let ship_snapshot: HashMap<String, Ship> = deep_clone(&entities.ships);
+    let ship_snapshot: HashMap<String, Ship> = entities.ship_deep_copy();
 
     // First process all sensor actions. They can remove missiles and change modifiers for ship combat.
     let mut effects = entities.sensor_actions(&sensor_actions, &mut rng);

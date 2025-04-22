@@ -59,7 +59,7 @@ pub async fn processor(
   let mut connections = Vec::<Connection>::new();
 
   let mut initial_scenario = Entities::new();
-  entities.lock().unwrap().deep_copy(&mut initial_scenario);
+  entities.lock().unwrap().deep_copy_into(&mut initial_scenario);
   loop {
     // Build the contexts in case we create a connection.
     let current_contexts = build_context(&connections).clone();

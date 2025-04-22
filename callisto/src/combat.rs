@@ -899,9 +899,13 @@ mod tests {
       None,
     );
 
-    let mut ships = HashMap::new();
-    ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
-    let mut sand_counts = create_sand_counts(&crate::entity::deep_clone(&ships));
+    let mut ships = HashMap::with_capacity(1);
+    ships.insert("Target".to_string(), Arc::new(RwLock::new(target.clone())));
+
+    // Create sand counts
+    let mut sand_ships = HashMap::with_capacity(1);
+    sand_ships.insert("Target".to_string(), target.clone());
+    let mut sand_counts = create_sand_counts(&sand_ships);
 
     let actions = vec![
       ShipAction::FireAction {

@@ -229,7 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   };
 
   let mut entities = Entities::new();
-  initial_scenario.deep_copy(&mut entities);
+  initial_scenario.deep_copy_into(&mut entities);
 
   let entities = Arc::new(Mutex::new(entities));
 
