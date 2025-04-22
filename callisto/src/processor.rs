@@ -416,6 +416,14 @@ pub async fn handle_request(
       server.logout(&session_keys);
       vec![ResponseMsg::LogoutResponse, ResponseMsg::Users(context.clone())]
     }
+    RequestMsg::JoinScenario(join_scenario) => { 
+      //TODO: Do something here 
+      vec![ResponseMsg::JoinedScenario(join_scenario.scenario_name)]
+    }
+    RequestMsg::CreateScenario { name, scenario } => { 
+      // TODO: Do something here 
+      vec![ResponseMsg::JoinedScenario(name)]
+    }
     RequestMsg::Quit => {
       if !server.in_test_mode() {
         warn!("Receiving a quit request in non-test mode.  Ignoring.");
@@ -474,6 +482,7 @@ pub fn build_successful_auth_msgs(
 ) -> Vec<ResponseMsg> {
   vec![
     ResponseMsg::AuthResponse(auth_response),
+    ResponseMsg::Scenarios(crate::SCENARIOS.get().unwrap().clone()),
     ResponseMsg::DesignTemplateResponse(server.get_designs()),
     ResponseMsg::EntityResponse(server.clone_entities()),
     ResponseMsg::Users(context),

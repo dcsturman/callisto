@@ -32,6 +32,7 @@ import {
 } from "./Universal";
 
 import {RoleChooser} from "./Role";
+import {ScenarioManager} from "./ScenarioManager";
 
 import "./index.css";
 
@@ -60,6 +61,10 @@ export function App() {
 
   const [users, setUsers] = useState<UserList>([]);
 
+  const [scenarios, setScenarios] = useState<string[]>([]);
+
+  const [joinedScenario, setJoinedScenario] = useState<string | null>(null);
+
   useEffect(() => {
     if (!socketReady) {
       setMessageHandlers(
@@ -70,7 +75,9 @@ export function App() {
         setActions,
         () => {},
         () => {},
-        setUsers
+        setUsers,
+        setScenarios,
+        (scenario: string) => setJoinedScenario(scenario),
       );
 
       startWebsocket(setSocketReady);
@@ -82,7 +89,7 @@ export function App() {
       <DesignTemplatesProvider value={{templates: templates, handler: setTemplates}}>
         <ActionsContextComponent actions={actions} setActions={setActions}>
           <div>
-            {authenticated && socketReady ? (
+            {authenticated && socketReady && joinedScenario ? (
               <>
                 <Simulator
                   setAuthenticated={setAuthenticated}
@@ -93,6 +100,8 @@ export function App() {
                   setUsers={setUsers}
                 />
               </>
+            ) : authenticated && socketReady ? (
+              <ScenarioManager scenarios={scenarios} />
             ) : socketReady ? (
               <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
             ) : (
@@ -159,7 +168,9 @@ function Simulator({
           setEvents(effects);
           setShowResults(true);
         },
-        setUsers
+        setUsers,
+        () => { console.error("ScenarioList message should never be received after Simulator starts.")},
+        () => { console.error("JoinedScenario message should never be received after Simulator starts.")},
       );
     }
   }, [

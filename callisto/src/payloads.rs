@@ -190,6 +190,13 @@ pub struct ChangeRole {
   pub role: Role,
   pub ship: Option<String>,
 }
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct JoinScenarioMsg {
+  pub scenario_name: String,
+}
+
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
@@ -220,6 +227,8 @@ pub enum RequestMsg {
   ModifyActions(ShipActionMsg),
   Update,
   LoadScenario(LoadScenarioMsg),
+  JoinScenario(JoinScenarioMsg),
+  CreateScenario { name: String, scenario: String },
   EntitiesRequest,
   DesignTemplateRequest,
   Reset,
@@ -236,6 +245,8 @@ pub enum ResponseMsg {
   Effects(Vec<EffectMsg>),
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
+  Scenarios(Vec<String>),
+  JoinedScenario(String),
   SimpleMsg(String),
   // LogoutResponse is a faux message never sent back.  However,
   // it allows us to signal between the message handling layer and the connection

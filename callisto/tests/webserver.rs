@@ -174,6 +174,16 @@ async fn drain_entity_response(stream: &mut MyWebSocket) -> ResponseMsg {
  * 3 messages: templates, entities, and users.  See [`callisto:build_successful_auth_msgs`].
  */
 async fn drain_initialization_messages(stream: &mut MyWebSocket) {
+  let Ok(scenario_msg) = stream.next().await.unwrap() else {
+    panic!("Expected scenario response.  Got error.");
+  };
+  assert!(
+    matches!(
+      serde_json::from_str::<ResponseMsg>(scenario_msg.to_text().unwrap()),
+      Ok(ResponseMsg::Scenarios(_))
+    ),
+    "Expected scenario response, got {scenario_msg:?}."
+  );
   let Ok(template_msg) = stream.next().await.unwrap() else {
     panic!("Expected template response.  Got error.");
   };

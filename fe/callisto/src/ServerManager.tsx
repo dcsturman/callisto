@@ -51,6 +51,12 @@ let setEffects: (effects: Effect[]) => void = () => {
 let setUsers: (users: UserList) => void = () => {
   console.error("Calling default implementation of setUsers()");
 };
+let setScenarios: (scenarios: string[]) => void = () => {
+  console.error("Calling default implementation of setScenarios()");
+};
+let setJoinedScenario: (scenario:string) => void = () => {
+  console.error("Calling default implementation of setJoinedScenario()");
+};
 
 //
 // Functions managing the socket connection
@@ -92,7 +98,9 @@ export function setMessageHandlers(
   actions: (actions: ActionType) => void,
   flightPath: (plan: FlightPathResult) => void,
   effects: (effects: Effect[]) => void,
-  users: (users: UserList) => void
+  users: (users: UserList) => void,
+  scenarios: (scenarios: string[]) => void,
+  joinedScenario: (scenario: string) => void,
 ) {
   if (email) {
     setEmail = email;
@@ -117,6 +125,12 @@ export function setMessageHandlers(
   }
   if (users) {
     setUsers = users;
+  }
+  if (scenarios) {
+    setScenarios = scenarios;
+  }
+  if (joinedScenario) {
+    setJoinedScenario = joinedScenario;
   }
 }
 
@@ -177,6 +191,17 @@ const handleMessage = (event: MessageEvent) => {
   if ("Users" in json) {
     const response = json.Users;
     handleUsers(response, setUsers);
+    return;
+  }
+
+  if ("Scenarios" in json) {
+    const response = json.Scenarios;
+    handleScenarioList(response, setScenarios);
+    return;
+  }
+
+  if ("JoinedScenario" in json){
+    handleJoinedScenario(json);
     return;
   }
 
@@ -327,6 +352,16 @@ export function setRole(role: ViewMode, ship: string | null) {
   }
 }
 
+export function joinScenario(scenario_name: string) {
+  const payload = {JoinScenario: {scenario_name: scenario_name}};
+  socket.send(JSON.stringify(payload));
+}
+
+export function createScenario(name: string, scenario: string) {
+  const payload = {CreateScenario: {name: name, scenario: scenario}};
+  socket.send(JSON.stringify(payload));
+}
+
 export function getEntities() {
   socket.send(ENTITIES_REQUEST);
 }
@@ -458,4 +493,16 @@ function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
     users.push(c);
   }
   setUsers(users);
+}
+
+function handleScenarioList(json: string[], setScenarios: (scenarios: string[]) => void) {
+  setScenarios(json);
+}
+
+function handleJoinedScenario(json: { JoinedScenario: string }) {
+  const scenario = json["JoinedScenario"] as string;
+  if (scenario) {
+    setJoinedScenario(scenario);
+    console.log("Joined scenario");
+  }
 }
