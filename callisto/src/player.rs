@@ -21,20 +21,22 @@ use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
-pub struct Server<'a> {
+pub struct PlayerManager<'a> {
+  // Entities is really the state for the entire server, shared via ref count across all PlayerManagers.
   entities: Arc<Mutex<Entities>>,
+  // The initial scenario we created, so it can be reverted to.  Also part of the "server" state (though static)
   initial_scenario: &'a Entities,
+  // Authenticator for this player.  It contains the session key and email identity of the player.
   authenticator: Box<dyn Authenticator>,
-  // Role this user might have assumed
+  // Role this player might have assumed
   role: Role,
-  // Ship this user may have assumed a crew position on.
+  // Ship this player may have assumed a crew position on.
   ship: Option<String>,
   test_mode: bool,
 }
 
-// TODO: Separate server and user - its all mixed together here.
-impl<'a> Server<'a> {
-  /// Create a new server.
+impl<'a> PlayerManager<'a> {
+  /// Create a new player manager.
   ///
   /// # Panics
   /// If the lock cannot be obtained to read the entities.
@@ -42,7 +44,7 @@ impl<'a> Server<'a> {
     entities: Arc<Mutex<Entities>>, initial_scenario: &'a Entities, authenticator: Box<dyn Authenticator>,
     test_mode: bool,
   ) -> Self {
-    Server {
+    PlayerManager {
       entities,
       initial_scenario,
       authenticator,
@@ -84,15 +86,15 @@ impl<'a> Server<'a> {
   pub async fn login(
     &mut self, login: LoginMsg, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<AuthResponse, String> {
-    info!("(Server.login) Received and processing login request.",);
+    info!("(PlayerManager.login) Received and processing login request.",);
 
     let email = self
       .authenticator
       .authenticate_user(&login.code, session_keys)
       .await
-      .map_err(|e| format!("(Server.login) Unable to authenticate user: {e:?}"))?;
+      .map_err(|e| format!("(PlayerManager.login) Unable to authenticate user: {e:?}"))?;
 
-    debug!("(Server.login) Authenticated user {} with session key.", email);
+    debug!("(PlayerManager.login) Authenticated user {} with session key.", email);
 
     Ok(AuthResponse { email })
   }
@@ -106,11 +108,13 @@ impl<'a> Server<'a> {
   /// Panics if the lock on entities cannot be obtained.
   pub fn reset(&self) -> Result<String, String> {
     if self.role == Role::General && self.ship.is_none() {
-      info!("(Server.reset) Received and processing reset request: Resetting server!");
+      info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
       self.initial_scenario.deep_copy(&mut self.entities.lock().unwrap());
       Ok("Server reset.".to_string())
     } else {
-      warn!("(Server.reset) Received and processing reset request: Ignoring reset request as not in General role.");
+      warn!(
+        "(PlayerManager.reset) Received and processing reset request: Ignoring reset request as not in General role."
+      );
       Err("Not GM. Cannot reset server!".to_string())
     }
   }
@@ -123,7 +127,7 @@ impl<'a> Server<'a> {
   /// # Panics
   /// Panics if the lock on `session_keys` cannot be obtained.
   pub fn logout(&mut self, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>) {
-    info!("(Server.logout) Received and processing logout request.",);
+    info!("(PlayerManager.logout) Received and processing logout request.",);
     self.authenticator.set_email(None);
     let mut keys = session_keys.lock().unwrap();
     if let Some(session_key) = self.authenticator.get_session_key() {
@@ -148,14 +152,14 @@ impl<'a> Server<'a> {
   /// # Panics
   /// Panics if the ship templates are not loaded or if the lock on entities cannot be obtained.
   pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
-    info!("(Server.add_ship) Received and processing add ship request. {:?}", ship);
+    info!("(PlayerManager.add_ship) Received and processing add ship request. {:?}", ship);
 
     // Add the ship to the server
     let design = crate::ship::SHIP_TEMPLATES
       .get()
-      .expect("(Server.add_ship) Ship templates not loaded")
+      .expect("(PlayerManager.add_ship) Ship templates not loaded")
       .get(&ship.design)
-      .ok_or_else(|| format!("(Server.add_ship) Could not find design {}.", ship.design))?;
+      .ok_or_else(|| format!("(PlayerManager.add_ship) Could not find design {}.", ship.design))?;
 
     self
       .entities
@@ -226,7 +230,7 @@ impl<'a> Server<'a> {
     // Strip the Arc, etc. from the ShipTemplates before marshalling back.
     let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
       .get()
-      .expect("(Server.get_designs) Ship templates not loaded")
+      .expect("(PlayerManager.get_designs) Ship templates not loaded")
       .iter()
       .map(|(key, value)| (key.clone(), (*value.clone()).clone()))
       .collect();
@@ -528,7 +532,7 @@ mod tests {
     let authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
     let initial_scenario = Entities::new();
-    let mut server = Server::new(Arc::new(Mutex::new(Entities::new())), &initial_scenario, authenticator, false);
+    let mut server = PlayerManager::new(Arc::new(Mutex::new(Entities::new())), &initial_scenario, authenticator, false);
 
     // Try a login
     let login_msg = LoginMsg {

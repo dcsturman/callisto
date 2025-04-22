@@ -20,7 +20,7 @@ use crate::authentication::MockAuthenticator;
 use crate::entity::G;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, LoadScenarioMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
-use crate::server::Server;
+use crate::player::PlayerManager;
 use crate::ship::{ShipDesignTemplate, ShipSystem};
 
 fn setup_authenticator() -> Box<dyn Authenticator> {
@@ -30,11 +30,11 @@ fn setup_authenticator() -> Box<dyn Authenticator> {
 // Define a static empty initial scenario here (for tests)
 static INITIAL_SCENARIO: LazyLock<Entities> = LazyLock::new(Entities::new);
 
-async fn setup_test_with_server<'a>(authenticator: Box<dyn Authenticator>) -> Server<'a> {
+async fn setup_test_with_server<'a>(authenticator: Box<dyn Authenticator>) -> PlayerManager<'a> {
   let _ = pretty_env_logger::try_init();
   crate::ship::config_test_ship_templates().await;
 
-  Server::new(Arc::new(Mutex::new(Entities::new())), &INITIAL_SCENARIO, authenticator, true)
+  PlayerManager::new(Arc::new(Mutex::new(Entities::new())), &INITIAL_SCENARIO, authenticator, true)
 }
 
 /**

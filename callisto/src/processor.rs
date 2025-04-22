@@ -22,7 +22,7 @@ use crate::authentication::Authenticator;
 
 use crate::entity::Entities;
 use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, Role, UserData};
-use crate::server::Server;
+use crate::player::PlayerManager;
 
 #[cfg(feature = "no_tls_upgrade")]
 type SubStream = TcpStream;
@@ -152,7 +152,6 @@ pub async fn processor(
         debug!("(handle_connection) Received message: {text}");
         let response = match serde_json::from_str(&text) {
           Ok(parsed_message) => {
-            // TODO: I think we move handle_request into the server, but lets come back to that.
             let response = handle_request(
               parsed_message,
               &mut connections[index].server,
@@ -255,7 +254,7 @@ fn build_context(connections: &[Connection]) -> Vec<UserData> {
     .collect::<Vec<UserData>>()
 }
 struct Connection<'a> {
-  server: Server<'a>,
+  server: PlayerManager<'a>,
   stream: WebSocketStream<SubStream>,
 }
 
@@ -274,7 +273,7 @@ async fn build_connection<'a>(
   authenticator.set_session_key(session_key);
   authenticator.set_email(email);
   let mut connection = Connection {
-    server: Server::new(entities.clone(), initial_scenario, authenticator, test_mode),
+    server: PlayerManager::new(entities.clone(), initial_scenario, authenticator, test_mode),
     stream,
   };
 
@@ -339,7 +338,7 @@ async fn build_connection<'a>(
 // a lot of the codebase.  So excluding those two clippy warnings.
 #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
 pub async fn handle_request(
-  message: RequestMsg, server: &mut Server<'_>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+  message: RequestMsg, server: &mut PlayerManager<'_>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
   mut context: Vec<UserData>,
 ) -> Vec<ResponseMsg> {
   info!("(handle_request) Request: {:?}", message);
@@ -352,7 +351,7 @@ pub async fn handle_request(
 
   match message {
     RequestMsg::Login(login_msg) => {
-      // But we put all this business logic into [Server.login](Server::login) rather than
+      // But we put all this business logic into [PlayerManager.login](Server::login) rather than
       // split it up between the two locations.
       // Our role here is just to repackage the response and put it on the wire.
       server
@@ -442,7 +441,7 @@ fn error_msg(err_msg: String) -> Vec<ResponseMsg> {
   vec![ResponseMsg::Error(err_msg)]
 }
 
-fn response_with_update(server: &Server, result: Result<String, String>) -> Vec<ResponseMsg> {
+fn response_with_update(server: &PlayerManager, result: Result<String, String>) -> Vec<ResponseMsg> {
   result.map_or_else(error_msg, |msg| {
     vec![
       ResponseMsg::SimpleMsg(msg),
@@ -471,7 +470,7 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 #[allow(clippy::implicit_hasher)]
 #[must_use]
 pub fn build_successful_auth_msgs(
-  auth_response: AuthResponse, server: &Server, context: Vec<UserData>,
+  auth_response: AuthResponse, server: &PlayerManager, context: Vec<UserData>,
 ) -> Vec<ResponseMsg> {
   vec![
     ResponseMsg::AuthResponse(auth_response),

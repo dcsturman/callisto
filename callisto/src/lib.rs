@@ -11,9 +11,9 @@ pub mod entity;
 pub mod missile;
 pub mod payloads;
 pub mod planet;
+pub mod player;
 pub mod processor;
 mod rules_tables;
-pub mod server;
 pub mod ship;
 
 #[macro_use]
