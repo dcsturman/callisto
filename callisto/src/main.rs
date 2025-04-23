@@ -29,10 +29,10 @@ use callisto::authentication::{
   load_authorized_users, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator,
 };
 
-use callisto::SCENARIOS;
 use callisto::entity::Entities;
-use callisto::processor::processor;
+use callisto::processor::Processor;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
+use callisto::SCENARIOS;
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
@@ -282,15 +282,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   // TODO: Rather than pass in entities here, we need to pass a table of servers.
   // But how do we know what server we want?
+  let session_keys_clone = session_keys.clone();
+  tokio::task::spawn(async move {
+    let mut processor = Processor::new(connection_receiver, auth_template, session_keys_clone, test_mode);
+    processor.processor(entities).await;
+  });
 
   // Start a processor thread to handle all connections once established.
-  tokio::task::spawn(processor(
-    connection_receiver,
-    auth_template,
-    entities,
-    session_keys.clone(),
-    test_mode,
-  ));
 
   #[cfg(feature = "no_tls_upgrade")]
   debug!("(main) No TLS upgrade enabled.");

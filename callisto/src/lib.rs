@@ -25,11 +25,11 @@ pub mod tests;
 
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::download::Range;
-use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
+use google_cloud_storage::http::objects::list::ListObjectsRequest;
+use once_cell::sync::OnceCell;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use once_cell::sync::OnceCell;
 
 pub static SCENARIOS: OnceCell<Vec<String>> = OnceCell::new();
 
@@ -100,7 +100,12 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
     let client = Client::new(config);
 
     // List the files in the directory
-    let objects = client.list_objects(&ListObjectsRequest{bucket: dir.to_string(), ..Default::default()}).await?;
+    let objects = client
+      .list_objects(&ListObjectsRequest {
+        bucket: dir.to_string(),
+        ..Default::default()
+      })
+      .await?;
     let mut files = Vec::new();
     for object in objects.items.unwrap() {
       files.push(object.name);
@@ -118,5 +123,4 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
     }
     Ok(files)
   }
-  
 }

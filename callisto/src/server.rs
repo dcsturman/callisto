@@ -1,5 +1,5 @@
 use crate::entity::Entities;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 pub struct Server {
   pub id: String,
@@ -36,10 +36,14 @@ impl Server {
     *self.entities.lock().unwrap() = self.initial_scenario.clone();
   }
 
-  /// Get the entities of the server, returning another reference count
-  /// to the shared entities structure.
-  #[must_use]
-  pub fn get_entities(&self) -> Arc<Mutex<Entities>> {
-    self.entities.clone()
+  /// Get the entities of the server, unlocked.  This is a convenience routine that
+  /// allows the caller to avoid having to deal with the lock.
+  ///
+  /// # Errors
+  /// Returns an error if the lock on entities cannot be obtained.
+  pub fn get_unlocked_entities(
+    &self,
+  ) -> Result<MutexGuard<'_, Entities>, std::sync::PoisonError<MutexGuard<'_, Entities>>> {
+    self.entities.lock()
   }
 }
