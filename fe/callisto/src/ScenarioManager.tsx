@@ -74,6 +74,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
         createScenario(random_tutorial_name, TUTORIAL_SCENARIO);
     }   
 
+    // TODO: Remove TUTORIAL scenarios.
+    // TODO: It doesn't seem we're using the cloud scenarios, but something in the dockerfile instead.
     return (
         <div className="authentication-container">
             <div className="authentication-blurb">

@@ -15,9 +15,7 @@ env:
   REGION: us-central1
   APP: callisto-be
   GENERAL_ARGS: --oauth-creds,/secrets/google_credentials,--users-file,gs://callisto-be-user-profiles/authorized_users.json,--design-file,gs://callisto-scenarios/default_ship_templates.json
-  APP_ARGS: --web-server,https://callistoflight.com,--scenario-file,gs://callisto-scenarios/sol.json
-  TUTORIAL_ARGS: --web-server,https://tutorial.callistoflight.com,--scenario-file,gs://callisto-scenarios/tutorial.json
-  TUTORIAL_APP: callisto-be-tutorial
+  APP_ARGS: --web-server,https://callistoflight.com,--scenario-dir,gs://callisto-scenarios
   PORT: 30000
 
 jobs:
@@ -64,7 +62,3 @@ jobs:
         run:
           gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} 
             --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.APP_ARGS }},${{ env.GENERAL_ARGS }}
-      - name: 'Deploy tutorial to Cloud Run'
-        run:
-          gcloud run deploy ${{ env.TUTORIAL_APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} 
-            --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.TUTORIAL_ARGS }},${{ env.GENERAL_ARGS }}

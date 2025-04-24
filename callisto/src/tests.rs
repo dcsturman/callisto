@@ -23,6 +23,7 @@ use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, SetPilotActions, EMPT
 use crate::player::PlayerManager;
 use crate::server::Server;
 use crate::ship::{ShipDesignTemplate, ShipSystem};
+use crate::list_local_or_cloud_dir;
 
 fn setup_authenticator() -> Box<dyn Authenticator> {
   Box::new(MockAuthenticator::new("http://test.com"))
@@ -1205,4 +1206,33 @@ async fn test_set_pilot_actions_aid_gunner() {
 
   let result = server.set_pilot_actions(&non_existent_ship_actions);
   assert!(result.is_err());
+}
+
+#[test(tokio::test)]
+async fn test_list_local_dir() {
+    let directory_path = "./scenarios";
+    // Call the function
+    let result = list_local_or_cloud_dir(directory_path).await.unwrap();
+    
+    // Verify results
+    assert!(result.len() > 3);
+}
+
+#[test(tokio::test)]
+#[cfg_attr(feature = "ci", ignore)]
+async fn test_list_gcs_dir() {
+    // This test requires actual GCS credentials
+    // Skip in CI environments
+    
+    // Create a test bucket name and directory
+    let test_bucket = "callisto-scenarios";
+    let test_dir = format!("gs://{test_bucket}");
+    
+    // Call the function
+    let result = list_local_or_cloud_dir(&test_dir).await;
+    
+    // Just verify that the function runs without error
+    // We can't predict the actual contents
+    assert!(result.is_ok(), "Failed to list GCS directory: {:?}", result.unwrap_err());
+    assert!(result.unwrap().len() > 3, "Expected at least 3 files in the GCS directory");
 }

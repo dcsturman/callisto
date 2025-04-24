@@ -98,13 +98,16 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
     let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
       panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
     });
+    // Extract bucket name from the GCS URI
+    let parts: Vec<&str> = dir.split('/').collect();
+    let bucket_name = parts[2];
 
     let client = Client::new(config);
 
     // List the files in the directory
     let objects = client
       .list_objects(&ListObjectsRequest {
-        bucket: dir.to_string(),
+        bucket: bucket_name.to_string(),
         ..Default::default()
       })
       .await?;
