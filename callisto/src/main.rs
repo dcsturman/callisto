@@ -29,7 +29,6 @@ use callisto::authentication::{
   load_authorized_users, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator,
 };
 
-use callisto::entity::Entities;
 use callisto::processor::Processor;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 use callisto::SCENARIOS;

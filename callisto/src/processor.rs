@@ -20,7 +20,6 @@ use dyn_clone::clone_box;
 
 use crate::authentication::Authenticator;
 
-use crate::entity::Entities;
 use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, ScenariosMsg};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
@@ -472,8 +471,14 @@ impl Processor {
   #[allow(clippy::implicit_hasher)]
   #[must_use]
   pub fn build_successful_auth_msgs(&self, auth_response: AuthResponse) -> Vec<ResponseMsg> {
-    let scenarios_msg = ScenariosMsg { current_scenarios: self.members.current_scenario_list(), templates: crate::SCENARIOS.get().unwrap().clone() };
-    debug!("(Processor.build_successful_auth_msgs) Sending scenarios message: {:?}", scenarios_msg);
+    let scenarios_msg = ScenariosMsg {
+      current_scenarios: self.members.current_scenario_list(),
+      templates: crate::SCENARIOS.get().unwrap().clone(),
+    };
+    debug!(
+      "(Processor.build_successful_auth_msgs) Sending scenarios message: {:?}",
+      scenarios_msg
+    );
     vec![
       ResponseMsg::AuthResponse(auth_response),
       ResponseMsg::Scenarios(scenarios_msg),

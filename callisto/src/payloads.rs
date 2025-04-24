@@ -195,7 +195,7 @@ pub struct JoinScenarioMsg {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ScenariosMsg {
   pub current_scenarios: Vec<String>,
-  pub templates: Vec<String>
+  pub templates: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

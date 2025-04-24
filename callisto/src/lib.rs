@@ -94,11 +94,6 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
 /// If GCS authentication fails.  GCS authentication needs to be handled outside (and prior to) this function.
 pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   if dir.starts_with("gs://") {
-    // Extract bucket name from the GCS URI
-    let parts: Vec<&str> = dir.split('/').collect();
-    let bucket_name = parts[2];
-    let object_name = parts[3..].join("/");
-
     // Create a GCS client
     let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
       panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
