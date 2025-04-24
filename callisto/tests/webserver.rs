@@ -58,7 +58,7 @@ fn get_next_port() -> u16 {
 }
 
 async fn spawn_server(
-  port: u16, test_mode: bool, scenario: Option<String>, design_file: Option<String>, auto_kill: bool,
+  port: u16, test_mode: bool, scenario_dir: Option<String>, design_file: Option<String>, auto_kill: bool,
 ) -> Result<Child, io::Error> {
   let mut handle = Command::new(SERVER_PATH);
   let mut handle = handle
@@ -79,8 +79,8 @@ async fn spawn_server(
   if test_mode {
     handle = handle.arg("-t");
   }
-  if let Some(scenario) = scenario {
-    handle = handle.arg("-f").arg(scenario);
+  if let Some(scenario) = scenario_dir {
+    handle = handle.arg("--scenario-dir").arg(scenario);
   }
   if let Some(design_file) = design_file {
     handle = handle.arg("-d").arg(design_file);
@@ -1467,21 +1467,14 @@ async fn integration_multi_client_test() {
 async fn integration_create_regular_server() {
   let port_1 = get_next_port();
   let port_2 = get_next_port();
-  let port_3 = get_next_port();
 
   // Test regular server
   let mut server1 = spawn_server(port_1, false, None, None, true).await.unwrap();
   assert!(server1.try_wait().unwrap().is_none());
 
-  // Test server with scenario
-  let mut server2 = spawn_server(port_2, false, Some("./tests/test-scenario.json".to_string()), None, true)
+  // Test server with design file
+  let mut server2 = spawn_server(port_2, false, None, Some("./tests/test_templates.json".to_string()), true)
     .await
     .unwrap();
   assert!(server2.try_wait().unwrap().is_none());
-
-  // Test server with design file
-  let mut server3 = spawn_server(port_3, false, None, Some("./tests/test_templates.json".to_string()), true)
-    .await
-    .unwrap();
-  assert!(server3.try_wait().unwrap().is_none());
 }
