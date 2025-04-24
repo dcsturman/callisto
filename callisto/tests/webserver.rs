@@ -1467,7 +1467,7 @@ async fn integration_multi_client_test() {
 async fn integration_create_regular_server() {
   let port_1 = get_next_port();
   let port_2 = get_next_port();
-  
+
   // Test regular server
   let mut server1 = spawn_server(port_1, false, None, None, true).await.unwrap();
   assert!(server1.try_wait().unwrap().is_none());
