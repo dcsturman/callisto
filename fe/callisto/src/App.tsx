@@ -32,6 +32,7 @@ import {
 } from "./Universal";
 
 import {RoleChooser} from "./Role";
+import {ScenarioManager} from "./ScenarioManager";
 
 import "./index.css";
 
@@ -55,10 +56,12 @@ export function App() {
   });
 
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
-
   const [actions, setActions] = useState<ActionType>({});
-
   const [users, setUsers] = useState<UserList>([]);
+  const [scenarios, setScenarios] = useState<string[]>([]);
+  const [scenarioTemplates, setScenarioTemplates] = useState<string[]>([]);
+  const [joinedScenario, setJoinedScenario] = useState<string | null>(null);
+  const [tutorialMode, setTutorialMode] = useState<boolean>(false);
 
   useEffect(() => {
     if (!socketReady) {
@@ -70,21 +73,31 @@ export function App() {
         setActions,
         () => {},
         () => {},
-        setUsers
+        setUsers,
+        (a, b) => { setScenarios(a); setScenarioTemplates(b); },
+        (scenario: string) => setJoinedScenario(scenario),
       );
 
       startWebsocket(setSocketReady);
     }
   }, [socketReady]);
 
+  useEffect(() => {
+    if (!authenticated) {
+      setJoinedScenario(null);
+      setTutorialMode(false);
+    }
+  }, [authenticated]);
+
   return (
     <EntitiesServerProvider value={{entities: entities, handler: setEntities}}>
       <DesignTemplatesProvider value={{templates: templates, handler: setTemplates}}>
         <ActionsContextComponent actions={actions} setActions={setActions}>
           <div>
-            {authenticated && socketReady ? (
+            {authenticated && socketReady && joinedScenario ? (
               <>
                 <Simulator
+                  tutorialMode={tutorialMode}
                   setAuthenticated={setAuthenticated}
                   email={email}
                   socketReady={socketReady}
@@ -93,6 +106,8 @@ export function App() {
                   setUsers={setUsers}
                 />
               </>
+            ) : authenticated && socketReady ? (
+              <ScenarioManager scenarios={scenarios} scenarioTemplates={scenarioTemplates} setTutorialMode={setTutorialMode} />
             ) : socketReady ? (
               <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
             ) : (
@@ -106,6 +121,7 @@ export function App() {
 }
 
 function Simulator({
+  tutorialMode,
   setAuthenticated,
   email,
   setEmail,
@@ -113,6 +129,7 @@ function Simulator({
   setUsers,
   users,
 }: {
+  tutorialMode: boolean;
   setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
@@ -159,7 +176,9 @@ function Simulator({
           setEvents(effects);
           setShowResults(true);
         },
-        setUsers
+        setUsers,
+        () => { console.error("ScenarioList message should never be received after Simulator starts.")},
+        () => { console.error("JoinedScenario message should never be received after Simulator starts.")},
       );
     }
   }, [
@@ -239,7 +258,7 @@ function Simulator({
         }}>
         <>
           <div className="mainscreen-container">
-            {!process.env.REACT_APP_RUN_TUTORIAL || (
+            {!tutorialMode || (
               <Tutorial
                 runTutorial={runTutorial}
                 setRunTutorial={setRunTutorial}

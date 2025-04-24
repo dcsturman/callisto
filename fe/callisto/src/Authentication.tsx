@@ -81,9 +81,7 @@ export function Authentication(args: {
 
   return (
     <div className="authentication-container">
-      <h1 className="authentication-title">
-        Callisto{!process.env.REACT_APP_TUTORIAL ? " Tutorial" : ""}
-      </h1>
+      <h1 className="authentication-title">Callisto</h1>
       <br />
       <br />
       <div className="authentication-blurb">
@@ -99,26 +97,6 @@ export function Authentication(args: {
       </div>
 
       <br />
-      {!process.env.REACT_APP_RUN_TUTORIAL ? (
-        <>
-          <br />
-          <br />
-          <button
-            className="blue-button"
-            onClick={() =>
-              window.location.replace(`https://tutorial.${window.location.host}`)
-            }>
-            Go to Tutorial
-          </button>
-        </>
-      ) : (
-        <div className="authentication-blurb">
-          Welcome, and sign in to run the tutorial! When you finish the tutorial
-          you will be redirected back to the main server.
-          <br /> <br />
-          <br />
-        </div>
-      )}
       <button
         className="blue-button"
         onClick={() => {

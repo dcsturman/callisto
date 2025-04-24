@@ -29,9 +29,9 @@ use callisto::authentication::{
   load_authorized_users, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator,
 };
 
-use callisto::entity::Entities;
-use callisto::processor::processor;
+use callisto::processor::Processor;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
+use callisto::SCENARIOS;
 
 const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
@@ -53,6 +53,10 @@ struct Args {
   /// JSON file for planets in scenario
   #[arg(short = 'f', long)]
   scenario_file: Option<String>,
+
+  /// Director for all possible scenarios
+  #[arg(short, long, default_value = "./scenarios/")]
+  scenario_dir: String,
 
   /// JSON file for ship templates in scenario
   #[arg(short, long, default_value = DEFAULT_SHIP_TEMPLATES_FILE)]
@@ -118,12 +122,10 @@ async fn handle_connection(
   };
 
   // Second, upgrade the stream to use websockets with tungstenite
-  // TODO: Add a config here for extra safety
-
   // Tmp locked structure to get info out of the accept handler.
-  // This is necessary because the callback_handler is consumed, so other approaches didn't need for me.
+  // This is necessary because the callback_handler is consumed, so other approaches didn't work.
   // First element is the session key, second is the email.
-  // TODO: Is there a better way to do this?  We just need to get this returned.  We don't actually need to create
+  // HACK: Is there a better way to do this?  We just need to get this returned.  We don't actually need to create
   // this here. We also don't need to access it until the callback_handler is done.
   let auth_info = Arc::new(Mutex::new((String::new(), None)));
 
@@ -207,6 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       }
     }));
   }
+
   let templates = load_ship_templates_from_file(&args.design_file)
     .await
     .unwrap_or_else(|e| panic!("Unable to load ship template file {}. Reason {:?}", args.design_file, e));
@@ -217,23 +220,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     .set(templates)
     .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
 
+  let scenarios = callisto::list_local_or_cloud_dir(&args.scenario_dir).await;
+  match scenarios {
+    Ok(scenarios) => {
+      info!("(main) Loaded scenarios from {}.", &args.scenario_dir);
+      info!("(main) Scenarios: {:?}", scenarios);
+      SCENARIOS.set(scenarios).expect("(Main) attempting to set SCENARIOS twice!");
+    }
+    Err(e) => {
+      error!("(main) Unable to load scenarios from {}. Reason {:?}", args.scenario_dir, e);
+    }
+  }
+
   info!("(main) Loaded ship templates.");
-
-  // Build the main entities table that will be the state of our server.
-  let initial_scenario = if let Some(file_name) = args.scenario_file {
-    Entities::load_from_file(&file_name)
-      .await
-      .unwrap_or_else(|e| panic!("Issue loading scenario file {file_name}: {e}"))
-  } else {
-    Entities::new()
-  };
-
-  let mut entities = Entities::new();
-  initial_scenario.deep_copy(&mut entities);
-
-  let entities = Arc::new(Mutex::new(entities));
-
-  info!("Starting with scenario entities: {:?}", entities.lock().unwrap());
 
   // Keep track of session keys (cookies) on connections.
   let session_keys = Arc::new(Mutex::new(HashMap::new()));
@@ -260,14 +259,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     ))
   };
 
+  let session_keys_clone = session_keys.clone();
+  tokio::task::spawn(async move {
+    let mut processor = Processor::new(connection_receiver, auth_template, session_keys_clone, test_mode);
+    processor.processor().await;
+  });
+
   // Start a processor thread to handle all connections once established.
-  tokio::task::spawn(processor(
-    connection_receiver,
-    auth_template,
-    entities,
-    session_keys.clone(),
-    test_mode,
-  ));
 
   #[cfg(feature = "no_tls_upgrade")]
   debug!("(main) No TLS upgrade enabled.");

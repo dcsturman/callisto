@@ -606,3 +606,43 @@ input {
   flex-direction: row;
   justify-content: space-between;
 }
+
+.scenario-manager {
+  background-image: url("../public/assets/galaxy1.png");
+  background-size: cover;
+  background-repeat: repeat;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  height: 100vh;
+  width: 100vw;
+  background-color: black;
+  color: white;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.scenario-join-form {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 400px;
+
+}
+.scenario-create-form {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 400px;
+}
+
+.label-scenario-name {
+  font-size: 14pt;
+}
+
+.tutorial-button {
+  width: 400px;
+}

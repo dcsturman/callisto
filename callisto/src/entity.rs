@@ -108,11 +108,19 @@ impl Entities {
     self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
   }
 
+  // Do a deep copy and create and return the copy.
+  #[must_use]
+  pub fn deep_copy(&self) -> Self {
+    let mut entities = Entities::new();
+    self.deep_copy_into(&mut entities);
+    entities
+  }
+
   /// Do a deep copy from one `Entities` to another.
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
-  pub fn deep_copy(&self, dest: &mut Self) {
+  pub fn deep_copy_into(&self, dest: &mut Self) {
     dest.ships.clear();
     dest.missiles.clear();
     dest.planets.clear();
@@ -143,6 +151,15 @@ impl Entities {
 
     dest.fixup_pointers().unwrap();
     dest.reset_gravity_wells();
+  }
+
+  // Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
+  pub(crate) fn ship_deep_copy(&self) -> HashMap<String, Ship> {
+    self
+      .ships
+      .iter()
+      .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
+      .collect()
   }
 
   /// Load a scenario file.  A scenario file is just a JSON encoding of a set of entities.
@@ -805,7 +822,7 @@ impl Entities {
   /// Attempt to jump all ships that have jump actions.
   ///
   /// We assume (for now) a prior successful Astrogation check.  All that remains is the engineering check.
-  /// Engineering check cannot stop you from jumping but can cause a misjump on failure.
+  /// Engineering check cannot stop you from jumping but can cause a mis-jump on failure.
   ///
   /// # Arguments
   /// * `jump_actions` - The jump actions to process.
@@ -1061,14 +1078,6 @@ impl<'de> Deserialize<'de> for Entities {
   }
 }
 
-// Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
-pub(crate) fn deep_clone(ships: &HashMap<String, Arc<RwLock<Ship>>>) -> HashMap<String, Ship> {
-  ships
-    .iter()
-    .map(|(name, ship)| (name.clone(), ship.read().unwrap().clone()))
-    .collect()
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1204,11 +1213,11 @@ mod tests {
       .unwrap();
 
     // Update the entities a few times
-    let ship_snapshot = deep_clone(&entities.ships);
+    let ship_snapshot = entities.ship_deep_copy();
     entities.update_all(&ship_snapshot, &mut rng);
-    let ship_snapshot = deep_clone(&entities.ships);
+    let ship_snapshot = entities.ship_deep_copy();
     entities.update_all(&ship_snapshot, &mut rng);
-    let ship_snapshot = deep_clone(&entities.ships);
+    let ship_snapshot = entities.ship_deep_copy();
     entities.update_all(&ship_snapshot, &mut rng);
 
     // Validate the new positions for each entity
@@ -1367,11 +1376,11 @@ mod tests {
     entities.add_planet(String::from("Sun"), Vec3::zero(), String::from("blue"), None, 6.371e6, 6e24)?;
 
     // Update the planet a few times
-    let ship_snapshot = deep_clone(&entities.ships);
+    let ship_snapshot = entities.ship_deep_copy();
     entities.update_all(&ship_snapshot, &mut rng);
-    let ship_snapshot = deep_clone(&entities.ships);
+    let ship_snapshot = entities.ship_deep_copy();
     entities.update_all(&ship_snapshot, &mut rng);
-    let ship_snapshot = deep_clone(&entities.ships);
+    let ship_snapshot = entities.ship_deep_copy();
     entities.update_all(&ship_snapshot, &mut rng);
 
     // Validate the position remains the same
@@ -1435,9 +1444,9 @@ mod tests {
     )?;
 
     // Update the entities a few times
-    entities.update_all(&deep_clone(&entities.ships), &mut rng);
-    entities.update_all(&deep_clone(&entities.ships), &mut rng);
-    entities.update_all(&deep_clone(&entities.ships), &mut rng);
+    entities.update_all(&entities.ship_deep_copy(), &mut rng);
+    entities.update_all(&entities.ship_deep_copy(), &mut rng);
+    entities.update_all(&entities.ship_deep_copy(), &mut rng);
 
     // FIXME: This isn't really testing what we want to test.
     // Fix it so we have real primaries and test the distance to those.

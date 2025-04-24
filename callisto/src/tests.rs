@@ -9,7 +9,7 @@
 use pretty_env_logger;
 
 use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::Arc;
 use test_log::test;
 
 use assert_json_diff::assert_json_eq;
@@ -19,7 +19,8 @@ use crate::authentication::Authenticator;
 use crate::authentication::MockAuthenticator;
 use crate::entity::G;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
-use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, LoadScenarioMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
+use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
+use crate::player::PlayerManager;
 use crate::server::Server;
 use crate::ship::{ShipDesignTemplate, ShipSystem};
 
@@ -27,14 +28,12 @@ fn setup_authenticator() -> Box<dyn Authenticator> {
   Box::new(MockAuthenticator::new("http://test.com"))
 }
 
-// Define a static empty initial scenario here (for tests)
-static INITIAL_SCENARIO: LazyLock<Entities> = LazyLock::new(Entities::new);
-
-async fn setup_test_with_server<'a>(authenticator: Box<dyn Authenticator>) -> Server<'a> {
+async fn setup_test_with_server(authenticator: Box<dyn Authenticator>) -> PlayerManager {
   let _ = pretty_env_logger::try_init();
   crate::ship::config_test_ship_templates().await;
 
-  Server::new(Arc::new(Mutex::new(Entities::new())), &INITIAL_SCENARIO, authenticator, true)
+  let basic_server = Server::new("test", "").await;
+  PlayerManager::new(0, Some(Arc::new(basic_server)), authenticator, true)
 }
 
 /**
@@ -1026,8 +1025,8 @@ async fn test_get_entities() {
 #[test(tokio::test)]
 async fn test_get_designs() {
   let authenticator = setup_authenticator();
-  let server = setup_test_with_server(authenticator).await;
-  let designs = server.get_designs();
+  let _ = setup_test_with_server(authenticator).await;
+  let designs = PlayerManager::get_designs();
   assert!(!designs.is_empty());
   assert!(designs.contains_key("Buccaneer"));
 }
@@ -1205,71 +1204,5 @@ async fn test_set_pilot_actions_aid_gunner() {
   non_existent_ship_actions.assist_gunners = Some(true);
 
   let result = server.set_pilot_actions(&non_existent_ship_actions);
-  assert!(result.is_err());
-}
-
-#[tokio::test]
-async fn test_load_scenario() {
-  // Create server and configure ship templates
-  let authenticator = setup_authenticator();
-  let server = setup_test_with_server(authenticator).await;
-
-  // First add some ships and planets to the server
-  let ship =
-    r#"{"name":"test_ship","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
-  let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
-  assert_eq!(response, "Add ship action executed");
-
-  let planet = r#"{"name":"test_planet","position":[1000000,0,0],"color":"red","radius":1.5e6,"mass":1e23}"#;
-  let response = server.add_planet(serde_json::from_str(planet).unwrap()).unwrap();
-  assert_eq!(response, "Add planet action executed");
-
-  // Verify initial entities exist
-  let initial_entities = server.get_entities();
-  assert!(initial_entities.ships.contains_key("test_ship"));
-  assert!(initial_entities.planets.contains_key("test_planet"));
-  assert_eq!(initial_entities.ships.len(), 1);
-  assert_eq!(initial_entities.planets.len(), 1);
-
-  // Load the sol scenario
-  let load_msg = LoadScenarioMsg {
-    scenario_name: "./scenarios/sol.json".to_string(),
-  };
-
-  let result = server.load_scenario(&load_msg).await;
-  assert!(result.is_ok());
-  assert_eq!(result.unwrap(), "Load scenario action executed");
-
-  // Verify the scenario was loaded correctly and previous entities are gone
-  let entities = server.get_entities();
-
-  // Verify previous entities are gone
-  assert!(!entities.ships.contains_key("test_ship"));
-  assert!(!entities.planets.contains_key("test_planet"));
-
-  // Verify sol scenario planets are present
-  assert!(entities.planets.contains_key("Sun"));
-  assert!(entities.planets.contains_key("Earth"));
-  assert!(entities.planets.contains_key("Mars"));
-
-  {
-    // Check some specific properties of the Sun
-    let sun = entities.planets.get("Sun").unwrap().read().unwrap();
-    assert_eq!(sun.get_name(), "Sun");
-    assert_eq!(sun.get_position(), Vec3::new(-149.6e9, 0.0, 0.0));
-  }
-
-  {
-    // Check Earth's properties
-    let earth = entities.planets.get("Earth").unwrap().read().unwrap();
-    assert_eq!(earth.get_name(), "Earth");
-    assert_eq!(earth.get_position(), Vec3::new(0.0, 0.0, 0.0));
-  }
-
-  // Test loading non-existent scenario
-  let invalid_msg = LoadScenarioMsg {
-    scenario_name: "non_existent_scenario.json".to_string(),
-  };
-  let result = server.load_scenario(&invalid_msg).await;
   assert!(result.is_err());
 }

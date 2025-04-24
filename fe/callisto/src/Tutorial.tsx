@@ -9,7 +9,6 @@ import Joyride, {
   Status,
   Step,
 } from "react-joyride";
-import { loadScenario } from "./ServerManager";
 
 const steps: Step[] = [
   {
@@ -261,7 +260,6 @@ export function Tutorial({
     console.groupEnd();
 
     if (action === ACTIONS.START) {
-      loadScenario(TUTORIAL_SCENARIO);
       setStepIndex(0);
     } else if (action === ACTIONS.RESET) {
       setStepIndex(0);

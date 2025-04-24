@@ -38,8 +38,8 @@ use callisto::{debug, error};
 use callisto::action::ShipAction;
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use callisto::payloads::{
-  AddPlanetMsg, AddShipMsg, ComputePathMsg, EffectMsg, LoadScenarioMsg, LoginMsg, RequestMsg, ResponseMsg,
-  SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
+  AddPlanetMsg, AddShipMsg, ComputePathMsg, CreateScenarioMsg, EffectMsg, JoinScenarioMsg, LoginMsg, RequestMsg,
+  ResponseMsg, SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
 use callisto::crew::{Crew, Skills};
@@ -174,6 +174,19 @@ async fn drain_entity_response(stream: &mut MyWebSocket) -> ResponseMsg {
  * 3 messages: templates, entities, and users.  See [`callisto:build_successful_auth_msgs`].
  */
 async fn drain_initialization_messages(stream: &mut MyWebSocket) {
+  let Ok(scenario_msg) = stream.next().await.unwrap() else {
+    panic!("Expected scenario response.  Got error.");
+  };
+
+  assert!(
+    matches!(
+      serde_json::from_str::<ResponseMsg>(scenario_msg.to_text().unwrap()),
+      Ok(ResponseMsg::Scenarios(_))
+    ),
+    "Expected scenario response, got {scenario_msg:?}."
+  );
+  debug!("(webservers.drain_initialization_messages) Drained scenario message.");
+
   let Ok(template_msg) = stream.next().await.unwrap() else {
     panic!("Expected template response.  Got error.");
   };
@@ -185,18 +198,23 @@ async fn drain_initialization_messages(stream: &mut MyWebSocket) {
     "Expected template response, got {template_msg:?}."
   );
   debug!("Drained template initialization message.");
+}
 
-  let Ok(entity_msg) = stream.next().await.unwrap() else {
-    panic!("Expected entity response.  Got error.");
+/**
+ * Drain all messages the server send post-creation/joining of a scenario.
+ */
+async fn drain_post_scenario_messages(stream: &mut MyWebSocket) {
+  let Ok(entities_msg) = stream.next().await.unwrap() else {
+    panic!("Expected entities response.  Got error.");
   };
   assert!(
     matches!(
-      serde_json::from_str::<ResponseMsg>(entity_msg.to_text().unwrap()),
+      serde_json::from_str::<ResponseMsg>(entities_msg.to_text().unwrap()),
       Ok(ResponseMsg::EntityResponse(_))
     ),
-    "Expected entity response."
+    "Expected entities response, got {entities_msg:?}."
   );
-  debug!("Drained entity initialization message.");
+  debug!("Drained entities initialization message.");
 
   let Ok(users_msg) = stream.next().await.unwrap() else {
     panic!("Expected users response.  Got error.");
@@ -206,7 +224,7 @@ async fn drain_initialization_messages(stream: &mut MyWebSocket) {
       serde_json::from_str::<ResponseMsg>(users_msg.to_text().unwrap()),
       Ok(ResponseMsg::Users(_))
     ),
-    "Expected users response."
+    "Expected users response, got {users_msg:?}."
   );
   debug!("Drained users initialization message.");
 }
@@ -242,6 +260,33 @@ async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
   }
 }
 
+async fn test_create_scenario(stream: &mut MyWebSocket) -> Result<(), String> {
+  let msg = RequestMsg::CreateScenario(CreateScenarioMsg {
+    name: "test_scenario".to_string(),
+    scenario: String::new(),
+  });
+  let body = rpc(stream, msg).await;
+  if let ResponseMsg::JoinedScenario(_) = body {
+    drain_post_scenario_messages(stream).await;
+    Ok(())
+  } else {
+    Err(format!("Expected simple message.  Got {body:?}"))
+  }
+}
+
+async fn test_join_scenario(stream: &mut MyWebSocket) -> Result<(), String> {
+  let msg = RequestMsg::JoinScenario(JoinScenarioMsg {
+    scenario_name: "test_scenario".to_string(),
+  });
+  let body = rpc(stream, msg).await;
+  if let ResponseMsg::JoinedScenario(_) = body {
+    drain_post_scenario_messages(stream).await;
+    Ok(())
+  } else {
+    Err(format!("Expected simple message.  Got {body:?}"))
+  }
+}
+
 /**
  * Test for get_designs in server.
  */
@@ -253,6 +298,7 @@ async fn integration_get_designs() {
   let mut stream = open_socket(port).await.unwrap();
 
   let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   let body = rpc(&mut stream, RequestMsg::DesignTemplateRequest).await;
 
@@ -283,6 +329,7 @@ async fn integration_simple_get() {
   let mut stream = open_socket(port).await.unwrap();
 
   let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   let body = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
   assert!(
@@ -323,6 +370,7 @@ async fn integration_add_ship() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   // Need this only because we are going to deserialize ships.
   callisto::ship::config_test_ship_templates().await;
@@ -391,6 +439,7 @@ async fn integration_add_planet_ship() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   let message = rpc(
     &mut stream,
@@ -618,6 +667,7 @@ async fn integration_update_ship() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
 
@@ -669,6 +719,7 @@ async fn integration_update_missile() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
 
@@ -789,6 +840,7 @@ async fn integration_remove_ship() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
 
@@ -832,6 +884,7 @@ async fn integration_set_acceleration() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
 
@@ -889,6 +942,7 @@ async fn integration_compute_path_basic() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
 
@@ -977,6 +1031,7 @@ async fn integration_compute_path_with_standoff() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
 
@@ -1068,6 +1123,7 @@ async fn integration_malformed_requests() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   // Test invalid ship design
   let message = rpc(
@@ -1160,6 +1216,7 @@ async fn integration_bad_requests() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   // Test setting crew actions for non-existent ship
   let msg = RequestMsg::SetPilotActions(SetPilotActions {
@@ -1217,65 +1274,6 @@ async fn integration_bad_requests() {
   send_quit(&mut stream).await;
 }
 
-#[test_log::test(tokio::test)]
-async fn integration_load_scenario() {
-  let port = get_next_port();
-  let _server = spawn_test_server(port).await;
-
-  let mut stream = open_socket(port).await.unwrap();
-  let _ = test_authenticate(&mut stream).await.unwrap();
-
-  // Test successful scenario load
-  let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
-    scenario_name: "./tests/test-scenario.json".to_string(),
-  });
-  let response = rpc(&mut stream, msg).await;
-  assert!(matches!(response, ResponseMsg::SimpleMsg(_)));
-
-  // Verify the scenario was loaded by checking entities
-  let msg = RequestMsg::EntitiesRequest;
-  let response = rpc(&mut stream, msg).await;
-  if let ResponseMsg::EntityResponse(entities) = response {
-    assert!(
-      !entities.ships.is_empty() || !entities.planets.is_empty(),
-      "Expected scenario to load some entities"
-    );
-  } else {
-    panic!("Expected EntityResponse");
-  }
-
-  // Test loading non-existent scenario
-  let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
-    scenario_name: "./scenarios/nonexistent.json".to_string(),
-  });
-  let response = rpc(&mut stream, msg).await;
-  assert!(matches!(response, ResponseMsg::Error(_)));
-
-  send_quit(&mut stream).await;
-}
-
-#[cfg_attr(feature = "ci", ignore)]
-#[test_log::test(tokio::test)]
-async fn integration_load_cloud_scenario() {
-  let port = get_next_port();
-  let _server = spawn_test_server(port).await;
-
-  let mut stream = open_socket(port).await.unwrap();
-  let _ = test_authenticate(&mut stream).await.unwrap();
-
-  // Test loading non-existent cloud scenario
-  let message = rpc(
-    &mut stream,
-    RequestMsg::LoadScenario(LoadScenarioMsg {
-      scenario_name: "gs://nobucket/nonexistent.json".to_string(),
-    }),
-  )
-  .await;
-  assert!(matches!(message, ResponseMsg::Error(_)));
-
-  send_quit(&mut stream).await;
-}
-
 #[tokio::test]
 async fn integration_fail_login() {
   let port = get_next_port();
@@ -1318,6 +1316,7 @@ async fn integration_set_crew_actions() {
 
   let mut stream = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
 
@@ -1401,10 +1400,13 @@ async fn integration_multi_client_test() {
 
   let mut stream1 = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream1).await.unwrap();
+  test_create_scenario(&mut stream1).await.unwrap();
   let mut stream2 = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream2).await.unwrap();
+  test_join_scenario(&mut stream2).await.unwrap();
   let mut stream3 = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream3).await.unwrap();
+  test_join_scenario(&mut stream3).await.unwrap();
 
   callisto::ship::config_test_ship_templates().await;
   rpc(
