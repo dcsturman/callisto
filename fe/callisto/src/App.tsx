@@ -59,6 +59,7 @@ export function App() {
   const [actions, setActions] = useState<ActionType>({});
   const [users, setUsers] = useState<UserList>([]);
   const [scenarios, setScenarios] = useState<string[]>([]);
+  const [scenarioTemplates, setScenarioTemplates] = useState<string[]>([]);
   const [joinedScenario, setJoinedScenario] = useState<string | null>(null);
   const [tutorialMode, setTutorialMode] = useState<boolean>(false);
 
@@ -73,13 +74,20 @@ export function App() {
         () => {},
         () => {},
         setUsers,
-        setScenarios,
+        (a, b) => { setScenarios(a); setScenarioTemplates(b); },
         (scenario: string) => setJoinedScenario(scenario),
       );
 
       startWebsocket(setSocketReady);
     }
   }, [socketReady]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      setJoinedScenario(null);
+      setTutorialMode(false);
+    }
+  }, [authenticated]);
 
   return (
     <EntitiesServerProvider value={{entities: entities, handler: setEntities}}>
@@ -99,7 +107,7 @@ export function App() {
                 />
               </>
             ) : authenticated && socketReady ? (
-              <ScenarioManager scenarios={scenarios} setTutorialMode={setTutorialMode} />
+              <ScenarioManager scenarios={scenarios} scenarioTemplates={scenarioTemplates} setTutorialMode={setTutorialMode} />
             ) : socketReady ? (
               <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
             ) : (

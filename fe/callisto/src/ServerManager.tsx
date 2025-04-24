@@ -51,10 +51,11 @@ let setEffects: (effects: Effect[]) => void = () => {
 let setUsers: (users: UserList) => void = () => {
   console.error("Calling default implementation of setUsers()");
 };
-let setScenarios: (scenarios: string[]) => void = () => {
+let setScenarios: (current_scenarios: string[], templates: string[]) => void = () => {
   console.error("Calling default implementation of setScenarios()");
 };
-let setJoinedScenario: (scenario:string) => void = () => {
+
+let setJoinedScenario: (scenario: string) => void = () => {
   console.error("Calling default implementation of setJoinedScenario()");
 };
 
@@ -99,8 +100,8 @@ export function setMessageHandlers(
   flightPath: (plan: FlightPathResult) => void,
   effects: (effects: Effect[]) => void,
   users: (users: UserList) => void,
-  scenarios: (scenarios: string[]) => void,
-  joinedScenario: (scenario: string) => void,
+  scenarios: (current_scenarios: string[], templates: string[]) => void,
+  joinedScenario: (scenario: string) => void
 ) {
   if (email) {
     setEmail = email;
@@ -195,12 +196,13 @@ const handleMessage = (event: MessageEvent) => {
   }
 
   if ("Scenarios" in json) {
+    console.log("(ServerManager.handleMessage) Received scenarios: " + JSON.stringify(json));
     const response = json.Scenarios;
     handleScenarioList(response, setScenarios);
     return;
   }
 
-  if ("JoinedScenario" in json){
+  if ("JoinedScenario" in json) {
     handleJoinedScenario(json);
     return;
   }
@@ -273,9 +275,12 @@ export async function setPlan(target: string, plan: [Acceleration, Acceleration 
   // we have to custom build the body.
   // Convert all accelerations to m/s^2 from G's
   if (plan[1] == null) {
-    plan_arr[0] = [[plan[0][0][0]*G, plan[0][0][1]*G, plan[0][0][2]*G], plan[0][1]];
+    plan_arr[0] = [[plan[0][0][0] * G, plan[0][0][1] * G, plan[0][0][2] * G], plan[0][1]];
   } else {
-    plan_arr = [[[plan[0][0][0]*G, plan[0][0][1]*G, plan[0][0][2]*G], plan[0][1]], [[plan[1][0][0]*G, plan[1][0][1]*G, plan[1][0][2]*G], plan[1][1]]];
+    plan_arr = [
+      [[plan[0][0][0] * G, plan[0][0][1] * G, plan[0][0][2] * G], plan[0][1]],
+      [[plan[1][0][0] * G, plan[1][0][1] * G, plan[1][0][2] * G], plan[1][1]],
+    ];
   }
   const payload = {SetPlan: {name: target, plan: plan_arr}};
 
@@ -452,7 +457,7 @@ function handleFlightPath(json: object, setProposedPlan: (plan: FlightPathResult
   if (path.plan[1] != null) {
     path.plan[1][0] = [path.plan[1][0][0] / G, path.plan[1][0][1] / G, path.plan[1][0][2] / G];
   }
-  
+
   setProposedPlan(path);
 }
 
@@ -490,11 +495,14 @@ function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
   setUsers(users);
 }
 
-function handleScenarioList(json: string[], setScenarios: (scenarios: string[]) => void) {
-  setScenarios(json);
+function handleScenarioList(
+  json: {current_scenarios: string[]; templates: string[]},
+  setScenarios: (current_scenarios: string[], templates: string[]) => void
+) {
+  setScenarios(json.templates, json.current_scenarios);
 }
 
-function handleJoinedScenario(json: { JoinedScenario: string }) {
+function handleJoinedScenario(json: {JoinedScenario: string}) {
   const scenario = json["JoinedScenario"] as string;
   if (scenario) {
     setJoinedScenario(scenario);

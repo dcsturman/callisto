@@ -21,7 +21,7 @@ use dyn_clone::clone_box;
 use crate::authentication::Authenticator;
 
 use crate::entity::Entities;
-use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg};
+use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, ScenariosMsg};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
 
@@ -83,12 +83,10 @@ impl Processor {
   /// If we cannot properly serialize or deserialize a message on the stream.
   #[allow(clippy::implicit_hasher)]
   #[allow(clippy::too_many_lines)]
-  pub async fn processor(&mut self, entities: Arc<Mutex<Entities>>) {
+  pub async fn processor(&mut self) {
     // All the data shared between authenticators.
     let mut connections = Vec::<Connection>::new();
 
-    let mut initial_scenario = Entities::new();
-    entities.lock().unwrap().deep_copy_into(&mut initial_scenario);
     loop {
       // If there are no connections, then we wait for one to come in.
       // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
@@ -262,7 +260,7 @@ impl Processor {
       // letting the client know auth was successful, but also sending any initialization messages.
       // We use [build_successful_auth_msgs] to keep this list of messages the same as if it was in response
       // to a login message.
-      let msgs = build_successful_auth_msgs(AuthResponse { email: email.clone() });
+      let msgs = self.build_successful_auth_msgs(AuthResponse { email: email.clone() });
       let mut okay = true;
       for msg in msgs {
         let encoded_message: Utf8Bytes = serde_json::to_string(&msg).unwrap().into();
@@ -331,7 +329,7 @@ impl Processor {
           .await
           .map_or_else(error_msg, |auth_response| {
             // Now that we are successfully logged in, we can send back the design templates, entities, and users - no need to wait to be asked.
-            build_successful_auth_msgs(auth_response)
+            self.build_successful_auth_msgs(auth_response)
           })
       }
 
@@ -457,6 +455,31 @@ impl Processor {
       }
     }
   }
+
+  /// Build the list of messages to send back to the client after a successful login.
+  /// This is used both when a user logs in and when a user reconnects.
+  ///
+  /// # Arguments
+  /// * `auth_response` - The authentication response from the server.
+  /// * `server` - The server object.
+  /// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs in (to update this info)
+  ///
+  /// # Returns
+  /// A vector of messages to send back to the client.
+  ///
+  /// # Panics
+  /// If the session keys cannot be locked.
+  #[allow(clippy::implicit_hasher)]
+  #[must_use]
+  pub fn build_successful_auth_msgs(&self, auth_response: AuthResponse) -> Vec<ResponseMsg> {
+    let scenarios_msg = ScenariosMsg { current_scenarios: self.members.current_scenario_list(), templates: crate::SCENARIOS.get().unwrap().clone() };
+    debug!("(Processor.build_successful_auth_msgs) Sending scenarios message: {:?}", scenarios_msg);
+    vec![
+      ResponseMsg::AuthResponse(auth_response),
+      ResponseMsg::Scenarios(scenarios_msg),
+      ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs()),
+    ]
+  }
 }
 
 // Utility functions to help build messages etc.
@@ -481,27 +504,4 @@ fn response_with_update(server: &PlayerManager, result: Result<String, String>) 
 
 fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
   result.map_or_else(error_msg, |msg| vec![ResponseMsg::SimpleMsg(msg)])
-}
-
-/// Build the list of messages to send back to the client after a successful login.
-/// This is used both when a user logs in and when a user reconnects.
-///
-/// # Arguments
-/// * `auth_response` - The authentication response from the server.
-/// * `server` - The server object.
-/// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs in (to update this info)
-///
-/// # Returns
-/// A vector of messages to send back to the client.
-///
-/// # Panics
-/// If the session keys cannot be locked.
-#[allow(clippy::implicit_hasher)]
-#[must_use]
-pub fn build_successful_auth_msgs(auth_response: AuthResponse) -> Vec<ResponseMsg> {
-  vec![
-    ResponseMsg::AuthResponse(auth_response),
-    ResponseMsg::Scenarios(crate::SCENARIOS.get().unwrap().clone()),
-    ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs()),
-  ]
 }

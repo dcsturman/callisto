@@ -117,6 +117,11 @@ impl ServerMembersTable {
       })
       .collect()
   }
+
+  #[must_use]
+  pub fn current_scenario_list(&self) -> Vec<String> {
+    self.members.keys().cloned().collect()
+  }
 }
 
 impl Default for ServerMembersTable {

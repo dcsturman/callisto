@@ -123,16 +123,13 @@ async fn handle_connection(
   };
 
   // Second, upgrade the stream to use websockets with tungstenite
-  // TODO: Add a config here for extra safety
-
   // Tmp locked structure to get info out of the accept handler.
   // This is necessary because the callback_handler is consumed, so other approaches didn't work.
   // First element is the session key, second is the email.
-  // TODO: Is there a better way to do this?  We just need to get this returned.  We don't actually need to create
+  // HACK: Is there a better way to do this?  We just need to get this returned.  We don't actually need to create
   // this here. We also don't need to access it until the callback_handler is done.
   let auth_info = Arc::new(Mutex::new((String::new(), None)));
 
-  // TODO: The callback should be able to extract the URI. So we could put the server ID there.
   let callback_handler = HeaderCallback {
     session_keys: session_keys.clone(),
     auth_info: auth_info.clone(),
@@ -238,23 +235,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   info!("(main) Loaded ship templates.");
 
-  // TODO: Should be loaded in some way as part of the scenario.
-  // Build the main entities table that will be the state of our server.
-  let initial_scenario = if let Some(file_name) = args.scenario_file {
-    Entities::load_from_file(&file_name)
-      .await
-      .unwrap_or_else(|e| panic!("Issue loading scenario file {file_name}: {e}"))
-  } else {
-    Entities::new()
-  };
-
-  let mut entities = Entities::new();
-  initial_scenario.deep_copy_into(&mut entities);
-
-  let entities = Arc::new(Mutex::new(entities));
-
-  info!("Starting with scenario entities: {:?}", entities.lock().unwrap());
-
   // Keep track of session keys (cookies) on connections.
   let session_keys = Arc::new(Mutex::new(HashMap::new()));
 
@@ -280,12 +260,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     ))
   };
 
-  // TODO: Rather than pass in entities here, we need to pass a table of servers.
-  // But how do we know what server we want?
   let session_keys_clone = session_keys.clone();
   tokio::task::spawn(async move {
     let mut processor = Processor::new(connection_receiver, auth_template, session_keys_clone, test_mode);
-    processor.processor(entities).await;
+    processor.processor().await;
   });
 
   // Start a processor thread to handle all connections once established.

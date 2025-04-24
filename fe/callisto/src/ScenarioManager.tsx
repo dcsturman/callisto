@@ -37,13 +37,19 @@ function generateUniqueHyphenatedName() {
 
 type ScenarioManagerProps = {
     scenarios: string[];
+    scenarioTemplates: string[];
     setTutorialMode: (tutorialMode: boolean) => void;
 };
 
-export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, setTutorialMode}) => {
+export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scenarioTemplates, setTutorialMode}) => {
     const [scenario, setScenario] = React.useState<string | null>(null);
+    const [template, setTemplate] = React.useState<string | null>(null);
 
     const scenarioName = generateUniqueHyphenatedName();
+
+    function handleTemplateSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
+        setTemplate(event.target.value);
+    }
 
     function handleScenarioSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
         setScenario(event.target.value);
@@ -52,17 +58,12 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, setT
     function handleJoinScenario(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        const scenarioName = (event.currentTarget.elements[0] as HTMLInputElement).value;
-
-        joinScenario(scenarioName);
-        console.log("Joining scenario: " + scenarioName);
+        joinScenario(scenario?? "");
     }
 
     function handleCreateScenario(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        createScenario(scenarioName, scenario?? "");
-
-        console.log(`Creating scenario ${scenarioName}: ${scenario?? ""}`);
+        createScenario(scenarioName, template?? "");
     }
 
 
@@ -82,13 +83,22 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, setT
                 From this screen you can create a scenario, join an existing one to play with others, or just try the tutorial.  
                 Right now we show all scenarios to make Callisto easier to use.
                 Out of courtesy, please do not join a scenario to which you haven&apos;t been invited!  
+                <br />
+                <br />
+                Note that if you customize a scenario from a template, please note that after 5 minutes without any users logged in, the scenario will be deleted.
             </div>
             <br />
             <br />
             <form className="scenario-join-form" onSubmit={handleJoinScenario}>
                 <h1>Join Existing Scenario</h1>
                 <br />
-                <input id="scenario-to-join" className= "control-name-input control-input" type="text" />
+                <select className="select-dropdown control-name-input control-input" name="scenario_selector" value={scenario?? ""} onChange={handleScenarioSelectChange}>
+                    {scenarioTemplates.map((scenario) => (
+                        <option key={scenario} value={scenario}>
+                            {scenario}
+                        </option>
+                    ))}
+                </select>
                 <button className="control-input control-button blue-button" type="submit">Join</button>
             </form>
             <br />
@@ -97,7 +107,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, setT
                 <h1>Create New Scenario</h1>
                 <br />
                 <span className = "label-scenario-name"><b>Name:</b> {scenarioName}</span>
-                    <select className="select-dropdown control-name-input control-input" name="scenario_selector" value={scenario?? ""} onChange={handleScenarioSelectChange}>
+                    <select className="select-dropdown control-name-input control-input" name="scenario_template_selector" value={template?? ""} onChange={handleTemplateSelectChange}>
                         {scenarios.map((scenario) => (
                             <option key={scenario} value={scenario}>
                                 {scenario}

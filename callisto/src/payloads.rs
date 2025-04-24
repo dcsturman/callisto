@@ -193,6 +193,12 @@ pub struct JoinScenarioMsg {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ScenariosMsg {
+  pub current_scenarios: Vec<String>,
+  pub templates: Vec<String>
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateScenarioMsg {
   pub name: String,
   pub scenario: String,
@@ -245,7 +251,7 @@ pub enum ResponseMsg {
   Effects(Vec<EffectMsg>),
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
-  Scenarios(Vec<String>),
+  Scenarios(ScenariosMsg),
   JoinedScenario(String),
   SimpleMsg(String),
   // LogoutResponse is a faux message never sent back.  However,
