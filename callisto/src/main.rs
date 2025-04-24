@@ -206,6 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     }));
   }
 
+  debug!("(main) Loading ship templates from {}...", &args.design_file);
   let templates = load_ship_templates_from_file(&args.design_file)
     .await
     .unwrap_or_else(|e| panic!("Unable to load ship template file {}. Reason {:?}", args.design_file, e));
