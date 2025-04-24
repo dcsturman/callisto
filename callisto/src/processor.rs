@@ -40,6 +40,9 @@ pub struct Processor {
   next_player_id: u64,
   members: ServerMembersTable,
 
+  // Unchanging value with directory for all scenarios.
+  scenario_dir: String,
+
   // Test mode is here as its an aspect of the entire server (mostly how we authenticate)
   // not a particular scenario.
   test_mode: bool,
@@ -56,8 +59,11 @@ impl Processor {
   #[must_use]
   pub fn new(
     connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
-    auth_template: Box<dyn Authenticator>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>, test_mode: bool,
+    auth_template: Box<dyn Authenticator>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>, scenario_dir: String, test_mode: bool,
   ) -> Self {
+    // Clean up scenario_dir so that it does not have a trailing slash.
+    let scenario_dir = scenario_dir.trim_end_matches('/').to_string();
+
     Processor {
       connection_receiver,
       auth_template,
@@ -65,6 +71,7 @@ impl Processor {
       servers: HashMap::new(),
       next_player_id: 0,
       members: ServerMembersTable::new(),
+      scenario_dir,
       test_mode,
     }
   }
@@ -378,6 +385,20 @@ impl Processor {
       RequestMsg::ComputePath(path_goal) => player
         .compute_path(&path_goal)
         .map_or_else(error_msg, |path| vec![ResponseMsg::FlightPath(path)]),
+      RequestMsg::Exit => {
+        info!("Received and processing quit request.");
+        let Some(ref server) = player.server else {
+          error!("(handle_request) Attempt to logout without being in a scenario.  Ignoring.");
+          return vec![ResponseMsg::Error(
+            "Attempt to logout without being in a scenario.  Ignoring.".to_string(),
+          )];
+        };
+
+        self.members.remove(server.get_id(), player.get_id());
+        vec![
+          ResponseMsg::Users(self.members.get_user_context(server.get_id())),
+        ]
+      }
       RequestMsg::Logout => {
         info!("Received and processing logout request.");
         player.logout(&self.session_keys);
@@ -417,8 +438,15 @@ impl Processor {
         if self.servers.contains_key(&create_scenario.name) {
           return vec![ResponseMsg::Error("Scenario name already exists.".to_string())];
         }
+
+        let scenario_full_name = if create_scenario.scenario.is_empty() {
+          String::new()
+        } else {
+          format!("{}/{}", self.scenario_dir, create_scenario.scenario)
+        };
+        debug!("(Processor.handle_request) Creating scenario {} from {scenario_full_name}", create_scenario.name);
         // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
-        let server = Arc::new(Server::new(&create_scenario.name, &create_scenario.scenario).await);
+        let server = Arc::new(Server::new(&create_scenario.name, &scenario_full_name).await);
         self.servers.insert(create_scenario.name.clone(), server.clone());
         self.members.update(
           server.get_id(),
@@ -434,6 +462,7 @@ impl Processor {
 
         vec![
           ResponseMsg::JoinedScenario(create_scenario.name),
+          ResponseMsg::Scenarios(self.build_scenarios_msg()),
           ResponseMsg::EntityResponse(entities),
           ResponseMsg::Users(self.members.get_user_context(server.get_id())),
         ]
@@ -473,21 +502,27 @@ impl Processor {
   #[allow(clippy::implicit_hasher)]
   #[must_use]
   pub fn build_successful_auth_msgs(&self, auth_response: AuthResponse) -> Vec<ResponseMsg> {
-    let scenarios_msg = ScenariosMsg {
-      current_scenarios: self.members.current_scenario_list(),
-      templates: crate::SCENARIOS.get().unwrap().clone(),
-    };
-    debug!(
-      "(Processor.build_successful_auth_msgs) Sending scenarios message: {:?}",
-      scenarios_msg
-    );
     vec![
       ResponseMsg::AuthResponse(auth_response),
-      ResponseMsg::Scenarios(scenarios_msg),
+      ResponseMsg::Scenarios(self.build_scenarios_msg()),
       ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs()),
     ]
   }
+
+  /// Build the list of scenarios and scenario templates to send back to the client.
+  /// 
+  /// # Panics
+  /// Panics if the scenarios list hasn't been initialized.
+  #[must_use]
+  pub fn build_scenarios_msg(&self) -> ScenariosMsg {
+  ScenariosMsg {
+    current_scenarios: self.members.current_scenario_list(),
+    templates: crate::SCENARIOS.get().unwrap().clone(),
+  }
 }
+
+}
+
 
 // Utility functions to help build messages etc.
 

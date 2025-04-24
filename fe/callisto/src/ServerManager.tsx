@@ -21,6 +21,7 @@ const DESIGN_TEMPLATE_REQUEST = '"DesignTemplateRequest"';
 const ENTITIES_REQUEST = '"EntitiesRequest"';
 const UPDATE_REQUEST = "Update";
 const RESET_REQUEST = '"Reset"';
+const EXIT_REQUEST = '"Exit"';
 const LOGOUT_REQUEST = '"Logout"';
 
 // Define the (global) websocket
@@ -92,16 +93,16 @@ export function socketReady() {
 }
 
 export function setMessageHandlers(
-  email: (email: string) => void,
-  authenticated: (authenticated: boolean) => void,
-  templates: (templates: ShipDesignTemplates) => void,
-  entities: (entities: EntityList) => void,
-  actions: (actions: ActionType) => void,
-  flightPath: (plan: FlightPathResult) => void,
-  effects: (effects: Effect[]) => void,
-  users: (users: UserList) => void,
-  scenarios: (current_scenarios: string[], templates: string[]) => void,
-  joinedScenario: (scenario: string) => void
+  email: ((email: string) => void) | null,
+  authenticated: ((authenticated: boolean) => void) | null,
+  templates: ((templates: ShipDesignTemplates) => void) | null,
+  entities: ((entities: EntityList) => void) | null,
+  actions: ((actions: ActionType) => void) | null,
+  flightPath: ((plan: FlightPathResult) => void) | null,
+  effects: ((effects: Effect[]) => void) | null,
+  users: ((users: UserList) => void) | null,
+  scenarios: ((current_scenarios: string[], templates: string[]) => void) | null,
+  joinedScenario: ((scenario: string) => void) | null
 ) {
   if (email) {
     setEmail = email;
@@ -375,6 +376,11 @@ export function resetServer() {
     socket.send(RESET_REQUEST);
   }
 }
+
+export function exit_scenario() {
+  socket.send(EXIT_REQUEST);
+}
+
 export function logout() {
   socket.send(LOGOUT_REQUEST);
 }

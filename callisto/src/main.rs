@@ -257,7 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   let session_keys_clone = session_keys.clone();
   tokio::task::spawn(async move {
-    let mut processor = Processor::new(connection_receiver, auth_template, session_keys_clone, test_mode);
+    let mut processor = Processor::new(connection_receiver, auth_template, session_keys_clone, args.scenario_dir, test_mode);
     processor.processor().await;
   });
 

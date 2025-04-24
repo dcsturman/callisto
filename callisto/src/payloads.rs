@@ -237,6 +237,7 @@ pub enum RequestMsg {
   CreateScenario(CreateScenarioMsg),
   EntitiesRequest,
   DesignTemplateRequest,
+  Exit,
   Reset,
   Logout,
   Quit,

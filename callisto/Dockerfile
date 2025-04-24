@@ -39,6 +39,7 @@ EXPOSE 30000
 COPY --from=release /app/target/release/callisto /callisto
 # A little bit of a hack to copy these directories only if they exists (config won't exist with github actions)
 COPY --from=build /app/scenarios* /scenarios
+COPY --from=build /app/ship_templates* /ship_templates
 COPY --from=build /app/config* /config
 
 ENV RUST_LOG=debug
