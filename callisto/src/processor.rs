@@ -41,7 +41,8 @@ pub struct Processor {
   next_player_id: u64,
   members: ServerMembersTable,
 
-  //TODO: Move into server.
+  // Test mode is here as its an aspect of the entire server (mostly how we authenticate)
+  // not a particular scenario.
   test_mode: bool,
 }
 
