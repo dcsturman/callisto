@@ -16,6 +16,7 @@ use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TI
 use crate::payloads::Vec3asVec;
 use crate::read_local_or_cloud_file;
 use crate::{debug, info, warn};
+pub const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./ship_templates/default_ship_templates.json";
 
 pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
 
@@ -552,7 +553,6 @@ pub async fn load_ship_templates_from_file(
 ///
 /// If the file cannot be loaded.
 pub async fn config_test_ship_templates() {
-  const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
   let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
     .await
     .expect("Unable to load ship template file.");

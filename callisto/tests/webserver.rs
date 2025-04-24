@@ -266,6 +266,19 @@ async fn test_create_scenario(stream: &mut MyWebSocket) -> Result<(), String> {
     scenario: String::new(),
   });
   let body = rpc(stream, msg).await;
+
+  // Only when creating scenarios, we get back a Scenarios message
+  let Ok(scenario_msg) = stream.next().await.unwrap() else {
+    panic!("Expected scenario response.  Got error.");
+  };
+  assert!(
+    matches!(
+      serde_json::from_str::<ResponseMsg>(scenario_msg.to_text().unwrap()),
+      Ok(ResponseMsg::Scenarios(_))
+    ),
+    "Expected scenario response, got {scenario_msg:?}."
+  );
+
   if let ResponseMsg::JoinedScenario(_) = body {
     drain_post_scenario_messages(stream).await;
     Ok(())

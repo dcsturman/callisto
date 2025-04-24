@@ -59,7 +59,8 @@ impl Processor {
   #[must_use]
   pub fn new(
     connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
-    auth_template: Box<dyn Authenticator>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>, scenario_dir: String, test_mode: bool,
+    auth_template: Box<dyn Authenticator>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+    scenario_dir: &str, test_mode: bool,
   ) -> Self {
     // Clean up scenario_dir so that it does not have a trailing slash.
     let scenario_dir = scenario_dir.trim_end_matches('/').to_string();
@@ -395,9 +396,7 @@ impl Processor {
         };
 
         self.members.remove(server.get_id(), player.get_id());
-        vec![
-          ResponseMsg::Users(self.members.get_user_context(server.get_id())),
-        ]
+        vec![ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
       }
       RequestMsg::Logout => {
         info!("Received and processing logout request.");
@@ -444,7 +443,10 @@ impl Processor {
         } else {
           format!("{}/{}", self.scenario_dir, create_scenario.scenario)
         };
-        debug!("(Processor.handle_request) Creating scenario {} from {scenario_full_name}", create_scenario.name);
+        debug!(
+          "(Processor.handle_request) Creating scenario {} from {scenario_full_name}",
+          create_scenario.name
+        );
         // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
         let server = Arc::new(Server::new(&create_scenario.name, &scenario_full_name).await);
         self.servers.insert(create_scenario.name.clone(), server.clone());
@@ -510,19 +512,17 @@ impl Processor {
   }
 
   /// Build the list of scenarios and scenario templates to send back to the client.
-  /// 
+  ///
   /// # Panics
   /// Panics if the scenarios list hasn't been initialized.
   #[must_use]
   pub fn build_scenarios_msg(&self) -> ScenariosMsg {
-  ScenariosMsg {
-    current_scenarios: self.members.current_scenario_list(),
-    templates: crate::SCENARIOS.get().unwrap().clone(),
+    ScenariosMsg {
+      current_scenarios: self.members.current_scenario_list(),
+      templates: crate::SCENARIOS.get().unwrap().clone(),
+    }
   }
 }
-
-}
-
 
 // Utility functions to help build messages etc.
 

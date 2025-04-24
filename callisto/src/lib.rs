@@ -21,7 +21,7 @@ pub mod ship;
 mod cov_util;
 
 #[cfg(test)]
-pub mod tests;
+pub mod unit_tests;
 
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::download::Range;

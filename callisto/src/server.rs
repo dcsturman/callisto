@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
-use crate::warn;
 use crate::entity::Entities;
 use crate::payloads::{Role, UserData};
+use crate::warn;
 pub struct Server {
   pub id: String,
   pub entities: Mutex<Entities>,
@@ -34,9 +34,10 @@ impl Server {
     let initial_scenario = if scenario_name.is_empty() {
       Entities::new()
     } else {
-      Entities::load_from_file(scenario_name)
-        .await
-        .unwrap_or_else(|e| { warn!("Issue loading scenario file {scenario_name}: {e}"); Entities::new() })
+      Entities::load_from_file(scenario_name).await.unwrap_or_else(|e| {
+        warn!("Issue loading scenario file {scenario_name}: {e}");
+        Entities::new()
+      })
     };
 
     Server {

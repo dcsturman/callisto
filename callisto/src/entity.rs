@@ -2192,10 +2192,8 @@ mod tests {
     attack_name: &str, attack_crew_skill: u8, target_name: &str, target_crew_skill: u8, attack_design: &str,
     target_design: &str,
   ) -> Entities {
-    const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
-
     // Load ship templates
-    let templates = crate::ship::load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
+    let templates = crate::ship::load_ship_templates_from_file(crate::ship::DEFAULT_SHIP_TEMPLATES_FILE)
       .await
       .expect("Unable to load ship template file.");
 
