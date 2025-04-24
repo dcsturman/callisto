@@ -16,7 +16,6 @@ on:
       - '.github/workflows/prod-fe-merge.yml'
 env:
   BACKEND_SERVER_URL: https://backend.callistoflight.com
-  BACKEND_TUTORIAL_SERVER_URL: https://backend.tutorial.callistoflight.com
   GOOGLE_CLIENT_ID: ${{ secrets.PROD_GOOGLE_CLIENT_ID }}
 jobs:
   build_and_deploy_fe:
@@ -37,22 +36,3 @@ jobs:
           channelId: live
           projectId: callisto-1731280702227
           target: prod
-  build_and_deploy_tutorial_fe:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build node.js
-        env:
-           CI: false
-           REACT_APP_CALLISTO_BACKEND: ${{ env.BACKEND_TUTORIAL_SERVER_URL }}
-           REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
-           REACT_APP_RUN_TUTORIAL: true
-        working-directory: ./fe/callisto
-        run: npm ci && npm run build
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CALLISTO_1731280702227 }}
-          channelId: live
-          projectId: callisto-1731280702227
-          target: tutorial

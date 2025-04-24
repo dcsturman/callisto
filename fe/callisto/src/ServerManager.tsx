@@ -21,6 +21,7 @@ const DESIGN_TEMPLATE_REQUEST = '"DesignTemplateRequest"';
 const ENTITIES_REQUEST = '"EntitiesRequest"';
 const UPDATE_REQUEST = "Update";
 const RESET_REQUEST = '"Reset"';
+const EXIT_REQUEST = '"Exit"';
 const LOGOUT_REQUEST = '"Logout"';
 
 // Define the (global) websocket
@@ -50,6 +51,13 @@ let setEffects: (effects: Effect[]) => void = () => {
 };
 let setUsers: (users: UserList) => void = () => {
   console.error("Calling default implementation of setUsers()");
+};
+let setScenarios: (current_scenarios: string[], templates: string[]) => void = () => {
+  console.error("Calling default implementation of setScenarios()");
+};
+
+let setJoinedScenario: (scenario: string) => void = () => {
+  console.error("Calling default implementation of setJoinedScenario()");
 };
 
 //
@@ -85,14 +93,16 @@ export function socketReady() {
 }
 
 export function setMessageHandlers(
-  email: (email: string) => void,
-  authenticated: (authenticated: boolean) => void,
-  templates: (templates: ShipDesignTemplates) => void,
-  entities: (entities: EntityList) => void,
-  actions: (actions: ActionType) => void,
-  flightPath: (plan: FlightPathResult) => void,
-  effects: (effects: Effect[]) => void,
-  users: (users: UserList) => void
+  email: ((email: string) => void) | null,
+  authenticated: ((authenticated: boolean) => void) | null,
+  templates: ((templates: ShipDesignTemplates) => void) | null,
+  entities: ((entities: EntityList) => void) | null,
+  actions: ((actions: ActionType) => void) | null,
+  flightPath: ((plan: FlightPathResult) => void) | null,
+  effects: ((effects: Effect[]) => void) | null,
+  users: ((users: UserList) => void) | null,
+  scenarios: ((current_scenarios: string[], templates: string[]) => void) | null,
+  joinedScenario: ((scenario: string) => void) | null
 ) {
   if (email) {
     setEmail = email;
@@ -117,6 +127,12 @@ export function setMessageHandlers(
   }
   if (users) {
     setUsers = users;
+  }
+  if (scenarios) {
+    setScenarios = scenarios;
+  }
+  if (joinedScenario) {
+    setJoinedScenario = joinedScenario;
   }
 }
 
@@ -177,6 +193,18 @@ const handleMessage = (event: MessageEvent) => {
   if ("Users" in json) {
     const response = json.Users;
     handleUsers(response, setUsers);
+    return;
+  }
+
+  if ("Scenarios" in json) {
+    console.log("(ServerManager.handleMessage) Received scenarios: " + JSON.stringify(json));
+    const response = json.Scenarios;
+    handleScenarioList(response, setScenarios);
+    return;
+  }
+
+  if ("JoinedScenario" in json) {
+    handleJoinedScenario(json);
     return;
   }
 
@@ -248,9 +276,12 @@ export async function setPlan(target: string, plan: [Acceleration, Acceleration 
   // we have to custom build the body.
   // Convert all accelerations to m/s^2 from G's
   if (plan[1] == null) {
-    plan_arr[0] = [[plan[0][0][0]*G, plan[0][0][1]*G, plan[0][0][2]*G], plan[0][1]];
+    plan_arr[0] = [[plan[0][0][0] * G, plan[0][0][1] * G, plan[0][0][2] * G], plan[0][1]];
   } else {
-    plan_arr = [[[plan[0][0][0]*G, plan[0][0][1]*G, plan[0][0][2]*G], plan[0][1]], [[plan[1][0][0]*G, plan[1][0][1]*G, plan[1][0][2]*G], plan[1][1]]];
+    plan_arr = [
+      [[plan[0][0][0] * G, plan[0][0][1] * G, plan[0][0][2] * G], plan[0][1]],
+      [[plan[1][0][0] * G, plan[1][0][1] * G, plan[1][0][2] * G], plan[1][1]],
+    ];
   }
   const payload = {SetPlan: {name: target, plan: plan_arr}};
 
@@ -312,11 +343,6 @@ export function computeFlightPath(
   );
 }
 
-export function loadScenario(scenario_name: string) {
-  const payload = {LoadScenario: {scenario_name: scenario_name}};
-  socket.send(JSON.stringify(payload));
-}
-
 export function setRole(role: ViewMode, ship: string | null) {
   if (ship !== null) {
     const payload = {SetRole: {role: ViewMode[role], ship: ship}};
@@ -325,6 +351,16 @@ export function setRole(role: ViewMode, ship: string | null) {
     const payload = {SetRole: {role: ViewMode[role]}};
     socket.send(JSON.stringify(payload));
   }
+}
+
+export function joinScenario(scenario_name: string) {
+  const payload = {JoinScenario: {scenario_name: scenario_name}};
+  socket.send(JSON.stringify(payload));
+}
+
+export function createScenario(name: string, scenario: string) {
+  const payload = {CreateScenario: {name: name, scenario: scenario}};
+  socket.send(JSON.stringify(payload));
 }
 
 export function getEntities() {
@@ -340,6 +376,11 @@ export function resetServer() {
     socket.send(RESET_REQUEST);
   }
 }
+
+export function exit_scenario() {
+  socket.send(EXIT_REQUEST);
+}
+
 export function logout() {
   socket.send(LOGOUT_REQUEST);
 }
@@ -422,7 +463,7 @@ function handleFlightPath(json: object, setProposedPlan: (plan: FlightPathResult
   if (path.plan[1] != null) {
     path.plan[1][0] = [path.plan[1][0][0] / G, path.plan[1][0][1] / G, path.plan[1][0][2] / G];
   }
-  
+
   setProposedPlan(path);
 }
 
@@ -458,4 +499,19 @@ function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
     users.push(c);
   }
   setUsers(users);
+}
+
+function handleScenarioList(
+  json: {current_scenarios: string[]; templates: string[]},
+  setScenarios: (current_scenarios: string[], templates: string[]) => void
+) {
+  setScenarios(json.templates, json.current_scenarios);
+}
+
+function handleJoinedScenario(json: {JoinedScenario: string}) {
+  const scenario = json["JoinedScenario"] as string;
+  if (scenario) {
+    setJoinedScenario(scenario);
+    console.log("Joined scenario");
+  }
 }
