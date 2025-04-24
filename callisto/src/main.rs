@@ -50,11 +50,7 @@ struct Args {
   #[arg(short, long, default_value = "0.0.0.0")]
   address: String,
 
-  /// JSON file for planets in scenario
-  #[arg(short = 'f', long)]
-  scenario_file: Option<String>,
-
-  /// Director for all possible scenarios
+  /// Directory for all possible scenarios
   #[arg(short, long, default_value = "./scenarios/")]
   scenario_dir: String,
 
