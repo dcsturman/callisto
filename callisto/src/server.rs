@@ -10,13 +10,13 @@ pub struct Server {
 }
 
 pub struct ServerMembersTable {
-    members: HashMap<String, HashMap<u64, ServerMemberEntry>>
+  members: HashMap<String, HashMap<u64, ServerMemberEntry>>,
 }
 
 struct ServerMemberEntry {
-    email: String,
-    role: Role,
-    ship: Option<String>,
+  email: String,
+  role: Role,
+  ship: Option<String>,
 }
 
 /// Represents a distinct server created for a scenario.
@@ -72,38 +72,55 @@ impl Server {
 }
 
 impl ServerMembersTable {
-    #[must_use]
-    pub fn new() -> Self {
-        ServerMembersTable {
-            members: HashMap::new(),
-        }
+  #[must_use]
+  pub fn new() -> Self {
+    ServerMembersTable {
+      members: HashMap::new(),
     }
+  }
 
-    pub fn update(&mut self, server_id: &str, unique_id: u64, email: &str, role: Role, ship: Option<String>) {
-        let server_table = self.members.entry(server_id.to_string()).or_default();
-        server_table.insert(unique_id, ServerMemberEntry { email: email.to_string(), role, ship });
-    }
+  pub fn update(&mut self, server_id: &str, unique_id: u64, email: &str, role: Role, ship: Option<String>) {
+    let server_table = self.members.entry(server_id.to_string()).or_default();
+    server_table.insert(
+      unique_id,
+      ServerMemberEntry {
+        email: email.to_string(),
+        role,
+        ship,
+      },
+    );
+  }
 
-    /// Remove a given user from a given server.
-    /// 
-    /// # Panics
-    /// Panics if the server does not exist.
-    pub fn remove(&mut self, server_id: &str,unique_id: u64) {
-        self.members.get_mut(server_id).unwrap().remove(&unique_id);
-    }
+  /// Remove a given user from a given server.
+  ///
+  /// # Panics
+  /// Panics if the server does not exist.
+  pub fn remove(&mut self, server_id: &str, unique_id: u64) {
+    self.members.get_mut(server_id).unwrap().remove(&unique_id);
+  }
 
-    /// Builds the user context for a given server.
-    /// 
-    /// # Panics
-    /// Panics if the server does not exist.
-    #[must_use]
-    pub fn get_user_context(&self, server_id: &str) -> Vec<UserData> {
-        self.members.get(server_id).unwrap().values().map(|entry| UserData { email: entry.email.clone(), role: entry.role, ship: entry.ship.clone() }).collect()
-    }
+  /// Builds the user context for a given server.
+  ///
+  /// # Panics
+  /// Panics if the server does not exist.
+  #[must_use]
+  pub fn get_user_context(&self, server_id: &str) -> Vec<UserData> {
+    self
+      .members
+      .get(server_id)
+      .unwrap()
+      .values()
+      .map(|entry| UserData {
+        email: entry.email.clone(),
+        role: entry.role,
+        ship: entry.ship.clone(),
+      })
+      .collect()
+  }
 }
 
 impl Default for ServerMembersTable {
-    fn default() -> Self {
-        Self::new()
-    }
+  fn default() -> Self {
+    Self::new()
+  }
 }

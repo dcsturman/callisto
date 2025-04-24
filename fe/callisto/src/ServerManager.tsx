@@ -337,11 +337,6 @@ export function computeFlightPath(
   );
 }
 
-export function loadScenario(scenario_name: string) {
-  const payload = {LoadScenario: {scenario_name: scenario_name}};
-  socket.send(JSON.stringify(payload));
-}
-
 export function setRole(role: ViewMode, ship: string | null) {
   if (ship !== null) {
     const payload = {SetRole: {role: ViewMode[role], ship: ship}};

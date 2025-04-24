@@ -56,14 +56,11 @@ export function App() {
   });
 
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
-
   const [actions, setActions] = useState<ActionType>({});
-
   const [users, setUsers] = useState<UserList>([]);
-
   const [scenarios, setScenarios] = useState<string[]>([]);
-
   const [joinedScenario, setJoinedScenario] = useState<string | null>(null);
+  const [tutorialMode, setTutorialMode] = useState<boolean>(false);
 
   useEffect(() => {
     if (!socketReady) {
@@ -92,6 +89,7 @@ export function App() {
             {authenticated && socketReady && joinedScenario ? (
               <>
                 <Simulator
+                  tutorialMode={tutorialMode}
                   setAuthenticated={setAuthenticated}
                   email={email}
                   socketReady={socketReady}
@@ -101,7 +99,7 @@ export function App() {
                 />
               </>
             ) : authenticated && socketReady ? (
-              <ScenarioManager scenarios={scenarios} />
+              <ScenarioManager scenarios={scenarios} setTutorialMode={setTutorialMode} />
             ) : socketReady ? (
               <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
             ) : (
@@ -115,6 +113,7 @@ export function App() {
 }
 
 function Simulator({
+  tutorialMode,
   setAuthenticated,
   email,
   setEmail,
@@ -122,6 +121,7 @@ function Simulator({
   setUsers,
   users,
 }: {
+  tutorialMode: boolean;
   setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
@@ -250,7 +250,7 @@ function Simulator({
         }}>
         <>
           <div className="mainscreen-container">
-            {!process.env.REACT_APP_RUN_TUTORIAL || (
+            {!tutorialMode || (
               <Tutorial
                 runTutorial={runTutorial}
                 setRunTutorial={setRunTutorial}

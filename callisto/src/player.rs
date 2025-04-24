@@ -12,8 +12,8 @@ use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg,
-  LoginMsg, RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg
+  AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoginMsg,
+  RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
@@ -39,7 +39,9 @@ pub struct PlayerManager {
 impl PlayerManager {
   /// Create a new player manager.
   #[must_use]
-  pub fn new(unique_id: u64, server: Option<Arc<Server>>, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
+  pub fn new(
+    unique_id: u64, server: Option<Arc<Server>>, authenticator: Box<dyn Authenticator>, test_mode: bool,
+  ) -> Self {
     PlayerManager {
       unique_id,
       server,
@@ -498,26 +500,6 @@ impl PlayerManager {
     );
 
     Ok(plan)
-  }
-
-  // TODO: Get rid of this.  Can be replaced by choosing a Tutorial scenario.
-  /// Loads a scenario file into an existing server.      
-  ///
-  /// # Errors
-  /// Returns an error if the scenario file cannot be loaded (e.g. doesn't exist)
-  ///
-  /// # Panics
-  /// Panics if the lock cannot be obtained to write the entities.  Not clear when this might happen,
-  /// especially given this routine is run only on server initialization.
-  pub async fn load_scenario(&self, msg: &LoadScenarioMsg) -> Result<String, String> {
-    info!("(/load_scenario) Received and processing load scenario request. {:?}", msg);
-
-    let entities = Entities::load_from_file(&msg.scenario_name).await.map_err(|e| e.to_string())?;
-
-    // HACK: but this is going away.
-    *self.server.as_ref().unwrap().get_unlocked_entities().unwrap() = entities;
-
-    Ok("Load scenario action executed".to_string())
   }
 
   #[must_use]

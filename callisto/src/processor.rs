@@ -64,7 +64,7 @@ impl Processor {
       auth_template,
       session_keys,
       servers: HashMap::new(),
-      next_player_id:0,
+      next_player_id: 0,
       members: ServerMembersTable::new(),
       test_mode,
     }
@@ -97,10 +97,7 @@ impl Processor {
         let next_connection = self.connection_receiver.next().await;
 
         if let Some((stream, session_key, email)) = next_connection {
-          let Some(connection) = self
-            .build_connection(email.as_ref(), &session_key, stream)
-            .await
-          else {
+          let Some(connection) = self.build_connection(email.as_ref(), &session_key, stream).await else {
             continue;
           };
           connections.push(connection);
@@ -340,9 +337,7 @@ impl Processor {
 
       RequestMsg::Reset => response_with_update(player, player.reset()),
       RequestMsg::AddShip(ship) => response_with_update(player, player.add_ship(ship)),
-      RequestMsg::SetPilotActions(request) => {
-        response_with_update(player, player.set_pilot_actions(&request))
-      }
+      RequestMsg::SetPilotActions(request) => response_with_update(player, player.set_pilot_actions(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
       RequestMsg::SetPlan(plan) => response_with_update(player, player.set_plan(&plan)),
@@ -357,7 +352,13 @@ impl Processor {
           msgs.append(&mut player.server.as_ref().map_or_else(
             || error_msg("Cannot set role when no server has yet been joined.".to_string()),
             |server| {
-              self.members.update(server.get_id(), player.get_id(), &player.get_email().unwrap(), role.role, role.ship);
+              self.members.update(
+                server.get_id(),
+                player.get_id(),
+                &player.get_email().unwrap(),
+                role.role,
+                role.ship,
+              );
               vec![ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
             },
           ));
@@ -378,13 +379,14 @@ impl Processor {
       RequestMsg::ComputePath(path_goal) => player
         .compute_path(&path_goal)
         .map_or_else(error_msg, |path| vec![ResponseMsg::FlightPath(path)]),
-      RequestMsg::LoadScenario(scenario_name) => simple_response(player.load_scenario(&scenario_name).await),
       RequestMsg::Logout => {
         info!("Received and processing logout request.");
         player.logout(&self.session_keys);
         let Some(ref server) = player.server else {
           error!("(handle_request) Attempt to logout without being in a scenario.  Ignoring.");
-          return vec![ResponseMsg::Error("Attempt to logout without being in a scenario.  Ignoring.".to_string())];
+          return vec![ResponseMsg::Error(
+            "Attempt to logout without being in a scenario.  Ignoring.".to_string(),
+          )];
         };
 
         self.members.remove(server.get_id(), player.get_id());
@@ -396,10 +398,18 @@ impl Processor {
       RequestMsg::JoinScenario(join_scenario) => {
         if let Some(server) = self.servers.get(&join_scenario.scenario_name) {
           player.set_server(server.clone());
-          self.members.update(server.get_id(), player.get_id(), &player.get_email().unwrap(), player.get_role().0, player.get_role().1);
-          vec![ResponseMsg::JoinedScenario(join_scenario.scenario_name),
-          ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
-          ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
+          self.members.update(
+            server.get_id(),
+            player.get_id(),
+            &player.get_email().unwrap(),
+            player.get_role().0,
+            player.get_role().1,
+          );
+          vec![
+            ResponseMsg::JoinedScenario(join_scenario.scenario_name),
+            ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
+            ResponseMsg::Users(self.members.get_user_context(server.get_id())),
+          ]
         } else {
           vec![ResponseMsg::Error("Scenario does not exist.".to_string())]
         }
@@ -408,15 +418,21 @@ impl Processor {
         if self.servers.contains_key(&create_scenario.name) {
           return vec![ResponseMsg::Error("Scenario name already exists.".to_string())];
         }
-        // Create the new server, register it in the servers tables, in the membership table, and with the player structure. 
+        // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
         let server = Arc::new(Server::new(&create_scenario.name, &create_scenario.scenario).await);
         self.servers.insert(create_scenario.name.clone(), server.clone());
-        self.members.update(server.get_id(), player.get_id(), &player.get_email().unwrap(), player.get_role().0, player.get_role().1);
+        self.members.update(
+          server.get_id(),
+          player.get_id(),
+          &player.get_email().unwrap(),
+          player.get_role().0,
+          player.get_role().1,
+        );
         player.set_server(server.clone());
 
         // Get a clone of entities as we need update the user.
         let entities = server.get_unlocked_entities().unwrap().clone();
-        
+
         vec![
           ResponseMsg::JoinedScenario(create_scenario.name),
           ResponseMsg::EntityResponse(entities),

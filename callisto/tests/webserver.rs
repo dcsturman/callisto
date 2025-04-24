@@ -38,7 +38,7 @@ use callisto::{debug, error};
 use callisto::action::ShipAction;
 use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use callisto::payloads::{
-  AddPlanetMsg, AddShipMsg, ComputePathMsg, CreateScenarioMsg, EffectMsg, JoinScenarioMsg, LoadScenarioMsg, LoginMsg, RequestMsg,
+  AddPlanetMsg, AddShipMsg, ComputePathMsg, CreateScenarioMsg, EffectMsg, JoinScenarioMsg, LoginMsg, RequestMsg,
   ResponseMsg, SetPilotActions, SetPlanMsg, EMPTY_FIRE_ACTIONS_MSG,
 };
 
@@ -1270,67 +1270,6 @@ async fn integration_bad_requests() {
     matches!(&response, ResponseMsg::Effects(x) if x.is_empty()),
     "Expected empty effects for invalid weapon_id. Instead got {response:?}"
   );
-
-  send_quit(&mut stream).await;
-}
-
-#[test_log::test(tokio::test)]
-async fn integration_load_scenario() {
-  let port = get_next_port();
-  let _server = spawn_test_server(port).await;
-
-  let mut stream = open_socket(port).await.unwrap();
-  let _ = test_authenticate(&mut stream).await.unwrap();
-  test_create_scenario(&mut stream).await.unwrap();
-
-  // Test successful scenario load
-  let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
-    scenario_name: "./tests/test-scenario.json".to_string(),
-  });
-  let response = rpc(&mut stream, msg).await;
-  assert!(matches!(response, ResponseMsg::SimpleMsg(_)));
-
-  // Verify the scenario was loaded by checking entities
-  let msg = RequestMsg::EntitiesRequest;
-  let response = rpc(&mut stream, msg).await;
-  if let ResponseMsg::EntityResponse(entities) = response {
-    assert!(
-      !entities.ships.is_empty() || !entities.planets.is_empty(),
-      "Expected scenario to load some entities"
-    );
-  } else {
-    panic!("Expected EntityResponse");
-  }
-
-  // Test loading non-existent scenario
-  let msg = RequestMsg::LoadScenario(LoadScenarioMsg {
-    scenario_name: "./scenarios/nonexistent.json".to_string(),
-  });
-  let response = rpc(&mut stream, msg).await;
-  assert!(matches!(response, ResponseMsg::Error(_)));
-
-  send_quit(&mut stream).await;
-}
-
-#[cfg_attr(feature = "ci", ignore)]
-#[test_log::test(tokio::test)]
-async fn integration_load_cloud_scenario() {
-  let port = get_next_port();
-  let _server = spawn_test_server(port).await;
-
-  let mut stream = open_socket(port).await.unwrap();
-  let _ = test_authenticate(&mut stream).await.unwrap();
-  test_create_scenario(&mut stream).await.unwrap();
-
-  // Test loading non-existent cloud scenario
-  let message = rpc(
-    &mut stream,
-    RequestMsg::LoadScenario(LoadScenarioMsg {
-      scenario_name: "gs://nobucket/nonexistent.json".to_string(),
-    }),
-  )
-  .await;
-  assert!(matches!(message, ResponseMsg::Error(_)));
 
   send_quit(&mut stream).await;
 }

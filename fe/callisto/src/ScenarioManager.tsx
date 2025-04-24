@@ -1,6 +1,7 @@
 import React from "react";
 import {joinScenario, createScenario } from "./ServerManager";
 
+const TUTORIAL_SCENARIO = "gs://callisto-scenarios/tutorial.json";
 
 // This function will generate a three word name (with hyphens between the words) or random words
 // to be used as the name for a new scenario.
@@ -36,9 +37,10 @@ function generateUniqueHyphenatedName() {
 
 type ScenarioManagerProps = {
     scenarios: string[];
+    setTutorialMode: (tutorialMode: boolean) => void;
 };
 
-export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios}) => {
+export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, setTutorialMode}) => {
     const [scenario, setScenario] = React.useState<string | null>(null);
 
     const scenarioName = generateUniqueHyphenatedName();
@@ -64,17 +66,33 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios}) => 
     }
 
 
+    function launchTutorial() {
+        setTutorialMode(true);
+        
+        const random_tutorial_name = "$TUTORIAL-" + generateUniqueHyphenatedName();
+        createScenario(random_tutorial_name, TUTORIAL_SCENARIO);
+    }   
 
     return (
-        <div className="scenario-manager">
-
+        <div className="authentication-container">
+            <div className="authentication-blurb">
+                <h1 className="authentication-title">Scenarios</h1>
+                <br />
+                <br />
+                From this screen you can create a scenario, join an existing one to play with others, or just try the tutorial.  
+                Right now we show all scenarios to make Callisto easier to use.
+                Out of courtesy, please do not join a scenario to which you haven&apos;t been invited!  
+            </div>
+            <br />
+            <br />
             <form className="scenario-join-form" onSubmit={handleJoinScenario}>
                 <h1>Join Existing Scenario</h1>
                 <br />
                 <input id="scenario-to-join" className= "control-name-input control-input" type="text" />
                 <button className="control-input control-button blue-button" type="submit">Join</button>
             </form>
-
+            <br />
+            <br />
             <form className = "scenario-create-form" onSubmit={handleCreateScenario}>
                 <h1>Create New Scenario</h1>
                 <br />
@@ -88,5 +106,14 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios}) => 
                     </select>
                     <button className="control-input control-button blue-button" type="submit">Create</button>
             </form>
+            <>
+                <br />
+                <br />
+                <button
+                    className="blue-button tutorial-button"
+                    onClick={launchTutorial}>
+                    Tutorial
+                </button>
+            </>
         </div>);
 };

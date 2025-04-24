@@ -158,11 +158,6 @@ impl Display for EffectMsg {
   }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct LoadScenarioMsg {
-  pub scenario_name: String,
-}
-
 pub type ShipDesignTemplateMsg = HashMap<String, ShipDesignTemplate>;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -232,7 +227,6 @@ pub enum RequestMsg {
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   Update,
-  LoadScenario(LoadScenarioMsg),
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),
   EntitiesRequest,
@@ -477,31 +471,6 @@ mod tests {
 
     let json_str = serde_json::to_string(&msg).unwrap();
     assert_eq!(json_str, json.to_string());
-  }
-
-  #[test]
-  fn test_load_scenario_msg() {
-    // Test serialization
-    let msg = LoadScenarioMsg {
-      scenario_name: "./scenarios/sol.json".to_string(),
-    };
-
-    let expected_json = json!({
-        "scenario_name": "./scenarios/sol.json"
-    });
-
-    let serialized = serde_json::to_string(&msg).unwrap();
-    assert_eq!(serialized, expected_json.to_string());
-
-    // Test deserialization
-    let json_str = r#"{"scenario_name": "./scenarios/sol.json"}"#;
-    let deserialized: LoadScenarioMsg = serde_json::from_str(json_str).unwrap();
-    assert_eq!(deserialized.scenario_name, "./scenarios/sol.json");
-
-    // Test deserialization with invalid JSON
-    let invalid_json = r#"{"wrong_field": "value"}"#;
-    let result = serde_json::from_str::<LoadScenarioMsg>(invalid_json);
-    assert!(result.is_err());
   }
 
   #[test]
