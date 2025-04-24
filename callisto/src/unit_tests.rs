@@ -1215,7 +1215,7 @@ async fn test_list_local_dir() {
   let result = list_local_or_cloud_dir(directory_path).await.unwrap();
 
   // Verify results
-  assert!(result.len() > 3);
+  assert!(result.len() > 2);
 }
 
 #[test(tokio::test)]
@@ -1234,5 +1234,5 @@ async fn test_list_gcs_dir() {
   // Just verify that the function runs without error
   // We can't predict the actual contents
   assert!(result.is_ok(), "Failed to list GCS directory: {:?}", result.unwrap_err());
-  assert!(result.unwrap().len() > 3, "Expected at least 3 files in the GCS directory");
+  assert!(result.unwrap().len() > 2, "Expected at least 3 files in the GCS directory");
 }

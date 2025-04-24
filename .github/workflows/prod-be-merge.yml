@@ -14,7 +14,7 @@ env:
   GAR_LOCATION: gcr.io
   REGION: us-central1
   APP: callisto-be
-  GENERAL_ARGS: --oauth-creds,/secrets/google_credentials,--users-file,gs://callisto-be-user-profiles/authorized_users.json,--design-file,gs://callisto-scenarios/default_ship_templates.json
+  GENERAL_ARGS: --oauth-creds,/secrets/google_credentials,--users-file,gs://callisto-be-user-profiles/authorized_users.json,--design-file,gs://callisto-ship-templates/default_ship_templates.json
   APP_ARGS: --web-server,https://callistoflight.com,--scenario-dir,gs://callisto-scenarios
   PORT: 30000
 

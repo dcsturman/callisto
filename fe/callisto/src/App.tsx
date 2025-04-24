@@ -4,13 +4,13 @@ import * as THREE from "three";
 import {Canvas, useThree} from "@react-three/fiber";
 import {FlyControls} from "@react-three/drei";
 
-import {Authentication, Logout} from "./Authentication";
+import {Authentication} from "./Authentication";
 import {ActionType} from "./Actions";
 import SpaceView from "./Spaceview";
 import {Ships, Missiles, Route} from "./Ships";
 import {EntityInfoWindow, Controls, ViewControls} from "./Controls";
 import {Effect, Explosions, ResultsWindow} from "./Effects";
-import {setMessageHandlers, startWebsocket, computeFlightPath, resetServer} from "./ServerManager";
+import {setMessageHandlers, startWebsocket, computeFlightPath, resetServer, exit_scenario} from "./ServerManager";
 import {Users, UserList} from "./UserList";
 
 import {ShipComputer} from "./ShipComputer";
@@ -74,7 +74,7 @@ export function App() {
         () => {},
         () => {},
         setUsers,
-        (a, b) => { setScenarios(a); setScenarioTemplates(b); },
+        (a, b) => { setScenarioTemplates(a); setScenarios(b);},
         (scenario: string) => setJoinedScenario(scenario),
       );
 
@@ -102,12 +102,13 @@ export function App() {
                   email={email}
                   socketReady={socketReady}
                   setEmail={setEmail}
+                  setJoinedScenario={setJoinedScenario}
                   users={users}
                   setUsers={setUsers}
                 />
               </>
             ) : authenticated && socketReady ? (
-              <ScenarioManager scenarios={scenarios} scenarioTemplates={scenarioTemplates} setTutorialMode={setTutorialMode} />
+              <ScenarioManager scenarios={scenarios} scenarioTemplates={scenarioTemplates} setTutorialMode={setTutorialMode} setAuthenticated={setAuthenticated} email={email} setEmail={setEmail} />
             ) : socketReady ? (
               <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
             ) : (
@@ -125,6 +126,7 @@ function Simulator({
   setAuthenticated,
   email,
   setEmail,
+  setJoinedScenario,
   socketReady,
   setUsers,
   users,
@@ -133,6 +135,7 @@ function Simulator({
   setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
+  setJoinedScenario: (scenario: string | null) => void;
   socketReady: boolean;
   users: UserList;
   setUsers: (users: UserList) => void;
@@ -166,19 +169,19 @@ function Simulator({
   useEffect(() => {
     if (socketReady) {
       setMessageHandlers(
-        setEmail,
-        setAuthenticated,
-        templatesContext.handler,
-        entitiesContext.handler,
-        actionsContext.setActions,
+        null,
+        null,
+        null,
+        null,
+        null,
         setProposedPlan,
         (effects: Effect[]) => {
           setEvents(effects);
           setShowResults(true);
         },
-        setUsers,
-        () => { console.error("ScenarioList message should never be received after Simulator starts.")},
-        () => { console.error("JoinedScenario message should never be received after Simulator starts.")},
+        null,
+        null,
+        null
       );
     }
   }, [
@@ -297,7 +300,7 @@ function Simulator({
                 <Users users={users} email={email} />
                 <RoleChooser />
                 <div className="reset-and-logout-buttons">
-                  <Logout setAuthenticated={setAuthenticated} email={email} setEmail={setEmail} />
+                  <Exit setJoinedScenario={setJoinedScenario} email={email} />
                   {role === ViewMode.General && shipName == null && <button className="blue-button" onClick={resetServer}>Reset</button>}
                 </div>
               </div>
@@ -388,4 +391,23 @@ function GrabCamera(args: {
   return null;
 }
 
+export function Exit(args: {
+  setJoinedScenario: (scenario: string | null) => void;
+  email: string | null;
+}) {
+  const logOut = () => {    
+    args.setJoinedScenario(null);
+    exit_scenario();
+    console.log("(Authentication.Logout) Quit scenario");
+  };
+
+  const username = args.email ? args.email.split("@")[0] : "";
+  return (
+    <div className="logout-window">
+      <button className="blue-button logout-button" onClick={logOut}>
+        Exit {username}
+      </button>
+    </div>
+  );
+}
 export default App;

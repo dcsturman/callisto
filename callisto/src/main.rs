@@ -30,10 +30,10 @@ use callisto::authentication::{
 };
 
 use callisto::processor::Processor;
+use callisto::ship::DEFAULT_SHIP_TEMPLATES_FILE;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
 use callisto::SCENARIOS;
 
-const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./scenarios/default_ship_templates.json";
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
 
 const MAX_CHANNEL_DEPTH: usize = 10;
@@ -257,7 +257,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   let session_keys_clone = session_keys.clone();
   tokio::task::spawn(async move {
-    let mut processor = Processor::new(connection_receiver, auth_template, session_keys_clone, test_mode);
+    let mut processor = Processor::new(
+      connection_receiver,
+      auth_template,
+      session_keys_clone,
+      &args.scenario_dir,
+      test_mode,
+    );
     processor.processor().await;
   });
 

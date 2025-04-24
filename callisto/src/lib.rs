@@ -21,7 +21,7 @@ pub mod ship;
 mod cov_util;
 
 #[cfg(test)]
-pub mod tests;
+pub mod unit_tests;
 
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::download::Range;
@@ -49,6 +49,7 @@ pub static SCENARIOS: OnceCell<Vec<String>> = OnceCell::new();
  * this function.
  */
 pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+  debug!("(read_local_or_cloud_file) Reading file {filename}");
   // Check if the filename is a GCS path
   if filename.starts_with("gs://") {
     // Extract bucket name from the GCS URI

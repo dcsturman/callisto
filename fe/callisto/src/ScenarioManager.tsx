@@ -1,7 +1,8 @@
 import React from "react";
 import {joinScenario, createScenario } from "./ServerManager";
+import {Logout} from "./Authentication";
 
-const TUTORIAL_SCENARIO = "gs://callisto-scenarios/tutorial.json";
+const TUTORIAL_SCENARIO = "tutorial.json";
 
 // This function will generate a three word name (with hyphens between the words) or random words
 // to be used as the name for a new scenario.
@@ -39,10 +40,17 @@ type ScenarioManagerProps = {
     scenarios: string[];
     scenarioTemplates: string[];
     setTutorialMode: (tutorialMode: boolean) => void;
+    setAuthenticated: (authenticated: boolean) => void;
+    email: string | null;
+    setEmail: (email: string | null) => void;
 };
 
-export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scenarioTemplates, setTutorialMode}) => {
-    const [scenario, setScenario] = React.useState<string | null>(null);
+export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scenarioTemplates, setTutorialMode, setAuthenticated, email, setEmail}) => {
+    const TUTORIAL_PREFIX = "$TUTORIAL-";
+    const sortedFilteredScenarios = scenarios.filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
+    const sortedTemplates = scenarioTemplates.sort((a, b) => a.localeCompare(b));
+
+    const [scenario, setScenario] = React.useState<string | null>(sortedFilteredScenarios[0]?? null);
     const [template, setTemplate] = React.useState<string | null>(null);
 
     const scenarioName = generateUniqueHyphenatedName();
@@ -66,17 +74,17 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
         createScenario(scenarioName, template?? "");
     }
 
-
     function launchTutorial() {
         setTutorialMode(true);
         
-        const random_tutorial_name = "$TUTORIAL-" + generateUniqueHyphenatedName();
+        const random_tutorial_name = TUTORIAL_PREFIX + generateUniqueHyphenatedName();
         createScenario(random_tutorial_name, TUTORIAL_SCENARIO);
     }   
 
     // TODO: Remove TUTORIAL scenarios.
     // TODO: It doesn't seem we're using the cloud scenarios, but something in the dockerfile instead.
     return (
+        <>
         <div className="authentication-container">
             <div className="authentication-blurb">
                 <h1 className="authentication-title">Scenarios</h1>
@@ -95,7 +103,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
                 <h1>Join Existing Scenario</h1>
                 <br />
                 <select className="select-dropdown control-name-input control-input" name="scenario_selector" value={scenario?? ""} onChange={handleScenarioSelectChange}>
-                    {scenarioTemplates.map((scenario) => (
+                    {sortedFilteredScenarios
+                        .map((scenario) => (
                         <option key={scenario} value={scenario}>
                             {scenario}
                         </option>
@@ -110,7 +119,9 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
                 <br />
                 <span className = "label-scenario-name"><b>Name:</b> {scenarioName}</span>
                     <select className="select-dropdown control-name-input control-input" name="scenario_template_selector" value={template?? ""} onChange={handleTemplateSelectChange}>
-                        {scenarios.map((scenario) => (
+                        <option key="default" value="">&lt;no scenario&gt;</option>
+                        {sortedTemplates
+                          .map((scenario) => (
                             <option key={scenario} value={scenario}>
                                 {scenario}
                             </option>
@@ -127,5 +138,10 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
                     Tutorial
                 </button>
             </>
-        </div>);
+        </div>
+        <div className="admin-button-window">
+            <Logout setAuthenticated={setAuthenticated} email={email} setEmail={setEmail}/>
+        </div>
+        </>
+      );
 };
