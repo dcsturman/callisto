@@ -87,6 +87,8 @@ impl Processor {
     let mut connections = Vec::<Connection>::new();
 
     loop {
+      // TODO: In here, clean up old scenarios that haven't had anyone in them for 5 minutes.
+
       // If there are no connections, then we wait for one to come in.
       // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
       // TODO: Violating DRY here in a big way.  How do I fix it?
