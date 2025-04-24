@@ -85,6 +85,13 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
   }
 }
 
+/// List the files in a directory.  The directory can be local or on Google cloud storage (encoded in filename)
+/// 
+/// # Errors
+/// If the directory cannot be read or if GCS cannot be reached (depending on url of file)
+/// 
+/// # Panics
+/// If GCS authentication fails.  GCS authentication needs to be handled outside (and prior to) this function.
 pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   if dir.starts_with("gs://") {
     // Extract bucket name from the GCS URI

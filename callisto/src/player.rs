@@ -11,21 +11,22 @@ use crate::action::{merge, ShipAction};
 use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{Entities, Entity, G};
-use crate::payloads::Role;
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoadScenarioMsg,
-  LoginMsg, RemoveEntityMsg, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
+  LoginMsg, RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg
 };
+use crate::server::Server;
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 use crate::{debug, info, warn};
 
 // Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
 // Add function beyond what Entities does and provides an API to our server.
-pub struct PlayerManager<'a> {
-  // Entities is really the state for the entire server, shared via ref count across all PlayerManagers.
-  entities: Arc<Mutex<Entities>>,
-  // The initial scenario we created, so it can be reverted to.  Also part of the "server" state (though static)
-  initial_scenario: &'a Entities,
+pub struct PlayerManager {
+  unique_id: u64,
+  // Server holding most importantly the state of the server, shared between all players.
+  // The state is entities, if we're in tutorial mode, and the initial state of the server so we can revert.
+  // `server` is an [`Option`] because it may not be initialized until later in the server's lifecycle (via a client message).
+  pub server: Option<Arc<Server>>,
   // Authenticator for this player.  It contains the session key and email identity of the player.
   authenticator: Box<dyn Authenticator>,
   // Role this player might have assumed
@@ -35,18 +36,13 @@ pub struct PlayerManager<'a> {
   test_mode: bool,
 }
 
-impl<'a> PlayerManager<'a> {
+impl PlayerManager {
   /// Create a new player manager.
-  ///
-  /// # Panics
-  /// If the lock cannot be obtained to read the entities.
-  pub fn new(
-    entities: Arc<Mutex<Entities>>, initial_scenario: &'a Entities, authenticator: Box<dyn Authenticator>,
-    test_mode: bool,
-  ) -> Self {
+  #[must_use]
+  pub fn new(unique_id: u64, server: Option<Arc<Server>>, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
     PlayerManager {
-      entities,
-      initial_scenario,
+      unique_id,
+      server,
       authenticator,
       test_mode,
       role: Role::General,
@@ -54,17 +50,27 @@ impl<'a> PlayerManager<'a> {
     }
   }
 
+  pub fn set_server(&mut self, server: Arc<Server>) {
+    self.server = Some(server);
+  }
+
   #[must_use]
   pub fn in_test_mode(&self) -> bool {
     self.test_mode
   }
 
+  #[must_use]
+  pub fn get_id(&self) -> u64 {
+    self.unique_id
+  }
+
   /// Returns a clone of the entities.
   /// # Panics
-  /// Panics if the lock on entities cannot be obtained.
+  /// Panics if the lock on entities cannot be obtained or if the server hasn't
+  /// been initialized.
   #[must_use]
   pub fn clone_entities(&self) -> Entities {
-    self.entities.lock().unwrap().clone()
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().clone()
   }
 
   /// Authenticates a user.
@@ -105,11 +111,16 @@ impl<'a> PlayerManager<'a> {
   /// Returns an error if the user is not in the General role.
   ///
   /// # Panics
-  /// Panics if the lock on entities cannot be obtained.
+  /// Panics if the lock on entities cannot be obtained or if the server has never been initialized.
   pub fn reset(&self) -> Result<String, String> {
     if self.role == Role::General && self.ship.is_none() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
-      self.initial_scenario.deep_copy_into(&mut self.entities.lock().unwrap());
+      self
+        .server
+        .as_ref()
+        .unwrap()
+        .initial_scenario
+        .deep_copy_into(&mut self.server.as_ref().unwrap().get_unlocked_entities().unwrap());
       Ok("Server reset.".to_string())
     } else {
       warn!(
@@ -150,7 +161,8 @@ impl<'a> PlayerManager<'a> {
   /// Returns an error if the ship design cannot be found.
   ///
   /// # Panics
-  /// Panics if the ship templates are not loaded or if the lock on entities cannot be obtained.
+  /// Panics if the ship templates are not loaded, if the ship design cannot be found, if the lock on entities cannot be obtained,
+  /// or if the server hasn't yet been initialized.
   pub fn add_ship(&self, ship: AddShipMsg) -> Result<String, String> {
     info!("(PlayerManager.add_ship) Received and processing add ship request. {:?}", ship);
 
@@ -161,11 +173,13 @@ impl<'a> PlayerManager<'a> {
       .get(&ship.design)
       .ok_or_else(|| format!("(PlayerManager.add_ship) Could not find design {}.", ship.design))?;
 
-    self
-      .entities
-      .lock()
-      .unwrap()
-      .add_ship(ship.name, ship.position, ship.velocity, design, ship.crew);
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_ship(
+      ship.name,
+      ship.position,
+      ship.velocity,
+      design,
+      ship.crew,
+    );
 
     Ok("Add ship action executed".to_string())
   }
@@ -179,12 +193,14 @@ impl<'a> PlayerManager<'a> {
   /// Returns an error if the ship cannot be found.
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to read the entities or we cannot obtain a write
-  /// lock on the ship in question.
+  /// Panics if the lock cannot be obtained to read the entities, if we cannot obtain a write
+  /// lock on the ship in question, or if the server has not yet been initialized.
   pub fn set_pilot_actions(&self, request: &SetPilotActions) -> Result<String, String> {
     let entities = self
-      .entities
-      .lock()
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
     let mut ship = entities
@@ -210,7 +226,7 @@ impl<'a> PlayerManager<'a> {
   /// Panics if the lock cannot be obtained to read the entities.
   #[must_use]
   pub fn get_entities(&self) -> Entities {
-    self.entities.lock().unwrap().clone()
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().clone()
   }
 
   /// Get the entities marshalled into JSON
@@ -219,14 +235,14 @@ impl<'a> PlayerManager<'a> {
   /// Panics if entities cannot be converted.
   #[must_use]
   pub fn get_entities_json(&self) -> String {
-    serde_json::to_string(&*self.entities.lock().unwrap()).unwrap()
+    serde_json::to_string(&*self.server.as_ref().unwrap().get_unlocked_entities().unwrap()).unwrap()
   }
 
   /// Gets the ship designs and serializes it to JSON.
   ///
   /// # Panics
   /// Panics if the ship templates have not been loaded.
-  pub fn get_designs(&self) -> ShipDesignTemplateMsg {
+  pub fn get_designs() -> ShipDesignTemplateMsg {
     // Strip the Arc, etc. from the ShipTemplates before marshalling back.
     let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
       .get()
@@ -247,10 +263,11 @@ impl<'a> PlayerManager<'a> {
   /// Returns an error if the planet already exists in the entities.
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to write the entities.
+  /// Panics if the lock cannot be obtained to write the entities or if the
+  /// server has not yet been initialized.
   pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
     // Add the planet to the server
-    self.entities.lock().unwrap().add_planet(
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_planet(
       planet.name,
       planet.position,
       planet.color,
@@ -271,10 +288,11 @@ impl<'a> PlayerManager<'a> {
   /// Returns an error if the name entity does not exist in the list of entities.
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to write the entities.
+  /// Panics if the lock cannot be obtained to write the entities or if the server
+  /// has not yet been initialized.
   pub fn remove(&self, name: &RemoveEntityMsg) -> Result<String, String> {
     // Remove the entity from the server
-    let mut entities = self.entities.lock().unwrap();
+    let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
     if entities.ships.remove(name).is_none()
       && entities.planets.remove(name).is_none()
       && entities.missiles.remove(name).is_none()
@@ -296,12 +314,15 @@ impl<'a> PlayerManager<'a> {
   /// Returns an error if the flight plan is one that is not legal for this ship (e.g. acceleration is too high)
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to read the entities.
+  /// Panics if the lock cannot be obtained to read the entities or if the server
+  /// has not yet been initialized.
   pub fn set_plan(&self, plan_msg: &SetPlanMsg) -> Result<String, String> {
     // Change the acceleration of the entity
     self
-      .entities
-      .lock()
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
       .unwrap()
       .set_flight_plan(&plan_msg.name, &plan_msg.plan)
       .map(|()| "Set acceleration action executed".to_string())
@@ -313,10 +334,11 @@ impl<'a> PlayerManager<'a> {
   /// # Returns
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to read the entities.
+  /// Panics if the lock cannot be obtained to read the entities or if the server
+  /// has not yet been initialized.
   #[allow(clippy::must_use_candidate)]
   pub fn merge_actions(&self, actions: ShipActionMsg) -> String {
-    let mut entities = self.entities.lock().unwrap();
+    let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
     merge(&mut entities, actions);
     "Actions added.".to_string()
   }
@@ -325,15 +347,18 @@ impl<'a> PlayerManager<'a> {
   /// (e.g. move a ship, planet or missile) as well as new fire actions.
   ///
   /// # Panics  
-  /// Panics if the lock cannot be obtained to read the entities.
+  /// Panics if the lock cannot be obtained to read the entities or if the server
+  /// has not yet been initialized.
   #[must_use]
   pub fn update(&self) -> Vec<EffectMsg> {
     let mut rng = get_rng(self.test_mode);
 
     // Grab the lock on entities
     let mut entities = self
-      .entities
-      .lock()
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
     let actions = &entities.actions;
@@ -413,7 +438,8 @@ impl<'a> PlayerManager<'a> {
   /// or if we cannot marshall the flight path into JSON (should never happen).
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to read the entities.
+  /// Panics if the lock cannot be obtained to read the entities or if the server
+  /// has not yet been initialized.
   pub fn compute_path(&self, msg: &ComputePathMsg) -> Result<FlightPathMsg, String> {
     info!("(/compute_path) Received and processing compute path request. {:?}", msg);
 
@@ -423,7 +449,7 @@ impl<'a> PlayerManager<'a> {
     );
     // Do this in a block to clean up the lock as soon as possible.
     let (start_pos, start_vel, max_accel) = {
-      let entities = self.entities.lock().unwrap();
+      let entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
       let entity = entities
         .ships
         .get(&msg.entity_name)
@@ -474,7 +500,8 @@ impl<'a> PlayerManager<'a> {
     Ok(plan)
   }
 
-  /// Loads a scenario file.      
+  // TODO: Get rid of this.  Can be replaced by choosing a Tutorial scenario.
+  /// Loads a scenario file into an existing server.      
   ///
   /// # Errors
   /// Returns an error if the scenario file cannot be loaded (e.g. doesn't exist)
@@ -486,7 +513,9 @@ impl<'a> PlayerManager<'a> {
     info!("(/load_scenario) Received and processing load scenario request. {:?}", msg);
 
     let entities = Entities::load_from_file(&msg.scenario_name).await.map_err(|e| e.to_string())?;
-    *self.entities.lock().unwrap() = entities;
+
+    // HACK: but this is going away.
+    *self.server.as_ref().unwrap().get_unlocked_entities().unwrap() = entities;
 
     Ok("Load scenario action executed".to_string())
   }
@@ -531,8 +560,7 @@ mod tests {
     let mock_auth = MockAuthenticator::new("http://web.test.com");
     let authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
-    let initial_scenario = Entities::new();
-    let mut server = PlayerManager::new(Arc::new(Mutex::new(Entities::new())), &initial_scenario, authenticator, false);
+    let mut server = PlayerManager::new(0, None, authenticator, false);
 
     // Try a login
     let login_msg = LoginMsg {

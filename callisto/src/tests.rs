@@ -9,7 +9,7 @@
 use pretty_env_logger;
 
 use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::Arc;
 use test_log::test;
 
 use assert_json_diff::assert_json_eq;
@@ -21,20 +21,19 @@ use crate::entity::G;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, LoadScenarioMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::player::PlayerManager;
+use crate::server::Server;
 use crate::ship::{ShipDesignTemplate, ShipSystem};
 
 fn setup_authenticator() -> Box<dyn Authenticator> {
   Box::new(MockAuthenticator::new("http://test.com"))
 }
 
-// Define a static empty initial scenario here (for tests)
-static INITIAL_SCENARIO: LazyLock<Entities> = LazyLock::new(Entities::new);
-
-async fn setup_test_with_server<'a>(authenticator: Box<dyn Authenticator>) -> PlayerManager<'a> {
+async fn setup_test_with_server(authenticator: Box<dyn Authenticator>) -> PlayerManager {
   let _ = pretty_env_logger::try_init();
   crate::ship::config_test_ship_templates().await;
 
-  PlayerManager::new(Arc::new(Mutex::new(Entities::new())), &INITIAL_SCENARIO, authenticator, true)
+  let basic_server = Server::new("test", "").await;
+  PlayerManager::new(0, Some(Arc::new(basic_server)), authenticator, true)
 }
 
 /**
@@ -1026,8 +1025,8 @@ async fn test_get_entities() {
 #[test(tokio::test)]
 async fn test_get_designs() {
   let authenticator = setup_authenticator();
-  let server = setup_test_with_server(authenticator).await;
-  let designs = server.get_designs();
+  let _ = setup_test_with_server(authenticator).await;
+  let designs = PlayerManager::get_designs();
   assert!(!designs.is_empty());
   assert!(designs.contains_key("Buccaneer"));
 }

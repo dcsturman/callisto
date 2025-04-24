@@ -75,6 +75,7 @@ export function Authentication(args: {
         return;
       }
 
+      //TODO: Can replace calling this for now with a move to the scenario creation/selection page.
       loginToCallisto();
     }
   }, [args, googleAuthResponse, secureState]);

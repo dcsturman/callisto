@@ -21,8 +21,9 @@ use dyn_clone::clone_box;
 use crate::authentication::Authenticator;
 
 use crate::entity::Entities;
-use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, Role, UserData};
+use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg};
 use crate::player::PlayerManager;
+use crate::server::{Server, ServerMembersTable};
 
 #[cfg(feature = "no_tls_upgrade")]
 type SubStream = TcpStream;
@@ -36,12 +37,18 @@ pub struct Processor {
   connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
   auth_template: Box<dyn Authenticator>,
   session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
+  servers: HashMap<String, Arc<Server>>,
+  next_player_id: u64,
+  members: ServerMembersTable,
+
   //TODO: Move into server.
   test_mode: bool,
 }
 
-struct Connection<'a> {
-  player: PlayerManager<'a>,
+struct Connection {
+  /// player is an [`Arc`] because its [`Server`] will have a [`std::sync::Weak`] reference back to it.
+  /// It is not otherwise shared.
+  player: PlayerManager,
   stream: WebSocketStream<SubStream>,
 }
 
@@ -55,6 +62,9 @@ impl Processor {
       connection_receiver,
       auth_template,
       session_keys,
+      servers: HashMap::new(),
+      next_player_id:0,
+      members: ServerMembersTable::new(),
       test_mode,
     }
   }
@@ -79,10 +89,6 @@ impl Processor {
     let mut initial_scenario = Entities::new();
     entities.lock().unwrap().deep_copy_into(&mut initial_scenario);
     loop {
-      // Build the User contexts (list of users and their roles) in case we create a connection.
-      // TODO: This should all be kept in the server info.
-      let current_contexts = build_context(&connections).clone();
-
       // If there are no connections, then we wait for one to come in.
       // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
       // TODO: Violating DRY here in a big way.  How do I fix it?
@@ -91,14 +97,7 @@ impl Processor {
 
         if let Some((stream, session_key, email)) = next_connection {
           let Some(connection) = self
-            .build_connection(
-              current_contexts,
-              email.as_ref(),
-              &session_key,
-              stream,
-              &entities,
-              &initial_scenario,
-            )
+            .build_connection(email.as_ref(), &session_key, stream)
             .await
           else {
             continue;
@@ -124,12 +123,9 @@ impl Processor {
               if let Some((stream, session_key, email)) = next_connection {
               // Build the authenticator
               let Some(connection) = self.build_connection(
-                  current_contexts,
                   email.as_ref(),
                   &session_key,
-                  stream,
-                  &entities,
-                  &initial_scenario,
+                  stream
               ).await else {
                   continue;
               };
@@ -168,9 +164,7 @@ impl Processor {
           debug!("(handle_connection) Received message: {text}");
           let response = match serde_json::from_str(&text) {
             Ok(parsed_message) => {
-              let response = self
-                .handle_request(parsed_message, &mut connections[index].player, current_contexts)
-                .await;
+              let response = self.handle_request(parsed_message, &mut connections[index].player).await;
               // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
               // but do not actually ever send it to the client (who has logged out!)
               if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {
@@ -253,30 +247,24 @@ impl Processor {
   #[allow(clippy::borrowed_box)]
   #[allow(clippy::too_many_arguments)]
   #[must_use]
-  async fn build_connection<'a>(
-    &self, mut context: Vec<UserData>, email: Option<&String>, session_key: &str, stream: WebSocketStream<SubStream>,
-    entities: &Arc<Mutex<Entities>>, initial_scenario: &'a Entities,
-  ) -> Option<Connection<'a>> {
+  async fn build_connection(
+    &mut self, email: Option<&String>, session_key: &str, stream: WebSocketStream<SubStream>,
+  ) -> Option<Connection> {
     let mut authenticator = clone_box(self.auth_template.as_ref());
     authenticator.set_session_key(session_key);
     authenticator.set_email(email);
     let mut connection = Connection {
-      player: PlayerManager::new(entities.clone(), initial_scenario, authenticator, self.test_mode),
+      player: PlayerManager::new(self.next_player_id, None, authenticator, self.test_mode),
       stream,
     };
+    self.next_player_id += 1;
 
     if let Some(email) = email {
-      // Create this addition to all the context.
-      context.push(UserData {
-        email: email.clone(),
-        role: Role::General,
-        ship: None,
-      });
       // If we got a successful Some(email) then we need to fake like this was a log in by
       // letting the client know auth was successful, but also sending any initialization messages.
       // We use [build_successful_auth_msgs] to keep this list of messages the same as if it was in response
       // to a login message.
-      let msgs = build_successful_auth_msgs(AuthResponse { email: email.clone() }, &connection.player, context);
+      let msgs = build_successful_auth_msgs(AuthResponse { email: email.clone() });
       let mut okay = true;
       for msg in msgs {
         let encoded_message: Utf8Bytes = serde_json::to_string(&msg).unwrap().into();
@@ -299,7 +287,7 @@ impl Processor {
   /// This the primary server dispatch when a message arrives.  It knows nothing about threading or even how messages are received or sent.
   ///
   /// The function first checks if the user is logged in.  If not
-  /// then we just send back a request for a proper login message (using Google oauth2).  Most of the logic for these should be handled by [PlayerManager]
+  /// then we just send back a request for a proper login message (using Google oauth2).  Most of the logic for these should be handled by [`PlayerManager`]
   /// so that unit testing of the logic is possible.
   ///
   /// # Arguments
@@ -320,14 +308,13 @@ impl Processor {
   ///
   /// # Panics
   ///
-  /// Will panic as a quick exit on a QUIT message.  Only possible when in test mode.
+  /// Will panic as a quick exit on a QUIT message.  Only possible when in test mode.  Also will panic whenever
+  /// it tries to get its lock on its player record and cannot.
   ///
   // Note the lifetimes do seem to be needed and the implicit_hasher rule has impact across
   // a lot of the codebase.  So excluding those two clippy warnings.
   #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
-  pub async fn handle_request(
-    &self, message: RequestMsg, player: &mut PlayerManager<'_>, mut context: Vec<UserData>,
-  ) -> Vec<ResponseMsg> {
+  pub async fn handle_request(&mut self, message: RequestMsg, player: &mut PlayerManager) -> Vec<ResponseMsg> {
     info!("(handle_request) Request: {:?}", message);
 
     // If the connection has not logged in yet, that is the priority.
@@ -338,27 +325,23 @@ impl Processor {
 
     match message {
       RequestMsg::Login(login_msg) => {
-        // But we put all this business logic into [PlayerManager.login](Server::login) rather than
+        // But we put all this business logic into [PlayerManager.login](PlayerManager::login) rather than
         // split it up between the two locations.
         // Our role here is just to repackage the response and put it on the wire.
         player
           .login(login_msg, &self.session_keys)
           .await
           .map_or_else(error_msg, |auth_response| {
-            // Add ourselves to the context as we weren't included when we weren't logged in.
-            context.push(UserData {
-              email: auth_response.email.clone(),
-              role: Role::General,
-              ship: None,
-            });
             // Now that we are successfully logged in, we can send back the design templates, entities, and users - no need to wait to be asked.
-            build_successful_auth_msgs(auth_response, player, context)
+            build_successful_auth_msgs(auth_response)
           })
       }
 
       RequestMsg::Reset => response_with_update(player, player.reset()),
       RequestMsg::AddShip(ship) => response_with_update(player, player.add_ship(ship)),
-      RequestMsg::SetPilotActions(request) => response_with_update(player, player.set_pilot_actions(&request)),
+      RequestMsg::SetPilotActions(request) => {
+        response_with_update(player, player.set_pilot_actions(&request))
+      }
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
       RequestMsg::SetPlan(plan) => response_with_update(player, player.set_plan(&plan)),
@@ -370,16 +353,13 @@ impl Processor {
           )]
         } else {
           let mut msgs = simple_response(Ok(player.set_role(&role)));
-          let mut revised_context: Vec<UserData> = context
-            .into_iter()
-            .filter(|c| player.get_email().is_some_and(|email| c.email != email))
-            .collect();
-          revised_context.push(UserData {
-            email: player.get_email().unwrap(),
-            role: role.role,
-            ship: role.ship,
-          });
-          msgs.push(ResponseMsg::Users(revised_context));
+          msgs.append(&mut player.server.as_ref().map_or_else(
+            || error_msg("Cannot set role when no server has yet been joined.".to_string()),
+            |server| {
+              self.members.update(server.get_id(), player.get_id(), &player.get_email().unwrap(), role.role, role.ship);
+              vec![ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
+            },
+          ));
           msgs
         }
       }
@@ -401,15 +381,46 @@ impl Processor {
       RequestMsg::Logout => {
         info!("Received and processing logout request.");
         player.logout(&self.session_keys);
-        vec![ResponseMsg::LogoutResponse, ResponseMsg::Users(context.clone())]
+        let Some(ref server) = player.server else {
+          error!("(handle_request) Attempt to logout without being in a scenario.  Ignoring.");
+          return vec![ResponseMsg::Error("Attempt to logout without being in a scenario.  Ignoring.".to_string())];
+        };
+
+        self.members.remove(server.get_id(), player.get_id());
+        vec![
+          ResponseMsg::LogoutResponse,
+          ResponseMsg::Users(self.members.get_user_context(server.get_id())),
+        ]
       }
       RequestMsg::JoinScenario(join_scenario) => {
-        //TODO: Do something here
-        vec![ResponseMsg::JoinedScenario(join_scenario.scenario_name)]
+        if let Some(server) = self.servers.get(&join_scenario.scenario_name) {
+          player.set_server(server.clone());
+          self.members.update(server.get_id(), player.get_id(), &player.get_email().unwrap(), player.get_role().0, player.get_role().1);
+          vec![ResponseMsg::JoinedScenario(join_scenario.scenario_name),
+          ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
+          ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
+        } else {
+          vec![ResponseMsg::Error("Scenario does not exist.".to_string())]
+        }
       }
-      RequestMsg::CreateScenario { name, scenario } => {
-        // TODO: Do something here
-        vec![ResponseMsg::JoinedScenario(name)]
+      RequestMsg::CreateScenario(create_scenario) => {
+        if self.servers.contains_key(&create_scenario.name) {
+          return vec![ResponseMsg::Error("Scenario name already exists.".to_string())];
+        }
+        // Create the new server, register it in the servers tables, in the membership table, and with the player structure. 
+        let server = Arc::new(Server::new(&create_scenario.name, &create_scenario.scenario).await);
+        self.servers.insert(create_scenario.name.clone(), server.clone());
+        self.members.update(server.get_id(), player.get_id(), &player.get_email().unwrap(), player.get_role().0, player.get_role().1);
+        player.set_server(server.clone());
+
+        // Get a clone of entities as we need update the user.
+        let entities = server.get_unlocked_entities().unwrap().clone();
+        
+        vec![
+          ResponseMsg::JoinedScenario(create_scenario.name),
+          ResponseMsg::EntityResponse(entities),
+          ResponseMsg::Users(self.members.get_user_context(server.get_id())),
+        ]
       }
       RequestMsg::Quit => {
         if !player.in_test_mode() {
@@ -425,33 +436,13 @@ impl Processor {
       }
       RequestMsg::DesignTemplateRequest => {
         info!("Received and processing get designs request.");
-        let template_msg = player.get_designs();
-        vec![ResponseMsg::DesignTemplateResponse(template_msg)]
+        vec![ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs())]
       }
     }
   }
 }
 
 // Utility functions to help build messages etc.
-
-/// TODO: Move this all to the Server
-/// Build the context of all users.  This is a list of users, their current role and the specific
-/// ship they are controlling.
-fn build_context(connections: &[Connection]) -> Vec<UserData> {
-  connections
-    .iter()
-    .filter_map(|c| {
-      c.player.get_email().map(|email| {
-        let (role, ship) = c.player.get_role();
-        UserData {
-          email: email.clone(),
-          role,
-          ship,
-        }
-      })
-    })
-    .collect::<Vec<UserData>>()
-}
 
 fn is_broadcast_message(message: &ResponseMsg) -> bool {
   matches!(message, ResponseMsg::EntityResponse(_)) || matches!(message, ResponseMsg::Users(_))
@@ -490,14 +481,10 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 /// If the session keys cannot be locked.
 #[allow(clippy::implicit_hasher)]
 #[must_use]
-pub fn build_successful_auth_msgs(
-  auth_response: AuthResponse, server: &PlayerManager, context: Vec<UserData>,
-) -> Vec<ResponseMsg> {
+pub fn build_successful_auth_msgs(auth_response: AuthResponse) -> Vec<ResponseMsg> {
   vec![
     ResponseMsg::AuthResponse(auth_response),
     ResponseMsg::Scenarios(crate::SCENARIOS.get().unwrap().clone()),
-    ResponseMsg::DesignTemplateResponse(server.get_designs()),
-    ResponseMsg::EntityResponse(server.clone_entities()),
-    ResponseMsg::Users(context),
+    ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs()),
   ]
 }
