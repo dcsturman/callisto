@@ -180,7 +180,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   let listener = TcpListener::bind(&addr).await?;
 
-  info!("(main) Bound to address (tcp): {}", addr);
+    info!("(main) Bound to address (tcp): {}", addr);
   let test_mode = args.test;
   if test_mode {
     info!("(main) Server in TEST mode.");
@@ -211,7 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     .await
     .unwrap_or_else(|e| panic!("Unable to load ship template file {}. Reason {:?}", args.design_file, e));
 
-  info!("(main) Loaded ship templates from {}.", &args.design_file);
+  info!("(main) Successfully ship templates from {}.", &args.design_file);
 
   SHIP_TEMPLATES
     .set(templates)
