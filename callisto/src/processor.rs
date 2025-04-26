@@ -95,7 +95,8 @@ impl Processor {
     let mut connections = Vec::<Connection>::new();
 
     loop {
-      // TODO: In here, clean up old scenarios that haven't had anyone in them for 5 minutes.
+      // In here, clean up old scenarios that haven't had anyone in them for 5 minutes.
+      let removed_scenario = self.members.clean_expired_scenarios();
 
       // If there are no connections, then we wait for one to come in.
       // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
@@ -167,7 +168,7 @@ impl Processor {
       match to_do {
         Some((index, Ok(Message::Text(text)))) => {
           debug!("(handle_connection) Received message: {text}");
-          let response = match serde_json::from_str(&text) {
+          let mut response = match serde_json::from_str(&text) {
             Ok(parsed_message) => {
               let response = self.handle_request(parsed_message, &mut connections[index].player).await;
               // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
@@ -193,6 +194,12 @@ impl Processor {
             }
           };
           debug!("(handle_connection) Response(s): {response:?}");
+
+          // If we removed a scenario at the start of this loop, then add a Scenarios message to the response.
+          // However, we do not need or want to send two so if we already have one, we don't add another.
+          if removed_scenario && !response.iter().any(|msg| matches!(msg, ResponseMsg::Scenarios(_))) {
+            response.push(ResponseMsg::Scenarios(self.build_scenarios_msg()));
+          }
 
           // Send the response
           for message in response {
@@ -527,7 +534,9 @@ impl Processor {
 // Utility functions to help build messages etc.
 
 fn is_broadcast_message(message: &ResponseMsg) -> bool {
-  matches!(message, ResponseMsg::EntityResponse(_)) || matches!(message, ResponseMsg::Users(_))
+  matches!(message, ResponseMsg::EntityResponse(_))
+    || matches!(message, ResponseMsg::Users(_))
+    || matches!(message, ResponseMsg::Scenarios(_))
 }
 
 #[allow(clippy::unnecessary_wraps)]

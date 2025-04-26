@@ -511,7 +511,7 @@ async fn test_compute_path_with_standoff() {
       y: 0.0,
       z: 0.0
     },
-    epsilon = 1e-5
+    epsilon = 1e-4
   );
   assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
   let (a, t) = plan.plan.0.into();

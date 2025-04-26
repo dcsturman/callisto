@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
+use std::time::SystemTime;
 
 use crate::entity::Entities;
 use crate::payloads::{Role, UserData};
@@ -11,9 +12,13 @@ pub struct Server {
 }
 
 pub struct ServerMembersTable {
-  members: HashMap<String, HashMap<u64, ServerMemberEntry>>,
+  members: HashMap<String, ServerTable>,
 }
 
+struct ServerTable {
+  table: HashMap<u64, ServerMemberEntry>,
+  last_exit: u64,
+}
 struct ServerMemberEntry {
   email: String,
   role: Role,
@@ -83,7 +88,7 @@ impl ServerMembersTable {
 
   pub fn update(&mut self, server_id: &str, unique_id: u64, email: &str, role: Role, ship: Option<String>) {
     let server_table = self.members.entry(server_id.to_string()).or_default();
-    server_table.insert(
+    server_table.table.insert(
       unique_id,
       ServerMemberEntry {
         email: email.to_string(),
@@ -97,8 +102,14 @@ impl ServerMembersTable {
   ///
   /// # Panics
   /// Panics if the server does not exist.
+  /// Also panics if for some reason current system clock is before the unix epoch.
   pub fn remove(&mut self, server_id: &str, unique_id: u64) {
-    self.members.get_mut(server_id).unwrap().remove(&unique_id);
+    let result = self.members.get_mut(server_id).unwrap().table.remove(&unique_id);
+    if result.is_some() {
+      // Set the last exit time to the current time.
+      self.members.get_mut(server_id).unwrap().last_exit =
+        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+    }
   }
 
   /// Builds the user context for a given server.
@@ -111,6 +122,7 @@ impl ServerMembersTable {
       .members
       .get(server_id)
       .unwrap()
+      .table
       .values()
       .map(|entry| UserData {
         email: entry.email.clone(),
@@ -123,6 +135,32 @@ impl ServerMembersTable {
   #[must_use]
   pub fn current_scenario_list(&self) -> Vec<String> {
     self.members.keys().cloned().collect()
+  }
+
+  /// Find and remove any scenarios that have been empty for more than 5 minutes.
+  ///
+  /// # Returns
+  /// Returns true if any scenarios were removed.
+  ///
+  /// # Panics
+  /// Panics if the current system clock is before the unix epoch.
+  pub fn clean_expired_scenarios(&mut self) -> bool {
+    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+    let initial_size = self.members.len();
+    self
+      .members
+      .retain(|_, server_table| !(server_table.table.is_empty() && now - server_table.last_exit > 300));
+
+    initial_size != self.members.len()
+  }
+}
+
+impl Default for ServerTable {
+  fn default() -> Self {
+    ServerTable {
+      table: HashMap::new(),
+      last_exit: u64::MAX,
+    }
   }
 }
 
