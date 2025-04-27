@@ -341,7 +341,7 @@ async fn test_update_missile() {
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
-             "current_hull":83,
+             "current_hull":82,
              "current_armor":13,
              "current_power":240,
              "current_maneuver":9,
