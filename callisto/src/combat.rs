@@ -1258,14 +1258,22 @@ mod tests {
     }
 
     // Test Bridge critical hits
-    // Level 1-5 only have one effect.  
+    // Level 1-5 only have one effect.
     for level in 1..6 {
       let effects = apply_crit(level, ShipSystem::Bridge, &mut ship, &mut rng);
-      assert_eq!(effects.len(), 1, "Should have exactly one effect for level {level}. Instead found {effects:?}");
+      assert_eq!(
+        effects.len(),
+        1,
+        "Should have exactly one effect for level {level}. Instead found {effects:?}"
+      );
       assert!(matches!(effects[0], EffectMsg::Message { .. }));
     }
     let effects = apply_crit(6, ShipSystem::Bridge, &mut ship, &mut rng);
-    assert_eq!(effects.len(), 2, "Should have exactly two effects for level 6. Instead found {effects:?}");
+    assert_eq!(
+      effects.len(),
+      2,
+      "Should have exactly two effects for level 6. Instead found {effects:?}"
+    );
     assert!(matches!(effects[0], EffectMsg::Message { .. }));
     assert!(matches!(effects[1], EffectMsg::Message { .. }));
   }
