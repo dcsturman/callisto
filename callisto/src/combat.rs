@@ -14,7 +14,7 @@ use crate::{debug, error, info};
 
 const DIE_SIZE: u32 = 6;
 const STANDARD_ROLL_THRESHOLD: i32 = 8;
-const CRITICAL_THRESHOLD: i32 = 6 + STANDARD_ROLL_THRESHOLD;
+const CRITICAL_THRESHOLD: i32 = 5 + STANDARD_ROLL_THRESHOLD;
 
 pub fn roll(rng: &mut dyn RngCore) -> u8 {
   u8::try_from(rng.next_u32() % DIE_SIZE + 1).unwrap_or(0)
@@ -289,7 +289,8 @@ pub fn attack(
 
   // Add a level 1 crit for each secondary crit.
   for _ in 0..secondary_crit {
-    effects.append(&mut do_critical(1, defender, called_shot_system, rng));
+    // Sustained damage crits do not use the called shot rules. They are totally random.
+    effects.append(&mut do_critical(1, defender, None, rng));
   }
 
   defender.set_hull_points(u32::saturating_sub(current_hull, damage));
