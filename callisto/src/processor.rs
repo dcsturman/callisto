@@ -265,18 +265,40 @@ impl Processor {
     let mut authenticator = clone_box(self.auth_template.as_ref());
     authenticator.set_session_key(session_key);
     authenticator.set_email(email);
+
     let mut connection = Connection {
       player: PlayerManager::new(self.next_player_id, None, authenticator, self.test_mode),
       stream,
     };
     self.next_player_id += 1;
 
+    // If we got a successful Some(email) then we need to fake like this was a log in by
+    // letting the client know auth was successful, but also setting this player up with the old player state
+    // and by sending any initialization messages.
+    // We use [build_successful_auth_msgs] to keep this list of messages the same as if it was in response
+    // to a login message.  In the case though of having been previously logged in and part of a scenario we need to
+    // include the scenario state in the Auth message AND send an Entities message.
     if let Some(email) = email {
-      // If we got a successful Some(email) then we need to fake like this was a log in by
-      // letting the client know auth was successful, but also sending any initialization messages.
-      // We use [build_successful_auth_msgs] to keep this list of messages the same as if it was in response
-      // to a login message.
-      let msgs = self.build_successful_auth_msgs(AuthResponse { email: email.clone() });
+      if let Some((old_server, old_id, old_role, old_ship)) = self.members.find_scenario_info_by_email(email) {
+        if let Some(server) = self.servers.get(&old_server) {
+          connection.player.set_id(old_id);
+          connection.player.set_server(server.clone());
+          connection.player.set_role_ship(old_role, old_ship);
+        }
+      }
+
+      let (role, ship) = connection.player.get_role();
+
+      let mut msgs = self.build_successful_auth_msgs(AuthResponse {
+        email: email.clone(),
+        scenario: connection.player.server.as_ref().map(|s| s.id.clone()),
+        role: Some(role),
+        ship,
+      });
+
+      // Now add messages just as if we had joined this scenario.
+      msgs.append(&mut self.build_post_join_msgs(&connection.player));
+
       let mut okay = true;
       for msg in msgs {
         let encoded_message: Utf8Bytes = serde_json::to_string(&msg).unwrap().into();
@@ -394,32 +416,28 @@ impl Processor {
         .compute_path(&path_goal)
         .map_or_else(error_msg, |path| vec![ResponseMsg::FlightPath(path)]),
       RequestMsg::Exit => {
-        info!("Received and processing quit request.");
-        let Some(ref server) = player.server else {
-          error!("(handle_request) Attempt to logout without being in a scenario.  Ignoring.");
+        info!("Received and processing Exit request.");
+        let mut old_server = None;
+        // Do the swap so that we can use the old server information to properly clean up
+        // while at the same time having the player.server value be None going forward.
+        std::mem::swap(&mut old_server, &mut player.server);
+        let Some(ref server) = &old_server else {
+          error!("(handle_request) Attempt to exit scenario  without being in a scenario.  Ignoring.");
           return vec![ResponseMsg::Error(
             "Attempt to logout without being in a scenario.  Ignoring.".to_string(),
           )];
         };
+        let server_id = server.get_id();
+        self.members.remove(server_id, player.get_id());
+        player.set_role_ship(crate::payloads::Role::General, None);
 
-        self.members.remove(server.get_id(), player.get_id());
-        vec![ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
+        vec![ResponseMsg::Users(self.members.get_user_context(server_id))]
       }
       RequestMsg::Logout => {
         info!("Received and processing logout request.");
         player.logout(&self.session_keys);
-        let Some(ref server) = player.server else {
-          error!("(handle_request) Attempt to logout without being in a scenario.  Ignoring.");
-          return vec![ResponseMsg::Error(
-            "Attempt to logout without being in a scenario.  Ignoring.".to_string(),
-          )];
-        };
 
-        self.members.remove(server.get_id(), player.get_id());
-        vec![
-          ResponseMsg::LogoutResponse,
-          ResponseMsg::Users(self.members.get_user_context(server.get_id())),
-        ]
+        vec![ResponseMsg::LogoutResponse]
       }
       RequestMsg::JoinScenario(join_scenario) => {
         if let Some(server) = self.servers.get(&join_scenario.scenario_name) {
@@ -431,11 +449,9 @@ impl Processor {
             player.get_role().0,
             player.get_role().1,
           );
-          vec![
-            ResponseMsg::JoinedScenario(join_scenario.scenario_name),
-            ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
-            ResponseMsg::Users(self.members.get_user_context(server.get_id())),
-          ]
+          let mut msgs = vec![ResponseMsg::JoinedScenario(join_scenario.scenario_name)];
+          msgs.append(&mut self.build_post_join_msgs(player));
+          msgs
         } else {
           vec![ResponseMsg::Error("Scenario does not exist.".to_string())]
         }
@@ -527,6 +543,22 @@ impl Processor {
     ScenariosMsg {
       current_scenarios: self.members.current_scenario_list(),
       templates: crate::SCENARIOS.get().unwrap().clone(),
+    }
+  }
+
+  /// Build the list of messages to send back to the client after a successful join of a scenario.
+  ///
+  /// # Panics
+  /// Panics if the server entities cannot be unlocked.
+  #[must_use]
+  pub fn build_post_join_msgs(&self, player: &PlayerManager) -> Vec<ResponseMsg> {
+    if let Some(server) = &player.server {
+      vec![
+        ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
+        ResponseMsg::Users(self.members.get_user_context(server.get_id())),
+      ]
+    } else {
+      vec![]
     }
   }
 }

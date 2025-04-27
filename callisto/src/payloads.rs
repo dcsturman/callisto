@@ -22,9 +22,14 @@ pub struct LoginMsg {
   pub code: String,
 }
 
+#[serde_as]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct AuthResponse {
   pub email: String,
+  pub scenario: Option<String>,
+  pub role: Option<Role>,
+  pub ship: Option<String>,
 }
 
 #[serde_as]

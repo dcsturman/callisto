@@ -98,6 +98,29 @@ impl ServerMembersTable {
     );
   }
 
+  /// Look for a user with a given email already on this server.  If so, get the id as well as other existing
+  /// player information so that we don't recreate a shadow user on a second login by the same user.
+  ///
+  /// # Panics
+  /// Panics if the server does not exist.
+  #[must_use]
+  pub fn find_scenario_info_by_email(&self, email: &str) -> Option<(String, u64, Role, Option<String>)> {
+    let server_id = self
+      .members
+      .iter()
+      .find(|(_, server_table)| server_table.table.values().any(|entry| entry.email == email))
+      .map(|(server_id, _)| server_id)?;
+
+    self
+      .members
+      .get(server_id)
+      .unwrap()
+      .table
+      .iter()
+      .find(|(_, entry)| entry.email == email)
+      .map(|(id, entry)| (server_id.clone(), *id, entry.role, entry.ship.clone()))
+  }
+
   /// Remove a given user from a given server.
   ///
   /// # Panics
