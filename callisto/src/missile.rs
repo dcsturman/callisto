@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
 use crate::computer::TargetParams;
-use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
+use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
 use crate::ship::Ship;
 use crate::{debug, error, info};
@@ -185,7 +185,14 @@ impl Entity for Missile {
         (self.position - target.get_position()).magnitude(),
         target.get_name()
       );
-      if (self.position - target.get_position()).magnitude() < IMPACT_DISTANCE {
+
+      // If our simulation went tick by tick the following guard would be correct.
+      // But we do not: we move missiles then ships.  So a missile on track to impact a ship
+      // part way through a turn will miss due to the imprecision of the simulation.
+      // if (self.position - target.get_position()).magnitude() < IMPACT_DISTANCE {
+
+      // So instead we assume that if time is less than the turn length, we impact!
+      if time < DELTA_TIME_F64 {
         debug!("(update) Missile {} impacted target {}", self.name, target.get_name());
         Some(UpdateAction::ShipImpact {
           ship: target.get_name().to_string(),

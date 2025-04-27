@@ -577,7 +577,7 @@ impl TargetParams {
   }
 
   fn solve(&self, guess: &Vec<f64>) -> Result<Vec<f64>, Box<dyn Error>> {
-    info!("(TargetParams.solve) Solving with guess {:?}", guess);
+    info!("(TargetParams.solve) Solving with parameters {self:0.2?} guess {:0.2?}", guess);
     let mut solver = SolverDriver::builder(self).with_initial(guess.clone()).build();
 
     let res = solver
@@ -663,6 +663,10 @@ impl TargetParams {
     first_attempt.target_vel = Vec3::zero();
     first_attempt.target_accel = Vec3::zero();
 
+    debug!(
+      "(compute_target_path) First attempt ignoring target velocity and acceleration: {:0.2?}",
+      first_attempt
+    );
     match first_attempt.solve(&initial) {
       Ok(result) if result[3] <= DELTA_TIME_F64 => {
         let a = Vec3::from(

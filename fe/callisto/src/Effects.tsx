@@ -1,7 +1,8 @@
 import * as React from "react";
+import { useContext } from "react";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "./Util";
-import { SCALE } from "./Universal";
+import { SCALE, EntitiesServerContext } from "./Universal";
 import { GrowLine } from "./Util";
 
 const SHIP_IMPACT = "ShipImpact";
@@ -18,7 +19,10 @@ const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 export class Effect {
   kind: string = "ShipImpact";
   content: string | null = null;
+  // Will only have one of position or target. Position is a concrete position
+  // while target is the name of a target.
   position: [number, number, number] | null = [0, 0, 0];
+  target: string | null = null;
   origin: [number, number, number] | null = [0, 0, 0];
 
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -27,6 +31,10 @@ export class Effect {
     e.kind = json.kind;
     e.content = json.content ?? null;
     e.position = json.position ?? null;
+    e.target = json.target ?? null;
+    if (e.target) {
+      console.log("************************************* found target! ")
+    }
     e.origin = json.origin ?? null;
     return e;
   }
@@ -92,6 +100,7 @@ export function Explosions(args: {
   effects: Effect[];
   setEffects: (entities: Effect[] | null) => void;
 }) {
+  const entityContext = useContext(EntitiesServerContext);
   console.log("(Effects.Explosions) Effects: " + JSON.stringify(args.effects));
 
   return (
@@ -100,9 +109,13 @@ export function Explosions(args: {
         let color: [number, number, number] = [0, 0, 0];
         let key: string = "";
         let removeMe: () => void = () => {};
+        let position: [number, number, number] = [0, 0, 0];
 
         switch (effect.kind) {
           case SHIP_IMPACT:
+            // Use the current position of the target if we can find it; otherwise use the position (last known position actually) as a backup
+            position = entityContext.entities.ships.find((ship) => ship.name === effect.target)?.position ?? effect.position ?? [0, 0, 0];
+            console.log("(Effects.Explosions) find position of " + effect.target);
             color = MISSILE_HIT_COLOR;
             key = "Impact-" + index;
             removeMe = () => {
@@ -111,7 +124,7 @@ export function Explosions(args: {
             return (
               <Explosion
                 key={key}
-                center={effect.position?? [0, 0, 0]}
+                center={position}
                 color={color}
                 cleanupFn={removeMe}
               />

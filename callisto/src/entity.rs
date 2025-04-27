@@ -487,15 +487,12 @@ impl Entities {
         let update = missile.update();
         let missile_name = missile.get_name();
         let missile_pos = missile.get_position();
-        let missile_source = match ship_snapshot.get(&missile.source) {
-          None => {
-            warn!(
-              "(Entity.update_all) Cannot find source {} for missile. It may have been destroyed.",
-              &missile.source
-            );
-            return None;
-          }
-          Some(ship) => ship,
+        let Some(missile_source) = ship_snapshot.get(&missile.source) else {
+          warn!(
+            "(Entity.update_all) Cannot find source {} for missile. It may have been destroyed.",
+            &missile.source
+          );
+          return None;
         };
 
         // We use UpdateAction vs just returning the effect so that the call to attack() stays at this level rather than
@@ -517,9 +514,13 @@ impl Entities {
             );
 
             if let Some(target) = target {
+              // For now assume all missiles are smart missiles.
+              let smart_missile_bonus =
+                i32::from(missile_source.design.tl - target.read().unwrap().design.tl).clamp(1, 6);
+
               let mut target = target.write().unwrap();
               let effects = attack(
-                0,
+                smart_missile_bonus,
                 0,
                 missile_source,
                 &mut target,
