@@ -54,6 +54,8 @@ pub struct Ship {
   #[serde(default)]
   pub current_sensors: Sensors,
   #[serde(default)]
+  pub current_computer: u32,
+  #[serde(default)]
   pub active_weapons: Vec<bool>,
 
   #[derivative(PartialEq = "ignore")]
@@ -209,6 +211,7 @@ impl Ship {
       current_fuel: design.fuel,
       current_crew: design.crew,
       current_sensors: design.sensors,
+      current_computer: design.computer,
       active_weapons: vec![true; design.weapons.len()],
       sensor_locks: vec![],
       crit_level: [0; 11],
