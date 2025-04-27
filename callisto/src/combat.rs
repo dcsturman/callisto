@@ -301,12 +301,12 @@ fn do_critical(
   crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let location = if let Some(system) = called_shot_system {
-    debug!("(Combat.do_critical) Critical on called shot system {system:?}.");
+    debug!("(Combat.do_critical) Critical on called shot system '{system:?}'.");
     *system
   } else {
     let loc = ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
       .expect("(combat.apply_crit) Unable to convert a roll to ship system.");
-    debug!("(Combat.do_critical) Critical on called shot system {loc:?}.");
+    debug!("(Combat.do_critical) Critical on random system '{loc:?}'.");
     loc
   };
 
@@ -608,7 +608,7 @@ pub fn do_fire_actions<S: BuildHasher>(
   let assist_bonus = if attacker.get_assist_gunners() {
     let effect = i32::from(roll_dice(2, rng)) - STANDARD_ROLL_THRESHOLD + i32::from(attacker.get_crew().get_pilot());
     debug!(
-      "(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so result is {}.",
+      "(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so task chain impact is {}.",
       attacker.get_name(),
       attacker.get_crew().get_pilot(),
       effect,
