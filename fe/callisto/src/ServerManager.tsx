@@ -7,6 +7,7 @@ import {
   Ship,
   ShipDesignTemplates,
   ShipDesignTemplate,
+  stringToViewMode,
   ViewMode,
 } from "./Universal";
 import {Effect} from "./Effects";
@@ -30,6 +31,9 @@ export let socket: WebSocket;
 // Message handlers, one for each type of incoming data we can receive.
 let setEmail: (email: string) => void = () => {
   console.error("Calling default implementation of setEmail()");
+};
+let setRoleShip: (role: ViewMode, ship: string | null) => void = () => {
+  console.error("Calling default implementation of setRoleShip()");
 };
 let setAuthenticated: (authenticated: boolean) => void = () => {
   console.error("Calling default implementation of setAuthenticated()");
@@ -94,6 +98,7 @@ export function socketReady() {
 
 export function setMessageHandlers(
   email: ((email: string) => void) | null,
+  roleShip: ((role: ViewMode, ship: string | null) => void) | null,
   authenticated: ((authenticated: boolean) => void) | null,
   templates: ((templates: ShipDesignTemplates) => void) | null,
   entities: ((entities: EntityList) => void) | null,
@@ -106,6 +111,9 @@ export function setMessageHandlers(
 ) {
   if (email) {
     setEmail = email;
+  }
+  if (roleShip) {
+    setRoleShip = roleShip;
   }
   if (authenticated) {
     setAuthenticated = authenticated;
@@ -155,14 +163,7 @@ const handleMessage = (event: MessageEvent) => {
     return;
   }
   if ("AuthResponse" in json) {
-    const email = json.AuthResponse.email;
-    if (email !== null) {
-      setEmail(email);
-      setAuthenticated(true);
-    } else {
-      console.log("(ServerManager) Authenticated with null email. Ignoring.");
-      setAuthenticated(false);
-    }
+    handleAuthenticated(json.AuthResponse);
     return;
   }
 
@@ -343,7 +344,7 @@ export function computeFlightPath(
   );
 }
 
-export function setRole(role: ViewMode, ship: string | null) {
+export function requestRoleChoice(role: ViewMode, ship: string | null) {
   if (ship !== null) {
     const payload = {SetRole: {role: ViewMode[role], ship: ship}};
     socket.send(JSON.stringify(payload));
@@ -478,23 +479,7 @@ function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
   for (const user of json) {
     const c: UserContext = {} as UserContext;
     c.email = user.email;
-    switch (user.role as unknown as string) {
-      case "General":
-        c.role = ViewMode.General as ViewMode;
-        break;
-      case "Pilot":
-        c.role = ViewMode.Pilot as ViewMode;
-        break;
-      case "Sensors":
-        c.role = ViewMode.Sensors as ViewMode;
-        break;
-      case "Gunner":
-        c.role = ViewMode.Gunner as ViewMode;
-        break;
-      case "Observer":
-        c.role = ViewMode.Observer as ViewMode;
-        break;
-    }
+    c.role = stringToViewMode(user.role as unknown as string)?? ViewMode.General;
     c.ship = user.ship;
     users.push(c);
   }
@@ -514,4 +499,21 @@ function handleJoinedScenario(json: {JoinedScenario: string}) {
     setJoinedScenario(scenario);
     console.log("Joined scenario");
   }
+}
+
+function handleAuthenticated(json: {email: string | null, scenario: string | null, role: string | null, ship: string | null}): void {
+  console.log("(handleAuthenticated) Received Authenticated: " + JSON.stringify(json));
+  if (json.email != null) {
+    setEmail(json.email);
+    setAuthenticated(true);
+    if (json.scenario != null) {
+      setJoinedScenario(json.scenario);
+    }
+    if (json.role != null) {
+      setRoleShip(stringToViewMode(json.role)?? ViewMode.General, json.ship);
+    }
+  } else {
+    setAuthenticated(false);
+  }
+
 }

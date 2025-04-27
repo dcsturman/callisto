@@ -44,6 +44,9 @@ export const GOOGLE_OAUTH_CLIENT_ID: string =
 export function App() {
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<ViewMode>(ViewMode.General);
+  const [shipName, setShipName] = useState<string | null>(null);
+
   const [socketReady, setSocketReady] = useState<boolean>(false);
 
   // Logically entities and templates make more sense in the Simulator. However,
@@ -67,6 +70,7 @@ export function App() {
     if (!socketReady) {
       setMessageHandlers(
         setEmail,
+        (role, shipName) => (setRole(role), setShipName(shipName)),
         setAuthenticated,
         setTemplates,
         setEntities,
@@ -102,7 +106,12 @@ export function App() {
                   email={email}
                   socketReady={socketReady}
                   setEmail={setEmail}
+                  role={role}
+                  setRole={setRole}
+                  shipName={shipName}
+                  setShipName={setShipName}
                   setJoinedScenario={setJoinedScenario}
+                  joinedScenario={joinedScenario}
                   users={users}
                   setUsers={setUsers}
                 />
@@ -126,7 +135,12 @@ function Simulator({
   setAuthenticated,
   email,
   setEmail,
+  role,
+  setRole,
+  shipName,
+  setShipName,
   setJoinedScenario,
+  joinedScenario,
   socketReady,
   setUsers,
   users,
@@ -135,7 +149,12 @@ function Simulator({
   setAuthenticated: (authenticated: boolean) => void;
   email: string | null;
   setEmail: (email: string | null) => void;
+  role: ViewMode;
+  setRole: (role: ViewMode) => void;
+  shipName: string | null;
+  setShipName: (ship_name: string | null) => void;
   setJoinedScenario: (scenario: string | null) => void;
+  joinedScenario: string | null;
   socketReady: boolean;
   users: UserList;
   setUsers: (users: UserList) => void;
@@ -144,8 +163,7 @@ function Simulator({
   const templatesContext = useContext(DesignTemplatesContext);
   const actionsContext = useContext(ActionContext);
 
-  const [role, setRole] = useState<ViewMode>(ViewMode.General);
-  const [shipName, setShipName] = useState<string | null>(null);
+
 
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
@@ -169,6 +187,7 @@ function Simulator({
   useEffect(() => {
     if (socketReady) {
       setMessageHandlers(
+        null,
         null,
         null,
         null,
@@ -290,17 +309,11 @@ function Simulator({
                 <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
               )}
               <div className="admin-button-window">
-                {!process.env.REACT_APP_RUN_TUTORIAL || (
-                  <button
-                    className="blue-button"
-                    onClick={() => window.location.replace("https://callistoflight.com")}>
-                    Exit Tutorial
-                  </button>
-                )}
+                  <h2>{joinedScenario?? ""}</h2>
                 <Users users={users} email={email} />
                 <RoleChooser />
                 <div className="reset-and-logout-buttons">
-                  <Exit setJoinedScenario={setJoinedScenario} email={email} />
+                  <Exit setJoinedScenario={setJoinedScenario} setRole={setRole} setShipName={setShipName} email={email} />
                   {role === ViewMode.General && shipName == null && <button className="blue-button" onClick={resetServer}>Reset</button>}
                 </div>
               </div>
@@ -393,10 +406,14 @@ function GrabCamera(args: {
 
 export function Exit(args: {
   setJoinedScenario: (scenario: string | null) => void;
+  setRole: (role: ViewMode) => void;
+  setShipName: (ship_name: string | null) => void;
   email: string | null;
 }) {
   const logOut = () => {    
     args.setJoinedScenario(null);
+    args.setRole(ViewMode.General);
+    args.setShipName(null);
     exit_scenario();
     console.log("(Authentication.Logout) Quit scenario");
   };
