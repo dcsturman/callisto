@@ -3,6 +3,7 @@ import {joinScenario, createScenario } from "./ServerManager";
 import {Logout} from "./Authentication";
 
 const TUTORIAL_SCENARIO = "tutorial.json";
+export const TUTORIAL_PREFIX = "$TUTORIAL-";
 
 // This function will generate a three word name (with hyphens between the words) or random words
 // to be used as the name for a new scenario.
@@ -46,7 +47,6 @@ type ScenarioManagerProps = {
 };
 
 export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scenarioTemplates, setTutorialMode, setAuthenticated, email, setEmail}) => {
-    const TUTORIAL_PREFIX = "$TUTORIAL-";
     const sortedFilteredScenarios = scenarios.filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
     const sortedTemplates = scenarioTemplates.sort((a, b) => a.localeCompare(b));
 

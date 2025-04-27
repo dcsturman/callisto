@@ -308,7 +308,7 @@ async fn test_update_missile() {
   let response = server.update();
 
   let compare = json!([
-      {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
+      {"kind": "ShipImpact","target": "ship2","position": [5000.0, 0.0, 5000.0]}
   ]);
 
   assert_json_eq!(
@@ -341,7 +341,7 @@ async fn test_update_missile() {
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
-             "current_hull":83,
+             "current_hull":82,
              "current_armor":13,
              "current_power":240,
              "current_maneuver":9,
@@ -626,13 +626,14 @@ async fn test_called_shot() {
   let server = setup_test_with_server(authenticator).await;
 
   // Gazelle class is a good test for this as it has 2 Particle Barbettes (likely to cause a crit) and 2 triple beams (also capable of called shots)
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  // Give it a good gunner (skill 4) and sensor lock on ship2
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", "sensor_locks":["ship2"], "crew":{"gunnery":[7, 6, 6, 6]}}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  // Make this a very weak ship
+  // Make this a big ship to reduce sustained damage crits.
   let ship2 =
-    r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Scout/Courier"}"#;
+    r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham"}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -669,15 +670,8 @@ async fn test_called_shot() {
       .iter()
       .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver")))
       .count(),
-    6,
-    "Expected 6 critical hits to maneuver: {crits:#?}"
-  );
-  assert!(
-    crits
-      .iter()
-      .filter(|e| matches!(e, EffectMsg::Message { content } if !content.contains("maneuver")))
-      .all(|e| matches!(e, EffectMsg::Message { content } if content.contains("hull"))),
-    "Expected the rest of the critical hits to hull: {crits:#?}"
+    4,
+    "Expected 4 critical hits to maneuver: {crits:#?}"
   );
 }
 
@@ -820,6 +814,7 @@ async fn test_fight_with_crew() {
       {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
       {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
       {"kind":"BeamHit","origin":[0.0,0.0,0.0],"position":[5000.0,0.0,5000.0]},
+      {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]},
       {"kind":"BeamHit","origin":[5000.0,0.0,5000.0],"position":[0.0,0.0,0.0]}
   ]);
 
@@ -848,7 +843,7 @@ async fn test_fight_with_crew() {
   let compare = json!({"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
-         "current_hull":169,"current_armor":3,
+         "current_hull":166,"current_armor":3,
          "current_power":540,"current_maneuver":6,
          "current_jump":5,"current_fuel":128,
          "current_crew":21,"current_sensors":"Military",
@@ -861,11 +856,11 @@ async fn test_fight_with_crew() {
         },
         {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
-         "current_hull":47,"current_armor":3,
+         "current_hull":61,"current_armor":3,
          "current_power":540,"current_maneuver":5,
          "current_jump":4,"current_fuel":126,
          "current_crew":21,"current_sensors":"Military",
-         "active_weapons":[true,true,false,false],
+         "active_weapons":[true,true,false,true],
          "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
          "dodge_thrust":0,
          "assist_gunners":false,

@@ -469,6 +469,9 @@ function handleFlightPath(json: object, setProposedPlan: (plan: FlightPathResult
 }
 
 function handleEffect(json: object[], setEvents: (effects: Effect[]) => void) {
+  console.groupCollapsed("Received Effects: ");
+  console.log("(handleEffect) Received effects: " + JSON.stringify(json));
+  console.groupEnd();
   const effects = json.map((effect: object) => Effect.parse(effect));
   setEvents(effects);
 }

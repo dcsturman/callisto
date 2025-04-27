@@ -32,7 +32,7 @@ import {
 } from "./Universal";
 
 import {RoleChooser} from "./Role";
-import {ScenarioManager} from "./ScenarioManager";
+import {ScenarioManager, TUTORIAL_PREFIX} from "./ScenarioManager";
 
 import "./index.css";
 
@@ -70,7 +70,7 @@ export function App() {
     if (!socketReady) {
       setMessageHandlers(
         setEmail,
-        (role, shipName) => (setRole(role), setShipName(shipName)),
+        (role, shipName) => { setRole(role); setShipName(shipName) },
         setAuthenticated,
         setTemplates,
         setEntities,
@@ -92,6 +92,14 @@ export function App() {
       setTutorialMode(false);
     }
   }, [authenticated]);
+
+  useEffect(() => {
+    if (!joinedScenario) {
+      setRole(ViewMode.General);
+      setShipName(null); 
+      setTutorialMode(false);
+    }
+  },[joinedScenario]);
 
   return (
     <EntitiesServerProvider value={{entities: entities, handler: setEntities}}>
@@ -309,11 +317,11 @@ function Simulator({
                 <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
               )}
               <div className="admin-button-window">
-                  <h2>{joinedScenario?? ""}</h2>
+                  <h2>{joinedScenario && (joinedScenario.startsWith(TUTORIAL_PREFIX) ? "Tutorial" : joinedScenario)}</h2>
                 <Users users={users} email={email} />
                 <RoleChooser />
                 <div className="reset-and-logout-buttons">
-                  <Exit setJoinedScenario={setJoinedScenario} setRole={setRole} setShipName={setShipName} email={email} />
+                  <Exit setJoinedScenario={setJoinedScenario} email={email} />
                   {role === ViewMode.General && shipName == null && <button className="blue-button" onClick={resetServer}>Reset</button>}
                 </div>
               </div>
@@ -406,14 +414,10 @@ function GrabCamera(args: {
 
 export function Exit(args: {
   setJoinedScenario: (scenario: string | null) => void;
-  setRole: (role: ViewMode) => void;
-  setShipName: (ship_name: string | null) => void;
   email: string | null;
 }) {
-  const logOut = () => {    
+  const exit = () => {    
     args.setJoinedScenario(null);
-    args.setRole(ViewMode.General);
-    args.setShipName(null);
     exit_scenario();
     console.log("(Authentication.Logout) Quit scenario");
   };
@@ -421,7 +425,7 @@ export function Exit(args: {
   const username = args.email ? args.email.split("@")[0] : "";
   return (
     <div className="logout-window">
-      <button className="blue-button logout-button" onClick={logOut}>
+      <button className="blue-button logout-button" onClick={exit}>
         Exit {username}
       </button>
     </div>

@@ -128,6 +128,11 @@ pub const EMPTY_FIRE_ACTIONS_MSG: ShipActionMsg = vec![];
 #[serde(tag = "kind")]
 pub enum EffectMsg {
   ShipImpact {
+    // Use the name of the target impacted so that the UI can
+    // properly place the explosion after all movement.
+    target: String,
+    // `position` is used as a backup in case the target isn't found
+    // e.g. if it was destroyed and thus isn't at the entities for the client.
     #[serde_as(as = "Vec3asVec")]
     position: Vec3,
   },
@@ -412,9 +417,13 @@ mod tests {
 
   #[test_log::test]
   fn test_serialize_effect_msg() {
-    let msg = EffectMsg::ShipImpact { position: Vec3::zero() };
+    let msg = EffectMsg::ShipImpact {
+      target: "test_ship".to_string(),
+      position: Vec3::zero(),
+    };
     let json = json!({
         "kind" : "ShipImpact",
+        "target" : "test_ship",
         "position": [0.0, 0.0, 0.0]
     });
 

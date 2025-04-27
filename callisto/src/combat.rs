@@ -14,7 +14,7 @@ use crate::{debug, error, info};
 
 const DIE_SIZE: u32 = 6;
 const STANDARD_ROLL_THRESHOLD: i32 = 8;
-const CRITICAL_THRESHOLD: i32 = 6 + STANDARD_ROLL_THRESHOLD;
+const CRITICAL_THRESHOLD: i32 = 5 + STANDARD_ROLL_THRESHOLD;
 
 pub fn roll(rng: &mut dyn RngCore) -> u8 {
   u8::try_from(rng.next_u32() % DIE_SIZE + 1).unwrap_or(0)
@@ -210,6 +210,7 @@ pub fn attack(
         content: format!("{} hit by a missile for {} damage.", defender.get_name(), damage),
       },
       EffectMsg::ShipImpact {
+        target: defender.get_name().to_string(),
         position: defender.get_position(),
       },
     ]
@@ -288,7 +289,8 @@ pub fn attack(
 
   // Add a level 1 crit for each secondary crit.
   for _ in 0..secondary_crit {
-    effects.append(&mut do_critical(1, defender, called_shot_system, rng));
+    // Sustained damage crits do not use the called shot rules. They are totally random.
+    effects.append(&mut do_critical(1, defender, None, rng));
   }
 
   defender.set_hull_points(u32::saturating_sub(current_hull, damage));
@@ -299,12 +301,12 @@ fn do_critical(
   crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let location = if let Some(system) = called_shot_system {
-    debug!("(Combat.do_critical) Critical on called shot system {system:?}.");
+    debug!("(Combat.do_critical) Critical on called shot system '{system:?}'.");
     *system
   } else {
     let loc = ShipSystem::from_repr(usize::from(roll_dice(2, rng) - 2))
       .expect("(combat.apply_crit) Unable to convert a roll to ship system.");
-    debug!("(Combat.do_critical) Critical on called shot system {loc:?}.");
+    debug!("(Combat.do_critical) Critical on random system '{loc:?}'.");
     loc
   };
 
@@ -606,7 +608,7 @@ pub fn do_fire_actions<S: BuildHasher>(
   let assist_bonus = if attacker.get_assist_gunners() {
     let effect = i32::from(roll_dice(2, rng)) - STANDARD_ROLL_THRESHOLD + i32::from(attacker.get_crew().get_pilot());
     debug!(
-      "(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so result is {}.",
+      "(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so task chain impact is {}.",
       attacker.get_name(),
       attacker.get_crew().get_pilot(),
       effect,
