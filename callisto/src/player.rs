@@ -52,6 +52,17 @@ impl PlayerManager {
     }
   }
 
+  /// An unusual method but in the case where we discover the user has already been logged in,
+  /// we reset the id to be the old id of the user.
+  pub fn set_id(&mut self, unique_id: u64) {
+    self.unique_id = unique_id;
+  }
+
+  pub fn set_role_ship(&mut self, role: Role, ship: Option<String>) {
+    self.role = role;
+    self.ship = ship;
+  }
+
   pub fn set_server(&mut self, server: Arc<Server>) {
     self.server = Some(server);
   }
@@ -104,7 +115,12 @@ impl PlayerManager {
 
     debug!("(PlayerManager.login) Authenticated user {} with session key.", email);
 
-    Ok(AuthResponse { email })
+    Ok(AuthResponse {
+      email,
+      scenario: None,
+      role: None,
+      ship: None,
+    })
   }
 
   /// Reset a server to its initial configuration.

@@ -6,7 +6,7 @@ import {
   ViewMode,
 } from "./Universal";
 import { EntitySelector, EntitySelectorType } from "./EntitySelector";
-import { setRole } from "./ServerManager";
+import { requestRoleChoice } from "./ServerManager";
 
 export const RoleChooser = () => {
   const viewContext = useContext(ViewContext);
@@ -19,7 +19,7 @@ export const RoleChooser = () => {
         value={viewContext.role}
         onChange={(e) => {
           viewContext.setRole(Number(e.target.value));
-          setRole(Number(e.target.value), viewContext.shipName);
+          requestRoleChoice(Number(e.target.value), viewContext.shipName);
         }}>
         <option value={ViewMode.General}>General</option>
         <option value={ViewMode.Pilot}>Pilot</option>
@@ -32,7 +32,7 @@ export const RoleChooser = () => {
         filter={[EntitySelectorType.Ship]}
         setChoice={(ship: Entity | null) => {
           viewContext.setShipName(ship ? ship.name : null);
-          setRole(viewContext.role, ship ? ship.name : null);
+          requestRoleChoice(viewContext.role, ship ? ship.name : null);
         }}
         current={
           serverEntities.entities.ships.find(
