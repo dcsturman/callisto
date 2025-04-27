@@ -637,7 +637,6 @@ async fn test_called_shot() {
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  
   // Pummel the weak ship.
   let fire_actions = json!([["ship1", [
       {"FireAction" : {"weapon_id": 0, "target": "ship2", "called_shot_system": Some(ShipSystem::Maneuver)}},
