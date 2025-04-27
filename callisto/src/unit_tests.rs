@@ -308,7 +308,7 @@ async fn test_update_missile() {
   let response = server.update();
 
   let compare = json!([
-      {"kind": "ShipImpact","position":[5000.0,0.0,5000.0]}
+      {"kind": "ShipImpact","target": "ship2","position": [5000.0, 0.0, 5000.0]}
   ]);
 
   assert_json_eq!(

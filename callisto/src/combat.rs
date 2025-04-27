@@ -210,6 +210,7 @@ pub fn attack(
         content: format!("{} hit by a missile for {} damage.", defender.get_name(), damage),
       },
       EffectMsg::ShipImpact {
+        target: defender.get_name().to_string(),
         position: defender.get_position(),
       },
     ]

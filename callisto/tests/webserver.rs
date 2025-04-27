@@ -789,7 +789,8 @@ async fn integration_update_missile() {
     let filtered_effects: Vec<_> = effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect();
 
     let compare = vec![EffectMsg::ShipImpact {
-      position: Vec3::new(5000.0, 0.0, 5000.0),
+      target: "ship2".to_string(),
+      position: [5000.0, 0.0, 5000.0].into(),
     }];
     assert_json_eq!(filtered_effects, compare);
   } else {

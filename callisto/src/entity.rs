@@ -513,10 +513,11 @@ impl Entities {
               |ship| Some(ship.clone()),
             );
 
-            let smart_missile_bonus =
-              i32::from(missile_source.design.tl - target.as_ref().unwrap().read().unwrap().design.tl).clamp(1, 6);
-
             if let Some(target) = target {
+              // For now assume all missiles are smart missiles.
+              let smart_missile_bonus =
+                i32::from(missile_source.design.tl - target.read().unwrap().design.tl).clamp(1, 6);
+
               let mut target = target.write().unwrap();
               let effects = attack(
                 smart_missile_bonus,
