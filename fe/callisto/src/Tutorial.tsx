@@ -14,13 +14,39 @@ const steps: Step[] = [
   {
     target: ".mainscreen-container",
     content:
-      "Welcome to Callisto! This is the main screen where you can see ships, planets, missiles and other objects in space. You can navigate around using typical flying controls: 'a' and 'd' to turn, 'w' and 's' to move forward and backwards, and 'q' and 'e' to roll.",
+      <div > Welcome to Callisto! This is the main screen where you can see ships, planets, missiles and other objects in space. You can navigate around using typical flying controls:
+        <br />
+        <dl>
+          <dt>&apos;a&apos;, &apos;d&apos;</dt> 
+          <dd>to turn left or right</dd>
+          <dt>&apos;w&apos;, &apos;s&apos;</dt> 
+          <dd>to move forward or back</dd> 
+          <dt>&apos;q&apos;, &apos;e&apos;</dt> 
+          <dd>to roll</dd> 
+          <dt>&apos;r&apos;, &apos;f&apos;</dt>
+          <dd>to raise or lower</dd>
+        </dl>
+        <br />
+        Try closing this window and moving your view around space.  You can return to the next step in the tutorial by clicking on the glowing red
+        tutorial button.
+      </div>,
+    styles: {
+      tooltipContainer: {
+        textAlign: "left"
+      }
+    },
     placement: "center",
   },
   {
     target: ".controls-pane",
     content:
       "This is the controls pane. Here you can add ships and then control ships. Most of your time will be spent here.",
+    placement: "top-start",
+  },
+  {
+    target: ".admin-button-window",
+    content: 
+      <span>These are the view controls. You can see the scenario name (currently &apos;Tutorial&apos;), the users in the scenario (when more than one user is in the scenario), the role you are playing, and the specific ship you are controlling.</span>,
     placement: "top-start",
   },
   {

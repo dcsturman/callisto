@@ -80,6 +80,7 @@ export function App() {
         setUsers,
         (a, b) => { setScenarioTemplates(a); setScenarios(b);},
         (scenario: string) => setJoinedScenario(scenario),
+        setTutorialMode,
       );
 
       startWebsocket(setSocketReady);
@@ -208,7 +209,8 @@ function Simulator({
         },
         null,
         null,
-        null
+        null,
+        null,
       );
     }
   }, [

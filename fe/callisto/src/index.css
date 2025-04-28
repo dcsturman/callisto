@@ -35,6 +35,12 @@ h3 {
   padding-right: 8px;
 }
 
+dt {
+  display: block;
+  float: left;
+  min-width: 100px;
+}
+
 input {
   color:white;
   font-family: "Sono", monospace;
