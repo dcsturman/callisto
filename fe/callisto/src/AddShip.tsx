@@ -129,6 +129,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
         <label className="control-label">
           Name
           <input
+            id="add-ship-name-input"
             className="control-name-input control-input"
             name="name"
             type="text"

@@ -85,15 +85,21 @@ export function Authentication(args: {
       <br />
       <br />
       <div className="authentication-blurb">
-        Welcome to Callisto! Callisto is a space combat simulator based loosely
-        the Traveler universe. With Callisto you can deploy ships, steer around
+        Welcome to Callisto! Callisto is a space combat simulator based
+        the Traveler universe. Callisto is a <em>vector-based</em> ship combat system.  A vector-based 
+        system is based on the physics rules governing object motion, so the only tool for piloting a craft
+        is via acceleration - which then changes your velocity and thus position.  There is no banking or rapid breaking
+        in a vector-based system!  
+        <p />
+        With Callisto you can deploy ships, steer around
         planets, and battle each other in medium sized space engagements. All
         movement is based on real physics and the built in flight computer
         attempt to help humans pilot in this complex environment.
         <br />
         <br />
-        Callisto is currently in <em>closed alpha</em>. If you have been
-        pre-authorized to trial Callisto please log in with your Google Id.
+        Callisto is currently in <em style={{"color" : "red"}}>closed alpha</em>. If you have been
+        pre-authorized to trial Callisto please log in with your Google Id.  Otherwise please be patient!  
+        We will have a more broadly open beta soon followed by opening Callisto up to everyone!
       </div>
 
       <br />

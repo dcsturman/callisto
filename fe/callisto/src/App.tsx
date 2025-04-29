@@ -80,6 +80,7 @@ export function App() {
         setUsers,
         (a, b) => { setScenarioTemplates(a); setScenarios(b);},
         (scenario: string) => setJoinedScenario(scenario),
+        setTutorialMode,
       );
 
       startWebsocket(setSocketReady);
@@ -208,7 +209,8 @@ function Simulator({
         },
         null,
         null,
-        null
+        null,
+        null,
       );
     }
   }, [
@@ -312,7 +314,6 @@ function Simulator({
                 proposedPlan={proposedPlan}
               />
             )}
-            <div className="mainscreen-container">
               {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && (
                 <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
               )}
@@ -387,7 +388,6 @@ function Simulator({
                 {proposedPlan && <Route plan={proposedPlan} />}
               </Canvas>
             </div>
-          </div>
         </>
         {entityToShow && <EntityInfoWindow entity={entityToShow} />}
       </ViewContextProvider>
