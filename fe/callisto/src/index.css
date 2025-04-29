@@ -54,7 +54,8 @@ input {
   display: flex;
   flex-direction: row;
   justify-content: left;
-  align-items: flex-start;
+  align-items: flex-end;
+  flex-wrap: nowrap;
   height: 100vh;
   width: 100vw;
   color: white;
@@ -64,7 +65,7 @@ input {
   position: absolute;
   background-color:black;
   color-scheme: dark;
-  z-index: 1;
+  z-index: 0;
 }
 
 .controls-pane {
@@ -80,6 +81,7 @@ input {
   background-color: black;
   color-scheme: dark;
   overflow: hidden auto;
+  z-index: 10;
 }
 
 .control-input {
@@ -487,7 +489,7 @@ input {
   right: 0px;
   padding-left: 4px;
   border: 0px solid #b6bcae;
-  z-index: 5;
+  z-index: 10;
 }
 
 .user-list {

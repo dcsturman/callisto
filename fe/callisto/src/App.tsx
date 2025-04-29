@@ -314,7 +314,6 @@ function Simulator({
                 proposedPlan={proposedPlan}
               />
             )}
-            <div className="mainscreen-container">
               {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && (
                 <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
               )}
@@ -389,7 +388,6 @@ function Simulator({
                 {proposedPlan && <Route plan={proposedPlan} />}
               </Canvas>
             </div>
-          </div>
         </>
         {entityToShow && <EntityInfoWindow entity={entityToShow} />}
       </ViewContextProvider>

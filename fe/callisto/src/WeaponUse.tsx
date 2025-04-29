@@ -46,6 +46,7 @@ export const WeaponButton = (props: {
     return (
       <>
         <button
+          id={props.weapon + "-barbette-button"}
           className="weapon-button"
           data-tooltip-id={props.weapon + props.mount}
           data-tooltip-content={`${props.weapon} Barbette`}
@@ -70,6 +71,7 @@ export const WeaponButton = (props: {
       return (
         <>
           <button
+            id={props.weapon + "-small-bay-button"}
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "small-bay"}
@@ -94,6 +96,7 @@ export const WeaponButton = (props: {
       return (
         <>
           <button
+            id={props.weapon + "-medium-bay-button"}
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "med-bay"}
@@ -115,6 +118,7 @@ export const WeaponButton = (props: {
       return (
         <>
           <button
+            id={props.weapon + "-large-bay-button"}
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "large-bay"}
@@ -142,6 +146,7 @@ export const WeaponButton = (props: {
       return (
         <>
           <button
+            id={props.weapon + "-single-turret-button"}
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
@@ -167,6 +172,7 @@ export const WeaponButton = (props: {
       return (
         <>
           <button
+            id={props.weapon + "-double-turret-button"}
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
@@ -191,6 +197,7 @@ export const WeaponButton = (props: {
     return (
       <>
         <button
+          id={props.weapon + "-triple-turret-button"}
           className="weapon-button"
           onClick={props.onClick}
           data-tooltip-id={props.weapon + num + "turret"}
@@ -315,6 +322,7 @@ export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
       <div className="control-launch-div">
         Target:
         <EntitySelector
+          id={"fire-target"}
           filter={[EntitySelectorType.Ship]}
           setChoice={setFireTarget}
           current={fireTarget}
