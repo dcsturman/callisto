@@ -13,6 +13,7 @@ import {
 import {Effect} from "./Effects";
 import {UserList, UserContext} from "./UserList";
 import {ActionType, actionPayload, payloadToAction} from "./Actions";
+import {TUTORIAL_PREFIX} from "./ScenarioManager";
 
 export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
 
@@ -59,9 +60,11 @@ let setUsers: (users: UserList) => void = () => {
 let setScenarios: (current_scenarios: string[], templates: string[]) => void = () => {
   console.error("Calling default implementation of setScenarios()");
 };
-
 let setJoinedScenario: (scenario: string) => void = () => {
   console.error("Calling default implementation of setJoinedScenario()");
+};
+let setTutorialMode: (tutorialMode: boolean) => void = () => {
+  console.error("Calling default implementation of setTutorialMode()");
 };
 
 //
@@ -107,7 +110,8 @@ export function setMessageHandlers(
   effects: ((effects: Effect[]) => void) | null,
   users: ((users: UserList) => void) | null,
   scenarios: ((current_scenarios: string[], templates: string[]) => void) | null,
-  joinedScenario: ((scenario: string) => void) | null
+  joinedScenario: ((scenario: string) => void) | null,
+  tutorialMode: ((tutorialMode: boolean) => void) | null
 ) {
   if (email) {
     setEmail = email;
@@ -141,6 +145,9 @@ export function setMessageHandlers(
   }
   if (joinedScenario) {
     setJoinedScenario = joinedScenario;
+  }
+  if (tutorialMode) {
+    setTutorialMode = tutorialMode;
   }
 }
 
@@ -500,7 +507,10 @@ function handleJoinedScenario(json: {JoinedScenario: string}) {
   const scenario = json["JoinedScenario"] as string;
   if (scenario) {
     setJoinedScenario(scenario);
-    console.log("Joined scenario");
+    // check if 'scenario' starts with TUTORIAL_PREFIX
+    if (scenario.startsWith(TUTORIAL_PREFIX)) {
+      setTutorialMode(true);
+    }
   }
 }
 
@@ -511,6 +521,9 @@ function handleAuthenticated(json: {email: string | null, scenario: string | nul
     setAuthenticated(true);
     if (json.scenario != null) {
       setJoinedScenario(json.scenario);
+      if (json.scenario.startsWith(TUTORIAL_PREFIX)) {
+        setTutorialMode(true);
+      }
     }
     if (json.role != null) {
       setRoleShip(stringToViewMode(json.role)?? ViewMode.General, json.ship);

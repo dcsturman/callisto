@@ -301,6 +301,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
   // Current version tries to stop at the current position.
   return (
     <div id="computer-window" className="computer-window">
+      <div id="crew-actions-window">
       {viewContext.role === ViewMode.General && <h1>{title}</h1>}
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && pilotActions()}
       {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && (
@@ -311,6 +312,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
           Jump
         </button>
       }
+      </div>
       <hr />
       {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && (
         <>

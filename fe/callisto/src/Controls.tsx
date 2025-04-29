@@ -37,6 +37,7 @@ function ShipList(args: {
     <div className="control-launch-div">
       <h2 className="ship-list-label">Ship: </h2>
       <EntitySelector
+        id="ship-list-dropdown"
         filter={[EntitySelectorType.Ship]}
         setChoice={(entity) => args.setComputerShipName(entity?.name || null)}
         current={args.computerShip}
@@ -146,7 +147,7 @@ export function Controls(args: {
           </>
         )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
-        {viewContext.shipName === null ? (
+        {viewContext.shipName == null ? (
           <ShipList
             computerShip={args.computerShip}
             setComputerShipName={(ship_name) => {
@@ -260,6 +261,7 @@ export function Controls(args: {
              <span>
                 <h2>Show Ranges&nbsp;
                 <input
+                  id="show-range-checkbox"
                   type="checkbox"
                   checked={args.showRange !== null}
                   onChange={() => {
