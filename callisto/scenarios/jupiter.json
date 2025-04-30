@@ -1,0 +1,131 @@
+{
+    "planets": [
+    {
+        "name" : "Jupiter",
+        "position" : [0, 0, 0],
+        "velocity" : [0, 0, 0],
+        "color" : "!jupiter",
+        "radius" : 69.911e6,
+        "mass" : 1.898e27
+    },
+    {
+        "name" : "Io",
+        "position" : [4.22e8, 0, 0],
+        "velocity" : [0, 0, 0],
+        "color" : "!mars",
+        "primary" : "Jupiter",
+        "radius" : 1.82e6,
+        "mass" : 8.93e22
+    },
+    {
+        "name" : "Europa",
+        "position" : [0, 0, 6.71e8],
+        "velocity" : [0, 0, 0],
+        "color" : "!venus",
+        "primary" : "Jupiter",
+        "radius" : 1.56e6,
+        "mass" : 4.8e22
+    },
+    {
+        "name" : "Ganymede",
+        "position" : [0, 0, -1.07e9],
+        "velocity" : [0, 0, 0],
+        "color" : "!mercury",
+        "primary" : "Jupiter",
+        "radius" : 2.63e6,
+        "mass" : 1.48e23
+    },
+    {
+        "name" : "Callisto",
+        "position" : [-1.33e9, 0, -1.33e9],
+        "velocity" : [0, 0, 0],
+        "color" : "!moon",
+        "primary" : "Jupiter",
+        "radius" : 2.41e6,
+        "mass" : 1.08e23
+    }
+],
+    "ships": [
+        {
+            "name" : "INS Unicorn",
+            "position" : [1e9, 0, -1.2e9],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Gazelle"
+        },
+        {
+            "name" : "INS Righteous",
+            "position" : [1.1e9, 0, -1.3e9],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Gazelle"
+        },
+        {
+            "name" : "INS Stag",
+            "position" : [1.2e9, 0, -1.18e9],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Gazelle"
+        },
+        {
+            "name" : "Ailreaui",
+            "position" : [0, 0, 6.5e8],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Ekawsiykua Escort"
+        },
+        {
+            "name" : "AF1",
+            "position" : [0, 4000000, 6.5e8],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Light Fighter"
+        },
+        {
+            "name" : "AF2",
+            "position" : [0, -4000000, 6.5e8],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Light Fighter"
+        },
+        {
+            "name" : "AF3",
+            "position" : [4000000, 4000000, 6.5e8],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Light Fighter"
+        },
+        {
+            "name" : "AF4",
+            "position" : [-4000000, -4000000, 6.5e8],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Light Fighter"
+        },
+        {
+            "name" : "AF5",
+            "position" : [0, 4000000, 7.2e8],
+            "velocity" : [0, 0, 0],
+             "plan" : [
+                [[0, 0, 0], 50000]
+             ],
+             "design": "Light Fighter"
+        }
+    ]
+}
