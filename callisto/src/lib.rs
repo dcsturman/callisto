@@ -124,7 +124,7 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
       let entry = entry?;
       let path = entry.path();
       if path.is_file() {
-        files.push(path.to_string_lossy().into_owned());
+        files.push(entry.file_name().to_string_lossy().into_owned());
       }
     }
     Ok(files)
