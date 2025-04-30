@@ -1,0 +1,606 @@
+Statistical profiling result from isolate-0x138008000-11624-v8.log, (716 ticks, 16 unaccounted, 0 excluded).
+
+ [Shared libraries]:
+   ticks  total  nonlib   name
+    303   42.3%          /usr/lib/system/libsystem_kernel.dylib
+    264   36.9%          /opt/homebrew/Cellar/node/23.9.0/bin/node
+     35    4.9%          /usr/lib/system/libsystem_pthread.dylib
+     31    4.3%          /usr/lib/system/libsystem_c.dylib
+     13    1.8%          /usr/lib/system/libsystem_malloc.dylib
+     13    1.8%          /usr/lib/libc++.1.dylib
+     12    1.7%          /usr/lib/system/libsystem_platform.dylib
+      9    1.3%          /opt/homebrew/Cellar/openssl@3/3.4.1/lib/libcrypto.3.dylib
+      8    1.1%          /opt/homebrew/Cellar/icu4c@76/76.1_1/lib/libicuuc.76.1.dylib
+      2    0.3%          /opt/homebrew/Cellar/icu4c@76/76.1_1/lib/libicui18n.76.1.dylib
+      1    0.1%          /usr/lib/system/libdyld.dylib
+
+ [JavaScript]:
+   ticks  total  nonlib   name
+      1    0.1%    4.0%  RegExp: (\\.)|(?:\:(\w+)(?:\(((?:\\.|[^\\()])+)\))?|\(((?:\\.|[^\\()])+)\))([+*?])?
+      1    0.1%    4.0%  JS: ^set node:internal/streams/readable:131:8
+      1    0.1%    4.0%  JS: ^render /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:199:11
+      1    0.1%    4.0%  JS: ^parseSource node:internal/deps/cjs-module-lexer/lexer:85:22
+      1    0.1%    4.0%  JS: ^_write node:internal/streams/writable:451:16
+      1    0.1%    4.0%  JS: +getDefaultTriggerAsyncId node:internal/async_hooks:433:34
+      1    0.1%    4.0%  JS: +emitBeforeScript node:internal/async_hooks:509:26
+      1    0.1%    4.0%  JS: +checkListener node:events:263:23
+      1    0.1%    4.0%  JS: *normalizeString node:path:77:25
+
+ [C++]:
+   ticks  total  nonlib   name
+
+ [Summary]:
+   ticks  total  nonlib   name
+      9    1.3%   36.0%  JavaScript
+      0    0.0%    0.0%  C++
+     27    3.8%  108.0%  GC
+    691   96.5%          Shared libraries
+     16    2.2%          Unaccounted
+
+ [C++ entry points]:
+   ticks    cpp   total   name
+
+ [Bottom up (heavy) profile]:
+  Note: percentage shows a share of a particular caller in the total
+  amount of its parent calls.
+  Callers occupying less than 1.0% are not shown.
+
+   ticks parent  name
+    303   42.3%  /usr/lib/system/libsystem_kernel.dylib
+     21    6.9%    JS: ^processCallback node:zlib:487:25
+      5    1.7%    JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      4   80.0%      JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   25.0%        JS: ~<anonymous> node:internal/streams/duplex:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   25.0%        JS: ~<anonymous> node:internal/main/run_main_module:1:1
+      1   25.0%        JS: ~<anonymous> node:http:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ~builtinStrategy node:internal/modules/esm/translators:408:52
+      1   25.0%        JS: ~<anonymous> node:_http_client:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   20.0%      JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1  100.0%        JS: ~<anonymous> node:tls:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      4    1.3%    JS: ^writevGeneric node:internal/stream_base_commons:121:23
+      4  100.0%      JS: ^Socket._writeGeneric node:net:940:42
+      4  100.0%        JS: ^Socket._writev node:net:977:36
+      4  100.0%          JS: ^doWrite node:internal/streams/writable:585:17
+      4  100.0%            JS: ^clearBuffer node:internal/streams/writable:742:21
+
+    264   36.9%  /opt/homebrew/Cellar/node/23.9.0/bin/node
+     33   12.5%    JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+     17   51.5%      JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      9   52.9%        JS: ~lazyUndici node:http:122:20
+      9  100.0%          JS: ~get node:http:177:6
+      9  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      2   11.8%        JS: ~<anonymous> node:internal/streams/duplex:1:1
+      2  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      2  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    5.9%        JS: ~getSource node:internal/modules/esm/load:32:25
+      1  100.0%          JS: ~defaultLoad node:internal/modules/esm/load:83:27
+      1  100.0%            JS: ~load node:internal/modules/esm/loader:746:13
+      1    5.9%        JS: ~<anonymous> node:stream:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    5.9%        JS: ~<anonymous> node:internal/streams/compose:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    5.9%        JS: ~<anonymous> node:internal/readline/interface:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    5.9%        JS: ~<anonymous> node:assert:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    5.9%        /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%          /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%            JS: ^getOwn node:internal/bootstrap/realm:207:16
+     14   42.4%      JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      3   21.4%        /opt/homebrew/Cellar/node/23.9.0/bin/node
+      3  100.0%          JS: ~lib/web/fetch/response.js node:internal/deps/undici/undici:9039:30
+      3  100.0%            JS: ^__require node:internal/deps/undici/undici:5:49
+      1    7.1%        JS: ~lookupAndConnect node:net:1309:26
+      1  100.0%          JS: ~Socket.connect node:net:1227:36
+      1  100.0%            JS: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/node_modules/is-port-reachable/index.js:8:31
+      1    7.1%        JS: ~get BlockList node:net:2516:16
+      1  100.0%          /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%            JS: ^getOwn node:internal/bootstrap/realm:207:16
+      1    7.1%        JS: ~<anonymous> node:worker_threads:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:internal/webstreams/readablestream:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:internal/tls/secure-context:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:internal/perf/performance:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:internal/crypto/hkdf:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:crypto:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:cluster:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:child_process:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^compileForPublicLoader node:internal/bootstrap/realm:336:25
+      1    7.1%        JS: ~<anonymous> node:_tls_wrap:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    3.0%      JS: ~builtinStrategy node:internal/modules/esm/translators:408:52
+      1  100.0%        JS: ~#translate node:internal/modules/esm/loader:482:13
+      1  100.0%          JS: ~loadAndTranslate node:internal/modules/esm/loader:535:25
+      1  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    3.0%      JS: ^compileForPublicLoader node:internal/bootstrap/realm:336:25
+      1  100.0%        JS: ^loadBuiltinModule node:internal/modules/helpers:101:27
+      1  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      1  100.0%            JS: ^wrapModuleLoad node:internal/modules/cjs/loader:228:24
+     26    9.8%    /opt/homebrew/Cellar/node/23.9.0/bin/node
+      7   26.9%      JS: ~serialize /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:1001:19
+      7  100.0%        JS: ~_getFullPath /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:78:22
+      7  100.0%          JS: ~getFullPath /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:71:21
+      4   57.1%            JS: ~getSchemaRefs /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:94:23
+      3   42.9%            JS: ~compileSchema /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/index.js:33:23
+      5   19.2%      JS: ~_normalizeIPv6 /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:811:24
+      3   60.0%        JS: ~parse /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:868:15
+      3  100.0%          JS: ~getFullPath /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:71:21
+      3  100.0%            JS: ~getSchemaRefs /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:94:23
+      2   40.0%        JS: ~_recomposeAuthority /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:951:29
+      2  100.0%          JS: ~serialize /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:1001:19
+      2  100.0%            JS: ~_getFullPath /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:78:22
+      3   11.5%      JS: ~lookupAndConnect node:net:1309:26
+      3  100.0%        JS: ~Socket.connect node:net:1227:36
+      3  100.0%          JS: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/node_modules/is-port-reachable/index.js:8:31
+      3  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      3   11.5%      JS: ~lookup node:dns:142:16
+      3  100.0%        JS: ~emitLookup node:net:1442:72
+      3  100.0%          JS: ~lookupAndConnectMultiple node:net:1439:34
+      3  100.0%            JS: ~<anonymous> node:net:1387:63
+      1    3.8%      JS: ~template file:///opt/homebrew/lib/node_modules/serve/node_modules/chalk-template/index.js:120:25
+      1  100.0%        JS: ~chalkTemplate file:///opt/homebrew/lib/node_modules/serve/node_modules/chalk-template/index.js:156:38
+      1  100.0%          Script: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/build/main.js:1:1
+      1  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    3.8%      JS: ~stringWidth file:///opt/homebrew/lib/node_modules/serve/node_modules/string-width/index.js:5:36
+      1  100.0%        JS: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/node_modules/wrap-ansi/index.js:22:53
+      1  100.0%          /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%            JS: ~wordLengths file:///opt/homebrew/lib/node_modules/serve/node_modules/wrap-ansi/index.js:22:21
+      1    3.8%      JS: ~createBuilder file:///opt/homebrew/lib/node_modules/serve/node_modules/chalk/source/index.js:152:23
+      1  100.0%        JS: ~get file:///opt/homebrew/lib/node_modules/serve/node_modules/chalk/source/index.js:58:6
+      1  100.0%          JS: ~info file:///opt/homebrew/lib/node_modules/serve/build/main.js:155:12
+      1  100.0%            JS: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/build/main.js:594:23
+      1    3.8%      JS: ~<anonymous> node:_http_outgoing:1:1
+      1  100.0%        JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%          JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1  100.0%            JS: ~<anonymous> node:_http_client:1:1
+      1    3.8%      JS: ^formatWithOptions node:internal/util/inspect:2226:27
+      1  100.0%        JS: ^value node:internal/console/constructor:333:20
+      1  100.0%          JS: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/build/main.js:594:23
+      1  100.0%            JS: ~wrapper file:///opt/homebrew/lib/node_modules/serve/build/main.js:132:19
+      1    3.8%      JS: ^fn node:internal/util:441:14
+      1  100.0%        JS: ^run file:///opt/homebrew/lib/node_modules/serve/build/main.js:165:17
+      1  100.0%          JS: ^serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      1  100.0%            JS: +emit node:events:454:44
+      1    3.8%      JS: ^escapeGroup /opt/homebrew/lib/node_modules/serve/node_modules/path-to-regexp/index.js:266:22
+      1  100.0%        JS: ^parse /opt/homebrew/lib/node_modules/serve/node_modules/path-to-regexp/index.js:41:16
+      1  100.0%          JS: ^stringToRegexp /opt/homebrew/lib/node_modules/serve/node_modules/path-to-regexp/index.js:335:25
+      1  100.0%            JS: ^pathToRegexp /opt/homebrew/lib/node_modules/serve/node_modules/path-to-regexp/index.js:411:23
+      7    2.7%    JS: ^wrapSafe node:internal/modules/cjs/loader:1624:18
+      7  100.0%      JS: ^<anonymous> node:internal/modules/cjs/loader:1684:37
+      7  100.0%        JS: ^<anonymous> node:internal/modules/cjs/loader:1880:37
+      7  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1454:33
+      7  100.0%            JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      5    1.9%    JS: +emit node:events:454:44
+      1   20.0%      JS: +addChunk node:internal/streams/readable:548:18
+      1  100.0%        JS: +readableAddChunkPushByteMode node:internal/streams/readable:461:38
+      1  100.0%          JS: +Readable.push node:internal/streams/readable:385:35
+      1  100.0%            JS: ^<anonymous> node:internal/fs/streams:262:41
+      4    1.5%    JS: ^shouldColorize node:internal/util/colors:18:17
+      4  100.0%      JS: ^value node:internal/console/constructor:313:20
+      4  100.0%        JS: ^value node:internal/console/constructor:333:20
+      2   50.0%          JS: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/build/main.js:594:23
+      2  100.0%            JS: ~wrapper file:///opt/homebrew/lib/node_modules/serve/build/main.js:132:19
+      2   50.0%          JS: ^info node:internal/console/constructor:387:7
+      2  100.0%            JS: ^http file:///opt/homebrew/lib/node_modules/serve/build/main.js:154:12
+      3    1.1%    JS: ~<anonymous> node:internal/main/run_main_module:1:1
+      3    1.1%    JS: ^read node:fs:606:14
+      3  100.0%      JS: ^ReadStream._read node:internal/fs/streams:248:38
+      3  100.0%        JS: ^Readable.read node:internal/streams/readable:645:35
+      2   66.7%          JS: ^flow node:internal/streams/readable:1278:14
+      2  100.0%            JS: ^resume_ node:internal/streams/readable:1252:17
+      1   33.3%          JS: ^maybeReadMore_ node:internal/streams/readable:862:24
+      1  100.0%            JS: ^processTicksAndRejections node:internal/process/task_queues:72:35
+      3    1.1%    JS: ^__require node:internal/deps/undici/undici:5:49
+      1   33.3%      JS: ~lib/web/fetch/headers.js node:internal/deps/undici/undici:8581:29
+      1  100.0%        JS: ^__require node:internal/deps/undici/undici:5:49
+      1  100.0%          JS: ~lib/web/fetch/response.js node:internal/deps/undici/undici:9039:30
+      1  100.0%            JS: ^__require node:internal/deps/undici/undici:5:49
+      1   33.3%      JS: ~lib/dispatcher/client.js node:internal/deps/undici/undici:7550:29
+      1  100.0%        JS: ~__require node:internal/deps/undici/undici:5:49
+      1  100.0%          JS: ~lib/dispatcher/pool.js node:internal/deps/undici/undici:8059:27
+      1  100.0%            JS: ~__require node:internal/deps/undici/undici:5:49
+      1   33.3%      JS: ~lazyllhttp node:internal/deps/undici/undici:5821:30
+      1  100.0%        JS: ~lib/dispatcher/client-h1.js node:internal/deps/undici/undici:5764:32
+      1  100.0%          JS: ^__require node:internal/deps/undici/undici:5:49
+      1  100.0%            JS: ~lib/dispatcher/client.js node:internal/deps/undici/undici:7550:29
+      3    1.1%    JS: +processTicksAndRejections node:internal/process/task_queues:72:35
+
+     35    4.9%  /usr/lib/system/libsystem_pthread.dylib
+     21   60.0%    JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+     14   66.7%      JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      6   42.9%        JS: ~lazyUndici node:http:122:20
+      6  100.0%          JS: ~get node:http:177:6
+      6  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    7.1%        JS: ~lib/dispatcher/client.js node:internal/deps/undici/undici:7550:29
+      1  100.0%          JS: ~__require node:internal/deps/undici/undici:5:49
+      1  100.0%            JS: ~lib/dispatcher/pool.js node:internal/deps/undici/undici:8059:27
+      1    7.1%        JS: ~<anonymous> node:tty:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:net:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:internal/streams/duplex:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:internal/modules/esm/load:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~<anonymous> node:http:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ~builtinStrategy node:internal/modules/esm/translators:408:52
+      1    7.1%        JS: ~<anonymous> node:assert:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1    7.1%        JS: ~#createModuleJob node:internal/modules/esm/loader:552:19
+      1  100.0%          JS: ~#getJobFromResolveResult node:internal/modules/esm/loader:306:27
+      1  100.0%            JS: ~getModuleJobForImport node:internal/modules/esm/loader:278:30
+      7   33.3%      JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      3   42.9%        JS: ~<anonymous> node:crypto:1:1
+      3  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      3  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1   14.3%        JS: ~module.exports /opt/homebrew/lib/node_modules/serve/node_modules/serve-handler/src/index.js:548:18
+      1  100.0%          /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1   14.3%        JS: ~<anonymous> node:perf_hooks:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1   14.3%        JS: ^requireWithFallbackInDeps node:internal/bootstrap/realm:439:35
+      1  100.0%          JS: ~lib/web/fetch/util.js node:internal/deps/undici/undici:4019:26
+      1  100.0%            JS: ^__require node:internal/deps/undici/undici:5:49
+      1   14.3%        /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%          JS: ~lib/web/fetch/response.js node:internal/deps/undici/undici:9039:30
+      1  100.0%            JS: ^__require node:internal/deps/undici/undici:5:49
+      3    8.6%    JS: ^wrapSafe node:internal/modules/cjs/loader:1624:18
+      3  100.0%      JS: ^<anonymous> node:internal/modules/cjs/loader:1684:37
+      3  100.0%        JS: ^<anonymous> node:internal/modules/cjs/loader:1880:37
+      3  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1454:33
+      3  100.0%            JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      2    5.7%    JS: ~lib/web/fetch/formdata-parser.js node:internal/deps/undici/undici:5176:37
+      2  100.0%      JS: ^__require node:internal/deps/undici/undici:5:49
+      2  100.0%        JS: ~lib/web/fetch/body.js node:internal/deps/undici/undici:5437:26
+      2  100.0%          JS: ^__require node:internal/deps/undici/undici:5:49
+      2  100.0%            JS: ~lib/web/fetch/response.js node:internal/deps/undici/undici:9039:30
+      2    5.7%    JS: ~<anonymous> node:internal/main/run_main_module:1:1
+      1    2.9%    JS: ~spawn node:child_process:745:15
+      1  100.0%      JS: ~execa /opt/homebrew/lib/node_modules/serve/node_modules/execa/index.js:74:15
+      1  100.0%        JS: ~copy file:///opt/homebrew/lib/node_modules/serve/node_modules/clipboardy/lib/macos.js:8:8
+      1  100.0%          JS: ~clipboard.write file:///opt/homebrew/lib/node_modules/serve/node_modules/clipboardy/index.js:32:19
+      1  100.0%            Script: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/build/main.js:1:1
+      1    2.9%    JS: ~serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      1  100.0%      JS: ^emit node:events:454:44
+      1  100.0%        JS: ~parserOnIncoming node:_http_server:1040:26
+      1  100.0%          JS: ~parserOnHeadersComplete node:_http_common:71:33
+      1    2.9%    JS: ~legacyMainResolve node:internal/modules/esm/resolve:198:27
+      1  100.0%      JS: ^packageResolve node:internal/modules/esm/resolve:762:24
+      1  100.0%        JS: ^moduleResolve node:internal/modules/esm/resolve:827:23
+      1  100.0%          JS: ^defaultResolve node:internal/modules/esm/resolve:939:24
+      1  100.0%            JS: ^defaultResolve node:internal/modules/esm/loader:726:17
+      1    2.9%    JS: ~http file:///opt/homebrew/lib/node_modules/serve/build/main.js:154:12
+      1  100.0%      JS: ~run file:///opt/homebrew/lib/node_modules/serve/build/main.js:165:17
+      1  100.0%        JS: ~serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      1  100.0%          JS: ^emit node:events:454:44
+      1  100.0%            JS: ~parserOnIncoming node:_http_server:1040:26
+      1    2.9%    JS: ~finalizeResolution node:internal/modules/esm/resolve:228:28
+      1  100.0%      JS: ~moduleResolve node:internal/modules/esm/resolve:827:23
+      1  100.0%        JS: ^defaultResolve node:internal/modules/esm/resolve:939:24
+      1  100.0%          JS: ^defaultResolve node:internal/modules/esm/loader:726:17
+      1  100.0%            JS: ^#cachedDefaultResolve node:internal/modules/esm/loader:654:24
+      1    2.9%    JS: ~cjsEmplaceModuleCacheEntry node:internal/modules/esm/translators:328:36
+      1  100.0%      JS: ~cjsPreparseModuleExports node:internal/modules/esm/translators:350:34
+      1  100.0%        JS: ~createCJSModuleWrap node:internal/modules/esm/translators:181:29
+      1  100.0%          JS: ~commonjsStrategy node:internal/modules/esm/translators:301:54
+      1  100.0%            JS: ^#translate node:internal/modules/esm/loader:482:13
+      1    2.9%    JS: ~_close node:zlib:582:16
+      1  100.0%      JS: ~ZlibBase._destroy node:zlib:355:39
+      1  100.0%        JS: ^_destroy node:internal/streams/destroy:90:18
+      1  100.0%          JS: ^destroy node:internal/streams/destroy:49:17
+      1  100.0%            JS: ^Writable.destroy node:internal/streams/writable:1112:38
+
+     31    4.3%  /usr/lib/system/libsystem_c.dylib
+      9   29.0%    JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      8   88.9%      JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      2   25.0%        JS: ~lazyUndici node:http:122:20
+      2  100.0%          JS: ~get node:http:177:6
+      2  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1   12.5%        JS: ~getTranslators node:internal/modules/esm/loader:84:24
+      1  100.0%          JS: ~ModuleLoader node:internal/modules/esm/loader:122:3
+      1  100.0%            JS: ~ModuleLoader node:internal/modules/esm/loader:158:14
+      1   12.5%        JS: ~defaultResolve node:internal/modules/esm/loader:726:17
+      1  100.0%          JS: ~#cachedDefaultResolve node:internal/modules/esm/loader:654:24
+      1  100.0%            JS: ~resolve node:internal/modules/esm/loader:634:10
+      1   12.5%        JS: ~<anonymous> node:internal/perf/observe:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   12.5%        JS: ~<anonymous> node:internal/fs/promises:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   12.5%        JS: ~<anonymous> node:http2:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   12.5%        JS: ~<anonymous> node:_http_client:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   11.1%      JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1  100.0%        JS: ~initCJSParseSync node:internal/modules/esm/translators:79:26
+      1  100.0%          JS: ~commonjsStrategy node:internal/modules/esm/translators:301:54
+      1  100.0%            JS: ^#translate node:internal/modules/esm/loader:482:13
+      6   19.4%    JS: ^wrapSafe node:internal/modules/cjs/loader:1624:18
+      6  100.0%      JS: ^<anonymous> node:internal/modules/cjs/loader:1684:37
+      6  100.0%        JS: ^<anonymous> node:internal/modules/cjs/loader:1880:37
+      6  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1454:33
+      6  100.0%            JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      3    9.7%    JS: ~<anonymous> node:internal/main/run_main_module:1:1
+      1    3.2%    JS: ~set node:internal/streams/writable:260:8
+      1  100.0%      /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%        JS: ~onwrite node:internal/streams/writable:613:17
+      1  100.0%          JS: ~afterWriteDispatched node:internal/stream_base_commons:154:30
+      1  100.0%            JS: ~writevGeneric node:internal/stream_base_commons:121:23
+      1    3.2%    JS: ~packageResolve node:internal/modules/esm/resolve:762:24
+      1  100.0%      JS: ~moduleResolve node:internal/modules/esm/resolve:827:23
+      1  100.0%        JS: ~defaultResolve node:internal/modules/esm/resolve:939:24
+      1  100.0%          JS: ^defaultResolve node:internal/modules/esm/loader:726:17
+      1  100.0%            JS: ^#cachedDefaultResolve node:internal/modules/esm/loader:654:24
+      1    3.2%    JS: ~optimizeNames /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:167:18
+      1  100.0%      JS: ~optimizeNames /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:226:18
+      1  100.0%        JS: ~optimizeNames /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:167:18
+      1  100.0%          JS: ~optimizeNames /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:226:18
+      1  100.0%            JS: ~optimizeNames /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:167:18
+      1    3.2%    JS: ~merge /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:8:15
+      1  100.0%      JS: ~buildExps /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:47:19
+      1  100.0%        JS: ~<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:6:19
+      1  100.0%          JS: ~<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:2:11
+      1  100.0%            JS: ~<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:1:1
+      1    3.2%    JS: ~http file:///opt/homebrew/lib/node_modules/serve/build/main.js:154:12
+      1  100.0%      JS: ~run file:///opt/homebrew/lib/node_modules/serve/build/main.js:165:17
+      1  100.0%        JS: ~serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      1  100.0%          JS: ^emit node:events:454:44
+      1  100.0%            JS: ~parserOnIncoming node:_http_server:1040:26
+      1    3.2%    JS: ~execa /opt/homebrew/lib/node_modules/serve/node_modules/execa/index.js:74:15
+      1  100.0%      JS: ~copy file:///opt/homebrew/lib/node_modules/serve/node_modules/clipboardy/lib/macos.js:8:8
+      1  100.0%        JS: ~clipboard.write file:///opt/homebrew/lib/node_modules/serve/node_modules/clipboardy/index.js:32:19
+      1  100.0%          Script: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/build/main.js:1:1
+      1  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    3.2%    JS: ~defaultResolve node:internal/modules/esm/resolve:939:24
+      1  100.0%      JS: ~defaultResolve node:internal/modules/esm/loader:726:17
+      1  100.0%        JS: ~#cachedDefaultResolve node:internal/modules/esm/loader:654:24
+      1  100.0%          JS: ~resolve node:internal/modules/esm/loader:634:10
+      1  100.0%            JS: ~getModuleJobForImport node:internal/modules/esm/loader:278:30
+      1    3.2%    JS: ~Agent node:_http_agent:81:15
+      1  100.0%      JS: ~<anonymous> node:_http_agent:1:1
+      1  100.0%        JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%          JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1  100.0%            JS: ~<anonymous> node:http:1:1
+      1    3.2%    JS: ~<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/safe-buffer/index.js:1:1
+      1  100.0%      JS: ^<anonymous> node:internal/modules/cjs/loader:1684:37
+      1  100.0%        JS: ^<anonymous> node:internal/modules/cjs/loader:1880:37
+      1  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1454:33
+      1  100.0%            JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      1    3.2%    JS: ^processTicksAndRejections node:internal/process/task_queues:72:35
+      1    3.2%    JS: +<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:668:27
+      1  100.0%      /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%        JS: ^canOptimize /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:666:25
+      1  100.0%          JS: ^optimizeExpr /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:645:22
+      1  100.0%            JS: ~optimizeNames /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:254:18
+      1    3.2%    /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%      JS: ~<anonymous> node:internal/modules/esm/assert:1:1
+      1  100.0%        JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%          JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1  100.0%            JS: ~<anonymous> node:internal/modules/esm/loader:1:1
+
+     16    2.2%  UNKNOWN
+      5   31.3%    JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      3   60.0%      JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1   33.3%        JS: ~<anonymous> node:internal/http2/core:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   33.3%        JS: ~<anonymous> node:internal/http2/compat:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1   33.3%        JS: ~<anonymous> node:internal/child_process:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      2   40.0%      JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   50.0%        JS: ~<anonymous> node:internal/http2/core:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   50.0%        JS: ~<anonymous> node:http2:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      2   12.5%    JS: ~<anonymous> node:internal/main/run_main_module:1:1
+      2   12.5%    JS: ^wrapSafe node:internal/modules/cjs/loader:1624:18
+      2  100.0%      JS: ^<anonymous> node:internal/modules/cjs/loader:1684:37
+      2  100.0%        JS: ^<anonymous> node:internal/modules/cjs/loader:1880:37
+      2  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1454:33
+      2  100.0%            JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      1    6.3%    JS: ~validate0 :3:254
+      1  100.0%      JS: ~validate0 :3:254
+      1  100.0%        JS: ~validate /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/core.js:140:13
+      1  100.0%          JS: ~validateSchema /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/core.js:246:19
+      1  100.0%            JS: ~_addSchema /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/core.js:434:15
+      1    6.3%    JS: ~run file:///opt/homebrew/lib/node_modules/serve/build/main.js:165:17
+      1  100.0%      JS: ~serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      1  100.0%        JS: ^emit node:events:454:44
+      1  100.0%          JS: ~parserOnIncoming node:_http_server:1040:26
+      1  100.0%            JS: ~parserOnHeadersComplete node:_http_common:71:33
+      1    6.3%    JS: ~resume_ node:internal/streams/readable:1252:17
+      1  100.0%      JS: ^processTicksAndRejections node:internal/process/task_queues:72:35
+      1    6.3%    JS: ~finalizeResolution node:internal/modules/esm/resolve:228:28
+      1  100.0%      JS: ~moduleResolve node:internal/modules/esm/resolve:827:23
+      1  100.0%        JS: ~defaultResolve node:internal/modules/esm/resolve:939:24
+      1  100.0%          JS: ~defaultResolve node:internal/modules/esm/loader:726:17
+      1  100.0%            JS: ~#cachedDefaultResolve node:internal/modules/esm/loader:654:24
+      1    6.3%    JS: ^__require node:internal/deps/undici/undici:5:49
+      1  100.0%      JS: ~lib/web/websocket/connection.js node:internal/deps/undici/undici:11896:36
+      1  100.0%        JS: ^__require node:internal/deps/undici/undici:5:49
+      1  100.0%          JS: ~lib/web/websocket/websocket.js node:internal/deps/undici/undici:12539:35
+      1  100.0%            JS: ^__require node:internal/deps/undici/undici:5:49
+
+     13    1.8%  /usr/lib/system/libsystem_malloc.dylib
+      2   15.4%    JS: +emit node:events:454:44
+      2   15.4%    /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1   50.0%      JS: ^<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:181:34
+      1  100.0%        /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%          JS: ^get names /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:180:14
+      1  100.0%            JS: ~get names /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/index.js:234:14
+      1   50.0%      JS: +FastBuffer node:internal/buffer:960:14
+      1  100.0%        JS: +allocUnsafeSlow node:buffer:417:50
+      1  100.0%          JS: ^<anonymous> node:internal/fs/streams:262:41
+      1  100.0%            JS: ^wrapper node:fs:671:19
+      1    7.7%    JS: ~getJsonPointer /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/index.js:212:24
+      1  100.0%      JS: ~resolveSchema /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/index.js:172:23
+      1  100.0%        JS: ~resolve /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/index.js:163:17
+      1  100.0%          JS: ~resolveRef /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/index.js:127:20
+      1  100.0%            JS: ^code /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/vocabularies/core/ref.js:13:9
+      1    7.7%    JS: ~digest node:internal/crypto/hash:125:40
+      1  100.0%      JS: ~<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/serve-handler/src/index.js:32:16
+      1  100.0%        JS: +emit node:events:454:44
+      1  100.0%          JS: ^endReadableNT node:internal/streams/readable:1690:23
+      1  100.0%            JS: +processTicksAndRejections node:internal/process/task_queues:72:35
+      1    7.7%    JS: ~arg /opt/homebrew/lib/node_modules/serve/node_modules/arg/index.js:13:13
+      1  100.0%      JS: ~parseArguments file:///opt/homebrew/lib/node_modules/serve/build/main.js:410:22
+      1  100.0%        Script: ~<anonymous> file:///opt/homebrew/lib/node_modules/serve/build/main.js:1:1
+      1  100.0%          /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%            JS: ~run node:internal/modules/esm/module_job:264:12
+
+     13    1.8%  /usr/lib/libc++.1.dylib
+      5   38.5%    JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      4   80.0%      JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   25.0%        JS: ~lazyUndici node:http:122:20
+      1  100.0%          JS: ~get node:http:177:6
+      1  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1   25.0%        JS: ~<anonymous> node:tty:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   25.0%        JS: ~<anonymous> node:internal/fs/promises:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   25.0%        JS: ~<anonymous> node:http2:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: ^requireBuiltin node:internal/bootstrap/realm:425:24
+      1   20.0%      JS: ~builtinStrategy node:internal/modules/esm/translators:408:52
+      1  100.0%        JS: ~#translate node:internal/modules/esm/loader:482:13
+      1  100.0%          JS: ~loadAndTranslate node:internal/modules/esm/loader:535:25
+      1  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    7.7%    JS: ~http file:///opt/homebrew/lib/node_modules/serve/build/main.js:154:12
+      1  100.0%      JS: ~run file:///opt/homebrew/lib/node_modules/serve/build/main.js:165:17
+      1  100.0%        JS: ~serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      1  100.0%          JS: ^emit node:events:454:44
+      1  100.0%            JS: ~parserOnIncoming node:_http_server:1040:26
+      1    7.7%    JS: ~FileHandle node:internal/fs/promises:162:14
+      1  100.0%      JS: ~open node:internal/fs/promises:630:20
+      1  100.0%        /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    7.7%    JS: ~#cachedDefaultResolve node:internal/modules/esm/loader:654:24
+      1  100.0%      JS: ~resolve node:internal/modules/esm/loader:634:10
+      1  100.0%        JS: ~getModuleJobForImport node:internal/modules/esm/loader:278:30
+      1  100.0%          JS: ~_link node:internal/modules/esm/module_job:115:14
+      1  100.0%            /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    7.7%    JS: ^wrappedFn node:internal/errors:535:21
+      1  100.0%      JS: ~setHeader node:_http_outgoing:697:57
+      1  100.0%        JS: ~setHeadersFromObject /opt/homebrew/lib/node_modules/serve/node_modules/on-headers/index.js:90:31
+      1  100.0%          JS: ~setWriteHeadHeaders /opt/homebrew/lib/node_modules/serve/node_modules/on-headers/index.js:105:30
+      1  100.0%            JS: ~writeHead /opt/homebrew/lib/node_modules/serve/node_modules/on-headers/index.js:28:29
+      1    7.7%    JS: ^wrapSafe node:internal/modules/cjs/loader:1624:18
+      1  100.0%      JS: ^<anonymous> node:internal/modules/cjs/loader:1684:37
+      1  100.0%        JS: ^<anonymous> node:internal/modules/cjs/loader:1880:37
+      1  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1454:33
+      1  100.0%            JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      1    7.7%    JS: ^getNearestParentPackageJSON node:internal/modules/package_json_reader:144:37
+      1  100.0%      JS: ^<anonymous> node:internal/modules/cjs/loader:1880:37
+      1  100.0%        JS: ^<anonymous> node:internal/modules/cjs/loader:1454:33
+      1  100.0%          JS: ^<anonymous> node:internal/modules/cjs/loader:1192:24
+      1  100.0%            JS: ^traceSync node:diagnostics_channel:320:12
+      1    7.7%    /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%      JS: ^getOwn node:internal/bootstrap/realm:207:16
+      1  100.0%        JS: ^syncExports node:internal/bootstrap/realm:376:14
+      1  100.0%          JS: ~builtinStrategy node:internal/modules/esm/translators:408:52
+      1  100.0%            JS: ~#translate node:internal/modules/esm/loader:482:13
+
+     12    1.7%  /usr/lib/system/libsystem_platform.dylib
+      4   33.3%    JS: ~run file:///opt/homebrew/lib/node_modules/serve/build/main.js:165:17
+      4  100.0%      JS: ~serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      4  100.0%        JS: ^emit node:events:454:44
+      4  100.0%          JS: ~parserOnIncoming node:_http_server:1040:26
+      4  100.0%            JS: ~parserOnHeadersComplete node:_http_common:71:33
+      3   25.0%    JS: ~compareVersions /opt/homebrew/lib/node_modules/serve/node_modules/update-check/index.js:14:25
+      3  100.0%      JS: ~module.exports /opt/homebrew/lib/node_modules/serve/node_modules/update-check/index.js:169:18
+      3  100.0%        /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1    8.3%    JS: ~str /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/codegen/code.js:66:13
+      1  100.0%      JS: ~errorSchemaPath /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/errors.js:103:25
+      1  100.0%        JS: ~errorObject /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/errors.js:88:21
+      1  100.0%          JS: ~errorObjectCode /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/errors.js:82:25
+      1  100.0%            JS: ~reportError /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/errors.js:15:21
+      1    8.3%    JS: ~resume_ node:internal/streams/readable:1252:17
+      1  100.0%      JS: ^processTicksAndRejections node:internal/process/task_queues:72:35
+      1    8.3%    JS: ^writevGeneric node:internal/stream_base_commons:121:23
+      1  100.0%      JS: ^Socket._writeGeneric node:net:940:42
+      1  100.0%        JS: ^Socket._writev node:net:977:36
+      1  100.0%          JS: ^doWrite node:internal/streams/writable:585:17
+      1  100.0%            JS: ^clearBuffer node:internal/streams/writable:742:21
+      1    8.3%    JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%      JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1  100.0%        JS: ~<anonymous> node:internal/worker:1:1
+      1  100.0%          JS: ^compileForInternalLoader node:internal/bootstrap/realm:388:27
+      1  100.0%            JS: +requireBuiltin node:internal/bootstrap/realm:425:24
+      1    8.3%    /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1  100.0%      JS: ~_normalizeIPv6 /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:811:24
+      1  100.0%        JS: ~parse /opt/homebrew/lib/node_modules/serve/node_modules/uri-js/dist/es5/uri.all.js:868:15
+      1  100.0%          JS: ~getFullPath /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:71:21
+      1  100.0%            JS: ~getSchemaRefs /opt/homebrew/lib/node_modules/serve/node_modules/ajv/dist/compile/resolve.js:94:23
+
+      9    1.3%  /opt/homebrew/Cellar/openssl@3/3.4.1/lib/libcrypto.3.dylib
+      6   66.7%    JS: ^update node:internal/crypto/hash:107:40
+      6  100.0%      JS: ^<anonymous> /opt/homebrew/lib/node_modules/serve/node_modules/serve-handler/src/index.js:31:17
+      4   66.7%        JS: ^emit node:events:454:44
+      4  100.0%          JS: ^addChunk node:internal/streams/readable:548:18
+      4  100.0%            JS: ^readableAddChunkPushByteMode node:internal/streams/readable:461:38
+      2   33.3%        JS: +emit node:events:454:44
+      2  100.0%          JS: +addChunk node:internal/streams/readable:548:18
+      2  100.0%            JS: +readableAddChunkPushByteMode node:internal/streams/readable:461:38
+      1   11.1%    JS: ~<anonymous> node:internal/crypto/util:120:32
+      1  100.0%      JS: ~lib/web/fetch/util.js node:internal/deps/undici/undici:4019:26
+      1  100.0%        JS: ^__require node:internal/deps/undici/undici:5:49
+      1  100.0%          JS: ~lib/web/fetch/headers.js node:internal/deps/undici/undici:8581:29
+      1  100.0%            JS: ^__require node:internal/deps/undici/undici:5:49
+
+      8    1.1%  /opt/homebrew/Cellar/icu4c@76/76.1_1/lib/libicuuc.76.1.dylib
+      4   50.0%    JS: ~run file:///opt/homebrew/lib/node_modules/serve/build/main.js:165:17
+      4  100.0%      JS: ~serverHandler file:///opt/homebrew/lib/node_modules/serve/build/main.js:164:25
+      4  100.0%        JS: ^emit node:events:454:44
+      4  100.0%          JS: ~parserOnIncoming node:_http_server:1040:26
+      4  100.0%            JS: ~parserOnHeadersComplete node:_http_common:71:33
+      2   25.0%    JS: ~compareVersions /opt/homebrew/lib/node_modules/serve/node_modules/update-check/index.js:14:25
+      2  100.0%      JS: ~module.exports /opt/homebrew/lib/node_modules/serve/node_modules/update-check/index.js:169:18
+      2  100.0%        /opt/homebrew/Cellar/node/23.9.0/bin/node
+      1   12.5%    JS: ~cache node:internal/http:22:15
+      1  100.0%      JS: ~utcDate node:internal/http:17:17
+      1  100.0%        JS: ~_storeHeader node:_http_outgoing:454:22
+      1  100.0%          JS: ~writeHead node:_http_server:348:19
+      1  100.0%            JS: ~writeHead /opt/homebrew/lib/node_modules/serve/node_modules/on-headers/index.js:28:29
+      1   12.5%    JS: +emit node:events:454:44
+

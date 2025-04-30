@@ -29,7 +29,7 @@ const steps: Step[] = [
           <dd>to raise or lower</dd>
         </dl>
         <br />
-        Try closing this window and moving your view around space.  You can return to the next step in the tutorial by clicking on the glowing red
+        You can also rotate your view using the mouse by holding down the mouse button.  Try closing this window and moving your view around space.  You can return to the next step in the tutorial by clicking on the glowing red
         tutorial button.  
         <br />
         <br />
