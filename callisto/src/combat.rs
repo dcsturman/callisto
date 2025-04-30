@@ -192,11 +192,9 @@ pub fn attack(
   };
 
   debug!(
-        "(Combat.attack) {} does {} damage to {} after rolling {}, adjustment with damage modifier {}, hit effect {}, and defender armor -{}.",
-        attacker_name,
-        damage,
+        "(Combat.attack) {attacker_name} does {damage} damage to {} after rolling {roll} ({}D), adjustment with damage modifier {}, hit effect {}, and defender armor -{}.",
         defender.get_name(),
-        roll,
+        DAMAGE_WEAPON_DICE[weapon.kind as usize],
         damage_mod,
         (hit_roll - STANDARD_ROLL_THRESHOLD),
         defender.get_current_armor()

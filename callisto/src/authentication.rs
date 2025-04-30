@@ -318,7 +318,10 @@ impl Authenticator for GoogleAuthenticator {
       .unwrap_or_else(|e| panic!("(authenticate_google_user) Unable to get text from token response: {e:?}"));
 
     let token_response_json: GoogleTokenResponse = serde_json::from_str(&body)
-      .unwrap_or_else(|e| panic!("(authenticate_google_user) Unable to parse token response: {e:?} {body}"));
+      .map_err(|e| {
+        error!("(authenticate_google_user) Unable to parse token response: {e:?} {body}");
+        e
+    })?;
 
     let token = token_response_json.id_token;
 
