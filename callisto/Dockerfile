@@ -42,7 +42,8 @@ COPY --from=build /app/scenarios* /scenarios
 COPY --from=build /app/ship_templates* /ship_templates
 COPY --from=build /app/config* /config
 
-ENV RUST_LOG=debug
+ENV RUST_LOG=info,gomez=warn
+
 # set the binary as entrypoint
 ENTRYPOINT ["/callisto", "-p", "30000"]
 # Used for debugging the image
