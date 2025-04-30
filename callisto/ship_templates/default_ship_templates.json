@@ -432,5 +432,52 @@
             }
         ],
         "tl": 15
+    },
+    {
+        "name": "Ekawsiykua Escort",
+        "displacement": 800,
+        "hull": 288,
+        "armor": 0,
+        "maneuver": 4,
+        "jump": 4,
+        "power": 540,
+        "fuel": 324,
+        "crew": 31,
+        "sensors": "Improved",
+        "computer": 20,
+        "weapons": [
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Pulse",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Missile",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            },
+            {
+                "kind": "Sand",
+                "mount": { "Turret": 3 }
+            }],
+        "tl": 12
     }
 ]

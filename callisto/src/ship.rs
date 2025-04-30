@@ -15,7 +15,7 @@ use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
 use crate::read_local_or_cloud_file;
-use crate::{debug, info, warn};
+use crate::{debug, error, info, warn};
 pub const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./ship_templates/default_ship_templates.json";
 
 pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
@@ -521,9 +521,10 @@ serde_with::serde_conv!(
     pub TemplateNameOnly,
     Arc<ShipDesignTemplate>,
     |t: &Arc<ShipDesignTemplate>| t.name.clone(),
-    |value: String| -> Result<_, std::convert::Infallible> {
-        let template: Arc<ShipDesignTemplate> = SHIP_TEMPLATES.get().expect("(Deserializing Ship) Ship templates not loaded").get(&value).unwrap().clone();
-        Ok(template)
+    |value: String| -> Result<_, String> {
+        SHIP_TEMPLATES.get().expect("(Deserializing Ship) Ship templates not loaded").get(&value).map_or_else(
+          || { error!("(Deserializing Ship) Could not find design {value}"); Err("Could not find design".to_string()) },
+          |t| Ok(t.clone()) )
     }
 );
 

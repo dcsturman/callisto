@@ -516,8 +516,16 @@ impl Entities {
             if let Some(target) = target {
               // For now assume all missiles are smart missiles.
               let smart_missile_bonus =
-                i32::from(missile_source.design.tl - target.read().unwrap().design.tl).clamp(1, 6);
+                i32::from(missile_source.design.tl.saturating_sub(target.read().unwrap().design.tl)).clamp(1, 6);
 
+              debug!(
+                "(Entity.update_all) Missile {} impacted target {} with smart missile bonus {} (attacker TL {}, target TL {}).",
+                missile,
+                ship,
+                smart_missile_bonus,
+                missile_source.design.tl,
+                target.read().unwrap().design.tl
+              );
               let mut target = target.write().unwrap();
               let effects = attack(
                 smart_missile_bonus,
