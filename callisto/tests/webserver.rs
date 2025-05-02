@@ -1496,8 +1496,14 @@ async fn integration_create_regular_server() {
   assert!(server1.try_wait().unwrap().is_none());
 
   // Test server with design file
-  let mut server2 = spawn_server(port_2, false, None, Some("./tests/test_templates.json".to_string()), true)
-    .await
-    .unwrap();
+  let mut server2 = spawn_server(
+    port_2,
+    false,
+    Some("./scenarios".to_string()),
+    Some("./ship_templates/default_ship_templates.json".to_string()),
+    true,
+  )
+  .await
+  .unwrap();
   assert!(server2.try_wait().unwrap().is_none());
 }

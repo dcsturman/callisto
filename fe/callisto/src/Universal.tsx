@@ -260,7 +260,7 @@ export type EntityRefreshCallback = (entities: EntityList) => void;
 export const EntitiesServerContext = createContext<{
   entities: EntityList;
   handler: EntityRefreshCallback;
-}>({ entities: new EntityList, handler: () => {} });
+}>({ entities: new EntityList(), handler: () => {} });
 
 export const DesignTemplatesContext = createContext<{
   templates: ShipDesignTemplates,

@@ -307,9 +307,12 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) {
   let scenarios = join_all(scenarios_list.iter().map(async |scenario| {
     // Load each scenario and read it in to get the metadata.
     // If we cannot open it, just drop it from the scenarios list.
-    let load_result = Entities::load_from_file(&format!{"{scenario_dir}/{scenario}"}).await;
+    let load_result = Entities::load_from_file(&format! {"{scenario_dir}/{scenario}"}).await;
     let Ok(entities) = load_result else {
-      error!("(main) Unable to load scenario file {}: {load_result:?}.  Skipping.", scenario);
+      error!(
+        "(main) Unable to load scenario file {} from {scenario_dir}: {load_result:?}.  Skipping.",
+        scenario
+      );
       return None;
     };
     Some((scenario.clone(), entities.metadata.clone()))

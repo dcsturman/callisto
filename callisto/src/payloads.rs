@@ -204,7 +204,9 @@ pub struct JoinScenarioMsg {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ScenariosMsg {
-  pub current_scenarios: Vec<String>,
+  /// List of current scenarios by unique id (string) and the template name (as appears in the templates field)
+  pub current_scenarios: Vec<(String, String)>,
+  /// List of templates by actual name (filename) and metadata (display name and description).
   pub templates: Vec<(String, MetaData)>,
 }
 

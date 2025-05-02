@@ -1810,7 +1810,7 @@ mod tests {
   async fn test_unordered_scenario_file() {
     let _ = pretty_env_logger::try_init();
 
-    let entities = Entities::load_from_file("./tests/test-scenario.json").await.unwrap();
+    let entities = Entities::load_from_file("./tests/scenarios/test-scenario.json").await.unwrap();
     assert!(entities.validate(), "Scenario file failed validation");
   }
 

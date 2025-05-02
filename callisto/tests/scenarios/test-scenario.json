@@ -1,4 +1,8 @@
 {
+    "metadata": {
+        "name": "Test Scenario",
+        "description": "A test scenario"
+    },
     "planets" : [
     {
         "name" : "Moon",

@@ -473,6 +473,7 @@ impl Processor {
         // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
         let server = Arc::new(Server::new(&create_scenario.name, &scenario_full_name).await);
         self.servers.insert(create_scenario.name.clone(), server.clone());
+        self.members.register(&create_scenario.name, &create_scenario.scenario);
         self.members.update(
           server.get_id(),
           player.get_id(),

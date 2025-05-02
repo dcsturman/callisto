@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use crate::entity::Entities;
 use crate::payloads::{Role, UserData};
-use crate::warn;
+use crate::{warn, error};
 pub struct Server {
   pub id: String,
   pub entities: Mutex<Entities>,
@@ -13,6 +13,7 @@ pub struct Server {
 
 pub struct ServerMembersTable {
   members: HashMap<String, ServerTable>,
+  scenario_definition: HashMap<String, String>,
 }
 
 struct ServerTable {
@@ -83,10 +84,20 @@ impl ServerMembersTable {
   pub fn new() -> Self {
     ServerMembersTable {
       members: HashMap::new(),
+      scenario_definition: HashMap::new(),
     }
   }
 
+  pub fn register(&mut self, scenario_name: &str, template_name: &str) {
+    self.scenario_definition.insert(scenario_name.to_string(), template_name.to_string());
+  }
+
   pub fn update(&mut self, server_id: &str, unique_id: u64, email: &str, role: Role, ship: Option<String>) {
+    if self.scenario_definition.get(server_id).is_none() {
+      error!("Server {server_id} is not registered with a scenario description.");
+      return;
+    }
+
     let server_table = self.members.entry(server_id.to_string()).or_default();
     server_table.table.insert(
       unique_id,
@@ -156,8 +167,8 @@ impl ServerMembersTable {
   }
 
   #[must_use]
-  pub fn current_scenario_list(&self) -> Vec<String> {
-    self.members.keys().cloned().collect()
+  pub fn current_scenario_list(&self) -> Vec<(String, String)> {
+    self.members.keys().filter_map(|key| self.scenario_definition.get(key).map(|scenario_name| (key.clone(), scenario_name.clone()))).collect()
   }
 
   /// Find and remove any scenarios that have been empty for more than 5 minutes.
