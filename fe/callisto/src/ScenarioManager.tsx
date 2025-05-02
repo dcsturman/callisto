@@ -1,4 +1,5 @@
 import React from "react";
+import {MetaData} from "./Universal";
 import {joinScenario, createScenario } from "./ServerManager";
 import {Logout} from "./Authentication";
 
@@ -39,7 +40,7 @@ function generateUniqueHyphenatedName() {
 
 type ScenarioManagerProps = {
     scenarios: string[];
-    scenarioTemplates: string[];
+    scenarioTemplates: [string, MetaData][];
     setTutorialMode: (tutorialMode: boolean) => void;
     setAuthenticated: (authenticated: boolean) => void;
     email: string | null;
@@ -48,7 +49,7 @@ type ScenarioManagerProps = {
 
 export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scenarioTemplates, setTutorialMode, setAuthenticated, email, setEmail}) => {
     const sortedFilteredScenarios = scenarios.filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
-    const sortedTemplates = scenarioTemplates.sort((a, b) => a.localeCompare(b));
+    const sortedTemplates = scenarioTemplates.sort((a, b) => a[0].localeCompare(b[0]));
 
     const [scenario, setScenario] = React.useState<string | null>(sortedFilteredScenarios[0]?? null);
     const [template, setTemplate] = React.useState<string | null>(null);
@@ -122,8 +123,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
                         <option key="default" value="">&lt;no scenario&gt;</option>
                         {sortedTemplates
                           .map((scenario) => (
-                            <option key={scenario} value={scenario}>
-                                {scenario}
+                            <option key={scenario[1].name} value={scenario[0]}>
+                                {scenario[1].name}
                             </option>
                         ))}
                     </select>

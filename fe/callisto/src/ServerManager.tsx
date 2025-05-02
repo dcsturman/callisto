@@ -4,6 +4,7 @@ import {
   EntityList,
   FlightPathResult,
   G,
+  MetaData,
   Ship,
   ShipDesignTemplates,
   ShipDesignTemplate,
@@ -57,7 +58,7 @@ let setEffects: (effects: Effect[]) => void = () => {
 let setUsers: (users: UserList) => void = () => {
   console.error("Calling default implementation of setUsers()");
 };
-let setScenarios: (current_scenarios: string[], templates: string[]) => void = () => {
+let setScenarios: (current_scenarios: string[], templates: [string, MetaData][]) => void = () => {
   console.error("Calling default implementation of setScenarios()");
 };
 let setJoinedScenario: (scenario: string) => void = () => {
@@ -109,7 +110,7 @@ export function setMessageHandlers(
   flightPath: ((plan: FlightPathResult) => void) | null,
   effects: ((effects: Effect[]) => void) | null,
   users: ((users: UserList) => void) | null,
-  scenarios: ((current_scenarios: string[], templates: string[]) => void) | null,
+  scenarios: ((current_scenarios: string[], templates: [string, MetaData][]) => void) | null,
   joinedScenario: ((scenario: string) => void) | null,
   tutorialMode: ((tutorialMode: boolean) => void) | null
 ) {
@@ -498,10 +499,10 @@ function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
 }
 
 function handleScenarioList(
-  json: {current_scenarios: string[]; templates: string[]},
-  setScenarios: (current_scenarios: string[], templates: string[]) => void
+  json: {current_scenarios: string[]; templates: [string, MetaData][]},
+  setScenarios: (current_scenarios: string[], templates: [string, MetaData][]) => void
 ) {
-  setScenarios(json.templates, json.current_scenarios);
+  setScenarios(json.current_scenarios,json.templates);
 }
 
 function handleJoinedScenario(json: {JoinedScenario: string}) {

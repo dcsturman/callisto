@@ -220,15 +220,26 @@ export class Missile extends Entity {
   }
 }
 
+export class MetaData {
+  name: string = "";
+  description: string = "";
+  constructor(name: string, description: string) {
+    this.name = name;
+    this.description = description;
+  }
+}
+
 export class EntityList {
   ships: Ship[];
   planets: Planet[];
   missiles: Missile[];
+  metadata: MetaData;
 
   constructor() {
     this.ships = [];
     this.planets = [];
     this.missiles = [];
+    this.metadata = new MetaData("", "");
   }
 
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -249,7 +260,7 @@ export type EntityRefreshCallback = (entities: EntityList) => void;
 export const EntitiesServerContext = createContext<{
   entities: EntityList;
   handler: EntityRefreshCallback;
-}>({ entities: { ships: [], planets: [], missiles: [] }, handler: () => {} });
+}>({ entities: new EntityList, handler: () => {} });
 
 export const DesignTemplatesContext = createContext<{
   templates: ShipDesignTemplates,

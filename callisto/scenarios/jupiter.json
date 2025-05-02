@@ -1,4 +1,8 @@
 {
+    "metadata": {
+        "name": "Fire over Jupiter",
+        "description": "A scenario set in the Jupiter system.  Can three Imperial Gazelle escorts defeat the Aslan raiding force?"
+    },
     "planets": [
     {
         "name" : "Jupiter",

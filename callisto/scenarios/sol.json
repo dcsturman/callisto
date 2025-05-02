@@ -1,4 +1,8 @@
 {
+    "metadata": {
+        "name": "Sol",
+        "description": "The inner solar system - populate it with ships as you like and have some fun!"
+    },
     "planets" :     [{
         "name" : "Sun",
         "position" : [-149.6e9, 0, 0],

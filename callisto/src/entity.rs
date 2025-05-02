@@ -63,6 +63,13 @@ pub struct Entities {
   // They are more ephemeral than the objects above, but are global state
   // so we store them here so that Entities the single global-state object for a server.
   pub actions: ShipActionList,
+  pub metadata: MetaData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct MetaData {
+  pub name: String,
+  pub description: String,
 }
 
 impl PartialEq for Entities {
@@ -97,6 +104,7 @@ impl Entities {
       planets: HashMap::new(),
       next_missile_id: 0,
       actions: vec![],
+      metadata: MetaData::default(),
     }
   }
 
@@ -1179,6 +1187,8 @@ impl<'de> Deserialize<'de> for Entities {
       planets: Vec<Planet>,
       #[serde(default)]
       actions: ShipActionList,
+      #[serde(default)]
+      metadata: MetaData,
     }
 
     let guts = Entities::deserialize(deserializer)?;
@@ -1200,6 +1210,7 @@ impl<'de> Deserialize<'de> for Entities {
         .collect(),
       next_missile_id: 0,
       actions: guts.actions,
+      metadata: guts.metadata,
     })
   }
 }
