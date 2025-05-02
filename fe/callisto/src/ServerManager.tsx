@@ -303,6 +303,7 @@ export function updateActions(actions: ActionType) {
   console.group("(updateActions) Sending actions: ");
   console.log(JSON.stringify(actions));
   console.groupEnd();
+  
   const payload = {ModifyActions: actionPayload(actions)};
   socket.send(JSON.stringify(payload));
 }

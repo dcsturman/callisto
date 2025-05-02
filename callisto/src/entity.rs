@@ -11,7 +11,9 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
 use crate::action::{ShipAction, ShipActionList};
-use crate::combat::{attack, create_sand_counts, do_fire_actions, roll_dice};
+use crate::combat::{
+  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, roll_dice, use_next_point_defense,
+};
 use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::Planet;
@@ -379,10 +381,27 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
   pub fn fire_actions(
-    &mut self, fire_actions: &[(String, Vec<ShipAction>)], ship_snapshot: &HashMap<String, Ship>, rng: &mut dyn RngCore,
+    &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
+    ship_snapshot: &HashMap<String, Ship>, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Create a snapshot of all the sand capabilities of each ship.
     let mut sand_counts = create_sand_counts(ship_snapshot);
+
+    // From our list of point defense actions, go into each ship and build up a proper list of usable point defense actions.
+    // These then get used and cleared in `Entities::update_all` after all missiles have been updated.
+    for (defender, actions) in point_defense_actions {
+      let Some(ship) = self.ships.get(defender) else {
+        warn!(
+          "(Entities.fire_actions) Cannot find attacker {} for point defense actions.",
+          defender
+        );
+        continue;
+      };
+
+      let mut ship = ship.write().unwrap();
+      let tallies = build_point_defense_tallies(&ship, actions);
+      ship.set_point_defense_list(tallies);
+    }
 
     let effects = fire_actions
       .iter()
@@ -479,6 +498,12 @@ impl Entities {
       a_ent.get_name().partial_cmp(b_ent.get_name()).unwrap()
     });
 
+    // This "memory" structure compensates for the fact we don't have salvo's in our game (vs the rules)
+    // Point defense will be invoked if a missile is going to hit.  However, the effect of the point defense
+    // check should destroy that many missiles. So before we expend another weapon, we burn down that effect.
+    // This memory stores that value.
+    let mut point_defense_memory = HashMap::new();
+
     // Now update all (remaining) missiles.
     let mut effects = sorted_missiles
       .into_iter()
@@ -495,19 +520,19 @@ impl Entities {
           return None;
         };
 
-        // We use UpdateAction vs just returning the effect so that the call to attack() stays at this level rather than
-        // being embedded in the missile update code.  Also enables elimination of missiles.
+        // We use UpdateAction vs just returning the effect so that the call to attack() stays at this level rather
+        // than being embedded in the missile update code.  Also enables elimination of missiles.
         match update? {
-          UpdateAction::ShipImpact { ship, missile } => {
-            // When a missile impacts fake it as an attack by a single turret missile.
+          UpdateAction::ShipImpact { ship: target_name, missile } => {
+            // When a missile impacts, fake it as an attack by a single turret missile.
             const FAKE_MISSILE_LAUNCHER: Weapon = Weapon {
               kind: WeaponType::Missile,
               mount: WeaponMount::Turret(1),
             };
-            info!("(Entity.update_all) Missile impact on {} by missile {}.", ship, missile);
-            let target = self.ships.get(&ship).map_or_else(
+            info!("(Entity.update_all) Missile impact on {} by missile {}.", target_name, missile);
+            let target = self.ships.get(&target_name).map_or_else(
               || {
-                warn!("Cannot find target {} for missile. It may have been destroyed.", ship);
+                warn!("Cannot find target {} for missile. It may have been destroyed.", target_name);
                 None
               },
               |ship| Some(ship.clone()),
@@ -521,25 +546,50 @@ impl Entities {
               debug!(
                 "(Entity.update_all) Missile {} impacted target {} with smart missile bonus {} (attacker TL {}, target TL {}).",
                 missile,
-                ship,
+                target_name,
                 smart_missile_bonus,
                 missile_source.design.tl,
                 target.read().unwrap().design.tl
               );
               let mut target = target.write().unwrap();
-              let effects = attack(
-                smart_missile_bonus,
-                0,
-                missile_source,
-                &mut target,
-                &FAKE_MISSILE_LAUNCHER,
-                // Missiles cannot do called shots
-                None,
-                rng,
-              );
-              cleanup_missile_list.push(missile);
 
-              Some(effects)
+              // See if point defense works!
+              let available_point_defense = point_defense_memory
+                .remove(&target_name)
+                .unwrap_or_else(|| use_next_point_defense(&mut target.point_defense_list, rng));
+
+              // This stops the attack
+              if available_point_defense > 0 {
+                // If there is still "juice" on the current point defense check, save it for next time.
+                if available_point_defense > 1 {
+                  debug!("(Entity.update_all) Saving point defense of {} for {target_name} for next time.", available_point_defense -1);
+                  point_defense_memory.insert(target_name.clone(), available_point_defense - 1);
+                } else {
+                  debug!("(Entity.update_all) Point defense effective for {} but used up.", target_name);
+                }
+
+                debug!(
+                  "(Entity.update_all) Missile {} destroyed by point defense by {}.",
+                  missile, target_name
+                );
+                cleanup_missile_list.push(missile.clone());
+                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("Missile {missile} destroyed by {target_name}'s point defense"))])
+              } else {
+                // The attack gets through point defense
+                let effects = attack(
+                  smart_missile_bonus,
+                  0,
+                  missile_source,
+                  &mut target,
+                  &FAKE_MISSILE_LAUNCHER,
+                  // Missiles cannot do called shots
+                  None,
+                  rng,
+                );
+                cleanup_missile_list.push(missile);
+
+                Some(effects)
+              }
             } else {
               debug!(
                 "(Entity.update_all) Missile {} exhausted at position {:?}.",
@@ -572,6 +622,8 @@ impl Entities {
         .filter_map(|ship| {
           let mut ship = ship.write().unwrap();
           let update = ship.update();
+          // Missile attacks are done by this point so clear this up for the next round.
+          ship.clear_point_defense();
           let name = ship.get_name();
           let pos = ship.get_position();
 
@@ -659,7 +711,10 @@ impl Entities {
             }
             self.jam_comms(ship_name, target, rng)
           }
-          ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } | ShipAction::Jump => {
+          ShipAction::PointDefenseAction { .. }
+          | ShipAction::FireAction { .. }
+          | ShipAction::DeleteFireAction { .. }
+          | ShipAction::Jump => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }
@@ -689,6 +744,15 @@ impl Entities {
   }
 
   fn sensor_lock(&mut self, ship_name: &String, target: &str, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    // First check if there is already a sensor lock and if so just return.
+    if self
+      .ships
+      .get(ship_name)
+      .is_some_and(|ship| ship.read().unwrap().sensor_locks.contains(&target.to_string()))
+    {
+      return Vec::default();
+    }
+
     // Check if sensor lock is achieved.
     let check = i16::from(roll_dice(2, rng))
       + self.sensor_quality_modifiers(ship_name)
@@ -754,11 +818,17 @@ impl Entities {
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
       - 10;
 
+    debug!(
+      "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, sensor_quality mod {}, countermeasures mod {} gives an effect of {check}.",
+      self.sensor_quality_modifiers(ship_name),
+      countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures),
+    );
+
     if check >= 0 {
       // Deal with effect needing to allow one missile impact when the roll is made exactly.
       // Cast is safe because from above check >= 0.
       #[allow(clippy::cast_sign_loss)]
-      let num_missiles = (check as usize).min(1);
+      let num_missiles = (check as usize).max(1);
       // Randomly pick the missiles that are destroyed.
       let destroyed = targeting_missiles.choose_multiple(rng, num_missiles).collect::<Vec<_>>();
       // Create for each destroyed missile an effect (exhaustion) and message.
@@ -964,6 +1034,53 @@ impl Entities {
       let mut planet = planet.write().unwrap();
       planet.reset_gravity_wells();
     }
+  }
+
+  /// Its easier to assume actions will stay the same round to round.
+  /// Given that scrub the actions so that actions are removed if:
+  /// 1) They are a fire action and the target is no longer present.
+  /// 2) They are a sensor action and the target is no longer present.
+  /// 3) They are a jam missiles action and there are no missiles incoming.
+  /// 4) They are a sensor lock action and a sensor lock has been achieved.
+  /// 5) They are a break sensor lock action and the sensor lock has been broken.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  pub fn reset_actions(&mut self) {
+    self.actions.iter_mut().for_each(|(ship_name, actions)| {
+      // Find the actual ship. If it no longer exists we don't need any of these actions.
+      if !self.ships.contains_key(ship_name) {
+        actions.clear();
+        return;
+      }
+
+      actions.retain(|action| {
+        match action {
+          // Keep FireActions, JamComms if the target still exists
+          // Keep SensorLock if the target still exists. We could have it so we also drop this if
+          // the lock is established, but since locks come and go, best to keep persistent.
+          ShipAction::SensorLock { target }
+          | ShipAction::JamComms { target }
+          | ShipAction::FireAction { target, .. } => self.ships.contains_key(target),
+          // Keep BreakSensorLock if the target still exists and the target has a sensor lock.
+          ShipAction::BreakSensorLock { target } => {
+            if let Some(target_ship) = self.ships.get(target) {
+              let target_ship = target_ship.read().unwrap();
+              return target_ship.sensor_locks.contains(ship_name);
+            }
+            false
+          }
+          // Keep JamMissiles and PointDefense in all cases.
+          ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles => true,
+          // Right now I think both of these should be scrubbed each turn.  Might be incorrect so we'll see.
+          ShipAction::DeleteFireAction { .. } | ShipAction::Jump => false,
+        }
+      });
+    });
+    self.actions.retain(|(_ship_name, actions)| {
+      // If there are no actions for a ship, remove the ship from the actions list.
+      !actions.is_empty()
+    });
   }
 }
 
@@ -2016,11 +2133,6 @@ mod tests {
     let mut entities = Entities::default();
     let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
 
-    debug!(
-      "(test_jam_missiles) roll1 = {} roll2={}",
-      crate::combat::roll(&mut rng),
-      crate::combat::roll(&mut rng)
-    );
     // Create a ship with good sensor skills
     let ship = create_test_ship_sensors("defender", 4);
     entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
@@ -2028,14 +2140,10 @@ mod tests {
     let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
 
     // Create missiles targeting the defender
-    let missile1 = create_test_missile("missile1", "defender");
-    let missile2 = create_test_missile("missile2", "defender");
-    entities
-      .missiles
-      .insert("missile1".to_string(), Arc::new(RwLock::new(missile1)));
-    entities
-      .missiles
-      .insert("missile2".to_string(), Arc::new(RwLock::new(missile2)));
+    for i in 1..=8 {
+      let missile = create_test_missile(&format!("missile{i}"), "defender");
+      entities.missiles.insert(format!("missile{i}"), Arc::new(RwLock::new(missile)));
+    }
 
     entities.fixup_pointers().unwrap();
 
@@ -2043,8 +2151,8 @@ mod tests {
 
     // With a roll of 6 and sensor skill of 4, check should be positive
     // resulting in successful jamming
-    assert_eq!(entities.missiles.len(), 1); // Only one missile should be destroyed due to check result
-    assert_eq!(effects.len(), 2); // One message for jamming success and one for missile destruction
+    assert_eq!(entities.missiles.len(), 1); // Only one missile should be left
+    assert_eq!(effects.len(), 14); // One message for jamming success and one for missile destruction
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("destroyed by jamming")
     )));

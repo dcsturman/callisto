@@ -843,7 +843,7 @@ async fn integration_update_missile() {
              "can_jump":false,
              "sensor_locks": []
             }],
-            "missiles":[],"planets":[],"actions":[]});
+            "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 
     assert_json_eq!(entities, compare);
   } else {

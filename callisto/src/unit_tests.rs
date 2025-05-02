@@ -365,7 +365,7 @@ async fn test_update_missile() {
              "can_jump":false,
              "sensor_locks": []
             }],
-             "missiles":[],"planets":[],"actions":[]});
+             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]});
 
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
@@ -573,11 +573,15 @@ async fn test_exhausted_missile() {
     "Round 0"
   );
 
+  // Then undo those fire actions as we only want to do that in the first round.
+  let fire_actions = json!([["ship1", [{"DeleteFireAction" : {"weapon_id": 1}}]]]).to_string();
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
+
   // Second to 8th round nothing happens.
   for round in 0..9 {
-    server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
     let response = server.update();
     assert_eq!(response, Vec::new(), "Round {round}");
+    server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
   }
 
   // 9th round missile should exhaust itself.
@@ -746,35 +750,46 @@ async fn test_big_fight() {
 
   let entities = server.get_entities_json();
   let compare = json!({"ships":[
-        {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
-         "current_hull":76,"current_armor":3,
-         "current_power":540,"current_maneuver":5,
-         "current_jump":5,"current_fuel":115,
-         "current_crew":21,"current_computer": 30, "current_sensors":"Military",
-         "active_weapons":[true,true,true,true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "dodge_thrust":0,
-         "assist_gunners":false,
-         "can_jump":true,
-         "sensor_locks": []
-        },
-        {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
-         "current_hull":135,"current_armor":3,
-         "current_power":540,"current_maneuver":6,
-         "current_jump":5,"current_fuel":128,
-         "current_crew":21,"current_computer": 30, "current_sensors":"Military",
-         "active_weapons":[true,true,true,true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "dodge_thrust":0,
-         "assist_gunners":false,
-         "can_jump":true,
-         "sensor_locks": []
-        }],
-          "missiles":[],
-          "planets":[],
-          "actions":[]});
+  {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+   "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
+   "current_hull":76,"current_armor":3,
+   "current_power":540,"current_maneuver":5,
+   "current_jump":5,"current_fuel":115,
+   "current_crew":21,"current_computer": 30, "current_sensors":"Military",
+   "active_weapons":[true,true,true,true],
+   "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+   "dodge_thrust":0,
+   "assist_gunners":false,
+   "can_jump":true,
+   "sensor_locks": []
+  },
+  {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
+   "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
+   "current_hull":135,"current_armor":3,
+   "current_power":540,"current_maneuver":6,
+   "current_jump":5,"current_fuel":128,
+   "current_crew":21,"current_computer": 30, "current_sensors":"Military",
+   "active_weapons":[true,true,true,true],
+   "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+   "dodge_thrust":0,
+   "assist_gunners":false,
+   "can_jump":true,
+   "sensor_locks": []
+  }],
+    "missiles":[],
+    "planets":[],
+    "actions":[["ship1", [
+      {"FireAction" : {"weapon_id": 0, "target": "ship2"}},
+      {"FireAction" : {"weapon_id": 1, "target": "ship2"}},
+      {"FireAction" : {"weapon_id": 2, "target": "ship2"}},
+      {"FireAction" :{"weapon_id": 3, "target": "ship2"}},
+  ]],
+  ["ship2", [
+      {"FireAction" : {"weapon_id": 0, "target": "ship1"}},
+      {"FireAction" : {"weapon_id": 1, "target": "ship1"}},
+      {"FireAction" : {"weapon_id": 2, "target": "ship1"}},
+      {"FireAction" :{"weapon_id": 3, "target": "ship1"}},
+  ]]]});
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
 
@@ -850,35 +865,46 @@ async fn test_fight_with_crew() {
 
   let entities = server.get_entities_json();
   let compare = json!({"ships":[
-        {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
-         "current_hull":160,"current_armor":2,
-         "current_power":540,"current_maneuver":6,
-         "current_jump":5,"current_fuel":128,
-         "current_crew":21,"current_computer": 30, "current_sensors":"Military",
-         "active_weapons":[true,true,true,true],
-         "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]},
-         "dodge_thrust":0,
-         "assist_gunners":false,
-         "can_jump":true,
-         "sensor_locks": []
-        },
-        {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
-         "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
-         "current_hull":36,"current_armor":3,
-         "current_power":540,"current_maneuver":4,
-         "current_jump":4,"current_fuel":0,
-         "current_crew":21,"current_computer": 30, "current_sensors":"Military",
-         "active_weapons":[true,true,false,true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
-         "dodge_thrust":0,
-         "assist_gunners":false,
-         "can_jump":true,
-         "sensor_locks": []
-        }],
-          "missiles":[],
-          "planets":[],
-          "actions":[]});
+  {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+   "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
+   "current_hull":160,"current_armor":2,
+   "current_power":540,"current_maneuver":6,
+   "current_jump":5,"current_fuel":128,
+   "current_crew":21,"current_computer": 30, "current_sensors":"Military",
+   "active_weapons":[true,true,true,true],
+   "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]},
+   "dodge_thrust":0,
+   "assist_gunners":true,
+   "can_jump":true,
+   "sensor_locks": []
+  },
+  {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
+   "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
+   "current_hull":36,"current_armor":3,
+   "current_power":540,"current_maneuver":4,
+   "current_jump":4,"current_fuel":0,
+   "current_crew":21,"current_computer": 30, "current_sensors":"Military",
+   "active_weapons":[true,true,false,true],
+   "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+   "dodge_thrust":0,
+   "assist_gunners":false,
+   "can_jump":true,
+   "sensor_locks": []
+  }],
+    "missiles":[],
+    "planets":[],
+    "actions":[["ship1", [
+      {"FireAction" : {"weapon_id": 0, "target": "ship2"}},
+      {"FireAction" : {"weapon_id": 1, "target": "ship2"}},
+      {"FireAction" : {"weapon_id": 2, "target": "ship2"}},
+      {"FireAction" : {"weapon_id": 3, "target": "ship2"}},
+  ]],
+  ["ship2", [
+      {"FireAction" : {"weapon_id": 0, "target": "ship1"}},
+      {"FireAction" : {"weapon_id": 1, "target": "ship1"}},
+      {"FireAction" : {"weapon_id": 2, "target": "ship1"}},
+      {"FireAction" : {"weapon_id": 3, "target": "ship1"}},
+  ]]]});
   assert_json_eq!(serde_json::from_str::<Entities>(entities.as_str()).unwrap(), compare);
 }
 

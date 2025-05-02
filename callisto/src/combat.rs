@@ -10,10 +10,10 @@ use crate::entity::Entity;
 use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
-use crate::{debug, error, info};
+use crate::{debug, error, info, warn};
 
 const DIE_SIZE: u32 = 6;
-const STANDARD_ROLL_THRESHOLD: i32 = 8;
+pub const STANDARD_ROLL_THRESHOLD: i32 = 8;
 const CRITICAL_THRESHOLD: i32 = 5 + STANDARD_ROLL_THRESHOLD;
 
 pub fn roll(rng: &mut dyn RngCore) -> u8 {
@@ -613,7 +613,7 @@ fn apply_crit(crit_level: u8, location: ShipSystem, defender: &mut Ship, rng: &m
       (ShipSystem::Crew, 4) => {
         let rounds = roll(rng);
         vec![EffectMsg::message(format!(
-          "{}'s crew critical hit (level 4) and life support failes in {rounds} rounds.",
+          "{}'s crew critical hit (level 4) and life support fails in {rounds} rounds.",
           defender.get_name()
         ))]
       }
@@ -937,6 +937,103 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
       )
     })
     .collect()
+}
+
+// Helper function to determine which point defense weapon is most effective.
+// Result here is one more than the bonus to the check. 0 means it cannot
+// be used for point defense.
+fn point_defense_score(weapon: &Weapon) -> u16 {
+  (match weapon.kind {
+    WeaponType::Beam | WeaponType::Pulse => 1,
+    WeaponType::Missile | WeaponType::Sand | WeaponType::Particle => 0,
+  }) * match weapon.mount {
+    WeaponMount::Turret(num) => u16::from(num),
+    WeaponMount::Barbette | WeaponMount::Bay(_) => 0,
+  }
+}
+
+/// For a given ship, and a list of ``PointDefenseAction`` actions, build a list of the weapons to use for point defense.
+/// and sort them by effectiveness.  Each item in the list is a pair of (id of the weapon, bonus to the check)
+#[must_use]
+pub fn build_point_defense_tallies(ship: &Ship, actions: &[ShipAction]) -> Vec<(usize, u16)> {
+  let mut point_defense_list = Vec::new();
+
+  // A table indexed by weapon of the score for that weapon.
+  // The score is one more than the bonus to the check; 0 means it cannot be used for point defense.
+  let weapon_scores = ship
+    .design
+    .weapons
+    .iter()
+    .enumerate()
+    .map(|(index, weapon)| {
+      if ship.active_weapons[index] {
+        point_defense_score(weapon) + u16::from(ship.crew.get_gunnery(index))
+      } else {
+        0
+      }
+    })
+    .collect::<Vec<u16>>();
+
+  for action in actions {
+    let ShipAction::PointDefenseAction { weapon_id } = action else {
+      warn!("(Ship.add_point_defense) Expected PointDefenseAction but got {:?}.", action);
+      continue;
+    };
+    debug!(
+      "(Ship.add_point_defense) Adding point defense for {} weapon {}",
+      ship.get_name(),
+      weapon_id
+    );
+    if weapon_scores[*weapon_id] == 0 {
+      debug!(
+        "(Ship.add_point_defense) Weapon {} is not suitable for point defense.",
+        weapon_id
+      );
+      continue;
+    }
+
+    // Convert the score to an actual check modifier
+    point_defense_list.push((*weapon_id, weapon_scores[*weapon_id].saturating_sub(1)));
+  }
+
+  debug!(
+    "(Ship.add_point_defense) Sorted point defense list for {} is {:?}",
+    ship.get_name(),
+    weapon_scores
+  );
+
+  // Do second.cmp(first) as we want this sorted in descending order
+  point_defense_list.sort_by(|(_, first_score), (_, second_score)| second_score.cmp(first_score));
+
+  point_defense_list
+}
+
+/// Check if point defense hits an incoming missile.
+///
+/// # Return
+/// The effect of the check if successful (so a minimum of 1). O if not successful.
+pub fn use_next_point_defense(point_defense_list: &mut Vec<(usize, u16)>, rng: &mut dyn RngCore) -> u32 {
+  let Some((next, bonus)) = point_defense_list.pop() else {
+    return 0;
+  };
+
+  let roll = roll_dice(2, rng);
+  debug!(
+    "(Ship.use_next_point_defense) Using point defense weapon {next} with roll {roll}, point defense bonus {bonus}."
+  );
+
+  // If the roll + the point defense score (minus 1) plus the gunnery skill is a successful check, then the missile is destroyed.
+  let effect = i32::from(roll) + i32::from(bonus) - STANDARD_ROLL_THRESHOLD;
+  if effect >= 0 {
+    debug!("(Ship.use_next_point_defense) Point defense successful.");
+
+    #[allow(clippy::cast_sign_loss)]
+    let result = effect.max(1) as u32;
+    result
+  } else {
+    debug!("(Ship.use_next_point_defense) Point defense failed.");
+    0
+  }
 }
 
 #[cfg(test)]
