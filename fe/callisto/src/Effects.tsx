@@ -32,9 +32,6 @@ export class Effect {
     e.content = json.content ?? null;
     e.position = json.position ?? null;
     e.target = json.target ?? null;
-    if (e.target) {
-      console.log("************************************* found target! ")
-    }
     e.origin = json.origin ?? null;
     return e;
   }

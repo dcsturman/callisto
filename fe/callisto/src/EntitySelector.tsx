@@ -12,8 +12,9 @@ export enum EntitySelectorType {
 type EntitySelectorProps = JSX.IntrinsicElements["select"] & {
   filter: EntitySelectorType[];
   setChoice: (entity: Entity | null) => void;
-  current: Entity | string | null;
+  current: Entity | string  | null;
   exclude?: string;
+  extra?: Entity;
   formatter?: (name: string, entity: Entity) => string;
 }
 
@@ -22,6 +23,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   setChoice,
   current,
   exclude,
+  extra,
   formatter,
   ...props
 }) => {
@@ -53,7 +55,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
           return missile;
         }
       }
-    }  else {
+    } else {
       return current;
     }
 
@@ -64,9 +66,13 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   const nf = (name: string, entity: Entity) =>
     formatter ? formatter(name, entity) : name;
 
-
   function handleSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
+
+    if (extra && value === extra.name) {
+      setChoice(extra);
+      return;
+    }
 
     if (filter.includes(EntitySelectorType.Ship)) {
       const shipTarget = entities.ships.find((ship) => ship.name === value);
@@ -108,6 +114,11 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         onChange={handleSelectChange}
         {...props}>
         <option key="el-none" value=""></option>
+        {extra && (
+          <option key={"extra"} value={extra.name}>
+            {extra.name}
+          </option>
+        )}
         {filter.includes(EntitySelectorType.Ship) &&
           entities.ships
             .filter((candidate) => candidate.name !== exclude)

@@ -350,9 +350,10 @@ export function Controls(args: {
         )}
         {args.computerShip &&
           computerShipDesign &&
-          (actionContext.actions[args.computerShip.name]?.fire || []).length > 0 && (
+          (actionContext.actions[args.computerShip.name]?.fire?.length + actionContext.actions[args.computerShip.name]?.pointDefense?.length > 0) && (
             <FireActions
-              actions={actionContext.actions[args.computerShip?.name].fire || []}
+              fireActions={actionContext.actions[args.computerShip?.name].fire || []}
+              pointDefenseActions={actionContext.actions[args.computerShip?.name].pointDefense || []}
               design={computerShipDesign}
               computerShipName={args.computerShip.name}
             />

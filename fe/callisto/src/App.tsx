@@ -21,6 +21,7 @@ import {
   EntityToShowProvider,
   EntityList,
   FlightPathResult,
+  MetaData,
   Ship,
   ShipDesignTemplates,
   ViewControlParams,
@@ -52,17 +53,13 @@ export function App() {
   // Logically entities and templates make more sense in the Simulator. However,
   // we need to set the handlers at this level in case we just reauthenticate successfully
   // (e.g. on screen refresh when the cookie is valid).
-  const [entities, setEntities] = useState<EntityList>({
-    ships: [],
-    planets: [],
-    missiles: [],
-  });
+  const [entities, setEntities] = useState<EntityList>(new EntityList());
 
   const [templates, setTemplates] = useState<ShipDesignTemplates>({});
   const [actions, setActions] = useState<ActionType>({});
   const [users, setUsers] = useState<UserList>([]);
-  const [scenarios, setScenarios] = useState<string[]>([]);
-  const [scenarioTemplates, setScenarioTemplates] = useState<string[]>([]);
+  const [activeScenarios, setActiveScenarios] = useState<[string, string][]>([]);
+  const [scenarioTemplates, setScenarioTemplates] = useState<[string, MetaData][]>([]);
   const [joinedScenario, setJoinedScenario] = useState<string | null>(null);
   const [tutorialMode, setTutorialMode] = useState<boolean>(false);
 
@@ -78,7 +75,7 @@ export function App() {
         () => {},
         () => {},
         setUsers,
-        (a, b) => { setScenarioTemplates(a); setScenarios(b);},
+        (a, b) => { setActiveScenarios(a); setScenarioTemplates(b); },
         (scenario: string) => setJoinedScenario(scenario),
         setTutorialMode,
       );
@@ -126,7 +123,7 @@ export function App() {
                 />
               </>
             ) : authenticated && socketReady ? (
-              <ScenarioManager scenarios={scenarios} scenarioTemplates={scenarioTemplates} setTutorialMode={setTutorialMode} setAuthenticated={setAuthenticated} email={email} setEmail={setEmail} />
+              <ScenarioManager activeScenarios={activeScenarios} scenarioTemplates={scenarioTemplates} setTutorialMode={setTutorialMode} setAuthenticated={setAuthenticated} email={email} setEmail={setEmail} />
             ) : socketReady ? (
               <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
             ) : (

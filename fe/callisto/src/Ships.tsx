@@ -168,14 +168,15 @@ export function Missile(args: { missile: MissileType; index: number }) {
 
   return (
     <>
+      {/*
       <EffectComposer>
         <Bloom
           mipmapBlur
           luminanceThreshold={1}
           luminanceSmoothing={1}
           intensity={5.0}
-        />
       </EffectComposer>
+      />*/}
       <group
         ref={labelRef}
         position={scaleVector(args.missile.position, SCALE) as Vector3}>
@@ -183,7 +184,7 @@ export function Missile(args: { missile: MissileType; index: number }) {
           position={[0, 0, 0]}
           onPointerOver={() => entityToShow.setEntityToShow(args.missile)}
           onPointerLeave={() => entityToShow.setEntityToShow(null)}>
-          <sphereGeometry args={[0.05]} />
+          <sphereGeometry args={[0.1]} />
           <meshBasicMaterial color={[8.0, 0, 0]} />
         </mesh>
         {/* vector showing a missile's velocity (so distance next turn) */}

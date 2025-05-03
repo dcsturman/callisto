@@ -86,6 +86,8 @@ pub struct Ship {
   pub crit_level: [u8; 11],
   #[serde(skip)]
   pub attack_dm: i32,
+  #[serde(skip)]
+  pub point_defense_list: Vec<(usize, u16)>,
 }
 
 #[skip_serializing_none]
@@ -220,6 +222,7 @@ impl Ship {
       dodge_thrust: 0,
       assist_gunners: false,
       can_jump: false,
+      point_defense_list: vec![],
     }
   }
 
@@ -400,6 +403,14 @@ impl Ship {
   pub fn get_dodge_thrust(&self) -> u8 {
     self.dodge_thrust
   }
+
+  pub fn set_point_defense_list(&mut self, list: Vec<(usize, u16)>) {
+    self.point_defense_list = list;
+  }
+
+  pub fn clear_point_defense(&mut self) {
+    self.point_defense_list.clear();
+  }
 }
 
 impl PartialOrd for Ship {
@@ -493,15 +504,17 @@ impl Entity for Ship {
         );
       }
 
-      // Don't compare just to zero as there will be roundoff.
-      if left_over > 0.1 {
+      // Don't compare just to zero as there will be round-off error.
+      if left_over > 0.01 {
         self.position += self.velocity * left_over;
+
         debug!(
           "(Ship.update) {} cruises at {:0.3?} m/s for time {} to position {:0.0?}",
           self.name, self.velocity, left_over, self.position
         );
       }
     }
+
     None
   }
 }

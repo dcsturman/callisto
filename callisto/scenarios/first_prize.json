@@ -1,4 +1,8 @@
 {
+    "metadata": {
+        "name": "First Prize",
+        "description": "Can the pirate raider 'Killer' capture it's prize before the Cicendai merchant ship escapes?  Some suggested guidelines for this scenario: the fighters will respond the round after there is a first hostile act (attack or sensor lock) against the Cincendai (assume Cincendai radios for help unless that first action is Jam Communicatoins).  Cincendai will jump as soon as it is outside the 100D limit.."
+    },
     "planets" :     [{
         "name" : "Sun",
         "position" : [-149.6e9, 0, 0],

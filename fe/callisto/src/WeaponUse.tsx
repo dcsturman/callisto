@@ -1,5 +1,5 @@
-import React, { useContext, useState, useMemo, useEffect } from "react";
-import { findRangeBand } from "./Util";
+import React, {useContext, useState, useMemo, useEffect} from "react";
+import {findRangeBand} from "./Util";
 import {
   Entity,
   ShipDesignTemplate,
@@ -9,26 +9,26 @@ import {
   Ship,
   SHIP_SYSTEMS,
 } from "./Universal";
-import { EntitySelector, EntitySelectorType } from "./EntitySelector";
-import { FireState, ActionContext } from "./Actions";
+import {EntitySelector, EntitySelectorType} from "./EntitySelector";
+import {FireState, ActionContext, PointDefenseState} from "./Actions";
 
 // Icons for each type of weapon
-import { ReactComponent as Turret1 } from "./icons/turret1.svg";
-import { ReactComponent as Turret2 } from "./icons/turret2.svg";
-import { ReactComponent as Turret3 } from "./icons/turret3.svg";
-import { ReactComponent as Barbette } from "./icons/barbette.svg";
-import { ReactComponent as SmallBay } from "./icons/bay-s.svg";
-import { ReactComponent as MediumBay } from "./icons/bay-m.svg";
-import { ReactComponent as LargeBay } from "./icons/bay-l.svg";
+import {ReactComponent as Turret1} from "./icons/turret1.svg";
+import {ReactComponent as Turret2} from "./icons/turret2.svg";
+import {ReactComponent as Turret3} from "./icons/turret3.svg";
+import {ReactComponent as Barbette} from "./icons/barbette.svg";
+import {ReactComponent as SmallBay} from "./icons/bay-s.svg";
+import {ReactComponent as MediumBay} from "./icons/bay-m.svg";
+import {ReactComponent as LargeBay} from "./icons/bay-l.svg";
 
 // Icons to show fire states.
-import { ReactComponent as RayIcon } from "./icons/laser.svg";
-import { ReactComponent as MissileIcon } from "./icons/missile.svg";
-import { Tooltip } from "react-tooltip";
-import { vectorDistance } from "./Util";
+import {ReactComponent as RayIcon} from "./icons/laser.svg";
+import {ReactComponent as MissileIcon} from "./icons/missile.svg";
+import {Tooltip} from "react-tooltip";
+import {vectorDistance} from "./Util";
 
 // Consistent set of colors for both type of weapons and fire states.
-const WEAPON_COLORS: { [key: string]: string } = {
+const WEAPON_COLORS: {[key: string]: string} = {
   Beam: "red",
   Pulse: "blue",
   Missile: "green",
@@ -266,7 +266,7 @@ type FireControlProps = {
   computerShip: Ship;
 };
 
-export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
+export const FireControl: React.FC<FireControlProps> = ({computerShip}) => {
   const actionContext = useContext(ActionContext);
   const designs = useContext(DesignTemplatesContext);
 
@@ -275,16 +275,25 @@ export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
   }, [computerShip.design, designs.templates]);
 
   const availableCounts = useMemo(() => {
-    const counts = {} as { [key: string]: number };
+    const counts = {} as {[key: string]: number};
     const design = designs.templates[computerShip.design];
     // Count up all the actions by weapon
     if (actionContext.actions[computerShip.name]?.fire) {
       for (const action of actionContext.actions[computerShip.name].fire) {
-        counts[design.getWeaponName(action.weapon_id)] = (counts[design.getWeaponName(action.weapon_id)] || 0) + 1;
+        counts[design.getWeaponName(action.weapon_id)] =
+          (counts[design.getWeaponName(action.weapon_id)] || 0) + 1;
       }
     }
 
-    const available = {} as { [key: string]: number };
+    // Count up all the actions in point defense
+    if (actionContext.actions[computerShip.name]?.pointDefense) {
+      for (const action of actionContext.actions[computerShip.name].pointDefense) {
+        counts[design.getWeaponName(action.weapon_id)] =
+          (counts[design.getWeaponName(action.weapon_id)] || 0) + 1;
+      }
+    }
+
+    const available = {} as {[key: string]: number};
     // Subtract all the counts (if the exist) from the total counts
     for (const weapon in weaponDetails) {
       available[weapon] = weaponDetails[weapon].total - (counts[weapon] || 0);
@@ -300,6 +309,13 @@ export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
     }
   }, [computerShip, fireTarget]);
 
+  const POINT_DEFENSE_NAME = "<Point Defense>";
+  const POINT_DEFENSE_PHANTOM = new Entity(POINT_DEFENSE_NAME, [0, 0, 0], [0, 0, 0]);
+
+  function isPointDefense(entity: Entity): boolean {
+    return entity.name === POINT_DEFENSE_NAME;
+  }
+
   function handleFireCommand(attacker: string, target: string, weapon_name: string) {
     const computerShipDesign = designs.templates[computerShip.design];
     if (!computerShipDesign) {
@@ -307,14 +323,26 @@ export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
       return;
     }
 
-    const weapon_id = computerShipDesign.findNthWeapon(weapon_name, weaponDetails[weapon_name].total - availableCounts[weapon_name] + 1);
+    const weapon_id = computerShipDesign.findNthWeapon(
+      weapon_name,
+      weaponDetails[weapon_name].total - availableCounts[weapon_name] + 1
+    );
     if (availableCounts[weapon_name] === 0) {
       console.log(
-        "(Controls.handleFireCommand) No more weapons of type " + weapon_id + " for " + attacker + "."
+        "(Controls.handleFireCommand) No more weapons of type " +
+          weapon_id +
+          " for " +
+          attacker +
+          "."
       );
       return;
     }
-    actionContext.fireWeapon(attacker, weapon_id, target);
+
+    if (target === POINT_DEFENSE_NAME) {
+      actionContext.pointDefenseWeapon(attacker, weapon_id);
+    } else {
+      actionContext.fireWeapon(attacker, weapon_id, target);
+    }
   }
 
   return (
@@ -327,6 +355,7 @@ export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
           setChoice={setFireTarget}
           current={fireTarget}
           exclude={computerShip.name}
+          extra={POINT_DEFENSE_PHANTOM}
           formatter={(name, entity) => {
             if (computerShip) {
               return `${name} (${findRangeBand(
@@ -340,30 +369,38 @@ export const FireControl: React.FC<FireControlProps> = ({ computerShip }) => {
       </div>
       <div className="weapon-list">
         {Object.entries(designs.templates[computerShip.design].compressedWeapons()).map(
-            ([weapon_name, weapon]) =>
-              !weapon_name.includes("Sand") && (
-                <WeaponButton
-                  key={"weapon-" + computerShip.name + "-" + weapon_name}
-                  weapon={weapon.kind}
-                  mount={weapon.mount}
-                  count={availableCounts[weapon_name]}
-                  onClick={() => {
-                    handleFireCommand(
-                      computerShip.name,
-                      fireTarget ? fireTarget.name : "",
-                      weapon_name
-                    );
-                  }}
-                  disabled={!fireTarget}
-                />
-              )
-          )}
+          ([weapon_name, weapon]) =>
+            !weapon_name.includes("Sand") && (
+              <WeaponButton
+                key={"weapon-" + computerShip.name + "-" + weapon_name}
+                weapon={weapon.kind}
+                mount={weapon.mount}
+                count={availableCounts[weapon_name]}
+                onClick={() => {
+                  handleFireCommand(
+                    computerShip.name,
+                    fireTarget ? fireTarget.name : "",
+                    weapon_name
+                  );
+                }}
+                disabled={
+                  !fireTarget ||
+                  (isPointDefense(fireTarget!) &&
+                    !(
+                      (weapon.kind.includes("Beam") || weapon.kind.includes("Pulse")) &&
+                      weapon.mount !== "Turret"
+                    ))
+                }
+              />
+            )
+        )}
       </div>
     </>
   );
 };
 export function FireActions(args: {
-  actions: FireState;
+  fireActions: FireState;
+  pointDefenseActions: PointDefenseState;
   design: ShipDesignTemplate;
   computerShipName: string;
 }) {
@@ -376,12 +413,45 @@ export function FireActions(args: {
 
   const onClick = (weapon_id: number) => {
     actionsContext.unfireWeapon(args.computerShipName, weapon_id);
-  }
+  };
 
   return (
     <div className="control-form">
       <h2>Fire Actions</h2>
-      {args.actions.map((action, index) => {
+      {args.pointDefenseActions.map((action, index) => {
+        let kind = null;
+        if (args.design.weapons[action.weapon_id].kind === "Beam") {
+          kind = "Beam";
+        } else if (args.design.weapons[action.weapon_id].kind === "Pulse") {
+          kind = "Pulse";
+        } else {
+          console.error(
+            "(FireActions) Illegal weapon kind for point defense: " +
+              args.design.weapons[action.weapon_id].kind
+          );
+          return;
+        }
+
+        return ["Beam", "Pulse"].includes(kind) ? (
+          <div className="fire-actions-div" key={index + "_fire_img"}>
+            <div onClick={() => onClick(action.weapon_id)}>
+              <p>
+                <RayIcon
+                  className="beam-type-icon"
+                  style={{
+                    fill: WEAPON_COLORS[kind],
+                  }}
+                />{" "}
+                on Point Defense
+                </p>
+            </div>
+          </div>
+        ) : (
+          <></>
+        );
+      })}
+
+      {args.fireActions.map((action, index) => {
         let kind = null;
         if (args.design.weapons[action.weapon_id].kind === "Beam") {
           kind = "Beam";
@@ -391,26 +461,28 @@ export function FireActions(args: {
           kind = "Particle";
         } else {
           kind = "Missile";
-        };
+        }
 
-        return ["Beam", "Pulse", "Particle"].includes(kind) ?  (
+        return ["Beam", "Pulse", "Particle"].includes(kind) ? (
           <div className="fire-actions-div" key={index + "_fire_img"}>
             <div onClick={() => onClick(action.weapon_id)}>
-            <p>
-              <RayIcon
-                className="beam-type-icon"
-                style={{
-                  fill: WEAPON_COLORS[kind],
-                }}
-              />{" "}
-              to {action.target}
-            </p>
+              <p>
+                <RayIcon
+                  className="beam-type-icon"
+                  style={{
+                    fill: WEAPON_COLORS[kind],
+                  }}
+                />{" "}
+                to {action.target}
+              </p>
             </div>
             <CalledShotMenu
               attacker={computerShip!}
               target={serverEntities.entities.ships.find((ship) => ship.name === action.target)!}
               calledShot={action.called_shot_system}
-              setCalledShot={(system) => (actionsContext.updateFireCalledShot(args.computerShipName, index, system))}
+              setCalledShot={(system) =>
+                actionsContext.updateFireCalledShot(args.computerShipName, index, system)
+              }
             />
           </div>
         ) : (
@@ -425,7 +497,7 @@ export function FireActions(args: {
               to {action.target}
             </p>
           </div>
-        )
+        );
       })}
     </div>
   );

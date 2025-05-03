@@ -23,6 +23,7 @@ mod cov_util;
 #[cfg(test)]
 pub mod unit_tests;
 
+use entity::MetaData;
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::download::Range;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
@@ -31,7 +32,7 @@ use once_cell::sync::OnceCell;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-pub static SCENARIOS: OnceCell<Vec<String>> = OnceCell::new();
+pub static SCENARIOS: OnceCell<Vec<(String, MetaData)>> = OnceCell::new();
 
 /**
  * Read a file from the local filesystem or GCS.

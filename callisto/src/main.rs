@@ -5,6 +5,7 @@ use std::process;
 use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc::channel;
+use futures::future::join_all;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::WebSocketStream;
 
@@ -29,6 +30,7 @@ use callisto::authentication::{
   load_authorized_users, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator,
 };
 
+use callisto::entity::Entities;
 use callisto::processor::Processor;
 use callisto::ship::DEFAULT_SHIP_TEMPLATES_FILE;
 use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
@@ -216,20 +218,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   SHIP_TEMPLATES
     .set(templates)
     .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
-
-  let scenarios = callisto::list_local_or_cloud_dir(&args.scenario_dir).await;
-  match scenarios {
-    Ok(scenarios) => {
-      info!("(main) Loaded scenarios from {}.", &args.scenario_dir);
-      info!("(main) Scenarios: {:?}", scenarios);
-      SCENARIOS.set(scenarios).expect("(Main) attempting to set SCENARIOS twice!");
-    }
-    Err(e) => {
-      error!("(main) Unable to load scenarios from {}. Reason {:?}", args.scenario_dir, e);
-    }
-  }
-
   info!("(main) Loaded ship templates.");
+
+  load_scenarios_and_metadata(&args.scenario_dir).await;
 
   // Keep track of session keys (cookies) on connections.
   let session_keys = Arc::new(Mutex::new(HashMap::new()));
@@ -303,4 +294,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       }
     }
   }
+}
+
+async fn load_scenarios_and_metadata(scenario_dir: &str) {
+  let Ok(scenarios_list) = callisto::list_local_or_cloud_dir(scenario_dir).await else {
+    error!("(main) Unable to open scenarios directory {scenario_dir}");
+    return;
+  };
+
+  info!("(main) Loaded scenarios from {}.", &scenario_dir);
+
+  let scenarios = join_all(scenarios_list.iter().map(async |scenario| {
+    // Load each scenario and read it in to get the metadata.
+    // If we cannot open it, just drop it from the scenarios list.
+    let load_result = Entities::load_from_file(&format! {"{scenario_dir}/{scenario}"}).await;
+    let Ok(entities) = load_result else {
+      error!(
+        "(main) Unable to load scenario file {} from {scenario_dir}: {load_result:?}.  Skipping.",
+        scenario
+      );
+      return None;
+    };
+    Some((scenario.clone(), entities.metadata.clone()))
+  }))
+  .await
+  .iter()
+  .flatten()
+  .cloned()
+  .collect::<Vec<_>>();
+
+  info!("(main) Scenarios: {:?}", scenarios);
+
+  SCENARIOS.set(scenarios).expect("(Main) attempting to set SCENARIOS twice!");
 }

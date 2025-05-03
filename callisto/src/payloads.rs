@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use super::action::ShipActionList;
 use super::computer::FlightPathResult;
 use super::crew::Crew;
-use super::entity::Entities;
+use super::entity::{Entities, MetaData};
 use super::ship::ShipDesignTemplate;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
@@ -204,8 +204,10 @@ pub struct JoinScenarioMsg {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ScenariosMsg {
-  pub current_scenarios: Vec<String>,
-  pub templates: Vec<String>,
+  /// List of current scenarios by unique id (string) and the template name (as appears in the templates field)
+  pub current_scenarios: Vec<(String, String)>,
+  /// List of templates by actual name (filename) and metadata (display name and description).
+  pub templates: Vec<(String, MetaData)>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
