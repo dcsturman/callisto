@@ -7,6 +7,7 @@ export type ActionType = {
     sensor: SensorState;
     fire: FireState;
     unfire: UnfireState;
+    pointDefense: PointDefenseState;
     jump: boolean;
   };
 };
@@ -26,6 +27,7 @@ export const ActionContext = createContext<{
   ) => void;
   updateFireCalledShot: (shipName: string, index: number, system: string | null) => void;
   unfireWeapon: (shipName: string, weapon_id: number) => void;
+  pointDefenseWeapon: (shipName: string, weapon_id: number) => void;
   attemptJump: (shipName: string) => void;
 }>({
   actions: {},
@@ -34,6 +36,7 @@ export const ActionContext = createContext<{
   fireWeapon: () => {},
   updateFireCalledShot: () => {},
   unfireWeapon: () => {},
+  pointDefenseWeapon: () => {},
   attemptJump: () => {},
 });
 
@@ -53,6 +56,11 @@ export type UnfireAction = {
 };
 
 export type UnfireState = UnfireAction[];
+
+export type PointDefenseAction = {
+  weapon_id: number;
+}
+export type PointDefenseState = PointDefenseAction[];
 
 export type SensorState = {
   action: SensorAction;
@@ -145,6 +153,20 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
     updateActions(next);
   };
 
+  const pointDefenseWeapon = (shipName: string, weapon_id: number) => {
+    const new_action: PointDefenseAction = {weapon_id: weapon_id};
+
+    const next = {
+      ...actions,
+      [shipName]: {
+        ...actions[shipName],
+        pointDefense: [...actions[shipName]?.pointDefense??[], new_action],
+      },
+    };
+    setActions(next);
+    updateActions(next);
+  };
+
   const attemptJump = (shipName: string) => {
     const next = {
       ...actions,
@@ -163,6 +185,7 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
         fireWeapon,
         updateFireCalledShot,
         unfireWeapon,
+        pointDefenseWeapon,
         attemptJump,
       }}>
       {children}
@@ -177,6 +200,9 @@ export function actionPayload(actions: ActionType) {
       : [];
     if (value.unfire) {
       fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
+    }
+    if (value.pointDefense) {
+      fire_actions = [...fire_actions, ...value.pointDefense.map((pointDefenseAction) => pointDefenseActionPayload(pointDefenseAction))];
     }
     const sensor_action = value.sensor ? sensorActionPayload(value.sensor): null;
     if (sensor_action) {
@@ -224,6 +250,14 @@ function unfireActionPayload(unfireAction: UnfireAction) {
   };
 }
 
+function pointDefenseActionPayload(pointDefenseAction: PointDefenseAction) {
+  return {
+    PointDefenseAction: {
+      weapon_id: pointDefenseAction.weapon_id,
+    },
+  };
+}
+
 export function payloadToAction(payload: object[]): ActionType {
   const result = {} as ActionType;
   for (const entry of payload) {
@@ -232,12 +266,14 @@ export function payloadToAction(payload: object[]): ActionType {
       | string
       | {FireAction: object}
       | {DeleteFireAction: object}
+      | {PointDefenseAction: object}
+      | {JamMissiles: string}
       | {BreakSensorLock: string}
       | {SensorLock: string}
       | {JamComms: string}
       | {Jump: string}
     )[];
-    console.log(`(payloadToAction) Received actions for ${shipName}: ${JSON.stringify(actions)}`);
+    console.log(`(Actions.payloadToAction) Received actions for ${shipName}: ${JSON.stringify(actions)}`);
     if (!actions) {
       continue;
     }
@@ -257,9 +293,39 @@ export function payloadToAction(payload: object[]): ActionType {
       });
     result[shipName] = {...result[shipName], fire: fire_actions};
 
+    const unfire_actions: UnfireAction[] = actions
+      .filter((action) => typeof action !== "string" && Object.hasOwn(action, "DeleteFireAction"))
+      .map((action) => {
+        if (typeof action !== "string" && Object.hasOwn(action, "DeleteFireAction")) {
+          return (action as {DeleteFireAction: UnfireAction})["DeleteFireAction"];
+        } else {
+          console.error(
+            "(payloadToAction) BUG: Should never get here when looking for 'DeleteFireAction' " +
+              JSON.stringify(action)
+          );
+          return {} as UnfireAction;
+        }
+      });
+    result[shipName] = {...result[shipName], unfire: unfire_actions};
+
+    const point_defense_actions: PointDefenseAction[] = actions
+      .filter((action) => typeof action !== "string" && Object.hasOwn(action, "PointDefenseAction"))
+      .map((action) => {
+        if (typeof action !== "string" && Object.hasOwn(action, "PointDefenseAction")) {
+          return (action as {PointDefenseAction: PointDefenseAction})["PointDefenseAction"];
+        } else {
+          console.error(
+            "(payloadToAction) BUG: Should never get here when looking for 'PointDefenseAction' " +
+              JSON.stringify(action)
+          );
+          return {} as PointDefenseAction;
+        }
+      });
+    result[shipName] = {...result[shipName], pointDefense: point_defense_actions};
+
     const sensor_action = actions.filter(
       (action) => {
-        return !(((typeof action === "object") && Object.hasOwn(action, "FireAction")) || (typeof action === "string" && action === "Jump"));
+        return !(((typeof action === "object") && Object.hasOwn(action, "FireAction")) || ((typeof action === "object") && Object.hasOwn(action, "PointDefenseAction")) || (typeof action === "string" && action === "Jump"));
       }
     );
     

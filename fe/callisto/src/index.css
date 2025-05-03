@@ -654,3 +654,11 @@ input {
 .tutorial-button {
   width: 400px;
 }
+
+.scenario-intro {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  width: 400px;
+}

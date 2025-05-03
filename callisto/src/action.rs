@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::debug;
 use crate::entity::Entities;
 use crate::ship::{ShipSystem, SHIP_TEMPLATES};
 
@@ -14,6 +15,9 @@ pub enum ShipAction {
       //with = "::serde_with::rust::unwrap_or_skip"
   )]
     called_shot_system: Option<ShipSystem>,
+  },
+  PointDefenseAction {
+    weapon_id: usize,
   },
   DeleteFireAction {
     weapon_id: usize,
@@ -57,48 +61,58 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
           | ShipAction::SensorLock { .. }
           | ShipAction::JamComms { .. } => {
             // Strip out all sensor actions, leaving just the non-sensor actions
-            current_actions.retain(|action| matches!(action, ShipAction::FireAction { .. } | ShipAction::Jump));
+            current_actions.retain(|action| {
+              !matches!(
+                action,
+                ShipAction::JamMissiles
+                  | ShipAction::BreakSensorLock { .. }
+                  | ShipAction::SensorLock { .. }
+                  | ShipAction::JamComms { .. }
+              )
+            });
             current_actions.push(next_action.clone());
           }
-          // Each fire action is added to the list of fire actions, but only if it is not already there
-          ShipAction::FireAction { weapon_id, .. } => {
-            current_actions
-              .retain(|action| !matches!(action, ShipAction::FireAction{weapon_id: id, ..} if *id == weapon_id));
+          // Each fire action is added to the list of fire actions, but only if the weapon is not already in use.
+          ShipAction::FireAction { weapon_id, .. } | ShipAction::PointDefenseAction { weapon_id } => {
+            current_actions.retain(|action| {
+              !matches!(action, ShipAction::FireAction{weapon_id: id, ..} if *id == weapon_id)
+                && !matches!(action, ShipAction::PointDefenseAction{weapon_id: id} if *id == weapon_id)
+            });
             current_actions.push(next_action.clone());
           }
-          // Delete the noted action.  Given the way we merge just omitting the FireAction does not delete it.
+          // Delete the noted action.  Given the way we merge just omitting the FireAction or PointDefenseAction does not delete it.
           // We need a specific "anti-action" so we can differentiate between a client that is just missing some information and
           // one that actually wants to eliminate the action.
           ShipAction::DeleteFireAction { weapon_id } => {
             let design = &ships.get(&next_ship).unwrap().read().unwrap().design;
-            let templates = SHIP_TEMPLATES
+            let current_template = SHIP_TEMPLATES
               .get()
               .expect("Ship templates not loaded,")
               .get(&design.name)
               .expect("(Action.merge) Unable to find design.");
-            let weapon = &templates.weapons[weapon_id];
+            let weapon = &current_template.weapons[weapon_id];
             // Find a _similar_ weapon to the one being deleted and delete the highest number of that (to avoid race conditions)
             let mut sorted_similar_weapon_id = current_actions
               .iter()
-              .filter_map(|action| {
-                if let ShipAction::FireAction { weapon_id: id, .. } = action {
-                  if templates.weapons[*id] == *weapon {
-                    Some(*id)
+              .filter_map(|action| match action {
+                ShipAction::PointDefenseAction { weapon_id } | ShipAction::FireAction { weapon_id, .. } => {
+                  if current_template.weapons[*weapon_id] == *weapon {
+                    Some(*weapon_id)
                   } else {
                     None
                   }
-                } else {
-                  None
                 }
+                _ => None,
               })
               .collect::<Vec<_>>();
             sorted_similar_weapon_id.sort_unstable();
             let max_similar_weapon_id = sorted_similar_weapon_id.last().unwrap();
 
             // Retain everything except the FireAction with the highest number of the similar weapon
-            current_actions.retain(
-              |action| !matches!(action, ShipAction::FireAction{weapon_id, ..} if max_similar_weapon_id == weapon_id),
-            );
+            current_actions.retain(|action| {
+              !matches!(action, ShipAction::FireAction{weapon_id, ..} if max_similar_weapon_id == weapon_id)
+                && !matches!(action, ShipAction::PointDefenseAction{weapon_id} if max_similar_weapon_id == weapon_id)
+            });
           }
           // When merging ensure only one Jump action remains in the merged list.  Should never actually happen
           // because there's no way to remove a jump action (but UX may be buggy and add it twice).
@@ -113,4 +127,6 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
       current.push((next_ship, next_action_list));
     }
   }
+
+  debug!("(Action.merge) Merged actions are {:?}", entities.actions);
 }

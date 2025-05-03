@@ -1,4 +1,5 @@
 import React from "react";
+import {MetaData} from "./Universal";
 import {joinScenario, createScenario } from "./ServerManager";
 import {Logout} from "./Authentication";
 
@@ -38,20 +39,21 @@ function generateUniqueHyphenatedName() {
 }
 
 type ScenarioManagerProps = {
-    scenarios: string[];
-    scenarioTemplates: string[];
+    activeScenarios: [string, string][];
+    scenarioTemplates: [string, MetaData][];
     setTutorialMode: (tutorialMode: boolean) => void;
     setAuthenticated: (authenticated: boolean) => void;
     email: string | null;
     setEmail: (email: string | null) => void;
 };
 
-export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scenarioTemplates, setTutorialMode, setAuthenticated, email, setEmail}) => {
-    const sortedFilteredScenarios = scenarios.filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
-    const sortedTemplates = scenarioTemplates.sort((a, b) => a.localeCompare(b));
+export const ScenarioManager: React.FC<ScenarioManagerProps> = ({activeScenarios, scenarioTemplates, setTutorialMode, setAuthenticated, email, setEmail}) => {
+    const sortedFilteredScenarios = activeScenarios.map(scenario => scenario[0]).filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
+    const sortedTemplates = scenarioTemplates.sort((a, b) => a[0].localeCompare(b[0]));
 
     const [scenario, setScenario] = React.useState<string | null>(sortedFilteredScenarios[0]?? null);
     const [template, setTemplate] = React.useState<string | null>(null);
+    const [showScenarioIntro, setShowScenarioIntro] = React.useState<{name: string, description: string, handler: () => void} | null>(null);
 
     const scenarioName = generateUniqueHyphenatedName();
 
@@ -65,13 +67,45 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
 
     function handleJoinScenario(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        if (!scenario) {
+            console.error("(ScenarioManager.handleJoinScenario) No scenario selected");
+            return;
+        }
 
-        joinScenario(scenario?? "");
+        const scenarioName = (activeScenarios.find((s) => s[0] === scenario)?? ["", ""])[1];
+
+        if (scenarioName === "") {
+            joinScenario(scenario);
+            return;
+        }
+        const scenarioData = scenarioTemplates.find((s) => s[0] === scenarioName);
+        if (!scenarioData) {
+            console.error("(ScenarioManager.handleJoinScenario) No scenario data found for scenario " + scenario);
+            joinScenario(scenario);
+            return;
+        }
+
+        setShowScenarioIntro({name: scenarioData[1].name, description: scenarioData[1].description,
+            handler: () => { setShowScenarioIntro(null); joinScenario(scenario?? "");}});
     }
 
     function handleCreateScenario(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        createScenario(scenarioName, template?? "");
+        if (template === null) {
+            createScenario(scenarioName, template?? "");
+            return;
+        }
+
+        const scenarioData = scenarioTemplates.find((s) => s[0] === template);
+
+        if (!scenarioData) {
+            console.error("(ScenarioManager.handleCreateScenario) No scenario data found for scenario " + template);
+            createScenario(scenarioName, template?? "");
+            return;
+        }
+
+        setShowScenarioIntro({name: scenarioData[1].name, description: scenarioData[1].description, 
+            handler: () => { setShowScenarioIntro(null); createScenario(scenarioName, template?? "");}});
     }
 
     function launchTutorial() {
@@ -81,10 +115,10 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
         createScenario(random_tutorial_name, TUTORIAL_SCENARIO);
     }   
 
-    // TODO: Remove TUTORIAL scenarios.
-    // TODO: It doesn't seem we're using the cloud scenarios, but something in the dockerfile instead.
     return (
         <>
+        {showScenarioIntro && <ScenarioIntro scenarioName={showScenarioIntro.name} scenarioDescription={showScenarioIntro.description} handler={showScenarioIntro.handler} />}
+        {!showScenarioIntro && <>
         <div className="authentication-container">
             <div className="authentication-blurb">
                 <h1 className="authentication-title">Scenarios</h1>
@@ -122,8 +156,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
                         <option key="default" value="">&lt;no scenario&gt;</option>
                         {sortedTemplates
                           .map((scenario) => (
-                            <option key={scenario} value={scenario}>
-                                {scenario}
+                            <option key={scenario[1].name} value={scenario[0]}>
+                                {scenario[1].name}
                             </option>
                         ))}
                     </select>
@@ -142,6 +176,27 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({scenarios, scen
         <div className="admin-button-window">
             <Logout setAuthenticated={setAuthenticated} email={email} setEmail={setEmail}/>
         </div>
+        </>}
         </>
       );
+};
+
+type ScenarioIntroProps = {
+    scenarioName: string,
+    scenarioDescription: string,
+    handler: () => void,
+};
+
+const ScenarioIntro: React.FC<ScenarioIntroProps> = ({scenarioName, scenarioDescription, handler}) => {
+    return (
+        <div className="authentication-container">
+            <h1 className="authentication-title">{scenarioName}</h1>
+            <br />
+            <br />
+            <div className="authentication-blurb">{scenarioDescription}</div>
+            <br />
+            <br />
+            <button className="blue-button" onClick={handler}>Lets Go!</button>
+        </div>
+    );
 };

@@ -357,7 +357,9 @@ impl PlayerManager {
   #[allow(clippy::must_use_candidate)]
   pub fn merge_actions(&self, actions: ShipActionMsg) -> String {
     let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    debug!("(/merge_actions) Merging actions: {:?}", actions);
     merge(&mut entities, actions);
+    debug!("(/merge_actions) Resulting actions after merge: {:?}", entities.actions);
     "Actions added.".to_string()
   }
 
@@ -387,7 +389,8 @@ impl PlayerManager {
     // ships making jump attempts in the third
     // Was very explicit with types here (more than necessary) to make it easier to read and understand.
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, jump_actions): (
+    let (fire_actions, sensor_actions, jump_actions, point_defense_actions): (
+      Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
@@ -396,22 +399,25 @@ impl PlayerManager {
         warn!("(update) Cannot find ship {} for actions.", ship_name);
         return None;
       }
-      let (f_actions, s_actions, j_actions): (
+      let (f_actions, s_actions, j_actions, p_actions): (
+        Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
       ) = multiunzip(actions.iter().map(|action| match action {
-        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None),
+        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None, None),
+        ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone())),
         ShipAction::JamMissiles
         | ShipAction::BreakSensorLock { .. }
         | ShipAction::SensorLock { .. }
-        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None),
-        ShipAction::Jump => (None, None, Some(action.clone())),
+        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None, None),
+        ShipAction::Jump => (None, None, Some(action.clone()), None),
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), p_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
       ))
     }));
 
@@ -429,7 +435,7 @@ impl PlayerManager {
     // 3. Then update all the entities.  Note this means ship movement is after combat so a ship with degraded maneuver might not move as much as expected.
     // Its not clear to me if this is the right order - or should they move then take damage - but we'll do it this way for now.
     // 3. Return a set of effects
-    effects.append(&mut entities.fire_actions(&fire_actions, &ship_snapshot, &mut rng));
+    effects.append(&mut entities.fire_actions(&fire_actions, &point_defense_actions, &ship_snapshot, &mut rng));
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
@@ -437,11 +443,13 @@ impl PlayerManager {
     // 5. Attempt jumps at end of round.
     effects.append(&mut entities.attempt_jumps(&jump_actions, &mut rng));
 
+    // Decided we don't want to reset this - default should be to keep the same actions.
     // 6. Reset all ship agility setting as the round is over.
-    for ship in entities.ships.values() {
+    /* for ship in entities.ships.values() {
       ship.write().unwrap().reset_pilot_actions();
     }
-    entities.actions.clear();
+    */
+    entities.reset_actions();
 
     effects
   }

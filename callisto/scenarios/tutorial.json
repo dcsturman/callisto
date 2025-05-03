@@ -1,4 +1,8 @@
 {
+    "metadata": {
+        "name": "Tutorial",
+        "description": "The scenario the tutorial is based on."
+    },
     "planets": [
     {
         "name" : "Sun",
