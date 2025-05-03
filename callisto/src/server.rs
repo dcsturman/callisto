@@ -20,6 +20,7 @@ struct ServerTable {
   table: HashMap<u64, ServerMemberEntry>,
   last_exit: u64,
 }
+
 struct ServerMemberEntry {
   email: String,
   role: Role,
@@ -95,7 +96,7 @@ impl ServerMembersTable {
   }
 
   pub fn update(&mut self, server_id: &str, unique_id: u64, email: &str, role: Role, ship: Option<String>) {
-    if self.scenario_definition.contains_key(server_id) {
+    if !self.scenario_definition.contains_key(server_id) {
       error!("Server {server_id} is not registered with a scenario description.");
       return;
     }

@@ -457,6 +457,7 @@ impl Processor {
         }
       }
       RequestMsg::CreateScenario(create_scenario) => {
+        debug!("(Processor.handle_request) Creating scenario {}", create_scenario.name);
         if self.servers.contains_key(&create_scenario.name) {
           return vec![ResponseMsg::Error("Scenario name already exists.".to_string())];
         }
