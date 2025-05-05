@@ -33,6 +33,7 @@
     "react-use-googlelogin": "^0.12.5",
     "rsuite": "^5.73.0",
     "three": "^0.173.0",
+    "three-stdlib": "github:dcsturman/three-stdlib",
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4",
     "zustand": "^4.5.2"
