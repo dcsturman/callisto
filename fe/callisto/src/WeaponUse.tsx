@@ -429,7 +429,7 @@ export function FireActions(args: {
             "(FireActions) Illegal weapon kind for point defense: " +
               args.design.weapons[action.weapon_id].kind
           );
-          return;
+          return <div className="fire-actions-div" key={index + "bug"}>This is a bug</div>;
         }
 
         return ["Beam", "Pulse"].includes(kind) ? (
