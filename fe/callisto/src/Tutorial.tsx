@@ -220,10 +220,10 @@ const steps: Step[] = [
     target: ".mainscreen-container",
     content: (
       <span>
-        Beowulf is now visible on our screen. You can see the red line showing
+        Beowolf is now visible on our screen. You can see the red line showing
         its velocity vector.
         <p className="tutorial-instruction-text">
-          Hover over the white glowing dot representing <em>Beowulf</em> to see
+          Hover over the white glowing dot representing <em>Beowolf</em> to see
           its details. Its tiny so you may need to zoom in a bit.
         </p>
       </span>
