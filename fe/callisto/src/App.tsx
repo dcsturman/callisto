@@ -2,7 +2,7 @@ import {useEffect, useState, useContext, useMemo} from "react";
 import * as React from "react";
 import * as THREE from "three";
 import {Canvas, useThree} from "@react-three/fiber";
-import {FlyControls} from "@react-three/drei";
+import {FlyControls} from "./FlyControls";
 
 import {Authentication} from "./Authentication";
 import {ActionType} from "./Actions";
@@ -10,7 +10,13 @@ import SpaceView from "./Spaceview";
 import {Ships, Missiles, Route} from "./Ships";
 import {EntityInfoWindow, Controls, ViewControls} from "./Controls";
 import {Effect, Explosions, ResultsWindow} from "./Effects";
-import {setMessageHandlers, startWebsocket, computeFlightPath, resetServer, exit_scenario} from "./ServerManager";
+import {
+  setMessageHandlers,
+  startWebsocket,
+  computeFlightPath,
+  resetServer,
+  exit_scenario,
+} from "./ServerManager";
 import {Users, UserList} from "./UserList";
 
 import {ShipComputer} from "./ShipComputer";
@@ -67,7 +73,10 @@ export function App() {
     if (!socketReady) {
       setMessageHandlers(
         setEmail,
-        (role, shipName) => { setRole(role); setShipName(shipName) },
+        (role, shipName) => {
+          setRole(role);
+          setShipName(shipName);
+        },
         setAuthenticated,
         setTemplates,
         setEntities,
@@ -75,9 +84,12 @@ export function App() {
         () => {},
         () => {},
         setUsers,
-        (a, b) => { setActiveScenarios(a); setScenarioTemplates(b); },
+        (a, b) => {
+          setActiveScenarios(a);
+          setScenarioTemplates(b);
+        },
         (scenario: string) => setJoinedScenario(scenario),
-        setTutorialMode,
+        setTutorialMode
       );
 
       startWebsocket(setSocketReady);
@@ -94,10 +106,10 @@ export function App() {
   useEffect(() => {
     if (!joinedScenario) {
       setRole(ViewMode.General);
-      setShipName(null); 
+      setShipName(null);
       setTutorialMode(false);
     }
-  },[joinedScenario]);
+  }, [joinedScenario]);
 
   return (
     <EntitiesServerProvider value={{entities: entities, handler: setEntities}}>
@@ -123,7 +135,14 @@ export function App() {
                 />
               </>
             ) : authenticated && socketReady ? (
-              <ScenarioManager activeScenarios={activeScenarios} scenarioTemplates={scenarioTemplates} setTutorialMode={setTutorialMode} setAuthenticated={setAuthenticated} email={email} setEmail={setEmail} />
+              <ScenarioManager
+                activeScenarios={activeScenarios}
+                scenarioTemplates={scenarioTemplates}
+                setTutorialMode={setTutorialMode}
+                setAuthenticated={setAuthenticated}
+                email={email}
+                setEmail={setEmail}
+              />
             ) : socketReady ? (
               <Authentication setAuthenticated={setAuthenticated} setEmail={setEmail} />
             ) : (
@@ -169,8 +188,6 @@ function Simulator({
   const templatesContext = useContext(DesignTemplatesContext);
   const actionsContext = useContext(ActionContext);
 
-
-
   const [entityToShow, setEntityToShow] = useState<Entity | null>(null);
   const [proposedPlan, setProposedPlan] = useState<FlightPathResult | null>(null);
   const [showResults, setShowResults] = useState<boolean>(false);
@@ -207,7 +224,7 @@ function Simulator({
         null,
         null,
         null,
-        null,
+        null
       );
     }
   }, [
@@ -311,80 +328,85 @@ function Simulator({
                 proposedPlan={proposedPlan}
               />
             )}
-              {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && (
-                <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
-              )}
-              <div className="admin-button-window">
-                  <h2>{joinedScenario && (joinedScenario.startsWith(TUTORIAL_PREFIX) ? "Tutorial" : joinedScenario)}</h2>
-                <Users users={users} email={email} />
-                <RoleChooser />
-                <div className="reset-and-logout-buttons">
-                  <Exit setJoinedScenario={setJoinedScenario} email={email} />
-                  {role === ViewMode.General && shipName == null && <button className="blue-button" onClick={resetServer}>Reset</button>}
-                </div>
-              </div>
-              {role === ViewMode.General && computerShip && (
-                <ShipComputer
-                  ship={computerShip}
-                  setComputerShipName={setComputerShipName}
-                  proposedPlan={proposedPlan}
-                  getAndShowPlan={getAndShowPlan}
-                  sensorLocks={entitiesContext.entities.ships.reduce((acc, ship) => {
-                    if (ship.sensor_locks.includes(computerShip.name)) {
-                      acc.push(ship.name);
-                    }
-                    return acc;
-                  }, [] as string[])}
-                />
-              )}
-              {showResults && (
-                <ResultsWindow
-                  clearShowResults={() => setShowResults(false)}
-                  effects={events}
-                  setEffects={setEvents}
-                />
-              )}
-              <Canvas
-                style={{position: "absolute"}}
-                className="spaceview-canvas"
-                camera={{
-                  fov: 75,
-                  near: 0.0001,
-                  far: 200000,
-                  position: [-100, 0, 0],
-                }}>
-                {/* eslint-disable react/no-unknown-property */}
-                <pointLight
-                  position={[-148e3, 10, 10]}
-                  intensity={6.0}
-                  decay={0.01}
-                  color="#fff7cd"
-                />
-                <ambientLight intensity={1.0} />
-                <FlyControls
-                  autoForward={false}
-                  dragToLook={true}
-                  movementSpeed={keysHeld.shift ? 1000 : 50}
-                  rollSpeed={0.5}
-                  makeDefault
-                />
-                <GrabCamera
-                  cameraPos={cameraPos}
-                  setCameraPos={setCameraPos}
-                  setCamera={setCamera}
-                />
-                <SpaceView
-                  controlGravityWell={viewControls.gravityWells}
-                  controlJumpDistance={viewControls.jumpDistance}
-                />
-                <Ships setComputerShipName={setComputerShipName} showRange={showRange} />
-                <Missiles />
-                {events && events.length > 0 && (
-                  <Explosions effects={events} setEffects={setEvents} />
+            {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && (
+              <ViewControls viewControls={viewControls} setViewControls={setViewControls} />
+            )}
+            <div className="admin-button-window">
+              <h2>
+                {joinedScenario &&
+                  (joinedScenario.startsWith(TUTORIAL_PREFIX) ? "Tutorial" : joinedScenario)}
+              </h2>
+              <Users users={users} email={email} />
+              <RoleChooser />
+              <div className="reset-and-logout-buttons">
+                <Exit setJoinedScenario={setJoinedScenario} email={email} />
+                {role === ViewMode.General && shipName == null && (
+                  <button className="blue-button" onClick={resetServer}>
+                    Reset
+                  </button>
                 )}
-                {proposedPlan && <Route plan={proposedPlan} />}
-              </Canvas>
+              </div>
             </div>
+            {role === ViewMode.General && computerShip && (
+              <ShipComputer
+                ship={computerShip}
+                setComputerShipName={setComputerShipName}
+                proposedPlan={proposedPlan}
+                getAndShowPlan={getAndShowPlan}
+                sensorLocks={entitiesContext.entities.ships.reduce((acc, ship) => {
+                  if (ship.sensor_locks.includes(computerShip.name)) {
+                    acc.push(ship.name);
+                  }
+                  return acc;
+                }, [] as string[])}
+              />
+            )}
+            {showResults && (
+              <ResultsWindow
+                clearShowResults={() => setShowResults(false)}
+                effects={events}
+                setEffects={setEvents}
+              />
+            )}
+            <Canvas
+              style={{position: "absolute"}}
+              id="main-canvas"
+              className="spaceview-canvas"
+              camera={{
+                fov: 75,
+                near: 0.0001,
+                far: 200000,
+                position: [-100, 0, 0],
+              }}>
+              {/* eslint-disable react/no-unknown-property */}
+              <pointLight
+                position={[-148e3, 10, 10]}
+                intensity={6.0}
+                decay={0.01}
+                color="#fff7cd"
+              />
+              <ambientLight intensity={1.0} />
+              <GrabCamera cameraPos={cameraPos} setCameraPos={setCameraPos} setCamera={setCamera} />
+              <FlyControls
+                containerName="main-canvas"
+                camera={camera!}
+                autoForward={false}
+                dragToLook={true}
+                movementSpeed={50}
+                rollSpeed={0.2}
+              />
+              <SpaceView
+                controlGravityWell={viewControls.gravityWells}
+                controlJumpDistance={viewControls.jumpDistance}
+              />
+              <Ships setComputerShipName={setComputerShipName} showRange={showRange} />
+              <Missiles />
+              {events && events.length > 0 && (
+                <Explosions effects={events} setEffects={setEvents} />
+              )}
+              {proposedPlan && <Route plan={proposedPlan} />}
+            </Canvas>
+          </div>
         </>
         {entityToShow && <EntityInfoWindow entity={entityToShow} />}
       </ViewContextProvider>
@@ -413,7 +435,7 @@ export function Exit(args: {
   setJoinedScenario: (scenario: string | null) => void;
   email: string | null;
 }) {
-  const exit = () => {    
+  const exit = () => {
     args.setJoinedScenario(null);
     exit_scenario();
     console.log("(Authentication.Logout) Quit scenario");

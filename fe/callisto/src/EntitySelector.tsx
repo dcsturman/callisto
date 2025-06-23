@@ -60,7 +60,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
     }
 
     return null;
-  }, [current, entities]);
+  }, [current, entities, filter]);
 
   // Create a formatter that handles one not being provided.
   const nf = (name: string, entity: Entity) =>
