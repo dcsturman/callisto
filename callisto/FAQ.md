@@ -23,8 +23,7 @@ This FAQ gives additional detail on the state of the Callisto project.
   * Fixed mounts are not supported (there is no facing for ships).
 * _Astrogation_ checks for jump are considered to automatically succeed.  _Engineering (Jump)_ skill is used for the check to see if the jump is successful.  
 
-
 ## Known gaps being considered for future versions
 
-* **Ship Design Editor**: so new ship designs can be created by users.
-* **Scenario editor**: so that entire scenarios can be created by users.
+* **Ship Design Editor**: new ship designs can be created and saved by users.
+* **Scenario editor**: entire scenarios can be created and saved by users.
