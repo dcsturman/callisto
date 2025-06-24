@@ -124,12 +124,14 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({activeScenarios
                 <h1 className="authentication-title">Scenarios</h1>
                 <br />
                 <br />
-                From this screen you can create a scenario, join an existing one to play with others, or just try the tutorial.  
+                From this screen you can create a scenario, join an existing one to play with others, or just try the tutorial.  Each scenario has
+                a unique three-word generated name. 
+                <br />
                 Right now we show all scenarios to make Callisto easier to use.
                 Out of courtesy, please do not join a scenario to which you haven&apos;t been invited!  
                 <br />
                 <br />
-                Note that if you customize a scenario from a template, please note that after 5 minutes without any users logged in, the scenario will be deleted.
+                Note that if you customize a scenario from a template, after 5 minutes without any users logged in the scenario will be deleted.
             </div>
             <br />
             <br />
