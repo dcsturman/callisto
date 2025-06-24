@@ -81,7 +81,7 @@ export function Authentication(args: {
 
   return (
     <div className="authentication-container">
-      <h1 className="authentication-title">Callisto</h1>
+      <h1 className="authentication-title">Callisto 0.2&beta;</h1>
       <br />
       <br />
       <div className="authentication-blurb">
@@ -97,7 +97,7 @@ export function Authentication(args: {
         attempt to help humans pilot in this complex environment.
         <br />
         <br />
-        Callisto is currently in <em style={{"color" : "red"}}>closed alpha</em>. If you have been
+        Callisto is currently in <em style={{"color" : "red"}}>closed beta</em>. If you have been
         pre-authorized to trial Callisto please log in with your Google Id.  Otherwise please be patient!  
         We will have a more broadly open beta soon followed by opening Callisto up to everyone!
       </div>
