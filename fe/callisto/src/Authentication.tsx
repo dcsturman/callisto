@@ -94,7 +94,11 @@ export function Authentication(args: {
         With Callisto you can deploy ships, steer around
         planets, and battle each other in medium sized space engagements. All
         movement is based on real physics and the built in flight computer
-        attempt to help humans pilot in this complex environment.
+        attempt to help humans pilot in this complex environment.  
+        <a href="https://github.com/dcsturman/callisto/blob/main/callisto/FAQ.md">
+        This FAQ </a>
+        provides more details on how the game mechanics
+        differ from the traditional Mongoose Traveller ship combat system.
         <br />
         <br />
         Callisto is currently in <em style={{"color" : "red"}}>closed beta</em>. If you have been
