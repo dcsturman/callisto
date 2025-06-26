@@ -31,7 +31,7 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
   fn get_web_server(&self) -> String;
 
   /// Authenticates a Google user with the provided code
-  /// Returns a tuple of (session_key, user_profile) on success
+  /// Returns a tuple of `(session_key, user_profile)` on success.
   async fn authenticate_user(
     &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>>;
@@ -58,11 +58,17 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
 /// # Panics
 /// If the file cannot be read.
 pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
-  load_authorized_users_from_file(users_file)
+  let authorized_users = load_authorized_users_from_file(users_file)
         .await
         .unwrap_or_else(|_| {
             panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}', defaulting to test list.");
-        })
+        });
+  info!(
+    "(Authentication.load_authorized_users) Loaded {} authorized users from file {}",
+    authorized_users.len(),
+    users_file
+  );
+  authorized_users
 }
 
 pub struct HeaderCallback {
@@ -368,6 +374,7 @@ impl Authenticator for GoogleAuthenticator {
 
     // Check if email is an authorized user
     if !self.authorized_users.contains(&email) {
+      error!("(Authenticator.authenticate_google_user) Unauthorized user {}", email);
       return Err(Box::new(UnauthorizedUserError {}));
     }
 
@@ -620,7 +627,7 @@ pub(crate) mod tests {
   const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
 
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   #[should_panic = "No such file or directory"]
   async fn test_bad_credentials_file() {
     const BAD_FILE: &str = "./not_there_file.json";
@@ -633,7 +640,7 @@ pub(crate) mod tests {
 
   // This test cannot work in the GitHub Actions CI environment, so skip in that case.
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_authorized_users_from_gcs() {
     let authorized_users = load_authorized_users_from_file(GCS_TEST_FILE).await.unwrap();
     assert!(!authorized_users.is_empty(), "Authorized users file is empty");
@@ -641,14 +648,14 @@ pub(crate) mod tests {
 
   // This test cannot work in the GitHub Actions CI environment, so skip in that case.
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_authorized_users_from_file() {
     let authorized_users = load_authorized_users_from_file(LOCAL_TEST_FILE).await.unwrap();
     assert!(!authorized_users.is_empty(), "Authorized users file is empty");
   }
 
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_google_credentials_from_file() {
     let credentials =
       GoogleAuthenticator::load_google_credentials(format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}").as_str());
@@ -657,7 +664,7 @@ pub(crate) mod tests {
   }
 
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_fetch_google_public_keys() {
     let _keys = GoogleAuthenticator::fetch_google_public_keys().await;
   }

@@ -1249,7 +1249,7 @@ async fn test_list_local_dir() {
 }
 
 #[test(tokio::test)]
-#[cfg_attr(feature = "ci", ignore)]
+#[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
 async fn test_list_gcs_dir() {
   // This test requires actual GCS credentials
   // Skip in CI environments

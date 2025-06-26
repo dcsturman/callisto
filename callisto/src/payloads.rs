@@ -11,15 +11,23 @@ use super::entity::{Entities, MetaData};
 use super::ship::ShipDesignTemplate;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
+use std::fmt::Debug;
 use std::fmt::Display;
 
 use super::entity::Vec3;
 use super::ship::FlightPlan;
 
 #[skip_serializing_none]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct LoginMsg {
   pub code: String,
+}
+
+// Custom Display implementation to redact the authentication code
+impl Debug for LoginMsg {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "LoginMsg {{ code: [REDACTED] }}")
+  }
 }
 
 #[serde_as]

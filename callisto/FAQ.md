@@ -17,13 +17,13 @@ This FAQ gives additional detail on the state of the Callisto project.
 * _Boarding actions_ are outside the scope of Callisto.
 * Planets currently do not support gravity.  Currently we found the movement of ships near planets was just difficult hard to get right and there'd often be collisions.  This may be addressed in a future release.
 * Weapons:
+  * No mixed turrets, though you could design a ship with extra turrets to get near the same result.
   * Weapons larger than large bays are not yet supported.
   * Only lasers, pulses, missiles, sand, and particle beams are supported.
   * Fixed mounts are not supported (there is no facing for ships).
 * _Astrogation_ checks for jump are considered to automatically succeed.  _Engineering (Jump)_ skill is used for the check to see if the jump is successful.  
 
-
 ## Known gaps being considered for future versions
 
-* **Ship Design Editor**: so new ship designs can be created by users.
-* **Scenario editor**: so that entire scenarios can be created by users.
+* **Ship Design Editor**: new ship designs can be created and saved by users.
+* **Scenario editor**: entire scenarios can be created and saved by users.

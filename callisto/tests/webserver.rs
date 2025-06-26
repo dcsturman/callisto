@@ -301,7 +301,7 @@ async fn test_join_scenario(stream: &mut MyWebSocket) -> Result<(), String> {
 }
 
 /**
- * Test for get_designs in server.
+ * Test for `get_designs` in server.
  */
 #[test_log::test(tokio::test)]
 async fn integration_get_designs() {
@@ -1485,7 +1485,7 @@ async fn integration_multi_client_test() {
   send_quit(&mut stream1).await;
 }
 
-#[cfg_attr(feature = "ci", ignore)]
+#[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
 #[tokio::test]
 async fn integration_create_regular_server() {
   let port_1 = get_next_port();
