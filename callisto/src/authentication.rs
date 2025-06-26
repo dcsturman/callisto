@@ -58,11 +58,13 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
 /// # Panics
 /// If the file cannot be read.
 pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
-  load_authorized_users_from_file(users_file)
+  let authorized_users = load_authorized_users_from_file(users_file)
         .await
         .unwrap_or_else(|_| {
             panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}', defaulting to test list.");
-        })
+        });
+  info!("(Authentication.load_authorized_users) Loaded {} authorized users from file {}", authorized_users.len(), users_file);
+  authorized_users
 }
 
 pub struct HeaderCallback {
@@ -368,6 +370,7 @@ impl Authenticator for GoogleAuthenticator {
 
     // Check if email is an authorized user
     if !self.authorized_users.contains(&email) {
+      error!("(Authenticator.authenticate_google_user) Unauthorized user {}", email);
       return Err(Box::new(UnauthorizedUserError {}));
     }
 
