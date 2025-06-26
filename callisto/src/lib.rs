@@ -87,6 +87,8 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
   }
 }
 
+
+
 /// List the files in a directory.  The directory can be local or on Google cloud storage (encoded in filename)
 ///
 /// # Errors
@@ -129,5 +131,108 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
       }
     }
     Ok(files)
+  }
+}
+
+/// Get the last modified timestamp for a file, supporting both local files and Google Cloud Storage files.
+/// Google Cloud Storage files are denoted by starting with "gs://" similar to `read_local_or_cloud_file`.
+///
+/// # Arguments
+/// * `filename` - The path to the file. Local paths are used as-is, GCS paths should start with "gs://"
+///
+/// # Returns
+/// The last modified timestamp as a Unix timestamp (seconds since epoch), or `None` if the timestamp is not available
+///
+/// # Errors
+/// Returns `Err` if the file cannot be accessed or if GCS cannot be reached (depending on the file URL)
+///
+/// # Panics
+/// Will panic with a helpful message if GCS authentication fails. GCS authentication needs to be handled outside (and prior to) this function.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use callisto::get_file_last_modified_timestamp;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     // Get timestamp for a local file
+///     let local_timestamp = get_file_last_modified_timestamp("./config/settings.json").await?;
+///     if let Some(timestamp) = local_timestamp {
+///         println!("Local file last modified: {}", timestamp);
+///     }
+///
+///     // Get timestamp for a Google Cloud Storage file
+///     let gcs_timestamp = get_file_last_modified_timestamp("gs://my-bucket/config/settings.json").await?;
+///     if let Some(timestamp) = gcs_timestamp {
+///         println!("GCS file last modified: {}", timestamp);
+///     }
+///
+///     Ok(())
+/// }
+/// ```
+pub async fn get_file_last_modified_timestamp(filename: &str) -> Result<Option<i64>, Box<dyn std::error::Error>> {
+  debug!("(get_file_last_modified_timestamp) Getting last modified timestamp for file {filename}");
+
+  // Check if the filename is a GCS path
+  if filename.starts_with("gs://") {
+    // Extract bucket name from the GCS URI
+    let parts: Vec<&str> = filename.split('/').collect();
+    let bucket_name = parts[2];
+    let object_name = parts[3..].join("/");
+
+    // Create a GCS client
+    let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
+      panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
+    });
+
+    let client = Client::new(config);
+
+    // Get the object metadata from GCS
+    let object = client
+      .get_object(&GetObjectRequest {
+        bucket: bucket_name.to_string(),
+        object: object_name.to_string(),
+        ..Default::default()
+      })
+      .await?;
+
+    // Return the updated timestamp (last modified time) as Unix timestamp
+    if let Some(updated) = object.updated {
+      Ok(Some(updated.unix_timestamp()))
+    } else {
+      Ok(None)
+    }
+  } else {
+    // Get the file metadata locally
+    let metadata = std::fs::metadata(filename)?;
+    let modified_time = metadata.modified()?;
+
+    // Convert SystemTime to Unix timestamp
+    let duration_since_epoch = modified_time.duration_since(std::time::UNIX_EPOCH)?;
+    #[allow(clippy::cast_possible_wrap)]
+    Ok(Some(duration_since_epoch.as_secs() as i64))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[tokio::test]
+  async fn test_get_file_last_modified_timestamp_local() {
+    // Test with a local file that should exist (Cargo.toml)
+    let result = get_file_last_modified_timestamp("Cargo.toml").await;
+    assert!(result.is_ok());
+    let timestamp = result.unwrap();
+    assert!(timestamp.is_some());
+    assert!(timestamp.unwrap() > 0);
+  }
+
+  #[tokio::test]
+  async fn test_get_file_last_modified_timestamp_nonexistent() {
+    // Test with a file that doesn't exist
+    let result = get_file_last_modified_timestamp("nonexistent_file.txt").await;
+    assert!(result.is_err());
   }
 }

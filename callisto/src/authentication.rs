@@ -13,7 +13,7 @@ use dyn_clone::DynClone;
 
 use tokio_tungstenite::tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 
-use crate::read_local_or_cloud_file;
+use crate::{get_file_last_modified_timestamp, read_local_or_cloud_file};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn};
@@ -110,33 +110,44 @@ pub struct GoogleAuthenticator {
    * The list of authorized users.
    */
   authorized_users: Arc<Vec<String>>,
+  /**
+   * The path to the authorized users file.
+   */
+  authorized_users_file: String,
+  /**
+   * The last time the authorized users file was reloaded (Unix timestamp).
+   */
+  last_authorized_users_reload: i64,
 }
 
 impl GoogleAuthenticator {
   /// Creates a new `GoogleAuthenticator` instance
   ///
   /// # Arguments
-  /// * `url` - The URL of the node server (this server).
   /// * `web_server` - The URL of the web server (front end).
   /// * `credentials` - The Google credentials for this server's domain (for oauth2).
   /// * `google_keys` - A copy of the previously fetched Google public keys.
-  /// * `authorized_users` - A pointer to the (possibly long) list of authorized users.
+  /// * `authorized_users_file` - The path to the authorized users file.
   ///
-  /// # Panics
-  /// If the `users_file` or `secret_file` cannot be read.
-  #[must_use]
-  pub fn new(
+  /// # Errors
+  /// Returns `Err` if the authorized users file cannot be read or parsed.
+  pub async fn new(
     web_server: &str, credentials: Arc<GoogleCredentials>, google_keys: Arc<GooglePublicKeys>,
-    authorized_users: Arc<Vec<String>>,
-  ) -> Self {
-    GoogleAuthenticator {
+    authorized_users_file: &str,
+  ) -> Result<Self, Box<dyn std::error::Error>> {
+    // Load the authorized users from the file
+    let authorized_users = Arc::new(load_authorized_users_from_file(authorized_users_file).await?);
+
+    Ok(GoogleAuthenticator {
       credentials,
       email: None,
       session_key: None,
       authorized_users,
       google_keys,
       web_server: web_server.to_string(),
-    }
+      authorized_users_file: authorized_users_file.to_string(),
+      last_authorized_users_reload: 0, // Initialize to 0 to force initial reload
+    })
   }
 
   // Static helper methods
@@ -368,6 +379,16 @@ impl Authenticator for GoogleAuthenticator {
       return Err(Box::new(TokenTimeoutError {}));
     }
     debug!("(authenticate_google_user) Token validated.");
+
+    // Check the latest timestamp on the authorized users file.  Reload it if 
+    // the file has changed.
+    let last_modified = get_file_last_modified_timestamp(&self.authorized_users_file).await?;
+    if let Some(last_modified) = last_modified {
+      if last_modified > self.last_authorized_users_reload {
+        self.last_authorized_users_reload = last_modified;
+        self.authorized_users = Arc::new(load_authorized_users_from_file(&self.authorized_users_file).await?);
+      }
+    }
 
     // Ensure email is in lowercase.
     let email = token_data.claims.email.to_lowercase();
