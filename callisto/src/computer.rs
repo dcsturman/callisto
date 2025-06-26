@@ -221,7 +221,7 @@ impl FlightParams {
           let accel = find_delta_s(100_000.0).normalize() * self.max_acceleration;
           (accel, -1.0 * accel, 100_000.0, 100_000.0).into()
         }
-        _ => return None,
+        _ => None,
       }
     } else {
       info!("(best_guess) Making guess based on distance.");

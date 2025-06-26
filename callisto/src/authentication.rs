@@ -31,7 +31,7 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
   fn get_web_server(&self) -> String;
 
   /// Authenticates a Google user with the provided code
-  /// Returns a tuple of (session_key, user_profile) on success
+  /// Returns a tuple of `(session_key, user_profile)` on success.
   async fn authenticate_user(
     &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>>;
@@ -63,7 +63,11 @@ pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
         .unwrap_or_else(|_| {
             panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}', defaulting to test list.");
         });
-  info!("(Authentication.load_authorized_users) Loaded {} authorized users from file {}", authorized_users.len(), users_file);
+  info!(
+    "(Authentication.load_authorized_users) Loaded {} authorized users from file {}",
+    authorized_users.len(),
+    users_file
+  );
   authorized_users
 }
 
