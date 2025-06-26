@@ -387,7 +387,21 @@ impl Authenticator for GoogleAuthenticator {
       if last_modified > self.last_authorized_users_reload {
         self.last_authorized_users_reload = last_modified;
         self.authorized_users = Arc::new(load_authorized_users_from_file(&self.authorized_users_file).await?);
+        info!(
+          "(authenticate_google_user) Reloaded authorized users from file {}",
+          self.authorized_users_file
+        );
+      } else {
+        debug!(
+          "(authenticate_google_user) Not reloading authorized users from file {} as it has not changed.",
+          self.authorized_users_file
+        );
       }
+    } else {
+      warn!(
+        "(authenticate_google_user) Unable to get last modified timestamp for file {}",
+        self.authorized_users_file
+      );
     }
 
     // Ensure email is in lowercase.
