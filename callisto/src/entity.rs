@@ -415,9 +415,9 @@ impl Entities {
       .iter()
       .flat_map(|(attacker, actions)| {
         let Some(attack_ship) = ship_snapshot.get(attacker) else {
-            warn!("Cannot find attacker {} for fire actions.", attacker);
-            return vec![];
-          };
+          warn!("Cannot find attacker {} for fire actions.", attacker);
+          return vec![];
+        };
 
         let (missiles, effects) = do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, rng);
         for missile in missiles {
