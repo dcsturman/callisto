@@ -26,9 +26,7 @@ use log::{debug, error, info, warn};
 
 extern crate callisto;
 
-use callisto::authentication::{
-  Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator,
-};
+use callisto::authentication::{Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator};
 
 use callisto::entity::Entities;
 use callisto::processor::Processor;
@@ -237,12 +235,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let my_credentials = Arc::new(my_credentials);
     let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
 
-    Box::new(GoogleAuthenticator::new(
-      &args.web_server,
-      my_credentials,
-      google_keys,
-      &args.users_file,
-    ).await.expect("Failed to create GoogleAuthenticator"))
+    Box::new(
+      GoogleAuthenticator::new(&args.web_server, my_credentials, google_keys, &args.users_file)
+        .await
+        .expect("Failed to create GoogleAuthenticator"),
+    )
   };
 
   let session_keys_clone = session_keys.clone();

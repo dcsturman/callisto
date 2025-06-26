@@ -87,8 +87,6 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
   }
 }
 
-
-
 /// List the files in a directory.  The directory can be local or on Google cloud storage (encoded in filename)
 ///
 /// # Errors

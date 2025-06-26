@@ -380,7 +380,7 @@ impl Authenticator for GoogleAuthenticator {
     }
     debug!("(authenticate_google_user) Token validated.");
 
-    // Check the latest timestamp on the authorized users file.  Reload it if 
+    // Check the latest timestamp on the authorized users file.  Reload it if
     // the file has changed.
     let last_modified = get_file_last_modified_timestamp(&self.authorized_users_file).await?;
     if let Some(last_modified) = last_modified {
