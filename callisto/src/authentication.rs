@@ -47,7 +47,8 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
   fn get_session_key(&self) -> Option<String>;
 }
 
-/// Load the list of authorized users from a file.  The file is a JSON array of strings.
+/// Load the list of authorized users from a file.  The file is a JSON array of strings.  This is just a wrapper
+/// around `load_authorized_users_from_file` that handles any errors.
 ///
 /// # Arguments
 /// * `users_file` - The name of the file to load.
@@ -58,11 +59,9 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
 /// # Panics
 /// If the file cannot be read.
 pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
-  let authorized_users = load_authorized_users_from_file(users_file)
-        .await
-        .unwrap_or_else(|_| {
-            panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}', defaulting to test list.");
-        });
+  let authorized_users = load_authorized_users_from_file(users_file).await.unwrap_or_else(|_| {
+    panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}'.");
+  });
   info!(
     "(Authentication.load_authorized_users) Loaded {} authorized users from file {}",
     authorized_users.len(),
@@ -370,7 +369,8 @@ impl Authenticator for GoogleAuthenticator {
     }
     debug!("(authenticate_google_user) Token validated.");
 
-    let email = token_data.claims.email.clone();
+    // Ensure email is in lowercase.
+    let email = token_data.claims.email.to_lowercase();
 
     // Check if email is an authorized user
     if !self.authorized_users.contains(&email) {
@@ -416,7 +416,11 @@ impl Authenticator for GoogleAuthenticator {
 /// Returns `Err` if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
 async fn load_authorized_users_from_file(file_name: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   let data = read_local_or_cloud_file(file_name).await?;
-  serde_json::from_slice::<Vec<String>>(&data).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+  let authorized_users: Vec<String> =
+    serde_json::from_slice::<Vec<String>>(&data).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+  // Convert all authorized users to lowercase
+  Ok(authorized_users.into_iter().map(|user| user.to_lowercase()).collect())
 }
 
 // Mock authenticator for testing
