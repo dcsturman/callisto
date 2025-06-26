@@ -627,7 +627,7 @@ pub(crate) mod tests {
   const GCS_TEST_FILE: &str = "gs://callisto-be-user-profiles/authorized_users.json";
 
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   #[should_panic = "No such file or directory"]
   async fn test_bad_credentials_file() {
     const BAD_FILE: &str = "./not_there_file.json";
@@ -640,7 +640,7 @@ pub(crate) mod tests {
 
   // This test cannot work in the GitHub Actions CI environment, so skip in that case.
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_authorized_users_from_gcs() {
     let authorized_users = load_authorized_users_from_file(GCS_TEST_FILE).await.unwrap();
     assert!(!authorized_users.is_empty(), "Authorized users file is empty");
@@ -648,14 +648,14 @@ pub(crate) mod tests {
 
   // This test cannot work in the GitHub Actions CI environment, so skip in that case.
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_authorized_users_from_file() {
     let authorized_users = load_authorized_users_from_file(LOCAL_TEST_FILE).await.unwrap();
     assert!(!authorized_users.is_empty(), "Authorized users file is empty");
   }
 
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_google_credentials_from_file() {
     let credentials =
       GoogleAuthenticator::load_google_credentials(format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}").as_str());
@@ -664,7 +664,7 @@ pub(crate) mod tests {
   }
 
   #[test_log::test(tokio::test)]
-  #[cfg_attr(feature = "ci", ignore)]
+  #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_fetch_google_public_keys() {
     let _keys = GoogleAuthenticator::fetch_google_public_keys().await;
   }
