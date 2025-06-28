@@ -31,6 +31,7 @@ type SubStream = TlsStream<TcpStream>;
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn};
+use tracing::{event, Level};
 
 pub struct Processor {
   connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
@@ -349,7 +350,7 @@ impl Processor {
   // a lot of the codebase.  So excluding those two clippy warnings.
   #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
   pub async fn handle_request(&mut self, message: RequestMsg, player: &mut PlayerManager) -> Vec<ResponseMsg> {
-    info!("(handle_request) Request: {:?}", message);
+    event!(Level::INFO, request = Into::<&str>::into(&message), contents = ?message);
 
     // If the connection has not logged in yet, that is the priority.
     // Nothing else is processed until login is complete.

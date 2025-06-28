@@ -309,7 +309,6 @@ dependencies = [
  "google-cloud-storage",
  "itertools 0.14.0",
  "jsonwebtoken",
- "log",
  "ndarray",
  "once_cell",
  "pem",
@@ -321,11 +320,13 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "strum",
  "strum_macros",
  "test-log",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
+ "tracing",
 ]
 
 [[package]]
@@ -2574,6 +2575,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
+name = "strum"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f64def088c51c9510a8579e3c5d67c65349dcf755e5479ad3d010aa6454e2c32"
+
+[[package]]
 name = "strum_macros"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2902,6 +2909,7 @@ version = "0.1.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "784e0ac535deb450455cbfa28a6f0df145ea1bb7ae51b821cf5e7927fdcfbdd0"
 dependencies = [
+ "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",

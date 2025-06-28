@@ -10,13 +10,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use dyn_clone::DynClone;
+use tracing::{event, Level};
 
 use tokio_tungstenite::tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 
-use crate::read_local_or_cloud_file;
+use crate::{get_file_last_modified_timestamp, read_local_or_cloud_file, LOG_AUTH_RESULT};
 
 #[allow(unused_imports)]
-use crate::{debug, error, info, warn};
+use crate::{debug, error, info, warn, LOG_FILE_USE};
 
 type GoogleProfile = String;
 
@@ -47,7 +48,8 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
   fn get_session_key(&self) -> Option<String>;
 }
 
-/// Load the list of authorized users from a file.  The file is a JSON array of strings.
+/// Load the list of authorized users from a file.  The file is a JSON array of strings.  This is just a wrapper
+/// around `load_authorized_users_from_file` that handles any errors.
 ///
 /// # Arguments
 /// * `users_file` - The name of the file to load.
@@ -58,11 +60,9 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
 /// # Panics
 /// If the file cannot be read.
 pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
-  let authorized_users = load_authorized_users_from_file(users_file)
-        .await
-        .unwrap_or_else(|_| {
-            panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}', defaulting to test list.");
-        });
+  let authorized_users = load_authorized_users_from_file(users_file).await.unwrap_or_else(|_| {
+    panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}'.");
+  });
   info!(
     "(Authentication.load_authorized_users) Loaded {} authorized users from file {}",
     authorized_users.len(),
@@ -111,33 +111,44 @@ pub struct GoogleAuthenticator {
    * The list of authorized users.
    */
   authorized_users: Arc<Vec<String>>,
+  /**
+   * The path to the authorized users file.
+   */
+  authorized_users_file: String,
+  /**
+   * The last time the authorized users file was reloaded (Unix timestamp).
+   */
+  last_authorized_users_reload: i64,
 }
 
 impl GoogleAuthenticator {
   /// Creates a new `GoogleAuthenticator` instance
   ///
   /// # Arguments
-  /// * `url` - The URL of the node server (this server).
   /// * `web_server` - The URL of the web server (front end).
   /// * `credentials` - The Google credentials for this server's domain (for oauth2).
   /// * `google_keys` - A copy of the previously fetched Google public keys.
-  /// * `authorized_users` - A pointer to the (possibly long) list of authorized users.
+  /// * `authorized_users_file` - The path to the authorized users file.
   ///
-  /// # Panics
-  /// If the `users_file` or `secret_file` cannot be read.
-  #[must_use]
-  pub fn new(
+  /// # Errors
+  /// Returns `Err` if the authorized users file cannot be read or parsed.
+  pub async fn new(
     web_server: &str, credentials: Arc<GoogleCredentials>, google_keys: Arc<GooglePublicKeys>,
-    authorized_users: Arc<Vec<String>>,
-  ) -> Self {
-    GoogleAuthenticator {
+    authorized_users_file: &str,
+  ) -> Result<Self, Box<dyn std::error::Error>> {
+    // Load the authorized users from the file
+    let authorized_users = Arc::new(load_authorized_users_from_file(authorized_users_file).await?);
+
+    Ok(GoogleAuthenticator {
       credentials,
       email: None,
       session_key: None,
       authorized_users,
       google_keys,
       web_server: web_server.to_string(),
-    }
+      authorized_users_file: authorized_users_file.to_string(),
+      last_authorized_users_reload: 0, // Initialize to 0 to force initial reload
+    })
   }
 
   // Static helper methods
@@ -370,11 +381,33 @@ impl Authenticator for GoogleAuthenticator {
     }
     debug!("(authenticate_google_user) Token validated.");
 
-    let email = token_data.claims.email.clone();
+    // Check the latest timestamp on the authorized users file.  Reload it if
+    // the file has changed.
+    let last_modified = get_file_last_modified_timestamp(&self.authorized_users_file).await?;
+    if let Some(last_modified) = last_modified {
+      if last_modified > self.last_authorized_users_reload {
+        self.last_authorized_users_reload = last_modified;
+        self.authorized_users = Arc::new(load_authorized_users_from_file(&self.authorized_users_file).await?);
+        event!(target: LOG_FILE_USE, Level::INFO, file_name = &self.authorized_users_file, use = "Reloaded authorized users");
+      } else {
+        debug!(
+          "(authenticate_google_user) Not reloading authorized users from file {} as it has not changed.",
+          self.authorized_users_file
+        );
+      }
+    } else {
+      warn!(
+        "(authenticate_google_user) Unable to get last modified timestamp for file {}",
+        self.authorized_users_file
+      );
+    }
+
+    // Ensure email is in lowercase.
+    let email = token_data.claims.email.to_lowercase();
 
     // Check if email is an authorized user
     if !self.authorized_users.contains(&email) {
-      error!("(Authenticator.authenticate_google_user) Unauthorized user {}", email);
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email, result = "Failure");
       return Err(Box::new(UnauthorizedUserError {}));
     }
 
@@ -388,7 +421,7 @@ impl Authenticator for GoogleAuthenticator {
         .insert(self.session_key.clone().unwrap(), Some(email.clone()));
     }
 
-    info!("(Authenticator.authenticate_google_user) Validated login for user {}", email);
+    event!(target: LOG_AUTH_RESULT, Level::INFO, email, result = "Success");
     self.email = Some(email.clone());
     Ok(email)
   }
@@ -416,7 +449,11 @@ impl Authenticator for GoogleAuthenticator {
 /// Returns `Err` if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
 async fn load_authorized_users_from_file(file_name: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   let data = read_local_or_cloud_file(file_name).await?;
-  serde_json::from_slice::<Vec<String>>(&data).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+  let authorized_users: Vec<String> =
+    serde_json::from_slice::<Vec<String>>(&data).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+  // Convert all authorized users to lowercase
+  Ok(authorized_users.into_iter().map(|user| user.to_lowercase()).collect())
 }
 
 // Mock authenticator for testing
