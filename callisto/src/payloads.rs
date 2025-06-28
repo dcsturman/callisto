@@ -16,6 +16,7 @@ use std::fmt::Display;
 
 use super::entity::Vec3;
 use super::ship::FlightPlan;
+use strum_macros::IntoStaticStr;
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
@@ -241,7 +242,7 @@ serde_with::serde_conv!(
     }
 );
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 pub enum RequestMsg {
   Login(LoginMsg),
   AddShip(AddShipMsg),

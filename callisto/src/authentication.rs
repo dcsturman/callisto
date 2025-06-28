@@ -10,13 +10,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use dyn_clone::DynClone;
+use tracing::{event, Level};
 
 use tokio_tungstenite::tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 
-use crate::{get_file_last_modified_timestamp, read_local_or_cloud_file};
+use crate::{get_file_last_modified_timestamp, read_local_or_cloud_file, LOG_AUTH_RESULT};
 
 #[allow(unused_imports)]
-use crate::{debug, error, info, warn};
+use crate::{debug, error, info, warn, LOG_FILE_USE};
 
 type GoogleProfile = String;
 
@@ -387,7 +388,18 @@ impl Authenticator for GoogleAuthenticator {
       if last_modified > self.last_authorized_users_reload {
         self.last_authorized_users_reload = last_modified;
         self.authorized_users = Arc::new(load_authorized_users_from_file(&self.authorized_users_file).await?);
+        event!(target: LOG_FILE_USE, Level::INFO, file_name = &self.authorized_users_file, use = "Reloaded authorized users");
+      } else {
+        debug!(
+          "(authenticate_google_user) Not reloading authorized users from file {} as it has not changed.",
+          self.authorized_users_file
+        );
       }
+    } else {
+      warn!(
+        "(authenticate_google_user) Unable to get last modified timestamp for file {}",
+        self.authorized_users_file
+      );
     }
 
     // Ensure email is in lowercase.
@@ -395,7 +407,7 @@ impl Authenticator for GoogleAuthenticator {
 
     // Check if email is an authorized user
     if !self.authorized_users.contains(&email) {
-      error!("(Authenticator.authenticate_google_user) Unauthorized user {}", email);
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email, result = "Failure");
       return Err(Box::new(UnauthorizedUserError {}));
     }
 
@@ -409,7 +421,7 @@ impl Authenticator for GoogleAuthenticator {
         .insert(self.session_key.clone().unwrap(), Some(email.clone()));
     }
 
-    info!("(Authenticator.authenticate_google_user) Validated login for user {}", email);
+    event!(target: LOG_AUTH_RESULT, Level::INFO, email, result = "Success");
     self.email = Some(email.clone());
     Ok(email)
   }

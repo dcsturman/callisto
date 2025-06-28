@@ -5,13 +5,13 @@ macro_rules! debug {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg_attr(coverage, no_coverage)]
         {
-            log::debug!(target: $target, $($arg)+);
+            tracing::debug!(target: $target, $($arg)+);
         }
     };
     ($($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
-            log::debug!($($arg)+);
+            tracing::debug!($($arg)+);
         }
      };
 }
@@ -21,13 +21,13 @@ macro_rules! info {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
-            log::info!(target: $target, $($arg)+);
+            tracing::info!(target: $target, $($arg)+);
         }
     };
     ($($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
-            log::info!($($arg)+);
+            tracing::info!($($arg)+);
         }
      };
 }
@@ -37,13 +37,13 @@ macro_rules! warn {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
-            log::warn!(target: $target, $($arg)+);
+            tracing::warn!(target: $target, $($arg)+);
         }
     };
     ($($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
-            log::warn!($($arg)+);
+            tracing::warn!($($arg)+);
         }
      };
 }
@@ -53,13 +53,13 @@ macro_rules! error {
     (target: $target:expr, $($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
-            log::error!(target: $target, $($arg)+);
+            tracing::error!(target: $target, $($arg)+);
         }
     };
     ($($arg:tt)+) => {
         #[cfg(not(coverage))]
         {
-            log::error!($($arg)+);
+            tracing::error!($($arg)+);
         }
      };
 }
