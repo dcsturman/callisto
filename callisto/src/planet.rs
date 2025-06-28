@@ -5,9 +5,9 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
+use crate::debug;
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, G};
 use crate::payloads::Vec3asVec;
-use crate::{debug, info};
 
 // This is the Gravitational Constant, not the acceleration due to gravity which is defined as G and used
 // more widely in this codebase.  So intentionally not "pub"
@@ -106,12 +106,6 @@ impl Planet {
     let gravity_radius_025 = above_surface_or_none(self.radius, gravity_radius(0.25, self.mass));
 
     debug!(
-      "Gravity radius 025: {:?}: given radius {:?} and gravity_radius {}",
-      gravity_radius_025,
-      self.radius,
-      gravity_radius(0.25, self.mass)
-    );
-    info!(
       "(planet.reset_gravity_wells) Planet {} has gravity wells {:?}, {:?}, {:?}, {:?}",
       self.name, gravity_radius_2, gravity_radius_1, gravity_radius_05, gravity_radius_025
     );

@@ -9,6 +9,7 @@ use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
+use tracing::{event, Level};
 
 use crate::action::{ShipAction, ShipActionList};
 use crate::combat::{
@@ -23,7 +24,7 @@ use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
 
 #[allow(unused_imports)]
-use crate::{debug, error, info, warn};
+use crate::{debug, error, info, warn, LOG_FILE_USE};
 
 pub const DELTA_TIME: u64 = 360;
 pub const DELTA_TIME_F64: f64 = 360.0;
@@ -183,7 +184,7 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
   pub async fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
-    info!("Load scenario file \"{}\".", file_name);
+    event!(target: LOG_FILE_USE, Level::INFO, file_name, use = "Load scenario.");
 
     let mut entities: Entities = serde_json::from_slice(&read_local_or_cloud_file(file_name).await?)?;
 
@@ -534,7 +535,7 @@ impl Entities {
               kind: WeaponType::Missile,
               mount: WeaponMount::Turret(1),
             };
-            info!("(Entity.update_all) Missile impact on {} by missile {}.", target_name, missile);
+            debug!("(Entity.update_all) Missile impact on {} by missile {}.", target_name, missile);
             let target = self.ships.get(&target_name).map_or_else(
               || {
                 warn!("Cannot find target {} for missile. It may have been destroyed.", target_name);

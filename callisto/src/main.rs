@@ -21,8 +21,9 @@ use tokio_rustls::server::TlsStream;
 #[cfg(not(feature = "no_tls_upgrade"))]
 use tokio_rustls::TlsAcceptor;
 
+use callisto::{debug, error, info, warn, LOG_FILE_USE};
 use clap::Parser;
-use log::{debug, error, info, warn};
+use tracing::{event, Level};
 
 extern crate callisto;
 
@@ -160,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   // Load our certs and key.
   #[cfg(not(feature = "no_tls_upgrade"))]
-  let cert_path = PathBuf::from(args.tls_keys_public);
+  let cert_path = PathBuf::from(args.tls_keys_public.clone());
   #[cfg(not(feature = "no_tls_upgrade"))]
   let certs = CertificateDer::pem_file_iter(cert_path)?.collect::<Result<Vec<_>, _>>()?;
   #[cfg(not(feature = "no_tls_upgrade"))]
@@ -168,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   #[cfg(not(feature = "no_tls_upgrade"))]
   let key = PrivateKeyDer::from_pem_file(key_path)?;
   #[cfg(not(feature = "no_tls_upgrade"))]
-  info!("(main) Loaded certs and key.");
+  event!(target: LOG_FILE_USE, Level::INFO, file_name = &args.tls_keys_public, use = "Load certs and key.");
 
   #[cfg(not(feature = "no_tls_upgrade"))]
   let config = rustls::ServerConfig::builder()
@@ -211,12 +212,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     .await
     .unwrap_or_else(|e| panic!("Unable to load ship template file {}. Reason {:?}", args.design_file, e));
 
-  info!("(main) Successfully ship templates from {}.", &args.design_file);
+  event!(target: LOG_FILE_USE, Level::INFO, file_name = &args.design_file, use = "Load ship templates.");
 
   SHIP_TEMPLATES
     .set(templates)
     .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
-  info!("(main) Loaded ship templates.");
 
   load_scenarios_and_metadata(&args.scenario_dir).await;
 
@@ -297,7 +297,7 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) {
     return;
   };
 
-  info!("(main) Loaded scenarios from {}.", &scenario_dir);
+  event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Loaded scenario");
 
   let scenarios = join_all(scenarios_list.iter().map(async |scenario| {
     // Load each scenario and read it in to get the metadata.
@@ -317,8 +317,6 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) {
   .flatten()
   .cloned()
   .collect::<Vec<_>>();
-
-  info!("(main) Scenarios: {:?}", scenarios);
 
   SCENARIOS.set(scenarios).expect("(Main) attempting to set SCENARIOS twice!");
 }
