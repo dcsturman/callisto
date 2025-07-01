@@ -4,7 +4,12 @@ use std::time::SystemTime;
 
 use crate::entity::Entities;
 use crate::payloads::{Role, UserData};
-use crate::{error, warn};
+use crate::{error, warn, LOG_SCENARIO_ACTIVITY};
+use tracing::{event, Level};
+
+// Time in seconds for an unused scenario to exist before it is removed.
+const SCENARIO_EXPIRATION_TIME: u64 = 300;
+
 pub struct Server {
   pub id: String,
   pub entities: Mutex<Entities>,
@@ -193,9 +198,20 @@ impl ServerMembersTable {
   pub fn clean_expired_scenarios(&mut self) -> bool {
     let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
     let initial_size = self.members.len();
-    self
-      .members
-      .retain(|_, server_table| !(server_table.table.is_empty() && now - server_table.last_exit > 300));
+    self.members.retain(|scenario_name, server_table| {
+      // Need to log the event when deleting the scenario, thus the use of a somewhat empty if statement.
+      if server_table.table.is_empty() && now - server_table.last_exit > SCENARIO_EXPIRATION_TIME {
+        event!(
+          target: LOG_SCENARIO_ACTIVITY,
+          Level::INFO,
+          scenario = scenario_name,
+          action = "expire"
+        );
+        false
+      } else {
+        true
+      }
+    });
 
     initial_size != self.members.len()
   }

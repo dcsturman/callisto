@@ -30,7 +30,7 @@ type SubStream = TcpStream;
 type SubStream = TlsStream<TcpStream>;
 
 #[allow(unused_imports)]
-use crate::{debug, error, info, warn};
+use crate::{debug, error, info, warn, LOG_SCENARIO_ACTIVITY};
 use tracing::{event, Level};
 
 pub struct Processor {
@@ -430,6 +430,13 @@ impl Processor {
         };
         let server_id = server.get_id();
         self.members.remove(server_id, player.get_id());
+        event!(
+          target: LOG_SCENARIO_ACTIVITY,
+          Level::INFO,
+          email = player.get_email().unwrap(),
+          scenario = server_id,
+          action = "exit"
+        );
         player.set_role_ship(crate::payloads::Role::General, None);
 
         vec![ResponseMsg::Users(self.members.get_user_context(server_id))]
@@ -443,6 +450,13 @@ impl Processor {
       RequestMsg::JoinScenario(join_scenario) => {
         if let Some(server) = self.servers.get(&join_scenario.scenario_name) {
           player.set_server(server.clone());
+          event!(
+            target: LOG_SCENARIO_ACTIVITY,
+            Level::INFO,
+            email = player.get_email().unwrap(),
+            scenario = join_scenario.scenario_name,
+            action = "join"
+          );
           self.members.update(
             server.get_id(),
             player.get_id(),
@@ -475,6 +489,14 @@ impl Processor {
         // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
         let server = Arc::new(Server::new(&create_scenario.name, &scenario_full_name).await);
         self.servers.insert(create_scenario.name.clone(), server.clone());
+        event!(
+          target: LOG_SCENARIO_ACTIVITY,
+          Level::INFO,
+          email = player.get_email().unwrap(),
+          scenario = create_scenario.name,
+          action = "create"
+        );
+        // TODO: Violating DRY here.
         self.members.register(&create_scenario.name, &create_scenario.scenario);
         self.members.update(
           server.get_id(),
@@ -482,6 +504,13 @@ impl Processor {
           &player.get_email().unwrap(),
           player.get_role().0,
           player.get_role().1,
+        );
+        event!(
+          target: LOG_SCENARIO_ACTIVITY,
+          Level::INFO,
+          email = player.get_email().unwrap(),
+          scenario = create_scenario.scenario,
+          action = "join"
         );
         player.set_server(server.clone());
 
