@@ -509,7 +509,7 @@ impl Processor {
           target: LOG_SCENARIO_ACTIVITY,
           Level::INFO,
           email = player.get_email().unwrap(),
-          scenario = create_scenario.scenario,
+          scenario = create_scenario.name,
           action = "join"
         );
         player.set_server(server.clone());
