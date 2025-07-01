@@ -2,6 +2,7 @@ import React from "react";
 import {MetaData} from "./Universal";
 import {joinScenario, createScenario } from "./ServerManager";
 import {Logout} from "./Authentication";
+import {useMemo, useEffect} from "react";
 
 const TUTORIAL_SCENARIO = "tutorial.json";
 export const TUTORIAL_PREFIX = "$TUTORIAL-";
@@ -48,7 +49,15 @@ type ScenarioManagerProps = {
 };
 
 export const ScenarioManager: React.FC<ScenarioManagerProps> = ({activeScenarios, scenarioTemplates, setTutorialMode, setAuthenticated, email, setEmail}) => {
-    const sortedFilteredScenarios = activeScenarios.map(scenario => scenario[0]).filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
+    const sortedFilteredScenarios = useMemo(() => {
+        return activeScenarios.map(scenario => scenario[0]).filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
+    }, [activeScenarios]);
+
+    useEffect(() => {
+        if (scenario == null) {
+            setScenario(sortedFilteredScenarios[0]?? null);
+        }
+    }, [sortedFilteredScenarios]);
     const sortedTemplates = scenarioTemplates.sort((a, b) => a[0].localeCompare(b[0]));
 
     const [scenario, setScenario] = React.useState<string | null>(sortedFilteredScenarios[0]?? null);
