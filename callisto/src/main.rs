@@ -149,8 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   let args = Args::parse();
 
   let port = args.port;
-  debug!("Using port: {port}");
-
+  
   //let ip_addr = IpAddr::from_str(&args.address)?;
   //let addr = SocketAddr::from((ip_addr, port));
   let addr = (args.address.clone(), port)
@@ -158,6 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     .expect("Unable to resolve the IP address for this server")
     .next()
     .expect("DNS resolution returned no IP addresses");
+  info!("START CALLISTO server listening on address: {}:{} {}", addr, port, if args.test { " (in TEST mode)" } else { "" });
 
   // Load our certs and key.
   #[cfg(not(feature = "no_tls_upgrade"))]
