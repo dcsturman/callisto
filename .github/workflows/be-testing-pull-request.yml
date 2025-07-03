@@ -25,7 +25,7 @@ jobs:
           rustup update
           rustup component add clippy
 
-
+      - uses: taiki-e/install-action@nextest
       - name: Toolchain info
         run: |
           cargo --version --verbose
@@ -45,7 +45,7 @@ jobs:
       - name: Test
         working-directory: ./callisto
         run: |
-          cargo test --all --features ci,no_tls_upgrade
+          cargo nextest r --all --features ci,no_tls_upgrade
 
       - name: Build
         working-directory: ./callisto
