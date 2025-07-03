@@ -26,7 +26,6 @@ use clap::Parser;
 use tracing::{event, Level};
 use tracing_subscriber::fmt;
 
-
 extern crate callisto;
 
 use callisto::authentication::{Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator};
