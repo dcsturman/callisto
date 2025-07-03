@@ -24,8 +24,8 @@ use tokio_rustls::TlsAcceptor;
 use callisto::{debug, error, info, warn, LOG_FILE_USE};
 use clap::Parser;
 use tracing::{event, Level};
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_gcp::GcpLayer;
+use tracing_subscriber::layer::SubscriberExt;
 
 extern crate callisto;
 
