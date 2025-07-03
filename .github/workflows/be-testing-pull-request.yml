@@ -25,7 +25,7 @@ jobs:
           rustup update
           rustup component add clippy
 
-
+      - uses: taiki-e/install-action@nextest
       - name: Toolchain info
         run: |
           cargo --version --verbose
