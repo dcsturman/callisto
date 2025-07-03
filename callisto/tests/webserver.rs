@@ -51,10 +51,31 @@ type MyWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 const SERVER_ADDRESS: &str = "127.0.0.1";
 const SERVER_PATH: &str = "target/debug/callisto";
 
-static NEXT_PORT: AtomicU16 = AtomicU16::new(3010);
+static NEXT_PORT: AtomicU16 = AtomicU16::new(0);
 
 fn get_next_port() -> u16 {
-  NEXT_PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+  use std::sync::Once;
+  static INIT: Once = Once::new();
+
+  INIT.call_once(|| {
+    // Initialize with a base port that includes process ID to avoid conflicts between processes
+    #[allow(clippy::cast_possible_truncation)]
+    let base_port = 3010 + (std::process::id() as u16 % 1000);
+    NEXT_PORT.store(base_port, std::sync::atomic::Ordering::Relaxed);
+  });
+
+  // Try to find an available port, starting from our base
+  loop {
+    let port = NEXT_PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    // Quick check if port is available by trying to bind to it
+    if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+      return port;
+    }
+
+    // If we've tried too many ports, something is wrong
+    assert!(port <= 65000, "Unable to find available port after trying many options");
+  }
 }
 
 async fn spawn_server(
