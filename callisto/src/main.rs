@@ -24,6 +24,8 @@ use tokio_rustls::TlsAcceptor;
 use callisto::{debug, error, info, warn, LOG_FILE_USE};
 use clap::Parser;
 use tracing::{event, Level};
+use tracing_subscriber::fmt;
+
 
 extern crate callisto;
 
@@ -145,7 +147,8 @@ async fn handle_connection(
 #[tokio::main]
 #[quit::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-  pretty_env_logger::init();
+  let format = fmt::format().json();
+  tracing_subscriber::fmt().event_format(format).init();
   let args = Args::parse();
 
   let port = args.port;
