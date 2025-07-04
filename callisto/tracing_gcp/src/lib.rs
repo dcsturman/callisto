@@ -60,6 +60,7 @@ where
     }
 
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        println!("(TRACING_GCP) on_event: {event:?}");
         // this is the only fn that would benefit from RwLock
         let mut ir = IR::default();
         event.record(&mut ir);
