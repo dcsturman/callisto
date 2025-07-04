@@ -10,6 +10,7 @@ WORKDIR /app
 
 # Build dependencies
 COPY Cargo.toml Cargo.lock ./
+COPY ./tracing_gcp ./tracing_gcp
 RUN mkdir ./src && echo 'fn main() {}' > ./src/main.rs && touch ./src/lib.rs
 RUN cargo build --release --features no_tls_upgrade
 

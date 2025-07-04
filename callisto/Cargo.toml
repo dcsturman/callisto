@@ -44,7 +44,7 @@ test-log = "*"
 tracing = { version = "0.1.41", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
 strum = "0.27.1"
-tracing-gcp = "0.1.0"
+tracing-gcp = { path = "tracing_gcp" }
 
 [dev-dependencies]
 test-log="*"
