@@ -126,6 +126,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
   return (
     <Accordion id="add-ship-header" title="Add or Update Ship" initialOpen={false}>
       <form id="add-ship" className="control-form" onSubmit={handleSubmit}>
+        <div id="add-ship-top-part">
         <label className="control-label">
           Name
           <input
@@ -195,6 +196,7 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
           setShipDesignName={(design) => setAddShip({...addShip, design: design})}
           shipDesigns={shipDesignTemplates}
         />
+        </div>
         <hr />
         <CrewBuilder
           shipName={addShip.name}
