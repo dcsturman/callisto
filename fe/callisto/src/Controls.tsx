@@ -346,7 +346,6 @@ export function Controls(args: {
           // Strip out the details on the weapons and provide an object with just
           // the name of each possible actor and the FireState they produced during the round.
           nextRound();
-          args.setShowRange(null);
           //args.setComputerShip(null);
         }}>
         Next Round
