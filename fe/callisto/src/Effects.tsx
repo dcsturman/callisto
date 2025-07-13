@@ -98,7 +98,6 @@ export function Explosions(args: {
   setEffects: (entities: Effect[] | null) => void;
 }) {
   const entityContext = useContext(EntitiesServerContext);
-  console.log("(Effects.Explosions) Effects: " + JSON.stringify(args.effects));
 
   return (
     <>
@@ -112,7 +111,6 @@ export function Explosions(args: {
           case SHIP_IMPACT:
             // Use the current position of the target if we can find it; otherwise use the position (last known position actually) as a backup
             position = entityContext.entities.ships.find((ship) => ship.name === effect.target)?.position ?? effect.position ?? [0, 0, 0];
-            console.log("(Effects.Explosions) find position of " + effect.target);
             color = MISSILE_HIT_COLOR;
             key = "Impact-" + index;
             removeMe = () => {

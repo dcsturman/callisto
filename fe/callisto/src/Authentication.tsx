@@ -59,11 +59,6 @@ export function Authentication(args: {
       }
     }
 
-    console.log(
-      "(Authentication) Redirect URI (REACT_APP_NODE_SERVER) is set to: " +
-        process.env.REACT_APP_NODE_SERVER || window.location.href
-    );
-
     // Uncomment when debugging but don't generally want this in the logs in the client.
     //console.log("(Authentication) OAuth ClientID = " + GOOGLE_OAUTH_CLIENT_ID);
 
