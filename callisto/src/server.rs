@@ -32,6 +32,11 @@ struct ServerMemberEntry {
   ship: Option<String>,
 }
 
+impl PartialEq for Server {
+  fn eq(&self, other: &Self) -> bool {
+    self.id == other.id
+  }
+}
 /// Represents a distinct server created for a scenario.
 /// It holds a unique ID for the server (generated randomly)
 /// as well as the state of the server - the entities - as the

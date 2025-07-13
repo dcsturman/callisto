@@ -135,7 +135,6 @@ export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsCo
 
   const updateFireCalledShot = (shipName: string, index: number, system: string | null) => {
     actions[shipName].fire[index].called_shot_system = system;
-    console.log("(actions) Updating called shot system to " + system + "resulting in " + JSON.stringify(actions));
     setActions(actions);
     updateActions(actions);
   };
@@ -273,7 +272,6 @@ export function payloadToAction(payload: object[]): ActionType {
       | {JamComms: string}
       | {Jump: string}
     )[];
-    console.log(`(Actions.payloadToAction) Received actions for ${shipName}: ${JSON.stringify(actions)}`);
     if (!actions) {
       continue;
     }

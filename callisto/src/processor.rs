@@ -170,9 +170,16 @@ impl Processor {
       match to_do {
         Some((index, Ok(Message::Text(text)))) => {
           debug!("(handle_connection) Received message: {text}");
-          let mut response = match serde_json::from_str(&text) {
+
+          // Process the message and return a list of response messages. Also return the server for this player when complete.
+          // The returned server is used to limit broadcast messages to only those in the server.
+          let (mut response, incoming_server) = match serde_json::from_str(&text) {
             Ok(parsed_message) => {
-              let response = self.handle_request(parsed_message, &mut connections[index].player).await;
+              // Grab this here as the ordering of the connections vector may change while we yield the thread!
+              let num_connections = connections.len();
+              let current_connection = &mut connections[index];
+
+              let response = self.handle_request(parsed_message, &mut current_connection.player).await;
               // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
               // but do not actually ever send it to the client (who has logged out!)
               if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {
@@ -180,21 +187,26 @@ impl Processor {
                 event!(
                   target: LOGOUT,
                   Level::INFO,
-                  email = connections[index].player.get_email().unwrap(),
-                  action = format!("User intentionally logged out. Now {} connections.", connections.len() - 1)
+                  email = current_connection.player.get_email().unwrap(),
+                  action = format!("User intentionally logged out. Now {} connections.", num_connections - 1)
                 );
-                connections[index].stream.close(None).await.unwrap_or_else(|e| {
+                current_connection.stream.close(None).await.unwrap_or_else(|e| {
                   error!("(handle_connection) Failed to close connection as directed by logout: {e:?}");
                 });
               }
-              response
-                .into_iter()
-                .filter(|msg| !matches!(msg, ResponseMsg::LogoutResponse))
-                .collect()
+              (
+                response
+                  .into_iter()
+                  .filter(|msg| !matches!(msg, ResponseMsg::LogoutResponse))
+                  .collect(),
+                // Its important to get the server here at the end as it might have changed during processing of the message
+                // (e.g. with CreateScenario or JoinScenario)
+                current_connection.player.server.clone(),
+              )
             }
             Err(e) => {
               error!("(handle_connection) Failed to parse message: {e:?}");
-              vec![ResponseMsg::Error(format!("Failed to parse message: {e:?}"))]
+              (vec![ResponseMsg::Error(format!("Failed to parse message: {e:?}"))], None)
             }
           };
           debug!("(handle_connection) Response(s): {response:?}");
@@ -214,13 +226,17 @@ impl Processor {
                 connections.len()
               );
               for connection in &mut connections {
-                connection
-                  .stream
-                  .send(Message::Text(encoded_message.clone()))
-                  .await
-                  .unwrap_or_else(|e| {
-                    error!("(handle_connection) Failed to send broadcast response: {e:?}");
-                  });
+                // For most messages, broadcast only to those in the same server.
+                // The exception is sending the Scenarios list so that everyone has that.
+                if connection.player.server == incoming_server || matches!(message, ResponseMsg::Scenarios(_)) {
+                  connection
+                    .stream
+                    .send(Message::Text(encoded_message.clone()))
+                    .await
+                    .unwrap_or_else(|e| {
+                      error!("(handle_connection) Failed to send broadcast response: {e:?}");
+                    });
+                }
               }
             } else {
               debug!("(processor) Sending message {message:?} to connection {index}.");
@@ -241,7 +257,7 @@ impl Processor {
           event!(
             target: LOGOUT,
             Level::INFO,
-            email = connections[index].player.get_email().unwrap(),
+            email = connections[index].player.get_email().unwrap_or("(Unauthenticated users)".to_string()),
             action = format!("Connection closed ungracefully. Now {} connections.", connections.len() - 1)
           );
           connections[index].stream.close(None).await.unwrap_or_else(|e| {
