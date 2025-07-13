@@ -35,6 +35,7 @@ use std::io::{BufReader, Read};
 pub static SCENARIOS: OnceCell<Vec<(String, MetaData)>> = OnceCell::new();
 pub const LOG_FILE_USE: &str = "READ_FILE";
 pub const LOG_AUTH_RESULT: &str = "LOGIN_ATTEMPT";
+pub const LOGOUT: &str = "LOGOUT";
 pub const LOG_SCENARIO_ACTIVITY: &str = "SCENARIO";
 
 /**

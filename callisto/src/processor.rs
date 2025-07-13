@@ -23,6 +23,7 @@ use crate::authentication::Authenticator;
 use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, ScenariosMsg};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
+use crate::LOGOUT;
 
 #[cfg(feature = "no_tls_upgrade")]
 type SubStream = TcpStream;
@@ -127,23 +128,23 @@ impl Processor {
       // Return the next message to process if there is one.
       let to_do = select! {
           next_connection = self.connection_receiver.next() => {
-              if let Some((stream, session_key, email)) = next_connection {
+            if let Some((stream, session_key, email)) = next_connection {
               // Build the authenticator
               let Some(connection) = self.build_connection(
-                  email.as_ref(),
-                  &session_key,
-                  stream
+                email.as_ref(),
+                &session_key,
+                stream
               ).await else {
-                  continue;
+                continue;
               };
               drop(message_streams);
               connections.push(connection);
               debug!("(processor) Added new connection.  Total connections: {}", connections.len());
               continue;
-          }
-              // This is expected when the main thread exits.
-              info!("(processor) Connection receiver disconnected.  Exiting.");
-              break;
+            }
+            // This is expected when the main thread exits.
+            warn!("(processor) Connection receiver disconnected.  This is okay if the server is shutting down.Exiting.");
+            break;
           },
           next_item =  message_streams.next() => {
               match next_item {
@@ -176,9 +177,11 @@ impl Processor {
               // but do not actually ever send it to the client (who has logged out!)
               if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {
                 // User has logged out.  Close the connection.
-                debug!(
-                  "(processor) User logged out.  Closing connection. Now {} connections.",
-                  connections.len() - 1
+                event!(
+                  target: LOGOUT,
+                  Level::INFO,
+                  email = connections[index].player.get_email().unwrap(),
+                  action = format!("User intentionally logged out. Now {} connections.", connections.len() - 1)
                 );
                 connections[index].stream.close(None).await.unwrap_or_else(|e| {
                   error!("(handle_connection) Failed to close connection as directed by logout: {e:?}");
@@ -235,6 +238,12 @@ impl Processor {
         }
         Some((index, Ok(Message::Close(_)))) => {
           // Close the connection
+          event!(
+            target: LOGOUT,
+            Level::INFO,
+            email = connections[index].player.get_email().unwrap(),
+            action = format!("Connection closed ungracefully. Now {} connections.", connections.len() - 1)
+          );
           connections[index].stream.close(None).await.unwrap_or_else(|e| {
             if let Error::Protocol(ProtocolError::SendAfterClosing) = e {
               // This is expected when we try to close a connection that is already closed.
