@@ -450,7 +450,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
             />
           </form>
           {proposedPlan && (
-            <div>
+            <div id="proposed-plan-region">
               <h2 className="control-form">Proposed Plan</h2>
               <NavigationPlan plan={proposedPlan.plan} />
               <button

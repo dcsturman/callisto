@@ -1,8 +1,8 @@
-import React, { useContext, useEffect } from "react";
+import React, {useContext, useEffect} from "react";
 import * as THREE from "three";
-import { Accordion } from "./Accordion";
-import { AddShip } from "./AddShip";
-import { ActionContext } from "./Actions";
+import {Accordion} from "./Accordion";
+import {AddShip} from "./AddShip";
+import {ActionContext} from "./Actions";
 import {
   Ship,
   ViewControlParams,
@@ -17,15 +17,12 @@ import {
   SCALE,
 } from "./Universal";
 
-import { addShip, nextRound } from "./ServerManager";
-import { EntitySelector, EntitySelectorType } from "./EntitySelector";
-import {
-  scaleVector,
-  vectorToString,
-} from "./Util";
-import { NavigationPlan } from "./ShipComputer";
-import { FireActions, FireControl } from "./WeaponUse";
-import { ShipComputer } from "./ShipComputer";
+import {addShip, nextRound} from "./ServerManager";
+import {EntitySelector, EntitySelectorType} from "./EntitySelector";
+import {scaleVector, vectorToString} from "./Util";
+import {NavigationPlan} from "./ShipComputer";
+import {FireActions, FireControl} from "./WeaponUse";
+import {ShipComputer} from "./ShipComputer";
 
 function ShipList(args: {
   computerShip: Ship | null;
@@ -175,23 +172,17 @@ export function Controls(args: {
             <div className="vital-stats-bloc">
               <div className="stats-bloc-entry">
                 <h2>Design</h2>
-                <pre className="plan-accel-text">
-                  {args.computerShip.design}
-                </pre>
+                <pre className="plan-accel-text">{args.computerShip.design}</pre>
               </div>
               <div className="stats-bloc-entry">
                 <h2>Hull</h2>
-                <pre className="plan-accel-text">{`${
-                  args.computerShip.current_hull
-                }(${
+                <pre className="plan-accel-text">{`${args.computerShip.current_hull}(${
                   args.shipDesignTemplates[args.computerShip.design].hull
                 })`}</pre>
               </div>
               <div className="stats-bloc-entry">
                 <h2>Armor</h2>
-                <pre className="plan-accel-text">{`${
-                  args.computerShip.current_armor
-                }(${
+                <pre className="plan-accel-text">{`${args.computerShip.current_armor}(${
                   args.shipDesignTemplates[args.computerShip.design].armor
                 })`}</pre>
               </div>
@@ -199,67 +190,54 @@ export function Controls(args: {
             <div className="vital-stats-bloc">
               <div className="stats-bloc-entry">
                 <h2>Man</h2>
-                <pre className="plan-accel-text">{`${
-                  args.computerShip.current_maneuver
-                }(${
+                <pre className="plan-accel-text">{`${args.computerShip.current_maneuver}(${
                   args.shipDesignTemplates[args.computerShip.design].maneuver
                 })`}</pre>
               </div>
               <div className="stats-bloc-entry">
                 <h2>Jmp</h2>
-                <pre className="plan-accel-text">{`${
-                  args.computerShip.current_jump
-                }(${
+                <pre className="plan-accel-text">{`${args.computerShip.current_jump}(${
                   args.shipDesignTemplates[args.computerShip.design].jump
                 })`}</pre>
               </div>
               <div className="stats-bloc-entry">
                 <h2>Power</h2>
-                <pre className="plan-accel-text">{`${
-                  args.computerShip.current_power
-                }(${
+                <pre className="plan-accel-text">{`${args.computerShip.current_power}(${
                   args.shipDesignTemplates[args.computerShip.design].power
                 })`}</pre>
               </div>
-              {!args.shipDesignTemplates[args.computerShip.design]
-                .countermeasures &&
+              {!args.shipDesignTemplates[args.computerShip.design].countermeasures &&
                 !args.shipDesignTemplates[args.computerShip.design].stealth && (
                   <div className="stats-bloc-entry">
                     <h2>Sensors</h2>
-                    <pre className="plan-accel-text">
-                      {args.computerShip.current_sensors}
-                    </pre>
+                    <pre className="plan-accel-text">{args.computerShip.current_sensors}</pre>
                   </div>
                 )}
             </div>
-            {(args.shipDesignTemplates[args.computerShip.design]
-              .countermeasures ||
+            {(args.shipDesignTemplates[args.computerShip.design].countermeasures ||
               args.shipDesignTemplates[args.computerShip.design].stealth) && (
               <div className="vital-stats-bloc">
                 <div className="stats-bloc-entry">
                   <h2>Sensors</h2>
-                  <pre className="plan-accel-text">
-                    {args.computerShip.current_sensors}
-                  </pre>
+                  <pre className="plan-accel-text">{args.computerShip.current_sensors}</pre>
                 </div>
                 <div className="stats-bloc-entry">
                   <h2>CM</h2>
                   <pre className="plan-accel-text">
-                    {args.shipDesignTemplates[args.computerShip.design]
-                      .countermeasures || "None"}
+                    {args.shipDesignTemplates[args.computerShip.design].countermeasures || "None"}
                   </pre>
                 </div>
                 <div className="stats-bloc-entry">
                   <h2>Stealth</h2>
                   <pre className="plan-accel-text">
-                    {args.shipDesignTemplates[args.computerShip.design]
-                      .stealth || "None"}
+                    {args.shipDesignTemplates[args.computerShip.design].stealth || "None"}
                   </pre>
                 </div>
               </div>
             )}
-             <span>
-                <h2>Show Ranges&nbsp;
+            <span>
+              <h2>
+                Show Ranges&nbsp;
                 <input
                   id="show-range-checkbox"
                   type="checkbox"
@@ -271,10 +249,11 @@ export function Controls(args: {
                       args.setShowRange(null);
                     }
                   }}
-                /></h2>
-              </span>
+                />
+              </h2>
+            </span>
             <h2 className="control-form">Current Position (km)</h2>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={{display: "flex", justifyContent: "space-between"}}>
               <pre className="plan-accel-text">
                 {"(" +
                   (args.computerShip.position[0] / POSITION_SCALE).toFixed(0) +
@@ -300,7 +279,7 @@ export function Controls(args: {
               </span>
             </div>
             <h2 className="control-form">Current Velocity (m/s)</h2>
-            <div style={{ display: "flex" }}>
+            <div style={{display: "flex"}}>
               <pre className="plan-accel-text">
                 {"(" +
                   args.computerShip.velocity[0].toFixed(0) +
@@ -311,37 +290,32 @@ export function Controls(args: {
                   ")"}
               </pre>
             </div>
-            <h2 className="control-form">
-              Current Plan (s @ G&apos;s)
-            </h2>
-            <NavigationPlan plan={args.computerShip.plan} />
+            <div id="current-plan-heading">
+              <h2 className="control-form">Current Plan (s @ G&apos;s)</h2>
+              <NavigationPlan plan={args.computerShip.plan} />
+            </div>
             <hr />
-            {[ViewMode.Pilot, ViewMode.Sensors].includes(viewContext.role) &&
-              args.computerShip && (
-                <Accordion
-                  title={`${args.computerShip.name} ${
-                    ViewMode[viewContext.role]
-                  } Controls`}
-                  initialOpen={true}>
-                  <ShipComputer
-                    ship={args.computerShip}
-                    setComputerShipName={args.setComputerShipName}
-                    proposedPlan={args.proposedPlan}
-                    getAndShowPlan={args.getAndShowPlan}
-                    sensorLocks={serverEntities.ships.reduce((acc, ship) => {
-                      if (ship.sensor_locks.includes(args.computerShip!.name)) {
-                        acc.push(ship.name);
-                      }
-                      return acc;
-                    }, [] as string[])}
-                  />
-                </Accordion>
-              )}
+            {[ViewMode.Pilot, ViewMode.Sensors].includes(viewContext.role) && args.computerShip && (
+              <Accordion
+                title={`${args.computerShip.name} ${ViewMode[viewContext.role]} Controls`}
+                initialOpen={true}>
+                <ShipComputer
+                  ship={args.computerShip}
+                  setComputerShipName={args.setComputerShipName}
+                  proposedPlan={args.proposedPlan}
+                  getAndShowPlan={args.getAndShowPlan}
+                  sensorLocks={serverEntities.ships.reduce((acc, ship) => {
+                    if (ship.sensor_locks.includes(args.computerShip!.name)) {
+                      acc.push(ship.name);
+                    }
+                    return acc;
+                  }, [] as string[])}
+                />
+              </Accordion>
+            )}
             {[ViewMode.Gunner, ViewMode.General].includes(viewContext.role) && (
               <div className="control-form">
-                <Accordion
-                  title={`${args.computerShip.name} Fire Controls`}
-                  initialOpen={true}>
+                <Accordion title={`${args.computerShip.name} Fire Controls`} initialOpen={true}>
                   <FireControl computerShip={args.computerShip} />
                 </Accordion>
               </div>
@@ -350,10 +324,14 @@ export function Controls(args: {
         )}
         {args.computerShip &&
           computerShipDesign &&
-          (actionContext.actions[args.computerShip.name]?.fire?.length + actionContext.actions[args.computerShip.name]?.pointDefense?.length > 0) && (
+          actionContext.actions[args.computerShip.name]?.fire?.length +
+            actionContext.actions[args.computerShip.name]?.pointDefense?.length >
+            0 && (
             <FireActions
               fireActions={actionContext.actions[args.computerShip?.name].fire || []}
-              pointDefenseActions={actionContext.actions[args.computerShip?.name].pointDefense || []}
+              pointDefenseActions={
+                actionContext.actions[args.computerShip?.name].pointDefense || []
+              }
               design={computerShipDesign}
               computerShipName={args.computerShip.name}
             />
@@ -368,7 +346,6 @@ export function Controls(args: {
           // Strip out the details on the weapons and provide an object with just
           // the name of each possible actor and the FireState they produced during the round.
           nextRound();
-          args.setShowRange(null);
           //args.setComputerShip(null);
         }}>
         Next Round
@@ -384,7 +361,7 @@ export function ViewControls(args: {
   return (
     <div className="view-controls-window">
       <h2>View Controls</h2>
-      <label style={{ display: "flex" }}>
+      <label style={{display: "flex"}}>
         {" "}
         <input
           type="checkbox"
@@ -398,7 +375,7 @@ export function ViewControls(args: {
         />{" "}
         Gravity Well
       </label>
-      <label style={{ display: "flex" }}>
+      <label style={{display: "flex"}}>
         {" "}
         <input
           type="checkbox"
@@ -415,7 +392,7 @@ export function ViewControls(args: {
     </div>
   );
 }
-export function EntityInfoWindow(args: { entity: Entity }) {
+export function EntityInfoWindow(args: {entity: Entity}) {
   let isPlanet = false;
   let isShip = false;
   let ship_next_accel: [number, number, number] = [0, 0, 0];
@@ -435,10 +412,7 @@ export function EntityInfoWindow(args: { entity: Entity }) {
     <div id="ship-info-window" className="ship-info-window">
       <h2 className="ship-info-title">{args.entity.name + " " + design}</h2>
       <div className="ship-info-content">
-        <p>
-          Position (km):{" "}
-          {vectorToString(scaleVector(args.entity.position, 1e-3))}
-        </p>
+        <p>Position (km): {vectorToString(scaleVector(args.entity.position, 1e-3))}</p>
         <p>Velocity (m/s): {vectorToString(args.entity.velocity)}</p>
         {isPlanet ? (
           <p>Radius (km): {radiusKm}</p>

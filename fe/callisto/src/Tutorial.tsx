@@ -144,7 +144,7 @@ const steps: Step[] = [
     target: ".target-entry-form",
     content: (
       <div>
-        The computer will take into account the ship&apos;s <em>Maneuver</em> maximum and deduct any maneuver points allocated to <em>Pilot Actions</em>
+        The computer will take into account the ship&apos;s <em>Maneuver</em> maximum and deduct any maneuver points allocated to <em>Pilot Actions</em>.
         The computer will also assume you want to intercept your target so will aim to finish with the same velocity as the target.
       </div>
     ),
@@ -198,7 +198,7 @@ const steps: Step[] = [
     placement: "right",
   },
   {
-    target: "#add-ship-name-input",
+    target: "#add-ship",
     content: (
       <span>
         Oops, lets put this ship a bit farther away!
@@ -307,8 +307,33 @@ const steps: Step[] = [
       <span>
         Lets get closer by having the navigation computer plot a course to <em>Beowulf</em>.
         <p className="tutorial-instruction-text">
-          Select &apos;Beowulf&apos; as the destination and then click &apos;Compute&apos; and then &apos;Assign&apos;.
+          Select &apos;Beowulf&apos; as the destination and then click &apos;Compute to see the proposed plan.
         </p>
+      </span>,
+    placement: "right",
+  },
+  {
+    target: "#proposed-plan-region",
+    content: 
+      <span>
+        Notice a &apos;plan&apos; is two accelerations.  For some amount of time (in seconds) we will accelerate on a 3D vector.  The magnitude (i.e. total force) of that acceleration vector
+        never exceed the ships current maximum acceleration. The acceleration shows in m/s<sup>2</sup> the acceleration in each direction.  Ship&apos;s maneuver rating however is in G&apos;s:  
+        <br />1G = 9.8 m/s<sup>2</sup>.  
+        <br />
+        <br />
+        If a ship takes damage to its powerplant or maneuver drive, this maximum acceleration may be reduced!  The resulting plan is 
+        sketched out in space as an orange line.  In this case you&apos;ll see it is curving as we&apos;re matching the current known velocity of <em>Beowulf</em>.  
+        <p className = "tutorial-instruction-text">
+        Now that we have a plan we need to assign the plan to <em>Killer</em> by selecting the &apos;Assign Plan&apos; button.
+        </p>
+      </span>,
+    placement: "right",
+  },
+  {
+    target: "#current-plan-heading", 
+    content:
+      <span>
+        You can see the assigned plan here under the &apos;Current Plan&apos; heading.
       </span>,
     placement: "right",
   },
