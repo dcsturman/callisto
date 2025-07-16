@@ -565,6 +565,7 @@ impl Processor {
         info!("Received and processing get designs request.");
         vec![ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs())]
       }
+      RequestMsg::Ping => vec![ResponseMsg::Pong],
     }
   }
 

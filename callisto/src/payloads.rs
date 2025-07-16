@@ -261,6 +261,7 @@ pub enum RequestMsg {
   Exit,
   Reset,
   Logout,
+  Ping,
   Quit,
 }
 
@@ -281,6 +282,7 @@ pub enum ResponseMsg {
   // layer that we just dropped this connection.
   LogoutResponse,
   PleaseLogin,
+  Pong,
   Error(String),
 }
 

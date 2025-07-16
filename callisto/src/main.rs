@@ -150,16 +150,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   let subscriber = tracing_subscriber::Registry::default()
     .with(EnvFilter::from_default_env())
     .with(tracing_stackdriver::layer());
-  //.with(GcpLayer::init_with_writer(std::io::stdout()));
   tracing::subscriber::set_global_default(subscriber)?;
-  //let format = fmt::format().json();
-  //tracing_subscriber::fmt().event_format(format).init();
   let args = Args::parse();
 
   let port = args.port;
 
-  //let ip_addr = IpAddr::from_str(&args.address)?;
-  //let addr = SocketAddr::from((ip_addr, port));
   let addr = (args.address.clone(), port)
     .to_socket_addrs()
     .expect("Unable to resolve the IP address for this server")
