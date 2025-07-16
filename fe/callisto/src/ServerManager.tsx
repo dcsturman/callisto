@@ -206,7 +206,6 @@ const handleMessage = (event: MessageEvent) => {
   }
 
   if ("Scenarios" in json) {
-    console.log("(ServerManager.handleMessage) Received scenarios: " + JSON.stringify(json));
     const response = json.Scenarios;
     handleScenarioList(response, setScenarios);
     return;
@@ -241,8 +240,6 @@ export function login(code: string) {
 }
 
 export function addShip(ship: Ship) {
-  console.log(`Adding Ship ${ship.name}: Position ${ship.position}, Velocity ${ship.velocity}`);
-
   const payload = {
     AddShip: {
       name: ship.name,
@@ -301,9 +298,9 @@ export function updateActions(actions: ActionType) {
   if (Object.entries(actions).length === 0) {
     return;
   }
-  console.group("(updateActions) Sending actions: ");
-  console.log(JSON.stringify(actions));
-  console.groupEnd();
+  //console.group("(updateActions) Sending actions: ");
+  //console.log(JSON.stringify(actions));
+  //console.groupEnd();
   
   const payload = {ModifyActions: actionPayload(actions)};
   socket.send(JSON.stringify(payload));

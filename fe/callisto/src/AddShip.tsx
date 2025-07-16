@@ -43,7 +43,8 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
   const [addShip, setAddShip] = useState(initialTemplate);
 
   useEffect(() => {
-    const current = serverEntities.entities.ships.find((ship) => ship.name === addShip.name) || null;
+    const current =
+      serverEntities.entities.ships.find((ship) => ship.name === addShip.name) || null;
     if (current != null) {
       const template = {
         name: current.name,
@@ -107,9 +108,6 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
     setAddShip({...addShip, design: design});
 
     const crew = addShip.crew;
-    console.log(
-      `Adding Ship ${name}: Position ${position}, Velocity ${velocity}, Design ${design}`
-    );
     const ship = serverEntities.entities.ships.find((ship) => ship.name === name) || Ship.default();
 
     ship.name = name;
@@ -127,75 +125,75 @@ export const AddShip: React.FC<AddShipProps> = ({submitHandler}) => {
     <Accordion id="add-ship-header" title="Add or Update Ship" initialOpen={false}>
       <form id="add-ship" className="control-form" onSubmit={handleSubmit}>
         <div id="add-ship-top-part">
-        <label className="control-label">
-          Name
-          <input
-            id="add-ship-name-input"
-            className="control-name-input control-input"
-            name="name"
-            type="text"
-            onChange={handleChange}
-            value={addShip.name}
-            ref={shipNameRef}
+          <label className="control-label">
+            Name
+            <input
+              id="add-ship-name-input"
+              className="control-name-input control-input"
+              name="name"
+              type="text"
+              onChange={handleChange}
+              value={addShip.name}
+              ref={shipNameRef}
+            />
+          </label>
+          <label className="control-label">
+            Position (km)
+            <div className="coordinate-input">
+              <input
+                className="control-input"
+                name="xpos"
+                type="text"
+                value={addShip.xpos}
+                onChange={handleChange}
+              />
+              <input
+                className="control-input"
+                name="ypos"
+                type="text"
+                value={addShip.ypos}
+                onChange={handleChange}
+              />
+              <input
+                className="control-input"
+                name="zpos"
+                type="text"
+                value={addShip.zpos}
+                onChange={handleChange}
+              />
+            </div>
+          </label>
+          <label className="control-label">
+            Velocity (m/s)
+            <div className="coordinate-input">
+              <input
+                className="control-input"
+                name="xvel"
+                type="text"
+                value={addShip.xvel}
+                onChange={handleChange}
+              />
+              <input
+                className="control-input"
+                name="yvel"
+                type="text"
+                value={addShip.yvel}
+                onChange={handleChange}
+              />
+              <input
+                className="control-input"
+                name="zvel"
+                type="text"
+                value={addShip.zvel}
+                onChange={handleChange}
+              />
+            </div>
+          </label>
+          <ShipDesignList
+            shipDesignName={addShip.design}
+            setShipDesignName={(design) => setAddShip({...addShip, design: design})}
+            shipDesigns={shipDesignTemplates}
           />
-        </label>
-        <label className="control-label">
-          Position (km)
-          <div className="coordinate-input">
-            <input
-              className="control-input"
-              name="xpos"
-              type="text"
-              value={addShip.xpos}
-              onChange={handleChange}
-            />
-            <input
-              className="control-input"
-              name="ypos"
-              type="text"
-              value={addShip.ypos}
-              onChange={handleChange}
-            />
-            <input
-              className="control-input"
-              name="zpos"
-              type="text"
-              value={addShip.zpos}
-              onChange={handleChange}
-            />
-          </div>
-        </label>
-        <label className="control-label">
-          Velocity (m/s)
-          <div className="coordinate-input">
-            <input
-              className="control-input"
-              name="xvel"
-              type="text"
-              value={addShip.xvel}
-              onChange={handleChange}
-            />
-            <input
-              className="control-input"
-              name="yvel"
-              type="text"
-              value={addShip.yvel}
-              onChange={handleChange}
-            />
-            <input
-              className="control-input"
-              name="zvel"
-              type="text"
-              value={addShip.zvel}
-              onChange={handleChange}
-            />
-          </div>
-        </label>
-        <ShipDesignList
-          shipDesignName={addShip.design}
-          setShipDesignName={(design) => setAddShip({...addShip, design: design})}
-          shipDesigns={shipDesignTemplates}
-        />
         </div>
         <hr />
         <CrewBuilder

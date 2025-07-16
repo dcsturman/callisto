@@ -294,7 +294,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
     match upgrade {
       Ok((ws_stream, session_key, email)) => {
-        debug!("(main) Successfully established websocket connection to {peer_addr}.");
+        info!("(main) Successfully established websocket connection to {peer_addr}.");
         connection_sender.try_send((ws_stream, session_key, email)).unwrap();
       }
       Err(e) => {
