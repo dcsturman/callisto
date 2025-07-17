@@ -16,6 +16,7 @@ import {
   computeFlightPath,
   resetServer,
   exit_scenario,
+  setUpKeepAlive,
 } from "./ServerManager";
 import {Users, UserList} from "./UserList";
 
@@ -93,6 +94,7 @@ export function App() {
       );
 
       startWebsocket(setSocketReady);
+      setUpKeepAlive();
     }
   }, [socketReady]);
 

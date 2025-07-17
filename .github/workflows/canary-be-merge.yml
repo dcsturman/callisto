@@ -5,9 +5,9 @@ on:
     branches:
       - canary
     paths:
-      - 'callisto/**'
-      - '.github/workflows/canary-be-merge.yml'
-  workflow_dispatch:  
+      - "callisto/**"
+      - ".github/workflows/canary-be-merge.yml"
+  workflow_dispatch:
 
 env:
   PROJECT_ID: callisto-canary
@@ -15,33 +15,34 @@ env:
   REGION: us-central1
   APP: callisto-be
   GENERAL_ARGS: --oauth-creds,/secrets/google_credentials,--users-file,gs://callisto-be-user-profiles/authorized_users.json,--design-file,gs://callisto-ship-templates/default_ship_templates.json
+  TIMEOUT: 3000
   APP_ARGS: --web-server,https://canary.callistoflight.com,--scenario-dir,gs://callisto-scenarios
   PORT: 30000
 
 jobs:
   deploy-canary:
     permissions:
-      contents: 'read'
-      id-token: 'write'
+      contents: "read"
+      id-token: "write"
 
     runs-on: ubuntu-latest
     steps:
-      - name: 'Checkout for Canary'
-        uses: 'actions/checkout@v4'
+      - name: "Checkout for Canary"
+        uses: "actions/checkout@v4"
 
-      - name: 'Google auth with Canary Creds'
-        uses: 'google-github-actions/auth@v2'
+      - name: "Google auth with Canary Creds"
+        uses: "google-github-actions/auth@v2"
         with:
           project_id: ${{ env.PROJECT_ID }}
-          workload_identity_provider: '${{ secrets.WIF_CANARY_PROVIDER }}' 
-          service_account: '${{ secrets.WIF_CANARY_SERVICE_ACCOUNT }}'
+          workload_identity_provider: "${{ secrets.WIF_CANARY_PROVIDER }}"
+          service_account: "${{ secrets.WIF_CANARY_SERVICE_ACCOUNT }}"
 
-      - name: 'Set up Cloud SDK'
+      - name: "Set up Cloud SDK"
         uses: google-github-actions/setup-gcloud@v2
         with:
-          version: '>= 501.0.0'
+          version: ">= 501.0.0"
 
-      - name: 'Docker auth'
+      - name: "Docker auth"
         run: |-
           gcloud auth configure-docker ${{ env.GAR_LOCATION }}
 
@@ -49,7 +50,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push container with Docker GHA
-        uses: 'docker/build-push-action@v4'
+        uses: "docker/build-push-action@v4"
         with:
           context: ./callisto
           push: true
@@ -58,7 +59,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: 'Deploy to Canary Cloud Run'
+      - name: "Deploy to Canary Cloud Run"
         run:
-          gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} 
+          gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} --timeout=${{ env.TIMEOUT }}
             --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.APP_ARGS }},${{ env.GENERAL_ARGS }}

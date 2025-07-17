@@ -26,6 +26,10 @@ const UPDATE_REQUEST = "Update";
 const RESET_REQUEST = '"Reset"';
 const EXIT_REQUEST = '"Exit"';
 const LOGOUT_REQUEST = '"Logout"';
+const PING_REQUEST = '"Ping"';
+
+// Send a keepalive every minute.
+const KEEP_ALIVE_INTERVAL = 60000;
 
 // Define the (global) websocket
 export let socket: WebSocket;
@@ -152,6 +156,16 @@ export function setMessageHandlers(
   }
 }
 
+//
+export function setUpKeepAlive() {
+  // Send a keepalive every KEEP_ALIVE_INTERVAL milliseconds.
+  setInterval(() => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(PING_REQUEST);
+    }
+  }, KEEP_ALIVE_INTERVAL);
+}
+
 const handleClose = (event: CloseEvent) => {
   const msg =
     "(ServerManager.handleClose) Socket closed: " + event.code + " Reason: " + event.reason;
@@ -165,11 +179,18 @@ const handleClose = (event: CloseEvent) => {
 const handleMessage = (event: MessageEvent) => {
   const json = JSON.parse(event.data);
 
-  // Because this isn't an object (just a string)  check for it differently.
+  // Because these first two aren't an object (just a string)  check for it differently.
+    // Response to keepalive message
+  if (json == "Pong") {
+    return;
+  }
+
   if (json === "PleaseLogin") {
     setAuthenticated(false);
     return;
   }
+
+  // The remainder are all objects with keys.
   if ("AuthResponse" in json) {
     handleAuthenticated(json.AuthResponse);
     return;
@@ -229,6 +250,8 @@ const handleMessage = (event: MessageEvent) => {
     console.error("Received Error: " + json.Error);
     alert(json.Error);
   }
+
+
 };
 
 //
