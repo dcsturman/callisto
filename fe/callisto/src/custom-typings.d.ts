@@ -1,3 +1,5 @@
+/// <reference types="react-scripts" />
+
 import { AuthCodeFlowOptions } from "@react-oauth/google";
 import { extend, Object3DNode } from '@react-three/fiber'
 import { ReactThreeFiber } from '@react-three/fiber';
@@ -32,3 +34,4 @@ export type FlyControlsProps = ReactThreeFiber.Object3DNode<FlyControlsImpl, typ
     makeDefault?: boolean;
 };
 export declare const FlyControls: ForwardRefComponent<FlyControlsProps, FlyControlsImpl>;
+
