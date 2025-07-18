@@ -14,7 +14,7 @@ import { FontLoader, Font } from "three/examples/jsm/loaders/FontLoader";
 
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Text } from "@react-three/drei";
-import { Line } from "./Util";
+import { Line } from "./lib/Util";
 
 import {
   EntitiesServerContext,
@@ -27,7 +27,7 @@ import {
   RANGE_BANDS
 } from "./Universal";
 
-import { addVector, scaleVector, RangeSphere } from "./Util";
+import { addVector, scaleVector, RangeSphere } from "./lib/Util";
 
 
 extend({ TextGeometry });

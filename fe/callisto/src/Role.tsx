@@ -5,7 +5,7 @@ import {
   ViewContext,
   ViewMode,
 } from "./Universal";
-import { EntitySelector, EntitySelectorType } from "./EntitySelector";
+import { EntitySelector, EntitySelectorType } from "./lib/EntitySelector";
 import { requestRoleChoice } from "./ServerManager";
 
 export const RoleChooser = () => {

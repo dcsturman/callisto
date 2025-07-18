@@ -8,10 +8,10 @@ import {
   Weapon,
   WeaponMount,
 } from "./Universal";
-import {Accordion} from "./Accordion";
+import {Accordion} from "./lib/Accordion";
 import {Tooltip} from "react-tooltip";
 import {CiCircleQuestion} from "react-icons/ci";
-import {unique_ship_name} from "./shipnames";
+import {unique_ship_name} from "./lib/shipnames";
 import {Ship} from "./Universal";
 
 interface AddShipProps {

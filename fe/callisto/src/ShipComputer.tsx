@@ -13,7 +13,7 @@ import {
 
 import {setPlan, setCrewActions} from "./ServerManager";
 import {ActionContext, SensorState, SensorAction, newSensorState} from "./Actions";
-import {EntitySelectorType, EntitySelector} from "./EntitySelector";
+import {EntitySelectorType, EntitySelector} from "./lib/EntitySelector";
 
 // Distance in km for standoff from another ship.
 const DEFAULT_SHIP_STANDOFF_DISTANCE: number = 10;

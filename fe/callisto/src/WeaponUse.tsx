@@ -1,5 +1,5 @@
 import React, {useContext, useState, useMemo, useEffect} from "react";
-import {findRangeBand} from "./Util";
+import {findRangeBand} from "./lib/Util";
 import {
   Entity,
   ShipDesignTemplate,
@@ -9,23 +9,23 @@ import {
   Ship,
   SHIP_SYSTEMS,
 } from "./Universal";
-import {EntitySelector, EntitySelectorType} from "./EntitySelector";
+import {EntitySelector, EntitySelectorType} from "./lib/EntitySelector";
 import {FireState, ActionContext, PointDefenseState} from "./Actions";
 
 // Icons for each type of weapon
-import {ReactComponent as Turret1} from "./icons/turret1.svg";
-import {ReactComponent as Turret2} from "./icons/turret2.svg";
-import {ReactComponent as Turret3} from "./icons/turret3.svg";
-import {ReactComponent as Barbette} from "./icons/barbette.svg";
-import {ReactComponent as SmallBay} from "./icons/bay-s.svg";
-import {ReactComponent as MediumBay} from "./icons/bay-m.svg";
-import {ReactComponent as LargeBay} from "./icons/bay-l.svg";
+import {ReactComponent as Turret1} from "./assets/icons/turret1.svg";
+import {ReactComponent as Turret2} from "./assets/icons/turret2.svg";
+import {ReactComponent as Turret3} from "./assets/icons/turret3.svg";
+import {ReactComponent as Barbette} from "./assets/icons/barbette.svg";
+import {ReactComponent as SmallBay} from "./assets/icons/bay-s.svg";
+import {ReactComponent as MediumBay} from "./assets/icons/bay-m.svg";
+import {ReactComponent as LargeBay} from "./assets/icons/bay-l.svg";
 
 // Icons to show fire states.
-import {ReactComponent as RayIcon} from "./icons/laser.svg";
-import {ReactComponent as MissileIcon} from "./icons/missile.svg";
+import {ReactComponent as RayIcon} from "./assets/icons/laser.svg";
+import {ReactComponent as MissileIcon} from "./assets/icons/missile.svg";
 import {Tooltip} from "react-tooltip";
-import {vectorDistance} from "./Util";
+import {vectorDistance} from "./lib/Util";
 
 // Consistent set of colors for both type of weapons and fire states.
 const WEAPON_COLORS: {[key: string]: string} = {

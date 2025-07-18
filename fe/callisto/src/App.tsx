@@ -2,7 +2,7 @@ import {useEffect, useState, useContext, useMemo} from "react";
 import * as React from "react";
 import * as THREE from "three";
 import {Canvas, useThree} from "@react-three/fiber";
-import {FlyControls} from "./FlyControls";
+import {FlyControls} from "./lib/FlyControls";
 
 import {Authentication} from "./Authentication";
 import {ActionType} from "./Actions";

@@ -1,6 +1,6 @@
 import React, {useContext, useEffect} from "react";
 import * as THREE from "three";
-import {Accordion} from "./Accordion";
+import {Accordion} from "./lib/Accordion";
 import {AddShip} from "./AddShip";
 import {ActionContext} from "./Actions";
 import {
@@ -18,8 +18,8 @@ import {
 } from "./Universal";
 
 import {addShip, nextRound} from "./ServerManager";
-import {EntitySelector, EntitySelectorType} from "./EntitySelector";
-import {scaleVector, vectorToString} from "./Util";
+import {EntitySelector, EntitySelectorType} from "./lib/EntitySelector";
+import {scaleVector, vectorToString} from "./lib/Util";
 import {NavigationPlan} from "./ShipComputer";
 import {FireActions, FireControl} from "./WeaponUse";
 import {ShipComputer} from "./ShipComputer";

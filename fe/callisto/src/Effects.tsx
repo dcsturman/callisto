@@ -1,9 +1,9 @@
 import * as React from "react";
 import { useContext } from "react";
 import { animated, useSpring } from "@react-spring/three";
-import { scaleVector } from "./Util";
+import { scaleVector } from "./lib/Util";
 import { SCALE, EntitiesServerContext } from "./Universal";
-import { GrowLine } from "./Util";
+import { GrowLine } from "./lib/Util";
 
 const SHIP_IMPACT = "ShipImpact";
 const EXHAUSTED_MISSILE = "ExhaustedMissile";

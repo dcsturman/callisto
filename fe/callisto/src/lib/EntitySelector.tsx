@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useContext, useMemo } from "react";
-import { Entity } from "./Universal";
-import { EntitiesServerContext } from "./Universal";
+import { Entity } from "../Universal";
+import { EntitiesServerContext } from "../Universal";
 
 export enum EntitySelectorType {
   Ship,
