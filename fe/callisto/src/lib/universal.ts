@@ -1,5 +1,5 @@
 import { createContext } from "react";
-import { Crew } from "./CrewBuilder";
+import { Crew } from "components/controls/CrewBuilder";
 
 export type Acceleration = [[number, number, number], number];
 

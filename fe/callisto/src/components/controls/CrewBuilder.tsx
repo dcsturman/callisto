@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useContext } from "react";
 import * as React from "react";
-import { ShipDesignTemplate } from "./Universal";
-import { EntitiesServerContext } from "./Universal";
+import { ShipDesignTemplate } from "lib/universal";
+import { EntitiesServerContext } from "lib/universal";
 
 export class Crew {
   pilot: number;

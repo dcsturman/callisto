@@ -4,12 +4,12 @@ import * as THREE from "three";
 import {Canvas, useThree} from "@react-three/fiber";
 import {FlyControls} from "./lib/FlyControls";
 
-import {Authentication} from "./Authentication";
-import {ActionType} from "./Actions";
-import SpaceView from "./Spaceview";
-import {Ships, Missiles, Route} from "./Ships";
-import {EntityInfoWindow, Controls, ViewControls} from "./Controls";
-import {Effect, Explosions, ResultsWindow} from "./Effects";
+import {Authentication} from "components/scenarios/Authentication";
+import {ActionType} from "components/controls/Actions";
+import SpaceView from "components/space/Spaceview";
+import {Ships, Missiles, Route} from "./components/space/Ships";
+import {EntityInfoWindow, Controls, ViewControls} from "./components/controls/Controls";
+import {Effect, Explosions, ResultsWindow} from "./components/space/Effects";
 import {
   setMessageHandlers,
   startWebsocket,
@@ -17,11 +17,11 @@ import {
   resetServer,
   exit_scenario,
   setUpKeepAlive,
-} from "./ServerManager";
-import {Users, UserList} from "./UserList";
+} from "lib/serverManager";
+import {Users, UserList} from "components/UserList";
 
-import {ShipComputer} from "./ShipComputer";
-import {ActionsContextComponent, ActionContext} from "./Actions";
+import {ShipComputer} from "components/controls/ShipComputer";
+import {ActionsContextComponent, ActionContext} from "components/controls/Actions";
 import {
   Entity,
   EntitiesServerProvider,
@@ -37,14 +37,14 @@ import {
   DesignTemplatesProvider,
   ViewMode,
   ViewContextProvider,
-} from "./Universal";
+} from "lib/universal";
 
-import {RoleChooser} from "./Role";
-import {ScenarioManager, TUTORIAL_PREFIX} from "./ScenarioManager";
+import {RoleChooser} from "components/Role";
+import {ScenarioManager, TUTORIAL_PREFIX} from "components/scenarios/ScenarioManager";
 
 import "./index.css";
 
-import {Tutorial} from "./Tutorial";
+import {Tutorial} from "components/Tutorial";
 
 export const GOOGLE_OAUTH_CLIENT_ID: string =
   process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";

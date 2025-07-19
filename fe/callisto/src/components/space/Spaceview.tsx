@@ -9,15 +9,15 @@ import { useLoader, useFrame } from "@react-three/fiber";
 
 import Color from "color";
 
-import { Line, scaleVector } from "./lib/Util";
+import { Line, scaleVector } from "lib/Util";
 import {
   SCALE,
   Planet as PlanetType,
   EntitiesServerContext,
   EntityToShowContext,
-} from "./Universal";
+} from "lib/universal";
 
-import { RangeSphere } from "./lib/Util";
+import { RangeSphere } from "lib/Util";
 
 function Planet(args: {
   planet: PlanetType;

@@ -5,7 +5,7 @@ import {
   useGoogleLogin,
   CodeResponse,
 } from "@react-oauth/google";
-import { login, logout } from "./ServerManager";
+import { login, logout } from "lib/serverManager";
 
 export function Authentication(args: {
   setAuthenticated: (authenticated: boolean) => void;

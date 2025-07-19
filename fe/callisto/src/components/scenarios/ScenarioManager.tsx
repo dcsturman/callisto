@@ -1,7 +1,7 @@
 import React from "react";
-import {MetaData} from "./Universal";
-import {joinScenario, createScenario } from "./ServerManager";
-import {Logout} from "./Authentication";
+import {MetaData} from "lib/universal";
+import {joinScenario, createScenario } from "lib/serverManager";
+import {Logout} from "components/scenarios/Authentication";
 import {useMemo, useEffect} from "react";
 
 const TUTORIAL_SCENARIO = "tutorial.json";

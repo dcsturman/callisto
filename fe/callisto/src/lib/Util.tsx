@@ -2,7 +2,7 @@ import * as React from "react";
 import * as THREE from "three";
 import { useLayoutEffect, useRef } from "react";
 import { extend } from "@react-three/fiber";
-import { SCALE, RANGE_BANDS } from "../Universal";
+import { SCALE, RANGE_BANDS } from "./universal";
 
 extend({ Line_: THREE.Line });
 

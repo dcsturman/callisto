@@ -10,7 +10,7 @@ import Joyride, {
   Status,
   Step,
 } from "react-joyride";
-import { ViewMode, ViewContext } from "./Universal";
+import { ViewMode, ViewContext } from "lib/universal";
 
 const steps: Step[] = [
   {

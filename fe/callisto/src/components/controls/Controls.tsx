@@ -1,6 +1,6 @@
 import React, {useContext, useEffect} from "react";
 import * as THREE from "three";
-import {Accordion} from "./lib/Accordion";
+import {Accordion} from "lib/Accordion";
 import {AddShip} from "./AddShip";
 import {ActionContext} from "./Actions";
 import {
@@ -15,11 +15,11 @@ import {
   ViewMode,
   POSITION_SCALE,
   SCALE,
-} from "./Universal";
+} from "lib/universal";
 
-import {addShip, nextRound} from "./ServerManager";
-import {EntitySelector, EntitySelectorType} from "./lib/EntitySelector";
-import {scaleVector, vectorToString} from "./lib/Util";
+import {addShip, nextRound} from "lib/serverManager";
+import {EntitySelector, EntitySelectorType} from "lib/EntitySelector";
+import {scaleVector, vectorToString} from "lib/Util";
 import {NavigationPlan} from "./ShipComputer";
 import {FireActions, FireControl} from "./WeaponUse";
 import {ShipComputer} from "./ShipComputer";

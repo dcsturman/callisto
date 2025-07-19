@@ -1,6 +1,6 @@
 import React, {useContext, createContext} from "react";
-import {EntitiesServerContext} from "./Universal";
-import {updateActions} from "./ServerManager";
+import {EntitiesServerContext} from "lib/universal";
+import {updateActions} from "lib/serverManager";
 
 export type ActionType = {
   [actor: string]: {

@@ -1,5 +1,5 @@
 import React, {useState, useRef, useEffect, useContext} from "react";
-import {CrewBuilder, Crew} from "./CrewBuilder";
+import {CrewBuilder, Crew} from "components/controls/CrewBuilder";
 import {
   POSITION_SCALE,
   DesignTemplatesContext,
@@ -7,12 +7,12 @@ import {
   ShipDesignTemplates,
   Weapon,
   WeaponMount,
-} from "./Universal";
-import {Accordion} from "./lib/Accordion";
+} from "lib/universal";
+import {Accordion} from "lib/Accordion";
 import {Tooltip} from "react-tooltip";
 import {CiCircleQuestion} from "react-icons/ci";
-import {unique_ship_name} from "./lib/shipnames";
-import {Ship} from "./Universal";
+import {unique_ship_name} from "lib/shipnames";
+import {Ship} from "lib/universal";
 
 interface AddShipProps {
   submitHandler: (ship: Ship) => void;

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ViewMode } from "./Universal";
+import { ViewMode } from "lib/universal";
 
 export type UserContext = {
     email: string;

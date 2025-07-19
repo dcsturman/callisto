@@ -1,4 +1,4 @@
-import { EntityList } from "../Universal";
+import { EntityList } from "./universal";
 
 export function unique_ship_name(entities: EntityList): string { 
     // eslint-disable-next-line no-constant-condition

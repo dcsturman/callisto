@@ -10,11 +10,11 @@ import {
   ShipDesignTemplate,
   stringToViewMode,
   ViewMode,
-} from "./Universal";
-import {Effect} from "./Effects";
-import {UserList, UserContext} from "./UserList";
-import {ActionType, actionPayload, payloadToAction} from "./Actions";
-import {TUTORIAL_PREFIX} from "./ScenarioManager";
+} from "./universal";
+import {Effect} from "components/space/Effects";
+import {UserList, UserContext} from "components/UserList";
+import {ActionType, actionPayload, payloadToAction} from "components/controls/Actions";
+import {TUTORIAL_PREFIX} from "components/scenarios/ScenarioManager";
 
 export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
 
