@@ -250,7 +250,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     const id = window.requestAnimationFrame(update)
 
     return () => window.cancelAnimationFrame(id); // Cleanup function
-  }, [camera]);
+  }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed]);
 
   return <></>;
 };

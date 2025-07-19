@@ -181,7 +181,7 @@ const handleMessage = (event: MessageEvent) => {
 
   // Because these first two aren't an object (just a string)  check for it differently.
     // Response to keepalive message
-  if (json == "Pong") {
+  if (json === "Pong") {
     return;
   }
 

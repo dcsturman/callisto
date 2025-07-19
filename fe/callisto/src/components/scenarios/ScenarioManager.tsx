@@ -53,11 +53,6 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({activeScenarios
         return activeScenarios.map(scenario => scenario[0]).filter(scenario => !scenario.startsWith(TUTORIAL_PREFIX)).sort((a, b) => a.localeCompare(b));
     }, [activeScenarios]);
 
-    useEffect(() => {
-        if (scenario == null) {
-            setScenario(sortedFilteredScenarios[0]?? null);
-        }
-    }, [sortedFilteredScenarios]);
     const sortedTemplates = scenarioTemplates.sort((a, b) => a[0].localeCompare(b[0]));
 
     const [scenario, setScenario] = React.useState<string | null>(sortedFilteredScenarios[0]?? null);
@@ -65,6 +60,12 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({activeScenarios
     const [showScenarioIntro, setShowScenarioIntro] = React.useState<{name: string, description: string, handler: () => void} | null>(null);
 
     const scenarioName = generateUniqueHyphenatedName();
+
+    useEffect(() => {
+        if (scenario == null) {
+            setScenario(sortedFilteredScenarios[0]?? null);
+        }
+    }, [scenario, sortedFilteredScenarios]);
 
     function handleTemplateSelectChange(event: React.ChangeEvent<HTMLSelectElement>) {
         setTemplate(event.target.value);
