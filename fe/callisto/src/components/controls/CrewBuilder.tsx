@@ -1,42 +1,31 @@
-import { useState, useEffect, useMemo, useContext } from "react";
+import { useState, useEffect, useMemo } from "react";
 import * as React from "react";
-import { ShipDesignTemplate } from "lib/universal";
-import { EntitiesServerContext } from "lib/universal";
+import { ShipDesignTemplate } from "lib/shipDesignTemplates";
+import { findShip } from "lib/entities";
 
-export class Crew {
+import { useAppSelector } from "state/hooks";
+import {entitiesSelector} from "state/serverSlice";
+
+export interface Crew {
   pilot: number;
   engineering_jump: number;
   engineering_power: number;
   engineering_maneuver: number;
   sensors: number;
   gunnery: number[];
-
-  constructor(num_gunners: number) {
-    this.pilot = 0;
-    this.engineering_jump = 0;
-    this.engineering_power = 0;
-    this.engineering_maneuver = 0;
-    this.sensors = 0;
-    this.gunnery = new Array(num_gunners).fill(0);
-  }
-
-  // This method is needed to ensure a parsed object from JSON.parse() actually becomes this Class.
-  parse(json: {
-    pilot: number;
-    engineering_jump: number;
-    engineering_power: number;
-    engineering_maneuver: number;
-    sensors: number;
-    gunnery: number[];
-  }) {
-    this.pilot = json.pilot;
-    this.engineering_jump = json.engineering_jump;
-    this.engineering_power = json.engineering_power;
-    this.engineering_maneuver = json.engineering_maneuver;
-    this.sensors = json.sensors;
-    this.gunnery = json.gunnery;
-  }
 }
+
+export const createCrew = (num_gunners: number) => {
+  return {
+    pilot: 0,
+    engineering_jump: 0,
+    engineering_power: 0,
+    engineering_maneuver: 0,
+    sensors: 0,
+    gunnery: new Array(num_gunners).fill(0),
+  };
+}
+
 
 interface CrewBuilderProps {
   updateCrew: (crew: Crew) => void;
@@ -49,12 +38,11 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   shipName,
   shipDesign,
 }) => {
+  const entities = useAppSelector(entitiesSelector);
   const num_gunners = shipDesign.weapons.length;
   const initialCrew = useMemo(() => {
-    return new Crew(shipDesign.weapons.length);
+    return createCrew(num_gunners);
   }, [shipDesign]);
-
-  const serverEntities = useContext(EntitiesServerContext);
 
   const [customCrew, setCustomCrew] = useState(initialCrew);
   const [currentGunId, setCurrentGunId] = useState(1);
@@ -62,16 +50,14 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
 
   useEffect(() => {
     if (shipName !== currentShipName) {
-      const new_crew =
-        serverEntities.entities.ships.find((ship) => ship.name === shipName)
-          ?.crew || initialCrew;
+      const new_crew = findShip(entities, shipName)?.crew || initialCrew;
       if (new_crew !== customCrew) {
         setCustomCrew(new_crew);
         updateCrew(new_crew);
       }
       setCurrentShipName(shipName);
     }
-  }, [shipName, initialCrew, serverEntities.entities.ships, currentShipName, customCrew, updateCrew]);
+  }, [shipName, initialCrew, entities, currentShipName, customCrew, updateCrew]);
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;

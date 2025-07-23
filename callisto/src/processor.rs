@@ -187,7 +187,7 @@ impl Processor {
                 event!(
                   target: LOGOUT,
                   Level::INFO,
-                  email = current_connection.player.get_email().unwrap(),
+                  email = current_connection.player.get_email().unwrap_or("UNKNOWN USER".to_string()),
                   action = format!("User intentionally logged out. Now {} connections.", num_connections - 1)
                 );
                 current_connection.stream.close(None).await.unwrap_or_else(|e| {

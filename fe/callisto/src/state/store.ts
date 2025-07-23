@@ -1,14 +1,16 @@
-import { configureStore, ThunkAction, Action } from '@reduxjs/toolkit'
-import tutorialSlice from './tutorial'
-import userSlice from './userSlice'
-import uiSlice from './uiSlice'
-import serverSlice from './server'
+import { configureStore, ThunkAction, Action } from "@reduxjs/toolkit";
+import tutorialSlice from "./tutorialSlice";
+import userSlice from "./userSlice";
+import uiSlice from "./uiSlice";
+import serverSlice from "./serverSlice";
+import actionsSlice from "./actionsSlice";
 
 const rootReducer = {
   tutorial: tutorialSlice,
   user: userSlice,
   ui: uiSlice,
   server: serverSlice,
+  actions: actionsSlice,
 }
 
 export const store = configureStore({

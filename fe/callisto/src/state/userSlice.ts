@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ViewMode } from 'lib/universal';
+import { ViewMode } from 'lib/view';
 
 export interface UserState {
     email: string | null;

@@ -1,5 +1,4 @@
-import React from "react";
-import { useContext } from "react";
+import * as React from "react";
 import Joyride, {
   ACTIONS,
   CallBackProps,
@@ -10,7 +9,11 @@ import Joyride, {
   Status,
   Step,
 } from "react-joyride";
-import { ViewMode, ViewContext } from "lib/universal";
+import { ViewMode } from "lib/view";
+
+import { useAppSelector, useAppDispatch } from "state/hooks";
+import { setRoleShip } from "state/userSlice";
+import { setRunTutorial, increment, decrement, reset } from "state/tutorialSlice";
 
 const steps: Step[] = [
   {
@@ -412,22 +415,11 @@ const steps: Step[] = [
 
 const TUTORIAL_SCENARIO = "gs://callisto-scenarios/tutorial.json";
 
-export function Tutorial({
-  runTutorial,
-  setRunTutorial,
-  stepIndex,
-  setStepIndex,
-  selectAShip,
-}: {
-  runTutorial: boolean;
-  setRunTutorial: (runTutorial: boolean) => void;
-  stepIndex: number;
-  setStepIndex: (step: number) => void;
-  selectAShip: () => void;
-  setAuthenticated: (authenticated: boolean) => void;
-}) {
+export function Tutorial() {
+  const runTutorial = useAppSelector(state => state.tutorial.runTutorial);
+  const stepIndex = useAppSelector(state => state.tutorial.stepIndex);
 
-  const viewContext = useContext(ViewContext);
+  const dispatch = useAppDispatch();
 
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { action, index, origin, status, type } = data;
@@ -440,11 +432,10 @@ export function Tutorial({
     console.groupEnd();
 
     if (action === ACTIONS.START) {
-      setStepIndex(0);
-      viewContext.setRole(ViewMode.General);
-      viewContext.setShipName(null);
+      dispatch(reset());
+      dispatch(setRoleShip([ViewMode.General, null]));
     } else if (action === ACTIONS.RESET) {
-      setStepIndex(0);
+      dispatch(reset());
     }
     if (action === ACTIONS.CLOSE && origin === ORIGIN.KEYBOARD) {
       // do something
@@ -453,18 +444,18 @@ export function Tutorial({
     if (
       ([EVENTS.STEP_AFTER, EVENTS.TARGET_NOT_FOUND] as Events[]).includes(type)
     ) {
-      if (action === ACTIONS.NEXT && stepIndex === 5) {
-        selectAShip();
-      }
       // Update state to advance the tour
       console.log("(Tutorial) Advance");
-      setStepIndex(stepIndex + (action === ACTIONS.PREV ? -1 : 1));
-      //, STATUS.SKIPPED
+      if (ACTIONS.PREV === action) {
+        dispatch(decrement());
+      } else {
+        dispatch(increment())
+      }
     } else if (([STATUS.FINISHED] as Status[]).includes(status)) {
       // You need to set our running state to false, so we can restart if we click start again.
       console.log("(Tutorial) Reset");
-      setStepIndex(0);
-      setRunTutorial(false);
+      dispatch(reset());
+      dispatch(setRunTutorial(false));
     }
   };
 

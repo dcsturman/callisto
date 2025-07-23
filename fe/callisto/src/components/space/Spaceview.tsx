@@ -1,30 +1,31 @@
 import * as React from "react";
-import { useContext, useRef } from "react";
+import {useRef} from "react";
 import * as THREE from "three";
 
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { KernelSize, Resolution } from "postprocessing";
-import { TextureLoader } from "three/src/loaders/TextureLoader";
-import { useLoader, useFrame } from "@react-three/fiber";
+import {EffectComposer, Bloom} from "@react-three/postprocessing";
+import {KernelSize, Resolution} from "postprocessing";
+import {TextureLoader} from "three/src/loaders/TextureLoader";
+import {useLoader, useFrame} from "@react-three/fiber";
 
 import Color from "color";
 
-import { Line, scaleVector } from "lib/Util";
-import {
-  SCALE,
-  Planet as PlanetType,
-  EntitiesServerContext,
-  EntityToShowContext,
-} from "lib/universal";
+import {Line, scaleVector} from "lib/Util";
+import {SCALE} from "lib/universal";
+import {Planet as PlanetType} from "lib/entities";
 
-import { RangeSphere } from "lib/Util";
+import {RangeSphere} from "lib/Util";
+
+import {useAppSelector, useAppDispatch} from "state/hooks";
+import {setEntityToShow} from "state/uiSlice";
+import {entitiesSelector} from "state/serverSlice";
 
 function Planet(args: {
   planet: PlanetType;
   controlGravityWell: boolean;
   controlJumpDistance: boolean;
 }) {
-  const entityToShow = useContext(EntityToShowContext);
+  const dispatch = useAppDispatch();
+
   const radiusMeters = args.planet.radius;
   const radiusUnits = radiusMeters * SCALE;
   const pos = scaleVector(args.planet.position, SCALE);
@@ -32,27 +33,29 @@ function Planet(args: {
   function allViewChanges() {
     return (
       <>
-        {args.controlJumpDistance && (<mesh position={pos} renderOrder={12}>
-          <sphereGeometry args={[args.planet.radius*200 * SCALE, 14, 14]} />
-          <meshBasicMaterial
-            color="#888888"
-            wireframe={true}
-            alphaToCoverage={false}
-            transparent={true}
-          />
-        </mesh>)}
-        {args.controlGravityWell &&
-          args.planet.gravity_radius_025 &&
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_025} order={10}/>}
-        {args.controlGravityWell &&
-          args.planet.gravity_radius_05 &&
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_05} order={8}/>}
-        {args.controlGravityWell &&
-          args.planet.gravity_radius_1 &&
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_1} order={6}/>}
-        {args.controlGravityWell &&
-          args.planet.gravity_radius_2 &&
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_2} order={4}/>}
+        {args.controlJumpDistance && (
+          <mesh position={pos} renderOrder={12}>
+            <sphereGeometry args={[args.planet.radius * 200 * SCALE, 14, 14]} />
+            <meshBasicMaterial
+              color="#888888"
+              wireframe={true}
+              alphaToCoverage={false}
+              transparent={true}
+            />
+          </mesh>
+        )}
+        {args.controlGravityWell && args.planet.gravity_radius_025 && (
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_025} order={10} />
+        )}
+        {args.controlGravityWell && args.planet.gravity_radius_05 && (
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_05} order={8} />
+        )}
+        {args.controlGravityWell && args.planet.gravity_radius_1 && (
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_1} order={6} />
+        )}
+        {args.controlGravityWell && args.planet.gravity_radius_2 && (
+          <RangeSphere pos={pos} distance={args.planet.gravity_radius_2} order={4} />
+        )}
       </>
     );
   }
@@ -177,8 +180,8 @@ function Planet(args: {
           ref={ref}
           rotation-y={1}
           position={pos}
-          onPointerOver={() => entityToShow.setEntityToShow(args.planet)}
-          onPointerLeave={() => entityToShow.setEntityToShow(null)}>
+          onPointerOver={() => dispatch(setEntityToShow(args.planet))}
+          onPointerLeave={() => dispatch(setEntityToShow(null))}>
           <icosahedronGeometry args={[radiusUnits, 15]} />
           <meshPhongMaterial
             map={texture_details.texture}
@@ -214,8 +217,8 @@ function Planet(args: {
         </EffectComposer>
         <mesh
           position={pos}
-          onPointerOver={() => entityToShow.setEntityToShow(args.planet)}
-          onPointerLeave={() => entityToShow.setEntityToShow(null)}>
+          onPointerOver={() => dispatch(setEntityToShow(args.planet))}
+          onPointerLeave={() => dispatch(setEntityToShow(null))}>
           <icosahedronGeometry args={[radiusUnits, 15]} />
           <meshBasicMaterial
             color={[
@@ -230,19 +233,18 @@ function Planet(args: {
   }
 }
 
-function Planets(args: {
-  planets: PlanetType[];
-  controlGravityWell: boolean;
-  controlJumpDistance: boolean;
-}) {
+function Planets(args: {planets: PlanetType[]}) {
+  const gravityWell = useAppSelector((state) => state.ui.gravityWells);
+  const jumpDistance = useAppSelector((state) => state.ui.jumpDistance);
+
   return (
     <>
       {args.planets.map((planet) => (
         <Planet
           key={planet.name}
           planet={planet}
-          controlGravityWell={args.controlGravityWell}
-          controlJumpDistance={args.controlJumpDistance}
+          controlGravityWell={gravityWell}
+          controlJumpDistance={jumpDistance}
         />
       ))}
     </>
@@ -256,11 +258,7 @@ function Galaxy() {
     <>
       <mesh>
         <sphereGeometry args={[500000, 64, 64]} />
-        <meshBasicMaterial
-          map={starColorMap}
-          side={THREE.BackSide}
-          transparent={true}
-        />
+        <meshBasicMaterial map={starColorMap} side={THREE.BackSide} transparent={true} />
       </mesh>
     </>
   );
@@ -276,22 +274,14 @@ function Axes() {
   );
 }
 
-function SpaceView(args: {
-  controlGravityWell: boolean;
-  controlJumpDistance: boolean;
-}) {
+function SpaceView() {
+  const entities = useAppSelector(entitiesSelector);
+  const planets = entities.planets;
 
-  const serverEntities = useContext(EntitiesServerContext);
-  const planets = serverEntities.entities.planets;
-  
   return (
     <>
       <Axes />
-      <Planets
-        planets={planets}
-        controlGravityWell={args.controlGravityWell}
-        controlJumpDistance={args.controlJumpDistance}
-      />
+      <Planets planets={planets} />
       <Galaxy />
     </>
   );

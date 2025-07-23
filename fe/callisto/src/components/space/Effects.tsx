@@ -1,41 +1,43 @@
 import * as React from "react";
-import { useContext } from "react";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "lib/Util";
-import { SCALE, EntitiesServerContext } from "lib/universal";
+import { SCALE } from "lib/universal";
 import { GrowLine } from "lib/Util";
+import { findShip } from "lib/entities";
+
+import { useAppSelector, useAppDispatch } from "state/hooks";
+import { setShowResults, setEvents } from "state/uiSlice";
+import {entitiesSelector} from "state/serverSlice";
+
 
 const SHIP_IMPACT = "ShipImpact";
 const EXHAUSTED_MISSILE = "ExhaustedMissile";
 const SHIP_DESTROYED = "ShipDestroyed";
 const BEAM_HIT = "BeamHit";
-const MESSAGE_EFFECT = "Message";
+const MESSAGE_EVENT = "Message";
 
 const MISSILE_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [1.0, 1.0, 1.0];
 const SHIP_DESTROYED_COLOR: [number, number, number] = [0.0, 0.0, 1.0];
 const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 
-export class Effect {
-  kind: string = "ShipImpact";
-  content: string | null = null;
+export interface Event {
+  kind: string,
+  content: string | null,
   // Will only have one of position or target. Position is a concrete position
   // while target is the name of a target.
-  position: [number, number, number] | null = [0, 0, 0];
-  target: string | null = null;
-  origin: [number, number, number] | null = [0, 0, 0];
-
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  static parse(json: any): Effect {
-    const e = new Effect();
-    e.kind = json.kind;
-    e.content = json.content ?? null;
-    e.position = json.position ?? null;
-    e.target = json.target ?? null;
-    e.origin = json.origin ?? null;
-    return e;
-  }
+  position: [number, number, number] | null,
+  target: string | null,
+  origin: [number, number, number] | null
 }
+
+export const createEvent = (kind: string, content: string | null, position: [number, number, number] | null, target: string | null, origin: [number, number, number] | null) => {
+  return {kind, content, position, target, origin};
+};
+
+export const defaultEvent = () => {
+  return createEvent("", null, null, null, null);
+};
 
 export function Explosion(args: {
   center: [number, number, number];
@@ -93,29 +95,29 @@ export function Beam(args: {
     <AnimatedLine start={scaleVector(args.origin, SCALE)} end={scaleVector(args.end, SCALE)} scale={scale} color={args.color} />
   )
 }
-export function Explosions(args: {
-  effects: Effect[];
-  setEffects: (entities: Effect[] | null) => void;
-}) {
-  const entityContext = useContext(EntitiesServerContext);
+export function Explosions() {
+  const entities = useAppSelector(entitiesSelector);
+  const events = useAppSelector(state => state.ui.events);
+  const dispatch = useAppDispatch();
 
   return (
     <>
-      {args.effects.map((effect, index) => {
+      {events?.map((event, index) => {
         let color: [number, number, number] = [0, 0, 0];
         let key: string = "";
         let removeMe: () => void = () => {};
         let position: [number, number, number] = [0, 0, 0];
 
-        switch (effect.kind) {
+        switch (event.kind) {
           case SHIP_IMPACT:
             // Use the current position of the target if we can find it; otherwise use the position (last known position actually) as a backup
-            position = entityContext.entities.ships.find((ship) => ship.name === effect.target)?.position ?? effect.position ?? [0, 0, 0];
+            position = findShip(entities, event.target)?.position ?? event.position ?? [0, 0, 0];
             color = MISSILE_HIT_COLOR;
             key = "Impact-" + index;
             removeMe = () => {
-              args.setEffects(args.effects.filter((e) => e !== effect));
+              dispatch(setEvents(events.filter((e) => e !== event)));
             };
+            console.log("(Explosions) key: " + key);
             return (
               <Explosion
                 key={key}
@@ -128,12 +130,12 @@ export function Explosions(args: {
             color = MISSILE_EXHAUSTED_COLOR;
             key = "Gone-" + index;
             removeMe = () => {
-              args.setEffects(args.effects.filter((e) => e !== effect));
+              dispatch(setEvents(events.filter((e) => e !== event)));
             };
             return (
               <Explosion
                 key={key}
-                center={(effect.position?? [0, 0, 0])}
+                center={(event.position?? [0, 0, 0])}
                 color={color}
                 cleanupFn={removeMe}
               />
@@ -142,12 +144,12 @@ export function Explosions(args: {
             color = SHIP_DESTROYED_COLOR;
             key = "Destroyed-" + index;
             removeMe = () => {
-              args.setEffects(args.effects.filter((e) => e !== effect));
+              dispatch(setEvents(events.filter((e) => e !== event)));
             };
             return (
               <Explosion
                 key={key}
-                center={(effect.position?? [0, 0, 0])}
+                center={(event.position?? [0, 0, 0])}
                 color={color}
                 cleanupFn={removeMe}
               />
@@ -156,48 +158,47 @@ export function Explosions(args: {
             color = BEAM_HIT_COLOR;
             key = "Beam-" + index;
             removeMe = () => {
-              args.setEffects(args.effects.filter((e) => e !== effect));
+              dispatch(setEvents(events.filter((e) => e !== event)));
             };
             return (
               <Beam
                 key={key}
-                origin={(effect.origin?? [0, 0, 0])}
-                end={(effect.position?? [0, 0, 0])}
+                origin={(event.origin?? [0, 0, 0])}
+                end={(event.position?? [0, 0, 0])}
                 color={color}
                 cleanupFn={removeMe}
               />
             );
-          case MESSAGE_EFFECT:
+          case MESSAGE_EVENT:
             // DamageEffects don't show up as explosions so skip.
-            return <></>;
+            return null;
           default:
             console.error(
               `(Effects.Effects) Unknown effect kind: ${
-                effect.kind
-              } (${JSON.stringify(effect)})`
+                event.kind
+              } (${JSON.stringify(event)})`
             );
-            return <></>;
+            return null;
         }
       })}
     </>
   );
 }
 
-export function ResultsWindow(args: {
-  clearShowResults: () => void,
-  effects: Effect[] | null,
-  setEffects: (entities: Effect[] | null) => void
-}) {
+export function ResultsWindow() {
+  const events = useAppSelector(state => state.ui.events);
+  const dispatch = useAppDispatch();
+
   function closeWindow() {
-    if (args.effects !== null) {
-      args.setEffects(args.effects.filter((effect) => effect.kind !== MESSAGE_EFFECT));
+    if (events !== null) {
+      dispatch(setEvents(events.filter((event) => event.kind !== MESSAGE_EVENT)));
     }
-    args.clearShowResults();
+    dispatch(setShowResults(false));
   }
 
-  let messages: Effect[] = [];
-  if (args.effects !== null) {
-    messages = args.effects?.filter((effect) => effect.kind === MESSAGE_EFFECT);
+  let messages: Event[] = [];
+  if (events !== null) {
+    messages = events?.filter((event) => event.kind === MESSAGE_EVENT);
   }
   return (
     <div id="results-window" className="computer-window">

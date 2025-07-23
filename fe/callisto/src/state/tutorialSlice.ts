@@ -29,9 +29,12 @@ export const tutorialSlice = createSlice({
     decrement: state => {
         state.stepIndex--;
     },
+    reset: state => {
+        state.stepIndex = 0;
+    }
   }
 });
 
-export const { setTutorialMode, setRunTutorial, increment, decrement } = tutorialSlice.actions;
+export const { setTutorialMode, setRunTutorial, increment, decrement, reset } = tutorialSlice.actions;
 
 export default tutorialSlice.reducer;

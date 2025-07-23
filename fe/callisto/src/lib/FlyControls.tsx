@@ -1,5 +1,5 @@
-import React from "react";
-import {useEffect, useMemo} from "react";
+import * as React from "react";
+import {useEffect} from "react";
 import {Camera, Quaternion, Vector3} from "three";
 
 type FlyControlsProps = {
@@ -19,28 +19,23 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
   movementSpeed,
   rollSpeed,
 }) => {
-  const domElement = useMemo(
-    () =>  document.getElementById(containerName) as HTMLElement,
-    [containerName]
-  );
-
   const EPS = 0.000001;
-  const NO_MOVE = {
-    up: 0,
-    down: 0,
-    left: 0,
-    right: 0,
-    forward: 0,
-    back: 0,
-    pitchUp: 0,
-    pitchDown: 0,
-    yawLeft: 0,
-    yawRight: 0,
-    rollLeft: 0,
-    rollRight: 0,
-  };
 
   useEffect(() => {
+    const NO_MOVE = {
+      up: 0,
+      down: 0,
+      left: 0,
+      right: 0,
+      forward: 0,
+      back: 0,
+      pitchUp: 0,
+      pitchDown: 0,
+      yawLeft: 0,
+      yawRight: 0,
+      rollLeft: 0,
+      rollRight: 0,
+    };
     let moveState = {...NO_MOVE};
     let mouseStatus = 0;
     let movementSpeedMultiplier = 1;
@@ -88,7 +83,12 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
 
       const tmpQuaternion = new Quaternion();
       tmpQuaternion
-        .set(rotationVector.x * rotationMultiplier, rotationVector.y * rotationMultiplier, rotationVector.z * rotationMultiplier, 1)
+        .set(
+          rotationVector.x * rotationMultiplier,
+          rotationVector.y * rotationMultiplier,
+          rotationVector.z * rotationMultiplier,
+          1
+        )
         .normalize();
       camera.quaternion.multiply(tmpQuaternion);
 
@@ -109,18 +109,18 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     const contextmenu = (/*event: MouseEvent*/): void => {
       // Do nothing at this point but its here if we need it.
     };
-  
+
     const keydown = (event: KeyboardEvent): void => {
       if (event.altKey) {
         return;
       }
-  
+
       switch (event.code) {
         case "ShiftLeft":
         case "ShiftRight":
           movementSpeedMultiplier = 100;
           break;
-  
+
         case "KeyW":
           moveState.forward = 1;
           break;
@@ -159,7 +159,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
           break;
       }
     };
-  
+
     const keyup = (event: KeyboardEvent): void => {
       if (["ShiftLeft", "ShiftRight"].includes(event.code)) {
         movementSpeedMultiplier = 1;
@@ -167,7 +167,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
         moveState = {...NO_MOVE};
       }
     };
-  
+
     const pointerdown = (event: PointerEvent): void => {
       if (dragToLook) {
         mouseStatus = 1;
@@ -182,7 +182,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
         }
       }
     };
-  
+
     const getContainerDimensions = (): {
       size: number[];
       offset: number[];
@@ -192,19 +192,19 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
         offset: [domElement.offsetLeft, domElement.offsetTop],
       };
     };
-  
-    const pointermove = (event: PointerEvent): void => {      
+
+    const pointermove = (event: PointerEvent): void => {
       if (!dragToLook || mouseStatus > 0) {
         if (event.pressure === 0) {
           mouseStatus = 0;
           // Not sure I want this.
-          moveState = {...moveState, yawRight: 0, pitchUp: 0, yawLeft: 0, pitchDown: 0};          
+          moveState = {...moveState, yawRight: 0, pitchUp: 0, yawLeft: 0, pitchDown: 0};
           return;
         }
         const container = getContainerDimensions();
         const halfWidth = container.size[0] / 2;
         const halfHeight = container.size[1] / 2;
-  
+
         moveState = {
           ...moveState,
           yawLeft: -(event.pageX - container.offset[0] - halfWidth) / halfWidth,
@@ -212,7 +212,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
         };
       }
     };
-  
+
     const pointerup = (event: PointerEvent): void => {
       if (dragToLook) {
         mouseStatus = 0;
@@ -228,7 +228,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
         }
       }
     };
-  
+
     // https://github.com/mrdoob/three.js/issues/20575
     const connect = (domElement: HTMLElement): void => {
       domElement.setAttribute("tabindex", "-1");
@@ -244,13 +244,14 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     if (!camera) {
       return;
     }
-    
+
+    const domElement = document.getElementById(containerName) as HTMLElement;
     connect(domElement);
 
-    const id = window.requestAnimationFrame(update)
+    const id = window.requestAnimationFrame(update);
 
     return () => window.cancelAnimationFrame(id); // Cleanup function
-  }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed]);
+  }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed, containerName]);
 
   return <></>;
 };

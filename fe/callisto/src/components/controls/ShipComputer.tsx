@@ -1,48 +1,34 @@
-import React from "react";
-import {useState, useEffect, useContext, useMemo} from "react";
-import {
-  FlightPathResult,
-  Ship,
-  EntitiesServerContext,
-  DEFAULT_ACCEL_DURATION,
-  Acceleration,
-  POSITION_SCALE,
-  ViewContext,
-  ViewMode,
-} from "lib/universal";
+import * as React from "react";
+import {useState, useEffect, useMemo} from "react";
+import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
+import {Ship, Acceleration} from "lib/entities";
+import {ViewMode} from "lib/view";
 
 import {setPlan, setCrewActions} from "lib/serverManager";
-import {ActionContext, SensorState, SensorAction, newSensorState} from "components/controls/Actions";
+import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
+import {findShip} from "lib/entities";
+
+import {useAppSelector, useAppDispatch} from "state/hooks";
+import {entitiesSelector} from "state/serverSlice";
+import {setComputerShipName} from "state/uiSlice";
+import {setSensorAction, jump} from "state/actionsSlice";
+import {computeFlightPath} from "lib/serverManager";
 
 // Distance in km for standoff from another ship.
 const DEFAULT_SHIP_STANDOFF_DISTANCE: number = 10;
 
 type ShipComputerProps = {
   ship: Ship;
-  setComputerShipName: (ship_name: string | null) => void;
-  proposedPlan: FlightPathResult | null;
-  getAndShowPlan: (
-    entity_name: string | null,
-    end_pos: [number, number, number],
-    end_vel: [number, number, number],
-    target_vel: [number, number, number] | null,
-    target_accel: [number, number, number] | null,
-    standoff: number
-  ) => void;
   sensorLocks: string[];
 };
 
-export const ShipComputer: React.FC<ShipComputerProps> = ({
-  ship,
-  setComputerShipName,
-  proposedPlan,
-  getAndShowPlan,
-  sensorLocks,
-}) => {
-  const viewContext = useContext(ViewContext);
-  const serverEntities = useContext(EntitiesServerContext).entities;
-  const actionContext = useContext(ActionContext);
+export const ShipComputer: React.FC<ShipComputerProps> = ({ship, sensorLocks}) => {
+  const entities = useAppSelector(entitiesSelector);
+  const role = useAppSelector((state) => state.user.role);
+  const shipName = useAppSelector((state) => state.user.shipName);
+  const proposedPlan = useAppSelector((state) => state.ui.proposedPlan);
+  const dispatch = useAppDispatch();
 
   const initNavigationTargetState = useMemo(() => {
     return {
@@ -67,8 +53,25 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
   const [currentNavTarget, setCurrentNavTarget] = useState<string | null>(null);
   const [navigationTarget, setNavigationTarget] = useState(initNavigationTargetState);
 
-  useEffect(() => {
+  const target = useMemo(() => {
     if (currentNavTarget == null) {
+      return;
+    }
+
+    const planet = entities.planets.find((planet) => planet.name === currentNavTarget);
+    if (planet) {
+      return {position: planet.position, velocity: planet.velocity, radius: planet.radius};
+    }
+    const ship = findShip(entities, currentNavTarget);
+
+    if (ship == null)
+      return;
+
+    return {position: ship.position, velocity: ship.velocity, plan: ship.plan};
+  }, [entities, currentNavTarget]);
+
+  useEffect(() => {
+    if (target == null) {
       setNavigationTarget(initNavigationTargetState);
       return;
     }
@@ -81,45 +84,36 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
 
     let standoff = DEFAULT_SHIP_STANDOFF_DISTANCE;
 
-    const planet = serverEntities.planets.find((planet) => planet.name === currentNavTarget);
-
-    if (planet) {
-      standoff = (planet.radius * 1.1) / POSITION_SCALE;
+    if ("radius" in target) {
+      standoff = (target.radius! * 1.1) / POSITION_SCALE;
     }
 
-    const target_ship: Ship | undefined = serverEntities.ships.find(
-      (ship) => ship.name === currentNavTarget
-    );
-    const entity = planet || target_ship;
-
-    if (entity == null) {
-      console.error(`(ShipComputer) Unable to find entity ${currentNavTarget}`);
-      return;
-    }
-
+    const plan = target.plan?? null;
+    
     setNavigationTarget({
-      p_x: entity.position[0],
-      p_y: entity.position[1],
-      p_z: entity.position[2],
-      v_x: entity.velocity[0],
-      v_y: entity.velocity[1],
-      v_z: entity.velocity[2],
-      a_x: target_ship ? target_ship.plan[0][0][0] : 0.0,
-      a_y: target_ship ? target_ship.plan[0][0][1] : 0.0,
-      a_z: target_ship ? target_ship.plan[0][0][2] : 0.0,
+      p_x: target.position[0],
+      p_y: target.position[1],
+      p_z: target.position[2],
+      v_x: target.velocity[0],
+      v_y: target.velocity[1],
+      v_z: target.velocity[2],
+      a_x: plan ? plan[0][0][0] : 0.0,
+      a_y: plan ? plan[0][0][1] : 0.0,
+      a_z: plan ? plan[0][0][2] : 0.0,
       standoff,
     });
 
+
     // Also implicitly compute a plan since most of the time this is what the user wants.
-    getAndShowPlan(
+    computeFlightPath(
       ship.name,
-      entity.position,
-      entity.velocity,
-      entity.velocity,
-      target_ship ? target_ship.plan[0][0] : null,
+      target.position,
+      target.velocity,
+      target.velocity,
+      plan ? plan[0][0] : null,
       standoff
     );
-  }, [currentNavTarget, serverEntities, ship.name, initNavigationTargetState, getAndShowPlan]);
+  }, [currentNavTarget, target]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.
@@ -174,23 +168,22 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
     // TODO: Get rid of POSITION_SCALE and move to display
     const standoff = navigationTarget.standoff * POSITION_SCALE;
 
-    console.log(
-      `Computing route for ${ship.name} to ${end_pos} ${end_vel} with target velocity ${target_vel} target acceleration ${target_accel} with standoff ${standoff}`
-    );
-
     // Called directly - usually when the user has specifically modified the values.
     // Can also be called implicitly in handleNavTargetSelect
-    getAndShowPlan(ship.name, end_pos, end_vel, target_vel, target_accel, standoff);
+    computeFlightPath(ship.name, end_pos, end_vel, target_vel, target_accel, standoff);
   }
 
   function handleAssignPlan() {
     if (proposedPlan == null) {
       console.error(`(Controls.handleAssignPlan) No current plan`);
     } else {
-      (document.getElementById("set-accel-input-x") as HTMLInputElement).value = proposedPlan.plan[0][0][0].toString();
-      (document.getElementById("set-accel-input-y") as HTMLInputElement).value = proposedPlan.plan[0][0][1].toString();
-      (document.getElementById("set-accel-input-z") as HTMLInputElement).value = proposedPlan.plan[0][0][2].toString();
-      
+      (document.getElementById("set-accel-input-x") as HTMLInputElement).value =
+        proposedPlan.plan[0][0][0].toString();
+      (document.getElementById("set-accel-input-y") as HTMLInputElement).value =
+        proposedPlan.plan[0][0][1].toString();
+      (document.getElementById("set-accel-input-z") as HTMLInputElement).value =
+        proposedPlan.plan[0][0][2].toString();
+
       setPlan(ship.name, proposedPlan.plan);
     }
   }
@@ -255,11 +248,6 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
 
   function pilotActions(): JSX.Element {
     function handleCrewActionChange(dodge: number, assist: boolean) {
-      if (dodge === undefined) {
-        dodge = 0;
-      }
-      ship.dodge_thrust = dodge;
-      ship.assist_gunners = assist;
       setCrewActions(ship.name, dodge, assist);
     }
     return (
@@ -291,7 +279,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
   function attemptJump() {
     const name = ship.name;
     if (window.confirm(`Are you sure you want to have ${name} attempt a jump?`)) {
-      actionContext.attemptJump(name);
+      dispatch(jump(name));
     }
   }
 
@@ -302,19 +290,22 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
   return (
     <div id="computer-window" className="computer-window">
       <div id="crew-actions-window">
-      {viewContext.role === ViewMode.General && <h1>{title}</h1>}
-      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && pilotActions()}
-      {[ViewMode.General, ViewMode.Sensors].includes(viewContext.role) && (
-        <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
-      )}
-      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && 
-        <button className="control-input control-button blue-button" disabled={!ship.can_jump} onClick={attemptJump}>
-          Jump
-        </button>
-      }
+        {role === ViewMode.General && <h1>{title}</h1>}
+        {[ViewMode.General, ViewMode.Pilot].includes(role) && pilotActions()}
+        {[ViewMode.General, ViewMode.Sensors].includes(role) && (
+          <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
+        )}
+        {[ViewMode.General, ViewMode.Pilot].includes(role) && (
+          <button
+            className="control-input control-button blue-button"
+            disabled={!ship.can_jump}
+            onClick={attemptJump}>
+            Jump
+          </button>
+        )}
       </div>
       <hr />
-      {[ViewMode.General, ViewMode.Pilot].includes(viewContext.role) && (
+      {[ViewMode.General, ViewMode.Pilot].includes(role) && (
         <>
           {accelerationManager()}
           <hr />
@@ -333,7 +324,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
                 a_z: 0,
                 standoff: 0,
               });
-              getAndShowPlan(ship.name, ship.position, [0, 0, 0], null, null, 0);
+              computeFlightPath(ship.name, ship.position, [0, 0, 0], null, null, 0);
             }}>
             Full Stop
           </button>
@@ -462,12 +453,12 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({
           )}
         </>
       )}
-      {viewContext.role === ViewMode.General && !viewContext.shipName && (
+      {role === ViewMode.General && !shipName && (
         <button
           className="control-input control-button blue-button"
           onClick={() => {
-            getAndShowPlan(null, [0, 0, 0], [0, 0, 0], null, null, 0);
-            setComputerShipName(null);
+            computeFlightPath(null, [0, 0, 0], [0, 0, 0], null, null, 0);
+            dispatch(setComputerShipName(null));
           }}>
           Close
         </button>
@@ -497,37 +488,52 @@ interface SensorActionChooserProps {
 }
 
 const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLocks}) => {
-  const actionContext = useContext(ActionContext);
+  const actions = useAppSelector((state) => state.actions);
+  const entities = useAppSelector(entitiesSelector);
+  const computerShipName = useAppSelector((state) => state.ui.computerShipName);
+  const dispatch = useAppDispatch();
 
   const currentSensor = useMemo(() => {
-    return actionContext.actions[ship.name]?.sensor || newSensorState(SensorAction.None, "");
-  }, [actionContext.actions, ship.name]);
+    if (!computerShipName || !actions[computerShipName]) {
+      return newSensorState(SensorAction.None, "");
+    }
+    return actions[computerShipName].sensor;
+  }, [actions, computerShipName]);
 
   function handleSensorActionChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     if (value === "none") {
-      actionContext.setSensorAction(ship.name, newSensorState(SensorAction.None, ""));
+      dispatch(
+        setSensorAction({shipName: ship.name, action: newSensorState(SensorAction.None, "")})
+      );
       return;
     } else if (value === "jam-missiles") {
-      actionContext.setSensorAction(ship.name, newSensorState(SensorAction.JamMissiles, ""));
+      dispatch(
+        setSensorAction({shipName: ship.name, action: newSensorState(SensorAction.JamMissiles, "")})
+      );
     } else if (value.startsWith("bsl-")) {
-      actionContext.setSensorAction(
-        ship.name,
-        newSensorState(SensorAction.BreakSensorLock, value.substring(4))
+      dispatch(
+        setSensorAction({
+          shipName: ship.name,
+          action: newSensorState(SensorAction.BreakSensorLock, value.substring(4)),
+        })
       );
     } else if (value.startsWith("sl-")) {
-      actionContext.setSensorAction(
-        ship.name,
-        newSensorState(SensorAction.SensorLock, value.substring(3))
+      dispatch(
+        setSensorAction({
+          shipName: ship.name,
+          action: newSensorState(SensorAction.SensorLock, value.substring(3)),
+        })
       );
     } else if (value.startsWith("jc-")) {
-      actionContext.setSensorAction(
-        ship.name,
-        newSensorState(SensorAction.JamComms, value.substring(3))
+      dispatch(
+        setSensorAction({
+          shipName: ship.name,
+          action: newSensorState(SensorAction.JamComms, value.substring(3)),
+        })
       );
     }
   }
-  const serverEntities = useContext(EntitiesServerContext);
 
   return (
     <div className="control-label">
@@ -543,13 +549,11 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             {"Break Sensor Lock: " + s}
           </option>
         ))}
-        {serverEntities.entities.ships
+        {entities.ships
           .filter(
             (s) =>
               s.name !== ship.name &&
-              !serverEntities.entities.ships
-                .find((s) => ship.name === s.name)
-                ?.sensor_locks.includes(s.name)
+              !entities.ships.find((s) => ship.name === s.name)?.sensor_locks.includes(s.name)
           )
           .map((s) => (
             <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
@@ -557,7 +561,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             </option>
           ))}
 
-        {serverEntities.entities.ships
+        {entities.ships
           .filter((s) => s.name !== ship.name)
           .map((s) => (
             <option key={s.name + "-jam-comms"} value={"jc-" + s.name}>
@@ -571,9 +575,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             <h3 className="control-label">Sensor Locks</h3>
             <span className="plan-accel-text">
               {" "}
-              {serverEntities.entities.ships
-                .find((s) => ship.name === s.name)
-                ?.sensor_locks.join(", ")}
+              {entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
             </span>
           </div>
         </>

@@ -1,20 +1,21 @@
-import {
-  Acceleration,
-  EntityRefreshCallback,
-  EntityList,
-  FlightPathResult,
-  G,
-  MetaData,
-  Ship,
-  ShipDesignTemplates,
-  ShipDesignTemplate,
-  stringToViewMode,
-  ViewMode,
-} from "./universal";
-import {Effect} from "components/space/Effects";
+
+import {Event} from "components/space/Effects";
 import {UserList, UserContext} from "components/UserList";
 import {ActionType, actionPayload, payloadToAction} from "components/controls/Actions";
 import {TUTORIAL_PREFIX} from "components/scenarios/ScenarioManager";
+import { setSocketReady, setAuthenticated, setTemplates, setEntities, setUsers, setScenarios } from "state/serverSlice";
+import { setEvents, setProposedPlan, setShowResults } from "state/uiSlice";
+import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
+import { setTutorialMode } from "state/tutorialSlice";
+import { setActions } from "state/actionsSlice";
+import { store } from "state/store";
+import { G } from "lib/universal";
+import { EntityList, Ship, MetaData } from "lib/entities";
+import { ViewMode, stringToViewMode } from "lib/view";
+import { Acceleration } from "lib/entities";
+import { ShipDesignTemplates } from "lib/shipDesignTemplates";
+import { FlightPath } from "lib/flightPath";
+
 
 export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
 
@@ -34,54 +35,15 @@ const KEEP_ALIVE_INTERVAL = 60000;
 // Define the (global) websocket
 export let socket: WebSocket;
 
-// Message handlers, one for each type of incoming data we can receive.
-let setEmail: (email: string) => void = () => {
-  console.error("Calling default implementation of setEmail()");
-};
-let setRoleShip: (role: ViewMode, ship: string | null) => void = () => {
-  console.error("Calling default implementation of setRoleShip()");
-};
-let setAuthenticated: (authenticated: boolean) => void = () => {
-  console.error("Calling default implementation of setAuthenticated()");
-};
-let setTemplates: (templates: ShipDesignTemplates) => void = () => {
-  console.error("Calling default implementation of setTemplates()");
-};
-let setEntities: EntityRefreshCallback = () => {
-  console.error("Calling default implementation of setEntities()");
-};
-let setActions: (actions: ActionType) => void = () => {
-  console.error("Calling default implementation of setActions()");
-};
-let setFlightPath: (plan: FlightPathResult) => void = () => {
-  console.error("Calling default implementation of setFlightPath()");
-};
-let setEffects: (effects: Effect[]) => void = () => {
-  console.error("Calling default implementation of setEffects()");
-};
-let setUsers: (users: UserList) => void = () => {
-  console.error("Calling default implementation of setUsers()");
-};
-let setScenarios: (current_scenarios: [string, string][], templates: [string, MetaData][]) => void = () => {
-  console.error("Calling default implementation of setScenarios()");
-};
-let setJoinedScenario: (scenario: string) => void = () => {
-  console.error("Calling default implementation of setJoinedScenario()");
-};
-let setTutorialMode: (tutorialMode: boolean) => void = () => {
-  console.error("Calling default implementation of setTutorialMode()");
-};
-
 //
 // Functions managing the socket connection
 //
-
-export function startWebsocket(setReady: (ready: boolean) => void) {
+export function startWebsocket() {
   console.log("(ServerManager.startWebsocket) Trying to establish websocket.");
   const stripped_name = CALLISTO_BACKEND.replace("https://", "").replace("http://", "");
 
   if (socket === undefined || socket.readyState === WebSocket.CLOSED) {
-    setReady(false);
+    store.dispatch(setSocketReady(false));
     const back_end = `wss://${stripped_name}`;
     console.log(`(ServerManager.startWebsocket) Open web socket to ${back_end}`);
     socket = new WebSocket(back_end);
@@ -90,11 +52,11 @@ export function startWebsocket(setReady: (ready: boolean) => void) {
   }
   socket.onopen = () => {
     console.log("(ServerManager.startWebsocket.onopen) Socket opened");
-    setReady(true);
+    store.dispatch(setSocketReady(true));
   };
   socket.onclose = (event: CloseEvent) => {
     console.log("(ServerManager.startWebsocket.onclose) Socket closed");
-    setReady(false);
+    store.dispatch(setSocketReady(false));
     handleClose(event);
   };
   socket.onmessage = handleMessage;
@@ -102,58 +64,6 @@ export function startWebsocket(setReady: (ready: boolean) => void) {
 
 export function socketReady() {
   return socket.readyState === WebSocket.OPEN;
-}
-
-export function setMessageHandlers(
-  email: ((email: string) => void) | null,
-  roleShip: ((role: ViewMode, ship: string | null) => void) | null,
-  authenticated: ((authenticated: boolean) => void) | null,
-  templates: ((templates: ShipDesignTemplates) => void) | null,
-  entities: ((entities: EntityList) => void) | null,
-  actions: ((actions: ActionType) => void) | null,
-  flightPath: ((plan: FlightPathResult) => void) | null,
-  effects: ((effects: Effect[]) => void) | null,
-  users: ((users: UserList) => void) | null,
-  scenarios: ((current_scenarios: [string, string][], templates: [string, MetaData][]) => void) | null,
-  joinedScenario: ((scenario: string) => void) | null,
-  tutorialMode: ((tutorialMode: boolean) => void) | null
-) {
-  if (email) {
-    setEmail = email;
-  }
-  if (roleShip) {
-    setRoleShip = roleShip;
-  }
-  if (authenticated) {
-    setAuthenticated = authenticated;
-  }
-  if (templates) {
-    setTemplates = templates;
-  }
-  if (entities) {
-    setEntities = entities;
-  }
-  if (actions) {
-    setActions = actions;
-  }
-  if (flightPath) {
-    setFlightPath = flightPath;
-  }
-  if (effects) {
-    setEffects = effects;
-  }
-  if (users) {
-    setUsers = users;
-  }
-  if (scenarios) {
-    setScenarios = scenarios;
-  }
-  if (joinedScenario) {
-    setJoinedScenario = joinedScenario;
-  }
-  if (tutorialMode) {
-    setTutorialMode = tutorialMode;
-  }
 }
 
 //
@@ -198,37 +108,37 @@ const handleMessage = (event: MessageEvent) => {
 
   if ("DesignTemplateResponse" in json) {
     const response = json.DesignTemplateResponse;
-    handleTemplates(response, setTemplates);
+    handleTemplates(response);
     return;
   }
 
   if ("EntityResponse" in json) {
     const response = json.EntityResponse;
-    handleEntities(response, setEntities, setActions);
+    handleEntities(response);
     return;
   }
 
   if ("FlightPath" in json) {
     const response = json.FlightPath;
-    handleFlightPath(response, setFlightPath);
+    handleFlightPath(response);
     return;
   }
 
   if ("Effects" in json) {
     const response = json.Effects;
-    handleEffect(response, setEffects);
+    handleEffect(response);
     return;
   }
 
   if ("Users" in json) {
     const response = json.Users;
-    handleUsers(response, setUsers);
+    handleUsers(response);
     return;
   }
 
   if ("Scenarios" in json) {
     const response = json.Scenarios;
-    handleScenarioList(response, setScenarios);
+    handleScenarioList(response);
     return;
   }
 
@@ -338,13 +248,13 @@ export function computeFlightPath(
   entity_name: string | null,
   end_pos: [number, number, number],
   end_vel: [number, number, number],
-  setProposedPlan: (plan: FlightPathResult | null) => void,
   target_vel: [number, number, number] | null = null,
   target_accel: [number, number, number] | null = null,
   standoff: number | null = null
 ) {
+
   if (entity_name == null) {
-    setProposedPlan(null);
+    store.dispatch(setProposedPlan(null));
     return;
   }
 
@@ -364,6 +274,7 @@ export function computeFlightPath(
     },
   };
 
+  console.log("(computeFlightPath) Sending flight path request: " + JSON.stringify(payload));
   socket.send(
     JSON.stringify(payload, (key, value) => {
       if (value !== null) {
@@ -418,15 +329,8 @@ export function logout() {
 //
 // Functions to handle incoming messages that are more complex than a few lines.
 //
-function handleTemplates(json: object, setTemplates: (templates: ShipDesignTemplates) => void) {
-  const templates: {[key: string]: ShipDesignTemplate} = {};
-
-  // First coerce the free-form json we receive into a formal templates object
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  Object.entries(json).forEach((entry: [string, any]) => {
-    const currentTemplate: ShipDesignTemplate = ShipDesignTemplate.parse(entry[1]);
-    templates[entry[0]] = currentTemplate;
-  });
+function handleTemplates(json: object) {
+  const templates = json as ShipDesignTemplates;
 
   // Output all the templates to the console.
   console.groupCollapsed("Received Templates: ");
@@ -434,15 +338,11 @@ function handleTemplates(json: object, setTemplates: (templates: ShipDesignTempl
     console.log(` ${v.name}`);
   }
   console.groupEnd();
-  setTemplates(templates);
+  store.dispatch(setTemplates(templates));
 }
 
-function handleEntities(
-  json: object,
-  setEntities: (entities: EntityList) => void,
-  setActions: (actions: ActionType) => void
-) {
-  const entities = EntityList.parse(json);
+function handleEntities(json: object) {
+  const entities = json as EntityList;
 
   // Convert all ship plans to G's from m/s^2
   entities.ships.forEach((ship) => {
@@ -469,11 +369,11 @@ function handleEntities(
   }
   console.groupEnd();
   console.groupEnd();
-  setEntities(entities);
+  store.dispatch(setEntities(entities));
   if (Object.hasOwn(json, "actions")) {
     const actions = (json as {actions: object[]}).actions;
     const parsed_actions = payloadToAction(actions);
-    setActions(parsed_actions);
+    store.dispatch(setActions(parsed_actions));
 
     console.groupCollapsed("Received Actions: ");
     console.log(JSON.stringify(actions));
@@ -481,12 +381,12 @@ function handleEntities(
   } else {
     console.log(JSON.stringify(json));
     console.groupEnd();
-    setActions({});
+    store.dispatch(setActions({}));
   }
 }
 
-function handleFlightPath(json: object, setProposedPlan: (plan: FlightPathResult) => void) {
-  const path = FlightPathResult.parse(json);
+function handleFlightPath(json: object) {
+  const path = json as FlightPath;
 
   // Convert all accelerations in FlightPath from m/s^2 to G's
   path.plan[0][0] = [path.plan[0][0][0] / G, path.plan[0][0][1] / G, path.plan[0][0][2] / G];
@@ -494,19 +394,18 @@ function handleFlightPath(json: object, setProposedPlan: (plan: FlightPathResult
     path.plan[1][0] = [path.plan[1][0][0] / G, path.plan[1][0][1] / G, path.plan[1][0][2] / G];
   }
 
-  setProposedPlan(path);
+  store.dispatch(setProposedPlan(path));
 }
 
-function handleEffect(json: object[], setEvents: (effects: Effect[]) => void) {
+function handleEffect(json: object[]) {
   console.groupCollapsed("Received Effects: ");
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
   console.groupEnd();
-  const effects = json.map((effect: object) => Effect.parse(effect));
-  setEvents(effects);
+  store.dispatch(setEvents(json as Event[]));
+  store.dispatch(setShowResults(true));
 }
 
-function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
-  console.log("(handleUsers) Received users: " + JSON.stringify(json));
+function handleUsers(json: [UserContext]) {
   const users: UserList = [];
   for (const user of json) {
     const c: UserContext = {} as UserContext;
@@ -515,23 +414,20 @@ function handleUsers(json: [UserContext], setUsers: (users: UserList) => void) {
     c.ship = user.ship;
     users.push(c);
   }
-  setUsers(users);
+  store.dispatch(setUsers(users));
 }
 
-function handleScenarioList(
-  json: {current_scenarios: [string, string][]; templates: [string, MetaData][]},
-  setScenarios: (current_scenarios: [string, string][], templates: [string, MetaData][]) => void
-) {
-  setScenarios(json.current_scenarios,json.templates);
+function handleScenarioList(json: {current_scenarios: [string, string][]; templates: [string, MetaData][]}) {
+  store.dispatch(setScenarios([json.current_scenarios,json.templates]));
 }
 
 function handleJoinedScenario(json: {JoinedScenario: string}) {
   const scenario = json["JoinedScenario"] as string;
   if (scenario) {
-    setJoinedScenario(scenario);
+    store.dispatch(setJoinedScenario(scenario));
     // check if 'scenario' starts with TUTORIAL_PREFIX
     if (scenario.startsWith(TUTORIAL_PREFIX)) {
-      setTutorialMode(true);
+      store.dispatch(setTutorialMode(true));
     }
   }
 }
@@ -539,19 +435,19 @@ function handleJoinedScenario(json: {JoinedScenario: string}) {
 function handleAuthenticated(json: {email: string | null, scenario: string | null, role: string | null, ship: string | null}): void {
   console.log("(handleAuthenticated) Received Authenticated: " + JSON.stringify(json));
   if (json.email != null) {
-    setEmail(json.email);
-    setAuthenticated(true);
+    store.dispatch(setEmail(json.email));
+    store.dispatch(setAuthenticated(true));
     if (json.scenario != null) {
-      setJoinedScenario(json.scenario);
+      store.dispatch(setJoinedScenario(json.scenario));
       if (json.scenario.startsWith(TUTORIAL_PREFIX)) {
-        setTutorialMode(true);
+        store.dispatch(setTutorialMode(true));
       }
     }
     if (json.role != null) {
-      setRoleShip(stringToViewMode(json.role)?? ViewMode.General, json.ship);
+      store.dispatch(setRoleShip([stringToViewMode(json.role)?? ViewMode.General, json.ship]));
     }
   } else {
-    setAuthenticated(false);
+    store.dispatch(setAuthenticated(false));
   }
 
 }

@@ -1,25 +1,29 @@
-import React, { useContext } from "react";
-import {
-  Entity,
-  EntitiesServerContext,
-  ViewContext,
-  ViewMode,
-} from "lib/universal";
+import * as React from "react";
+import {Entity} from "lib/entities";
+import {ViewMode} from "lib/view";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { requestRoleChoice } from "lib/serverManager";
+import { findShip } from "lib/entities";
+
+import { useAppSelector, useAppDispatch } from "state/hooks";
+import { setRoleShip } from "state/userSlice";
+import {entitiesSelector} from "state/serverSlice";
 
 export const RoleChooser = () => {
-  const viewContext = useContext(ViewContext);
-  const serverEntities = useContext(EntitiesServerContext);
+  const shipName = useAppSelector(state => state.user.shipName);
+  const role = useAppSelector(state => state.user.role);
+  const entities = useAppSelector(entitiesSelector);
+
+  const dispatch = useAppDispatch();
 
   return (
     <>
       <select
         className="select-dropdown control-name-input control-input role-input"
-        value={viewContext.role}
+        value={role}
         onChange={(e) => {
-          viewContext.setRole(Number(e.target.value));
-          requestRoleChoice(Number(e.target.value), viewContext.shipName);
+          dispatch(setRoleShip([Number(e.target.value), shipName]));
+          requestRoleChoice(Number(e.target.value), shipName);
         }}>
         <option value={ViewMode.General}>General</option>
         <option value={ViewMode.Pilot}>Pilot</option>
@@ -31,14 +35,10 @@ export const RoleChooser = () => {
         className="select-dropdown control-name-input control-input role-input"
         filter={[EntitySelectorType.Ship]}
         setChoice={(ship: Entity | null) => {
-          viewContext.setShipName(ship ? ship.name : null);
-          requestRoleChoice(viewContext.role, ship ? ship.name : null);
+          dispatch(setRoleShip([role, ship ? ship.name : null]));
+          requestRoleChoice(role, ship ? ship.name : null);
         }}
-        current={
-          serverEntities.entities.ships.find(
-            (s) => s.name === viewContext.shipName
-          ) ?? null
-        }
+        current={findShip(entities, shipName)}
       />
     </>
   );

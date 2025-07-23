@@ -1,5 +1,5 @@
-import React from "react";
-import { useContext, useRef } from "react";
+import * as React from "react";
+import { useRef } from "react";
 
 import { Group, Mesh, SphereGeometry } from "three";
 import {
@@ -17,18 +17,18 @@ import { Text } from "@react-three/drei";
 import { Line } from "lib/Util";
 
 import {
-  EntitiesServerContext,
-  FlightPathResult,
-  Ship as ShipType,
-  Missile as MissileType,
   SCALE,
   TURN_IN_SECONDS,
-  EntityToShowContext,
   RANGE_BANDS
-} from "../../lib/universal";
+} from "lib/universal";
+import { Ship as ShipType, Missile as MissileType} from "lib/entities";
+import { FlightPath } from "lib/flightPath";
 
-import { addVector, scaleVector, RangeSphere } from "../../lib/Util";
+import { addVector, scaleVector, RangeSphere } from "lib/Util";
 
+import { useAppSelector, useAppDispatch } from "state/hooks";
+import { setEntityToShow, setComputerShipName } from "state/uiSlice";
+import {entitiesSelector} from "state/serverSlice";
 
 extend({ TextGeometry });
 
@@ -54,10 +54,11 @@ new FontLoader().load(
 function Ship(args: {
   ship: ShipType;
   index: number;
-  setComputerShipName: (ship_name: string | null) => void;
-  showRange: string | null;
 }) {
-  const entityToShow = useContext(EntityToShowContext);
+  const computerShipName = useAppSelector(state => state.ui.computerShipName);
+  const showRange = useAppSelector(state => state.ui.showRange) === computerShipName;
+  const dispatch = useAppDispatch();
+
   const { camera } = useThree();
   const textRef = useRef<Mesh>(null);
   const shipRef = useRef<Mesh>(null);
@@ -68,14 +69,12 @@ function Ship(args: {
     textRef.current?.lookAt(camera.position);
   });
   function handleShipClick() {
-    args.setComputerShipName(args.ship.name);
+    dispatch(setComputerShipName(args.ship.name));
   }
-
-  const showRange = args.showRange && args.showRange === args.ship.name;
 
   return (
     <>
-      {showRange && RANGE_BANDS.map(
+      {computerShipName && showRange && RANGE_BANDS.map(
           (distance, index) => (
               <RangeSphere
                 pos={scaleVector(args.ship.position, SCALE)}
@@ -101,8 +100,8 @@ function Ship(args: {
         <mesh
           ref={shipRef}
           position={[0, 0, 0]}
-          onPointerOver={() => entityToShow.setEntityToShow(args.ship)}
-          onPointerLeave={() => entityToShow.setEntityToShow(null)}
+          onPointerOver={() => dispatch(setEntityToShow(args.ship))}
+          onPointerLeave={() => dispatch(setEntityToShow(null))}
           onClick={handleShipClick}>
           <sphereGeometry ref={shipGeoRef} args={[0.2]} />
           <meshBasicMaterial color={[3, 3, 8.0]} />
@@ -142,20 +141,16 @@ function Ship(args: {
   );
 }
 
-export function Ships(args: {
-  setComputerShipName: (ship_name: string | null) => void;
-  showRange: string | null;
-}) {
-  const serverEntities = useContext(EntitiesServerContext);
+export function Ships() {
+  const entities = useAppSelector(entitiesSelector);
+
   return (
     <>
-      {serverEntities.entities.ships.map((ship, index) => (
+      {entities.ships.map((ship, index) => (
         <Ship
           key={ship.name}
           ship={ship}
           index={index}
-          setComputerShipName={args.setComputerShipName}
-          showRange={args.showRange}
         />
       ))}
     </>
@@ -163,8 +158,8 @@ export function Ships(args: {
 }
 
 export function Missile(args: { missile: MissileType; index: number }) {
-  const entityToShow = useContext(EntityToShowContext);
   const labelRef = useRef<Group>(null);
+  const dispatch = useAppDispatch();
 
   return (
     <>
@@ -182,8 +177,8 @@ export function Missile(args: { missile: MissileType; index: number }) {
         position={scaleVector(args.missile.position, SCALE) as Vector3}>
         <mesh
           position={[0, 0, 0]}
-          onPointerOver={() => entityToShow.setEntityToShow(args.missile)}
-          onPointerLeave={() => entityToShow.setEntityToShow(null)}>
+          onPointerOver={() => dispatch(setEntityToShow(args.missile))}
+          onPointerLeave={() => dispatch(setEntityToShow(null))}>
           <sphereGeometry args={[0.1]} />
           <meshBasicMaterial color={[8.0, 0, 0]} />
         </mesh>
@@ -214,18 +209,18 @@ export function Missile(args: { missile: MissileType; index: number }) {
 }
 
 export function Missiles() {
-  const serverEntities = useContext(EntitiesServerContext);
+  const entities = useAppSelector(entitiesSelector);
 
   return (
     <>
-      {serverEntities.entities.missiles.map((missile, index) => (
+      {entities.missiles.map((missile, index) => (
         <Missile key={missile.name} missile={missile} index={index} />
       ))}
     </>
   );
 }
 
-export function Route(args: { plan: FlightPathResult }) {
+export function Route(args: { plan: FlightPath }) {
   const start = scaleVector(args.plan.path[0], -1.0 * SCALE);
   let prev = args.plan.path[0];
   const path = args.plan.path.slice(1);

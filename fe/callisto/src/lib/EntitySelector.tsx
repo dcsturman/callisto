@@ -1,7 +1,9 @@
 import * as React from "react";
-import { useContext, useMemo } from "react";
-import { Entity } from "./universal";
-import { EntitiesServerContext } from "./universal";
+import { useMemo } from "react";
+import { Entity } from "./entities";
+
+import {useAppSelector} from "state/hooks";
+import {entitiesSelector} from "state/serverSlice";
 
 export enum EntitySelectorType {
   Ship,
@@ -27,7 +29,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   formatter,
   ...props
 }) => {
-  const entities = useContext(EntitiesServerContext).entities;
+  const entities = useAppSelector(entitiesSelector);
 
   const currentEntity: Entity | null = useMemo(() => {
     if (current == null) {

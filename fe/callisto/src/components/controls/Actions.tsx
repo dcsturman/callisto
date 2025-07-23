@@ -1,7 +1,3 @@
-import React, {useContext, createContext} from "react";
-import {EntitiesServerContext} from "lib/universal";
-import {updateActions} from "lib/serverManager";
-
 export type ActionType = {
   [actor: string]: {
     sensor: SensorState;
@@ -12,36 +8,7 @@ export type ActionType = {
   };
 };
 
-// A context that allows access to and manipulations of actions. While accessing actions is
-// relatively straightforward, writing to this structure is tricky we include a number of different
-// fields on the context to make this more straightforward.
-export const ActionContext = createContext<{
-  actions: ActionType;
-  setActions: (actions: ActionType) => void;
-  setSensorAction: (shipName: string, action: SensorState) => void;
-  fireWeapon: (
-    shipName: string,
-    weapon_id: number,
-    target: string,
-    called_shot_system?: string
-  ) => void;
-  updateFireCalledShot: (shipName: string, index: number, system: string | null) => void;
-  unfireWeapon: (shipName: string, weapon_id: number) => void;
-  pointDefenseWeapon: (shipName: string, weapon_id: number) => void;
-  attemptJump: (shipName: string) => void;
-}>({
-  actions: {},
-  setActions: () => {},
-  setSensorAction: () => {},
-  fireWeapon: () => {},
-  updateFireCalledShot: () => {},
-  unfireWeapon: () => {},
-  pointDefenseWeapon: () => {},
-  attemptJump: () => {},
-});
-
-const ActionContextProvider = ActionContext.Provider;
-
+// All the different action types.
 export type FireAction = {
   target: string;
   weapon_id: number;
@@ -77,121 +44,14 @@ export enum SensorAction {
 
 export type SensorActionMsg = {[key: string]: SensorState};
 
+// Sensor utilities
 export const DEFAULT_SENSOR_STATE = {action: SensorAction.None, target: ""};
 
 export function newSensorState(action: SensorAction, target: string) {
   return {action: action, target: target};
 }
 
-type ActionsContextComponentProps =  {
-  actions: ActionType;
-  setActions: (actions: ActionType) => void;
-}
-
-export const ActionsContextComponent: React.FC<React.PropsWithChildren<ActionsContextComponentProps>> = ({actions, setActions, children}) => {
-  const serverEntities = useContext(EntitiesServerContext);
-
-  const setSensorAction = (shipName: string, action: SensorState) => {
-    const next = {
-      ...actions,
-      [shipName]: {...actions[shipName], sensor: action},
-    };
-    setActions(next);
-    updateActions(next);
-  };
-
-  const fireWeapon = (
-    shipName: string,
-    weapon_id: number,
-    target: string,
-    called_shot_system?: string
-  ) => {
-    // First validate shipName and target to be real ships.
-    if (!serverEntities.entities.ships.find((ship) => ship.name === shipName)) {
-      console.error("(Actions.fireWeapon) No such ship " + shipName + ".");
-      return;
-    }
-
-    if (!serverEntities.entities.ships.find((ship) => ship.name === target)) {
-      console.error("(Actions.fireWeapon) No such target " + target + ".");
-      return;
-    }
-
-    const new_action: FireAction = {
-      target: target,
-      weapon_id: weapon_id,
-      called_shot_system: called_shot_system ?? null,
-    };
-    const next = {
-      ...actions,
-      [shipName]: {
-        ...actions[shipName],
-        fire: [...actions[shipName]?.fire??[], new_action],
-      },
-    };
-    setActions(next);
-    updateActions(next);
-  };
-
-  const updateFireCalledShot = (shipName: string, index: number, system: string | null) => {
-    actions[shipName].fire[index].called_shot_system = system;
-    setActions(actions);
-    updateActions(actions);
-  };
-
-  const unfireWeapon = (shipName: string, weapon_id: number) => {
-    const new_action: UnfireAction = {weapon_id: weapon_id};
-    const next = {
-      ...actions,
-      [shipName]: {
-        ...actions[shipName],
-        unfire: [...actions[shipName]?.unfire??[], new_action],
-      },
-    };
-    setActions(next);
-    updateActions(next);
-  };
-
-  const pointDefenseWeapon = (shipName: string, weapon_id: number) => {
-    const new_action: PointDefenseAction = {weapon_id: weapon_id};
-
-    const next = {
-      ...actions,
-      [shipName]: {
-        ...actions[shipName],
-        pointDefense: [...actions[shipName]?.pointDefense??[], new_action],
-      },
-    };
-    setActions(next);
-    updateActions(next);
-  };
-
-  const attemptJump = (shipName: string) => {
-    const next = {
-      ...actions,
-      [shipName]: {...actions[shipName], jump: true},
-    };
-    setActions(next);
-    updateActions(next);
-  };
-
-  return (
-    <ActionContextProvider
-      value={{
-        actions,
-        setActions,
-        setSensorAction,
-        fireWeapon,
-        updateFireCalledShot,
-        unfireWeapon,
-        pointDefenseWeapon,
-        attemptJump,
-      }}>
-      {children}
-    </ActionContextProvider>
-  );
-};
-
+// Marshalling/d-marshalling utilities
 export function actionPayload(actions: ActionType) {
   return Object.entries(actions).map(([key, value]) => {
     let fire_actions: (object | string)[] = value.fire

@@ -1,16 +1,12 @@
-import React, {useContext, useState, useMemo, useEffect} from "react";
+import * as React from "react";
+import {useMemo, useState, useEffect} from "react";
 import {findRangeBand} from "lib/Util";
-import {
-  Entity,
-  ShipDesignTemplate,
-  WeaponMount,
-  EntitiesServerContext,
-  DesignTemplatesContext,
-  Ship,
-  SHIP_SYSTEMS,
-} from "lib/universal";
+import {SHIP_SYSTEMS} from "lib/universal";
+import {Ship, Entity, findShip} from "lib/entities";
+import {ShipDesignTemplate, compressedWeaponsFromTemplate, getWeaponName, findNthWeapon} from "lib/shipDesignTemplates";
+import {WeaponMount} from "lib/weapon";
 import {EntitySelector, EntitySelectorType} from "lib/EntitySelector";
-import {FireState, ActionContext, PointDefenseState} from "components/controls/Actions";
+import {FireState, PointDefenseState} from "components/controls/Actions";
 
 // Icons for each type of weapon
 import {ReactComponent as Turret1} from "assets/icons/turret1.svg";
@@ -26,6 +22,11 @@ import {ReactComponent as RayIcon} from "assets/icons/laser.svg";
 import {ReactComponent as MissileIcon} from "assets/icons/missile.svg";
 import {Tooltip} from "react-tooltip";
 import {vectorDistance} from "lib/Util";
+
+// State operators
+import {useAppSelector, useAppDispatch} from "state/hooks";
+import {pointDefenseWeapon, fireWeapon, unfireWeapon, updateFireCalledShot} from "state/actionsSlice";
+import {entitiesSelector} from "state/serverSlice";
 
 // Consistent set of colors for both type of weapons and fire states.
 const WEAPON_COLORS: {[key: string]: string} = {
@@ -262,34 +263,36 @@ function CalledShotMenu(args: {
   );
 }
 
-type FireControlProps = {
-  computerShip: Ship;
-};
+type FireControlProps = unknown;
 
-export const FireControl: React.FC<FireControlProps> = ({computerShip}) => {
-  const actionContext = useContext(ActionContext);
-  const designs = useContext(DesignTemplatesContext);
+export const FireControl: React.FC<FireControlProps> = () => {
+  const computerShipName = useAppSelector(state => state.ui.computerShipName);
+  const entities = useAppSelector(entitiesSelector);
+  const shipTemplates = useAppSelector(state => state.server.templates);
+  const actions = useAppSelector(state => state.actions);
+  const computerShip = useMemo(() => findShip(entities, computerShipName),[computerShipName, entities]);
+  const computerShipDesign = useMemo(() => computerShip ? shipTemplates[computerShip.design] : null,[shipTemplates, computerShip]);
+  const dispatch = useAppDispatch();
 
   const weaponDetails = useMemo(() => {
-    return designs.templates[computerShip.design].compressedWeapons();
-  }, [computerShip.design, designs.templates]);
+    return compressedWeaponsFromTemplate(computerShipDesign);
+  }, [computerShipDesign]);
 
   const availableCounts = useMemo(() => {
     const counts = {} as {[key: string]: number};
-    const design = designs.templates[computerShip.design];
     // Count up all the actions by weapon
-    if (actionContext.actions[computerShip.name]?.fire) {
-      for (const action of actionContext.actions[computerShip.name].fire) {
-        counts[design.getWeaponName(action.weapon_id)] =
-          (counts[design.getWeaponName(action.weapon_id)] || 0) + 1;
+    if (computerShipDesign && actions[computerShipName!]?.fire) {
+      for (const action of actions[computerShipName!].fire) {
+        counts[getWeaponName(computerShipDesign, action.weapon_id)] =
+          (counts[getWeaponName(computerShipDesign, action.weapon_id)] || 0) + 1;
       }
     }
 
     // Count up all the actions in point defense
-    if (actionContext.actions[computerShip.name]?.pointDefense) {
-      for (const action of actionContext.actions[computerShip.name].pointDefense) {
-        counts[design.getWeaponName(action.weapon_id)] =
-          (counts[design.getWeaponName(action.weapon_id)] || 0) + 1;
+    if (computerShipDesign && actions[computerShipName!]?.pointDefense) {
+      for (const action of actions[computerShipName!].pointDefense) {
+        counts[getWeaponName(computerShipDesign, action.weapon_id)] =
+          (counts[getWeaponName(computerShipDesign, action.weapon_id)] || 0) + 1;
       }
     }
 
@@ -299,31 +302,31 @@ export const FireControl: React.FC<FireControlProps> = ({computerShip}) => {
       available[weapon] = weaponDetails[weapon].total - (counts[weapon] || 0);
     }
     return available;
-  }, [actionContext, computerShip.name, computerShip.design, weaponDetails, designs]);
+  }, [computerShipName, computerShipDesign, weaponDetails, actions]);
 
   const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
   useEffect(() => {
-    if (computerShip.name === fireTarget?.name) {
+    if (computerShipName === fireTarget?.name) {
       setFireTarget(null);
     }
-  }, [computerShip, fireTarget]);
+  }, [computerShipName, fireTarget]);
 
   const POINT_DEFENSE_NAME = "<Point Defense>";
-  const POINT_DEFENSE_PHANTOM = new Entity(POINT_DEFENSE_NAME, [0, 0, 0], [0, 0, 0]);
+  const POINT_DEFENSE_PHANTOM = { name: POINT_DEFENSE_NAME, position: [0, 0, 0], velocity: [0, 0, 0]} as Entity;
 
   function isPointDefense(entity: Entity): boolean {
     return entity.name === POINT_DEFENSE_NAME;
   }
 
   function handleFireCommand(attacker: string, target: string, weapon_name: string) {
-    const computerShipDesign = designs.templates[computerShip.design];
     if (!computerShipDesign) {
       console.error("(Controls.handleFireCommand) No computer ship design for " + attacker + ".");
       return;
     }
 
-    const weapon_id = computerShipDesign.findNthWeapon(
+    const weapon_id = findNthWeapon(
+      computerShipDesign,
       weapon_name,
       weaponDetails[weapon_name].total - availableCounts[weapon_name] + 1
     );
@@ -339,9 +342,9 @@ export const FireControl: React.FC<FireControlProps> = ({computerShip}) => {
     }
 
     if (target === POINT_DEFENSE_NAME) {
-      actionContext.pointDefenseWeapon(attacker, weapon_id);
+      dispatch(pointDefenseWeapon({shipName: attacker, weapon_id: weapon_id}));
     } else {
-      actionContext.fireWeapon(attacker, weapon_id, target);
+      dispatch(fireWeapon({shipName: attacker, weapon_id: weapon_id, target: target, entities: entities}));
     }
   }
 
@@ -354,7 +357,7 @@ export const FireControl: React.FC<FireControlProps> = ({computerShip}) => {
           filter={[EntitySelectorType.Ship]}
           setChoice={setFireTarget}
           current={fireTarget}
-          exclude={computerShip.name}
+          exclude={computerShipName!}
           extra={POINT_DEFENSE_PHANTOM}
           formatter={(name, entity) => {
             if (computerShip) {
@@ -368,17 +371,17 @@ export const FireControl: React.FC<FireControlProps> = ({computerShip}) => {
         />
       </div>
       <div className="weapon-list">
-        {Object.entries(designs.templates[computerShip.design].compressedWeapons()).map(
+        {computerShipName && Object.entries(compressedWeaponsFromTemplate(computerShipDesign)).map(
           ([weapon_name, weapon]) =>
             !weapon_name.includes("Sand") && (
               <WeaponButton
-                key={"weapon-" + computerShip.name + "-" + weapon_name}
+                key={"weapon-" + computerShipName + "-" + weapon_name}
                 weapon={weapon.kind}
                 mount={weapon.mount}
                 count={availableCounts[weapon_name]}
                 onClick={() => {
                   handleFireCommand(
-                    computerShip.name,
+                    computerShipName,
                     fireTarget ? fireTarget.name : "",
                     weapon_name
                   );
@@ -402,17 +405,15 @@ export function FireActions(args: {
   fireActions: FireState;
   pointDefenseActions: PointDefenseState;
   design: ShipDesignTemplate;
-  computerShipName: string;
 }) {
-  const serverEntities = useContext(EntitiesServerContext);
-  const actionsContext = useContext(ActionContext);
+  const entities = useAppSelector(entitiesSelector);
+  const computerShipName = useAppSelector(state => state.ui.computerShipName);
+  const dispatch = useAppDispatch();
 
-  const computerShip = serverEntities.entities.ships.find(
-    (ship) => ship.name === args.computerShipName
-  );
+  const computerShip = useMemo(() => findShip(entities, computerShipName),[computerShipName, entities]);
 
   const onClick = (weapon_id: number) => {
-    actionsContext.unfireWeapon(args.computerShipName, weapon_id);
+    dispatch(unfireWeapon({shipName: computerShipName!, weapon_id: weapon_id}));
   };
 
   return (
@@ -478,10 +479,10 @@ export function FireActions(args: {
             </div>
             <CalledShotMenu
               attacker={computerShip!}
-              target={serverEntities.entities.ships.find((ship) => ship.name === action.target)!}
+              target={findShip(entities, action.target)!}
               calledShot={action.called_shot_system}
               setCalledShot={(system) =>
-                actionsContext.updateFireCalledShot(args.computerShipName, index, system)
+                dispatch(updateFireCalledShot({shipName: computerShipName!, index: index, system: system}))
               }
             />
           </div>

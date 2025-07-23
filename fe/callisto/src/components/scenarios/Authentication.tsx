@@ -6,11 +6,12 @@ import {
   CodeResponse,
 } from "@react-oauth/google";
 import { login, logout } from "lib/serverManager";
+import { setEmail } from "state/userSlice";
+import { setAuthenticated } from "state/serverSlice";
 
-export function Authentication(args: {
-  setAuthenticated: (authenticated: boolean) => void;
-  setEmail: (email: string | null) => void;
-}) {
+import { useAppDispatch, useAppSelector } from "state/hooks";
+
+export function Authentication() {
   const [googleAuthResponse, setGoogleAuthResponse] = useState<CodeResponse | null>(null);
   const [secureState, setSecureState] = useState<string | undefined>();
 
@@ -72,7 +73,7 @@ export function Authentication(args: {
 
       loginToCallisto();
     }
-  }, [args, googleAuthResponse, secureState]);
+  }, [googleAuthResponse, secureState]);
 
   return (
     <div className="authentication-container">
@@ -123,21 +124,20 @@ export function Authentication(args: {
   );
 }
 
-export function Logout(args: {
-  setAuthenticated: (authenticated: boolean) => void;
-  email: string | null;
-  setEmail: (email: string | null) => void;
-}) {
+export function Logout() {
+  const email = useAppSelector(state => state.user.email);
+  const dispatch = useAppDispatch();
+
   const logOut = () => {
     googleLogout();
+    dispatch(setAuthenticated(false));
+    dispatch(setEmail(null));
 
-    args.setAuthenticated(false);
-    args.setEmail(null);
     logout();
     console.log("(Authentication.Logout)Logged out");
   };
 
-  const username = args.email ? args.email.split("@")[0] : "";
+  const username = email ? email.split("@")[0] : "";
   return (
     <div className="logout-window">
       <button className="blue-button logout-button" onClick={logOut}>

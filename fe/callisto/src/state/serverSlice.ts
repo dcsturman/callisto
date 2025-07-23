@@ -1,7 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { EntityList, ShipDesignTemplates, MetaData } from 'lib/universal';
+import { ShipDesignTemplates } from 'lib/shipDesignTemplates';
+import { EntityList, MetaData, defaultEntityList } from 'lib/entities';
 import { UserList } from 'components/UserList';
-import { ActionType } from 'components/controls/Actions';
 
 export interface ServerState {
     authenticated: boolean;
@@ -9,7 +9,6 @@ export interface ServerState {
     entities: EntityList;
     templates: ShipDesignTemplates;
     users: UserList;
-    actions: ActionType;
     activeScenarios: [string, string][];
     scenarioTemplates: [string, MetaData][];
 }
@@ -17,10 +16,9 @@ export interface ServerState {
 const initialState: ServerState  = {
     authenticated: false,
     socketReady: false,
-    entities: new EntityList(),
+    entities: defaultEntityList(),
     templates: {},
     users: [],
-    actions: {},
     activeScenarios: [],
     scenarioTemplates: [],
 }
@@ -45,18 +43,16 @@ export const serverSlice = createSlice({
     setUsers: (state, action: PayloadAction<UserList>) => {
         state.users = action.payload;
     },
-    setActions: (state, action: PayloadAction<ActionType>) => {
-        state.actions = action.payload;
-    },
-    setActiveScenarios: (state, action: PayloadAction<[string, string][]> ) => {
-        state.activeScenarios = action.payload;
-    },
-    setScenarioTemplates: (state, action: PayloadAction<[string, MetaData][]> ) => {
-        state.scenarioTemplates = action.payload;
+    setScenarios: (state, action: PayloadAction<[[string, string][], [string, MetaData][]]> ) => {
+        state.activeScenarios = action.payload[0];
+        state.scenarioTemplates = action.payload[1];
     },
   }
 });
 
-export const { setAuthenticated, setSocketReady, setEntities, setTemplates, setUsers, setActions, setActiveScenarios, setScenarioTemplates } = serverSlice.actions;
+export const entitiesSelector = (state: { server: ServerState }) => state.server.entities;
+export const templatesSelector = (state: { server: ServerState }) => state.server.templates;
+
+export const { setAuthenticated, setSocketReady, setEntities, setTemplates, setUsers, setScenarios } = serverSlice.actions;
 
 export default serverSlice.reducer;

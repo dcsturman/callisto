@@ -1,5 +1,7 @@
-import React from "react";
+import * as React from "react";
 import ReactDOM from "react-dom/client";
+import { Provider } from "react-redux";
+import { store } from "./state/store";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import "./index.css";
 import { GOOGLE_OAUTH_CLIENT_ID, App } from "./App";
@@ -22,11 +24,14 @@ if (process.env.REACT_APP_CALLISTO_BACKEND) {
 
 console.log("Running on " + window.location.href);
 console.groupEnd();
+console.log("(index.tsx) store = " + JSON.stringify(store));
 
 root.render(
   <GoogleOAuthProvider clientId={GOOGLE_OAUTH_CLIENT_ID}>
     <React.StrictMode>
-      <App />
+      <Provider store={store}>
+        <App />
+      </Provider>
     </React.StrictMode>
   </GoogleOAuthProvider>
 );
