@@ -29,7 +29,7 @@ import {Tutorial} from "components/Tutorial";
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {setTutorialMode} from "state/tutorialSlice";
 import {setJoinedScenario, setRoleShip} from "state/userSlice";
-import {setCameraPos} from "state/uiSlice";
+import {setCameraPos, setCameraQuaternion} from "state/uiSlice";
 import {entitiesSelector} from "state/serverSlice";
 
 import "./index.css";
@@ -41,7 +41,7 @@ export function App() {
   const socketReady = useAppSelector((state) => state.server.socketReady);
   const authenticated = useAppSelector((state) => state.server.authenticated);
   const joinedScenario = useAppSelector((state) => state.user.joinedScenario);
-  
+
   const dispatch = useAppDispatch();
 
 
@@ -99,8 +99,18 @@ function Simulator() {
   const showResults = useAppSelector((state) => state.ui.showResults);
   const events = useAppSelector((state) => state.ui.events);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
+  const cameraPos = useAppSelector((state) => state.ui.cameraPos);
+  const cameraQuaternion = useAppSelector((state) => state.ui.cameraQuaternion);
 
   const [camera, setCamera] = useState<THREE.Camera | null>(null);
+
+
+  useEffect(() => {
+    if (camera) {
+      camera.position.set(cameraPos[0], cameraPos[1], cameraPos[2]);
+      camera.quaternion.set(cameraQuaternion[0], cameraQuaternion[1], cameraQuaternion[2], cameraQuaternion[3]);
+    }
+  }, [camera,cameraPos, cameraQuaternion]);
 
   // const [stepIndex, setStepIndex] = useState(0);
   // const [runTutorial, setRunTutorial] = useState<boolean>(true);
@@ -179,7 +189,8 @@ function Simulator() {
             fov: 75,
             near: 0.0001,
             far: 200000,
-            position: [-100, 0, 0],
+            position: cameraPos,
+            quaternion: cameraQuaternion,
           }}>
           {/* eslint-disable react/no-unknown-property */}
           <pointLight position={[-148e3, 10, 10]} intensity={6.0} decay={0.01} color="#fff7cd" />
@@ -213,7 +224,6 @@ function GrabCamera(args: {setCamera: (camera: THREE.Camera) => void}) {
   const {camera} = useThree();
   useEffect(() => {
     args.setCamera(camera);
-    dispatch(setCameraPos({x: camera.position.x, y: camera.position.y, z: camera.position.z}));
   },[camera,args.setCamera]);
 
   return null;

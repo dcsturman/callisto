@@ -2,6 +2,9 @@ import * as React from "react";
 import {useEffect} from "react";
 import {Camera, Quaternion, Vector3} from "three";
 
+import {useAppDispatch} from "state/hooks";
+import {setCameraPos, setCameraQuaternion} from "state/uiSlice";
+
 type FlyControlsProps = {
   containerName: string;
   camera: Camera;
@@ -19,7 +22,10 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
   movementSpeed,
   rollSpeed,
 }) => {
-  const EPS = 0.000001;
+  const EPS_POS = 1;
+  const EPS_QUAT = 0.03;
+
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     const NO_MOVE = {
@@ -41,8 +47,6 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     let movementSpeedMultiplier = 1;
 
     let previousTime = 0;
-    let lastPosition = new Vector3();
-    let lastQuaternion = new Quaternion();
 
     const generateMovementVector = (): Vector3 => {
       const forward = moveState.forward || (autoForward && !moveState.back) ? 1 : 0;
@@ -66,13 +70,13 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       const delta = (lastTime - previousTime) / 1000;
       previousTime = lastTime;
 
+      const lastPosition = new Vector3();
+      lastPosition.copy(camera.position);
+      const lastQuaternion = new Quaternion();
+      lastQuaternion.copy(camera.quaternion);
+
       const moveMultiplier = delta * movementSpeed * movementSpeedMultiplier;
       const rotationMultiplier = delta * rollSpeed;
-
-      if (!camera) {
-        console.error("(FlyControls)Missing Camera in controls.");
-        return;
-      }
 
       const moveVector = generateMovementVector();
       const rotationVector = generateRotationalVector();
@@ -92,17 +96,13 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
         .normalize();
       camera.quaternion.multiply(tmpQuaternion);
 
-      //? what does this do
-      if (
-        lastPosition.distanceToSquared(camera.position) > EPS ||
-        8 * (1 - lastQuaternion.dot(camera.quaternion)) > EPS
-      ) {
-        //dispatchEvent(changeEvent);
-        lastQuaternion = camera.quaternion;
-        lastPosition = camera.position;
+      // Only log the new position if there's been a real change.
+      const angleDiff = Math.abs(lastQuaternion.angleTo(camera.quaternion));
+      if (lastPosition.distanceToSquared(camera.position) > EPS_POS || angleDiff > EPS_QUAT) {
+        dispatch(setCameraPos({x: camera.position.x, y: camera.position.y, z: camera.position.z}));
+        dispatch(setCameraQuaternion([camera.quaternion.x, camera.quaternion.y, camera.quaternion.z, camera.quaternion.w]));
       }
-
-      //? Do I need this
+      // Rerun this routine every frame
       requestAnimationFrame(update);
     };
 

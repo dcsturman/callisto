@@ -3,12 +3,15 @@ import { FlightPath } from "lib/flightPath";
 import { Entity } from 'lib/entities';
 import { Event } from 'components/space/Effects';
 
+const INITIAL_QUATERNION: [number, number, number, number] = [0, 0.7071, 0, -0.7071];
+
 export interface UISlice {
     entityToShow: Entity | null;
     proposedPlan: FlightPath | null;
     showResults: boolean;
     events: Event[] | null;
     cameraPos: [number, number, number];
+    cameraQuaternion: [number, number, number, number];
     gravityWells: boolean;
     jumpDistance: boolean;
     showRange: string | null;
@@ -21,6 +24,7 @@ const initialState: UISlice  = {
     showResults: false,
     events: null,
     cameraPos: [-100, 0, 0],
+    cameraQuaternion: INITIAL_QUATERNION,
     gravityWells: false,
     jumpDistance: false,
     showRange: null,
@@ -47,6 +51,9 @@ export const uiSlice = createSlice({
     setCameraPos: (state, action: PayloadAction<{x: number, y: number, z: number}>) => {
         state.cameraPos = [action.payload.x, action.payload.y, action.payload.z];
     },
+    setCameraQuaternion: (state, action: PayloadAction<[number, number, number, number]>) => {
+        state.cameraQuaternion = [action.payload[0], action.payload[1], action.payload[2], action.payload[3]];
+    },
     setGravityWells: (state, action: PayloadAction<boolean>) => { state.gravityWells = action.payload },
     setJumpDistance: (state, action: PayloadAction<boolean>) => { state.jumpDistance = action.payload },
     setShowRange: (state, action: PayloadAction<string | null>) => {
@@ -59,6 +66,6 @@ export const uiSlice = createSlice({
   }
 });
 
-export const { setEntityToShow, setProposedPlan, setShowResults, setEvents, setCameraPos, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setProposedPlan, setShowResults, setEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;
