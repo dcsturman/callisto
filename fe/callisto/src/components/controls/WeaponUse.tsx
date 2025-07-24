@@ -229,9 +229,12 @@ function CalledShotMenu(args: {
   calledShot: string | null;
   setCalledShot: (system: string | null) => void;
 }) {
-  const range = findRangeBand(vectorDistance(args.attacker.position, args.target.position));
-
   const [system, setSystem] = useState<string | null>(args.calledShot);
+
+  if (!args.attacker || !args.target) {
+    return <></>;
+  }
+  const range = findRangeBand(vectorDistance(args.attacker.position, args.target.position));
 
   if (range !== "Short") {
     return <></>;

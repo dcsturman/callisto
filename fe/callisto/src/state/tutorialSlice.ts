@@ -2,13 +2,11 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 export interface TutorialState {
     tutorialMode: boolean;
-    runTutorial: boolean;
     stepIndex: number;
 }
 
 const initialState: TutorialState  = {
     tutorialMode: false,
-    runTutorial: false,
     stepIndex: 0,
 }
 
@@ -20,9 +18,6 @@ export const tutorialSlice = createSlice({
     setTutorialMode: (state, action: PayloadAction<boolean>) => {
         state.tutorialMode = action.payload;
     },
-    setRunTutorial: (state, action: PayloadAction<boolean>) => {
-        state.runTutorial = action.payload;
-    },
     increment: state => {
         state.stepIndex++;
     },
@@ -31,10 +26,12 @@ export const tutorialSlice = createSlice({
     },
     reset: state => {
         state.stepIndex = 0;
-    }
+    },
+    resetServer: () => initialState,
   }
 });
 
-export const { setTutorialMode, setRunTutorial, increment, decrement, reset } = tutorialSlice.actions;
+export type TutorialReducer = ReturnType<typeof tutorialSlice.reducer>;
+export const { setTutorialMode, increment, decrement, reset, resetServer } = tutorialSlice.actions;
 
 export default tutorialSlice.reducer;

@@ -9,11 +9,9 @@ import Joyride, {
   Status,
   Step,
 } from "react-joyride";
-import { ViewMode } from "lib/view";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
-import { setRoleShip } from "state/userSlice";
-import { setRunTutorial, increment, decrement, reset } from "state/tutorialSlice";
+import { setTutorialMode, increment, decrement, reset } from "state/tutorialSlice";
 
 const steps: Step[] = [
   {
@@ -37,7 +35,7 @@ const steps: Step[] = [
         <br />
         <br />
         In this tutorial, information is shown in white text as you see here.  Instructions you are to follow are shown &nbsp;
-        <text className="tutorial-instruction-text">in red text like this.</text>
+        <p className="tutorial-instruction-text">in red text like this.</p>
       </div>,
     placement: "center",
   },
@@ -223,7 +221,7 @@ const steps: Step[] = [
     target: ".mainscreen-container",
     content: (
       <span>
-        Beowolf is now visible on our screen. You can see the red line showing
+        <em>Beowolf</em> is now visible on our screen. You can see the red line showing
         its velocity vector.
         <p className="tutorial-instruction-text">
           Hover over the white glowing dot representing <em>Beowolf</em> to see
@@ -298,8 +296,8 @@ const steps: Step[] = [
     target: "#fire-target",
     content: (
       <span>
-       Distant range will out of the range of our <em>Particle Barbette</em>&nbsp;
-       so lets get closer before we engage!
+       Now lets get that <em>Particle Barbette</em>&nbsp;
+       in range!
       </span>
     ),
     placement: "top",
@@ -330,7 +328,7 @@ const steps: Step[] = [
         Now that we have a plan we need to assign the plan to <em>Killer</em> by selecting the &apos;Assign Plan&apos; button.
         </p>
       </span>,
-    placement: "right",
+    placement: "top",
   },
   {
     target: "#current-plan-heading", 
@@ -416,8 +414,8 @@ const steps: Step[] = [
 const TUTORIAL_SCENARIO = "gs://callisto-scenarios/tutorial.json";
 
 export function Tutorial() {
-  const runTutorial = useAppSelector(state => state.tutorial.runTutorial);
   const stepIndex = useAppSelector(state => state.tutorial.stepIndex);
+  const tutorialMode = useAppSelector(state => state.tutorial.tutorialMode);
 
   const dispatch = useAppDispatch();
 
@@ -428,12 +426,11 @@ export function Tutorial() {
     console.log("Joyride callback data:", data);
     console.log("index = ", index);
     console.log("stepIndex = ", stepIndex);
-    console.log("runTutorial = " + runTutorial);
     console.groupEnd();
 
     if (action === ACTIONS.START) {
-      dispatch(reset());
-      dispatch(setRoleShip([ViewMode.General, null]));
+      //dispatch(reset());
+      //dispatch(setRoleShip([ViewMode.General, null]));
     } else if (action === ACTIONS.RESET) {
       dispatch(reset());
     }
@@ -453,9 +450,7 @@ export function Tutorial() {
       }
     } else if (([STATUS.FINISHED] as Status[]).includes(status)) {
       // You need to set our running state to false, so we can restart if we click start again.
-      console.log("(Tutorial) Reset");
-      dispatch(reset());
-      dispatch(setRunTutorial(false));
+      dispatch(setTutorialMode(false));
     }
   };
 
@@ -463,7 +458,7 @@ export function Tutorial() {
     <div>
       <Joyride
         callback={handleJoyrideCallback}
-        run={runTutorial}
+        run={tutorialMode}
         debug={true}
         continuous={true}
         steps={steps}

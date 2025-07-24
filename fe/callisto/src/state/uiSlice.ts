@@ -55,9 +55,10 @@ export const uiSlice = createSlice({
     setComputerShipName: (state, action: PayloadAction<string | null>) => {
         state.computerShipName = action.payload;
     },
+    resetServer: () => initialState,
   }
 });
 
-export const { setEntityToShow, setProposedPlan, setShowResults, setEvents, setCameraPos, setGravityWells, setJumpDistance, setShowRange, setComputerShipName} = uiSlice.actions;
-
+export const { setEntityToShow, setProposedPlan, setShowResults, setEvents, setCameraPos, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
+export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;

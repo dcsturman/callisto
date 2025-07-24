@@ -92,6 +92,7 @@ export const actionsSlice = createSlice({
         item.payload.system;
       updateActions(state);
     },
+    resetServer: () => initialState,
   },
 });
 
@@ -103,6 +104,8 @@ export const {
   pointDefenseWeapon,
   unfireWeapon,
   updateFireCalledShot,
+  resetServer,
 } = actionsSlice.actions;
 
+export type ActionsReducer = ReturnType<typeof actionsSlice.reducer>;
 export default actionsSlice.reducer;

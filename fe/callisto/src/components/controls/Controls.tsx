@@ -218,6 +218,7 @@ export function Controls(args: {
               </pre>
               <span>
                 <input
+                  id="show-range-checkbox"
                   type="checkbox"
                   checked={showRange !== null}
                   onChange={() => {

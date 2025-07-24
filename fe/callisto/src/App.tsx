@@ -14,6 +14,7 @@ import {
   resetServer,
   exit_scenario,
   setUpKeepAlive,
+  socket,
 } from "lib/serverManager";
 import {Users} from "components/UserList";
 
@@ -45,7 +46,7 @@ export function App() {
 
 
   useEffect(() => {
-    if (!socketReady) {
+    if (!socketReady || !socket) {
       startWebsocket();
       setUpKeepAlive();
     }
@@ -65,6 +66,7 @@ export function App() {
     }
   }, [joinedScenario, dispatch]);
 
+  console.log("Authenticated: " + authenticated.toString());
   return (
     <div>
       {authenticated && socketReady && joinedScenario ? (
@@ -76,7 +78,7 @@ export function App() {
       ) : socketReady ? (
         <Authentication />
       ) : (
-        <div>Waiting for socket to open...</div>
+        <div>Waiting for socket to open...auth = {authenticated.toString()} socketReady = {socketReady.toString()} joinedScenario = {joinedScenario}</div>
       )}
     </div>
   );
@@ -151,7 +153,7 @@ function Simulator() {
           <div className="reset-and-logout-buttons">
             <Exit email={email} />
             {role === ViewMode.General && shipName == null && (
-              <button className="blue-button" onClick={resetServer}>
+              <button className="blue-button" onClick={() => resetServer(joinedScenario?.startsWith(TUTORIAL_PREFIX) ?? false)}>
                 Reset
               </button>
             )}

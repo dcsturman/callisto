@@ -34,5 +34,5 @@ export const userSlice = createSlice({
 });
 
 export const { setEmail, setRoleShip, setJoinedScenario } = userSlice.actions;
-
+export type UserReducer = ReturnType<typeof userSlice.reducer>;
 export default userSlice.reducer;

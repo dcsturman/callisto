@@ -5,8 +5,8 @@ import {joinScenario, createScenario} from "lib/serverManager";
 import {Logout} from "components/scenarios/Authentication";
 import {MetaData} from "lib/entities";
 
-import {RootState} from "state/store";
-import {useAppSelector} from "state/hooks";
+import {RootState, persistor} from "state/store";
+import {useAppSelector, useAppDispatch} from "state/hooks";
 import {setTutorialMode} from "state/tutorialSlice";
 
 const TUTORIAL_SCENARIO = "tutorial.json";
@@ -151,6 +151,8 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
 
   const sortedTemplates = useAppSelector(sortedSelector);
 
+  const dispatch = useAppDispatch();
+
   const sortedFilteredScenarios = useMemo(() => {
     return activeScenarios
       .map((scenario) => scenario[0])
@@ -242,8 +244,9 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
   }
 
   function launchTutorial() {
-    setTutorialMode(true);
+    dispatch(setTutorialMode(true));
 
+    persistor.purge();
     const random_tutorial_name = TUTORIAL_PREFIX + generateUniqueHyphenatedName();
     createScenario(random_tutorial_name, TUTORIAL_SCENARIO);
   }

@@ -1,4 +1,5 @@
 /// <reference types="react-scripts" />
+/// <reference types="redux-persist" />
 
 import { AuthCodeFlowOptions } from "@react-oauth/google";
 import { extend, Object3DNode } from '@react-three/fiber'

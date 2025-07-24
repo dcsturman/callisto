@@ -15,7 +15,7 @@ import { ViewMode, stringToViewMode } from "lib/view";
 import { Acceleration } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
-
+import { resetState as resetServerState } from "state/store";
 
 export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
 
@@ -312,8 +312,10 @@ export function getTemplates() {
   socket.send(DESIGN_TEMPLATE_REQUEST);
 }
 
-export function resetServer() {
+export function resetServer(tutorial: boolean) {
   if (window.confirm("Are you sure you want to reset the server?")) {
+    store.dispatch(resetServerState());
+    store.dispatch(setTutorialMode(tutorial));
     socket.send(RESET_REQUEST);
   }
 }

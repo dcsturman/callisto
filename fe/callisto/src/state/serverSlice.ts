@@ -46,7 +46,7 @@ export const serverSlice = createSlice({
     setScenarios: (state, action: PayloadAction<[[string, string][], [string, MetaData][]]> ) => {
         state.activeScenarios = action.payload[0];
         state.scenarioTemplates = action.payload[1];
-    },
+    }
   }
 });
 
@@ -54,5 +54,5 @@ export const entitiesSelector = (state: { server: ServerState }) => state.server
 export const templatesSelector = (state: { server: ServerState }) => state.server.templates;
 
 export const { setAuthenticated, setSocketReady, setEntities, setTemplates, setUsers, setScenarios } = serverSlice.actions;
-
+export type ServerReducer = ReturnType<typeof serverSlice.reducer>;
 export default serverSlice.reducer;

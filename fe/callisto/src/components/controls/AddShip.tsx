@@ -107,13 +107,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
     const crew = addShipData.crew;
     const ship = findShip(entities, name) || defaultShip();
 
-    ship.name = name;
-    ship.position = position;
-    ship.velocity = velocity;
-    ship.design = design;
-    ship.crew = crew;
+    const revision = {...ship, name, position, velocity, design, crew};
 
-    addShip(ship);
+    addShip(revision);
     setAddShipData(initialTemplate);
     shipNameRef.current!.style.color = "black";
   }
