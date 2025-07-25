@@ -42,7 +42,7 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   const num_gunners = shipDesign.weapons.length;
   const initialCrew = useMemo(() => {
     return createCrew(num_gunners);
-  }, [shipDesign]);
+  }, [shipDesign, num_gunners]);
 
   const [customCrew, setCustomCrew] = useState(initialCrew);
   const [currentGunId, setCurrentGunId] = useState(1);
