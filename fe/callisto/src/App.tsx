@@ -77,7 +77,6 @@ export function App() {
       ) : (
         <div>
           Waiting for socket to open...
-          {socketReady.toString()} joinedScenario = {joinedScenario}
         </div>
       )}
     </div>
