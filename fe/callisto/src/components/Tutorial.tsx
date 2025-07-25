@@ -49,7 +49,8 @@ const steps: Step[] = [
     target: ".admin-button-window",
     content: 
       <div>These are the <em>user controls</em> including: 
-        <ul><li>the scenario name (currently &apos;Tutorial&apos;). For other scenarios this name will be unique and should be used to tell others where to join you from the scenarios page.</li>
+        <ul>
+        <li>the scenario name (currently &apos;Tutorial&apos;). For other scenarios this name will be unique and should be used to tell others where to join you from the scenarios page.</li>
         <li>the users in the scenario and which role/ship they are playing.  This is not shown when only a single user is in a scenario.</li>
         <li> the role (e.g. crew position) you are playing (in this case &apos;General&apos;)</li>
         <li>and the specific ship you are controlling.</li>
@@ -206,13 +207,13 @@ const steps: Step[] = [
         <br/>
         <br/>To do this, just type Beowulf back into the name input.  You will see the name turn 
         green and load the previous design we entered for the ship.  We can now change the position.
-        <p className="tutorial-instruction-text">
+        <div className="tutorial-instruction-text">
           Change:
           <ul>
             <li>position: (0, 30000, -30000)</li>
             <li>click &apos;Update&apos;.</li>
           </ul>
-        </p>
+        </div>
       </span>
     ),
     placement: "right",

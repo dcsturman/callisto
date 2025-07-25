@@ -20,10 +20,9 @@ const DEFAULT_SHIP_STANDOFF_DISTANCE: number = 10;
 
 type ShipComputerProps = {
   ship: Ship;
-  sensorLocks: string[];
 };
 
-export const ShipComputer: React.FC<ShipComputerProps> = ({ship, sensorLocks}) => {
+export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
   const entities = useAppSelector(entitiesSelector);
   const role = useAppSelector((state) => state.user.role);
   const shipName = useAppSelector((state) => state.user.shipName);
@@ -53,6 +52,16 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship, sensorLocks}) =
   const [currentNavTarget, setCurrentNavTarget] = useState<string | null>(null);
   const [navigationTarget, setNavigationTarget] = useState(initNavigationTargetState);
 
+  const sensorLocks = useMemo(
+    () =>
+      entities.ships.reduce((acc, s) => {
+        if (s.sensor_locks.includes(ship.name)) {
+          acc.push(s.name);
+        }
+        return acc;
+      }, [] as string[]),
+    [entities, ship.name]
+  );
   const target = useMemo(() => {
     if (currentNavTarget == null) {
       return;
@@ -64,8 +73,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship, sensorLocks}) =
     }
     const ship = findShip(entities, currentNavTarget);
 
-    if (ship == null)
-      return;
+    if (ship == null) return;
 
     return {position: ship.position, velocity: ship.velocity, plan: ship.plan};
   }, [entities, currentNavTarget]);
@@ -88,8 +96,8 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship, sensorLocks}) =
       standoff = (target.radius! * 1.1) / POSITION_SCALE;
     }
 
-    const plan = target.plan?? null;
-    
+    const plan = target.plan ?? null;
+
     setNavigationTarget({
       p_x: target.position[0],
       p_y: target.position[1],
@@ -103,7 +111,6 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship, sensorLocks}) =
       standoff,
     });
 
-
     // Also implicitly compute a plan since most of the time this is what the user wants.
     computeFlightPath(
       ship.name,
@@ -113,7 +120,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship, sensorLocks}) =
       plan ? plan[0][0] : null,
       standoff
     );
-  }, [currentNavTarget, target]);
+  }, [currentNavTarget, target, initNavigationTargetState, ship.name]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.

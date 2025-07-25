@@ -1,5 +1,5 @@
 import * as React from "react";
-import {useEffect, useMemo} from "react";
+import {useEffect, useMemo, useCallback} from "react";
 import * as THREE from "three";
 import {Accordion} from "lib/Accordion";
 import {AddShip} from "./AddShip";
@@ -15,6 +15,7 @@ import {ShipComputer} from "./ShipComputer";
 import {computeFlightPath} from "lib/serverManager";
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
+import {store} from "state/store";
 import {
   setComputerShipName,
   setShowRange,
@@ -23,7 +24,7 @@ import {
   setJumpDistance,
 } from "state/uiSlice";
 
-function ShipList(args: {camera: THREE.Camera | null}) {
+function ShipList(args: {moveCamera: (cameraQuaternion: [number, number, number, number], ship: Ship) => void}) {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
   const dispatch = useAppDispatch();
@@ -32,76 +33,65 @@ function ShipList(args: {camera: THREE.Camera | null}) {
     return findShip(entities, computerShipName);
   }, [computerShipName, entities]);
 
-  const choiceHandler = (ship: Entity | null) => {
+  const choiceHandler = useCallback((ship: Entity | null) => {
     dispatch(setShowRange(null));
     dispatch(setComputerShipName(ship ? ship.name : null));
-  };
+  },[dispatch]);
+
+  const filter = useMemo(() =>[EntitySelectorType.Ship],[]);
 
   return (
     <div className="control-launch-div">
       <h2 className="ship-list-label">Ship: </h2>
       <EntitySelector
         id="ship-list-dropdown"
-        filter={[EntitySelectorType.Ship]}
+        filter={filter}
         setChoice={choiceHandler}
         current={computerShip}
       />
-      <GoButton camera={args.camera} />
+      <GoButton moveCamera={args.moveCamera} />
     </div>
   );
 }
 
 interface GoButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  camera: THREE.Camera | null;
+  moveCamera: (cameraQuaternion: [number, number, number, number], ship: Ship) => void;
 }
 
-export const GoButton: React.FC<GoButtonProps> = ({camera, ...props}) => {
+export const GoButton: React.FC<GoButtonProps> = ({moveCamera, ...props}) => {
+  const cameraQuaternion = useAppSelector((state) => state.ui.cameraQuaternion);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
-  const dispatch = useAppDispatch();
 
   const computerShip = useMemo(() => {
     return findShip(entities, computerShipName);
   }, [computerShipName, entities]);
 
+  const clickHandler = useMemo(() => () =>  computerShip && moveCamera(cameraQuaternion, computerShip), [computerShip, cameraQuaternion, moveCamera]);
+
   return (
     <button
       className="control-input blue-button"
       {...props}
-      onClick={() => moveCameraToShip(camera, computerShip, (pos) => dispatch(setCameraPos(pos)))}>
+      onClick={clickHandler}>
       Go
     </button>
   );
 };
 
-function moveCameraToShip(
-  camera: THREE.Camera | null,
-  computerShip: Ship | null,
-  setCameraPos: (state: {x: number, y: number, z:number}) => void
-) {
-  if (camera == null) {
-    console.log("Cannot move camera because camera object in Three is null.");
-    return;
-  }
-  if (computerShip) {
-    const downCamera = new THREE.Vector3(0, 0, 40);
-    downCamera.applyQuaternion(camera.quaternion);
-    const new_camera_pos = new THREE.Vector3(
-      computerShip.position[0] * SCALE,
-      computerShip.position[1] * SCALE,
-      computerShip.position[2] * SCALE
-    ).add(downCamera);
-    console.log("moveCameraToShip: new_camera_pos: " + JSON.stringify(new_camera_pos));
-    camera.position.set(new_camera_pos.x, new_camera_pos.y, new_camera_pos.z);
-    setCameraPos({x: new_camera_pos.x, y: new_camera_pos.y, z: new_camera_pos.z});
-  } else {
-    console.log("Cannot move camera because no ship is selected.");
-  }
+function moveCameraToShip(cameraQuaternion: [number, number, number, number], computerShip: Ship) {
+
+  const downCamera = new THREE.Vector3(0, 0, 40);
+  downCamera.applyQuaternion(new THREE.Quaternion(cameraQuaternion[0], cameraQuaternion[1], cameraQuaternion[2], cameraQuaternion[3]));
+  const new_camera_pos = new THREE.Vector3(
+    computerShip.position[0] * SCALE,
+    computerShip.position[1] * SCALE,
+    computerShip.position[2] * SCALE
+  ).add(downCamera);
+  store.dispatch(setCameraPos({x: new_camera_pos.x, y: new_camera_pos.y, z: new_camera_pos.z}));
 }
 
-export function Controls(args: {
-  camera: THREE.Camera | null;
-}) {
+export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
   const role = useAppSelector((state) => state.user.role);
 
@@ -139,10 +129,10 @@ export function Controls(args: {
       )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
         {shipName == null ? (
-          <ShipList camera={args.camera} />
+          <ShipList moveCamera={moveCameraToShip} />
         ) : (
           <GoButton
-            camera={args.camera}
+            moveCamera={moveCameraToShip}
             style={{
               width: "100%",
               height: "24px",
@@ -255,12 +245,6 @@ export function Controls(args: {
                 initialOpen={true}>
                 <ShipComputer
                   ship={computerShip}
-                  sensorLocks={entities.ships.reduce((acc, ship) => {
-                    if (ship.sensor_locks.includes(computerShipName)) {
-                      acc.push(ship.name);
-                    }
-                    return acc;
-                  }, [] as string[])}
                 />
               </Accordion>
             )}

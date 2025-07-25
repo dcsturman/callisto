@@ -1,4 +1,5 @@
 import * as React from "react";
+import {useMemo} from "react";
 import {Entity} from "lib/entities";
 import {ViewMode} from "lib/view";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
@@ -14,8 +15,15 @@ export const RoleChooser = () => {
   const role = useAppSelector(state => state.user.role);
   const entities = useAppSelector(entitiesSelector);
 
+  const current = useMemo(() => findShip(entities, shipName),[entities, shipName]);
   const dispatch = useAppDispatch();
 
+  const filter = useMemo(() => [EntitySelectorType.Ship],[]);
+  const choiceHandler = useMemo(() =>(ship: Entity | null) => {
+    dispatch(setRoleShip([role, ship ? ship.name : null]));
+    requestRoleChoice(role, ship ? ship.name : null);
+  },[dispatch, role]);
+  
   return (
     <>
       <select
@@ -33,12 +41,9 @@ export const RoleChooser = () => {
       </select>
       <EntitySelector
         className="select-dropdown control-name-input control-input role-input"
-        filter={[EntitySelectorType.Ship]}
-        setChoice={(ship: Entity | null) => {
-          dispatch(setRoleShip([role, ship ? ship.name : null]));
-          requestRoleChoice(role, ship ? ship.name : null);
-        }}
-        current={findShip(entities, shipName)}
+        filter={filter}
+        setChoice={choiceHandler}
+        current={current}
       />
     </>
   );

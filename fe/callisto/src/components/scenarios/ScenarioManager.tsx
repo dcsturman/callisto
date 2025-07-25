@@ -5,7 +5,7 @@ import {joinScenario, createScenario} from "lib/serverManager";
 import {Logout} from "components/scenarios/Authentication";
 import {MetaData} from "lib/entities";
 
-import {RootState, persistor} from "state/store";
+import {RootState, store, resetState} from "state/store";
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {setTutorialMode} from "state/tutorialSlice";
 
@@ -186,6 +186,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
 
   function handleJoinScenario(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    store.dispatch(resetState());
     if (!scenario) {
       console.error("(ScenarioManager.handleJoinScenario) No scenario selected");
       return;
@@ -218,6 +219,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
 
   function handleCreateScenario(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    store.dispatch(resetState());
     if (template === null) {
       createScenario(scenarioName, template ?? "");
       return;
@@ -246,7 +248,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
   function launchTutorial() {
     dispatch(setTutorialMode(true));
 
-    persistor.purge();
+    store.dispatch(resetState());
     const random_tutorial_name = TUTORIAL_PREFIX + generateUniqueHyphenatedName();
     createScenario(random_tutorial_name, TUTORIAL_SCENARIO);
   }

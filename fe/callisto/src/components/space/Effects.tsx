@@ -1,4 +1,5 @@
 import * as React from "react";
+import {useCallback, useMemo} from "react";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "lib/Util";
 import { SCALE } from "lib/universal";
@@ -189,17 +190,15 @@ export function ResultsWindow() {
   const events = useAppSelector(state => state.ui.events);
   const dispatch = useAppDispatch();
 
-  function closeWindow() {
+  const closeWindow = useCallback(() => {
     if (events !== null) {
       dispatch(setEvents(events.filter((event) => event.kind !== MESSAGE_EVENT)));
     }
     dispatch(setShowResults(false));
-  }
+  }, [events, dispatch]);
 
-  let messages: Event[] = [];
-  if (events !== null) {
-    messages = events?.filter((event) => event.kind === MESSAGE_EVENT);
-  }
+  const messages = useMemo(() => events?.filter((event) => event.kind === MESSAGE_EVENT) ?? [], [events]);
+
   return (
     <div id="results-window" className="computer-window">
       <h1>Results</h1>

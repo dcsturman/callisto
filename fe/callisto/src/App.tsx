@@ -19,7 +19,6 @@ import {
 import {Users} from "components/UserList";
 
 import {ShipComputer} from "components/controls/ShipComputer";
-import {Ship} from "lib/entities";
 import {ViewMode} from "lib/view";
 
 import {RoleChooser} from "components/Role";
@@ -29,7 +28,6 @@ import {Tutorial} from "components/Tutorial";
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {setTutorialMode} from "state/tutorialSlice";
 import {setJoinedScenario, setRoleShip} from "state/userSlice";
-import {setCameraPos, setCameraQuaternion} from "state/uiSlice";
 import {entitiesSelector} from "state/serverSlice";
 
 import "./index.css";
@@ -43,7 +41,6 @@ export function App() {
   const joinedScenario = useAppSelector((state) => state.user.joinedScenario);
 
   const dispatch = useAppDispatch();
-
 
   useEffect(() => {
     if (!socketReady || !socket) {
@@ -78,7 +75,10 @@ export function App() {
       ) : socketReady ? (
         <Authentication />
       ) : (
-        <div>Waiting for socket to open...auth = {authenticated.toString()} socketReady = {socketReady.toString()} joinedScenario = {joinedScenario}</div>
+        <div>
+          Waiting for socket to open...auth = {authenticated.toString()} socketReady ={" "}
+          {socketReady.toString()} joinedScenario = {joinedScenario}
+        </div>
       )}
     </div>
   );
@@ -104,13 +104,17 @@ function Simulator() {
 
   const [camera, setCamera] = useState<THREE.Camera | null>(null);
 
-
   useEffect(() => {
     if (camera) {
       camera.position.set(cameraPos[0], cameraPos[1], cameraPos[2]);
-      camera.quaternion.set(cameraQuaternion[0], cameraQuaternion[1], cameraQuaternion[2], cameraQuaternion[3]);
+      camera.quaternion.set(
+        cameraQuaternion[0],
+        cameraQuaternion[1],
+        cameraQuaternion[2],
+        cameraQuaternion[3]
+      );
     }
-  }, [camera,cameraPos, cameraQuaternion]);
+  }, [camera, cameraPos, cameraQuaternion]);
 
   // const [stepIndex, setStepIndex] = useState(0);
   // const [runTutorial, setRunTutorial] = useState<boolean>(true);
@@ -119,39 +123,11 @@ function Simulator() {
     return entities.ships.find((ship) => ship.name === computerShipName) || null;
   }, [entities.ships, computerShipName]);
 
-  const [keysHeld, setKeyHeld] = useState({shift: false, slash: false});
-
-  function downHandler({key}: {key: string}) {
-    if (key === "Shift") {
-      setKeyHeld({shift: true, slash: keysHeld.slash});
-    }
-  }
-
-  function upHandler({key}: {key: string}) {
-    if (key === "Shift") {
-      setKeyHeld({shift: false, slash: keysHeld.slash});
-    }
-  }
-
-  useEffect(() => {
-    window.addEventListener("keydown", downHandler);
-    window.addEventListener("keyup", upHandler);
-    return () => {
-      window.removeEventListener("keydown", downHandler);
-      window.removeEventListener("keyup", upHandler);
-    };
-  });
-
-  let tutorial_ship: Ship | null = entities.ships.find((ship) => ship.name === "Killer") || null;
-  if (tutorial_ship === undefined) {
-    tutorial_ship = null;
-  }
-
   return (
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
-        {role !== ViewMode.Observer && <Controls camera={camera} />}
+        {role !== ViewMode.Observer && <Controls />}
         {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && <ViewControls />}
         <div className="admin-button-window">
           <h2>
@@ -163,23 +139,15 @@ function Simulator() {
           <div className="reset-and-logout-buttons">
             <Exit email={email} />
             {role === ViewMode.General && shipName == null && (
-              <button className="blue-button" onClick={() => resetServer(joinedScenario?.startsWith(TUTORIAL_PREFIX) ?? false)}>
+              <button
+                className="blue-button"
+                onClick={() => resetServer(joinedScenario?.startsWith(TUTORIAL_PREFIX) ?? false)}>
                 Reset
               </button>
             )}
           </div>
         </div>
-        {role === ViewMode.General && computerShip && (
-          <ShipComputer
-            ship={computerShip}
-            sensorLocks={entities.ships.reduce((acc, ship) => {
-              if (ship.sensor_locks.includes(computerShip.name)) {
-                acc.push(ship.name);
-              }
-              return acc;
-            }, [] as string[])}
-          />
-        )}
+        {role === ViewMode.General && computerShip && <ShipComputer ship={computerShip} />}
         {showResults && <ResultsWindow />}
         <Canvas
           style={{position: "absolute"}}
@@ -217,14 +185,10 @@ function Simulator() {
 }
 
 function GrabCamera(args: {setCamera: (camera: THREE.Camera) => void}) {
-
-  const dispatch = useAppDispatch();
-
-
   const {camera} = useThree();
   useEffect(() => {
     args.setCamera(camera);
-  },[camera,args.setCamera]);
+  }, [camera, args, args.setCamera]);
 
   return null;
 }

@@ -106,15 +106,10 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       requestAnimationFrame(update);
     };
 
-    const contextmenu = (/*event: MouseEvent*/): void => {
-      // Do nothing at this point but its here if we need it.
-    };
-
     const keydown = (event: KeyboardEvent): void => {
       if (event.altKey) {
         return;
       }
-
       switch (event.code) {
         case "ShiftLeft":
         case "ShiftRight":
@@ -233,12 +228,11 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     const connect = (domElement: HTMLElement): void => {
       domElement.setAttribute("tabindex", "-1");
 
-      domElement.addEventListener("contextmenu", contextmenu);
       domElement.addEventListener("pointermove", pointermove);
       domElement.addEventListener("pointerdown", pointerdown);
       domElement.addEventListener("pointerup", pointerup);
-      window.addEventListener("keydown", keydown);
-      window.addEventListener("keyup", keyup);
+      domElement.addEventListener("keydown", keydown);
+      domElement.addEventListener("keyup", keyup);
     };
 
     if (!camera) {
@@ -251,7 +245,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     const id = window.requestAnimationFrame(update);
 
     return () => window.cancelAnimationFrame(id); // Cleanup function
-  }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed, containerName]);
+  }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed, containerName, dispatch]);
 
   return <></>;
 };
