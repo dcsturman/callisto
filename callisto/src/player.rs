@@ -88,17 +88,11 @@ impl PlayerManager {
 
   /// Authenticates a user.
   ///
-  /// This function handles the login process, including authentication and session key management.
-  /// In the common case, it checks that the user has previously been authenticated and has a valid
-  /// session key.  It then returns the user's email. The session key is returned only if its is newly created
-  /// (so not in this case).
-  ///
-  /// Otherwise it looks for a valid referral code (from Google `OAuth2`) and uses that to build a session
-  /// key.  It then returns the user's email and the newly minted session key.
-  ///
+  /// This function handles the login process by checking the code passed from 
+  /// Google Authentication. If one doesn't exist it generates a session key.
   /// # Arguments
   /// * `login` - The login message, possibly containing the referral code.
-  /// * `valid_email` - The session cookie, if one exists.
+  /// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs in (to update this info)
   ///
   /// # Errors
   /// Returns an error if the user cannot be authenticated.
