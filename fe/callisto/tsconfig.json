@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "baseUrl": "./",
+    "baseUrl": "./src",
     "target": "es2015",
     "lib": [
       "dom",
@@ -8,6 +8,10 @@
       "esnext"
     ],
     "paths": {
+      "components/*": ["components/*"],
+      "lib/*": ["lib/*"],
+      "state/*": ["state/*"],
+      "assets/*": ["assets/*"],
       "three/addons/controls/*": ["node_modules/@types/three/examples/jsm/controls/*"],
       "three/addons/loaders/*": ["node_modules/@types/three/examples/jsm/loaders/*"],
     },

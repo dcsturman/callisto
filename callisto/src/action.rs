@@ -106,6 +106,10 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
               })
               .collect::<Vec<_>>();
             sorted_similar_weapon_id.sort_unstable();
+            // Be defensive... if there are no similar weapons, then just continue in the loop.
+            if sorted_similar_weapon_id.is_empty() {
+              continue;
+            }
             let max_similar_weapon_id = sorted_similar_weapon_id.last().unwrap();
 
             // Retain everything except the FireAction with the highest number of the similar weapon
