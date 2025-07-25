@@ -19,10 +19,9 @@ use crate::server::Server;
 use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
 use crate::{debug, info, warn};
 
-// Struct wrapping an Arc<Mutex<Entities>> (i.e. a multi-threaded safe Entities)
-// Add function beyond what Entities does and provides an API to our server.
+/// `PlayerManager` represents a distinct user connected to the server.
+/// It can belong to a single `Server` at a time, or to none.
 pub struct PlayerManager {
-  unique_id: u64,
   // Server holding most importantly the state of the server, shared between all players.
   // The state is entities, if we're in tutorial mode, and the initial state of the server so we can revert.
   // `server` is an [`Option`] because it may not be initialized until later in the server's lifecycle (via a client message).
@@ -39,23 +38,14 @@ pub struct PlayerManager {
 impl PlayerManager {
   /// Create a new player manager.
   #[must_use]
-  pub fn new(
-    unique_id: u64, server: Option<Arc<Server>>, authenticator: Box<dyn Authenticator>, test_mode: bool,
-  ) -> Self {
+  pub fn new(server: Option<Arc<Server>>, authenticator: Box<dyn Authenticator>, test_mode: bool) -> Self {
     PlayerManager {
-      unique_id,
       server,
       authenticator,
       test_mode,
       role: Role::General,
       ship: None,
     }
-  }
-
-  /// An unusual method but in the case where we discover the user has already been logged in,
-  /// we reset the id to be the old id of the user.
-  pub fn set_id(&mut self, unique_id: u64) {
-    self.unique_id = unique_id;
   }
 
   pub fn set_role_ship(&mut self, role: Role, ship: Option<String>) {
@@ -73,8 +63,8 @@ impl PlayerManager {
   }
 
   #[must_use]
-  pub fn get_id(&self) -> u64 {
-    self.unique_id
+  pub fn get_session_key(&self) -> Option<String> {
+    self.authenticator.get_session_key()
   }
 
   /// Returns a clone of the entities.
@@ -88,7 +78,7 @@ impl PlayerManager {
 
   /// Authenticates a user.
   ///
-  /// This function handles the login process by checking the code passed from 
+  /// This function handles the login process by checking the code passed from
   /// Google Authentication. If one doesn't exist it generates a session key.
   /// # Arguments
   /// * `login` - The login message, possibly containing the referral code.
@@ -560,7 +550,7 @@ mod tests {
     let mock_auth = MockAuthenticator::new("http://web.test.com");
     let authenticator = Box::new(mock_auth) as Box<dyn Authenticator>;
 
-    let mut server = PlayerManager::new(0, None, authenticator, false);
+    let mut server = PlayerManager::new(None, authenticator, false);
 
     // Try a login
     let login_msg = LoginMsg {
