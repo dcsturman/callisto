@@ -34,7 +34,7 @@ async fn setup_test_with_server(authenticator: Box<dyn Authenticator>) -> Player
   crate::ship::config_test_ship_templates().await;
 
   let basic_server = Server::new("test", "").await;
-  PlayerManager::new(0, Some(Arc::new(basic_server)), authenticator, true)
+  PlayerManager::new(Some(Arc::new(basic_server)), authenticator, true)
 }
 
 /**

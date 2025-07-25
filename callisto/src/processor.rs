@@ -39,7 +39,6 @@ pub struct Processor {
   auth_template: Box<dyn Authenticator>,
   session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
   servers: HashMap<String, Arc<Server>>,
-  next_player_id: u64,
   members: ServerMembersTable,
 
   // Unchanging value with directory for all scenarios.
@@ -72,7 +71,6 @@ impl Processor {
       auth_template,
       session_keys,
       servers: HashMap::new(),
-      next_player_id: 0,
       members: ServerMembersTable::new(),
       scenario_dir,
       test_mode,
@@ -187,7 +185,7 @@ impl Processor {
                 event!(
                   target: LOGOUT,
                   Level::INFO,
-                  email = current_connection.player.get_email().unwrap(),
+                  email = current_connection.player.get_email().unwrap_or("UNKNOWN USER".to_string()),
                   action = format!("User intentionally logged out. Now {} connections.", num_connections - 1)
                 );
                 current_connection.stream.close(None).await.unwrap_or_else(|e| {
@@ -293,10 +291,9 @@ impl Processor {
     authenticator.set_email(email);
 
     let mut connection = Connection {
-      player: PlayerManager::new(self.next_player_id, None, authenticator, self.test_mode),
+      player: PlayerManager::new(None, authenticator, self.test_mode),
       stream,
     };
-    self.next_player_id += 1;
 
     // If we got a successful Some(email) then we need to fake like this was a log in by
     // letting the client know auth was successful, but also setting this player up with the old player state
@@ -305,9 +302,14 @@ impl Processor {
     // to a login message.  In the case though of having been previously logged in and part of a scenario we need to
     // include the scenario state in the Auth message AND send an Entities message.
     if let Some(email) = email {
-      if let Some((old_server, old_id, old_role, old_ship)) = self.members.find_scenario_info_by_email(email) {
+      if let Some((old_server, old_email, old_role, old_ship)) =
+        self.members.find_scenario_info_by_session_key(session_key)
+      {
+        if old_email != *email {
+          error!("(build_connection) Found a session key for {old_email} but got a login for {old_email} instead of {email}.  This should not happen.  Ignoring.");
+          return None;
+        }
         if let Some(server) = self.servers.get(&old_server) {
-          connection.player.set_id(old_id);
           connection.player.set_server(server.clone());
           connection.player.set_role_ship(old_role, old_ship);
         }
@@ -414,9 +416,13 @@ impl Processor {
           msgs.append(&mut player.server.as_ref().map_or_else(
             || error_msg("Cannot set role when no server has yet been joined.".to_string()),
             |server| {
+              let Some(session_key) = player.get_session_key() else {
+                error!("(handle_request) Attempt to set role without a session key.  Ignoring.");
+                return error_msg("Cannot set role without a session key.".to_string());
+              };
               self.members.update(
                 server.get_id(),
-                player.get_id(),
+                &session_key,
                 &player.get_email().unwrap(),
                 role.role,
                 role.ship,
@@ -454,7 +460,13 @@ impl Processor {
           )];
         };
         let server_id = server.get_id();
-        self.members.remove(server_id, player.get_id());
+        let Some(session_key) = player.get_session_key() else {
+          error!("(handle_request) Attempt to exit scenario without a session key.  Ignoring.");
+          return vec![ResponseMsg::Error(
+            "Attempt to exit scenario without a session key.  Ignoring.".to_string(),
+          )];
+        };
+        self.members.remove(server_id, &session_key);
         event!(
           target: LOG_SCENARIO_ACTIVITY,
           Level::INFO,
@@ -482,9 +494,15 @@ impl Processor {
             scenario = join_scenario.scenario_name,
             action = "join"
           );
+          let Some(session_key) = player.get_session_key() else {
+            error!("(handle_request) Attempt to join scenario without a session key.  Ignoring.");
+            return vec![ResponseMsg::Error(
+              "Attempt to join scenario without a session key.  Ignoring.".to_string(),
+            )];
+          };
           self.members.update(
             server.get_id(),
-            player.get_id(),
+            &session_key,
             &player.get_email().unwrap(),
             player.get_role().0,
             player.get_role().1,
@@ -523,9 +541,15 @@ impl Processor {
         );
         // TODO: Violating DRY here.
         self.members.register(&create_scenario.name, &create_scenario.scenario);
+        let Some(session_key) = player.get_session_key() else {
+          error!("(handle_request) Attempt to create scenario without a session key.  Ignoring.");
+          return vec![ResponseMsg::Error(
+            "Attempt to create scenario without a session key.  Ignoring.".to_string(),
+          )];
+        };
         self.members.update(
           server.get_id(),
-          player.get_id(),
+          &session_key,
           &player.get_email().unwrap(),
           player.get_role().0,
           player.get_role().1,
