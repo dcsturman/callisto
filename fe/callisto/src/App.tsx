@@ -76,7 +76,7 @@ export function App() {
         <Authentication />
       ) : (
         <div>
-          Waiting for socket to open...auth = {authenticated.toString()} socketReady ={" "}
+          Waiting for socket to open...
           {socketReady.toString()} joinedScenario = {joinedScenario}
         </div>
       )}
