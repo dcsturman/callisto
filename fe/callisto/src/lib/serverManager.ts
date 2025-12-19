@@ -17,7 +17,7 @@ import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
 import { resetState as resetServerState } from "state/store";
 
-export const CALLISTO_BACKEND = process.env.REACT_APP_CALLISTO_BACKEND || "http://localhost:30000";
+export const CALLISTO_BACKEND = import.meta.env.VITE_CALLISTO_BACKEND || "http://localhost:30000";
 
 // Message structures
 // This message (a simple enum on the rust server side) is just a string.

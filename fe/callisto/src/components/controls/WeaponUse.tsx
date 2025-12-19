@@ -14,17 +14,17 @@ import {EntitySelector, EntitySelectorType} from "lib/EntitySelector";
 import {FireState, PointDefenseState} from "components/controls/Actions";
 
 // Icons for each type of weapon
-import {ReactComponent as Turret1} from "assets/icons/turret1.svg";
-import {ReactComponent as Turret2} from "assets/icons/turret2.svg";
-import {ReactComponent as Turret3} from "assets/icons/turret3.svg";
-import {ReactComponent as Barbette} from "assets/icons/barbette.svg";
-import {ReactComponent as SmallBay} from "assets/icons/bay-s.svg";
-import {ReactComponent as MediumBay} from "assets/icons/bay-m.svg";
-import {ReactComponent as LargeBay} from "assets/icons/bay-l.svg";
+import Turret1 from "assets/icons/turret1.svg?react";
+import Turret2 from "assets/icons/turret2.svg?react";
+import Turret3 from "assets/icons/turret3.svg?react";
+import Barbette from "assets/icons/barbette.svg?react";
+import SmallBay from "assets/icons/bay-s.svg?react";
+import MediumBay from "assets/icons/bay-m.svg?react";
+import LargeBay from "assets/icons/bay-l.svg?react";
 
 // Icons to show fire states.
-import {ReactComponent as RayIcon} from "assets/icons/laser.svg";
-import {ReactComponent as MissileIcon} from "assets/icons/missile.svg";
+import RayIcon from "assets/icons/laser.svg?react";
+import MissileIcon from "assets/icons/missile.svg?react";
 import {Tooltip} from "react-tooltip";
 import {vectorDistance} from "lib/Util";
 

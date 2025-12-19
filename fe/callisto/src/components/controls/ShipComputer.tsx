@@ -208,7 +208,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
   // Intentionally defining as a function that returns JSX vs a true component.  If I use a true component then
   // we lose focus on each key stroke.  But I do need accelerationManager nested inside ShipComputer as we want to share
   // the computerAccel state between this component and the navigation computer functionality.
-  function accelerationManager(): JSX.Element {
+  function accelerationManager(): React.JSX.Element {
     function handleSetAcceleration(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
 
@@ -253,7 +253,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     );
   }
 
-  function pilotActions(): JSX.Element {
+  function pilotActions(): React.JSX.Element {
     function handleCrewActionChange(dodge: number, assist: boolean) {
       setCrewActions(ship.name, dodge, assist);
     }
@@ -343,7 +343,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
               <EntitySelector
                 filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
                 current={currentNavTarget}
-                setChoice={(entity) => setCurrentNavTarget(entity?.name ?? null)}
+                setChoice={(entity: any) => setCurrentNavTarget(entity?.name ?? null)}
                 exclude={ship.name}
               />
             </label>

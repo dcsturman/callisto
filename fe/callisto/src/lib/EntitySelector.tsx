@@ -11,7 +11,7 @@ export enum EntitySelectorType {
   Missile,
 }
 
-type EntitySelectorProps = JSX.IntrinsicElements["select"] & {
+type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
   filter: EntitySelectorType[];
   setChoice: (entity: Entity | null) => void;
   current: Entity | string  | null;

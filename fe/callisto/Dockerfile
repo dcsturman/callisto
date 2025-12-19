@@ -31,7 +31,7 @@ RUN --mount=type=bind,source=package.json,target=package.json \
     --mount=type=bind,source=package-lock.json,target=package-lock.json \
     --mount=type=bind,source=public,target=public \
     --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev
+    npm ci --omit=dev --legacy-peer-deps
 
 ################################################################################
 # Create a stage for building the application.
@@ -45,15 +45,14 @@ ARG NODE_SERVER
 RUN --mount=type=bind,source=package.json,target=package.json \
     --mount=type=bind,source=package-lock.json,target=package-lock.json \
     --mount=type=cache,target=/root/.npm \
-    npm ci
+    npm ci --legacy-peer-deps
 
 # Copy the rest of the source files into the image.
 COPY . .
-COPY ./public ./public
 COPY ./env* .
 
-ENV REACT_APP_CALLISTO_BACKEND=${BACKEND}
-ENV REACT_APP_NODE_SERVER=${NODE_SERVER}
+ENV VITE_CALLISTO_BACKEND=${BACKEND}
+ENV VITE_NODE_SERVER=${NODE_SERVER}
 
 # Run the build script.
 RUN npm run build

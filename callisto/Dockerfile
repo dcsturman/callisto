@@ -1,6 +1,7 @@
 # Start with a rust alpine image
-FROM rust:latest AS base
-# if needed, add additional dependencies here
+FROM rust:alpine AS base
+# Install build dependencies for Alpine
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
 RUN rustup update
 
 # set the workdir
@@ -27,8 +28,8 @@ RUN if [ "$TLS_UPGRADE" = "1" ]; then cargo build --release; else cargo build --
 #RUN strip target/release/callisto
 
 # use a plain alpine image, the alpine version needs to match the builder
-FROM debian:bookworm-slim AS run
-RUN apt-get update && apt-get install -y ca-certificates
+FROM alpine:latest AS run
+RUN apk add --no-cache ca-certificates libgcc openssl
 
 # Expose our port
 EXPOSE 30000
