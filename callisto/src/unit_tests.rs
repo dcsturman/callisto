@@ -1011,7 +1011,7 @@ async fn test_get_entities() {
       name: ship_name.clone(),
       position: ship_position,
       velocity: ship_velocity,
-      design: ShipDesignTemplate::default().name.to_string(),
+      design: ShipDesignTemplate::default().name.clone(),
       crew: None,
     })
     .unwrap();
