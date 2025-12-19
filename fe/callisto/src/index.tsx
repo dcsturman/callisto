@@ -14,13 +14,13 @@ const root = ReactDOM.createRoot(
 document.body.style.overflow = "hidden";
 
 console.groupCollapsed("Callisto Config parameters");
-if (process.env.REACT_APP_CALLISTO_BACKEND) {
+if (import.meta.env.VITE_CALLISTO_BACKEND) {
   console.log(
-    "REACT_APP_CALLISTO_BACKEND is set to: " + process.env.REACT_APP_CALLISTO_BACKEND
+    "VITE_CALLISTO_BACKEND is set to: " + import.meta.env.VITE_CALLISTO_BACKEND
   );
 } else {
-  console.log("REACT_APP_CALLISTO_BACKEND is not set.");
-  console.log("ENV is set to: " + JSON.stringify(process.env));
+  console.log("VITE_CALLISTO_BACKEND is not set.");
+  console.log("ENV is set to: " + JSON.stringify(import.meta.env));
 }
 
 console.log("Running on " + window.location.href);

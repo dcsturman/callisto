@@ -309,7 +309,7 @@ impl Authenticator for GoogleAuthenticator {
       ("code", &code.to_string()),
       ("client_id", &self.credentials.client_id.clone()),
       ("client_secret", &self.credentials.client_secret.clone()),
-      ("redirect_uri", &redirect_uri.to_string()),
+      ("redirect_uri", &redirect_uri.clone()),
       ("access_type", &"offline".to_string()),
       ("grant_type", &GRANT_TYPE.to_string()),
     ];
@@ -584,15 +584,6 @@ struct GoogleClaims {
   exp: u64,
   email: String,
   email_verified: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GoogleTokenRequest {
-  code: String,
-  client_id: String,
-  client_secret: String,
-  redirect_uri: String,
-  grant_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

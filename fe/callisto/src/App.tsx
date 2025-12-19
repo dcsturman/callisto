@@ -33,7 +33,7 @@ import {entitiesSelector} from "state/serverSlice";
 import "./index.css";
 
 export const GOOGLE_OAUTH_CLIENT_ID: string =
-  process.env.REACT_APP_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
+  import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
 
 export function App() {
   const socketReady = useAppSelector((state) => state.server.socketReady);
