@@ -131,8 +131,8 @@ pub fn attack(
         HIT_WEAPON_MOD[weapon.kind as usize]
     );
 
-  if called_shot_system.is_some() {
-    info!("(Combat.attack) Called shot system is {:?}.", called_shot_system.unwrap());
+  if let Some(cs) = called_shot_system {
+    info!("(Combat.attack) Called shot system is {:?}.", cs);
   }
 
   let roll = i32::from(roll_dice(2, rng));

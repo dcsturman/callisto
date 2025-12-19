@@ -25,10 +25,10 @@ jobs:
       - name: Build node.js
         env:
            CI: false
-           REACT_APP_CALLISTO_BACKEND: ${{ env.BACKEND_SERVER_URL }}
-           REACT_APP_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+           VITE_CALLISTO_BACKEND: ${{ env.BACKEND_SERVER_URL }}
+           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
         working-directory: ./fe/callisto
-        run: npm ci && npm run build
+        run: npm ci --legacy-peer-deps && npm run build
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

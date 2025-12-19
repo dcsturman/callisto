@@ -37,7 +37,7 @@ export function Authentication() {
     flow: "auth-code",
     state: secureState,
     // Redirect_uri should be the address of the Node.js server.
-    redirect_uri: process.env.REACT_APP_NODE_SERVER || window.location.href,
+    redirect_uri: import.meta.env.VITE_NODE_SERVER || window.location.href,
     accessType: "offline",
     isSignedIn: true,
     responseType: "code",

@@ -4,11 +4,11 @@ import { useRef } from "react";
 import { Group, Mesh, SphereGeometry } from "three";
 import {
   extend,
-  ReactThreeFiber,
   useThree,
   useFrame,
   Vector3,
 } from "@react-three/fiber";
+import type { ThreeElement } from "@react-three/fiber";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry";
 import { FontLoader, Font } from "three/examples/jsm/loaders/FontLoader";
 
@@ -35,7 +35,7 @@ extend({ TextGeometry });
 // Needed for some reason to make textGeometry work.
 declare module '@react-three/fiber' {
   interface ThreeElements {
-    textGeometry: ReactThreeFiber.Object3DNode<TextGeometry, typeof TextGeometry>;
+    textGeometry: ThreeElement<typeof TextGeometry>;
   }
 }
 

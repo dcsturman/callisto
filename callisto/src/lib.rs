@@ -74,7 +74,7 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
       .download_object(
         &GetObjectRequest {
           bucket: bucket_name.to_string(),
-          object: object_name.to_string(),
+          object: object_name,
           ..Default::default()
         },
         &Range::default(),
@@ -194,7 +194,7 @@ pub async fn get_file_last_modified_timestamp(filename: &str) -> Result<Option<i
     let object = client
       .get_object(&GetObjectRequest {
         bucket: bucket_name.to_string(),
-        object: object_name.to_string(),
+        object: object_name,
         ..Default::default()
       })
       .await?;
