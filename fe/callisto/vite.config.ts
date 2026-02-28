@@ -10,7 +10,7 @@ export default defineConfig({
     svgr({
       // svgr options: https://react-svgr.com/docs/options/
       svgrOptions: {
-        exportType: 'named',
+        exportType: 'default',
         ref: true,
         svgo: false,
         titleProp: true,
