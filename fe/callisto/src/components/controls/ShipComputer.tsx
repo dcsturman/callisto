@@ -504,7 +504,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
     if (!computerShipName || !actions[computerShipName]) {
       return newSensorState(SensorAction.None, "");
     }
-    return actions[computerShipName].sensor;
+    return actions[computerShipName].sensor || newSensorState(SensorAction.None, "");
   }, [actions, computerShipName]);
 
   function handleSensorActionChange(event: React.ChangeEvent<HTMLSelectElement>) {

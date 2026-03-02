@@ -262,6 +262,7 @@ pub enum RequestMsg {
   Reset,
   Logout,
   Ping,
+  ValidateSession,
   Quit,
 }
 

@@ -186,9 +186,9 @@ export function payloadToAction(payload: object[]): ActionType {
         return !(((typeof action === "object") && Object.hasOwn(action, "FireAction")) || ((typeof action === "object") && Object.hasOwn(action, "PointDefenseAction")) || (typeof action === "string" && action === "Jump"));
       }
     );
-    
+
+    let s = DEFAULT_SENSOR_STATE;
     if (sensor_action.length === 1) {
-      let s = {} as SensorState;
       const action = sensor_action[0] as string | {[key: string]: {target: string}};
 
       if (sensor_action[0] === "JamMissiles") {
@@ -205,8 +205,8 @@ export function payloadToAction(payload: object[]): ActionType {
             JSON.stringify(action)
         );
       }
-      result[shipName] = {...result[shipName], sensor: s};
     }
+    result[shipName] = {...result[shipName], sensor: s};
 
     const jump_action = actions.filter((action) => action === "Jump");
     if (jump_action.length === 1) {

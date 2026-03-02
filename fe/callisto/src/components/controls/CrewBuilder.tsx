@@ -4,7 +4,7 @@ import { ShipDesignTemplate } from "lib/shipDesignTemplates";
 import { findShip } from "lib/entities";
 
 import { useAppSelector } from "state/hooks";
-import {entitiesSelector} from "state/serverSlice";
+import { entitiesSelector } from "state/serverSlice";
 
 export interface Crew {
   pilot: number;
@@ -24,8 +24,7 @@ export const createCrew = (num_gunners: number) => {
     sensors: 0,
     gunnery: new Array(num_gunners).fill(0),
   };
-}
-
+};
 
 interface CrewBuilderProps {
   updateCrew: (crew: Crew) => void;
@@ -57,14 +56,21 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
       }
       setCurrentShipName(shipName);
     }
-  }, [shipName, initialCrew, entities, currentShipName, customCrew, updateCrew]);
+  }, [
+    shipName,
+    initialCrew,
+    entities,
+    currentShipName,
+    customCrew,
+    updateCrew,
+  ]);
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;
 
     if (name === "gunnery") {
       // Update the current gunnery value
-      const gunneryValues = customCrew.gunnery;
+      let gunneryValues = customCrew.gunnery;
 
       // Use currentGunId - 1 as we show id's starting at 1, but for the
       // array of course want to start at 0
@@ -140,7 +146,8 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
             <select
               className="select-dropdown control-name-input control-input crew-builder-gun-selector"
               value={currentGunId}
-              onChange={(e) => setCurrentGunId(Number(e.target.value))}>
+              onChange={(e) => setCurrentGunId(Number(e.target.value))}
+            >
               {Array.from(Array(num_gunners).keys()).map((gun_id) => (
                 <option key={`${gun_id + 1}-gunner`} value={gun_id + 1}>
                   {gun_id + 1}

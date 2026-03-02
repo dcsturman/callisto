@@ -42,7 +42,7 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 }
 
 /// Do the attack of one ship's weapon system against a ship.  This includes resolving previously launched missiles that
-/// now impact the target.  
+/// now impact the target.
 ///
 /// # Arguments
 /// * `hit_mod` - The hit modifier to use (positive or negative).
@@ -103,7 +103,8 @@ pub fn attack(
     RANGE_MOD[range_band as usize]
   } else {
     // We are out of range so cannot attack
-    debug!(
+    // Should never get here!
+    error!(
       "(Combat.attack) {} is out of range of {}'s {}.",
       defender.get_name(),
       attacker.get_name(),
@@ -776,6 +777,30 @@ pub fn do_fire_actions<S: BuildHasher>(
         weapon
       );
 
+      // Need a range check here before possibily using up of sand or dodge.
+      // This in theory could be lossy but that would require there to be more than 4.29x10^9m which is VERY far.  If we
+      // wanted to be safer we check if the magnitude was greater than u32::MAX and then just use that.
+      // Note we will lose precision here but this is just for range so okay.
+      #[allow(clippy::cast_sign_loss)]
+      #[allow(clippy::cast_possible_truncation)]
+      let range_band = find_range_band((target.get_position() - attacker.get_position()).magnitude() as u32);
+      if weapon.kind != WeaponType::Missile && !weapon.kind.in_range(range_band) {
+        // We are out of range so cannot attack
+        debug!(
+          "(Combat.attack) {} is out of range of {}'s {}.",
+          target.get_name(),
+          attacker.get_name(),
+          String::from(&weapon.kind)
+        );
+        return vec![EffectMsg::message(format!(
+          "{} is out of range of {}'s {}.",
+          target.get_name(),
+          attacker.get_name(),
+          String::from(&weapon.kind)
+        ))];
+      }
+
+      // At this point all these attacks should be in range.
       match weapon.kind {
         WeaponType::Missile => {
           // Missiles don't actually attack when fired.  They'll come back and call the attack function on impact.
@@ -815,6 +840,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             String::from(&weapon.kind),
             target.get_name()
           );
+
           let (sand_mod, mut effects) = match sand_counts.get_mut(target.get_name()) {
             Some(sand_casters) if !sand_casters.is_empty() => {
               // There is a serious error if after checking if the sand_casters list isn't empty

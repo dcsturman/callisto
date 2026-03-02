@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "name": "Raiders Attack",
+    "description": "The Voidskipper protects the hapless planet ACE from two Oghman raiders.  Can the Voidskipper survive the attack and defeat the raiders?"
+  },
+  "planets": [
+    {
+      "name": "ACE",
+      "position": [0, 0, 0],
+      "velocity": [0, 0, 0],
+      "color": "!venus",
+      "radius": 5.5e6,
+      "mass": 3.557e24
+    }
+  ],
+  "ships": [
+    {
+      "name": "Voidskipper",
+      "position": [2.0e7, 2.0e7, 2.0e7],
+      "velocity": [0, 0, 0],
+      "plan": [[[0, 0, 0], 50000]],
+      "design": "Void Trader"
+    },
+    {
+      "name": "Flayer",
+      "position": [5.8e6, 0, 5.8e6],
+      "velocity": [0, 0, 0],
+      "plan": [[[0, 0, 0], 50000]],
+      "design": "Threshing Oar"
+    },
+    {
+      "name": "Skinner",
+      "position": [0, 7.0e6, -7.0e6],
+      "velocity": [0, 0, 0],
+      "plan": [[[0, 0, 0], 50000]],
+      "design": "Threshing Oar"
+    }
+  ]
+}

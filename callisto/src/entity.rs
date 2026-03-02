@@ -892,11 +892,11 @@ impl Entities {
           .sensor_locks
           .retain(|s| s != ship_name);
         vec![EffectMsg::Message {
-          content: format!("Sensor lock on {target} broken by {ship_name}."),
+          content: format!("{ship_name} broke {target}'s sensor lock!"),
         }]
       } else {
         vec![EffectMsg::Message {
-          content: format!("Sensor lock on {target} not broken by {ship_name}."),
+          content: format!("{ship_name} failed to break {target}'s sensor lock."),
         }]
       }
     } else {
@@ -2039,7 +2039,7 @@ mod tests {
              "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
-             "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
+             "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30},
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"sun"}]});
 
     let mut entities = serde_json::from_value::<Entities>(scenario).unwrap();
@@ -2055,7 +2055,7 @@ mod tests {
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2},
              {"name":"Invalid::1","source":"ship1","target":"InvalidShip","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
-             "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
+             "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30},
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"sun"}]});
 
     let mut entities = serde_json::from_value::<Entities>(bad_scenario).unwrap();
@@ -2073,7 +2073,7 @@ mod tests {
              "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
              "hull":4, "structure":6}],
              "missiles":[{"name":"ship1::ship2::0","source":"ship1","target":"ship2","position":[0.0,0.0,500_000.0],"velocity":[0.0,0.0,0.0],"acceleration":[0.0,0.0,58.0],"burns":2}],
-             "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30}, 
+             "planets":[{"name":"sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":6.96e8,"mass":1.989e30},
                         {"name":"earth","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6.371e6,"mass":5.972e24,"primary":"InvalidPlanet"}]});
 
     let mut entities = serde_json::from_value::<Entities>(bad_scenario).unwrap();
