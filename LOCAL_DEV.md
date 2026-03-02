@@ -28,6 +28,24 @@ npm start -- --port 50001
 
 Open `http://localhost:50001` in your browser.
 
+## Running Integration Tests
+
+To run the integration tests, you need to generate TLS keys first:
+
+```bash
+cd callisto/keys
+bash ../build_keys.sh
+```
+
+When prompted for certificate information, you can accept defaults by pressing Enter.
+
+Then run the tests:
+
+```bash
+cd callisto
+cargo test --release
+```
+
 ## Troubleshooting
 
 **WebSocket handshake fails:**
@@ -42,3 +60,6 @@ Open `http://localhost:50001` in your browser.
 **OAuth "missing access_token" error:**
 - This usually means redirect_uri mismatch
 - Frontend and backend must use the same redirect_uri value
+
+**Integration tests fail with "Connection refused":**
+- Run `bash callisto/build_keys.sh` from the `callisto/keys` directory to regenerate TLS keys

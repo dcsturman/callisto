@@ -281,10 +281,10 @@ fn generic_on_request(
 
     let cookie_value = if cfg!(feature = "no_tls_upgrade") {
       // For local development without TLS, don't set Secure flag
-      format!("{SESSION_COOKIE_NAME}={session_key}; SameSite=Lax")
+      format!("{SESSION_COOKIE_NAME}={session_key}; HttpOnly; SameSite=Lax")
     } else {
       // For production with TLS, set Secure flag
-      format!("{SESSION_COOKIE_NAME}={session_key}; SameSite=None; Secure")
+      format!("{SESSION_COOKIE_NAME}={session_key}; HttpOnly; SameSite=None; Secure")
     };
 
     response.headers_mut().insert("Set-Cookie", cookie_value.parse().unwrap());

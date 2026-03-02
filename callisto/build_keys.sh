@@ -5,7 +5,7 @@ openssl req -newkey rsa:2048 -nodes -keyout localhost.key -out localhost.csr
 openssl x509 -signkey localhost.key -in localhost.csr -req -days 365 -out localhost.crt
 
 # Create a self-signed root CA
-openssl req -x509 -sha256 -days 1825 -newkey rsa:2048 -keyout rootCA.key -out rootCA.crt
+openssl req -x509 -sha256 -days 1825 -newkey rsa:2048 -nodes -keyout rootCA.key -out rootCA.crt
 
 # localhost.ext file has this stuff
 # authorityKeyIdentifier=keyid,issuer

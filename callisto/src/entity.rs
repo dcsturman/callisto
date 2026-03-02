@@ -2259,7 +2259,7 @@ mod tests {
 
     // Check that the lock was broken
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("broken by")
+        EffectMsg::Message { content } if content.contains("broke")
     )));
 
     {
@@ -2280,7 +2280,7 @@ mod tests {
 
     // Check that the lock was not broken
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("not broken by")
+        EffectMsg::Message { content } if content.contains("failed to break")
     )));
   }
 

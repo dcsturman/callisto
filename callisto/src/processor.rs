@@ -492,9 +492,7 @@ impl Processor {
       RequestMsg::ValidateSession => {
         // Check if the current session is valid by looking up the session key
         if let Some(session_key) = player.get_session_key() {
-          debug!("(ValidateSession) Found session key: {}", session_key);
           let session_keys_lock = self.session_keys.lock().unwrap();
-          debug!("(ValidateSession) Session keys map has {} entries", session_keys_lock.len());
           if let Some(Some(email)) = session_keys_lock.get(&session_key) {
             // Session is valid and user is logged in
             debug!("(ValidateSession) Session key is valid, user email: {}", email);
