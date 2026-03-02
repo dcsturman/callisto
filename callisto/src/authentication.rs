@@ -217,10 +217,13 @@ fn generic_on_request(
       } else {
         None
       }
-      .and_then(|cookie| {
-        cookie
-          .strip_prefix(&format!("{SESSION_COOKIE_NAME}="))
-          .map(std::string::ToString::to_string)
+      .and_then(|cookie_header| {
+        // Split the cookie header by "; " to get individual cookies
+        cookie_header.split("; ").find_map(|cookie| {
+          cookie
+            .strip_prefix(&format!("{SESSION_COOKIE_NAME}="))
+            .map(std::string::ToString::to_string)
+        })
       })
     })
     .collect::<Vec<String>>();
@@ -249,9 +252,25 @@ fn generic_on_request(
     // We have a logged in user with a valid email, so record that.
     debug!("(on_request) Found valid email {}", email,);
     (response, key.clone(), Some(email.clone()))
-  } else if cookies.is_empty() {
-    // The case where we need to create a new session key.
-    debug!("(on_request) No valid email found for session key.");
+  } else if !cookies.is_empty() {
+    // We have cookies but they don't have a valid email yet (e.g., reconnection after server restart or logout).
+    // Reuse the first cookie's session key instead of creating a new one.
+    // This allows the client to maintain the same session key across reconnections.
+    debug!(
+      "(on_request) Found {} cookie(s) but none have valid email. Reusing first cookie.",
+      cookies.len()
+    );
+    let session_key = cookies[0].clone();
+
+    // Ensure the session key is in the map (it might not be if this is a fresh reconnection)
+    let mut session_keys_lock = session_keys.lock().expect("Unable to get lock session keys.");
+    session_keys_lock.entry(session_key.clone()).or_insert(None);
+    drop(session_keys_lock);
+
+    (response, session_key, None)
+  } else {
+    // No cookies found, create a new session key.
+    debug!("(on_request) No cookies found. Creating new session key.");
     let mut response = response.clone();
 
     let session_key = generate_session_key();
@@ -260,18 +279,17 @@ fn generic_on_request(
       .expect("Unable to get lock session keys.")
       .insert(session_key.clone(), None);
 
-    response.headers_mut().insert(
-      "Set-Cookie",
-      format!("{SESSION_COOKIE_NAME}={session_key}; SameSite=None; Secure")
-        .parse()
-        .unwrap(),
-    );
+    let cookie_value = if cfg!(feature = "no_tls_upgrade") {
+      // For local development without TLS, don't set Secure flag
+      format!("{SESSION_COOKIE_NAME}={session_key}; HttpOnly; SameSite=Lax")
+    } else {
+      // For production with TLS, set Secure flag
+      format!("{SESSION_COOKIE_NAME}={session_key}; HttpOnly; SameSite=None; Secure")
+    };
+
+    response.headers_mut().insert("Set-Cookie", cookie_value.parse().unwrap());
 
     (response, session_key, None)
-  } else {
-    // We aren't logged in, but there is already a set cookie. So just use that vs
-    // creating another session key.
-    (response, cookies.first().unwrap().clone(), None)
   }
 }
 
@@ -426,7 +444,7 @@ impl Authenticator for GoogleAuthenticator {
     Ok(email)
   }
 
-  /**  
+  /**
    * Check if a user is logged in on this session.
    *
    * # Returns

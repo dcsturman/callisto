@@ -190,7 +190,7 @@
     "tl": 15
   },
   {
-    "name": "Threshing Oar Raider",
+    "name": "Threshing Oar",
     "displacement": 300,
     "hull": 120,
     "armor": 2,
@@ -218,7 +218,7 @@
     "tl": 9
   },
   {
-    "name": "Void-class Free Trader",
+    "name": "Void Trader",
     "displacement": 400,
     "hull": 160,
     "armor": 4,

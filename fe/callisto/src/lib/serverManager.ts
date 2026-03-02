@@ -28,6 +28,7 @@ const RESET_REQUEST = '"Reset"';
 const EXIT_REQUEST = '"Exit"';
 const LOGOUT_REQUEST = '"Logout"';
 const PING_REQUEST = '"Ping"';
+const VALIDATE_SESSION_REQUEST = '"ValidateSession"';
 
 // Send a keepalive every minute.
 const KEEP_ALIVE_INTERVAL = 60000;
@@ -42,9 +43,12 @@ export function startWebsocket() {
   console.log("(ServerManager.startWebsocket) Trying to establish websocket.");
   const stripped_name = CALLISTO_BACKEND.replace("https://", "").replace("http://", "");
 
+  // Use ws:// for http:// backends (local dev), wss:// for https:// backends (production)
+  const protocol = CALLISTO_BACKEND.startsWith("https://") ? "wss://" : "ws://";
+
   if (socket === undefined || socket.readyState === WebSocket.CLOSED) {
     store.dispatch(setSocketReady(false));
-    const back_end = `wss://${stripped_name}`;
+    const back_end = `${protocol}${stripped_name}`;
     console.log(`(ServerManager.startWebsocket) Open web socket to ${back_end}`);
     socket = new WebSocket(back_end);
   } else {
@@ -53,6 +57,8 @@ export function startWebsocket() {
   socket.onopen = () => {
     console.log("(ServerManager.startWebsocket.onopen) Socket opened");
     store.dispatch(setSocketReady(true));
+    // Validate session on reconnect - server will respond with AuthResponse or PleaseLogin
+    socket.send(VALIDATE_SESSION_REQUEST);
   };
   socket.onclose = (event: CloseEvent) => {
     console.log("(ServerManager.startWebsocket.onclose) Socket closed");
@@ -96,7 +102,7 @@ const handleMessage = (event: MessageEvent) => {
   }
 
   if (json === "PleaseLogin") {
-    setAuthenticated(false);
+    store.dispatch(setAuthenticated(false));
     return;
   }
 

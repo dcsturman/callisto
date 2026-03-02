@@ -84,7 +84,11 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
           // We need a specific "anti-action" so we can differentiate between a client that is just missing some information and
           // one that actually wants to eliminate the action.
           ShipAction::DeleteFireAction { weapon_id } => {
-            let design = &ships.get(&next_ship).unwrap().read().unwrap().design;
+            let Some(ship_lock) = &ships.get(&next_ship) else {
+              continue;
+            };
+            let ship = ship_lock.read().expect("(Action.merge) Unable to read ship lock.");
+            let design = &ship.design;
             let current_template = SHIP_TEMPLATES
               .get()
               .expect("Ship templates not loaded,")

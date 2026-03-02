@@ -342,6 +342,7 @@ impl Processor {
         None
       }
     } else {
+      // Unauthenticated connection - just accept it
       Some(connection)
     }
   }
@@ -381,7 +382,11 @@ impl Processor {
 
     // If the connection has not logged in yet, that is the priority.
     // Nothing else is processed until login is complete.
-    if !player.validated_user() && !matches!(message, RequestMsg::Login(_)) && !matches!(message, RequestMsg::Quit) {
+    if !player.validated_user()
+      && !matches!(message, RequestMsg::Login(_))
+      && !matches!(message, RequestMsg::Quit)
+      && !matches!(message, RequestMsg::ValidateSession)
+    {
       return vec![ResponseMsg::PleaseLogin];
     }
 
@@ -483,6 +488,34 @@ impl Processor {
         player.logout(&self.session_keys);
 
         vec![ResponseMsg::LogoutResponse]
+      }
+      RequestMsg::ValidateSession => {
+        // Check if the current session is valid by looking up the session key
+        if let Some(session_key) = player.get_session_key() {
+          let session_keys_lock = self.session_keys.lock().unwrap();
+          if let Some(Some(email)) = session_keys_lock.get(&session_key) {
+            // Session is valid and user is logged in
+            debug!("(ValidateSession) Session key is valid, user email: {}", email);
+            let email_clone = email.clone();
+            drop(session_keys_lock);
+            let (role, ship) = player.get_role();
+            vec![ResponseMsg::AuthResponse(AuthResponse {
+              email: email_clone,
+              scenario: player.server.as_ref().map(|s| s.id.clone()),
+              role: Some(role),
+              ship,
+            })]
+          } else {
+            // Session key exists but no email (not logged in yet)
+            debug!("(ValidateSession) Session key exists but no email found in map");
+            drop(session_keys_lock);
+            vec![ResponseMsg::PleaseLogin]
+          }
+        } else {
+          // No session key found
+          debug!("(ValidateSession) No session key found on player");
+          vec![ResponseMsg::PleaseLogin]
+        }
       }
       RequestMsg::JoinScenario(join_scenario) => {
         if let Some(server) = self.servers.get(&join_scenario.scenario_name) {

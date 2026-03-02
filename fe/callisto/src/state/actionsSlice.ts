@@ -29,7 +29,10 @@ export const actionsSlice = createSlice({
   initialState,
   reducers: {
     setActions: (state, item: PayloadAction<ActionType>) => {
-      state = item.payload;
+      // Clear existing state
+      Object.keys(state).forEach(key => delete state[key]);
+      // Copy new payload into state
+      Object.assign(state, item.payload);
     },
     setSensorAction: (state, item: PayloadAction<{ shipName: string, action: SensorState}>) => {
       state[item.payload.shipName] ??= newShipAction();
