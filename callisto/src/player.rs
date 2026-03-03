@@ -350,7 +350,7 @@ impl PlayerManager {
   /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
   /// (e.g. move a ship, planet or missile) as well as new fire actions.
   ///
-  /// # Panics  
+  /// # Panics
   /// Panics if the lock cannot be obtained to read the entities or if the server
   /// has not yet been initialized.
   #[must_use]
@@ -480,7 +480,7 @@ impl PlayerManager {
     };
 
     if msg.standoff_distance > 0.0 {
-      debug!("(/compute_path) Standoff distance: {:0.0?} Adjusted end pos: {:0.0?} Original end pos {:0.0?}Difference {:0.0?}", msg.standoff_distance, adjusted_end_pos, msg.end_pos, 
+      debug!("(/compute_path) Standoff distance: {:0.0?} Adjusted end pos: {:0.0?} Original end pos {:0.0?}Difference {:0.0?}", msg.standoff_distance, adjusted_end_pos, msg.end_pos,
                     (adjusted_end_pos - msg.end_pos).magnitude());
     }
 
