@@ -429,6 +429,9 @@ impl Entities {
         effects
       })
       .collect();
+    debug!("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+    debug!("{:?}", self.ships);
+    debug!("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
     effects
   }
 
@@ -1121,10 +1124,8 @@ impl std::fmt::Display for Entities {
 
 // If we ever clone Entities (almost always for testing) we want it to be deep!
 impl Clone for Entities {
-  // This is an inefficient hack but simple - since its mostly for testing we'll use
-  // this approach for now.
   fn clone(&self) -> Self {
-    serde_json::from_str(&serde_json::to_string(self).unwrap()).unwrap()
+    self.deep_copy()
   }
 }
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::sync::Arc;
 
 use cgmath::{InnerSpace, Zero};
@@ -23,8 +23,8 @@ pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = 
 #[skip_serializing_none]
 #[serde_as]
 #[derive(Derivative)]
-#[derivative(PartialEq)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derivative(PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Ship {
   name: String,
   #[serde_as(as = "Vec3asVec")]
@@ -35,6 +35,7 @@ pub struct Ship {
 
   #[serde_as(as = "TemplateNameOnly")]
   #[derivative(PartialEq = "ignore")]
+  #[derivative(Debug(format_with = "format_ship_template_name_only"))]
   pub design: Arc<ShipDesignTemplate>,
 
   #[serde(default)]
@@ -79,15 +80,19 @@ pub struct Ship {
   can_jump: bool,
 
   // Index by turning ShipSystem enum into usize.
-  // Skip these in both serializing and deserializing
-  // as we don't expect them when loading from a file and
-  // don't intend to send them to the server.
-  #[serde(skip)]
+  // Skip deserializing as we don't expect them when loading from a file
+  // and don't intend to receive them from the client.
+  // But we do serialize them to send to the client.
+  #[serde(skip_deserializing)]
   pub crit_level: [u8; 11],
   #[serde(skip)]
   pub attack_dm: i32,
   #[serde(skip)]
   pub point_defense_list: Vec<(usize, u16)>,
+}
+
+fn format_ship_template_name_only(value: &Arc<ShipDesignTemplate>, f: &mut Formatter) -> FmtResult {
+  write!(f, "\"{}\"", value.name)
 }
 
 #[skip_serializing_none]

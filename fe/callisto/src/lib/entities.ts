@@ -25,6 +25,7 @@ export interface Ship extends Entity {
   can_jump: boolean;
   sensor_locks: string[];
   crew: Crew;
+  crit_level?: number[];  // Array of 11 numbers indexed by ShipSystem
 }
 
 const createShip = (
