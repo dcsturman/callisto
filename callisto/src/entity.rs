@@ -1755,7 +1755,8 @@ mod tests {
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
-        "sensor_locks": []
+        "sensor_locks": [],
+        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
@@ -1772,7 +1773,8 @@ mod tests {
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
-        "sensor_locks": []
+        "sensor_locks": [],
+        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
@@ -1789,7 +1791,8 @@ mod tests {
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
-        "sensor_locks": []
+        "sensor_locks": [],
+        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
     "missiles":[],
     "actions":[],

@@ -450,7 +450,8 @@ async fn integration_add_ship() {
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
-         "sensor_locks": []
+         "sensor_locks": [],
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
         "missiles":[],
         "planets":[],
@@ -524,7 +525,8 @@ async fn integration_add_planet_ship() {
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
-         "sensor_locks": []
+         "sensor_locks": [],
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -542,7 +544,8 @@ async fn integration_add_planet_ship() {
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
-         "sensor_locks": []
+         "sensor_locks": [],
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
           "missiles":[],
           "planets":[],
@@ -597,7 +600,8 @@ async fn integration_add_planet_ship() {
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
-         "sensor_locks": []
+         "sensor_locks": [],
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -615,7 +619,8 @@ async fn integration_add_planet_ship() {
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
-         "sensor_locks": []
+         "sensor_locks": [],
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }]});
 
     assert_json_eq!(entities, compare);
@@ -669,7 +674,8 @@ async fn integration_add_planet_ship() {
      "dodge_thrust":0,
      "assist_gunners":false,
      "can_jump":false,
-     "sensor_locks": []
+     "sensor_locks": [],
+     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
      "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -687,7 +693,8 @@ async fn integration_add_planet_ship() {
      "dodge_thrust":0,
      "assist_gunners":false,
      "can_jump":false,
-     "sensor_locks": []
+     "sensor_locks": [],
+     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     }]});
 
     assert_json_eq!(&entities, &compare);
@@ -844,7 +851,8 @@ async fn integration_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
-             "sensor_locks": []
+             "sensor_locks": [],
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -862,7 +870,8 @@ async fn integration_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
-             "sensor_locks": []
+             "sensor_locks": [],
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 
