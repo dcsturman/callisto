@@ -1,21 +1,21 @@
 import * as React from "react";
-import {useEffect, useMemo, useCallback} from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import * as THREE from "three";
-import {Accordion} from "lib/Accordion";
-import {AddShip} from "./AddShip";
-import {POSITION_SCALE, SCALE} from "lib/universal";
-import {Ship, Entity, Planet, findShip} from "lib/entities";
-import {ViewMode} from "lib/view";
-import {nextRound} from "lib/serverManager";
-import {EntitySelector, EntitySelectorType} from "lib/EntitySelector";
-import {scaleVector, vectorToString} from "lib/Util";
-import {NavigationPlan} from "./ShipComputer";
-import {FireActions, FireControl} from "./WeaponUse";
-import {ShipComputer} from "./ShipComputer";
-import {computeFlightPath} from "lib/serverManager";
-import {useAppSelector, useAppDispatch} from "state/hooks";
-import {entitiesSelector} from "state/serverSlice";
-import {store} from "state/store";
+import { Accordion } from "lib/Accordion";
+import { AddShip } from "./AddShip";
+import { POSITION_SCALE, SCALE } from "lib/universal";
+import { Ship, Entity, Planet, findShip } from "lib/entities";
+import { ViewMode } from "lib/view";
+import { nextRound } from "lib/serverManager";
+import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
+import { scaleVector, vectorToString } from "lib/Util";
+import { NavigationPlan } from "./ShipComputer";
+import { FireActions, FireControl } from "./WeaponUse";
+import { ShipComputer } from "./ShipComputer";
+import { computeFlightPath } from "lib/serverManager";
+import { useAppSelector, useAppDispatch } from "state/hooks";
+import { entitiesSelector } from "state/serverSlice";
+import { store } from "state/store";
 import {
   setComputerShipName,
   setShowRange,
@@ -24,7 +24,12 @@ import {
   setJumpDistance,
 } from "state/uiSlice";
 
-function ShipList(args: {moveCamera: (cameraQuaternion: [number, number, number, number], ship: Ship) => void}) {
+function ShipList(args: {
+  moveCamera: (
+    cameraQuaternion: [number, number, number, number],
+    ship: Ship,
+  ) => void;
+}) {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
   const dispatch = useAppDispatch();
@@ -33,12 +38,15 @@ function ShipList(args: {moveCamera: (cameraQuaternion: [number, number, number,
     return findShip(entities, computerShipName);
   }, [computerShipName, entities]);
 
-  const choiceHandler = useCallback((ship: Entity | null) => {
-    dispatch(setShowRange(null));
-    dispatch(setComputerShipName(ship ? ship.name : null));
-  },[dispatch]);
+  const choiceHandler = useCallback(
+    (ship: Entity | null) => {
+      dispatch(setShowRange(null));
+      dispatch(setComputerShipName(ship ? ship.name : null));
+    },
+    [dispatch],
+  );
 
-  const filter = useMemo(() =>[EntitySelectorType.Ship],[]);
+  const filter = useMemo(() => [EntitySelectorType.Ship], []);
 
   return (
     <div className="control-launch-div">
@@ -55,10 +63,13 @@ function ShipList(args: {moveCamera: (cameraQuaternion: [number, number, number,
 }
 
 interface GoButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  moveCamera: (cameraQuaternion: [number, number, number, number], ship: Ship) => void;
+  moveCamera: (
+    cameraQuaternion: [number, number, number, number],
+    ship: Ship,
+  ) => void;
 }
 
-export const GoButton: React.FC<GoButtonProps> = ({moveCamera, ...props}) => {
+export const GoButton: React.FC<GoButtonProps> = ({ moveCamera, ...props }) => {
   const cameraQuaternion = useAppSelector((state) => state.ui.cameraQuaternion);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
@@ -67,28 +78,47 @@ export const GoButton: React.FC<GoButtonProps> = ({moveCamera, ...props}) => {
     return findShip(entities, computerShipName);
   }, [computerShipName, entities]);
 
-  const clickHandler = useMemo(() => () =>  computerShip && moveCamera(cameraQuaternion, computerShip), [computerShip, cameraQuaternion, moveCamera]);
+  const clickHandler = useMemo(
+    () => () => computerShip && moveCamera(cameraQuaternion, computerShip),
+    [computerShip, cameraQuaternion, moveCamera],
+  );
 
   return (
     <button
       className="control-input blue-button"
       {...props}
-      onClick={clickHandler}>
+      onClick={clickHandler}
+    >
       Go
     </button>
   );
 };
 
-function moveCameraToShip(cameraQuaternion: [number, number, number, number], computerShip: Ship) {
-
+function moveCameraToShip(
+  cameraQuaternion: [number, number, number, number],
+  computerShip: Ship,
+) {
   const downCamera = new THREE.Vector3(0, 0, 40);
-  downCamera.applyQuaternion(new THREE.Quaternion(cameraQuaternion[0], cameraQuaternion[1], cameraQuaternion[2], cameraQuaternion[3]));
+  downCamera.applyQuaternion(
+    new THREE.Quaternion(
+      cameraQuaternion[0],
+      cameraQuaternion[1],
+      cameraQuaternion[2],
+      cameraQuaternion[3],
+    ),
+  );
   const new_camera_pos = new THREE.Vector3(
     computerShip.position[0] * SCALE,
     computerShip.position[1] * SCALE,
-    computerShip.position[2] * SCALE
+    computerShip.position[2] * SCALE,
   ).add(downCamera);
-  store.dispatch(setCameraPos({x: new_camera_pos.x, y: new_camera_pos.y, z: new_camera_pos.z}));
+  store.dispatch(
+    setCameraPos({
+      x: new_camera_pos.x,
+      y: new_camera_pos.y,
+      z: new_camera_pos.z,
+    }),
+  );
 }
 
 export function Controls() {
@@ -113,7 +143,9 @@ export function Controls() {
 
   const [computerShip, computerShipDesign] = useMemo(() => {
     const computerShip = findShip(entities, computerShipName);
-    const computerShipDesign = computerShip ? shipTemplates[computerShip.design] : null;
+    const computerShipDesign = computerShip
+      ? shipTemplates[computerShip.design]
+      : null;
     return [computerShip, computerShipDesign];
   }, [computerShipName, entities, shipTemplates]);
 
@@ -170,18 +202,24 @@ export function Controls() {
                 <h2>Power</h2>
                 <pre className="plan-accel-text">{`${computerShip.current_power}(${computerShipDesign.power})`}</pre>
               </div>
-              {!computerShipDesign.countermeasures && !computerShipDesign.stealth && (
-                <div className="stats-bloc-entry">
-                  <h2>Sensors</h2>
-                  <pre className="plan-accel-text">{computerShip.current_sensors}</pre>
-                </div>
-              )}
+              {!computerShipDesign.countermeasures &&
+                !computerShipDesign.stealth && (
+                  <div className="stats-bloc-entry">
+                    <h2>Sensors</h2>
+                    <pre className="plan-accel-text">
+                      {computerShip.current_sensors}
+                    </pre>
+                  </div>
+                )}
             </div>
-            {(computerShipDesign.countermeasures || computerShipDesign.stealth) && (
+            {(computerShipDesign.countermeasures ||
+              computerShipDesign.stealth) && (
               <div className="vital-stats-bloc">
                 <div className="stats-bloc-entry">
                   <h2>Sensors</h2>
-                  <pre className="plan-accel-text">{computerShip.current_sensors}</pre>
+                  <pre className="plan-accel-text">
+                    {computerShip.current_sensors}
+                  </pre>
                 </div>
                 <div className="stats-bloc-entry">
                   <h2>CM</h2>
@@ -191,12 +229,14 @@ export function Controls() {
                 </div>
                 <div className="stats-bloc-entry">
                   <h2>Stealth</h2>
-                  <pre className="plan-accel-text">{computerShipDesign.stealth || "None"}</pre>
+                  <pre className="plan-accel-text">
+                    {computerShipDesign.stealth || "None"}
+                  </pre>
                 </div>
               </div>
             )}
             <h2 className="control-form">Current Position (km)</h2>
-            <div style={{display: "flex", justifyContent: "space-between"}}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">
                 {"(" +
                   (computerShip.position[0] / POSITION_SCALE).toFixed(0) +
@@ -223,7 +263,7 @@ export function Controls() {
               </span>
             </div>
             <h2 className="control-form">Current Velocity (m/s)</h2>
-            <div style={{display: "flex"}}>
+            <div style={{ display: "flex" }}>
               <pre className="plan-accel-text">
                 {"(" +
                   computerShip.velocity[0].toFixed(0) +
@@ -238,19 +278,58 @@ export function Controls() {
               <h2 className="control-form">Current Plan (s @ G&apos;s)</h2>
               <NavigationPlan plan={computerShip.plan} />
             </div>
+            {computerShip.crit_level &&
+              computerShip.crit_level.some((c) => c > 0) && (
+                <div id="crits-display">
+                  <h2 className="control-form">Critical Hits</h2>
+                  <pre className="plan-accel-text">
+                    {(() => {
+                      const systems = [
+                        "Sensors",
+                        "Power",
+                        "Fuel",
+                        "Weapon",
+                        "Armor",
+                        "Hull",
+                        "Maneuver",
+                        "Cargo",
+                        "Jump",
+                        "Crew",
+                        "Bridge",
+                      ];
+                      const crits = computerShip.crit_level
+                        .map((level, index) => {
+                          if (level === 0) return null;
+                          return `${systems[index]}: ${level}`;
+                        })
+                        .filter(Boolean);
+
+                      // Group into rows of 3
+                      const rows = [];
+                      for (let i = 0; i < crits.length; i += 3) {
+                        rows.push(crits.slice(i, i + 3).join(", "));
+                      }
+                      return rows.join("\n");
+                    })()}
+                  </pre>
+                </div>
+              )}
             <hr />
-            {[ViewMode.Pilot, ViewMode.Sensors].includes(role) && computerShipName && (
-              <Accordion
-                title={`${computerShipName} ${ViewMode[role]} Controls`}
-                initialOpen={true}>
-                <ShipComputer
-                  ship={computerShip}
-                />
-              </Accordion>
-            )}
+            {[ViewMode.Pilot, ViewMode.Sensors].includes(role) &&
+              computerShipName && (
+                <Accordion
+                  title={`${computerShipName} ${ViewMode[role]} Controls`}
+                  initialOpen={true}
+                >
+                  <ShipComputer ship={computerShip} />
+                </Accordion>
+              )}
             {[ViewMode.Gunner, ViewMode.General].includes(role) && (
               <div className="control-form">
-                <Accordion title={`${computerShipName} Fire Controls`} initialOpen={true}>
+                <Accordion
+                  title={`${computerShipName} Fire Controls`}
+                  initialOpen={true}
+                >
                   <FireControl />
                 </Accordion>
               </div>
@@ -280,7 +359,8 @@ export function Controls() {
           // the name of each possible actor and the FireState they produced during the round.
           nextRound();
           //args.setComputerShip(null);
-        }}>
+        }}
+      >
         Next Round
       </button>
     </div>
@@ -295,7 +375,7 @@ export function ViewControls() {
   return (
     <div className="view-controls-window">
       <h2>View Controls</h2>
-      <label style={{display: "flex"}}>
+      <label style={{ display: "flex" }}>
         {" "}
         <input
           type="checkbox"
@@ -304,19 +384,19 @@ export function ViewControls() {
         />{" "}
         Gravity Well
       </label>
-      <label style={{display: "flex"}}>
+      <label style={{ display: "flex" }}>
         {" "}
         <input
           type="checkbox"
           checked={jumpDistance}
-          onChange={() => dispatch(setJumpDistance(!jumpDistance)) }
+          onChange={() => dispatch(setJumpDistance(!jumpDistance))}
         />{" "}
         100 Diameter Limit
       </label>
     </div>
   );
 }
-export function EntityInfoWindow(args: {entity: Entity}) {
+export function EntityInfoWindow(args: { entity: Entity }) {
   let isPlanet = false;
   let isShip = false;
   let ship_next_accel: [number, number, number] = [0, 0, 0];
@@ -338,7 +418,10 @@ export function EntityInfoWindow(args: {entity: Entity}) {
     <div id="ship-info-window" className="ship-info-window">
       <h2 className="ship-info-title">{args.entity.name + " " + design}</h2>
       <div className="ship-info-content">
-        <p>Position (km): {vectorToString(scaleVector(args.entity.position, 1e-3))}</p>
+        <p>
+          Position (km):{" "}
+          {vectorToString(scaleVector(args.entity.position, 1e-3))}
+        </p>
         <p>Velocity (m/s): {vectorToString(args.entity.velocity)}</p>
         {isPlanet ? (
           <p>Radius (km): {radiusKm}</p>

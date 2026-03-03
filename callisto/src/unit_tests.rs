@@ -75,14 +75,15 @@ async fn test_add_ship() {
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
   let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
-        "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300, 
-        "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11, 
+        "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300,
+        "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11,
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
+        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         }],
         "missiles":[],"planets":[],"actions":[]});
 
@@ -126,8 +127,9 @@ async fn test_add_planet_ship() {
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
-         "sensor_locks": []
-        }, 
+         "sensor_locks": [],
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -144,7 +146,8 @@ async fn test_add_planet_ship() {
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
-         "sensor_locks": []
+         "sensor_locks": [],
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
           "missiles":[],
           "planets":[],
@@ -185,7 +188,8 @@ async fn test_add_planet_ship() {
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
-       "sensor_locks": []
+       "sensor_locks": [],
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -203,7 +207,8 @@ async fn test_add_planet_ship() {
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
-       "sensor_locks": []
+       "sensor_locks": [],
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }]});
 
   assert_json_eq!(result, compare);
@@ -245,7 +250,8 @@ async fn test_add_planet_ship() {
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
-       "sensor_locks": []
+       "sensor_locks": [],
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -263,7 +269,8 @@ async fn test_add_planet_ship() {
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
-       "sensor_locks": []
+       "sensor_locks": [],
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }]});
 
   assert_json_eq!(&start, &compare);
@@ -345,7 +352,8 @@ async fn test_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
-             "sensor_locks": []
+             "sensor_locks": [],
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -363,7 +371,8 @@ async fn test_update_missile() {
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
-             "sensor_locks": []
+             "sensor_locks": [],
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
              "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]});
 
@@ -761,7 +770,8 @@ async fn test_big_fight() {
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
-   "sensor_locks": []
+   "sensor_locks": [],
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -774,7 +784,8 @@ async fn test_big_fight() {
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
-   "sensor_locks": []
+   "sensor_locks": [],
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
     "planets":[],
@@ -876,7 +887,8 @@ async fn test_fight_with_crew() {
    "dodge_thrust":0,
    "assist_gunners":true,
    "can_jump":true,
-   "sensor_locks": []
+   "sensor_locks": [],
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -889,7 +901,8 @@ async fn test_fight_with_crew() {
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
-   "sensor_locks": []
+   "sensor_locks": [],
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
     "planets":[],

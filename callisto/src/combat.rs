@@ -11,6 +11,8 @@ use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
 use crate::{debug, error, info, warn};
+use tracing::event;
+use tracing::Level;
 
 const DIE_SIZE: u32 = 6;
 pub const STANDARD_ROLL_THRESHOLD: i32 = 8;
@@ -341,6 +343,13 @@ fn apply_crit(crit_level: u8, location: ShipSystem, defender: &mut Ship, rng: &m
       damage
     ))]
   } else {
+    event!(
+      Level::INFO,
+      "(Combat.apply_crit) {} suffers crit level {level} to {:?}.",
+      defender.get_name(),
+      location
+    );
+
     defender.crit_level[location as usize] = level;
 
     match (location, level) {

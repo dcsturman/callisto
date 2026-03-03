@@ -1,9 +1,19 @@
-
-import {Event} from "components/space/Effects";
-import {UserList, UserContext} from "components/UserList";
-import {ActionType, actionPayload, payloadToAction} from "components/controls/Actions";
-import {TUTORIAL_PREFIX} from "components/scenarios/ScenarioManager";
-import { setSocketReady, setAuthenticated, setTemplates, setEntities, setUsers, setScenarios } from "state/serverSlice";
+import { Event } from "components/space/Effects";
+import { UserList, UserContext } from "components/UserList";
+import {
+  ActionType,
+  actionPayload,
+  payloadToAction,
+} from "components/controls/Actions";
+import { TUTORIAL_PREFIX } from "components/scenarios/ScenarioManager";
+import {
+  setSocketReady,
+  setAuthenticated,
+  setTemplates,
+  setEntities,
+  setUsers,
+  setScenarios,
+} from "state/serverSlice";
 import { setEvents, setProposedPlan, setShowResults } from "state/uiSlice";
 import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
 import { setTutorialMode } from "state/tutorialSlice";
@@ -17,7 +27,8 @@ import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
 import { resetState as resetServerState } from "state/store";
 
-export const CALLISTO_BACKEND = import.meta.env.VITE_CALLISTO_BACKEND || "http://localhost:30000";
+export const CALLISTO_BACKEND =
+  import.meta.env.VITE_CALLISTO_BACKEND || "http://localhost:30000";
 
 // Message structures
 // This message (a simple enum on the rust server side) is just a string.
@@ -41,7 +52,10 @@ export let socket: WebSocket;
 //
 export function startWebsocket() {
   console.log("(ServerManager.startWebsocket) Trying to establish websocket.");
-  const stripped_name = CALLISTO_BACKEND.replace("https://", "").replace("http://", "");
+  const stripped_name = CALLISTO_BACKEND.replace("https://", "").replace(
+    "http://",
+    "",
+  );
 
   // Use ws:// for http:// backends (local dev), wss:// for https:// backends (production)
   const protocol = CALLISTO_BACKEND.startsWith("https://") ? "wss://" : "ws://";
@@ -49,7 +63,9 @@ export function startWebsocket() {
   if (socket === undefined || socket.readyState === WebSocket.CLOSED) {
     store.dispatch(setSocketReady(false));
     const back_end = `${protocol}${stripped_name}`;
-    console.log(`(ServerManager.startWebsocket) Open web socket to ${back_end}`);
+    console.log(
+      `(ServerManager.startWebsocket) Open web socket to ${back_end}`,
+    );
     socket = new WebSocket(back_end);
   } else {
     console.log("Socket already defined.  Not building it.");
@@ -84,7 +100,10 @@ export function setUpKeepAlive() {
 
 const handleClose = (event: CloseEvent) => {
   const msg =
-    "(ServerManager.handleClose) Socket closed: " + event.code + " Reason: " + event.reason;
+    "(ServerManager.handleClose) Socket closed: " +
+    event.code +
+    " Reason: " +
+    event.reason;
   if (event.wasClean) {
     console.log(msg);
   } else {
@@ -96,7 +115,7 @@ const handleMessage = (event: MessageEvent) => {
   const json = JSON.parse(event.data);
 
   // Because these first two aren't an object (just a string)  check for it differently.
-    // Response to keepalive message
+  // Response to keepalive message
   if (json === "Pong") {
     return;
   }
@@ -154,7 +173,9 @@ const handleMessage = (event: MessageEvent) => {
   }
 
   if ("LaunchMissile" in json) {
-    console.error("LaunchMissile currently deprecated. Should never receive this message.");
+    console.error(
+      "LaunchMissile currently deprecated. Should never receive this message.",
+    );
   }
 
   if ("SimpleMsg" in json) {
@@ -166,15 +187,13 @@ const handleMessage = (event: MessageEvent) => {
     console.error("Received Error: " + json.Error);
     alert(json.Error);
   }
-
-
 };
 
 //
 // Functions called to communicate to the server
 //
 export function login(code: string) {
-  const payload = {Login: {code: code}};
+  const payload = { Login: { code: code } };
   socket.send(JSON.stringify(payload));
 }
 
@@ -192,7 +211,11 @@ export function addShip(ship: Ship) {
   socket.send(JSON.stringify(payload));
 }
 
-export function setCrewActions(target: string, dodge: number, assist_gunners: boolean) {
+export function setCrewActions(
+  target: string,
+  dodge: number,
+  assist_gunners: boolean,
+) {
   const payload = {
     SetPilotActions: {
       ship_name: target,
@@ -214,21 +237,27 @@ export function removeEntity(target: string) {
   socket.send(JSON.stringify(payload));
 }
 
-export async function setPlan(target: string, plan: [Acceleration, Acceleration | null]) {
+export async function setPlan(
+  target: string,
+  plan: [Acceleration, Acceleration | null],
+) {
   let plan_arr = [];
 
   // Since the Rust backend just expects null values in flight plans to be skipped
   // we have to custom build the body.
   // Convert all accelerations to m/s^2 from G's
   if (plan[1] == null) {
-    plan_arr[0] = [[plan[0][0][0] * G, plan[0][0][1] * G, plan[0][0][2] * G], plan[0][1]];
+    plan_arr[0] = [
+      [plan[0][0][0] * G, plan[0][0][1] * G, plan[0][0][2] * G],
+      plan[0][1],
+    ];
   } else {
     plan_arr = [
       [[plan[0][0][0] * G, plan[0][0][1] * G, plan[0][0][2] * G], plan[0][1]],
       [[plan[1][0][0] * G, plan[1][0][1] * G, plan[1][0][2] * G], plan[1][1]],
     ];
   }
-  const payload = {SetPlan: {name: target, plan: plan_arr}};
+  const payload = { SetPlan: { name: target, plan: plan_arr } };
 
   socket.send(JSON.stringify(payload));
 }
@@ -240,8 +269,8 @@ export function updateActions(actions: ActionType) {
   //console.group("(updateActions) Sending actions: ");
   //console.log(JSON.stringify(actions));
   //console.groupEnd();
-  
-  const payload = {ModifyActions: actionPayload(actions)};
+
+  const payload = { ModifyActions: actionPayload(actions) };
   socket.send(JSON.stringify(payload));
 }
 
@@ -256,9 +285,8 @@ export function computeFlightPath(
   end_vel: [number, number, number],
   target_vel: [number, number, number] | null = null,
   target_accel: [number, number, number] | null = null,
-  standoff: number | null = null
+  standoff: number | null = null,
 ) {
-
   if (entity_name == null) {
     store.dispatch(setProposedPlan(null));
     return;
@@ -266,7 +294,11 @@ export function computeFlightPath(
 
   // If there is a target acceleration, convert it to m/s^2 from G's
   if (target_accel != null) {
-    target_accel = [target_accel[0] * G, target_accel[1] * G, target_accel[2] * G];
+    target_accel = [
+      target_accel[0] * G,
+      target_accel[1] * G,
+      target_accel[2] * G,
+    ];
   }
 
   const payload = {
@@ -280,33 +312,36 @@ export function computeFlightPath(
     },
   };
 
-  console.log("(computeFlightPath) Sending flight path request: " + JSON.stringify(payload));
+  console.log(
+    "(computeFlightPath) Sending flight path request: " +
+      JSON.stringify(payload),
+  );
   socket.send(
     JSON.stringify(payload, (key, value) => {
       if (value !== null) {
         return value;
       }
-    })
+    }),
   );
 }
 
 export function requestRoleChoice(role: ViewMode, ship: string | null) {
   if (ship !== null) {
-    const payload = {SetRole: {role: ViewMode[role], ship: ship}};
+    const payload = { SetRole: { role: ViewMode[role], ship: ship } };
     socket.send(JSON.stringify(payload));
   } else {
-    const payload = {SetRole: {role: ViewMode[role]}};
+    const payload = { SetRole: { role: ViewMode[role] } };
     socket.send(JSON.stringify(payload));
   }
 }
 
 export function joinScenario(scenario_name: string) {
-  const payload = {JoinScenario: {scenario_name: scenario_name}};
+  const payload = { JoinScenario: { scenario_name: scenario_name } };
   socket.send(JSON.stringify(payload));
 }
 
 export function createScenario(name: string, scenario: string) {
-  const payload = {CreateScenario: {name: name, scenario: scenario}};
+  const payload = { CreateScenario: { name: name, scenario: scenario } };
   socket.send(JSON.stringify(payload));
 }
 
@@ -354,9 +389,17 @@ function handleEntities(json: object) {
 
   // Convert all ship plans to G's from m/s^2
   entities.ships.forEach((ship) => {
-    ship.plan[0][0] = [ship.plan[0][0][0] / G, ship.plan[0][0][1] / G, ship.plan[0][0][2] / G];
+    ship.plan[0][0] = [
+      ship.plan[0][0][0] / G,
+      ship.plan[0][0][1] / G,
+      ship.plan[0][0][2] / G,
+    ];
     if (ship.plan[1] != null) {
-      ship.plan[1][0] = [ship.plan[1][0][0] / G, ship.plan[1][0][1] / G, ship.plan[1][0][2] / G];
+      ship.plan[1][0] = [
+        ship.plan[1][0][0] / G,
+        ship.plan[1][0][1] / G,
+        ship.plan[1][0][2] / G,
+      ];
     }
   });
 
@@ -379,7 +422,7 @@ function handleEntities(json: object) {
   console.groupEnd();
   store.dispatch(setEntities(entities));
   if (Object.hasOwn(json, "actions")) {
-    const actions = (json as {actions: object[]}).actions;
+    const actions = (json as { actions: object[] }).actions;
     const parsed_actions = payloadToAction(actions);
     store.dispatch(setActions(parsed_actions));
 
@@ -397,9 +440,17 @@ function handleFlightPath(json: object) {
   const path = json as FlightPath;
 
   // Convert all accelerations in FlightPath from m/s^2 to G's
-  path.plan[0][0] = [path.plan[0][0][0] / G, path.plan[0][0][1] / G, path.plan[0][0][2] / G];
+  path.plan[0][0] = [
+    path.plan[0][0][0] / G,
+    path.plan[0][0][1] / G,
+    path.plan[0][0][2] / G,
+  ];
   if (path.plan[1] != null) {
-    path.plan[1][0] = [path.plan[1][0][0] / G, path.plan[1][0][1] / G, path.plan[1][0][2] / G];
+    path.plan[1][0] = [
+      path.plan[1][0][0] / G,
+      path.plan[1][0][1] / G,
+      path.plan[1][0][2] / G,
+    ];
   }
 
   store.dispatch(setProposedPlan(path));
@@ -418,18 +469,22 @@ function handleUsers(json: [UserContext]) {
   for (const user of json) {
     const c: UserContext = {} as UserContext;
     c.email = user.email;
-    c.role = stringToViewMode(user.role as unknown as string)?? ViewMode.General;
+    c.role =
+      stringToViewMode(user.role as unknown as string) ?? ViewMode.General;
     c.ship = user.ship;
     users.push(c);
   }
   store.dispatch(setUsers(users));
 }
 
-function handleScenarioList(json: {current_scenarios: [string, string][]; templates: [string, MetaData][]}) {
-  store.dispatch(setScenarios([json.current_scenarios,json.templates]));
+function handleScenarioList(json: {
+  current_scenarios: [string, string][];
+  templates: [string, MetaData][];
+}) {
+  store.dispatch(setScenarios([json.current_scenarios, json.templates]));
 }
 
-function handleJoinedScenario(json: {JoinedScenario: string}) {
+function handleJoinedScenario(json: { JoinedScenario: string }) {
   const scenario = json["JoinedScenario"] as string;
   if (scenario) {
     store.dispatch(setJoinedScenario(scenario));
@@ -440,8 +495,15 @@ function handleJoinedScenario(json: {JoinedScenario: string}) {
   }
 }
 
-function handleAuthenticated(json: {email: string | null, scenario: string | null, role: string | null, ship: string | null}): void {
-  console.log("(handleAuthenticated) Received Authenticated: " + JSON.stringify(json));
+function handleAuthenticated(json: {
+  email: string | null;
+  scenario: string | null;
+  role: string | null;
+  ship: string | null;
+}): void {
+  console.log(
+    "(handleAuthenticated) Received Authenticated: " + JSON.stringify(json),
+  );
   if (json.email != null) {
     store.dispatch(setEmail(json.email));
     store.dispatch(setAuthenticated(true));
@@ -452,10 +514,14 @@ function handleAuthenticated(json: {email: string | null, scenario: string | nul
       }
     }
     if (json.role != null) {
-      store.dispatch(setRoleShip([stringToViewMode(json.role)?? ViewMode.General, json.ship]));
+      store.dispatch(
+        setRoleShip([
+          stringToViewMode(json.role) ?? ViewMode.General,
+          json.ship,
+        ]),
+      );
     }
   } else {
     store.dispatch(setAuthenticated(false));
   }
-
 }
