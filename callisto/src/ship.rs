@@ -1,3 +1,5 @@
+#![allow(clippy::elidable_lifetime_names)]
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -91,7 +93,7 @@ pub struct Ship {
   pub point_defense_list: Vec<(usize, u16)>,
 }
 
-fn format_ship_template_name_only(value: &Arc<ShipDesignTemplate>, f: &mut Formatter) -> FmtResult {
+fn format_ship_template_name_only(value: &Arc<ShipDesignTemplate>, f: &mut Formatter<'_>) -> FmtResult {
   write!(f, "\"{}\"", value.name)
 }
 
