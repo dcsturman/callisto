@@ -234,14 +234,29 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       // Prevent default scrolling behavior
       event.preventDefault();
 
+      // Normalize deltaY based on deltaMode to handle different input devices consistently
+      // deltaMode: 0 = pixels, 1 = lines, 2 = pages
+      let normalizedDelta = event.deltaY;
+      if (event.deltaMode === 1) {
+        // Line mode (typical for mouse wheels) - multiply by a standard line height
+        normalizedDelta *= 16;
+      } else if (event.deltaMode === 2) {
+        // Page mode - multiply by a standard page height
+        normalizedDelta *= 800;
+      }
+
+      // Clamp the normalized delta to prevent extreme zoom speeds
+      const maxDelta = 100;
+      normalizedDelta = Math.max(-maxDelta, Math.min(maxDelta, normalizedDelta));
+
       // Use deltaY for main scroll wheel (vertical scrolling)
       // Positive deltaY = scroll down = zoom out (move back)
       // Negative deltaY = scroll up = zoom in (move forward)
       const zoomSpeed = 0.1; // Adjust this value to control zoom sensitivity
 
-      if (event.deltaY !== 0) {
+      if (normalizedDelta !== 0) {
         // Translate along the Z axis (forward/back)
-        camera.translateZ(event.deltaY * zoomSpeed);
+        camera.translateZ(normalizedDelta * zoomSpeed);
 
         // Dispatch both camera position and quaternion to maintain orientation
         dispatch(setCameraPos({x: camera.position.x, y: camera.position.y, z: camera.position.z}));
@@ -264,6 +279,18 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       }
     };
 
+    const disconnect = (domElement: HTMLElement): void => {
+      domElement.removeEventListener("pointermove", pointermove);
+      domElement.removeEventListener("pointerdown", pointerdown);
+      domElement.removeEventListener("pointerup", pointerup);
+      domElement.removeEventListener("keydown", keydown);
+      domElement.removeEventListener("keyup", keyup);
+
+      if (enableFlywheelZoom) {
+        domElement.removeEventListener("wheel", wheel);
+      }
+    };
+
     if (!camera) {
       return;
     }
@@ -273,7 +300,10 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
 
     const id = window.requestAnimationFrame(update);
 
-    return () => window.cancelAnimationFrame(id); // Cleanup function
+    return () => {
+      window.cancelAnimationFrame(id);
+      disconnect(domElement);
+    };
   }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed, containerName, dispatch, enableFlywheelZoom]);
 
   return <></>;
