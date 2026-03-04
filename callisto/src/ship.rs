@@ -81,6 +81,32 @@ pub struct Ship {
   #[serde(default)]
   can_jump: bool,
 
+  // Engineer action fields
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
+  temporary_maneuver: u8,
+
+  #[derivative(PartialEq = "ignore")]
+  #[serde(
+    skip_deserializing,
+    default = "default_power_multiplier",
+    skip_serializing_if = "is_default_power_multiplier"
+  )]
+  temporary_power_multiplier: f32,
+
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  last_repair_component: Option<ShipSystem>,
+
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  repair_bonus: u8,
+
+  // Tracks whether engineer has taken an action this turn
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_false")]
+  engineer_action_taken: bool,
+
   // Index by turning ShipSystem enum into usize.
   // Skip deserializing as we don't expect them when loading from a file
   // and don't intend to receive them from the client.
@@ -91,6 +117,31 @@ pub struct Ship {
   pub attack_dm: i32,
   #[serde(skip)]
   pub point_defense_list: Vec<(usize, u16)>,
+}
+
+fn default_power_multiplier() -> f32 {
+  1.0
+}
+
+/// A helper function to avoid serializing when zero.  It makes
+/// the use of a reference a bit funny, but necessary.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_power_multiplier(value: &f32) -> bool {
+  (*value - 1.0).abs() < f32::EPSILON
+}
+
+/// A helper function to avoid serializing when zero.  It makes
+/// the use of a reference a bit funny, but necessary.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u8(value: &u8) -> bool {
+  *value == 0
+}
+
+/// A helper function to avoid serializing when zero.  It makes
+/// the use of a reference a bit funny, but necessary.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(value: &bool) -> bool {
+  !value
 }
 
 fn format_ship_template_name_only(value: &Arc<ShipDesignTemplate>, f: &mut Formatter<'_>) -> FmtResult {
@@ -229,6 +280,11 @@ impl Ship {
       dodge_thrust: 0,
       assist_gunners: false,
       can_jump: false,
+      temporary_maneuver: 0,
+      temporary_power_multiplier: 1.0,
+      last_repair_component: None,
+      repair_bonus: 0,
+      engineer_action_taken: false,
       point_defense_list: vec![],
     }
   }
@@ -294,7 +350,30 @@ impl Ship {
   pub fn max_acceleration(&self) -> u8 {
     let power_limit = self.design.best_thrust(self.current_power);
     let maneuver_limit = self.current_maneuver;
+
+    // TODO: Remove this once using a match doesn't trigger the warning about attributes on expressions being experimental.
+    #[allow(clippy::comparison_chain)]
+    if power_limit == maneuver_limit {
+      debug!(
+        "(Ship.max_acceleration) Ship {} limited in max acceleration by both power and maneuver at {}.",
+        self.name, power_limit
+      );
+    } else if power_limit > maneuver_limit {
+      debug!(
+        "(Ship.max_acceleration) Ship {} limited in max acceleration by maneuver {}.",
+        self.name, maneuver_limit
+      );
+    } else {
+      debug!(
+        "(Ship.max_acceleration) Ship {} limited in max acceleration by power {}.",
+        self.name, power_limit
+      );
+    }
+
+    // Making a decision here that temporary_maneuver also gives you extra power somehow.  Otherwise its
+    // not very useful.  Might want to undo that later.
     u8::min(power_limit, maneuver_limit).saturating_sub(self.dodge_thrust + u8::from(self.assist_gunners))
+      + self.temporary_maneuver
   }
 
   #[must_use]
@@ -417,6 +496,76 @@ impl Ship {
 
   pub fn clear_point_defense(&mut self) {
     self.point_defense_list.clear();
+  }
+
+  // Engineer action getters and setters
+  #[must_use]
+  pub fn get_temporary_maneuver(&self) -> u8 {
+    self.temporary_maneuver
+  }
+
+  pub fn set_temporary_maneuver(&mut self, value: u8) {
+    self.temporary_maneuver = value;
+  }
+
+  #[must_use]
+  pub fn get_temporary_power_multiplier(&self) -> f32 {
+    self.temporary_power_multiplier
+  }
+
+  pub fn set_temporary_power_multiplier(&mut self, value: f32) {
+    self.temporary_power_multiplier = value;
+  }
+
+  #[must_use]
+  pub fn get_last_repair_component(&self) -> Option<ShipSystem> {
+    self.last_repair_component
+  }
+
+  pub fn set_last_repair_component(&mut self, value: Option<ShipSystem>) {
+    self.last_repair_component = value;
+  }
+
+  #[must_use]
+  pub fn get_repair_bonus(&self) -> u8 {
+    self.repair_bonus
+  }
+
+  pub fn set_repair_bonus(&mut self, value: u8) {
+    self.repair_bonus = value;
+  }
+
+  /// Resets temporary bonuses from engineer overload actions and action tracking.
+  pub fn reset_temporary_bonuses(&mut self) {
+    self.temporary_maneuver = 0;
+    self.temporary_power_multiplier = 1.0;
+    self.engineer_action_taken = false;
+  }
+
+  /// Resets repair bonus tracking when engineer switches to a different component.
+  pub fn reset_repair_bonus(&mut self) {
+    self.repair_bonus = 0;
+    self.last_repair_component = None;
+  }
+
+  #[must_use]
+  pub fn has_engineer_action_taken(&self) -> bool {
+    self.engineer_action_taken
+  }
+
+  pub fn set_engineer_action_taken(&mut self, value: bool) {
+    self.engineer_action_taken = value;
+  }
+
+  /// Returns the effective power including temporary multiplier.
+  #[must_use]
+  #[allow(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss
+  )]
+  pub fn get_effective_power(&self) -> u32 {
+    (self.current_power as f32 * self.temporary_power_multiplier) as u32
   }
 }
 

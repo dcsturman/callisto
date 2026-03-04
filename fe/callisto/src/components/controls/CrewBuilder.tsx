@@ -16,7 +16,7 @@ export interface Crew {
 }
 
 export const createCrew = (num_gunners: number) => {
-  return {
+  let new_crew = {
     pilot: 0,
     engineering_jump: 0,
     engineering_power: 0,
@@ -24,6 +24,7 @@ export const createCrew = (num_gunners: number) => {
     sensors: 0,
     gunnery: new Array(num_gunners).fill(0),
   };
+  return new_crew;
 };
 
 interface CrewBuilderProps {
@@ -46,6 +47,13 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   const [customCrew, setCustomCrew] = useState(initialCrew);
   const [currentGunId, setCurrentGunId] = useState(1);
   const [currentShipName, setCurrentShipName] = useState(shipName);
+
+  // Update customCrew when initialCrew changes (e.g., when ship design changes)
+  useEffect(() => {
+    setCustomCrew(initialCrew);
+    updateCrew(initialCrew);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCrew]);
 
   useEffect(() => {
     if (shipName !== currentShipName) {

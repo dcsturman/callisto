@@ -19,21 +19,45 @@
       "position": [2.0e7, 2.0e7, 2.0e7],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Void Trader"
+      "design": "Void Trader",
+      "crew": {
+        "pilot": 3,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 3,
+        "sensors": 3,
+        "gunnery": [1, 1, 0, 0]
+      }
     },
     {
       "name": "Flayer",
       "position": [5.8e6, 0, 5.8e6],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Threshing Oar"
+      "design": "Threshing Oar",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "sensors": 1,
+        "gunnery": [2, 2, 2, 2]
+      }
     },
     {
       "name": "Skinner",
       "position": [0, 7.0e6, -7.0e6],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Threshing Oar"
+      "design": "Threshing Oar",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "sensors": 1,
+        "gunnery": [2, 2, 2, 2]
+      }
     }
   ]
 }

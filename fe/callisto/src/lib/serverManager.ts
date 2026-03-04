@@ -20,7 +20,7 @@ import { setTutorialMode } from "state/tutorialSlice";
 import { setActions } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
-import { EntityList, Ship, MetaData } from "lib/entities";
+import { EntityList, Ship, MetaData, EngineerActionMsg, EngineerActionResult } from "lib/entities";
 import { ViewMode, stringToViewMode } from "lib/view";
 import { Acceleration } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
@@ -46,6 +46,8 @@ const KEEP_ALIVE_INTERVAL = 60000;
 
 // Define the (global) websocket
 export let socket: WebSocket;
+
+let engineerActionCallback: ((result: EngineerActionResult) => void) | null = null;
 
 //
 // Functions managing the socket connection
@@ -186,6 +188,13 @@ const handleMessage = (event: MessageEvent) => {
   if ("Error" in json) {
     console.error("Received Error: " + json.Error);
     alert(json.Error);
+  }
+
+  if ("EngineerActionResult" in json) {
+    if (engineerActionCallback) {
+      engineerActionCallback(json.EngineerActionResult);
+      engineerActionCallback = null;
+    }
   }
 };
 
@@ -367,6 +376,17 @@ export function exit_scenario() {
 
 export function logout() {
   socket.send(LOGOUT_REQUEST);
+}
+
+export function sendEngineerAction(
+  msg: EngineerActionMsg,
+  callback: (result: EngineerActionResult) => void
+) {
+  engineerActionCallback = callback;
+  const payload = { EngineerAction: msg };
+  const jsonStr = JSON.stringify(payload);
+  console.log("(sendEngineerAction) Sending:", jsonStr);
+  socket.send(jsonStr);
 }
 
 //

@@ -328,6 +328,11 @@ fn apply_crit(crit_level: u8, location: ShipSystem, defender: &mut Ship, rng: &m
     defender.get_name(),
   );
 
+  // Reset repair bonus if this component was being repaired
+  if defender.get_last_repair_component() == Some(location) {
+    defender.reset_repair_bonus();
+  }
+
   if level > 6 {
     let damage = u32::from(roll_dice(6, rng));
     debug!(
