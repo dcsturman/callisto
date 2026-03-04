@@ -49,6 +49,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     let movementSpeedMultiplier = 1;
 
     let previousTime = 0;
+    let isActive = true; // Flag to control animation loop
 
     const generateMovementVector = (): Vector3 => {
       const forward = moveState.forward || (autoForward && !moveState.back) ? 1 : 0;
@@ -69,6 +70,11 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     };
 
     const update = (lastTime: DOMHighResTimeStamp) => {
+      // Stop the animation loop if the component has unmounted
+      if (!isActive) {
+        return;
+      }
+
       const delta = (lastTime - previousTime) / 1000;
       previousTime = lastTime;
 
@@ -301,6 +307,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     const id = window.requestAnimationFrame(update);
 
     return () => {
+      isActive = false; // Stop the animation loop
       window.cancelAnimationFrame(id);
       disconnect(domElement);
     };
