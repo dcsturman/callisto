@@ -573,7 +573,7 @@ mod tests {
           _ => panic!("Expected Repair action"),
         }
       }
-      Err(e) => panic!("Failed to deserialize: {}", e),
+      Err(e) => panic!("Failed to deserialize: {e}"),
     }
   }
 }
