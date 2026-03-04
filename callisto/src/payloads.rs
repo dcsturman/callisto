@@ -8,7 +8,7 @@ use super::action::ShipActionList;
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
-use super::ship::ShipDesignTemplate;
+use super::ship::{ShipDesignTemplate, ShipSystem};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -179,12 +179,37 @@ impl Display for EffectMsg {
 
 pub type ShipDesignTemplateMsg = HashMap<String, ShipDesignTemplate>;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum EngineerAction {
+  OverloadDrive,
+  OverloadPlant,
+  Repair { system: ShipSystem },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EngineerActionMsg {
+  pub ship_name: String,
+  pub action: EngineerAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EngineerActionResult {
+  pub ship_name: String,
+  pub action: EngineerAction,
+  pub success: bool,
+  pub roll: u8,
+  pub target: u8,
+  pub message: String,
+  pub critical_failure: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum Role {
   General = 0,
   Pilot,
   Sensors,
   Gunner,
+  Engineer,
   Observer,
 }
 
@@ -253,6 +278,7 @@ pub enum RequestMsg {
   SetPilotActions(SetPilotActions),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
+  EngineerAction(EngineerActionMsg),
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),
@@ -275,6 +301,7 @@ pub enum ResponseMsg {
   Effects(Vec<EffectMsg>),
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
+  EngineerActionResult(EngineerActionResult),
   Scenarios(ScenariosMsg),
   JoinedScenario(String),
   SimpleMsg(String),
@@ -526,5 +553,27 @@ mod tests {
     let json_str = r#"{"code": "auth_code_123"}"#;
     let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
     assert_eq!(deserialized.code, "auth_code_123".to_string());
+  }
+
+  #[test]
+  fn test_engineer_action_repair_deserialization() {
+    use crate::ship::ShipSystem;
+
+    // Test deserialization of Repair action with string system
+    let json_str = r#"{"ship_name":"Cicendai","action":{"Repair":{"system":"Sensors"}}}"#;
+    let result: Result<EngineerActionMsg, _> = serde_json::from_str(json_str);
+
+    match result {
+      Ok(msg) => {
+        assert_eq!(msg.ship_name, "Cicendai");
+        match msg.action {
+          EngineerAction::Repair { system } => {
+            assert_eq!(system, ShipSystem::Sensors);
+          }
+          _ => panic!("Expected Repair action"),
+        }
+      }
+      Err(e) => panic!("Failed to deserialize: {}", e),
+    }
   }
 }

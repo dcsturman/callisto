@@ -8,6 +8,7 @@ import {setPlan, setCrewActions} from "lib/serverManager";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
+import {EngineerTasks} from "components/controls/EngineerTasks";
 
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
@@ -309,6 +310,9 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
             onClick={attemptJump}>
             Jump
           </button>
+        )}
+        {[ViewMode.General, ViewMode.Engineer].includes(role) && (
+          <EngineerTasks ship={ship} />
         )}
       </div>
       <hr />

@@ -396,6 +396,8 @@ impl PlayerManager {
         | ShipAction::SensorLock { .. }
         | ShipAction::JamComms { .. } => (None, Some(action.clone()), None, None),
         ShipAction::Jump => (None, None, Some(action.clone()), None),
+        // Engineer actions are not processed in this tuple (handled separately)
+        ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } => (None, None, None, None),
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
@@ -433,6 +435,12 @@ impl PlayerManager {
       ship.write().unwrap().reset_pilot_actions();
     }
     */
+
+    // Reset temporary bonuses (from engineer overload actions) at end of turn
+    for ship in entities.ships.values() {
+      ship.write().unwrap().reset_temporary_bonuses();
+    }
+
     entities.reset_actions();
 
     effects

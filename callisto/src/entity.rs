@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::EffectMsg;
+use crate::payloads::{EffectMsg, EngineerAction, EngineerActionResult};
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -20,7 +20,7 @@ use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::read_local_or_cloud_file;
 use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
-use crate::ship::{FlightPlan, Ship, ShipDesignTemplate};
+use crate::ship::{FlightPlan, Ship, ShipDesignTemplate, ShipSystem};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
 
 #[allow(unused_imports)]
@@ -720,7 +720,10 @@ impl Entities {
           ShipAction::PointDefenseAction { .. }
           | ShipAction::FireAction { .. }
           | ShipAction::DeleteFireAction { .. }
-          | ShipAction::Jump => {
+          | ShipAction::Jump
+          | ShipAction::OverloadDrive
+          | ShipAction::OverloadPlant
+          | ShipAction::Repair { .. } => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }
@@ -1078,8 +1081,12 @@ impl Entities {
           }
           // Keep JamMissiles and PointDefense in all cases.
           ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles => true,
-          // Right now I think both of these should be scrubbed each turn.  Might be incorrect so we'll see.
-          ShipAction::DeleteFireAction { .. } | ShipAction::Jump => false,
+          // Engineer actions should be scrubbed each turn - they are one-time actions.
+          ShipAction::DeleteFireAction { .. }
+          | ShipAction::Jump
+          | ShipAction::OverloadDrive
+          | ShipAction::OverloadPlant
+          | ShipAction::Repair { .. } => false,
         }
       });
     });
@@ -1087,6 +1094,264 @@ impl Entities {
       // If there are no actions for a ship, remove the ship from the actions list.
       !actions.is_empty()
     });
+  }
+
+  /// Process an engineer action for a ship.
+  ///
+  /// # Arguments
+  /// * `ship_name` - The name of the ship performing the action.
+  /// * `action` - The engineer action to perform.
+  /// * `rng` - The random number generator to use.
+  ///
+  /// # Returns
+  /// The result of the engineer action.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write the ship.
+  pub fn process_engineer_action(
+    &mut self, ship_name: &str, action: &EngineerAction, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    if !self.ships.contains_key(ship_name) {
+      return EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action: action.clone(),
+        success: false,
+        roll: 0,
+        target: 0,
+        message: format!("Ship {ship_name} not found."),
+        critical_failure: false,
+      };
+    }
+
+    // Check if engineer has already taken an action this turn
+    {
+      let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+      if ship.has_engineer_action_taken() {
+        return EngineerActionResult {
+          ship_name: ship_name.to_string(),
+          action: action.clone(),
+          success: false,
+          roll: 0,
+          target: 0,
+          message: format!("{ship_name}'s engineer has already taken an action this turn."),
+          critical_failure: false,
+        };
+      }
+    }
+
+    // Mark that engineer is taking an action
+    {
+      let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
+      ship.set_engineer_action_taken(true);
+    }
+
+    match action {
+      EngineerAction::OverloadDrive => self.process_overload_drive(ship_name, rng),
+      EngineerAction::OverloadPlant => self.process_overload_plant(ship_name, rng),
+      EngineerAction::Repair { system } => self.process_repair(ship_name, *system, rng),
+    }
+  }
+
+  /// Process an overload drive engineer action.
+  ///
+  /// # Arguments
+  /// * `ship_name` - The name of the ship performing the action.
+  /// * `rng` - The random number generator to use.
+  ///
+  /// # Returns
+  /// The result of the overload drive action.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write the ship.
+  fn process_overload_drive(&mut self, ship_name: &str, rng: &mut dyn RngCore) -> EngineerActionResult {
+    let ship = self.ships.get(ship_name).unwrap();
+    let skill = ship.read().unwrap().get_crew().get_engineering_maneuver();
+    let roll = roll_dice(2, rng);
+    let total = roll + skill;
+    let target: u8 = 10;
+
+    let action = EngineerAction::OverloadDrive;
+
+    if total >= target {
+      // Success - set temporary_maneuver = 1
+      ship.write().unwrap().set_temporary_maneuver(1);
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        roll: total,
+        target,
+        message: format!("{ship_name} overloaded maneuver drive successfully! Temporary +1 maneuver."),
+        critical_failure: false,
+      }
+    } else if total <= 4 {
+      // Critical failure (fail by 6+) - apply crit to maneuver drive
+      ship.write().unwrap().crit_level[ShipSystem::Maneuver as usize] += 1;
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        roll: total,
+        target,
+        message: format!("{ship_name} critically failed overloading maneuver drive! Drive damaged."),
+        critical_failure: true,
+      }
+    } else {
+      // Normal failure
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        roll: total,
+        target,
+        message: format!("{ship_name} failed to overload maneuver drive."),
+        critical_failure: false,
+      }
+    }
+  }
+
+  /// Process an overload plant engineer action.
+  ///
+  /// # Arguments
+  /// * `ship_name` - The name of the ship performing the action.
+  /// * `rng` - The random number generator to use.
+  ///
+  /// # Returns
+  /// The result of the overload plant action.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write the ship.
+  fn process_overload_plant(&mut self, ship_name: &str, rng: &mut dyn RngCore) -> EngineerActionResult {
+    let ship = self.ships.get(ship_name).unwrap();
+    let skill = ship.read().unwrap().get_crew().get_engineering_power();
+    let roll = roll_dice(2, rng);
+    let total = roll + skill;
+    let target: u8 = 10;
+
+    let action = EngineerAction::OverloadPlant;
+
+    if total >= target {
+      // Success - set temporary_power_multiplier = 1.1
+      ship.write().unwrap().set_temporary_power_multiplier(1.1);
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        roll,
+        target,
+        message: format!("{ship_name} overloaded power plant successfully! Temporary +10% power."),
+        critical_failure: false,
+      }
+    } else if total <= 4 {
+      // Critical failure (fail by 6+) - apply crit to powerplant
+      ship.write().unwrap().crit_level[ShipSystem::Powerplant as usize] += 1;
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        roll,
+        target,
+        message: format!("{ship_name} critically failed overloading power plant! Plant damaged."),
+        critical_failure: true,
+      }
+    } else {
+      // Normal failure
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        roll,
+        target,
+        message: format!("{ship_name} failed to overload power plant."),
+        critical_failure: false,
+      }
+    }
+  }
+
+  /// Process a repair engineer action.
+  ///
+  /// # Arguments
+  /// * `ship_name` - The name of the ship performing the action.
+  /// * `system` - The ship system to repair.
+  /// * `rng` - The random number generator to use.
+  ///
+  /// # Returns
+  /// The result of the repair action.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write the ship.
+  fn process_repair(&mut self, ship_name: &str, system: ShipSystem, rng: &mut dyn RngCore) -> EngineerActionResult {
+    let action = EngineerAction::Repair { system };
+
+    // Cannot repair Hull
+    if system == ShipSystem::Hull {
+      return EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        roll: 0,
+        target: 0,
+        message: format!("{ship_name} cannot repair hull damage."),
+        critical_failure: false,
+      };
+    }
+
+    let ship = self.ships.get(ship_name).unwrap();
+    let mut ship_write = ship.write().unwrap();
+
+    // Get the appropriate skill based on system
+    let skill = match system {
+      ShipSystem::Jump => ship_write.get_crew().get_engineering_jump(),
+      ShipSystem::Powerplant => ship_write.get_crew().get_engineering_power(),
+      _ => ship_write.get_crew().get_engineering_maneuver(),
+    };
+
+    // Get current crit level for the system
+    let crit_level = ship_write.crit_level[system as usize];
+
+    // Get repair bonus if last_repair_component matches this system
+    let repair_bonus = if ship_write.get_last_repair_component() == Some(system) {
+      ship_write.get_repair_bonus()
+    } else {
+      ship_write.set_repair_bonus(0);
+      0
+    };
+
+    let roll = roll_dice(2, rng);
+    let total = u8::saturating_sub(roll + skill + repair_bonus, crit_level);
+    let target: u8 = 8;
+
+    if total >= target {
+      // Success - reduce crit level by 1
+      if ship_write.crit_level[system as usize] > 0 {
+        ship_write.crit_level[system as usize] -= 1;
+      }
+      ship_write.set_repair_bonus(0);
+      ship_write.set_last_repair_component(Some(system));
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        roll,
+        target,
+        message: format!("{ship_name} successfully repaired {system:?}."),
+        critical_failure: false,
+      }
+    } else {
+      // Failure - increment repair bonus
+      let current_bonus = ship_write.get_repair_bonus();
+      ship_write.set_repair_bonus(current_bonus + 1);
+      ship_write.set_last_repair_component(Some(system));
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        roll,
+        target,
+        message: format!("{ship_name} failed to repair {system:?}."),
+        critical_failure: false,
+      }
+    }
   }
 }
 
