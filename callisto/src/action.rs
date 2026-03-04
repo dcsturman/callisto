@@ -33,6 +33,21 @@ pub enum ShipAction {
     target: String,
   },
   Jump,
+  // Engineer actions
+  OverloadDrive,
+  OverloadPlant,
+  Repair {
+    system: ShipSystem,
+  },
+}
+
+/// Returns true if the action is an engineer action.
+#[must_use]
+pub fn is_engineer_action(action: &ShipAction) -> bool {
+  matches!(
+    action,
+    ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. }
+  )
 }
 
 pub type ShipActionList = Vec<(String, Vec<ShipAction>)>;
@@ -128,6 +143,12 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             if !current_actions.iter().any(|action| matches!(action, ShipAction::Jump)) {
               current_actions.push(next_action.clone());
             }
+          }
+          // Engineer actions are mutually exclusive - only one engineer action per turn.
+          // A new engineer action replaces any existing engineer action.
+          ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } => {
+            current_actions.retain(|action| !is_engineer_action(action));
+            current_actions.push(next_action.clone());
           }
         }
       }

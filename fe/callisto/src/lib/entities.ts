@@ -26,6 +26,66 @@ export interface Ship extends Entity {
   sensor_locks: string[];
   crew: Crew;
   crit_level?: number[];  // Array of 11 numbers indexed by ShipSystem
+  repair_bonus?: number;
+  last_repair_component?: ShipSystem | null;
+  temporary_maneuver?: number;
+  temporary_power_multiplier?: number;
+  engineer_action_taken?: boolean;
+}
+
+export enum ShipSystem {
+  Sensors = 0,
+  Powerplant = 1,
+  Fuel = 2,
+  Weapon = 3,
+  Armor = 4,
+  Hull = 5,
+  Maneuver = 6,
+  Cargo = 7,
+  Jump = 8,
+  Crew = 9,
+  Bridge = 10,
+}
+
+// Convert ShipSystem enum value to its string representation (for serialization)
+export function shipSystemToString(system: ShipSystem): string {
+  const names: Record<ShipSystem, string> = {
+    [ShipSystem.Sensors]: "Sensors",
+    [ShipSystem.Powerplant]: "Powerplant",
+    [ShipSystem.Fuel]: "Fuel",
+    [ShipSystem.Weapon]: "Weapon",
+    [ShipSystem.Armor]: "Armor",
+    [ShipSystem.Hull]: "Hull",
+    [ShipSystem.Maneuver]: "Maneuver",
+    [ShipSystem.Cargo]: "Cargo",
+    [ShipSystem.Jump]: "Jump",
+    [ShipSystem.Crew]: "Crew",
+    [ShipSystem.Bridge]: "Bridge",
+  };
+  return names[system];
+}
+
+// EngineerAction enum matches the Rust enum (unit variants and struct variant)
+// Note: ShipSystem serializes as a string (e.g., "Sensors", "Powerplant", etc.)
+export type EngineerActionType =
+  | "OverloadDrive"
+  | "OverloadPlant"
+  | { Repair: { system: string } };
+
+// EngineerActionMsg matches the Rust struct
+export interface EngineerActionMsg {
+  ship_name: string;
+  action: EngineerActionType;
+}
+
+export interface EngineerActionResult {
+  ship_name: string;
+  action: EngineerActionType;
+  success: boolean;
+  roll: number;
+  target: number;
+  message: string;
+  critical_failure: boolean;
 }
 
 const createShip = (

@@ -37,6 +37,7 @@ export const RoleChooser = () => {
         <option value={ViewMode.Pilot}>Pilot</option>
         <option value={ViewMode.Sensors}>Sensors</option>
         <option value={ViewMode.Gunner}>Gunner</option>
+        <option value={ViewMode.Engineer}>Engineer</option>
         <option value={ViewMode.Observer}>Observer</option>
       </select>
       <EntitySelector

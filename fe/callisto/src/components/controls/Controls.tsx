@@ -192,7 +192,7 @@ export function Controls() {
             <div className="vital-stats-bloc">
               <div className="stats-bloc-entry">
                 <h2>Man</h2>
-                <pre className="plan-accel-text">{`${computerShip.current_maneuver}(${computerShipDesign.maneuver})`}</pre>
+                <pre className="plan-accel-text">{`${computerShip.current_maneuver}(${computerShipDesign.maneuver + (computerShip.temporary_maneuver ?? 0)})`}</pre>
               </div>
               <div className="stats-bloc-entry">
                 <h2>Jmp</h2>
