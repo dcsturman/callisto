@@ -35,13 +35,34 @@ export default defineConfig({
   build: {
     outDir: 'build',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split vendor code into separate chunks for better caching
+          'react-vendor': ['react', 'react-dom'],
+          'three-vendor': ['three'],
+          'three-react': ['@react-three/fiber'],
+          'three-helpers': ['@react-three/drei', '@react-three/postprocessing'],
+          'animation': ['@react-spring/three', '@react-spring/core'],
+          'redux': ['@reduxjs/toolkit', 'react-redux', 'redux-persist'],
+        },
+      },
+    },
   },
   define: {
     // Replace process.env with import.meta.env for Vite
     'process.env': {},
   },
   optimizeDeps: {
-    include: ['react', 'react-dom'],
+    include: [
+      'react',
+      'react-dom',
+      'three',
+      '@react-three/fiber',
+      '@react-three/drei',
+      '@react-three/postprocessing',
+      '@react-spring/three',
+    ],
   },
 });
 

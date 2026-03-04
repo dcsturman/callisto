@@ -1,14 +1,20 @@
-import {useEffect, useState, useMemo} from "react";
+import {useEffect, useState, useMemo, lazy, Suspense} from "react";
 import * as React from "react";
 import * as THREE from "three";
 import {Canvas, useThree} from "@react-three/fiber";
 import {FlyControls} from "./lib/FlyControls";
 
 import {Authentication} from "components/scenarios/Authentication";
-import SpaceView from "components/space/Spaceview";
-import {Ships, Missiles, Route} from "./components/space/Ships";
+
+// Lazy load 3D components to reduce initial bundle size
+const SpaceView = lazy(() => import("components/space/Spaceview"));
+const Ships = lazy(() => import("./components/space/Ships").then(m => ({default: m.Ships})));
+const Missiles = lazy(() => import("./components/space/Ships").then(m => ({default: m.Missiles})));
+const Route = lazy(() => import("./components/space/Ships").then(m => ({default: m.Route})));
+const Explosions = lazy(() => import("./components/space/Effects").then(m => ({default: m.Explosions})));
+const ResultsWindow = lazy(() => import("./components/space/Effects").then(m => ({default: m.ResultsWindow})));
+
 import {EntityInfoWindow, Controls, ViewControls} from "./components/controls/Controls";
-import {Explosions, ResultsWindow} from "./components/space/Effects";
 import {
   startWebsocket,
   resetServer,
@@ -147,7 +153,11 @@ function Simulator() {
           </div>
         </div>
         {role === ViewMode.General && computerShip && <ShipComputer ship={computerShip} />}
-        {showResults && <ResultsWindow />}
+        {showResults && (
+          <Suspense fallback={null}>
+            <ResultsWindow />
+          </Suspense>
+        )}
         <Canvas
           style={{position: "absolute"}}
           id="main-canvas"
@@ -172,11 +182,13 @@ function Simulator() {
             rollSpeed={0.2}
             enableFlywheelZoom={true}
           />
-          <SpaceView />
-          <Ships />
-          <Missiles />
-          {events && events.length > 0 && <Explosions />}
-          {proposedPlan && <Route plan={proposedPlan} />}
+          <Suspense fallback={null}>
+            <SpaceView />
+            <Ships />
+            <Missiles />
+            {events && events.length > 0 && <Explosions />}
+            {proposedPlan && <Route plan={proposedPlan} />}
+          </Suspense>
         </Canvas>
       </div>
       {entityToShow && <EntityInfoWindow entity={entityToShow} />}
