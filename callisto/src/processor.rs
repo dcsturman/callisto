@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc::Receiver;
-use rand::rngs::SmallRng;
-use rand::SeedableRng;
 use futures::select;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tokio_tungstenite::tungstenite::{
@@ -625,12 +625,7 @@ impl Processor {
         vec![ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs())]
       }
       RequestMsg::EngineerAction(msg) => {
-        let mut entities = player
-          .server
-          .as_ref()
-          .unwrap()
-          .get_unlocked_entities()
-          .unwrap();
+        let mut entities = player.server.as_ref().unwrap().get_unlocked_entities().unwrap();
         let mut rng = get_rng(player.in_test_mode());
         let result = entities.process_engineer_action(&msg.ship_name, &msg.action, &mut rng);
         vec![
