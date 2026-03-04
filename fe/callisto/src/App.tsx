@@ -170,6 +170,7 @@ function Simulator() {
             dragToLook={true}
             movementSpeed={50}
             rollSpeed={0.2}
+            enableFlywheelZoom={true}
           />
           <SpaceView />
           <Ships />
