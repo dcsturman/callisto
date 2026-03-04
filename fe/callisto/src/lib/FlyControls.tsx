@@ -12,6 +12,7 @@ type FlyControlsProps = {
   dragToLook: boolean;
   movementSpeed: number;
   rollSpeed: number;
+  enableFlywheelZoom?: boolean;
 };
 
 export const FlyControls: React.FC<FlyControlsProps> = ({
@@ -21,6 +22,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
   dragToLook,
   movementSpeed,
   rollSpeed,
+  enableFlywheelZoom = false,
 }) => {
   const EPS_POS = 1;
   const EPS_QUAT = 0.03;
@@ -224,6 +226,29 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       }
     };
 
+    const wheel = (event: WheelEvent): void => {
+      if (!enableFlywheelZoom) {
+        return;
+      }
+
+      // Prevent default scrolling behavior
+      event.preventDefault();
+
+      // Use deltaY for main scroll wheel (vertical scrolling)
+      // Positive deltaY = scroll down = zoom out (move back)
+      // Negative deltaY = scroll up = zoom in (move forward)
+      const zoomSpeed = 0.1; // Adjust this value to control zoom sensitivity
+
+      if (event.deltaY !== 0) {
+        // Translate along the Z axis (forward/back)
+        camera.translateZ(event.deltaY * zoomSpeed);
+
+        // Dispatch both camera position and quaternion to maintain orientation
+        dispatch(setCameraPos({x: camera.position.x, y: camera.position.y, z: camera.position.z}));
+        dispatch(setCameraQuaternion([camera.quaternion.x, camera.quaternion.y, camera.quaternion.z, camera.quaternion.w]));
+      }
+    };
+
     // https://github.com/mrdoob/three.js/issues/20575
     const connect = (domElement: HTMLElement): void => {
       domElement.setAttribute("tabindex", "-1");
@@ -233,6 +258,10 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       domElement.addEventListener("pointerup", pointerup);
       domElement.addEventListener("keydown", keydown);
       domElement.addEventListener("keyup", keyup);
+
+      if (enableFlywheelZoom) {
+        domElement.addEventListener("wheel", wheel, {passive: false});
+      }
     };
 
     if (!camera) {
@@ -245,7 +274,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     const id = window.requestAnimationFrame(update);
 
     return () => window.cancelAnimationFrame(id); // Cleanup function
-  }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed, containerName, dispatch]);
+  }, [camera, autoForward, dragToLook, movementSpeed, rollSpeed, containerName, dispatch, enableFlywheelZoom]);
 
   return <></>;
 };
