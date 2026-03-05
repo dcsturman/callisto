@@ -4,11 +4,12 @@
 //! `ServerMembersTable` holds membership indexed by the same unique id as used in `Server`, and stores
 //! the details for each current player in that server.
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
 
 use crate::entity::Entities;
 use crate::payloads::{Role, UserData};
+use crate::ship::{get_ship_templates_snapshot, ShipDesignTemplate};
 use crate::{error, warn, LOG_SCENARIO_ACTIVITY};
 use tracing::{event, Level};
 
@@ -24,6 +25,7 @@ pub struct Server {
   pub id: String,
   pub entities: Mutex<Entities>,
   pub initial_scenario: Entities,
+  ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
 }
 
 /// Maps a server ID to a server table that contains
@@ -68,19 +70,23 @@ impl Server {
   /// Panics if the scenario file cannot be loaded (doesn't exist, etc.).
   #[must_use]
   pub async fn new(id: &str, scenario_name: &str) -> Self {
+    let ship_templates = get_ship_templates_snapshot();
     let initial_scenario = if scenario_name.is_empty() {
       Entities::new()
     } else {
-      Entities::load_from_file(scenario_name).await.unwrap_or_else(|e| {
-        warn!("Issue loading scenario file {scenario_name}: {e}");
-        Entities::new()
-      })
+      Entities::load_from_file_with_ship_templates(scenario_name, ship_templates.clone())
+        .await
+        .unwrap_or_else(|e| {
+          warn!("Issue loading scenario file {scenario_name}: {e}");
+          Entities::new()
+        })
     };
 
     Server {
       id: id.to_string(),
       entities: Mutex::new(initial_scenario.deep_copy()),
       initial_scenario,
+      ship_templates,
     }
   }
 
@@ -107,6 +113,16 @@ impl Server {
     &self,
   ) -> Result<MutexGuard<'_, Entities>, std::sync::PoisonError<MutexGuard<'_, Entities>>> {
     self.entities.lock()
+  }
+
+  #[must_use]
+  pub fn get_ship_template(&self, design_name: &str) -> Option<Arc<ShipDesignTemplate>> {
+    self.ship_templates.get(design_name).cloned()
+  }
+
+  #[must_use]
+  pub fn get_ship_templates_snapshot(&self) -> Arc<HashMap<String, Arc<ShipDesignTemplate>>> {
+    self.ship_templates.clone()
   }
 }
 

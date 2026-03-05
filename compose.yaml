@@ -10,13 +10,20 @@
 services:
   be:
     build:
+      # Put local-only overrides (for example TLS_UPGRADE=0 during dev)
+      # in an untracked compose.override.yaml file.
       context: callisto
+    # Bind-mount local content so the backend can hot-reload scenario/template
+    # edits without rebuilding the image during docker-compose development.
+    volumes:
+      - ./callisto/scenarios:/scenarios:ro
+      - ./callisto/ship_templates:/ship_templates:ro
     secrets:
       - google_credentials
       - gcs_credentials
       - tls_keys_private
       - tls_keys_public
-    command: --tls-keys-private /run/secrets/tls_keys_private --tls-keys-public /run/secrets/tls_keys_public --oauth-creds /run/secrets/google_credentials --scenario-dir ./scenarios --users-file /config/authorized_users.json --design-file  /ship_templates/default_ship_templates.json  --web-server http://localhost:50001
+    command: --tls-keys-private /run/secrets/tls_keys_private --tls-keys-public /run/secrets/tls_keys_public --oauth-creds /run/secrets/google_credentials --scenario-dir /scenarios --users-file /config/authorized_users.json --design-file /ship_templates/default_ship_templates.json --web-server http://localhost:50001
     environment:
       RUST_LOG: debug,gomez=warn
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials

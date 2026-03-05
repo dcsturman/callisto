@@ -20,6 +20,8 @@ COPY . .
 
 # do a release build
 FROM build AS release
+# Default to TLS enabled so ad-hoc/manual image builds don't silently disable it.
+# Local docker-compose development can explicitly override this build arg.
 ARG TLS_UPGRADE=1
 
 RUN touch ./src/main.rs

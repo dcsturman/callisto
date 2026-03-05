@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::debug;
 use crate::entity::Entities;
-use crate::ship::{ShipSystem, SHIP_TEMPLATES};
+use crate::ship::ShipSystem;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ShipAction {
@@ -103,12 +103,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
               continue;
             };
             let ship = ship_lock.read().expect("(Action.merge) Unable to read ship lock.");
-            let design = &ship.design;
-            let current_template = SHIP_TEMPLATES
-              .get()
-              .expect("Ship templates not loaded,")
-              .get(&design.name)
-              .expect("(Action.merge) Unable to find design.");
+            let current_template = &ship.design;
             let weapon = &current_template.weapons[weapon_id];
             // Find a _similar_ weapon to the one being deleted and delete the highest number of that (to avoid race conditions)
             let mut sorted_similar_weapon_id = current_actions
