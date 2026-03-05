@@ -1,7 +1,13 @@
 import * as React from "react";
-import {useState, useMemo, useEffect} from "react";
-import {Ship, ShipSystem, EngineerActionResult, EngineerActionMsg, EngineerActionType, shipSystemToString} from "lib/entities";
-import {sendEngineerAction} from "lib/serverManager";
+import { useState, useMemo, useEffect } from "react";
+import {
+  Ship,
+  ShipSystem,
+  EngineerActionResult,
+  EngineerActionMsg,
+  shipSystemToString,
+} from "lib/entities";
+import { sendEngineerAction } from "lib/serverManager";
 
 // Map ShipSystem enum to display names (must match backend order)
 const SYSTEM_NAMES: Record<ShipSystem, string> = {
@@ -22,59 +28,51 @@ interface EngineerTasksProps {
   ship: Ship;
 }
 
-export const EngineerTasks: React.FC<EngineerTasksProps> = ({ship}) => {
-  const [lastResult, setLastResult] = useState<EngineerActionResult | null>(null);
-  const [processingShip, setProcessingShip] = useState<string | null>(null);
+export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
+  const [lastResult, setLastResult] = useState<EngineerActionResult | null>(
+    null,
+  );
 
   // Clear results when ship changes
   useEffect(() => {
     setLastResult(null);
-    setProcessingShip(null);
   }, [ship.name]);
-
-  // Check if THIS ship is currently processing an action
-  const isProcessing = processingShip === ship.name;
 
   // Get list of damaged systems (excluding Hull, Armor, and Crew which cannot be repaired)
   const damagedSystems = useMemo(() => {
     if (!ship.crit_level) return [];
     return ship.crit_level
-      .map((level, index) => ({system: index as ShipSystem, level}))
-      .filter((s) =>
-        s.level > 0 &&
-        s.system !== ShipSystem.Hull &&
-        s.system !== ShipSystem.Armor &&
-        s.system !== ShipSystem.Crew
+      .map((level, index) => ({ system: index as ShipSystem, level }))
+      .filter(
+        (s) =>
+          s.level > 0 &&
+          s.system !== ShipSystem.Hull &&
+          s.system !== ShipSystem.Armor &&
+          s.system !== ShipSystem.Crew,
       );
   }, [ship.crit_level]);
 
   const handleOverloadDrive = () => {
-    setProcessingShip(ship.name);
-    sendEngineerAction({ship_name: ship.name, action: "OverloadDrive"}, (result) => {
-      setLastResult(result);
-      setProcessingShip(null);
-    });
+    sendEngineerAction(
+      { ship_name: ship.name, action: "OverloadDrive" },
+      setLastResult,
+    );
   };
 
   const handleOverloadPlant = () => {
-    setProcessingShip(ship.name);
-    sendEngineerAction({ship_name: ship.name, action: "OverloadPlant"}, (result) => {
-      setLastResult(result);
-      setProcessingShip(null);
-    });
+    sendEngineerAction(
+      { ship_name: ship.name, action: "OverloadPlant" },
+      setLastResult,
+    );
   };
 
   const handleRepair = (system: ShipSystem) => {
-    setProcessingShip(ship.name);
     const msg: EngineerActionMsg = {
       ship_name: ship.name,
-      action: {Repair: {system: shipSystemToString(system)}}
+      action: { Repair: { system: shipSystemToString(system) } },
     };
     console.log("(handleRepair) Sending repair action:", JSON.stringify(msg));
-    sendEngineerAction(msg, (result) => {
-      setLastResult(result);
-      setProcessingShip(null);
-    });
+    sendEngineerAction(msg, setLastResult);
   };
 
   // Calculate repair bonus for display
@@ -103,15 +101,25 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ship}) => {
           <button
             className="control-input control-button blue-button"
             onClick={handleOverloadDrive}
-            disabled={isProcessing || hasOverloadDrive || hasActionTaken}
-            title={hasActionTaken ? "Engineer has already taken an action this turn" : ""}>
+            disabled={hasOverloadDrive || hasActionTaken}
+            title={
+              hasActionTaken
+                ? "Engineer has already taken an action this turn"
+                : ""
+            }
+          >
             {hasOverloadDrive ? "Drive Overloaded" : "Overload Drive"}
           </button>
           <button
             className="control-input control-button blue-button"
             onClick={handleOverloadPlant}
-            disabled={isProcessing || hasOverloadPlant || hasActionTaken}
-            title={hasActionTaken ? "Engineer has already taken an action this turn" : ""}>
+            disabled={hasOverloadPlant || hasActionTaken}
+            title={
+              hasActionTaken
+                ? "Engineer has already taken an action this turn"
+                : ""
+            }
+          >
             {hasOverloadPlant ? "Plant Overloaded" : "Overload Plant"}
           </button>
         </div>
@@ -125,18 +133,23 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ship}) => {
         ) : (
           <select
             className="control-input"
-            style={{width: "100%", minWidth: "250px"}}
+            style={{ width: "100%", minWidth: "250px" }}
             onChange={(e) => {
               if (e.target.value) {
                 handleRepair(parseInt(e.target.value) as ShipSystem);
                 e.target.value = "";
               }
             }}
-            disabled={isProcessing || hasActionTaken}
-            title={hasActionTaken ? "Engineer has already taken an action this turn" : ""}
-            defaultValue="">
+            disabled={hasActionTaken}
+            title={
+              hasActionTaken
+                ? "Engineer has already taken an action this turn"
+                : ""
+            }
+            defaultValue=""
+          >
             <option value="">Select system to repair...</option>
-            {damagedSystems.map(({system, level}) => {
+            {damagedSystems.map(({ system, level }) => {
               const bonus = getRepairBonus(system);
               const bonusText = bonus > 0 ? ` (+${bonus} bonus)` : "";
               return (
@@ -158,18 +171,22 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ship}) => {
             padding: "8px",
             backgroundColor: lastResult.success ? "#1a3d1a" : "#3d1a1a",
             borderRadius: "4px",
-          }}>
-          <p className="plan-accel-text" style={{margin: 0}}>
+          }}
+        >
+          <p className="plan-accel-text" style={{ margin: 0 }}>
             {lastResult.message}
           </p>
-          {lastResult.roll !== undefined && lastResult.target !== undefined && (
-            <p className="plan-accel-text" style={{margin: "4px 0 0 0", fontSize: "0.9em"}}>
-              Roll: {lastResult.roll} vs Target: {lastResult.target}
-            </p>
-          )}
+          {lastResult.check !== undefined &&
+            lastResult.target !== undefined && (
+              <p
+                className="plan-accel-text"
+                style={{ margin: "4px 0 0 0", fontSize: "0.9em" }}
+              >
+                Check: {lastResult.check} vs Target: {lastResult.target}
+              </p>
+            )}
         </div>
       )}
     </div>
   );
 };
-

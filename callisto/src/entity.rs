@@ -1116,7 +1116,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action: action.clone(),
         success: false,
-        roll: 0,
+        check: 0,
         target: 0,
         message: format!("Ship {ship_name} not found."),
         critical_failure: false,
@@ -1125,23 +1125,18 @@ impl Entities {
 
     // Check if engineer has already taken an action this turn
     {
-      let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+      let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
       if ship.has_engineer_action_taken() {
         return EngineerActionResult {
           ship_name: ship_name.to_string(),
           action: action.clone(),
           success: false,
-          roll: 0,
+          check: 0,
           target: 0,
           message: format!("{ship_name}'s engineer has already taken an action this turn."),
           critical_failure: false,
         };
       }
-    }
-
-    // Mark that engineer is taking an action
-    {
-      let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
       ship.set_engineer_action_taken(true);
     }
 
@@ -1179,7 +1174,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: true,
-        roll: total,
+        check: total,
         target,
         message: format!("{ship_name} overloaded maneuver drive successfully! Temporary +1 maneuver."),
         critical_failure: false,
@@ -1191,7 +1186,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: false,
-        roll: total,
+        check: total,
         target,
         message: format!("{ship_name} critically failed overloading maneuver drive! Drive damaged."),
         critical_failure: true,
@@ -1202,7 +1197,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: false,
-        roll: total,
+        check: total,
         target,
         message: format!("{ship_name} failed to overload maneuver drive."),
         critical_failure: false,
@@ -1237,7 +1232,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: true,
-        roll,
+        check: total,
         target,
         message: format!("{ship_name} overloaded power plant successfully! Temporary +10% power."),
         critical_failure: false,
@@ -1249,7 +1244,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: false,
-        roll,
+        check: total,
         target,
         message: format!("{ship_name} critically failed overloading power plant! Plant damaged."),
         critical_failure: true,
@@ -1260,7 +1255,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: false,
-        roll,
+        check: total,
         target,
         message: format!("{ship_name} failed to overload power plant."),
         critical_failure: false,
@@ -1289,7 +1284,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: false,
-        roll: 0,
+        check: 0,
         target: 0,
         message: format!("{ship_name} cannot repair hull damage."),
         critical_failure: false,
@@ -1332,7 +1327,7 @@ impl Entities {
         ship_name: ship_name.to_string(),
         action,
         success: true,
-        roll,
+        check: total,
         target,
         message: format!("{ship_name} successfully repaired {system:?}."),
         critical_failure: false,
@@ -1340,13 +1335,13 @@ impl Entities {
     } else {
       // Failure - increment repair bonus
       let current_bonus = ship_write.get_repair_bonus();
-      ship_write.set_repair_bonus(current_bonus + 1);
+      ship_write.set_repair_bonus(current_bonus.saturating_add(1));
       ship_write.set_last_repair_component(Some(system));
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: false,
-        roll,
+        check: total,
         target,
         message: format!("{ship_name} failed to repair {system:?}."),
         critical_failure: false,

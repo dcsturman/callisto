@@ -95,11 +95,10 @@ pub struct Ship {
   temporary_power_multiplier: f32,
 
   #[derivative(PartialEq = "ignore")]
-  #[serde(skip)]
   last_repair_component: Option<ShipSystem>,
 
   #[derivative(PartialEq = "ignore")]
-  #[serde(skip)]
+  #[serde(default, skip_serializing_if = "is_zero_u8")]
   repair_bonus: u8,
 
   // Tracks whether engineer has taken an action this turn
