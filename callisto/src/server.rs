@@ -74,10 +74,12 @@ impl Server {
     let initial_scenario = if scenario_name.is_empty() {
       Entities::new()
     } else {
-      Entities::load_from_file(scenario_name).await.unwrap_or_else(|e| {
-        warn!("Issue loading scenario file {scenario_name}: {e}");
-        Entities::new()
-      })
+      Entities::load_from_file_with_ship_templates(scenario_name, ship_templates.clone())
+        .await
+        .unwrap_or_else(|e| {
+          warn!("Issue loading scenario file {scenario_name}: {e}");
+          Entities::new()
+        })
     };
 
     Server {

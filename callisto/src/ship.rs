@@ -1,5 +1,6 @@
 #![allow(clippy::elidable_lifetime_names)]
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -25,6 +26,20 @@ pub type ShipTemplateTable = HashMap<String, Arc<ShipDesignTemplate>>;
 type SharedShipTemplateTable = Arc<ShipTemplateTable>;
 
 pub static SHIP_TEMPLATES: OnceCell<RwLock<SharedShipTemplateTable>> = OnceCell::new();
+
+std::thread_local! {
+  static DESERIALIZING_SHIP_TEMPLATES: RefCell<Option<SharedShipTemplateTable>> = const { RefCell::new(None) };
+}
+
+struct ShipTemplateDeserializationGuard(Option<SharedShipTemplateTable>);
+
+impl Drop for ShipTemplateDeserializationGuard {
+  fn drop(&mut self) {
+    DESERIALIZING_SHIP_TEMPLATES.with(|templates| {
+      *templates.borrow_mut() = self.0.take();
+    });
+  }
+}
 
 /// Replace the current global ship-template snapshot.
 ///
@@ -60,6 +75,23 @@ pub fn get_ship_templates_snapshot() -> SharedShipTemplateTable {
 #[must_use]
 pub fn get_ship_template(name: &str) -> Option<Arc<ShipDesignTemplate>> {
   get_ship_templates_snapshot().get(name).cloned()
+}
+
+pub(crate) fn with_ship_templates_for_deserialization<T, F>(
+  ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>, callback: F,
+) -> T
+where
+  F: FnOnce() -> T,
+{
+  let previous_templates = DESERIALIZING_SHIP_TEMPLATES.with(|templates| templates.replace(Some(ship_templates)));
+  let _reset_guard = ShipTemplateDeserializationGuard(previous_templates);
+  callback()
+}
+
+fn get_ship_template_for_deserialization(name: &str) -> Option<Arc<ShipDesignTemplate>> {
+  DESERIALIZING_SHIP_TEMPLATES
+    .with(|templates| templates.borrow().as_ref().and_then(|snapshot| snapshot.get(name).cloned()))
+    .or_else(|| get_ship_template(name))
 }
 
 #[skip_serializing_none]
@@ -730,7 +762,7 @@ serde_with::serde_conv!(
     Arc<ShipDesignTemplate>,
     |t: &Arc<ShipDesignTemplate>| t.name.clone(),
     |value: String| -> Result<_, String> {
-        get_ship_template(&value).map_or_else(
+        get_ship_template_for_deserialization(&value).map_or_else(
           || { error!("(Deserializing Ship) Could not find design {value}"); Err("Could not find design".to_string()) },
           |t| Ok(t.clone()) )
     }
