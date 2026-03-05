@@ -1,4 +1,4 @@
-import {Crew, createCrew} from "components/controls/CrewBuilder";
+import { Crew, createCrew } from "components/controls/CrewBuilder";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -25,7 +25,7 @@ export interface Ship extends Entity {
   can_jump: boolean;
   sensor_locks: string[];
   crew: Crew;
-  crit_level?: number[];  // Array of 11 numbers indexed by ShipSystem
+  crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   repair_bonus?: number;
   last_repair_component?: ShipSystem | null;
   temporary_maneuver?: number;
@@ -82,7 +82,7 @@ export interface EngineerActionResult {
   ship_name: string;
   action: EngineerActionType;
   success: boolean;
-  roll: number;
+  check: number;
   target: number;
   message: string;
   critical_failure: boolean;
@@ -106,7 +106,7 @@ const createShip = (
   dodge_thrust: number,
   assist_gunners: boolean,
   can_jump: boolean,
-  sensor_locks: string[]
+  sensor_locks: string[],
 ) => {
   return {
     name,
@@ -150,7 +150,7 @@ export const defaultShip = () => {
     0,
     false,
     false,
-    []
+    [],
   );
 };
 
@@ -185,7 +185,7 @@ export const createMissile = (
   position: [number, number, number],
   velocity: [number, number, number],
   acceleration: [number, number, number],
-  target: string
+  target: string,
 ) => {
   return {
     name,
@@ -240,7 +240,7 @@ export const createPlanet = (
   gravity_radius_2: number,
   gravity_radius_1: number,
   gravity_radius_05: number,
-  gravity_radius_025: number
+  gravity_radius_025: number,
 ) => {
   return {
     name,
@@ -258,36 +258,36 @@ export const createPlanet = (
 };
 
 export interface MetaData {
-    name: string;
-    description: string;
+  name: string;
+  description: string;
 }
 
 export const createMetaData = (name: string, description: string) => {
-    return {
-        name,
-        description,
-    };
+  return {
+    name,
+    description,
+  };
 };
 
 export interface EntityList {
-    ships: Ship[];
-    planets: Planet[];
-    missiles: Missile[];
-    metadata: MetaData;
+  ships: Ship[];
+  planets: Planet[];
+  missiles: Missile[];
+  metadata: MetaData;
 }
 
 export const defaultEntityList = () => {
-    return {
-        ships: [],
-        planets: [],
-        missiles: [],
-        metadata: createMetaData("", ""),
-    };
+  return {
+    ships: [],
+    planets: [],
+    missiles: [],
+    metadata: createMetaData("", ""),
+  };
 };
 
 export const findShip = (entities: EntityList, name: string | null) => {
-    if (name == null) {
-        return null;
-    }
-    return entities.ships.find((ship) => ship.name === name) || null;
-}
+  if (name == null) {
+    return null;
+  }
+  return entities.ships.find((ship) => ship.name === name) || null;
+};

@@ -197,7 +197,7 @@ pub struct EngineerActionResult {
   pub ship_name: String,
   pub action: EngineerAction,
   pub success: bool,
-  pub roll: u8,
+  pub check: u8,
   pub target: u8,
   pub message: String,
   pub critical_failure: bool,

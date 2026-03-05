@@ -83,7 +83,7 @@ async fn test_add_ship() {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
-        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
         "missiles":[],"planets":[],"actions":[]});
 

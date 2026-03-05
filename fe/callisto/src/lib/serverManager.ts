@@ -20,7 +20,13 @@ import { setTutorialMode } from "state/tutorialSlice";
 import { setActions } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
-import { EntityList, Ship, MetaData, EngineerActionMsg, EngineerActionResult } from "lib/entities";
+import {
+  EntityList,
+  Ship,
+  MetaData,
+  EngineerActionMsg,
+  EngineerActionResult,
+} from "lib/entities";
 import { ViewMode, stringToViewMode } from "lib/view";
 import { Acceleration } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
@@ -47,7 +53,11 @@ const KEEP_ALIVE_INTERVAL = 60000;
 // Define the (global) websocket
 export let socket: WebSocket;
 
-let engineerActionCallback: ((result: EngineerActionResult) => void) | null = null;
+// Map of ship name to callback for engineer action results
+const engineerActionCallbacks = new Map<
+  string,
+  (result: EngineerActionResult) => void
+>();
 
 //
 // Functions managing the socket connection
@@ -191,9 +201,11 @@ const handleMessage = (event: MessageEvent) => {
   }
 
   if ("EngineerActionResult" in json) {
-    if (engineerActionCallback) {
-      engineerActionCallback(json.EngineerActionResult);
-      engineerActionCallback = null;
+    const result = json.EngineerActionResult as EngineerActionResult;
+    const callback = engineerActionCallbacks.get(result.ship_name);
+    if (typeof callback === "function") {
+      callback(result);
+      engineerActionCallbacks.delete(result.ship_name);
     }
   }
 };
@@ -380,9 +392,9 @@ export function logout() {
 
 export function sendEngineerAction(
   msg: EngineerActionMsg,
-  callback: (result: EngineerActionResult) => void
+  callback: (result: EngineerActionResult) => void,
 ) {
-  engineerActionCallback = callback;
+  engineerActionCallbacks.set(msg.ship_name, callback);
   const payload = { EngineerAction: msg };
   const jsonStr = JSON.stringify(payload);
   console.log("(sendEngineerAction) Sending:", jsonStr);
