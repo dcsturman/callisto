@@ -5,7 +5,6 @@ import {
   ShipSystem,
   EngineerActionResult,
   EngineerActionMsg,
-  EngineerActionType,
   shipSystemToString,
 } from "lib/entities";
 import { sendEngineerAction } from "lib/serverManager";
@@ -33,16 +32,11 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
   const [lastResult, setLastResult] = useState<EngineerActionResult | null>(
     null,
   );
-  const [processingShip, setProcessingShip] = useState<string | null>(null);
 
   // Clear results when ship changes
   useEffect(() => {
     setLastResult(null);
-    setProcessingShip(null);
   }, [ship.name]);
-
-  // Check if THIS ship is currently processing an action
-  const isProcessing = processingShip === ship.name;
 
   // Get list of damaged systems (excluding Hull, Armor, and Crew which cannot be repaired)
   const damagedSystems = useMemo(() => {
@@ -59,38 +53,26 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
   }, [ship.crit_level]);
 
   const handleOverloadDrive = () => {
-    setProcessingShip(ship.name);
     sendEngineerAction(
       { ship_name: ship.name, action: "OverloadDrive" },
-      (result) => {
-        setLastResult(result);
-        setProcessingShip(null);
-      },
+      setLastResult,
     );
   };
 
   const handleOverloadPlant = () => {
-    setProcessingShip(ship.name);
     sendEngineerAction(
       { ship_name: ship.name, action: "OverloadPlant" },
-      (result) => {
-        setLastResult(result);
-        setProcessingShip(null);
-      },
+      setLastResult,
     );
   };
 
   const handleRepair = (system: ShipSystem) => {
-    setProcessingShip(ship.name);
     const msg: EngineerActionMsg = {
       ship_name: ship.name,
       action: { Repair: { system: shipSystemToString(system) } },
     };
     console.log("(handleRepair) Sending repair action:", JSON.stringify(msg));
-    sendEngineerAction(msg, (result) => {
-      setLastResult(result);
-      setProcessingShip(null);
-    });
+    sendEngineerAction(msg, setLastResult);
   };
 
   // Calculate repair bonus for display
@@ -119,7 +101,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
           <button
             className="control-input control-button blue-button"
             onClick={handleOverloadDrive}
-            disabled={isProcessing || hasOverloadDrive || hasActionTaken}
+            disabled={hasOverloadDrive || hasActionTaken}
             title={
               hasActionTaken
                 ? "Engineer has already taken an action this turn"
@@ -131,7 +113,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
           <button
             className="control-input control-button blue-button"
             onClick={handleOverloadPlant}
-            disabled={isProcessing || hasOverloadPlant || hasActionTaken}
+            disabled={hasOverloadPlant || hasActionTaken}
             title={
               hasActionTaken
                 ? "Engineer has already taken an action this turn"
@@ -158,7 +140,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
                 e.target.value = "";
               }
             }}
-            disabled={isProcessing || hasActionTaken}
+            disabled={hasActionTaken}
             title={
               hasActionTaken
                 ? "Engineer has already taken an action this turn"
