@@ -175,6 +175,7 @@ async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
   body
 }
 
+#[allow(clippy::result_large_err)]
 async fn next_response_with_timeout(stream: &mut MyWebSocket, duration: Duration) -> ResponseMsg {
   let reply = timeout(duration, stream.next())
     .await
