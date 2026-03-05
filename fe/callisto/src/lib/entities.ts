@@ -27,7 +27,7 @@ export interface Ship extends Entity {
   crew: Crew;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   repair_bonus?: number;
-  last_repair_component?: ShipSystem | null;
+  last_repair_component?: string | null; // String representation of ShipSystem (e.g., "Sensors")
   temporary_maneuver?: number;
   temporary_power_multiplier?: number;
   engineer_action_taken?: boolean;
@@ -63,6 +63,24 @@ export function shipSystemToString(system: ShipSystem): string {
     [ShipSystem.Bridge]: "Bridge",
   };
   return names[system];
+}
+
+// Convert string representation back to ShipSystem enum value
+export function stringToShipSystem(name: string): ShipSystem | null {
+  const mapping: Record<string, ShipSystem> = {
+    Sensors: ShipSystem.Sensors,
+    Powerplant: ShipSystem.Powerplant,
+    Fuel: ShipSystem.Fuel,
+    Weapon: ShipSystem.Weapon,
+    Armor: ShipSystem.Armor,
+    Hull: ShipSystem.Hull,
+    Maneuver: ShipSystem.Maneuver,
+    Cargo: ShipSystem.Cargo,
+    Jump: ShipSystem.Jump,
+    Crew: ShipSystem.Crew,
+    Bridge: ShipSystem.Bridge,
+  };
+  return mapping[name] ?? null;
 }
 
 // EngineerAction enum matches the Rust enum (unit variants and struct variant)
