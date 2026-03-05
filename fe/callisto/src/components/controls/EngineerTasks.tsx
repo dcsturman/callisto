@@ -6,6 +6,7 @@ import {
   EngineerActionResult,
   EngineerActionMsg,
   shipSystemToString,
+  stringToShipSystem,
 } from "lib/entities";
 import { sendEngineerAction } from "lib/serverManager";
 
@@ -77,7 +78,11 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
 
   // Calculate repair bonus for display
   const getRepairBonus = (system: ShipSystem): number => {
-    if (ship.last_repair_component === system && ship.repair_bonus) {
+    if (
+      ship.last_repair_component &&
+      stringToShipSystem(ship.last_repair_component) === system &&
+      ship.repair_bonus
+    ) {
       return ship.repair_bonus;
     }
     return 0;
