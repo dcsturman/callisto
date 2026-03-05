@@ -158,6 +158,7 @@ async fn open_socket(port: u16) -> Result<MyWebSocket, Error> {
   }
 }
 
+#[allow(clippy::result_large_err)]
 async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
   debug!("(webservers.rpc) Sending request: {request:?}");
   stream.send(serde_json::to_string(&request).unwrap().into()).await.unwrap();
