@@ -1,18 +1,21 @@
 import * as React from "react";
-import {useState, useRef, useEffect, useMemo, useCallback} from "react";
-import {CrewBuilder, Crew, createCrew} from "components/controls/CrewBuilder";
-import {POSITION_SCALE} from "lib/universal";
-import {ShipDesignTemplates, compressedWeaponsFromTemplate} from "lib/shipDesignTemplates";
-import {WeaponMount, createWeapon, weaponToString} from "lib/weapon";
-import {Accordion} from "lib/Accordion";
-import {Tooltip} from "react-tooltip";
-import {CiCircleQuestion} from "react-icons/ci";
-import {unique_ship_name} from "lib/shipnames";
-import {Ship, defaultShip, findShip} from "lib/entities";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { CrewBuilder, Crew, createCrew } from "components/controls/CrewBuilder";
+import { POSITION_SCALE } from "lib/universal";
+import {
+  ShipDesignTemplates,
+  compressedWeaponsFromTemplate,
+} from "lib/shipDesignTemplates";
+import { WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import { Accordion } from "lib/Accordion";
+import { Tooltip } from "react-tooltip";
+import { CiCircleQuestion } from "react-icons/ci";
+import { unique_ship_name } from "lib/shipnames";
+import { Ship, defaultShip, findShip } from "lib/entities";
 
-import {addShip} from "lib/serverManager";
-import {useAppSelector} from "state/hooks";
-import {entitiesSelector} from "state/serverSlice";
+import { addShip } from "lib/serverManager";
+import { useAppSelector } from "state/hooks";
+import { entitiesSelector } from "state/serverSlice";
 
 type AddShipProps = unknown;
 
@@ -20,7 +23,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
   const entities = useAppSelector(entitiesSelector);
   const shipDesignTemplates = useAppSelector((state) => state.server.templates);
 
-  const shipNames = useMemo(() => entities.ships.map((ship: Ship) => ship.name), [entities.ships]);
+  const shipNames = useMemo(
+    () => entities.ships.map((ship: Ship) => ship.name),
+    [entities.ships],
+  );
 
   const designRef = useRef<HTMLSelectElement>(null);
   const shipNameRef = useRef<HTMLInputElement>(null);
@@ -37,13 +43,14 @@ export const AddShip: React.FC<AddShipProps> = () => {
       design: Object.values(shipDesignTemplates)[0].name,
       crew: createCrew(Object.values(shipDesignTemplates)[0].weapons.length),
     }),
-    [shipDesignTemplates, entities]
+    [shipDesignTemplates, entities],
   );
 
   const [addShipData, setAddShipData] = useState(initialTemplate);
 
   useEffect(() => {
-    const current = entities.ships.find((ship) => ship.name === addShipData.name) || null;
+    const current =
+      entities.ships.find((ship) => ship.name === addShipData.name) || null;
     if (current != null) {
       const template = {
         name: current.name,
@@ -86,9 +93,12 @@ export const AddShip: React.FC<AddShipProps> = () => {
           }
         }
       }
-      setAddShipData({...addShipData, [event.target.name]: event.target.value});
+      setAddShipData({
+        ...addShipData,
+        [event.target.name]: event.target.value,
+      });
     },
-    [designRef, shipNames, entities, setAddShipData, addShipData]
+    [designRef, shipNames, entities, setAddShipData, addShipData],
   );
 
   const handleSubmit = useCallback(
@@ -107,35 +117,35 @@ export const AddShip: React.FC<AddShipProps> = () => {
       ];
 
       const design: string = addShipData.design;
-      setAddShipData({...addShipData, design: design});
+      setAddShipData({ ...addShipData, design: design });
 
       const crew = addShipData.crew;
       const ship = findShip(entities, name) || defaultShip();
 
-      const revision = {...ship, name, position, velocity, design, crew};
+      const revision = { ...ship, name, position, velocity, design, crew };
 
       addShip(revision);
       setAddShipData(initialTemplate);
       shipNameRef.current!.style.color = "black";
     },
-    [addShipData, entities, initialTemplate, shipNameRef]
+    [addShipData, entities, initialTemplate, shipNameRef],
   );
 
   const handleDesignChange = useCallback(
-    (design: string) => setAddShipData({...addShipData, design: design}),
-    [addShipData, setAddShipData]
+    (design: string) => setAddShipData({ ...addShipData, design: design }),
+    [addShipData, setAddShipData],
   );
 
   const handleCrewChange = useCallback(
     (crew: Crew) => {
-      setAddShipData({...addShipData, crew: crew});
+      setAddShipData({ ...addShipData, crew: crew });
     },
-    [addShipData, setAddShipData]
+    [addShipData, setAddShipData],
   );
 
   const updateOrAddLabel = useMemo(
     () => (shipNames.includes(addShipData.name) ? "Update" : "Add"),
-    [addShipData.name, shipNames]
+    [addShipData.name, shipNames],
   );
 
   return (
@@ -215,6 +225,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         <hr />
         <CrewBuilder
           shipName={addShipData.name}
+          currentCrew={addShipData.crew}
           updateCrew={handleCrewChange}
           shipDesign={shipDesignTemplates[addShipData.design]}
         />
@@ -228,7 +239,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
   );
 };
 
-const ShipDesignDetails = (render: {content: string | null; activeAnchor: HTMLElement | null}) => {
+const ShipDesignDetails = (render: {
+  content: string | null;
+  activeAnchor: HTMLElement | null;
+}) => {
   const designs = useAppSelector((state) => state.server.templates);
   const design = useMemo(() => {
     if (!render.content || !designs[render.content]) {
@@ -236,15 +250,21 @@ const ShipDesignDetails = (render: {content: string | null; activeAnchor: HTMLEl
     }
     return designs[render.content];
   }, [designs, render.content]);
-  const compressed = useMemo(() => Object.values(compressedWeaponsFromTemplate(design)), [design]);
+  const compressed = useMemo(
+    () => Object.values(compressedWeaponsFromTemplate(design)),
+    [design],
+  );
   const describeWeapon = useMemo(
-    () => (weapon: {kind: string; mount: WeaponMount; total: number}) => {
-      const weapon_name = weaponToString(createWeapon(weapon.kind, weapon.mount));
+    () => (weapon: { kind: string; mount: WeaponMount; total: number }) => {
+      const weapon_name = weaponToString(
+        createWeapon(weapon.kind, weapon.mount),
+      );
 
-      const [quant, suffix] = weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
+      const [quant, suffix] =
+        weapon.total === 1 ? ["a", ""] : [weapon.total, "s"];
       return `${quant} ${weapon_name}${suffix}`;
     },
-    []
+    [],
   );
 
   const weaponDesc: string[] = useMemo(() => {
@@ -253,7 +273,9 @@ const ShipDesignDetails = (render: {content: string | null; activeAnchor: HTMLEl
     } else if (compressed.length === 1) {
       return ["Weapons are ", describeWeapon(compressed[0])];
     } else {
-      const preamble = compressed.slice(0, -1).map((...[weapon]) => describeWeapon(weapon) + ", ");
+      const preamble = compressed
+        .slice(0, -1)
+        .map((...[weapon]) => describeWeapon(weapon) + ", ");
       return ["Weapons are "].concat(preamble, [
         "and " + describeWeapon(compressed[compressed.length - 1]),
       ]);
@@ -271,8 +293,10 @@ const ShipDesignDetails = (render: {content: string | null; activeAnchor: HTMLEl
     <>
       <h3>{design.name}</h3>
       <div className="ship-design-description-tooltip">
-        {design.displacement} tons with {design.hull} hull points and {design.armor} armor.&nbsp;
-        {design.power} power back {design.maneuver}G thrust and jump {design.jump}. {weaponDesc}.
+        {design.displacement} tons with {design.hull} hull points and{" "}
+        {design.armor} armor.&nbsp;
+        {design.power} power back {design.maneuver}G thrust and jump{" "}
+        {design.jump}. {weaponDesc}.
       </div>
     </>
   );
@@ -286,7 +310,8 @@ function ShipDesignList(args: {
   const selectRef = useRef<HTMLSelectElement>(null);
   useEffect(() => {
     if (selectRef.current != null) {
-      selectRef.current.value = (args.shipDesignName && args.shipDesignName) || "";
+      selectRef.current.value =
+        (args.shipDesignName && args.shipDesignName) || "";
     }
   }, [args.shipDesignName]);
 
@@ -295,10 +320,13 @@ function ShipDesignList(args: {
       const value = event.target.value;
       args.setShipDesignName(value);
     },
-    [args]
+    [args],
   );
 
-  const ciCircle = useMemo(() => <CiCircleQuestion className="info-icon" />, []);
+  const ciCircle = useMemo(
+    () => <CiCircleQuestion className="info-icon" />,
+    [],
+  );
 
   return (
     <>
@@ -317,19 +345,21 @@ function ShipDesignList(args: {
           onChange={handleDesignListSelectChange}
           data-tooltip-id={args.shipDesignName + "ship-description-tip"}
           data-tooltip-content={args.shipDesignName}
-          data-tooltip-delay-show={700}>
+          data-tooltip-delay-show={700}
+        >
           {Object.values(args.shipDesigns)
             .sort((a, b) =>
               a.displacement > b.displacement
                 ? 1
                 : a.displacement < b.displacement
-                ? -1
-                : a.name.localeCompare(b.name)
+                  ? -1
+                  : a.name.localeCompare(b.name),
             )
             .map((design) => (
               <option
                 key={design.name + "-ship_list"}
-                value={design.name}>{`${design.name} (${design.displacement})`}</option>
+                value={design.name}
+              >{`${design.name} (${design.displacement})`}</option>
             ))}
         </select>
         <Tooltip

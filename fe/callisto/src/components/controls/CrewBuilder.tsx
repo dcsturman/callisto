@@ -29,19 +29,22 @@ export const createCrew = (num_gunners: number) => {
 
 interface CrewBuilderProps {
   updateCrew: (crew: Crew) => void;
+  currentCrew: Crew;
   shipName: string;
   shipDesign: ShipDesignTemplate;
 }
 
 export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   updateCrew,
+  currentCrew,
   shipName,
   shipDesign,
 }) => {
   const entities = useAppSelector(entitiesSelector);
   const num_gunners = shipDesign.weapons.length;
+
   const initialCrew = useMemo(() => {
-    return createCrew(num_gunners);
+    return currentCrew ?? createCrew(num_gunners);
   }, [num_gunners]);
 
   const [customCrew, setCustomCrew] = useState(initialCrew);
