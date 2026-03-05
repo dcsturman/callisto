@@ -31,12 +31,53 @@ use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use once_cell::sync::OnceCell;
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::sync::{Arc, RwLock};
 
-pub static SCENARIOS: OnceCell<Vec<(String, MetaData)>> = OnceCell::new();
+pub static SCENARIOS: OnceCell<RwLock<Arc<Vec<(String, MetaData)>>>> = OnceCell::new();
 pub const LOG_FILE_USE: &str = "READ_FILE";
 pub const LOG_AUTH_RESULT: &str = "LOGIN_ATTEMPT";
 pub const LOGOUT: &str = "LOGOUT";
 pub const LOG_SCENARIO_ACTIVITY: &str = "SCENARIO";
+
+pub fn replace_scenarios(scenarios: Vec<(String, MetaData)>) {
+  if let Some(scenarios_lock) = SCENARIOS.get() {
+    *scenarios_lock.write().expect("(replace_scenarios) Unable to update scenarios") = Arc::new(scenarios);
+  } else {
+    SCENARIOS
+      .set(RwLock::new(Arc::new(scenarios)))
+      .expect("(replace_scenarios) Unable to initialize scenarios");
+  }
+}
+
+#[must_use]
+pub fn get_scenarios_snapshot() -> Arc<Vec<(String, MetaData)>> {
+  SCENARIOS
+    .get()
+    .expect("(get_scenarios_snapshot) Scenarios not loaded")
+    .read()
+    .expect("(get_scenarios_snapshot) Unable to read scenarios")
+    .clone()
+}
+
+fn join_dir_entry_path(dir: &str, entry: &str) -> String {
+  format!("{}/{entry}", dir.trim_end_matches('/'))
+}
+
+pub async fn get_local_or_cloud_dir_fingerprint(
+  dir: &str,
+) -> Result<Vec<(String, Option<i64>)>, Box<dyn std::error::Error>> {
+  let mut files = list_local_or_cloud_dir(dir).await?;
+  files.sort_unstable();
+
+  let mut fingerprint = Vec::with_capacity(files.len());
+  for file in files {
+    let full_path = join_dir_entry_path(dir, &file);
+    let last_modified = get_file_last_modified_timestamp(&full_path).await?;
+    fingerprint.push((file, last_modified));
+  }
+
+  Ok(fingerprint)
+}
 
 /**
  * Read a file from the local filesystem or GCS.
@@ -220,6 +261,31 @@ pub async fn get_file_last_modified_timestamp(filename: &str) -> Result<Option<i
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_replace_scenarios_updates_snapshot() {
+    replace_scenarios(vec![(
+      "scenario-a".to_string(),
+      MetaData {
+        name: "Scenario A".to_string(),
+        description: "first".to_string(),
+      },
+    )]);
+    assert_eq!(get_scenarios_snapshot().len(), 1);
+
+    replace_scenarios(vec![(
+      "scenario-b".to_string(),
+      MetaData {
+        name: "Scenario B".to_string(),
+        description: "second".to_string(),
+      },
+    )]);
+
+    let scenarios = get_scenarios_snapshot();
+    assert_eq!(scenarios.len(), 1);
+    assert_eq!(scenarios[0].0, "scenario-b");
+    assert_eq!(scenarios[0].1.name, "Scenario B");
+  }
 
   #[tokio::test]
   async fn test_get_file_last_modified_timestamp_local() {

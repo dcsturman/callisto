@@ -16,7 +16,7 @@ use crate::payloads::{
   RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
-use crate::ship::{Ship, ShipDesignTemplate, SHIP_TEMPLATES};
+use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate};
 use crate::{debug, info, warn};
 
 /// `PlayerManager` represents a distinct user connected to the server.
@@ -169,17 +169,18 @@ impl PlayerManager {
     info!("(PlayerManager.add_ship) Received and processing add ship request. {:?}", ship);
 
     // Add the ship to the server
-    let design = crate::ship::SHIP_TEMPLATES
-      .get()
-      .expect("(PlayerManager.add_ship) Ship templates not loaded")
-      .get(&ship.design)
+    let design = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_ship_template(&ship.design)
       .ok_or_else(|| format!("(PlayerManager.add_ship) Could not find design {}.", ship.design))?;
 
     self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_ship(
       ship.name,
       ship.position,
       ship.velocity,
-      design,
+      &design,
       ship.crew,
     );
 
@@ -244,11 +245,14 @@ impl PlayerManager {
   ///
   /// # Panics
   /// Panics if the ship templates have not been loaded.
-  pub fn get_designs() -> ShipDesignTemplateMsg {
+  pub fn get_designs(&self) -> ShipDesignTemplateMsg {
+    let templates = self
+      .server
+      .as_ref()
+      .map_or_else(get_ship_templates_snapshot, |server| server.get_ship_templates_snapshot());
+
     // Strip the Arc, etc. from the ShipTemplates before marshalling back.
-    let clean_templates: HashMap<String, ShipDesignTemplate> = SHIP_TEMPLATES
-      .get()
-      .expect("(PlayerManager.get_designs) Ship templates not loaded")
+    let clean_templates: HashMap<String, ShipDesignTemplate> = templates
       .iter()
       .map(|(key, value)| (key.clone(), (*value.clone()).clone()))
       .collect();

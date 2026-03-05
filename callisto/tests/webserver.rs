@@ -7,7 +7,9 @@
  */
 extern crate callisto;
 use std::env::var;
+use std::fs;
 use std::io;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicU16;
 
 use assert_json_diff::assert_json_eq;
@@ -15,7 +17,7 @@ use futures_util::{SinkExt, StreamExt};
 
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::{
   connect_async,
   tungstenite::{Error, Result},
@@ -171,6 +173,50 @@ async fn rpc(stream: &mut MyWebSocket, request: RequestMsg) -> ResponseMsg {
   debug!("(webservers.rpc) Received response: {reply:?}");
   let body = serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap();
   body
+}
+
+async fn next_response_with_timeout(stream: &mut MyWebSocket, duration: Duration) -> ResponseMsg {
+  let reply = timeout(duration, stream.next())
+    .await
+    .unwrap_or_else(|_| panic!("Timed out waiting for WebSocket response after {duration:?}."))
+    .unwrap_or_else(|| panic!("WebSocket closed while waiting for response."))
+    .unwrap_or_else(|err| panic!("Receiving error from server {err:?} while waiting for response."));
+  serde_json::from_str::<ResponseMsg>(reply.to_text().unwrap()).unwrap()
+}
+
+fn setup_reloadable_test_files(port: u16) -> (PathBuf, String, String, String) {
+  let root = std::env::temp_dir().join(format!("callisto_live_reload_{port}_{}", std::process::id()));
+  let scenario_dir = root.join("scenarios");
+  let design_file = root.join("ship_templates.json");
+  let added_scenario = "live_reload_scenario.json".to_string();
+
+  if root.exists() {
+    fs::remove_dir_all(&root).unwrap();
+  }
+
+  fs::create_dir_all(&scenario_dir).unwrap();
+  fs::copy("ship_templates/default_ship_templates.json", &design_file).unwrap();
+  fs::copy("scenarios/tutorial.json", scenario_dir.join("tutorial.json")).unwrap();
+
+  (
+    root,
+    scenario_dir.to_string_lossy().into_owned(),
+    design_file.to_string_lossy().into_owned(),
+    added_scenario,
+  )
+}
+
+fn append_test_design(design_file: &str, design_name: &str) {
+  let contents = fs::read_to_string(design_file).unwrap();
+  let mut templates = serde_json::from_str::<Vec<serde_json::Value>>(&contents).unwrap();
+  let mut new_template = templates.first().unwrap().clone();
+  new_template["name"] = json!(design_name);
+  templates.push(new_template);
+  fs::write(design_file, serde_json::to_string_pretty(&templates).unwrap()).unwrap();
+}
+
+fn add_test_scenario(scenario_dir: &str, scenario_name: &str) {
+  fs::copy("scenarios/tutorial.json", PathBuf::from(scenario_dir).join(scenario_name)).unwrap();
 }
 
 /**
@@ -350,6 +396,54 @@ async fn integration_get_designs() {
       "Buccaneer body malformed in design file."
     );
   }
+  send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_live_reload_pushes_scenarios_and_designs() {
+  let port = get_next_port();
+  let (_root, scenario_dir, design_file, added_scenario) = setup_reloadable_test_files(port);
+  let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_file.clone()), true)
+    .await
+    .unwrap();
+
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+
+  let new_design_name = "Live Reload Test Design";
+  append_test_design(&design_file, new_design_name);
+  add_test_scenario(&scenario_dir, &added_scenario);
+
+  let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+  let mut saw_design_refresh = false;
+  let mut saw_scenario_refresh = false;
+
+  while tokio::time::Instant::now() < deadline && (!saw_design_refresh || !saw_scenario_refresh) {
+    let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+    match next_response_with_timeout(&mut stream, remaining.min(Duration::from_secs(8))).await {
+      ResponseMsg::DesignTemplateResponse(designs) => {
+        if designs.contains_key(new_design_name) {
+          saw_design_refresh = true;
+        }
+      }
+      ResponseMsg::Scenarios(scenarios) => {
+        if scenarios.templates.iter().any(|(name, _)| name == &added_scenario) {
+          saw_scenario_refresh = true;
+        }
+      }
+      other => panic!("Unexpected live reload response: {other:?}"),
+    }
+  }
+
+  assert!(
+    saw_design_refresh,
+    "Did not receive live design refresh containing {new_design_name}."
+  );
+  assert!(
+    saw_scenario_refresh,
+    "Did not receive live scenario refresh containing {added_scenario}."
+  );
+
   send_quit(&mut stream).await;
 }
 

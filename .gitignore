@@ -30,3 +30,4 @@ callisto/config/authorized_users.json
 callisto/coverage/**
 /callisto/keys
 *.log
+compose.override.yaml

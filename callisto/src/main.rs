@@ -3,8 +3,9 @@ use std::net::ToSocketAddrs;
 use std::panic;
 use std::process;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use futures::channel::mpsc::channel;
+use futures::channel::mpsc::{channel, unbounded, UnboundedSender};
 use futures::future::join_all;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::WebSocketStream;
@@ -32,14 +33,15 @@ extern crate callisto;
 use callisto::authentication::{Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator};
 
 use callisto::entity::Entities;
-use callisto::processor::Processor;
+use callisto::processor::{Processor, ReloadNotification};
 use callisto::ship::DEFAULT_SHIP_TEMPLATES_FILE;
-use callisto::ship::{load_ship_templates_from_file, SHIP_TEMPLATES};
-use callisto::SCENARIOS;
+use callisto::ship::{load_ship_templates_from_file, replace_ship_templates};
+use callisto::{get_local_or_cloud_dir_fingerprint, replace_scenarios};
 
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
 
 const MAX_CHANNEL_DEPTH: usize = 10;
+const RELOAD_POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Server to implement physically pseudo-realistic spaceflight and possibly combat.
 #[derive(Parser, Debug)]
@@ -152,6 +154,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     .with(tracing_stackdriver::layer());
   tracing::subscriber::set_global_default(subscriber)?;
   let args = Args::parse();
+  let design_file = args.design_file.clone();
+  let scenario_dir = args.scenario_dir.clone();
 
   let port = args.port;
 
@@ -222,11 +226,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   event!(target: LOG_FILE_USE, Level::INFO, file_name = &args.design_file, use = "Load ship templates.");
 
-  SHIP_TEMPLATES
-    .set(templates)
-    .expect("(Main) attempting to set SHIP_TEMPLATES twice!");
+  replace_ship_templates(templates);
 
-  load_scenarios_and_metadata(&args.scenario_dir).await;
+  replace_scenarios(load_scenarios_and_metadata(&args.scenario_dir).await);
+  let (reload_sender, reload_receiver) = unbounded();
+  tokio::spawn(watch_reloadable_data(design_file.clone(), scenario_dir.clone(), reload_sender));
 
   // Keep track of session keys (cookies) on connections.
   let session_keys = Arc::new(Mutex::new(HashMap::new()));
@@ -254,9 +258,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   tokio::task::spawn(async move {
     let mut processor = Processor::new(
       connection_receiver,
+      reload_receiver,
       auth_template,
       session_keys_clone,
-      &args.scenario_dir,
+      &scenario_dir,
       test_mode,
     );
     processor.processor().await;
@@ -299,10 +304,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   }
 }
 
-async fn load_scenarios_and_metadata(scenario_dir: &str) {
+async fn watch_reloadable_data(
+  design_file: String, scenario_dir: String, reload_sender: UnboundedSender<ReloadNotification>,
+) {
+  let mut last_design_modified = callisto::get_file_last_modified_timestamp(&design_file)
+    .await
+    .map(|timestamp| timestamp.unwrap_or_default())
+    .unwrap_or_else(|e| {
+      warn!("(main) Unable to read design file timestamp for {design_file}: {e}");
+      0
+    });
+
+  let mut last_scenario_fingerprint = get_local_or_cloud_dir_fingerprint(&scenario_dir).await.unwrap_or_else(|e| {
+    warn!("(main) Unable to fingerprint scenario directory {scenario_dir}: {e}");
+    Vec::new()
+  });
+
+  loop {
+    tokio::time::sleep(RELOAD_POLL_INTERVAL).await;
+
+    let design_reload = match callisto::get_file_last_modified_timestamp(&design_file).await {
+      Ok(Some(last_modified)) if last_modified > last_design_modified => Some(last_modified),
+      Ok(_) => None,
+      Err(e) => {
+        warn!("(main) Unable to check ship template timestamp for {design_file}: {e}");
+        None
+      }
+    };
+
+    if let Some(last_modified) = design_reload {
+      match load_ship_templates_from_file(&design_file).await {
+        Ok(templates) => {
+          replace_ship_templates(templates);
+          last_design_modified = last_modified;
+          event!(target: LOG_FILE_USE, Level::INFO, file_name = &design_file, use = "Reloaded ship templates");
+          if let Err(e) = reload_sender.unbounded_send(ReloadNotification::ShipTemplates) {
+            warn!("(main) Unable to notify processor of ship template reload: {e:?}");
+            break;
+          }
+        }
+        Err(e) => {
+          warn!("(main) Unable to reload ship templates from {design_file}: {e:?}");
+        }
+      }
+    }
+
+    let scenario_reload = match get_local_or_cloud_dir_fingerprint(&scenario_dir).await {
+      Ok(fingerprint) if fingerprint != last_scenario_fingerprint => Some(fingerprint),
+      Ok(_) => None,
+      Err(e) => {
+        warn!("(main) Unable to check scenario directory {scenario_dir}: {e}");
+        None
+      }
+    };
+
+    if let Some(fingerprint) = scenario_reload {
+      replace_scenarios(load_scenarios_and_metadata(&scenario_dir).await);
+      last_scenario_fingerprint = fingerprint;
+      event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Reloaded scenarios");
+      if let Err(e) = reload_sender.unbounded_send(ReloadNotification::Scenarios) {
+        warn!("(main) Unable to notify processor of scenario reload: {e:?}");
+        break;
+      }
+    }
+  }
+}
+
+fn join_dir_entry_path(dir: &str, entry: &str) -> String {
+  format!("{}/{entry}", dir.trim_end_matches('/'))
+}
+
+async fn load_scenarios_and_metadata(scenario_dir: &str) -> Vec<(String, callisto::entity::MetaData)> {
   let Ok(scenarios_list) = callisto::list_local_or_cloud_dir(scenario_dir).await else {
     error!("(main) Unable to open scenarios directory {scenario_dir}");
-    return;
+    return Vec::new();
   };
 
   event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Loaded scenario");
@@ -310,7 +385,7 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) {
   let scenarios = join_all(scenarios_list.iter().map(async |scenario| {
     // Load each scenario and read it in to get the metadata.
     // If we cannot open it, just drop it from the scenarios list.
-    let load_result = Entities::load_from_file(&format! {"{scenario_dir}/{scenario}"}).await;
+    let load_result = Entities::load_from_file(&join_dir_entry_path(scenario_dir, scenario)).await;
     let Ok(entities) = load_result else {
       error!(
         "(main) Unable to load scenario file {} from {scenario_dir}: {load_result:?}.  Skipping.",
@@ -326,5 +401,5 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) {
   .cloned()
   .collect::<Vec<_>>();
 
-  SCENARIOS.set(scenarios).expect("(Main) attempting to set SCENARIOS twice!");
+  scenarios
 }

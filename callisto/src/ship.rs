@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use cgmath::{InnerSpace, Zero};
 use derivative::Derivative;
@@ -17,10 +17,37 @@ use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
 use crate::read_local_or_cloud_file;
-use crate::{debug, error, info, warn};
+use crate::{debug, error, warn};
 pub const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./ship_templates/default_ship_templates.json";
 
-pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
+pub static SHIP_TEMPLATES: OnceCell<RwLock<Arc<HashMap<String, Arc<ShipDesignTemplate>>>>> = OnceCell::new();
+
+pub fn replace_ship_templates(templates: HashMap<String, Arc<ShipDesignTemplate>>) {
+  if let Some(templates_lock) = SHIP_TEMPLATES.get() {
+    *templates_lock
+      .write()
+      .expect("(replace_ship_templates) Unable to update ship templates") = Arc::new(templates);
+  } else {
+    SHIP_TEMPLATES
+      .set(RwLock::new(Arc::new(templates)))
+      .expect("(replace_ship_templates) Unable to initialize ship templates");
+  }
+}
+
+#[must_use]
+pub fn get_ship_templates_snapshot() -> Arc<HashMap<String, Arc<ShipDesignTemplate>>> {
+  SHIP_TEMPLATES
+    .get()
+    .expect("(get_ship_templates_snapshot) Ship templates not loaded")
+    .read()
+    .expect("(get_ship_templates_snapshot) Unable to read ship templates")
+    .clone()
+}
+
+#[must_use]
+pub fn get_ship_template(name: &str) -> Option<Arc<ShipDesignTemplate>> {
+  get_ship_templates_snapshot().get(name).cloned()
+}
 
 #[skip_serializing_none]
 #[serde_as]
@@ -690,7 +717,7 @@ serde_with::serde_conv!(
     Arc<ShipDesignTemplate>,
     |t: &Arc<ShipDesignTemplate>| t.name.clone(),
     |value: String| -> Result<_, String> {
-        SHIP_TEMPLATES.get().expect("(Deserializing Ship) Ship templates not loaded").get(&value).map_or_else(
+        get_ship_template(&value).map_or_else(
           || { error!("(Deserializing Ship) Could not find design {value}"); Err("Could not find design".to_string()) },
           |t| Ok(t.clone()) )
     }
@@ -728,9 +755,7 @@ pub async fn config_test_ship_templates() {
   let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
     .await
     .expect("Unable to load ship template file.");
-  SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| {
-    info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!");
-  });
+  replace_ship_templates(templates);
 }
 
 impl ShipDesignTemplate {
@@ -1304,6 +1329,43 @@ mod tests {
     assert_eq!(int_to_digit(31), 'X');
     assert_eq!(int_to_digit(32), 'Y');
     assert_eq!(int_to_digit(33), 'Z');
+  }
+
+  #[test_log::test]
+  fn test_replacing_global_templates_does_not_mutate_existing_ship_designs() {
+    let original_template = Arc::new(ShipDesignTemplate {
+      name: "Test Design".to_string(),
+      displacement: 100,
+      hull: 10,
+      armor: 2,
+      maneuver: 1,
+      jump: 1,
+      power: 25,
+      fuel: 10,
+      crew: 4,
+      sensors: Sensors::Basic,
+      stealth: None,
+      countermeasures: None,
+      computer: 1,
+      weapons: vec![],
+      tl: 10,
+    });
+    replace_ship_templates(HashMap::from([("Test Design".to_string(), original_template.clone())]));
+
+    let ship = Ship::new(
+      "Snapshot Test Ship".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &get_ship_template("Test Design").unwrap(),
+      None,
+    );
+
+    let mut updated_template = (*original_template).clone();
+    updated_template.power = 99;
+    replace_ship_templates(HashMap::from([("Test Design".to_string(), Arc::new(updated_template))]));
+
+    assert_eq!(ship.design.power, 25);
+    assert_eq!(get_ship_template("Test Design").unwrap().power, 99);
   }
 
   #[test_log::test]

@@ -10,7 +10,14 @@
 services:
   be:
     build:
+      # Put local-only overrides (for example TLS_UPGRADE=0 during dev)
+      # in an untracked compose.override.yaml file.
       context: callisto
+    # Bind-mount local content so the backend can hot-reload scenario/template
+    # edits without rebuilding the image during docker-compose development.
+    volumes:
+      - ./callisto/scenarios:/scenarios:ro
+      - ./callisto/ship_templates:/ship_templates:ro
     secrets:
       - google_credentials
       - gcs_credentials
