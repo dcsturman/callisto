@@ -33,13 +33,21 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::sync::{Arc, RwLock};
 
-pub static SCENARIOS: OnceCell<RwLock<Arc<Vec<(String, MetaData)>>>> = OnceCell::new();
+pub type ScenarioMetadataList = Vec<(String, MetaData)>;
+type SharedScenarioMetadataList = Arc<ScenarioMetadataList>;
+
+pub static SCENARIOS: OnceCell<RwLock<SharedScenarioMetadataList>> = OnceCell::new();
 pub const LOG_FILE_USE: &str = "READ_FILE";
 pub const LOG_AUTH_RESULT: &str = "LOGIN_ATTEMPT";
 pub const LOGOUT: &str = "LOGOUT";
 pub const LOG_SCENARIO_ACTIVITY: &str = "SCENARIO";
 
-pub fn replace_scenarios(scenarios: Vec<(String, MetaData)>) {
+/// Replace the current global scenario metadata snapshot.
+///
+/// # Panics
+///
+/// Panics if the global scenario snapshot cannot be initialized or if the write lock is poisoned.
+pub fn replace_scenarios(scenarios: ScenarioMetadataList) {
   if let Some(scenarios_lock) = SCENARIOS.get() {
     *scenarios_lock.write().expect("(replace_scenarios) Unable to update scenarios") = Arc::new(scenarios);
   } else {
@@ -49,8 +57,13 @@ pub fn replace_scenarios(scenarios: Vec<(String, MetaData)>) {
   }
 }
 
+/// Return the current global scenario metadata snapshot.
+///
+/// # Panics
+///
+/// Panics if scenarios have not been initialized yet or if the read lock is poisoned.
 #[must_use]
-pub fn get_scenarios_snapshot() -> Arc<Vec<(String, MetaData)>> {
+pub fn get_scenarios_snapshot() -> SharedScenarioMetadataList {
   SCENARIOS
     .get()
     .expect("(get_scenarios_snapshot) Scenarios not loaded")
@@ -63,6 +76,11 @@ fn join_dir_entry_path(dir: &str, entry: &str) -> String {
   format!("{}/{entry}", dir.trim_end_matches('/'))
 }
 
+/// Build a deterministic fingerprint of a directory by listing files and their last-modified timestamps.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be listed or if any file timestamp cannot be read.
 pub async fn get_local_or_cloud_dir_fingerprint(
   dir: &str,
 ) -> Result<Vec<(String, Option<i64>)>, Box<dyn std::error::Error>> {

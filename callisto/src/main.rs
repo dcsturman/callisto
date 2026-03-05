@@ -309,11 +309,11 @@ async fn watch_reloadable_data(
 ) {
   let mut last_design_modified = callisto::get_file_last_modified_timestamp(&design_file)
     .await
-    .map(|timestamp| timestamp.unwrap_or_default())
     .unwrap_or_else(|e| {
       warn!("(main) Unable to read design file timestamp for {design_file}: {e}");
-      0
-    });
+      None
+    })
+    .unwrap_or_default();
 
   let mut last_scenario_fingerprint = get_local_or_cloud_dir_fingerprint(&scenario_dir).await.unwrap_or_else(|e| {
     warn!("(main) Unable to fingerprint scenario directory {scenario_dir}: {e}");

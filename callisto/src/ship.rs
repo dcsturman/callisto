@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::hash::BuildHasher;
 use std::sync::{Arc, RwLock};
 
 use cgmath::{InnerSpace, Zero};
@@ -20,9 +21,21 @@ use crate::read_local_or_cloud_file;
 use crate::{debug, error, warn};
 pub const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./ship_templates/default_ship_templates.json";
 
-pub static SHIP_TEMPLATES: OnceCell<RwLock<Arc<HashMap<String, Arc<ShipDesignTemplate>>>>> = OnceCell::new();
+pub type ShipTemplateTable = HashMap<String, Arc<ShipDesignTemplate>>;
+type SharedShipTemplateTable = Arc<ShipTemplateTable>;
 
-pub fn replace_ship_templates(templates: HashMap<String, Arc<ShipDesignTemplate>>) {
+pub static SHIP_TEMPLATES: OnceCell<RwLock<SharedShipTemplateTable>> = OnceCell::new();
+
+/// Replace the current global ship-template snapshot.
+///
+/// # Panics
+///
+/// Panics if the global template snapshot cannot be initialized or if the write lock is poisoned.
+pub fn replace_ship_templates<S>(templates: HashMap<String, Arc<ShipDesignTemplate>, S>)
+where
+  S: BuildHasher,
+{
+  let templates: ShipTemplateTable = templates.into_iter().collect();
   if let Some(templates_lock) = SHIP_TEMPLATES.get() {
     *templates_lock
       .write()
@@ -34,8 +47,13 @@ pub fn replace_ship_templates(templates: HashMap<String, Arc<ShipDesignTemplate>
   }
 }
 
+/// Return the current global ship-template snapshot.
+///
+/// # Panics
+///
+/// Panics if ship templates have not been initialized yet or if the read lock is poisoned.
 #[must_use]
-pub fn get_ship_templates_snapshot() -> Arc<HashMap<String, Arc<ShipDesignTemplate>>> {
+pub fn get_ship_templates_snapshot() -> SharedShipTemplateTable {
   SHIP_TEMPLATES
     .get()
     .expect("(get_ship_templates_snapshot) Ship templates not loaded")

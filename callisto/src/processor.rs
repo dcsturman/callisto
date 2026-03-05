@@ -67,13 +67,15 @@ pub enum ReloadNotification {
   ShipTemplates,
 }
 
+type IncomingConnection = (WebSocketStream<SubStream>, String, Option<String>);
+
 enum IdleProcessorEvent {
-  Connection(Option<(WebSocketStream<SubStream>, String, Option<String>)>),
+  Connection(Option<Box<IncomingConnection>>),
   Reload(Option<ReloadNotification>),
 }
 
 enum ActiveProcessorEvent {
-  Connection(Option<(WebSocketStream<SubStream>, String, Option<String>)>),
+  Connection(Option<Box<IncomingConnection>>),
   Reload(Option<ReloadNotification>),
   Message(Option<(usize, Option<Result<Message, Error>>)>),
 }
@@ -130,15 +132,16 @@ impl Processor {
           let connection_receiver = &mut self.connection_receiver;
           let reload_receiver = &mut self.reload_receiver;
           select! {
-            next_connection = connection_receiver.next() => IdleProcessorEvent::Connection(next_connection),
+            next_connection = connection_receiver.next() => IdleProcessorEvent::Connection(next_connection.map(Box::new)),
             next_reload = reload_receiver.next() => IdleProcessorEvent::Reload(next_reload),
           }
         } else {
-          IdleProcessorEvent::Connection(self.connection_receiver.next().await)
+          IdleProcessorEvent::Connection(self.connection_receiver.next().await.map(Box::new))
         };
 
         match next_event {
-          IdleProcessorEvent::Connection(Some((stream, session_key, email))) => {
+          IdleProcessorEvent::Connection(Some(connection)) => {
+            let (stream, session_key, email) = *connection;
             let Some(connection) = self.build_connection(email.as_ref(), &session_key, stream).await else {
               continue;
             };
@@ -171,13 +174,13 @@ impl Processor {
         let connection_receiver = &mut self.connection_receiver;
         let reload_receiver = &mut self.reload_receiver;
         select! {
-          next_connection = connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection),
+          next_connection = connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection.map(Box::new)),
           next_reload = reload_receiver.next() => ActiveProcessorEvent::Reload(next_reload),
           next_item =  message_streams.next() => ActiveProcessorEvent::Message(next_item),
         }
       } else {
         select! {
-          next_connection = self.connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection),
+          next_connection = self.connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection.map(Box::new)),
           next_item =  message_streams.next() => ActiveProcessorEvent::Message(next_item),
         }
       };
@@ -185,7 +188,8 @@ impl Processor {
       drop(message_streams);
 
       match to_do {
-        ActiveProcessorEvent::Connection(Some((stream, session_key, email))) => {
+        ActiveProcessorEvent::Connection(Some(connection)) => {
+          let (stream, session_key, email) = *connection;
           let Some(connection) = self.build_connection(email.as_ref(), &session_key, stream).await else {
             continue;
           };
