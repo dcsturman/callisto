@@ -46,15 +46,11 @@ pub const LOG_SCENARIO_ACTIVITY: &str = "SCENARIO";
 ///
 /// # Panics
 ///
-/// Panics if the global scenario snapshot cannot be initialized or if the write lock is poisoned.
+/// Panics if the write lock is poisoned.
 pub fn replace_scenarios(scenarios: ScenarioMetadataList) {
-  if let Some(scenarios_lock) = SCENARIOS.get() {
-    *scenarios_lock.write().expect("(replace_scenarios) Unable to update scenarios") = Arc::new(scenarios);
-  } else {
-    SCENARIOS
-      .set(RwLock::new(Arc::new(scenarios)))
-      .expect("(replace_scenarios) Unable to initialize scenarios");
-  }
+  let scenarios = Arc::new(scenarios);
+  let scenarios_lock = SCENARIOS.get_or_init(|| RwLock::new(scenarios.clone()));
+  *scenarios_lock.write().expect("(replace_scenarios) Unable to update scenarios") = scenarios;
 }
 
 /// Return the current global scenario metadata snapshot.

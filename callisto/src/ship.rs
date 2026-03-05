@@ -30,21 +30,16 @@ pub static SHIP_TEMPLATES: OnceCell<RwLock<SharedShipTemplateTable>> = OnceCell:
 ///
 /// # Panics
 ///
-/// Panics if the global template snapshot cannot be initialized or if the write lock is poisoned.
+/// Panics if the write lock is poisoned.
 pub fn replace_ship_templates<S>(templates: HashMap<String, Arc<ShipDesignTemplate>, S>)
 where
   S: BuildHasher,
 {
-  let templates: ShipTemplateTable = templates.into_iter().collect();
-  if let Some(templates_lock) = SHIP_TEMPLATES.get() {
-    *templates_lock
-      .write()
-      .expect("(replace_ship_templates) Unable to update ship templates") = Arc::new(templates);
-  } else {
-    SHIP_TEMPLATES
-      .set(RwLock::new(Arc::new(templates)))
-      .expect("(replace_ship_templates) Unable to initialize ship templates");
-  }
+  let templates = Arc::new(templates.into_iter().collect::<ShipTemplateTable>());
+  let templates_lock = SHIP_TEMPLATES.get_or_init(|| RwLock::new(templates.clone()));
+  *templates_lock
+    .write()
+    .expect("(replace_ship_templates) Unable to update ship templates") = templates;
 }
 
 /// Return the current global ship-template snapshot.
@@ -1267,6 +1262,14 @@ mod tests {
   use crate::crew::Skills;
   use cgmath::assert_ulps_eq;
 
+  struct ShipTemplateRestoreGuard(ShipTemplateTable);
+
+  impl Drop for ShipTemplateRestoreGuard {
+    fn drop(&mut self) {
+      replace_ship_templates(self.0.clone());
+    }
+  }
+
   #[test_log::test]
   fn test_digit_to_int() {
     // Test digits 0-9
@@ -1349,8 +1352,13 @@ mod tests {
     assert_eq!(int_to_digit(33), 'Z');
   }
 
-  #[test_log::test]
-  fn test_replacing_global_templates_does_not_mutate_existing_ship_designs() {
+  #[test_log::test(tokio::test)]
+  async fn test_replacing_global_templates_does_not_mutate_existing_ship_designs() {
+    config_test_ship_templates().await;
+
+    let previous_templates = get_ship_templates_snapshot();
+    let _restore_guard = ShipTemplateRestoreGuard(previous_templates.as_ref().clone());
+
     let original_template = Arc::new(ShipDesignTemplate {
       name: "Test Design".to_string(),
       displacement: 100,
@@ -1368,7 +1376,9 @@ mod tests {
       weapons: vec![],
       tl: 10,
     });
-    replace_ship_templates(HashMap::from([("Test Design".to_string(), original_template.clone())]));
+    let mut templates = previous_templates.as_ref().clone();
+    templates.insert("Test Design".to_string(), original_template.clone());
+    replace_ship_templates(templates);
 
     let ship = Ship::new(
       "Snapshot Test Ship".to_string(),
@@ -1380,7 +1390,9 @@ mod tests {
 
     let mut updated_template = (*original_template).clone();
     updated_template.power = 99;
-    replace_ship_templates(HashMap::from([("Test Design".to_string(), Arc::new(updated_template))]));
+    let mut updated_templates = previous_templates.as_ref().clone();
+    updated_templates.insert("Test Design".to_string(), Arc::new(updated_template));
+    replace_ship_templates(updated_templates);
 
     assert_eq!(ship.design.power, 25);
     assert_eq!(get_ship_template("Test Design").unwrap().power, 99);
