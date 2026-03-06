@@ -159,7 +159,7 @@ impl GoogleAuthenticator {
           "(authenticate_google_user) Unable to check authorized users file {}: {e}",
           self.authorized_users_file
         );
-        None
+        return;
       }
     };
 

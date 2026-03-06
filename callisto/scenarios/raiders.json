@@ -23,7 +23,7 @@
       "crew": {
         "pilot": 3,
         "engineering_jump": 2,
-        "engineering_power": 2,
+        "engineering_power": 1,
         "engineering_maneuver": 3,
         "sensors": 3,
         "gunnery": [1, 1, 0, 0]

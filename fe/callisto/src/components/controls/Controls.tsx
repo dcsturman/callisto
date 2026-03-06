@@ -315,7 +315,9 @@ export function Controls() {
                 </div>
               )}
             <hr />
-            {[ViewMode.Pilot, ViewMode.Sensors].includes(role) &&
+            {[ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer].includes(
+              role,
+            ) &&
               computerShipName && (
                 <Accordion
                   title={`${computerShipName} ${ViewMode[role]} Controls`}
