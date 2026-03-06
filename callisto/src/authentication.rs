@@ -151,6 +151,49 @@ impl GoogleAuthenticator {
     })
   }
 
+  async fn maybe_reload_authorized_users(&mut self) {
+    let last_modified = match get_file_last_modified_timestamp(&self.authorized_users_file).await {
+      Ok(last_modified) => last_modified,
+      Err(e) => {
+        warn!(
+          "(authenticate_google_user) Unable to check authorized users file {}: {e}",
+          self.authorized_users_file
+        );
+        None
+      }
+    };
+
+    match last_modified {
+      Some(last_modified) if last_modified > self.last_authorized_users_reload => {
+        match load_authorized_users_from_file(&self.authorized_users_file).await {
+          Ok(authorized_users) => {
+            self.last_authorized_users_reload = last_modified;
+            self.authorized_users = Arc::new(authorized_users);
+            event!(target: LOG_FILE_USE, Level::INFO, file_name = &self.authorized_users_file, use = "Reloaded authorized users");
+          }
+          Err(e) => {
+            warn!(
+              "(authenticate_google_user) Unable to reload authorized users from file {}: {e}",
+              self.authorized_users_file
+            );
+          }
+        }
+      }
+      Some(_) => {
+        debug!(
+          "(authenticate_google_user) Not reloading authorized users from file {} as it has not changed.",
+          self.authorized_users_file
+        );
+      }
+      None => {
+        warn!(
+          "(authenticate_google_user) Unable to get last modified timestamp for file {}",
+          self.authorized_users_file
+        );
+      }
+    }
+  }
+
   // Static helper methods
   /**
    * Fetches the Google public keys from the Google API (public internet).  These are hosted at a well known
@@ -401,24 +444,7 @@ impl Authenticator for GoogleAuthenticator {
 
     // Check the latest timestamp on the authorized users file.  Reload it if
     // the file has changed.
-    let last_modified = get_file_last_modified_timestamp(&self.authorized_users_file).await?;
-    if let Some(last_modified) = last_modified {
-      if last_modified > self.last_authorized_users_reload {
-        self.last_authorized_users_reload = last_modified;
-        self.authorized_users = Arc::new(load_authorized_users_from_file(&self.authorized_users_file).await?);
-        event!(target: LOG_FILE_USE, Level::INFO, file_name = &self.authorized_users_file, use = "Reloaded authorized users");
-      } else {
-        debug!(
-          "(authenticate_google_user) Not reloading authorized users from file {} as it has not changed.",
-          self.authorized_users_file
-        );
-      }
-    } else {
-      warn!(
-        "(authenticate_google_user) Unable to get last modified timestamp for file {}",
-        self.authorized_users_file
-      );
-    }
+    self.maybe_reload_authorized_users().await;
 
     // Ensure email is in lowercase.
     let email = token_data.claims.email.to_lowercase();

@@ -228,7 +228,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   replace_ship_templates(templates);
 
-  replace_scenarios(load_scenarios_and_metadata(&args.scenario_dir).await);
+  replace_scenarios(
+    load_scenarios_and_metadata(&args.scenario_dir)
+      .await
+      .unwrap_or_else(|e| panic!("Unable to load scenarios from {}. Reason {:?}", args.scenario_dir, e)),
+  );
   let (reload_sender, reload_receiver) = unbounded();
   tokio::spawn(watch_reloadable_data(design_file.clone(), scenario_dir.clone(), reload_sender));
 
@@ -359,12 +363,19 @@ async fn watch_reloadable_data(
     };
 
     if let Some(fingerprint) = scenario_reload {
-      replace_scenarios(load_scenarios_and_metadata(&scenario_dir).await);
-      last_scenario_fingerprint = fingerprint;
-      event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Reloaded scenarios");
-      if let Err(e) = reload_sender.unbounded_send(ReloadNotification::Scenarios) {
-        warn!("(main) Unable to notify processor of scenario reload: {e:?}");
-        break;
+      match load_scenarios_and_metadata(&scenario_dir).await {
+        Ok(scenarios) => {
+          replace_scenarios(scenarios);
+          last_scenario_fingerprint = fingerprint;
+          event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Reloaded scenarios");
+          if let Err(e) = reload_sender.unbounded_send(ReloadNotification::Scenarios) {
+            warn!("(main) Unable to notify processor of scenario reload: {e:?}");
+            break;
+          }
+        }
+        Err(e) => {
+          warn!("(main) Unable to reload scenarios from {scenario_dir}: {e:?}");
+        }
       }
     }
   }
@@ -374,11 +385,10 @@ fn join_dir_entry_path(dir: &str, entry: &str) -> String {
   format!("{}/{entry}", dir.trim_end_matches('/'))
 }
 
-async fn load_scenarios_and_metadata(scenario_dir: &str) -> Vec<(String, callisto::entity::MetaData)> {
-  let Ok(scenarios_list) = callisto::list_local_or_cloud_dir(scenario_dir).await else {
-    error!("(main) Unable to open scenarios directory {scenario_dir}");
-    return Vec::new();
-  };
+async fn load_scenarios_and_metadata(
+  scenario_dir: &str,
+) -> Result<Vec<(String, callisto::entity::MetaData)>, Box<dyn std::error::Error>> {
+  let scenarios_list = callisto::list_local_or_cloud_dir(scenario_dir).await?;
 
   event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Loaded scenario");
 
@@ -401,5 +411,5 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) -> Vec<(String, callist
   .cloned()
   .collect::<Vec<_>>();
 
-  scenarios
+  Ok(scenarios)
 }
