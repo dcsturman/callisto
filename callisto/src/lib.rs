@@ -72,6 +72,16 @@ fn join_dir_entry_path(dir: &str, entry: &str) -> String {
   format!("{}/{entry}", dir.trim_end_matches('/'))
 }
 
+async fn create_gcs_client() -> Result<Client, Box<dyn std::error::Error>> {
+  let config = ClientConfig::default().with_auth().await.map_err(|e| {
+    Box::new(std::io::Error::other(format!(
+      "Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?"
+    ))) as Box<dyn std::error::Error>
+  })?;
+
+  Ok(Client::new(config))
+}
+
 /// Build a deterministic fingerprint of a directory by listing files and their last-modified timestamps.
 ///
 /// # Errors
@@ -103,10 +113,6 @@ pub async fn get_local_or_cloud_dir_fingerprint(
  *
  * Will return `Err` if the file cannot be read or if GCS cannot be reached (depending on url of file)
  *
- * # Panics
- *
- * Will panic with a helpful message if GCS authentication fails.  GCS authentication needs to be handled outside (and prior to)
- * this function.
  */
 pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
   debug!("(read_local_or_cloud_file) Reading file {filename}");
@@ -117,12 +123,7 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
     let bucket_name = parts[2];
     let object_name = parts[3..].join("/");
 
-    // Create a GCS client
-    let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
-      panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
-    });
-
-    let client = Client::new(config);
+    let client = create_gcs_client().await?;
 
     // Read the file from GCS
     let data = client
@@ -152,18 +153,15 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
 /// If the directory cannot be read or if GCS cannot be reached (depending on url of file)
 ///
 /// # Panics
-/// If GCS authentication fails.  GCS authentication needs to be handled outside (and prior to) this function.
+/// Panics if the GCS list response omits the `items` field.
+///
 pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   if dir.starts_with("gs://") {
-    // Create a GCS client
-    let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
-      panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
-    });
     // Extract bucket name from the GCS URI
     let parts: Vec<&str> = dir.split('/').collect();
     let bucket_name = parts[2];
 
-    let client = Client::new(config);
+    let client = create_gcs_client().await?;
 
     // List the files in the directory
     let objects = client
@@ -203,9 +201,6 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
 /// # Errors
 /// Returns `Err` if the file cannot be accessed or if GCS cannot be reached (depending on the file URL)
 ///
-/// # Panics
-/// Will panic with a helpful message if GCS authentication fails. GCS authentication needs to be handled outside (and prior to) this function.
-///
 /// # Examples
 ///
 /// ```rust,no_run
@@ -238,12 +233,7 @@ pub async fn get_file_last_modified_timestamp(filename: &str) -> Result<Option<i
     let bucket_name = parts[2];
     let object_name = parts[3..].join("/");
 
-    // Create a GCS client
-    let config = ClientConfig::default().with_auth().await.unwrap_or_else(|e| {
-      panic!("Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?")
-    });
-
-    let client = Client::new(config);
+    let client = create_gcs_client().await?;
 
     // Get the object metadata from GCS
     let object = client
