@@ -2,7 +2,7 @@ use std::boxed::Box;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use futures::channel::mpsc::Receiver;
+use futures::channel::mpsc::{Receiver, UnboundedReceiver};
 use futures::select;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use rand::rngs::SmallRng;
@@ -22,6 +22,7 @@ use dyn_clone::clone_box;
 
 use crate::authentication::Authenticator;
 
+use crate::get_scenarios_snapshot;
 use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, ScenariosMsg};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
@@ -38,6 +39,7 @@ use tracing::{event, Level};
 
 pub struct Processor {
   connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
+  reload_receiver: UnboundedReceiver<ReloadNotification>,
   auth_template: Box<dyn Authenticator>,
   session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
   servers: HashMap<String, Arc<Server>>,
@@ -49,6 +51,7 @@ pub struct Processor {
   // Test mode is here as its an aspect of the entire server (mostly how we authenticate)
   // not a particular scenario.
   test_mode: bool,
+  reload_notifications_enabled: bool,
 }
 
 struct Connection {
@@ -58,24 +61,45 @@ struct Connection {
   stream: WebSocketStream<SubStream>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ReloadNotification {
+  Scenarios,
+  ShipTemplates,
+}
+
+type IncomingConnection = (WebSocketStream<SubStream>, String, Option<String>);
+
+enum IdleProcessorEvent {
+  Connection(Option<Box<IncomingConnection>>),
+  Reload(Option<ReloadNotification>),
+}
+
+enum ActiveProcessorEvent {
+  Connection(Option<Box<IncomingConnection>>),
+  Reload(Option<ReloadNotification>),
+  Message(Option<(usize, Option<Result<Message, Error>>)>),
+}
+
 impl Processor {
   #[must_use]
   pub fn new(
     connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
-    auth_template: Box<dyn Authenticator>, session_keys: Arc<Mutex<HashMap<String, Option<String>>>>,
-    scenario_dir: &str, test_mode: bool,
+    reload_receiver: UnboundedReceiver<ReloadNotification>, auth_template: Box<dyn Authenticator>,
+    session_keys: Arc<Mutex<HashMap<String, Option<String>>>>, scenario_dir: &str, test_mode: bool,
   ) -> Self {
     // Clean up scenario_dir so that it does not have a trailing slash.
     let scenario_dir = scenario_dir.trim_end_matches('/').to_string();
 
     Processor {
       connection_receiver,
+      reload_receiver,
       auth_template,
       session_keys,
       servers: HashMap::new(),
       members: ServerMembersTable::new(),
       scenario_dir,
       test_mode,
+      reload_notifications_enabled: true,
     }
   }
   /// Polls all incoming connections and transmits any messages to
@@ -104,16 +128,36 @@ impl Processor {
       // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
       // TODO: Violating DRY here in a big way.  How do I fix it?
       if connections.is_empty() {
-        let next_connection = self.connection_receiver.next().await;
-
-        if let Some((stream, session_key, email)) = next_connection {
-          let Some(connection) = self.build_connection(email.as_ref(), &session_key, stream).await else {
-            continue;
-          };
-          connections.push(connection);
+        let next_event = if self.reload_notifications_enabled {
+          let connection_receiver = &mut self.connection_receiver;
+          let reload_receiver = &mut self.reload_receiver;
+          select! {
+            next_connection = connection_receiver.next() => IdleProcessorEvent::Connection(next_connection.map(Box::new)),
+            next_reload = reload_receiver.next() => IdleProcessorEvent::Reload(next_reload),
+          }
         } else {
-          warn!("(processor) Connection receiver disconnected.  Exiting.");
-          break;
+          IdleProcessorEvent::Connection(self.connection_receiver.next().await.map(Box::new))
+        };
+
+        match next_event {
+          IdleProcessorEvent::Connection(Some(connection)) => {
+            let (stream, session_key, email) = *connection;
+            let Some(connection) = self.build_connection(email.as_ref(), &session_key, stream).await else {
+              continue;
+            };
+            connections.push(connection);
+          }
+          IdleProcessorEvent::Connection(None) => {
+            warn!("(processor) Connection receiver disconnected.  Exiting.");
+            break;
+          }
+          IdleProcessorEvent::Reload(Some(notification)) => {
+            self.handle_reload_notification(&mut connections, notification).await;
+          }
+          IdleProcessorEvent::Reload(None) => {
+            warn!("(processor) Reload notification channel disconnected. Continuing without live reload pushes.");
+            self.reload_notifications_enabled = false;
+          }
         }
         continue;
       }
@@ -126,49 +170,45 @@ impl Processor {
         .collect::<FuturesUnordered<_>>();
       // Wait on either a new connection or a message from an existing connection, whichever comes first.
       // Return the next message to process if there is one.
-      let to_do = select! {
-          next_connection = self.connection_receiver.next() => {
-            if let Some((stream, session_key, email)) = next_connection {
-              // Build the authenticator
-              let Some(connection) = self.build_connection(
-                email.as_ref(),
-                &session_key,
-                stream
-              ).await else {
-                continue;
-              };
-              drop(message_streams);
-              connections.push(connection);
-              debug!("(processor) Added new connection.  Total connections: {}", connections.len());
-              continue;
-            }
-            // This is expected when the main thread exits.
-            warn!("(processor) Connection receiver disconnected.  This is okay if the server is shutting down.Exiting.");
-            break;
-          },
-          next_item =  message_streams.next() => {
-              match next_item {
-              Some((index, Some(next_msg))) => {
-                  Some((index, next_msg))
-              },
-              Some((index, None)) => {
-                  info!("(processor) Connection {index} disconnected.  Removing.");
-                  drop(message_streams);
-                  connections.remove(index);
-                  continue;
-              },
-              None => {
-                  warn!("(processor) Strange response from message stream.  Exiting.");
-                  break;
-              },
-              }
-          }
+      let to_do = if self.reload_notifications_enabled {
+        let connection_receiver = &mut self.connection_receiver;
+        let reload_receiver = &mut self.reload_receiver;
+        select! {
+          next_connection = connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection.map(Box::new)),
+          next_reload = reload_receiver.next() => ActiveProcessorEvent::Reload(next_reload),
+          next_item =  message_streams.next() => ActiveProcessorEvent::Message(next_item),
+        }
+      } else {
+        select! {
+          next_connection = self.connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection.map(Box::new)),
+          next_item =  message_streams.next() => ActiveProcessorEvent::Message(next_item),
+        }
       };
 
       drop(message_streams);
 
       match to_do {
-        Some((index, Ok(Message::Text(text)))) => {
+        ActiveProcessorEvent::Connection(Some(connection)) => {
+          let (stream, session_key, email) = *connection;
+          let Some(connection) = self.build_connection(email.as_ref(), &session_key, stream).await else {
+            continue;
+          };
+          connections.push(connection);
+          debug!("(processor) Added new connection.  Total connections: {}", connections.len());
+        }
+        ActiveProcessorEvent::Connection(None) => {
+          // This is expected when the main thread exits.
+          warn!("(processor) Connection receiver disconnected.  This is okay if the server is shutting down.Exiting.");
+          break;
+        }
+        ActiveProcessorEvent::Reload(Some(notification)) => {
+          self.handle_reload_notification(&mut connections, notification).await;
+        }
+        ActiveProcessorEvent::Reload(None) => {
+          warn!("(processor) Reload notification channel disconnected. Continuing without live reload pushes.");
+          self.reload_notifications_enabled = false;
+        }
+        ActiveProcessorEvent::Message(Some((index, Some(Ok(Message::Text(text)))))) => {
           debug!("(handle_connection) Received message: {text}");
 
           // Process the message and return a list of response messages. Also return the server for this player when complete.
@@ -252,7 +292,7 @@ impl Processor {
             }
           }
         }
-        Some((index, Ok(Message::Close(_)))) => {
+        ActiveProcessorEvent::Message(Some((index, Some(Ok(Message::Close(_)))))) => {
           // Close the connection
           event!(
             target: LOGOUT,
@@ -272,11 +312,47 @@ impl Processor {
           connections.remove(index);
           debug!("(processor) Removed connection.  Now {} connections.", connections.len());
         }
-        Some((index, res)) => {
+        ActiveProcessorEvent::Message(Some((index, Some(res)))) => {
           error!("(processor) Unexpected message on connection {index}: {res:?}");
         }
-        None => {
-          warn!("(processor) Strange `None` response from message stream.  Ignoring");
+        ActiveProcessorEvent::Message(Some((index, None))) => {
+          info!("(processor) Connection {index} disconnected.  Removing.");
+          connections.remove(index);
+        }
+        ActiveProcessorEvent::Message(None) => {
+          warn!("(processor) Strange response from message stream.  Exiting.");
+          break;
+        }
+      }
+    }
+  }
+
+  async fn handle_reload_notification(&self, connections: &mut [Connection], notification: ReloadNotification) {
+    match notification {
+      ReloadNotification::Scenarios => {
+        let scenarios_message = ResponseMsg::Scenarios(self.build_scenarios_msg());
+        debug!(
+          "(processor) Broadcasting live scenario refresh to {} authenticated connections.",
+          connections
+            .iter()
+            .filter(|connection| connection.player.validated_user())
+            .count()
+        );
+        for connection in connections.iter_mut().filter(|connection| connection.player.validated_user()) {
+          send_response(&mut connection.stream, &scenarios_message, "live scenario refresh").await;
+        }
+      }
+      ReloadNotification::ShipTemplates => {
+        debug!(
+          "(processor) Broadcasting live design refresh to {} authenticated connections.",
+          connections
+            .iter()
+            .filter(|connection| connection.player.validated_user())
+            .count()
+        );
+        for connection in connections.iter_mut().filter(|connection| connection.player.validated_user()) {
+          let design_message = ResponseMsg::DesignTemplateResponse(connection.player.get_designs());
+          send_response(&mut connection.stream, &design_message, "live design refresh").await;
         }
       }
     }
@@ -319,12 +395,15 @@ impl Processor {
 
       let (role, ship) = connection.player.get_role();
 
-      let mut msgs = self.build_successful_auth_msgs(AuthResponse {
-        email: email.clone(),
-        scenario: connection.player.server.as_ref().map(|s| s.id.clone()),
-        role: Some(role),
-        ship,
-      });
+      let mut msgs = self.build_successful_auth_msgs(
+        &connection.player,
+        AuthResponse {
+          email: email.clone(),
+          scenario: connection.player.server.as_ref().map(|s| s.id.clone()),
+          role: Some(role),
+          ship,
+        },
+      );
 
       // Now add messages just as if we had joined this scenario.
       msgs.append(&mut self.build_post_join_msgs(&connection.player));
@@ -402,7 +481,7 @@ impl Processor {
           .await
           .map_or_else(error_msg, |auth_response| {
             // Now that we are successfully logged in, we can send back the design templates, entities, and users - no need to wait to be asked.
-            self.build_successful_auth_msgs(auth_response)
+            self.build_successful_auth_msgs(player, auth_response)
           })
       }
 
@@ -622,7 +701,7 @@ impl Processor {
       }
       RequestMsg::DesignTemplateRequest => {
         info!("Received and processing get designs request.");
-        vec![ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs())]
+        vec![ResponseMsg::DesignTemplateResponse(player.get_designs())]
       }
       RequestMsg::EngineerAction(msg) => {
         let mut entities = player.server.as_ref().unwrap().get_unlocked_entities().unwrap();
@@ -652,11 +731,11 @@ impl Processor {
   /// If the session keys cannot be locked.
   #[allow(clippy::implicit_hasher)]
   #[must_use]
-  pub fn build_successful_auth_msgs(&self, auth_response: AuthResponse) -> Vec<ResponseMsg> {
+  pub fn build_successful_auth_msgs(&self, player: &PlayerManager, auth_response: AuthResponse) -> Vec<ResponseMsg> {
     vec![
       ResponseMsg::AuthResponse(auth_response),
       ResponseMsg::Scenarios(self.build_scenarios_msg()),
-      ResponseMsg::DesignTemplateResponse(PlayerManager::get_designs()),
+      ResponseMsg::DesignTemplateResponse(player.get_designs()),
     ]
   }
 
@@ -668,7 +747,7 @@ impl Processor {
   pub fn build_scenarios_msg(&self) -> ScenariosMsg {
     ScenariosMsg {
       current_scenarios: self.members.current_scenario_list(),
-      templates: crate::SCENARIOS.get().unwrap().clone(),
+      templates: get_scenarios_snapshot().as_ref().clone(),
     }
   }
 
@@ -723,4 +802,11 @@ fn get_rng(test_mode: bool) -> SmallRng {
     debug!("(processor.get_rng) Server in standard mode for random numbers.");
     SmallRng::from_entropy()
   }
+}
+
+async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &ResponseMsg, context: &str) {
+  let encoded_message: Utf8Bytes = serde_json::to_string(message).expect("Failed to serialize response").into();
+  stream.send(Message::Text(encoded_message)).await.unwrap_or_else(|e| {
+    error!("(processor) Failed to send {context}: {e:?}");
+  });
 }

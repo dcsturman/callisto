@@ -1,9 +1,11 @@
 #![allow(clippy::elidable_lifetime_names)]
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::sync::Arc;
+use std::hash::BuildHasher;
+use std::sync::{Arc, RwLock};
 
 use cgmath::{InnerSpace, Zero};
 use derivative::Derivative;
@@ -17,10 +19,80 @@ use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
 use crate::read_local_or_cloud_file;
-use crate::{debug, error, info, warn};
+use crate::{debug, error, warn};
 pub const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./ship_templates/default_ship_templates.json";
 
-pub static SHIP_TEMPLATES: OnceCell<HashMap<String, Arc<ShipDesignTemplate>>> = OnceCell::new();
+pub type ShipTemplateTable = HashMap<String, Arc<ShipDesignTemplate>>;
+type SharedShipTemplateTable = Arc<ShipTemplateTable>;
+
+pub static SHIP_TEMPLATES: OnceCell<RwLock<SharedShipTemplateTable>> = OnceCell::new();
+
+std::thread_local! {
+  static DESERIALIZING_SHIP_TEMPLATES: RefCell<Option<SharedShipTemplateTable>> = const { RefCell::new(None) };
+}
+
+struct ShipTemplateDeserializationGuard(Option<SharedShipTemplateTable>);
+
+impl Drop for ShipTemplateDeserializationGuard {
+  fn drop(&mut self) {
+    DESERIALIZING_SHIP_TEMPLATES.with(|templates| {
+      *templates.borrow_mut() = self.0.take();
+    });
+  }
+}
+
+/// Replace the current global ship-template snapshot.
+///
+/// # Panics
+///
+/// Panics if the write lock is poisoned.
+pub fn replace_ship_templates<S>(templates: HashMap<String, Arc<ShipDesignTemplate>, S>)
+where
+  S: BuildHasher,
+{
+  let templates = Arc::new(templates.into_iter().collect::<ShipTemplateTable>());
+  let templates_lock = SHIP_TEMPLATES.get_or_init(|| RwLock::new(templates.clone()));
+  *templates_lock
+    .write()
+    .expect("(replace_ship_templates) Unable to update ship templates") = templates;
+}
+
+/// Return the current global ship-template snapshot.
+///
+/// # Panics
+///
+/// Panics if ship templates have not been initialized yet or if the read lock is poisoned.
+#[must_use]
+pub fn get_ship_templates_snapshot() -> SharedShipTemplateTable {
+  SHIP_TEMPLATES
+    .get()
+    .expect("(get_ship_templates_snapshot) Ship templates not loaded")
+    .read()
+    .expect("(get_ship_templates_snapshot) Unable to read ship templates")
+    .clone()
+}
+
+#[must_use]
+pub fn get_ship_template(name: &str) -> Option<Arc<ShipDesignTemplate>> {
+  get_ship_templates_snapshot().get(name).cloned()
+}
+
+pub(crate) fn with_ship_templates_for_deserialization<T, F>(
+  ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>, callback: F,
+) -> T
+where
+  F: FnOnce() -> T,
+{
+  let previous_templates = DESERIALIZING_SHIP_TEMPLATES.with(|templates| templates.replace(Some(ship_templates)));
+  let _reset_guard = ShipTemplateDeserializationGuard(previous_templates);
+  callback()
+}
+
+fn get_ship_template_for_deserialization(name: &str) -> Option<Arc<ShipDesignTemplate>> {
+  DESERIALIZING_SHIP_TEMPLATES
+    .with(|templates| templates.borrow().as_ref().and_then(|snapshot| snapshot.get(name).cloned()))
+    .or_else(|| get_ship_template(name))
+}
 
 #[skip_serializing_none]
 #[serde_as]
@@ -690,7 +762,7 @@ serde_with::serde_conv!(
     Arc<ShipDesignTemplate>,
     |t: &Arc<ShipDesignTemplate>| t.name.clone(),
     |value: String| -> Result<_, String> {
-        SHIP_TEMPLATES.get().expect("(Deserializing Ship) Ship templates not loaded").get(&value).map_or_else(
+        get_ship_template_for_deserialization(&value).map_or_else(
           || { error!("(Deserializing Ship) Could not find design {value}"); Err("Could not find design".to_string()) },
           |t| Ok(t.clone()) )
     }
@@ -728,9 +800,7 @@ pub async fn config_test_ship_templates() {
   let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
     .await
     .expect("Unable to load ship template file.");
-  SHIP_TEMPLATES.set(templates).unwrap_or_else(|_e| {
-    info!("(config_test_ship_templates) attempting to set SHIP_TEMPLATES twice!");
-  });
+  replace_ship_templates(templates);
 }
 
 impl ShipDesignTemplate {
@@ -1224,6 +1294,14 @@ mod tests {
   use crate::crew::Skills;
   use cgmath::assert_ulps_eq;
 
+  struct ShipTemplateRestoreGuard(ShipTemplateTable);
+
+  impl Drop for ShipTemplateRestoreGuard {
+    fn drop(&mut self) {
+      replace_ship_templates(self.0.clone());
+    }
+  }
+
   #[test_log::test]
   fn test_digit_to_int() {
     // Test digits 0-9
@@ -1304,6 +1382,52 @@ mod tests {
     assert_eq!(int_to_digit(31), 'X');
     assert_eq!(int_to_digit(32), 'Y');
     assert_eq!(int_to_digit(33), 'Z');
+  }
+
+  #[test_log::test(tokio::test)]
+  async fn test_replacing_global_templates_does_not_mutate_existing_ship_designs() {
+    config_test_ship_templates().await;
+
+    let previous_templates = get_ship_templates_snapshot();
+    let _restore_guard = ShipTemplateRestoreGuard(previous_templates.as_ref().clone());
+
+    let original_template = Arc::new(ShipDesignTemplate {
+      name: "Test Design".to_string(),
+      displacement: 100,
+      hull: 10,
+      armor: 2,
+      maneuver: 1,
+      jump: 1,
+      power: 25,
+      fuel: 10,
+      crew: 4,
+      sensors: Sensors::Basic,
+      stealth: None,
+      countermeasures: None,
+      computer: 1,
+      weapons: vec![],
+      tl: 10,
+    });
+    let mut templates = previous_templates.as_ref().clone();
+    templates.insert("Test Design".to_string(), original_template.clone());
+    replace_ship_templates(templates);
+
+    let ship = Ship::new(
+      "Snapshot Test Ship".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &get_ship_template("Test Design").unwrap(),
+      None,
+    );
+
+    let mut updated_template = (*original_template).clone();
+    updated_template.power = 99;
+    let mut updated_templates = previous_templates.as_ref().clone();
+    updated_templates.insert("Test Design".to_string(), Arc::new(updated_template));
+    replace_ship_templates(updated_templates);
+
+    assert_eq!(ship.design.power, 25);
+    assert_eq!(get_ship_template("Test Design").unwrap().power, 99);
   }
 
   #[test_log::test]

@@ -1069,8 +1069,8 @@ async fn test_get_entities() {
 #[test(tokio::test)]
 async fn test_get_designs() {
   let authenticator = setup_authenticator();
-  let _ = setup_test_with_server(authenticator).await;
-  let designs = PlayerManager::get_designs();
+  let server = setup_test_with_server(authenticator).await;
+  let designs = server.get_designs();
   assert!(!designs.is_empty());
   assert!(designs.contains_key("Buccaneer"));
 }

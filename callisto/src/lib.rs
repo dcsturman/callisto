@@ -31,12 +31,67 @@ use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use once_cell::sync::OnceCell;
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::sync::{Arc, RwLock};
 
-pub static SCENARIOS: OnceCell<Vec<(String, MetaData)>> = OnceCell::new();
+pub type ScenarioMetadataList = Vec<(String, MetaData)>;
+type SharedScenarioMetadataList = Arc<ScenarioMetadataList>;
+
+pub static SCENARIOS: OnceCell<RwLock<SharedScenarioMetadataList>> = OnceCell::new();
 pub const LOG_FILE_USE: &str = "READ_FILE";
 pub const LOG_AUTH_RESULT: &str = "LOGIN_ATTEMPT";
 pub const LOGOUT: &str = "LOGOUT";
 pub const LOG_SCENARIO_ACTIVITY: &str = "SCENARIO";
+
+/// Replace the current global scenario metadata snapshot.
+///
+/// # Panics
+///
+/// Panics if the write lock is poisoned.
+pub fn replace_scenarios(scenarios: ScenarioMetadataList) {
+  let scenarios = Arc::new(scenarios);
+  let scenarios_lock = SCENARIOS.get_or_init(|| RwLock::new(scenarios.clone()));
+  *scenarios_lock.write().expect("(replace_scenarios) Unable to update scenarios") = scenarios;
+}
+
+/// Return the current global scenario metadata snapshot.
+///
+/// # Panics
+///
+/// Panics if scenarios have not been initialized yet or if the read lock is poisoned.
+#[must_use]
+pub fn get_scenarios_snapshot() -> SharedScenarioMetadataList {
+  SCENARIOS
+    .get()
+    .expect("(get_scenarios_snapshot) Scenarios not loaded")
+    .read()
+    .expect("(get_scenarios_snapshot) Unable to read scenarios")
+    .clone()
+}
+
+fn join_dir_entry_path(dir: &str, entry: &str) -> String {
+  format!("{}/{entry}", dir.trim_end_matches('/'))
+}
+
+/// Build a deterministic fingerprint of a directory by listing files and their last-modified timestamps.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be listed or if any file timestamp cannot be read.
+pub async fn get_local_or_cloud_dir_fingerprint(
+  dir: &str,
+) -> Result<Vec<(String, Option<i64>)>, Box<dyn std::error::Error>> {
+  let mut files = list_local_or_cloud_dir(dir).await?;
+  files.sort_unstable();
+
+  let mut fingerprint = Vec::with_capacity(files.len());
+  for file in files {
+    let full_path = join_dir_entry_path(dir, &file);
+    let last_modified = get_file_last_modified_timestamp(&full_path).await?;
+    fingerprint.push((file, last_modified));
+  }
+
+  Ok(fingerprint)
+}
 
 /**
  * Read a file from the local filesystem or GCS.
@@ -220,6 +275,31 @@ pub async fn get_file_last_modified_timestamp(filename: &str) -> Result<Option<i
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_replace_scenarios_updates_snapshot() {
+    replace_scenarios(vec![(
+      "scenario-a".to_string(),
+      MetaData {
+        name: "Scenario A".to_string(),
+        description: "first".to_string(),
+      },
+    )]);
+    assert_eq!(get_scenarios_snapshot().len(), 1);
+
+    replace_scenarios(vec![(
+      "scenario-b".to_string(),
+      MetaData {
+        name: "Scenario B".to_string(),
+        description: "second".to_string(),
+      },
+    )]);
+
+    let scenarios = get_scenarios_snapshot();
+    assert_eq!(scenarios.len(), 1);
+    assert_eq!(scenarios[0].0, "scenario-b");
+    assert_eq!(scenarios[0].1.name, "Scenario B");
+  }
 
   #[tokio::test]
   async fn test_get_file_last_modified_timestamp_local() {

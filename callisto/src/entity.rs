@@ -20,7 +20,8 @@ use crate::missile::Missile;
 use crate::planet::Planet;
 use crate::read_local_or_cloud_file;
 use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
-use crate::ship::{FlightPlan, Ship, ShipDesignTemplate, ShipSystem};
+use crate::ship::get_ship_templates_snapshot;
+use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Ship, ShipDesignTemplate, ShipSystem};
 use crate::ship::{Weapon, WeaponMount, WeaponType};
 
 #[allow(unused_imports)]
@@ -184,9 +185,27 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
   pub async fn load_from_file(file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    Self::load_from_file_with_ship_templates(file_name, get_ship_templates_snapshot()).await
+  }
+
+  /// Load a scenario file using the provided ship-template snapshot.
+  ///
+  /// This ensures all ships deserialized from the scenario point at the same
+  /// template snapshot that the caller intends to associate with the scenario.
+  ///
+  /// # Errors
+  /// Returns an error if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
+  pub async fn load_from_file_with_ship_templates(
+    file_name: &str, ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
+  ) -> Result<Self, Box<dyn std::error::Error>> {
     event!(target: LOG_FILE_USE, Level::INFO, file_name, use = "Load scenario.");
 
-    let mut entities: Entities = serde_json::from_slice(&read_local_or_cloud_file(file_name).await?)?;
+    let scenario_contents = read_local_or_cloud_file(file_name).await?;
+    let mut entities: Entities =
+      with_ship_templates_for_deserialization(ship_templates, || serde_json::from_slice(&scenario_contents))?;
 
     entities.fixup_pointers()?;
     entities.reset_gravity_wells();
@@ -1476,13 +1495,26 @@ mod tests {
   use super::*;
   use crate::crew::{Crew, Skills};
   use crate::debug;
-  use crate::ship::{config_test_ship_templates, ShipDesignTemplate};
+  use crate::ship::{
+    config_test_ship_templates, get_ship_template, get_ship_templates_snapshot, replace_ship_templates,
+    ShipDesignTemplate, ShipTemplateTable,
+  };
   use assert_json_diff::assert_json_eq;
   use cgmath::assert_relative_eq;
   use cgmath::{Vector2, Zero};
   use rand::rngs::{mock::StepRng, SmallRng};
   use rand::SeedableRng;
   use serde_json::json;
+  use std::fs;
+  use std::time::{SystemTime, UNIX_EPOCH};
+
+  struct ShipTemplateRestoreGuard(ShipTemplateTable);
+
+  impl Drop for ShipTemplateRestoreGuard {
+    fn drop(&mut self) {
+      replace_ship_templates(self.0.clone());
+    }
+  }
 
   #[test_log::test]
   fn test_entities_display_and_debug() -> Result<(), String> {
@@ -2068,9 +2100,78 @@ mod tests {
   #[tokio::test]
   async fn test_unordered_scenario_file() {
     let _ = pretty_env_logger::try_init();
+    config_test_ship_templates().await;
 
     let entities = Entities::load_from_file("./tests/scenarios/test-scenario.json").await.unwrap();
     assert!(entities.validate(), "Scenario file failed validation");
+  }
+
+  #[test_log::test(tokio::test)]
+  async fn test_load_from_file_uses_provided_ship_template_snapshot() {
+    config_test_ship_templates().await;
+
+    let previous_templates = get_ship_templates_snapshot();
+    let _restore_guard = ShipTemplateRestoreGuard(previous_templates.as_ref().clone());
+
+    let design_name = "Scenario Snapshot Test".to_string();
+    let original_template = Arc::new(ShipDesignTemplate {
+      name: design_name.clone(),
+      displacement: 100,
+      hull: 10,
+      armor: 2,
+      maneuver: 1,
+      jump: 1,
+      power: 25,
+      fuel: 10,
+      crew: 4,
+      sensors: crate::ship::Sensors::Basic,
+      stealth: None,
+      countermeasures: None,
+      computer: 1,
+      weapons: vec![],
+      tl: 10,
+    });
+
+    let mut scenario_templates = previous_templates.as_ref().clone();
+    scenario_templates.insert(design_name.clone(), original_template);
+    let scenario_templates = Arc::new(scenario_templates);
+
+    let mut reloaded_templates = previous_templates.as_ref().clone();
+    let mut updated_template = (*scenario_templates.get(&design_name).unwrap()).as_ref().clone();
+    updated_template.power = 99;
+    reloaded_templates.insert(design_name.clone(), Arc::new(updated_template));
+    replace_ship_templates(reloaded_templates);
+
+    let scenario_path = std::env::temp_dir().join(format!(
+      "callisto_scenario_snapshot_{}_{}.json",
+      std::process::id(),
+      SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+
+    let scenario = json!({
+      "metadata": {"name": "Snapshot test", "description": "Template snapshot test"},
+      "ships": [{
+        "name": "Snapshot Test Ship",
+        "position": [0.0, 0.0, 0.0],
+        "velocity": [0.0, 0.0, 0.0],
+        "plan": [[[0.0, 0.0, 0.0], 50000]],
+        "design": design_name,
+      }],
+      "planets": [],
+      "missiles": [],
+      "actions": []
+    });
+    fs::write(&scenario_path, serde_json::to_vec(&scenario).unwrap()).unwrap();
+
+    let entities = Entities::load_from_file_with_ship_templates(scenario_path.to_str().unwrap(), scenario_templates)
+      .await
+      .unwrap();
+
+    let _ = fs::remove_file(&scenario_path);
+
+    let ship = entities.ships.get("Snapshot Test Ship").unwrap().read().unwrap();
+    assert_eq!(ship.design.power, 25);
+    assert_eq!(get_ship_template("Scenario Snapshot Test").unwrap().power, 99);
   }
 
   #[test_log::test(tokio::test)]
