@@ -395,11 +395,16 @@ async fn load_scenarios_and_metadata(
   let scenarios = join_all(scenarios_list.iter().map(async |scenario| {
     // Load each scenario and read it in to get the metadata.
     // If we cannot open it, just drop it from the scenarios list.
-    let load_result = Entities::load_from_file(&join_dir_entry_path(scenario_dir, scenario)).await;
+    let scenario_path = join_dir_entry_path(scenario_dir, scenario);
+    let load_result = Entities::load_from_file(&scenario_path).await;
     let Ok(entities) = load_result else {
+      let error_msg = match &load_result {
+        Err(e) => e.to_string(),
+        Ok(_) => "Unknown error".to_string(),
+      };
       error!(
-        "(main) Unable to load scenario file {} from {scenario_dir}: {load_result:?}.  Skipping.",
-        scenario
+        "ERROR: Failed to parse scenario file '{}': {}",
+        scenario_path, error_msg
       );
       return None;
     };

@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "name": "Fun with a planet",
+    "description": "See different ways to visualize a planet.  This scenario is meant to be used for testing and debugging visual effects, so there are no ships or other planets."
+  },
+  "planets": [
+    {
+      "name": "Fun",
+      "position": [0, 0, 0],
+      "velocity": [0, 0, 0],
+      "color": "#ADD8a6",
+      "visual_effects": [
+        "PlanetaryRing",
+        "AtmosphereRing",
+        "AnimatedClouds",
+        "NoiseTexture"
+      ],
+      "radius": 5.5e6,
+      "mass": 3.557e24
+    }
+  ]
+}
