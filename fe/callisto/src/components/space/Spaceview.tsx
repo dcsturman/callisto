@@ -1,23 +1,127 @@
 import * as React from "react";
-import {useRef} from "react";
+import { useRef, useMemo } from "react";
 import * as THREE from "three";
 
-import {EffectComposer, Bloom} from "@react-three/postprocessing";
-import {KernelSize, Resolution} from "postprocessing";
-import {TextureLoader} from "three/src/loaders/TextureLoader";
-import {useLoader, useFrame} from "@react-three/fiber";
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import { KernelSize, Resolution } from "postprocessing";
+import { TextureLoader } from "three/src/loaders/TextureLoader";
+import { useLoader, useFrame } from "@react-three/fiber";
 
 import Color from "color";
 
-import {Line, scaleVector} from "lib/Util";
-import {SCALE} from "lib/universal";
-import {Planet as PlanetType} from "lib/entities";
+import { Line, scaleVector } from "lib/Util";
+import { SCALE } from "lib/universal";
+import { Planet as PlanetType } from "lib/entities";
 
-import {RangeSphere} from "lib/Util";
+import { RangeSphere } from "lib/Util";
 
-import {useAppSelector, useAppDispatch} from "state/hooks";
-import {setEntityToShow} from "state/uiSlice";
-import {entitiesSelector} from "state/serverSlice";
+import { useAppSelector, useAppDispatch } from "state/hooks";
+import { setEntityToShow } from "state/uiSlice";
+import { entitiesSelector } from "state/serverSlice";
+
+// Texture definitions for lazy loading
+const PLANET_TEXTURE_DEFINITIONS = {
+  "!earth": {
+    texture: "/assets/earthmap1k.jpg",
+    bumpMap: "/assets/earthbump1k.jpg",
+    specularMap: "/assets/earthspec1k.jpg",
+    rotation: 0.002,
+    bumpScale: 0.05,
+    specular: new THREE.Color("grey"),
+  },
+  "!sun": {
+    texture: "/assets/sunmap.jpg",
+    bumpMap: "/assets/sunmap.jpg",
+    specularMap: undefined,
+    rotation: 0.0,
+    bumpScale: 0.05,
+    specular: undefined,
+  },
+  "!moon": {
+    texture: "/assets/moonmap1k.jpg",
+    bumpMap: "/assets/moonbump1k.jpg",
+    specularMap: undefined,
+    rotation: 0.0,
+    bumpScale: 0.002,
+    specular: undefined,
+  },
+  "!mercury": {
+    texture: "/assets/mercurymap.jpg",
+    bumpMap: "/assets/mercurybump.jpg",
+    specularMap: undefined,
+    rotation: 0.0,
+    bumpScale: 0.005,
+    specular: undefined,
+  },
+  "!venus": {
+    texture: "/assets/venusmap.jpg",
+    bumpMap: "/assets/venusbump.jpg",
+    specularMap: undefined,
+    rotation: 0.0005,
+    bumpScale: 0.005,
+    specular: undefined,
+  },
+  "!mars": {
+    texture: "/assets/marsmap1k.jpg",
+    bumpMap: "/assets/marsbump1k.jpg",
+    specularMap: undefined,
+    rotation: 0.002,
+    bumpScale: 0.05,
+    specular: undefined,
+  },
+  "!jupiter": {
+    texture: "/assets/jupitermap.jpg",
+    bumpMap: "/assets/jupitermap.jpg",
+    specularMap: undefined,
+    rotation: 0.005,
+    bumpScale: 0.02,
+    specular: undefined,
+  },
+  "!saturn": {
+    texture: "/assets/saturnmap.jpg",
+    bumpMap: "/assets/saturnmap.jpg",
+    specularMap: undefined,
+    rotation: 0.005,
+    bumpScale: 0.05,
+    specular: undefined,
+  },
+  "!uranus": {
+    texture: "/assets/uranusmap.jpg",
+    bumpMap: "/assets/uranusmap.jpg",
+    specularMap: undefined,
+    rotation: 0.003,
+    bumpScale: 0.05,
+    specular: undefined,
+  },
+  "!neptune": {
+    texture: "/assets/neptunemap.jpg",
+    bumpMap: "/assets/neptunemap.jpg",
+    specularMap: undefined,
+    rotation: 0.003,
+    bumpScale: 0.05,
+    specular: undefined,
+  },
+  "!pluto": {
+    texture: "/assets/plutomap1k.jpg",
+    bumpMap: "/assets/plutobump1k.jpg",
+    specularMap: undefined,
+    rotation: 0.001,
+    bumpScale: 0.005,
+    specular: undefined,
+  },
+} as const;
+
+// Cache for loaded textures
+type LoadedPlanetTextures = {
+  texture: THREE.Texture;
+  bumpMap: THREE.Texture | undefined;
+  specularMap: THREE.Texture | undefined;
+  rotation: number;
+  bumpScale: number;
+  specular: THREE.Color | undefined;
+};
+
+const textureCache = new Map<string, LoadedPlanetTextures>();
 
 function Planet(args: {
   planet: PlanetType;
@@ -45,125 +149,74 @@ function Planet(args: {
           </mesh>
         )}
         {args.controlGravityWell && args.planet.gravity_radius_025 && (
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_025} order={10} />
+          <RangeSphere
+            pos={pos}
+            distance={args.planet.gravity_radius_025}
+            order={10}
+          />
         )}
         {args.controlGravityWell && args.planet.gravity_radius_05 && (
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_05} order={8} />
+          <RangeSphere
+            pos={pos}
+            distance={args.planet.gravity_radius_05}
+            order={8}
+          />
         )}
         {args.controlGravityWell && args.planet.gravity_radius_1 && (
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_1} order={6} />
+          <RangeSphere
+            pos={pos}
+            distance={args.planet.gravity_radius_1}
+            order={6}
+          />
         )}
         {args.controlGravityWell && args.planet.gravity_radius_2 && (
-          <RangeSphere pos={pos} distance={args.planet.gravity_radius_2} order={4} />
+          <RangeSphere
+            pos={pos}
+            distance={args.planet.gravity_radius_2}
+            order={4}
+          />
         )}
       </>
     );
   }
 
-  type PlanetTemplateType = Record<
-    string,
-    {
-      texture: THREE.Texture;
-      rotation: number;
-      bumpMap: THREE.Texture | undefined;
-      bumpScale: number;
-      specularMap: THREE.Texture | undefined;
-      specular: THREE.Color | undefined;
+  // Lazy load textures only when needed
+  const texture_details = useMemo(() => {
+    const planetDef =
+      PLANET_TEXTURE_DEFINITIONS[
+        args.planet.color as keyof typeof PLANET_TEXTURE_DEFINITIONS
+      ];
+    if (!planetDef) return null;
+
+    // Check cache first
+    const cacheKey = args.planet.color;
+    if (textureCache.has(cacheKey)) {
+      return textureCache.get(cacheKey);
     }
-  >;
 
-  const PLANET_TEMPLATES: PlanetTemplateType = {
-    "!earth": {
-      texture: useLoader(TextureLoader, "/assets/earthmap1k.jpg"),
-      rotation: 0.002,
-      bumpMap: useLoader(TextureLoader, "/assets/earthbump1k.jpg"),
-      bumpScale: 0.05,
-      specularMap: useLoader(TextureLoader, "/assets/earthspec1k.jpg"),
-      specular: new THREE.Color("grey"),
-    },
-    "!sun": {
-      texture: useLoader(TextureLoader, "/assets/sunmap.jpg"),
-      rotation: 0.0,
-      bumpMap: useLoader(TextureLoader, "/assets/sunmap.jpg"),
-      bumpScale: 0.05,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!moon": {
-      texture: useLoader(TextureLoader, "/assets/moonmap1k.jpg"),
-      rotation: 0.0,
-      bumpMap: useLoader(TextureLoader, "/assets/moonbump1k.jpg"),
-      bumpScale: 0.002,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!mercury": {
-      texture: useLoader(TextureLoader, "/assets/mercurymap.jpg"),
-      rotation: 0.0,
-      bumpMap: useLoader(TextureLoader, "/assets/mercurybump.jpg"),
-      bumpScale: 0.005,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!venus": {
-      texture: useLoader(TextureLoader, "/assets/venusmap.jpg"),
-      rotation: 0.0005,
-      bumpMap: useLoader(TextureLoader, "/assets/venusbump.jpg"),
-      bumpScale: 0.005,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!mars": {
-      texture: useLoader(TextureLoader, "/assets/marsmap1k.jpg"),
-      rotation: 0.002,
-      bumpMap: useLoader(TextureLoader, "/assets/marsbump1k.jpg"),
-      bumpScale: 0.05,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!jupiter": {
-      texture: useLoader(TextureLoader, "/assets/jupitermap.jpg"),
-      rotation: 0.005,
-      bumpMap: useLoader(TextureLoader, "/assets/jupitermap.jpg"),
-      bumpScale: 0.02,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!saturn": {
-      texture: useLoader(TextureLoader, "/assets/saturnmap.jpg"),
-      rotation: 0.005,
-      bumpMap: useLoader(TextureLoader, "/assets/saturnmap.jpg"),
-      bumpScale: 0.05,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!uranus": {
-      texture: useLoader(TextureLoader, "/assets/uranusmap.jpg"),
-      rotation: 0.003,
-      bumpMap: useLoader(TextureLoader, "/assets/uranusmap.jpg"),
-      bumpScale: 0.05,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!neptune": {
-      texture: useLoader(TextureLoader, "/assets/neptunemap.jpg"),
-      rotation: 0.003,
-      bumpMap: useLoader(TextureLoader, "/assets/neptunemap.jpg"),
-      bumpScale: 0.05,
-      specularMap: undefined,
-      specular: undefined,
-    },
-    "!pluto": {
-      texture: useLoader(TextureLoader, "/assets/plutomap1k.jpg"),
-      rotation: 0.001,
-      bumpMap: useLoader(TextureLoader, "/assets/plutobump1k.jpg"),
-      bumpScale: 0.005,
-      specularMap: undefined,
-      specular: undefined,
-    },
-  };
+    // Load textures on demand
+    const textureLoader = new TextureLoader();
+    const texture = textureLoader.load(planetDef.texture);
+    const bumpMap = planetDef.bumpMap
+      ? textureLoader.load(planetDef.bumpMap)
+      : undefined;
+    const specularMap = planetDef.specularMap
+      ? textureLoader.load(planetDef.specularMap)
+      : undefined;
 
-  const texture_details = PLANET_TEMPLATES[args.planet.color];
+    const loaded = {
+      texture,
+      bumpMap,
+      specularMap,
+      rotation: planetDef.rotation,
+      bumpScale: planetDef.bumpScale,
+      specular: planetDef.specular,
+    };
+
+    // Cache the loaded textures
+    textureCache.set(cacheKey, loaded);
+    return loaded;
+  }, [args.planet.color]);
 
   const ref = useRef<THREE.Mesh>(null);
   useFrame(() => {
@@ -181,7 +234,8 @@ function Planet(args: {
           rotation-y={1}
           position={pos}
           onPointerOver={() => dispatch(setEntityToShow(args.planet))}
-          onPointerLeave={() => dispatch(setEntityToShow(null))}>
+          onPointerLeave={() => dispatch(setEntityToShow(null))}
+        >
           <icosahedronGeometry args={[radiusUnits, 15]} />
           <meshPhongMaterial
             map={texture_details.texture}
@@ -218,7 +272,8 @@ function Planet(args: {
         <mesh
           position={pos}
           onPointerOver={() => dispatch(setEntityToShow(args.planet))}
-          onPointerLeave={() => dispatch(setEntityToShow(null))}>
+          onPointerLeave={() => dispatch(setEntityToShow(null))}
+        >
           <icosahedronGeometry args={[radiusUnits, 15]} />
           <meshBasicMaterial
             color={[
@@ -233,7 +288,7 @@ function Planet(args: {
   }
 }
 
-function Planets(args: {planets: PlanetType[]}) {
+function Planets(args: { planets: PlanetType[] }) {
   const gravityWell = useAppSelector((state) => state.ui.gravityWells);
   const jumpDistance = useAppSelector((state) => state.ui.jumpDistance);
 
@@ -258,7 +313,11 @@ function Galaxy() {
     <>
       <mesh>
         <sphereGeometry args={[500000, 64, 64]} />
-        <meshBasicMaterial map={starColorMap} side={THREE.BackSide} transparent={true} />
+        <meshBasicMaterial
+          map={starColorMap}
+          side={THREE.BackSide}
+          transparent={true}
+        />
       </mesh>
     </>
   );

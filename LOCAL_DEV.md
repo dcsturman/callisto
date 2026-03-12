@@ -2,20 +2,14 @@
 
 ## Running Locally
 
-### 1. Configure Backend for Local Development
-
-In `callisto/Dockerfile`, ensure TLS is disabled by setting the build argument:
-```dockerfile
-ARG TLS_UPGRADE=0
-```
-
-### 2. Start the Backend
+### 1. Start the Backend for local development
 
 ```bash
-docker-compose up be
+cd callisto/callisto
+docker-compose ../compose.yaml ../compose.override.yaml -f up be
 ```
 
-### 3. Start the Frontend
+### 2. Start the Frontend
 
 ```bash
 cd fe/callisto
@@ -24,7 +18,7 @@ export VITE_NODE_SERVER=http://localhost:50001
 npm start -- --port 50001
 ```
 
-### 4. Access the Application
+### 3. Access the Application
 
 Open `http://localhost:50001` in your browser.
 
