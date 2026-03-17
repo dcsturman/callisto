@@ -266,12 +266,14 @@ impl PlayerManager {
   /// * `planet` - The message containing the parameters for the planet.
   ///
   /// # Errors
-  /// Returns an error if the planet already exists in the entities.
+  /// Returns an error if the requested primary planet cannot be found.
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to write the entities or if the
   /// server has not yet been initialized.
   pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
+    info!("(PlayerManager.add_planet) Received and processing add planet request. {:?}", planet);
+
     // Add the planet to the server
     self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_planet(
       planet.name,
@@ -280,6 +282,7 @@ impl PlayerManager {
       planet.primary,
       planet.radius,
       planet.mass,
+      planet.visual_effects,
     )?;
 
     Ok("Add planet action executed".to_string())

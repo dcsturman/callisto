@@ -3,6 +3,7 @@ import { useEffect, useMemo, useCallback } from "react";
 import * as THREE from "three";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
+import { AddPlanet } from "./AddPlanet";
 import { POSITION_SCALE, SCALE } from "lib/universal";
 import { Ship, Entity, Planet, findShip } from "lib/entities";
 import { ViewMode } from "lib/view";
@@ -124,6 +125,9 @@ function moveCameraToShip(
 export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
   const role = useAppSelector((state) => state.user.role);
+  const isScenarioBuilder = useAppSelector(
+    (state) => state.user.isScenarioBuilder,
+  );
 
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
@@ -156,6 +160,12 @@ export function Controls() {
       {role === ViewMode.General && Object.keys(shipTemplates).length > 0 && (
         <>
           <AddShip />
+          <hr />
+        </>
+      )}
+      {isScenarioBuilder && (
+        <>
+          <AddPlanet />
           <hr />
         </>
       )}

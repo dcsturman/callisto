@@ -33,7 +33,10 @@ export function effectsToBitmask(effects: PlanetVisualEffect[]): number {
 }
 
 // Check if an effect is enabled in a bitmask
-export function hasEffect(bitmask: number, effect: PlanetVisualEffect): boolean {
+export function hasEffect(
+  bitmask: number,
+  effect: PlanetVisualEffect,
+): boolean {
   return (bitmask & effectToBit(effect)) !== 0;
 }
 
@@ -347,4 +350,11 @@ export const findShip = (entities: EntityList, name: string | null) => {
     return null;
   }
   return entities.ships.find((ship) => ship.name === name) || null;
+};
+
+export const findPlanet = (entities: EntityList, name: string | null) => {
+  if (name == null) {
+    return null;
+  }
+  return entities.planets.find((planet) => planet.name === name) || null;
 };

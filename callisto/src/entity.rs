@@ -17,7 +17,7 @@ use crate::combat::{
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
-use crate::planet::Planet;
+use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
 use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
 use crate::ship::get_ship_templates_snapshot;
@@ -281,6 +281,7 @@ impl Entities {
   /// Panics if the lock cannot be obtained to read a planet.
   pub fn add_planet(
     &mut self, name: String, position: Vec3, color: String, primary: Option<String>, radius: f64, mass: f64,
+    visual_effects: Vec<PlanetVisualEffect>,
   ) -> Result<(), String> {
     debug!(
       "Add planet {} with position {:?},  color {:?}, primary {}, radius {:?}, mass {:?}, ",
@@ -298,9 +299,9 @@ impl Entities {
         .get(primary_name)
         .ok_or_else(|| format!("Primary planet {primary_name} not found for planet {name}."))?;
 
-      (&Some(primary.clone()), primary.read().unwrap().dependency + 1)
+      (Some(primary.clone()), primary.read().unwrap().dependency + 1)
     } else {
-      (&None, 0)
+      (None, 0)
     };
 
     // A safety check to ensure we never have a pointer without a name of a primary or vis versa.
@@ -310,10 +311,33 @@ impl Entities {
       ));
     }
 
-    let entity = Planet::new(name.clone(), position, color, radius, mass, primary, primary_ptr, dependency);
+    if let Some(existing_planet) = self.planets.get(&name) {
+      let mut planet = existing_planet.write().unwrap();
+      planet.set_position(position);
+      planet.color = color;
+      planet.primary = primary;
+      planet.primary_ptr = primary_ptr;
+      planet.radius = radius;
+      planet.mass = mass;
+      planet.dependency = dependency;
+      planet.visual_effects = visual_effects;
+      planet.reset_gravity_wells();
+      let updated_velocity = if planet.primary_ptr.is_some() {
+        planet.calculate_rotational_velocity()?
+      } else {
+        Vec3::new(0.0, 0.0, 0.0)
+      };
+      planet.set_velocity(updated_velocity);
 
-    debug!("Added planet with fixed gravity wells {:?}", entity);
-    self.planets.insert(name, Arc::new(RwLock::new(entity)));
+      debug!("Updated existing planet {:?}", planet);
+    } else {
+      let mut entity = Planet::new(name.clone(), position, color, radius, mass, primary, &primary_ptr, dependency);
+      entity.visual_effects = visual_effects;
+
+      debug!("Added planet with fixed gravity wells {:?}", entity);
+      self.planets.insert(name, Arc::new(RwLock::new(entity)));
+    }
+
     Ok(())
   }
 
@@ -1546,6 +1570,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
 
     // Launch a missile
@@ -1682,6 +1707,7 @@ mod tests {
       None,
       6.96e8,
       1.989e30,
+      vec![],
     )?;
     assert!(entities.validate(), "Entities with a single valid planet should be valid");
 
@@ -1798,7 +1824,7 @@ mod tests {
     let mut entities = Entities::new();
 
     // Create some planets and see if they move.
-    entities.add_planet(String::from("Sun"), Vec3::zero(), String::from("blue"), None, 6.371e6, 6e24)?;
+    entities.add_planet(String::from("Sun"), Vec3::zero(), String::from("blue"), None, 6.371e6, 6e24, vec![])?;
 
     // Update the planet a few times
     let ship_snapshot = entities.ship_deep_copy();
@@ -1850,6 +1876,7 @@ mod tests {
       None,
       6.371e6,
       6e24,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet2"),
@@ -1858,6 +1885,7 @@ mod tests {
       None,
       3e7,
       3e23,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet3"),
@@ -1866,6 +1894,7 @@ mod tests {
       None,
       4e6,
       1e26,
+      vec![],
     )?;
 
     // Update the entities a few times
@@ -1986,6 +2015,7 @@ mod tests {
       None,
       6.371e6,
       5.972e24,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet2"),
@@ -1994,6 +2024,7 @@ mod tests {
       None,
       3e7,
       3.00e23,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet3"),
@@ -2002,6 +2033,7 @@ mod tests {
       None,
       4e6,
       1e26,
+      vec![],
     )?;
 
     // Create entities with random positions and names
@@ -2206,6 +2238,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
     entities2.add_planet(
       "Planet1".to_string(),
@@ -2214,6 +2247,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
 
     // Test equality
@@ -2349,6 +2383,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
 
     // Test entities with one ship and one planet

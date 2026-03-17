@@ -164,7 +164,7 @@ async fn test_add_planet_ship() {
 
   let compare = json!({"planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-    "color":"red","radius":1.5e6,"mass":3e24,
+    "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
     "gravity_radius_1":4_518_410.048_543_495,
     "gravity_radius_05":6_389_996.771_013_086,
     "gravity_radius_025": 9_036_820.097_086_99,
@@ -225,13 +225,13 @@ async fn test_add_planet_ship() {
   "actions":[],
   "planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-      "color":"red","radius":1.5e6,"mass":3e24,
+      "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
       "gravity_radius_1":4_518_410.048_543_495,
       "gravity_radius_05":6_389_996.771_013_086,
       "gravity_radius_025": 9_036_820.097_086_99,
       "gravity_radius_2": 3_194_998.385_506_543},
   {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
-      "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+      "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1","visual_effects":[],
       "gravity_radius_025":1_649_890.071_763_523_2}],
   "ships":[
       {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -1041,6 +1041,7 @@ async fn test_get_entities() {
       primary: None,
       radius: 6371e3,
       mass: 5.97e24,
+      visual_effects: vec![],
     })
     .unwrap();
 
@@ -1060,6 +1061,7 @@ async fn test_get_entities() {
   assert_eq!(planet.get_name(), planet_name);
   assert_eq!(planet.get_position(), planet_position);
   assert_eq!(planet.color, planet_color);
+  assert!(planet.visual_effects.is_empty());
 
   // Check that there are no missiles
   assert!(entities.missiles.is_empty());

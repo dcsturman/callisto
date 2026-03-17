@@ -23,6 +23,7 @@ import { G } from "lib/universal";
 import {
   EntityList,
   Ship,
+  Planet,
   MetaData,
   EngineerActionMsg,
   EngineerActionResult,
@@ -226,6 +227,32 @@ export function addShip(ship: Ship) {
       velocity: ship.velocity,
       design: ship.design,
       crew: ship.crew,
+    },
+  };
+
+  socket.send(JSON.stringify(payload));
+}
+
+interface AddPlanetMsg {
+  name: string;
+  position: [number, number, number];
+  color: string;
+  primary: string | null;
+  radius: number;
+  mass: number;
+  visual_effects: Planet["visual_effects"];
+}
+
+export function addPlanet(planet: Planet) {
+  const payload: { AddPlanet: AddPlanetMsg } = {
+    AddPlanet: {
+      name: planet.name,
+      position: planet.position,
+      color: planet.color,
+      primary: planet.primary,
+      radius: planet.radius,
+      mass: planet.mass,
+      visual_effects: planet.visual_effects,
     },
   };
 

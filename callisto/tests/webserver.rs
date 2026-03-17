@@ -661,6 +661,7 @@ async fn integration_add_planet_ship() {
       radius: 1.5e6,
       mass: 3e24,
       primary: None,
+      visual_effects: vec![],
     }),
   )
   .await;
@@ -672,7 +673,7 @@ async fn integration_add_planet_ship() {
   if let ResponseMsg::EntityResponse(entities) = entities {
     let compare = json!({"planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-      "color":"red","radius":1.5e6,"mass":3e24,
+      "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
       "gravity_radius_1":4_518_410.048_543_495,
       "gravity_radius_05":6_389_996.771_013_086,
       "gravity_radius_025": 9_036_820.097_086_99,
@@ -733,6 +734,7 @@ async fn integration_add_planet_ship() {
       radius: 1.5e6,
       mass: 1e23,
       primary: Some("planet1".to_string()),
+      visual_effects: vec![],
     }),
   )
   .await;
@@ -745,13 +747,13 @@ async fn integration_add_planet_ship() {
     "actions":[],
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-        "color":"red","radius":1.5e6,"mass":3e24,
+        "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
         "gravity_radius_1":4_518_410.048_543_495,
         "gravity_radius_05":6_389_996.771_013_086,
         "gravity_radius_025": 9_036_820.097_086_99,
         "gravity_radius_2": 3_194_998.385_506_543},
     {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
-        "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+        "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1","visual_effects":[],
         "gravity_radius_025":1_649_890.071_763_523_2}],
     "ships":[
     {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -1298,6 +1300,7 @@ async fn integration_malformed_requests() {
       primary: Some("InvalidPrimary".to_string()),
       radius: 1.5e6,
       mass: 3e24,
+      visual_effects: vec![],
     }),
   )
   .await;
@@ -1384,6 +1387,7 @@ async fn integration_bad_requests() {
     primary: Some("InvalidPlanet".to_string()),
     radius: 1.5e6,
     mass: 3e24,
+    visual_effects: vec![],
   });
   let response = rpc(&mut stream, msg).await;
   assert!(matches!(response, ResponseMsg::Error(_)));

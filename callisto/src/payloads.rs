@@ -8,6 +8,7 @@ use super::action::ShipActionList;
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
+use super::planet::PlanetVisualEffect;
 use super::ship::{ShipDesignTemplate, ShipSystem};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
@@ -90,6 +91,8 @@ pub struct AddPlanetMsg {
   pub primary: Option<String>,
   pub radius: f64,
   pub mass: f64,
+  #[serde(default)]
+  pub visual_effects: Vec<PlanetVisualEffect>,
 }
 
 pub type RemoveEntityMsg = String;
@@ -373,6 +376,31 @@ mod tests {
             "sensors": 0,
             "gunnery": []
         }
+    });
+
+    let json_str = serde_json::to_string(&msg).unwrap();
+    assert_eq!(json_str, json.to_string());
+  }
+
+  #[test(tokio::test)]
+  async fn test_add_planet_msg() {
+    let msg = AddPlanetMsg {
+      name: "planet1".to_string(),
+      position: Vec3::zero(),
+      color: "blue".to_string(),
+      primary: None,
+      radius: 6.371e6,
+      mass: 5.972e24,
+      visual_effects: vec![PlanetVisualEffect::AtmosphereRing, PlanetVisualEffect::AnimatedClouds],
+    };
+    let json = json!({
+        "name": "planet1",
+        "position": [0.0, 0.0, 0.0],
+        "color": "blue",
+        "primary": null,
+        "radius": 6.371e6,
+        "mass": 5.972e24,
+        "visual_effects": ["AtmosphereRing", "AnimatedClouds"]
     });
 
     let json_str = serde_json::to_string(&msg).unwrap();
