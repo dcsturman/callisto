@@ -17,6 +17,8 @@ import { entitiesSelector } from "state/serverSlice";
 
 type AddShipProps = unknown;
 
+const DEFAULT_COLOR = "yellow";
+
 export const AddPlanet: React.FC<AddShipProps> = () => {
   const entities = useAppSelector(entitiesSelector);
   const planetNameRef = useRef<HTMLInputElement>(null);
@@ -31,7 +33,7 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
       xpos: "0",
       ypos: "0",
       zpos: "0",
-      color: "yellow",
+      color: "yellow" as string | null,
       mass: 5.972e24,
       primary: null as string | null,
       visual_effects: [] as PlanetVisualEffect[],
@@ -54,7 +56,7 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
         mass: current.mass,
         color: current.color,
         primary: current.primary,
-        visual_effects: [],
+        visual_effects: current.visual_effects,
       };
       setAddPlanetData(template);
     }
@@ -100,6 +102,11 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
       const planet =
         findPlanet(entities, addPlanetData.name) || defaultPlanet();
 
+      let color = addPlanetData.color;
+      if (!color || color === "") {
+        color = DEFAULT_COLOR;
+      }
+
       const revision: Planet = {
         ...planet,
         name: addPlanetData.name,
@@ -107,19 +114,23 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
         mass: addPlanetData.mass,
         velocity: [0, 0, 0],
         primary: addPlanetData.primary,
-        color: addPlanetData.color,
+        color: color,
         visual_effects: addPlanetData.visual_effects,
       };
 
       addPlanet(revision);
-      setAddPlanetData(initialTemplate);
-      planetNameRef.current!.style.color = "black";
+      //setAddPlanetData(initialTemplate);
+      //planetNameRef.current!.style.color = "black";
     },
     [addPlanetData, entities, initialTemplate, planetNameRef],
   );
 
   const handleColorChange = useCallback(
-    (color: string) => setAddPlanetData({ ...addPlanetData, color }),
+    (color: string | null) =>
+      setAddPlanetData({
+        ...addPlanetData,
+        color: color || "",
+      }),
     [addPlanetData, setAddPlanetData],
   );
 
@@ -275,13 +286,13 @@ function PlanetList(args: {
 }
 
 function ColorChooser(args: {
-  color: string;
-  setColor: (color: string) => void;
+  color: string | null;
+  setColor: (color: string | null) => void;
 }) {
   const colorRef = useRef<HTMLInputElement>(null);
 
   const handleChange = () => {
-    args.setColor((colorRef.current && colorRef.current.value) || args.color);
+    args.setColor(colorRef.current?.value ?? null);
   };
   return (
     <label className="control-label">
@@ -290,7 +301,7 @@ function ColorChooser(args: {
         className="mass-input control-input"
         name="color"
         type="text"
-        value={args.color}
+        value={args.color ?? ""}
         onChange={handleChange}
         ref={colorRef}
       />
@@ -302,167 +313,136 @@ function PlanetEffectChooser(args: {
   effects: PlanetVisualEffect[];
   setEffects: (effects: PlanetVisualEffect[]) => void;
 }) {
-  const phongRef = useRef<HTMLInputElement>(null);
-  const noiseRef = useRef<HTMLInputElement>(null);
-  const stripedRef = useRef<HTMLInputElement>(null);
-  const atmoRingRef = useRef<HTMLInputElement>(null);
-  const planetRingRef = useRef<HTMLInputElement>(null);
-  const latitudeRef = useRef<HTMLInputElement>(null);
-  const cloudsRef = useRef<HTMLInputElement>(null);
+  const surfaceEffects = [
+    PlanetVisualEffect.CONTINENTS,
+    PlanetVisualEffect.STRIPED_BANDS,
+    PlanetVisualEffect.LATITUDE_COLOR,
+    PlanetVisualEffect.NOISE_TEXTURE,
+    PlanetVisualEffect.PHONG_LIGHTING,
+  ];
 
-  const handleChange = () => {
-    let newEffects: PlanetVisualEffect[] = [];
+  const currentSurfaceEffect =
+    surfaceEffects.find((effect) => args.effects.includes(effect)) ?? "";
 
-    if (phongRef.current && phongRef.current.checked) {
-      newEffects = [...newEffects, PlanetVisualEffect.PHONG_LIGHTING];
-    }
-    if (noiseRef.current && noiseRef.current.checked) {
-      newEffects = [...newEffects, PlanetVisualEffect.NOISE_TEXTURE];
-    }
+  const updateEffects = (
+    surfaceEffect: PlanetVisualEffect | "",
+    layerableEffects: PlanetVisualEffect[],
+  ) => {
+    args.setEffects(
+      surfaceEffect === ""
+        ? layerableEffects
+        : [surfaceEffect, ...layerableEffects],
+    );
+  };
 
-    if (stripedRef.current && stripedRef.current.checked) {
-      newEffects = [...newEffects, PlanetVisualEffect.STRIPED_BANDS];
-    }
+  const handleSurfaceChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedEffect = event.target.value as PlanetVisualEffect | "";
+    const layerableEffects = args.effects.filter(
+      (effect) => !surfaceEffects.includes(effect),
+    );
+    updateEffects(selectedEffect, layerableEffects);
+  };
 
-    if (atmoRingRef.current && atmoRingRef.current.checked) {
-      newEffects = [...newEffects, PlanetVisualEffect.ATMOSPHERE_RING];
-    }
+  const handleLayerableChange = (effect: PlanetVisualEffect) => {
+    const surfaceEffect = currentSurfaceEffect;
+    const layerableEffects = args.effects.filter(
+      (currentEffect) => !surfaceEffects.includes(currentEffect),
+    );
+    const nextLayerableEffects = layerableEffects.includes(effect)
+      ? layerableEffects.filter((currentEffect) => currentEffect !== effect)
+      : [...layerableEffects, effect];
 
-    if (planetRingRef.current && planetRingRef.current.checked) {
-      newEffects = [...newEffects, PlanetVisualEffect.PLANETARY_RING];
-    }
-
-    if (latitudeRef.current && latitudeRef.current.checked) {
-      newEffects = [...newEffects, PlanetVisualEffect.LATITUDE_COLOR];
-    }
-
-    if (cloudsRef.current && cloudsRef.current.checked) {
-      newEffects = [...newEffects, PlanetVisualEffect.ANIMATED_CLOUDS];
-    }
-
-    args.setEffects(newEffects);
+    updateEffects(surfaceEffect, nextLayerableEffects);
   };
 
   return (
     <>
-      <div className="control-label">Effects</div>
-      <table className="planet-effect-table">
-        <tbody>
-          <tr>
-            <td>
-              <label className="control-label">
-                Phong Lighting
-                <input
-                  className="planet-effect-checkbox"
-                  name="phong"
-                  type="checkbox"
-                  ref={phongRef}
-                  checked={args.effects.includes(
-                    PlanetVisualEffect.PHONG_LIGHTING,
-                  )}
-                  onChange={handleChange}
-                />
-              </label>
-            </td>
-            <td>
-              <label className="control-label">
-                Noise Texture
-                <input
-                  className="planet-effect-checkbox"
-                  name="noise"
-                  type="checkbox"
-                  ref={noiseRef}
-                  checked={args.effects.includes(
-                    PlanetVisualEffect.NOISE_TEXTURE,
-                  )}
-                  onChange={handleChange}
-                />
-              </label>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <label className="control-label">
-                Striped Bands
-                <input
-                  className="planet-effect-checkbox"
-                  name="striped"
-                  type="checkbox"
-                  ref={stripedRef}
-                  checked={args.effects.includes(
-                    PlanetVisualEffect.STRIPED_BANDS,
-                  )}
-                  onChange={handleChange}
-                />
-              </label>
-            </td>
-            <td>
-              <label className="control-label">
-                Atmosphere Ring
-                <input
-                  className="planet-effect-checkbox"
-                  name="atmoRing"
-                  type="checkbox"
-                  ref={atmoRingRef}
-                  checked={args.effects.includes(
-                    PlanetVisualEffect.ATMOSPHERE_RING,
-                  )}
-                  onChange={handleChange}
-                />
-              </label>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <label className="control-label">
-                Planetary Ring
-                <input
-                  className="planet-effect-checkbox"
-                  name="planetRing"
-                  type="checkbox"
-                  ref={planetRingRef}
-                  checked={args.effects.includes(
-                    PlanetVisualEffect.PLANETARY_RING,
-                  )}
-                  onChange={handleChange}
-                />
-              </label>
-            </td>
-            <td>
-              <label className="control-label">
-                Latitude Color
-                <input
-                  className="planet-effect-checkbox"
-                  name="latitude"
-                  type="checkbox"
-                  ref={latitudeRef}
-                  checked={args.effects.includes(
-                    PlanetVisualEffect.LATITUDE_COLOR,
-                  )}
-                  onChange={handleChange}
-                />
-              </label>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <label className="control-label">
-                Animated Clouds
-                <input
-                  className="planet-effect-checkbox"
-                  name="clouds"
-                  type="checkbox"
-                  ref={cloudsRef}
-                  checked={args.effects.includes(
-                    PlanetVisualEffect.ANIMATED_CLOUDS,
-                  )}
-                  onChange={handleChange}
-                />
-              </label>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div className="control-label">
+        Effects
+        <table className="planet-effect-table">
+          <tbody>
+            <tr>
+              <td colSpan={2}>
+                <label className="control-label">
+                  Surface Effect
+                  <select
+                    className="control-input planet-effect-select"
+                    value={currentSurfaceEffect}
+                    onChange={handleSurfaceChange}
+                  >
+                    <option value="">None</option>
+                    <option value={PlanetVisualEffect.CONTINENTS}>
+                      Continents
+                    </option>
+                    <option value={PlanetVisualEffect.STRIPED_BANDS}>
+                      Striped Bands
+                    </option>
+                    <option value={PlanetVisualEffect.LATITUDE_COLOR}>
+                      Latitude Color
+                    </option>
+                    <option value={PlanetVisualEffect.NOISE_TEXTURE}>
+                      Noise Texture
+                    </option>
+                    <option value={PlanetVisualEffect.PHONG_LIGHTING}>
+                      Phong Lighting
+                    </option>
+                  </select>
+                </label>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <label className="control-label">
+                  Animated Clouds
+                  <input
+                    className="planet-effect-checkbox"
+                    type="checkbox"
+                    checked={args.effects.includes(
+                      PlanetVisualEffect.ANIMATED_CLOUDS,
+                    )}
+                    onChange={() =>
+                      handleLayerableChange(PlanetVisualEffect.ANIMATED_CLOUDS)
+                    }
+                  />
+                </label>
+              </td>
+              <td>
+                <label className="control-label">
+                  Atmosphere Ring
+                  <input
+                    className="planet-effect-checkbox"
+                    type="checkbox"
+                    checked={args.effects.includes(
+                      PlanetVisualEffect.ATMOSPHERE_RING,
+                    )}
+                    onChange={() =>
+                      handleLayerableChange(PlanetVisualEffect.ATMOSPHERE_RING)
+                    }
+                  />
+                </label>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <label className="control-label">
+                  Planetary Ring
+                  <input
+                    className="planet-effect-checkbox"
+                    type="checkbox"
+                    checked={args.effects.includes(
+                      PlanetVisualEffect.PLANETARY_RING,
+                    )}
+                    onChange={() =>
+                      handleLayerableChange(PlanetVisualEffect.PLANETARY_RING)
+                    }
+                  />
+                </label>
+              </td>
+              <td>&nbsp;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

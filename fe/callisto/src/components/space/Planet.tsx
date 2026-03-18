@@ -21,6 +21,7 @@ import { useAppDispatch } from "state/hooks";
 import { setEntityToShow } from "state/uiSlice";
 
 import {
+  createContinentsMaterial,
   createNoiseTextureMaterial,
   createStripedBandsMaterial,
   createLatitudeColorMaterial,
@@ -61,6 +62,10 @@ export function Planet(args: PlanetProps) {
   const usePlanetaryRing = hasEffect(
     effectsBitmask,
     PlanetVisualEffect.PLANETARY_RING,
+  );
+  const useAnimatedClouds = hasEffect(
+    effectsBitmask,
+    PlanetVisualEffect.ANIMATED_CLOUDS,
   );
 
   function allViewChanges() {
@@ -180,6 +185,7 @@ export function Planet(args: PlanetProps) {
           color={effectColor}
           useAtmosphereRing={useAtmosphereRing}
           usePlanetaryRing={usePlanetaryRing}
+          useAnimatedClouds={useAnimatedClouds}
         />
       </>
     );
@@ -192,6 +198,7 @@ export function Planet(args: PlanetProps) {
         effectColor={effectColor}
         useAtmosphereRing={useAtmosphereRing}
         usePlanetaryRing={usePlanetaryRing}
+        useAnimatedClouds={useAnimatedClouds}
         allViewChanges={allViewChanges}
       />
     );
@@ -205,6 +212,7 @@ interface ProceduralPlanetProps {
   effectColor: THREE.Color;
   useAtmosphereRing: boolean;
   usePlanetaryRing: boolean;
+  useAnimatedClouds: boolean;
   allViewChanges: () => React.JSX.Element;
 }
 
@@ -215,6 +223,7 @@ function ProceduralPlanet({
   effectColor,
   useAtmosphereRing,
   usePlanetaryRing,
+  useAnimatedClouds,
   allViewChanges,
 }: ProceduralPlanetProps) {
   const dispatch = useAppDispatch();
@@ -227,6 +236,10 @@ function ProceduralPlanet({
     effectsBitmask,
     PlanetVisualEffect.NOISE_TEXTURE,
   );
+  const useContinents = hasEffect(
+    effectsBitmask,
+    PlanetVisualEffect.CONTINENTS,
+  );
   const useStripedBands = hasEffect(
     effectsBitmask,
     PlanetVisualEffect.STRIPED_BANDS,
@@ -235,13 +248,10 @@ function ProceduralPlanet({
     effectsBitmask,
     PlanetVisualEffect.LATITUDE_COLOR,
   );
-  const useAnimatedClouds = hasEffect(
-    effectsBitmask,
-    PlanetVisualEffect.ANIMATED_CLOUDS,
-  );
-
   const material = useMemo(() => {
-    if (useAnimatedClouds) return createAnimatedCloudsMaterial(effectColor);
+    if (useContinents) {
+      return createContinentsMaterial(planet.name, effectColor);
+    }
     if (useStripedBands) return createStripedBandsMaterial(effectColor);
     if (useLatitudeColor) return createLatitudeColorMaterial(effectColor);
     if (useNoiseTexture) return createNoiseTextureMaterial(effectColor);
@@ -249,19 +259,14 @@ function ProceduralPlanet({
       return new THREE.MeshPhongMaterial({ color: effectColor });
     return new THREE.MeshBasicMaterial({ color: effectColor });
   }, [
+    planet.name,
     effectColor,
-    useAnimatedClouds,
+    useContinents,
     useStripedBands,
     useLatitudeColor,
     useNoiseTexture,
     usePhongLighting,
   ]);
-
-  useFrame(({ clock }) => {
-    if (useAnimatedClouds && material instanceof THREE.ShaderMaterial) {
-      material.uniforms.time.value = clock.getElapsedTime();
-    }
-  });
 
   return (
     <>
@@ -285,7 +290,11 @@ function ProceduralPlanet({
         onPointerOver={() => dispatch(setEntityToShow(planet))}
         onPointerLeave={() => dispatch(setEntityToShow(null))}
       >
-        <icosahedronGeometry args={[radiusUnits, 15]} />
+        {useContinents ? (
+          <sphereGeometry args={[radiusUnits, 64, 32]} />
+        ) : (
+          <icosahedronGeometry args={[radiusUnits, 15]} />
+        )}
         <primitive object={material} attach="material" />
       </mesh>
       <PlanetEffectOverlays
@@ -294,6 +303,7 @@ function ProceduralPlanet({
         color={effectColor}
         useAtmosphereRing={useAtmosphereRing}
         usePlanetaryRing={usePlanetaryRing}
+        useAnimatedClouds={useAnimatedClouds}
       />
     </>
   );
@@ -305,6 +315,7 @@ interface PlanetEffectOverlaysProps {
   color: THREE.Color;
   useAtmosphereRing: boolean;
   usePlanetaryRing: boolean;
+  useAnimatedClouds: boolean;
 }
 
 function PlanetEffectOverlays({
@@ -313,6 +324,7 @@ function PlanetEffectOverlays({
   color,
   useAtmosphereRing,
   usePlanetaryRing,
+  useAnimatedClouds,
 }: PlanetEffectOverlaysProps) {
   const ringInnerRadius = radiusUnits * 1.35;
   const ringOuterRadius = radiusUnits * 2.2;
@@ -320,6 +332,13 @@ function PlanetEffectOverlays({
     () => createPlanetaryRingMaterial(color, ringInnerRadius, ringOuterRadius),
     [color, ringInnerRadius, ringOuterRadius],
   );
+  const cloudMaterial = useMemo(() => createAnimatedCloudsMaterial(color), [color]);
+
+  useFrame(({ clock }) => {
+    if (useAnimatedClouds) {
+      cloudMaterial.uniforms.time.value = clock.getElapsedTime();
+    }
+  });
 
   return (
     <>
@@ -337,6 +356,11 @@ function PlanetEffectOverlays({
       {usePlanetaryRing && (
         <mesh position={pos} rotation={[Math.PI / 3.5, 0, 0.25]} material={ringMaterial}>
           <ringGeometry args={[ringInnerRadius, ringOuterRadius, 96]} />
+        </mesh>
+      )}
+      {useAnimatedClouds && (
+        <mesh position={pos} material={cloudMaterial} renderOrder={2}>
+          <sphereGeometry args={[radiusUnits * 1.032, 48, 24]} />
         </mesh>
       )}
     </>

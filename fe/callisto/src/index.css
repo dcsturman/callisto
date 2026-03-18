@@ -686,19 +686,22 @@ input {
 .planet-effect-checkbox {
     width: 20px;
     height: 20px;
+    margin-right: 8px;
     accent-color: whitesmoke;
 }
 
 .planet-effect-table {
     width: 100%;
+    max-width: 100%;
     border-collapse: collapse;
     margin-top: 8px;
+    box-sizing: border-box;
 }
 
 .planet-effect-table td {
-    padding: 8px;
+    padding: 0;
     text-align: left;
-    border: 0px;
+    overflow: visible;
 }
 
 .planet-effect-table label {
@@ -708,4 +711,11 @@ input {
     gap: 8px;
     cursor: pointer;
     font-size: 10pt;
+    padding: 4px 0;
+    width: 100%;
+}
+
+.planet-effect-select {
+    width: 100%;
+    min-width: 180px;
 }

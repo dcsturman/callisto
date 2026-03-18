@@ -6,6 +6,7 @@ export type Acceleration = [[number, number, number], number];
 export enum PlanetVisualEffect {
   PHONG_LIGHTING = "PhongLighting",
   NOISE_TEXTURE = "NoiseTexture",
+  CONTINENTS = "Continents",
   STRIPED_BANDS = "StripedBands",
   ATMOSPHERE_RING = "AtmosphereRing",
   PLANETARY_RING = "PlanetaryRing",
@@ -18,11 +19,12 @@ export function effectToBit(effect: PlanetVisualEffect): number {
   const bitMap: Record<PlanetVisualEffect, number> = {
     [PlanetVisualEffect.PHONG_LIGHTING]: 1 << 0,
     [PlanetVisualEffect.NOISE_TEXTURE]: 1 << 1,
-    [PlanetVisualEffect.STRIPED_BANDS]: 1 << 2,
-    [PlanetVisualEffect.ATMOSPHERE_RING]: 1 << 3,
-    [PlanetVisualEffect.PLANETARY_RING]: 1 << 4,
-    [PlanetVisualEffect.LATITUDE_COLOR]: 1 << 5,
-    [PlanetVisualEffect.ANIMATED_CLOUDS]: 1 << 6,
+    [PlanetVisualEffect.CONTINENTS]: 1 << 2,
+    [PlanetVisualEffect.STRIPED_BANDS]: 1 << 3,
+    [PlanetVisualEffect.ATMOSPHERE_RING]: 1 << 4,
+    [PlanetVisualEffect.PLANETARY_RING]: 1 << 5,
+    [PlanetVisualEffect.LATITUDE_COLOR]: 1 << 6,
+    [PlanetVisualEffect.ANIMATED_CLOUDS]: 1 << 7,
   };
   return bitMap[effect];
 }

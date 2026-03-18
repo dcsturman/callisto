@@ -18,6 +18,7 @@ const G_CONST: f64 = 6.673e-11;
 pub enum PlanetVisualEffect {
   PhongLighting,
   NoiseTexture,
+  Continents,
   StripedBands,
   AtmosphereRing,
   PlanetaryRing,
@@ -31,11 +32,12 @@ impl PlanetVisualEffect {
     match self {
       PlanetVisualEffect::PhongLighting => 1 << 0,
       PlanetVisualEffect::NoiseTexture => 1 << 1,
-      PlanetVisualEffect::StripedBands => 1 << 2,
-      PlanetVisualEffect::AtmosphereRing => 1 << 3,
-      PlanetVisualEffect::PlanetaryRing => 1 << 4,
-      PlanetVisualEffect::LatitudeColor => 1 << 5,
-      PlanetVisualEffect::AnimatedClouds => 1 << 6,
+      PlanetVisualEffect::Continents => 1 << 2,
+      PlanetVisualEffect::StripedBands => 1 << 3,
+      PlanetVisualEffect::AtmosphereRing => 1 << 4,
+      PlanetVisualEffect::PlanetaryRing => 1 << 5,
+      PlanetVisualEffect::LatitudeColor => 1 << 6,
+      PlanetVisualEffect::AnimatedClouds => 1 << 7,
     }
   }
 }
@@ -401,6 +403,28 @@ mod tests {
     assert_eq!(
       planet.visual_effects,
       vec![PlanetVisualEffect::PlanetaryRing, PlanetVisualEffect::AnimatedClouds]
+    );
+  }
+
+  #[test_log::test]
+  fn test_planet_visual_effects_deserialize_continents() {
+    let json = r#"
+      {
+        "name": "Terra",
+        "position": [0.0, 0.0, 0.0],
+        "velocity": [0.0, 0.0, 0.0],
+        "color": "navy",
+        "radius": 6100000.0,
+        "mass": 4.5e24,
+        "visual_effects": ["Continents", "AtmosphereRing"]
+      }
+    "#;
+
+    let planet: Planet = serde_json::from_str(json).unwrap();
+
+    assert_eq!(
+      planet.visual_effects,
+      vec![PlanetVisualEffect::Continents, PlanetVisualEffect::AtmosphereRing]
     );
   }
 }

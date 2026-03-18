@@ -163,7 +163,7 @@ export function Controls() {
           <hr />
         </>
       )}
-      {isScenarioBuilder && (
+      {true && (
         <>
           <AddPlanet />
           <hr />
