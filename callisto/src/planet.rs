@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use cgmath::{ElementWise, InnerSpace, Zero};
 use derivative::Derivative;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
 use crate::debug;
@@ -12,6 +12,24 @@ use crate::payloads::Vec3asVec;
 // This is the Gravitational Constant, not the acceleration due to gravity which is defined as G and used
 // more widely in this codebase.  So intentionally not "pub"
 const G_CONST: f64 = 6.673e-11;
+
+/// Deserialize f64 from either a number or a string (including scientific notation)
+fn deserialize_f64_flexible<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum F64OrString {
+    Number(f64),
+    String(String),
+  }
+
+  match F64OrString::deserialize(deserializer)? {
+    F64OrString::Number(n) => Ok(n),
+    F64OrString::String(s) => s.parse::<f64>().map_err(serde::de::Error::custom),
+  }
+}
 
 // Visual effects enum for planet rendering
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -62,6 +80,7 @@ pub struct Planet {
   // Any valid color string OR a string starting with "!" then referring to a special template
   pub color: String,
   pub radius: f64,
+  #[serde(deserialize_with = "deserialize_f64_flexible")]
   pub mass: f64,
   #[serde(default)]
   pub primary: Option<String>,

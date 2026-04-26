@@ -277,6 +277,29 @@ async fn test_add_planet_ship() {
 }
 
 /*
+ * Test that planet mass can be deserialized from both JSON numbers and scientific notation strings
+ */
+#[test]
+fn test_planet_mass_deserialize_scientific_notation() {
+  // Test deserializing mass as a string in scientific notation
+  let json_str = r#"{"name":"Earth","position":[0,0,0],"velocity":[0,0,0],"color":"blue","radius":6371000,"mass":"5.972e24","visual_effects":[]}"#;
+  let result: Result<crate::planet::Planet, _> = serde_json::from_str(json_str);
+  assert!(result.is_ok(), "Failed to deserialize mass in scientific notation string");
+  let planet = result.unwrap();
+  assert_eq!(planet.mass, 5.972e24);
+}
+
+#[test]
+fn test_planet_mass_deserialize_number() {
+  // Test deserializing mass as a JSON number
+  let json_str = r#"{"name":"Earth","position":[0,0,0],"velocity":[0,0,0],"color":"blue","radius":6371000,"mass":5.972e24,"visual_effects":[]}"#;
+  let result: Result<crate::planet::Planet, _> = serde_json::from_str(json_str);
+  assert!(result.is_ok(), "Failed to deserialize mass as JSON number");
+  let planet = result.unwrap();
+  assert_eq!(planet.mass, 5.972e24);
+}
+
+/*
  * Test that creates a ship and then updates its position.
  */
 #[test(tokio::test)]

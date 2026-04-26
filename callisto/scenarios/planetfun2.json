@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "name": "Fun with a planet II",
+    "owner": "noone@gmail.com",
+    "description": "For testing. No one should be able to edit this!"
+  },
+  "planets": [
+    {
+      "name": "Fun",
+      "position": [0, 0, 0],
+      "velocity": [0, 0, 0],
+      "color": "#ADD8a6",
+      "visual_effects": [
+        "PlanetaryRing",
+        "AtmosphereRing",
+        "AnimatedClouds",
+        "NoiseTexture"
+      ],
+      "radius": 5.5e6,
+      "mass": 3.557e24
+    }
+  ]
+}

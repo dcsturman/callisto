@@ -10,7 +10,7 @@ use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
 use super::ship::{ShipDesignTemplate, ShipSystem};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -18,6 +18,24 @@ use std::fmt::Display;
 use super::entity::Vec3;
 use super::ship::FlightPlan;
 use strum_macros::IntoStaticStr;
+
+/// Deserialize f64 from either a number or a string (including scientific notation)
+fn deserialize_f64_flexible<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum F64OrString {
+    Number(f64),
+    String(String),
+  }
+
+  match F64OrString::deserialize(deserializer)? {
+    F64OrString::Number(n) => Ok(n),
+    F64OrString::String(s) => s.parse::<f64>().map_err(serde::de::Error::custom),
+  }
+}
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize)]
@@ -89,7 +107,9 @@ pub struct AddPlanetMsg {
   pub position: Vec3,
   pub color: String,
   pub primary: Option<String>,
+  #[serde(deserialize_with = "deserialize_f64_flexible")]
   pub radius: f64,
+  #[serde(deserialize_with = "deserialize_f64_flexible")]
   pub mass: f64,
   #[serde(default)]
   pub visual_effects: Vec<PlanetVisualEffect>,
@@ -253,6 +273,22 @@ pub struct CreateScenarioMsg {
   pub scenario: String,
 }
 
+/// Save the player's current scenario to the configured scenario directory
+/// (local FS or `gs://...`). `name` is the on-disk filename (basename; server
+/// appends `.json` if missing) and is what existence/ownership checks key off.
+/// `display_name` is the human-readable label that lands in the file's
+/// `metadata.name`. Server-side handler validates the filename, checks
+/// ownership of any existing scenario at that path, and refuses to clobber
+/// without `force_overwrite`. See `Error("SCENARIO_EXISTS")` and
+/// `Error("NOT_OWNER:<email>")` for the discriminable failure responses.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SaveScenarioMsg {
+  pub name: String,
+  pub display_name: String,
+  pub description: String,
+  pub force_overwrite: bool,
+}
+
 /*
  * Vec3asVec exists to allow us to serialize and deserialize Vec3 consistently with Javascript.  That is, as a \[f64;3\] rather than as a struct
  * with named elements x, y, and z.  i.e. [0.0, 0.0, 0.0] instead of [x: 0.0, y:0.0, z:0.0]
@@ -285,6 +321,7 @@ pub enum RequestMsg {
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),
+  SaveScenario(SaveScenarioMsg),
   EntitiesRequest,
   DesignTemplateRequest,
   Exit,
@@ -307,6 +344,7 @@ pub enum ResponseMsg {
   EngineerActionResult(EngineerActionResult),
   Scenarios(ScenariosMsg),
   JoinedScenario(String),
+  ScenarioSaved(String),
   SimpleMsg(String),
   // LogoutResponse is a faux message never sent back.  However,
   // it allows us to signal between the message handling layer and the connection
@@ -405,6 +443,16 @@ mod tests {
 
     let json_str = serde_json::to_string(&msg).unwrap();
     assert_eq!(json_str, json.to_string());
+  }
+
+  #[test]
+  fn test_add_planet_msg_deserialize_scientific_notation() {
+    // Test deserializing AddPlanetMsg with mass as a string in scientific notation
+    let json_str = r#"{"name":"planet1","position":[0.0,0.0,0.0],"color":"blue","primary":null,"radius":6.371e6,"mass":"5.972e24","visual_effects":[]}"#;
+    let result: Result<AddPlanetMsg, _> = serde_json::from_str(json_str);
+    assert!(result.is_ok(), "Failed to deserialize AddPlanetMsg with mass in scientific notation string");
+    let msg = result.unwrap();
+    assert_eq!(msg.mass, 5.972e24);
   }
 
   #[test_log::test]

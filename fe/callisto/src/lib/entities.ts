@@ -336,6 +336,9 @@ export interface EntityList {
   planets: Planet[];
   missiles: Missile[];
   metadata: MetaData;
+  // Basename of the scenario file this list was loaded from (e.g.
+  // "planetfun.json"). Empty for from-scratch builder sessions.
+  filename: string;
 }
 
 export const defaultEntityList = () => {
@@ -344,6 +347,7 @@ export const defaultEntityList = () => {
     planets: [],
     missiles: [],
     metadata: createMetaData("", ""),
+    filename: "",
   };
 };
 

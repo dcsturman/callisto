@@ -22,11 +22,12 @@ use dyn_clone::clone_box;
 
 use crate::authentication::Authenticator;
 
-use crate::get_scenarios_snapshot;
-use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, ScenariosMsg};
+use crate::entity::MetaData;
+use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenariosMsg};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
-use crate::LOGOUT;
+use crate::{get_scenarios_snapshot, read_local_or_cloud_file, replace_scenarios, write_local_or_cloud_file};
+use crate::{LOG_FILE_USE, LOGOUT};
 
 #[cfg(feature = "no_tls_upgrade")]
 type SubStream = TcpStream;
@@ -687,6 +688,7 @@ impl Processor {
           ResponseMsg::Users(self.members.get_user_context(server.get_id())),
         ]
       }
+      RequestMsg::SaveScenario(save_msg) => self.handle_save_scenario(player, save_msg).await,
       RequestMsg::Quit => {
         if !player.in_test_mode() {
           warn!("Receiving a quit request in non-test mode.  Ignoring.");
@@ -765,6 +767,121 @@ impl Processor {
     } else {
       vec![]
     }
+  }
+
+  /// Persist the player's currently-loaded scenario to the configured scenario
+  /// directory (local FS or `gs://...`). Performs name sanitization, ownership
+  /// enforcement, and force-overwrite handshake. On success, refreshes the
+  /// global scenarios snapshot and broadcasts an updated `Scenarios` message.
+  async fn handle_save_scenario(&self, player: &PlayerManager, save_msg: SaveScenarioMsg) -> Vec<ResponseMsg> {
+    // Local helper — only used to read the owner out of an existing scenario file
+    // without needing the ship-template context that full Entities deserialization
+    // requires. Declared up front so it doesn't sit between statements.
+    #[derive(serde::Deserialize)]
+    struct ExistingMeta {
+      #[serde(default)]
+      metadata: MetaData,
+    }
+
+    let Some(user_email) = player.get_email() else {
+      return vec![ResponseMsg::Error("Must be authenticated to save a scenario.".to_string())];
+    };
+    let Some(server) = player.server.clone() else {
+      return vec![ResponseMsg::Error("Not in a scenario; nothing to save.".to_string())];
+    };
+
+    // Sanitize the requested name. Reject anything that could escape the scenario
+    // directory or hit a hidden/reserved file. Auto-append `.json` when missing
+    // so the picker (which loads `*.json`) sees the new entry.
+    let raw = save_msg.name.trim();
+    if raw.is_empty() {
+      return vec![ResponseMsg::Error("Scenario name cannot be empty.".to_string())];
+    }
+    if raw.contains('/') || raw.contains('\\') || raw.contains("..") || raw.starts_with('.') {
+      return vec![ResponseMsg::Error("Invalid scenario name.".to_string())];
+    }
+    let has_json_ext = std::path::Path::new(raw)
+      .extension()
+      .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
+    let file_name = if has_json_ext { raw.to_string() } else { format!("{raw}.json") };
+    let file_stem = file_name.trim_end_matches(".json").to_string();
+    let full_path = format!("{}/{}", self.scenario_dir, file_name);
+
+    if let Ok(existing_bytes) = read_local_or_cloud_file(&full_path).await {
+      if let Ok(existing) = serde_json::from_slice::<ExistingMeta>(&existing_bytes) {
+        let existing_owner = existing.metadata.owner;
+        // Empty owner = pre-ownership scenario; treat as orphaned and allow takeover.
+        if !existing_owner.is_empty() && existing_owner != user_email {
+          return vec![ResponseMsg::Error(format!("NOT_OWNER:{existing_owner}"))];
+        }
+        if !save_msg.force_overwrite {
+          return vec![ResponseMsg::Error("SCENARIO_EXISTS".to_string())];
+        }
+      }
+    }
+
+    // Stamp metadata + filename onto the live Entities, then snapshot to JSON.
+    // The dialog's "Display Name" is what lands in metadata.name; the on-disk
+    // filename is tracked separately on Entities.filename. If the user didn't
+    // provide a display name, fall back to the file stem so metadata.name
+    // is never blank (the picker renders it).
+    let display_label = if save_msg.display_name.trim().is_empty() {
+      file_stem.clone()
+    } else {
+      save_msg.display_name.clone()
+    };
+    let json = {
+      let mut entities = match server.get_unlocked_entities() {
+        Ok(e) => e,
+        Err(e) => return vec![ResponseMsg::Error(format!("Failed to lock scenario: {e}"))],
+      };
+      entities.metadata = MetaData {
+        name: display_label.clone(),
+        description: save_msg.description.clone(),
+        owner: user_email.clone(),
+      };
+      entities.filename = file_name.clone();
+      match entities.to_scenario_file_json() {
+        Ok(bytes) => bytes,
+        Err(e) => return vec![ResponseMsg::Error(format!("Failed to serialize scenario: {e}"))],
+      }
+    };
+
+    if let Err(e) = write_local_or_cloud_file(&full_path, json).await {
+      return vec![ResponseMsg::Error(format!("Failed to write scenario: {e}"))];
+    }
+
+    event!(
+      target: LOG_FILE_USE,
+      Level::INFO,
+      file_name = full_path.as_str(),
+      use = "Save scenario."
+    );
+    event!(
+      target: LOG_SCENARIO_ACTIVITY,
+      Level::INFO,
+      email = user_email.as_str(),
+      scenario = file_name.as_str(),
+      action = "save"
+    );
+
+    // Refresh the global scenarios snapshot so the picker reflects this save
+    // immediately, instead of waiting for the 5s file-watcher poll.
+    let new_metadata = server.get_unlocked_entities().map(|e| e.metadata.clone()).ok();
+    if let Some(metadata) = new_metadata {
+      let mut scenarios: Vec<(String, MetaData)> = (*get_scenarios_snapshot()).clone();
+      if let Some(idx) = scenarios.iter().position(|(n, _)| n == &file_name) {
+        scenarios[idx] = (file_name.clone(), metadata);
+      } else {
+        scenarios.push((file_name.clone(), metadata));
+      }
+      replace_scenarios(scenarios);
+    }
+
+    vec![
+      ResponseMsg::ScenarioSaved(file_name),
+      ResponseMsg::Scenarios(self.build_scenarios_msg()),
+    ]
   }
 }
 

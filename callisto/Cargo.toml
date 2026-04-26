@@ -1,6 +1,6 @@
 [package]
 name = "callisto"
-version = "0.2.5"
+version = "0.3.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -45,6 +45,7 @@ tracing = { version = "0.1.41", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
 strum = "0.27.1"
 tracing-stackdriver = "0.10.0"
+sentry = "0.47.0"
 
 [dev-dependencies]
 test-log="*"

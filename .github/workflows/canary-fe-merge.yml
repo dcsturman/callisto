@@ -17,6 +17,7 @@ on:
 env:
   BACKEND_SERVER_URL: https://backend.canary.callistoflight.com
   GOOGLE_CLIENT_ID: ${{ secrets.CANARY_GOOGLE_CLIENT_ID }}
+  SENTRY_DSN_FE: https://d45453f1a934457e87608a2cabaf9bc7@o4511288095080448.ingest.us.sentry.io/4511288499830784
 jobs:
   build_and_deploy_canary_fe:
     runs-on: ubuntu-latest
@@ -27,6 +28,9 @@ jobs:
            CI: false
            VITE_CALLISTO_BACKEND: ${{ env.BACKEND_SERVER_URL }}
            VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+           VITE_SENTRY_DSN: ${{ env.SENTRY_DSN_FE }}
+           VITE_SENTRY_ENVIRONMENT: canary
+           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         working-directory: ./fe/callisto
         run: npm ci --legacy-peer-deps && npm run build
       - uses: FirebaseExtended/action-hosting-deploy@v0

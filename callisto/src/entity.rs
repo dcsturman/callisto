@@ -66,12 +66,21 @@ pub struct Entities {
   // so we store them here so that Entities the single global-state object for a server.
   pub actions: ShipActionList,
   pub metadata: MetaData,
+
+  // Basename of the scenario file this Entities was loaded from (e.g.
+  // "planetfun.json"). Empty for scenarios created from scratch in the builder.
+  // Stored separately from MetaData because the file name is the disk identity,
+  // distinct from the human-readable display name in `metadata.name`. Not
+  // serialized into scenario files (the file knows its own name) but is sent
+  // over the WS so the client can pre-populate save dialogs.
+  pub filename: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct MetaData {
   pub name: String,
   pub description: String,
+  pub owner: String,
 }
 
 impl PartialEq for Entities {
@@ -107,6 +116,7 @@ impl Entities {
       next_missile_id: 0,
       actions: vec![],
       metadata: MetaData::default(),
+      filename: String::new(),
     }
   }
 
@@ -207,6 +217,15 @@ impl Entities {
     let mut entities: Entities =
       with_ship_templates_for_deserialization(ship_templates, || serde_json::from_slice(&scenario_contents))?;
 
+    // Stamp the basename of the scenario file we loaded from. `file_name` may
+    // be a full path ("./scenarios/sol.json" or "gs://bucket/sol.json") — we
+    // only want the basename so the save dialog defaults match the picker.
+    entities.filename = file_name
+      .rsplit('/')
+      .next()
+      .unwrap_or(file_name)
+      .to_string();
+
     entities.fixup_pointers()?;
     entities.reset_gravity_wells();
 
@@ -233,6 +252,48 @@ impl Entities {
     }
     assert!(entities.validate(), "Scenario file failed validation");
     Ok(entities)
+  }
+
+  /// Serialize this `Entities` value into the on-disk scenario JSON format.
+  ///
+  /// The wire-level [`Serialize`] impl (used by `EntityResponse` over the WebSocket)
+  /// intentionally omits `metadata` and `actions`, since neither is meaningful to a
+  /// connected client. Scenario files on disk include `metadata` and follow the
+  /// shape `{ metadata, ships, planets, missiles? }` — this helper emits exactly
+  /// that, with empty arrays elided.
+  ///
+  /// # Errors
+  /// Returns a `serde_json::Error` if any contained ship/missile/planet fails to serialize.
+  ///
+  /// # Panics
+  /// Panics if a ship/missile/planet `RwLock` is poisoned.
+  pub fn to_scenario_file_json(&self) -> Result<Vec<u8>, serde_json::Error> {
+    #[derive(Serialize)]
+    struct ScenarioFile<'a> {
+      metadata: &'a MetaData,
+      #[serde(skip_serializing_if = "Vec::is_empty")]
+      ships: Vec<crate::ship::Ship>,
+      #[serde(skip_serializing_if = "Vec::is_empty")]
+      planets: Vec<Planet>,
+      #[serde(skip_serializing_if = "Vec::is_empty")]
+      missiles: Vec<Missile>,
+    }
+
+    let mut ships: Vec<_> = self.ships.values().map(|s| s.read().unwrap().clone()).collect();
+    let mut planets: Vec<_> = self.planets.values().map(|p| p.read().unwrap().clone()).collect();
+    let mut missiles: Vec<_> = self.missiles.values().map(|m| m.read().unwrap().clone()).collect();
+    // Stable ordering matches the existing wire-level Serialize impl, so file diffs are clean.
+    ships.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    planets.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    missiles.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+
+    let payload = ScenarioFile {
+      metadata: &self.metadata,
+      ships,
+      planets,
+      missiles,
+    };
+    serde_json::to_vec_pretty(&payload)
   }
 
   /// Add a ship to the entities.
@@ -1435,7 +1496,9 @@ impl Serialize for Entities {
     S: Serializer,
   {
     #[derive(Serialize)]
-    struct Entities {
+    struct Entities<'a> {
+      metadata: &'a MetaData,
+      filename: &'a str,
       ships: Vec<Ship>,
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
@@ -1443,6 +1506,8 @@ impl Serialize for Entities {
     }
 
     let mut entities = Entities {
+      metadata: &self.metadata,
+      filename: &self.filename,
       ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
       missiles: self
         .missiles
@@ -1510,6 +1575,8 @@ impl<'de> Deserialize<'de> for Entities {
       next_missile_id: 0,
       actions: guts.actions,
       metadata: guts.metadata,
+      // Scenario files don't carry their own basename; load_from_file populates it.
+      filename: String::new(),
     })
   }
 }
@@ -1824,7 +1891,15 @@ mod tests {
     let mut entities = Entities::new();
 
     // Create some planets and see if they move.
-    entities.add_planet(String::from("Sun"), Vec3::zero(), String::from("blue"), None, 6.371e6, 6e24, vec![])?;
+    entities.add_planet(
+      String::from("Sun"),
+      Vec3::zero(),
+      String::from("blue"),
+      None,
+      6.371e6,
+      6e24,
+      vec![],
+    )?;
 
     // Update the planet a few times
     let ship_snapshot = entities.ship_deep_copy();
@@ -1954,7 +2029,7 @@ mod tests {
     let tst_str = serde_json::to_string(&tst_planet).unwrap();
     assert_eq!(
       tst_str,
-      r#"{"name":"Sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":700000000.0,"mass":100.0}"#
+      r#"{"name":"Sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":700000000.0,"mass":100.0,"visual_effects":[]}"#
     );
 
     let tst_planet_2 = Planet::new(
@@ -1975,7 +2050,7 @@ mod tests {
     let tst_str = serde_json::to_string(&tst_planet_2).unwrap();
     assert_eq!(
       tst_str,
-      r#"{"name":"planet2","position":[1000000000.0,0.0,0.0],"velocity":[0.0,0.0,2.583215051055564e-9],"color":"red","radius":4000000.0,"mass":100.0,"primary":"planet1"}"#
+      r#"{"name":"planet2","position":[1000000000.0,0.0,0.0],"velocity":[0.0,0.0,2.583215051055564e-9],"color":"red","radius":4000000.0,"mass":100.0,"primary":"planet1","visual_effects":[]}"#
     );
 
     // This is a special case of an planet.  It typically should never have a primary that is Some(...) but a primary_ptr that is None
@@ -2118,10 +2193,10 @@ mod tests {
     "missiles":[],
     "actions":[],
     "planets":[
-        {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,
+        {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,"visual_effects":[],
         "gravity_radius_1":6_375_069.342_849_095,"gravity_radius_05":9_015_709.525_726_125,"gravity_radius_025":12_750_138.685_698_19},
-        {"name":"Planet2","position":[0.0,5_000_000.0,151_250_000_000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30_000_000.0,"mass":3.00e23},
-        {"name":"Planet3","position":[106_949_900_654.465_3,8000.0,106_949_900_654.465_3],"velocity":[0.0,0.0,0.0],"color":"green","radius":4_000_000.0,"mass":1e26,
+        {"name":"Planet2","position":[0.0,5_000_000.0,151_250_000_000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30_000_000.0,"mass":3.00e23,"visual_effects":[]},
+        {"name":"Planet3","position":[106_949_900_654.465_3,8000.0,106_949_900_654.465_3],"velocity":[0.0,0.0,0.0],"color":"green","radius":4_000_000.0,"mass":1e26,"visual_effects":[],
         "gravity_radius_2":18_446_331.779_326_223,"gravity_radius_1":26_087_052.578_356_97,"gravity_radius_05":36_892_663.558_652_446,"gravity_radius_025":52_174_105.156_713_94}
      ]});
 
@@ -2181,7 +2256,7 @@ mod tests {
     ));
 
     let scenario = json!({
-      "metadata": {"name": "Snapshot test", "description": "Template snapshot test"},
+      "metadata": {"name": "Snapshot test", "description": "Template snapshot test", "owner": "test-user"},
       "ships": [{
         "name": "Snapshot Test Ship",
         "position": [0.0, 0.0, 0.0],

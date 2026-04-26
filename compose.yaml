@@ -27,6 +27,8 @@ services:
     environment:
       RUST_LOG: debug,gomez=warn
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
+      SENTRY_DSN: https://2bd6b4d950ccb59ce589533dcf1b253a@o4511288095080448.ingest.us.sentry.io/4511288117755904
+      SENTRY_ENVIRONMENT: docker-local
     expose:
       - 30000
     ports:

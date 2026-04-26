@@ -11,7 +11,7 @@ import Joyride, {
 } from "react-joyride";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
-import { setTutorialMode, increment, decrement, reset } from "state/tutorialSlice";
+import { AppMode, setAppMode, increment, decrement, reset } from "state/tutorialSlice";
 
 const steps: Step[] = [
   {
@@ -416,7 +416,9 @@ const TUTORIAL_SCENARIO = "gs://callisto-scenarios/tutorial.json";
 
 export function Tutorial() {
   const stepIndex = useAppSelector(state => state.tutorial.stepIndex);
-  const tutorialMode = useAppSelector(state => state.tutorial.tutorialMode);
+  const tutorialMode = useAppSelector(
+    state => state.tutorial.appMode === AppMode.Tutorial,
+  );
 
   const dispatch = useAppDispatch();
 
@@ -451,7 +453,7 @@ export function Tutorial() {
       }
     } else if (([STATUS.FINISHED] as Status[]).includes(status)) {
       // You need to set our running state to false, so we can restart if we click start again.
-      dispatch(setTutorialMode(false));
+      dispatch(setAppMode(AppMode.Game));
     }
   };
 

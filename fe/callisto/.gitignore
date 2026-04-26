@@ -25,3 +25,5 @@ yarn-error.log*
 /bower_components/threex.planets/
 # Ignore generated credentials from google-github-actions/auth
 gha-creds-*.json
+# Sentry Config File
+.env.sentry-build-plugin

@@ -1,7 +1,12 @@
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import svgr from 'vite-plugin-svgr';
+
+// Source-map upload is opt-in: only runs when SENTRY_AUTH_TOKEN is set (CI),
+// so plain `npm run build` locally still works without Sentry credentials.
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -17,6 +22,13 @@ export default defineConfig({
       },
       include: '**/*.svg?react',
     }),
+    ...(sentryAuthToken
+      ? [sentryVitePlugin({
+          org: "self-vt0",
+          project: "callisto-fe",
+          authToken: sentryAuthToken,
+        })]
+      : []),
   ],
   resolve: {
     alias: {
@@ -65,4 +77,3 @@ export default defineConfig({
     ],
   },
 });
-

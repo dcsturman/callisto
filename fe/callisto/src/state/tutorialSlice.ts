@@ -1,37 +1,46 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+
+export enum AppMode {
+  Game = "game",
+  Tutorial = "tutorial",
+  ScenarioBuilder = "scenario_builder",
+}
 
 export interface TutorialState {
-    tutorialMode: boolean;
-    stepIndex: number;
+  appMode: AppMode;
+  stepIndex: number;
 }
 
-const initialState: TutorialState  = {
-    tutorialMode: false,
-    stepIndex: 0,
-}
+const initialState: TutorialState = {
+  appMode: AppMode.Game,
+  stepIndex: 0,
+};
 
 export const tutorialSlice = createSlice({
-  name: 'tutorial',
+  name: "tutorial",
   initialState,
-  // The `reducers` field lets us define reducers and generate associated actions
   reducers: {
-    setTutorialMode: (state, action: PayloadAction<boolean>) => {
-        state.tutorialMode = action.payload;
-    },
-    increment: state => {
-        state.stepIndex++;
-    },
-    decrement: state => {
-        state.stepIndex--;
-    },
-    reset: state => {
+    setAppMode: (state, action: PayloadAction<AppMode>) => {
+      state.appMode = action.payload;
+      if (action.payload !== AppMode.Tutorial) {
         state.stepIndex = 0;
+      }
+    },
+    increment: (state) => {
+      state.stepIndex++;
+    },
+    decrement: (state) => {
+      state.stepIndex--;
+    },
+    reset: (state) => {
+      state.stepIndex = 0;
     },
     resetServer: () => initialState,
-  }
+  },
 });
 
 export type TutorialReducer = ReturnType<typeof tutorialSlice.reducer>;
-export const { setTutorialMode, increment, decrement, reset, resetServer } = tutorialSlice.actions;
+export const { setAppMode, increment, decrement, reset, resetServer } =
+  tutorialSlice.actions;
 
 export default tutorialSlice.reducer;

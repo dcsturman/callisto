@@ -1,5 +1,9 @@
 import * as React from "react";
-import { useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useCallback, useState } from "react";
+import {
+  SaveScenarioDialog,
+} from "components/scenarios/SaveScenarioDialog";
+import { SCENARIO_BUILDER_PREFIX } from "components/scenarios/ScenarioManager";
 import * as THREE from "three";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
@@ -16,6 +20,7 @@ import { ShipComputer } from "./ShipComputer";
 import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
+import { AppMode } from "state/tutorialSlice";
 import { store } from "state/store";
 import {
   setComputerShipName,
@@ -122,11 +127,99 @@ function moveCameraToShip(
   );
 }
 
+// Builder-mode panel: AddShip / AddPlanet plus a Save button at the bottom.
+// Split out from Controls() so the save dialog state and the various
+// joinedScenario-derived defaults only live here.
+function ScenarioBuilderControls(args: {
+  shipTemplates: Record<string, unknown>;
+  entities: {
+    metadata?: { name?: string; description?: string };
+    filename?: string;
+  };
+}) {
+  const joinedScenario = useAppSelector((state) => state.user.joinedScenario);
+  const activeScenarios = useAppSelector((state) => state.server.activeScenarios);
+  const scenarioTemplates = useAppSelector(
+    (state) => state.server.scenarioTemplates,
+  );
+  const [saveOpen, setSaveOpen] = useState(false);
+
+  // Look up the template this builder session was loaded from, if any.
+  // (filename, metadata) — both useful for prefilling the save dialog.
+  const templateLookup = useMemo(() => {
+    if (!joinedScenario) return null;
+    const active = activeScenarios.find(([id]) => id === joinedScenario);
+    if (!active || !active[1]) return null;
+    const filename = active[1];
+    const tmpl = scenarioTemplates.find(([fn]) => fn === filename);
+    if (!tmpl) return null;
+    return { filename, metadata: tmpl[1] };
+  }, [joinedScenario, activeScenarios, scenarioTemplates]);
+
+  // Filename default — entities.filename if the wire delivered it, else the
+  // template filename from the picker tables, else strip the SCENARIO- prefix
+  // off the builder session ID, else empty (user-typed-from-scratch). Always
+  // strip the .json suffix; the backend re-appends it on save and the user
+  // shouldn't have to think about the extension.
+  const defaultFilename = useMemo(() => {
+    const raw = args.entities.filename
+      || templateLookup?.filename
+      || (joinedScenario && joinedScenario.startsWith(SCENARIO_BUILDER_PREFIX)
+        ? joinedScenario.slice(SCENARIO_BUILDER_PREFIX.length)
+        : "");
+    return raw.replace(/\.json$/i, "");
+  }, [args.entities.filename, templateLookup, joinedScenario]);
+
+  // Display name and description follow the same fallback chain as filename:
+  // live entities, then template lookup, then empty. Use truthy checks so
+  // empty strings on entities don't short-circuit before the template fallback.
+  const defaultDisplayName = useMemo(() => {
+    if (args.entities.metadata?.name) return args.entities.metadata.name;
+    if (templateLookup?.metadata.name) return templateLookup.metadata.name;
+    return "";
+  }, [args.entities.metadata?.name, templateLookup]);
+
+  const defaultDescription = useMemo(() => {
+    if (args.entities.metadata?.description) return args.entities.metadata.description;
+    if (templateLookup?.metadata.description) return templateLookup.metadata.description;
+    return "";
+  }, [args.entities.metadata?.description, templateLookup]);
+
+  return (
+    <div className="controls-pane">
+      <h1>Controls</h1>
+      <hr />
+      {Object.keys(args.shipTemplates).length > 0 && (
+        <>
+          <AddShip />
+          <hr />
+        </>
+      )}
+      <AddPlanet />
+      <button
+        type="button"
+        className="control-button blue-button save-scenario-anchor"
+        onClick={() => setSaveOpen(true)}
+      >
+        Save Scenario
+      </button>
+      {saveOpen && (
+        <SaveScenarioDialog
+          initialName={defaultFilename}
+          initialDisplayName={defaultDisplayName}
+          initialDescription={defaultDescription}
+          onClose={() => setSaveOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
   const role = useAppSelector((state) => state.user.role);
   const isScenarioBuilder = useAppSelector(
-    (state) => state.user.isScenarioBuilder,
+    (state) => state.tutorial.appMode === AppMode.ScenarioBuilder,
   );
 
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
@@ -152,6 +245,10 @@ export function Controls() {
       : null;
     return [computerShip, computerShipDesign];
   }, [computerShipName, entities, shipTemplates]);
+
+  if (isScenarioBuilder) {
+    return <ScenarioBuilderControls shipTemplates={shipTemplates} entities={entities} />;
+  }
 
   return (
     <div className="controls-pane">

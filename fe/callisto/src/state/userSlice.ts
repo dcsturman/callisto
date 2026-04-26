@@ -6,7 +6,6 @@ export interface UserState {
   role: ViewMode;
   shipName: string | null;
   joinedScenario: string | null;
-  isScenarioBuilder: boolean;
 }
 
 const initialState: UserState = {
@@ -14,7 +13,6 @@ const initialState: UserState = {
   role: ViewMode.General,
   shipName: null,
   joinedScenario: null,
-  isScenarioBuilder: true,
 };
 
 export const userSlice = createSlice({
@@ -32,17 +30,9 @@ export const userSlice = createSlice({
     setJoinedScenario: (state, action: PayloadAction<string | null>) => {
       state.joinedScenario = action.payload;
     },
-    setIsScenarioBuilder: (state, action: PayloadAction<boolean>) => {
-      state.isScenarioBuilder = action.payload;
-    },
   },
 });
 
-export const {
-  setEmail,
-  setRoleShip,
-  setJoinedScenario,
-  setIsScenarioBuilder,
-} = userSlice.actions;
+export const { setEmail, setRoleShip, setJoinedScenario } = userSlice.actions;
 export type UserReducer = ReturnType<typeof userSlice.reducer>;
 export default userSlice.reducer;

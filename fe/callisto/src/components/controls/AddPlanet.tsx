@@ -34,6 +34,7 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
       ypos: "0",
       zpos: "0",
       color: "yellow" as string | null,
+      radius: 6371,
       mass: 5.972e24,
       primary: null as string | null,
       visual_effects: [] as PlanetVisualEffect[],
@@ -53,6 +54,7 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
         xpos: (current.position[0] / POSITION_SCALE).toString(),
         ypos: (current.position[1] / POSITION_SCALE).toString(),
         zpos: (current.position[2] / POSITION_SCALE).toString(),
+        radius: current.radius / 1000, // Convert from meters to km
         mass: current.mass,
         color: current.color,
         primary: current.primary,
@@ -76,6 +78,7 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
               ypos: (planet.position[1] / POSITION_SCALE).toString(),
               zpos: (planet.position[2] / POSITION_SCALE).toString(),
               mass: planet.mass,
+              radius: planet.radius,
               color: planet.color,
               primary: planet.primary,
               visual_effects: planet.visual_effects,
@@ -112,6 +115,7 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
         name: addPlanetData.name,
         position,
         mass: addPlanetData.mass,
+        radius: addPlanetData.radius * 1000, // Convert from km to meters
         velocity: [0, 0, 0],
         primary: addPlanetData.primary,
         color: color,
@@ -202,29 +206,41 @@ export const AddPlanet: React.FC<AddShipProps> = () => {
                 onChange={handleChange}
               />
             </label>
+            <label className="control-label">
+              Radius (km)
+              <input
+                className="mass-input control-input"
+                name="radius"
+                type="text"
+                value={addPlanetData.radius}
+                onChange={handleChange}
+              />
+            </label>
+          </div>
+          <div className="coordinate-input">
             <PlanetList
               planetName={addPlanetData.primary}
               setPlanetName={handlePrimaryChange}
               planetNames={planetNames}
               exclude={addPlanetData.name}
             />
+            <ColorChooser
+              color={addPlanetData.color}
+              setColor={handleColorChange}
+            />
           </div>
+          <PlanetEffectChooser
+            effects={addPlanetData.visual_effects}
+            setEffects={(effects) =>
+              setAddPlanetData({ ...addPlanetData, visual_effects: effects })
+            }
+          />
+          <input
+            className="control-input control-button blue-button"
+            type="submit"
+            value={updateOrAddLabel}
+          />
         </div>
-        <ColorChooser
-          color={addPlanetData.color}
-          setColor={handleColorChange}
-        />
-        <PlanetEffectChooser
-          effects={addPlanetData.visual_effects}
-          setEffects={(effects) =>
-            setAddPlanetData({ ...addPlanetData, visual_effects: effects })
-          }
-        />
-        <input
-          className="control-input control-button blue-button"
-          type="submit"
-          value={updateOrAddLabel}
-        />
       </form>
     </Accordion>
   );
@@ -252,36 +268,34 @@ function PlanetList(args: {
   );
 
   return (
-    <>
-      <div className="control-launch-div">
-        <label className="control-label">
-          Primary
-          <select
-            className="select-dropdown control-name-input control-input"
-            name="planet_list_choice"
-            ref={selectRef}
-            defaultValue={args.planetName || ""}
-            onChange={handlePlanetListSelectChange}
-          >
-            {[
-              <option key="null-planet-list" value="">
-                {"" as String}
-              </option>,
-            ].concat(
-              Object.values(args.planetNames)
-                .sort((a, b) => a.localeCompare(b))
-                .filter((planet) => planet !== args.exclude)
-                .map((planet) => (
-                  <option
-                    key={planet + "-planet_list"}
-                    value={planet}
-                  >{`${planet}`}</option>
-                )),
-            )}
-          </select>
-        </label>
-      </div>
-    </>
+    <div className="planet-list">
+      <label className="control-label">
+        Primary
+        <select
+          className="select-dropdown control-name-input control-input"
+          name="planet_list_choice"
+          ref={selectRef}
+          defaultValue={args.planetName || ""}
+          onChange={handlePlanetListSelectChange}
+        >
+          {[
+            <option key="null-planet-list" value="">
+              {"" as String}
+            </option>,
+          ].concat(
+            Object.values(args.planetNames)
+              .sort((a, b) => a.localeCompare(b))
+              .filter((planet) => planet !== args.exclude)
+              .map((planet) => (
+                <option
+                  key={planet + "-planet_list"}
+                  value={planet}
+                >{`${planet}`}</option>
+              )),
+          )}
+        </select>
+      </label>
+    </div>
   );
 }
 
@@ -358,7 +372,7 @@ function PlanetEffectChooser(args: {
   return (
     <>
       <div className="control-label">
-        Effects
+        Effects:
         <table className="planet-effect-table">
           <tbody>
             <tr>
