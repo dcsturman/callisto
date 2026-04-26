@@ -272,7 +272,10 @@ impl PlayerManager {
   /// Panics if the lock cannot be obtained to write the entities or if the
   /// server has not yet been initialized.
   pub fn add_planet(&self, planet: AddPlanetMsg) -> Result<String, String> {
-    info!("(PlayerManager.add_planet) Received and processing add planet request. {:?}", planet);
+    info!(
+      "(PlayerManager.add_planet) Received and processing add planet request. {:?}",
+      planet
+    );
 
     // Add the planet to the server
     self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_planet(

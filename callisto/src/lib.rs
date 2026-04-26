@@ -157,9 +157,7 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
 ///
 /// # Errors
 /// Returns an error if the local file cannot be written or if the GCS upload fails.
-pub async fn write_local_or_cloud_file(
-  filename: &str, contents: Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn write_local_or_cloud_file(filename: &str, contents: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
   debug!("(write_local_or_cloud_file) Writing {} bytes to {filename}", contents.len());
   if let Some(rest) = filename.strip_prefix("gs://") {
     let mut parts = rest.splitn(2, '/');

@@ -450,7 +450,10 @@ mod tests {
     // Test deserializing AddPlanetMsg with mass as a string in scientific notation
     let json_str = r#"{"name":"planet1","position":[0.0,0.0,0.0],"color":"blue","primary":null,"radius":6.371e6,"mass":"5.972e24","visual_effects":[]}"#;
     let result: Result<AddPlanetMsg, _> = serde_json::from_str(json_str);
-    assert!(result.is_ok(), "Failed to deserialize AddPlanetMsg with mass in scientific notation string");
+    assert!(
+      result.is_ok(),
+      "Failed to deserialize AddPlanetMsg with mass in scientific notation string"
+    );
     let msg = result.unwrap();
     assert_eq!(msg.mass, 5.972e24);
   }

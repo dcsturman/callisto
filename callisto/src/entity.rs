@@ -220,11 +220,7 @@ impl Entities {
     // Stamp the basename of the scenario file we loaded from. `file_name` may
     // be a full path ("./scenarios/sol.json" or "gs://bucket/sol.json") — we
     // only want the basename so the save dialog defaults match the picker.
-    entities.filename = file_name
-      .rsplit('/')
-      .next()
-      .unwrap_or(file_name)
-      .to_string();
+    entities.filename = file_name.rsplit('/').next().unwrap_or(file_name).to_string();
 
     entities.fixup_pointers()?;
     entities.reset_gravity_wells();
@@ -340,6 +336,7 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a planet.
+  #[allow(clippy::too_many_arguments)]
   pub fn add_planet(
     &mut self, name: String, position: Vec3, color: String, primary: Option<String>, radius: f64, mass: f64,
     visual_effects: Vec<PlanetVisualEffect>,
@@ -1084,10 +1081,8 @@ impl Entities {
       match (&planet.primary, planet.primary_ptr.as_ref()) {
         (Some(_), None) => return false,
         (None, Some(_)) => return false,
-        (Some(primary), Some(primary_ptr)) => {
-          if primary_ptr.read().unwrap().get_name() != primary {
-            return false;
-          }
+        (Some(primary), Some(primary_ptr)) if primary_ptr.read().unwrap().get_name() != primary => {
+          return false;
         }
         _ => {}
       }

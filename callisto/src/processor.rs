@@ -27,7 +27,7 @@ use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, SaveScenarioMsg, Sc
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
 use crate::{get_scenarios_snapshot, read_local_or_cloud_file, replace_scenarios, write_local_or_cloud_file};
-use crate::{LOG_FILE_USE, LOGOUT};
+use crate::{LOGOUT, LOG_FILE_USE};
 
 #[cfg(feature = "no_tls_upgrade")]
 type SubStream = TcpStream;
@@ -784,7 +784,9 @@ impl Processor {
     }
 
     let Some(user_email) = player.get_email() else {
-      return vec![ResponseMsg::Error("Must be authenticated to save a scenario.".to_string())];
+      return vec![ResponseMsg::Error(
+        "Must be authenticated to save a scenario.".to_string(),
+      )];
     };
     let Some(server) = player.server.clone() else {
       return vec![ResponseMsg::Error("Not in a scenario; nothing to save.".to_string())];
@@ -803,7 +805,11 @@ impl Processor {
     let has_json_ext = std::path::Path::new(raw)
       .extension()
       .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
-    let file_name = if has_json_ext { raw.to_string() } else { format!("{raw}.json") };
+    let file_name = if has_json_ext {
+      raw.to_string()
+    } else {
+      format!("{raw}.json")
+    };
     let file_stem = file_name.trim_end_matches(".json").to_string();
     let full_path = format!("{}/{}", self.scenario_dir, file_name);
 
@@ -840,7 +846,7 @@ impl Processor {
         description: save_msg.description.clone(),
         owner: user_email.clone(),
       };
-      entities.filename = file_name.clone();
+      entities.filename.clone_from(&file_name);
       match entities.to_scenario_file_json() {
         Ok(bytes) => bytes,
         Err(e) => return vec![ResponseMsg::Error(format!("Failed to serialize scenario: {e}"))],

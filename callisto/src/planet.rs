@@ -46,6 +46,7 @@ pub enum PlanetVisualEffect {
 
 impl PlanetVisualEffect {
   /// Convert effect to its bit flag value
+  #[must_use]
   pub fn to_bit(&self) -> u32 {
     match self {
       PlanetVisualEffect::PhongLighting => 1 << 0,
@@ -61,8 +62,9 @@ impl PlanetVisualEffect {
 }
 
 /// Convert a set of effects to a bitmask
+#[must_use]
 pub fn effects_to_bitmask(effects: &[PlanetVisualEffect]) -> u32 {
-  effects.iter().map(|e| e.to_bit()).fold(0, |acc, bit| acc | bit)
+  effects.iter().map(PlanetVisualEffect::to_bit).fold(0, |acc, bit| acc | bit)
 }
 
 #[derive(Derivative)]
@@ -174,6 +176,7 @@ impl Planet {
   }
 
   /// Get the visual effects as a bitmask for efficient checking
+  #[must_use]
   pub fn get_visual_effects_bitmask(&self) -> u32 {
     effects_to_bitmask(&self.visual_effects)
   }
