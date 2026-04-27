@@ -383,7 +383,8 @@ impl PlayerManager {
     // ships making jump attempts in the third
     // Was very explicit with types here (more than necessary) to make it easier to read and understand.
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, jump_actions, point_defense_actions): (
+    let (fire_actions, sensor_actions, jump_actions, point_defense_actions, engineer_actions): (
+      Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
@@ -393,27 +394,33 @@ impl PlayerManager {
         warn!("(update) Cannot find ship {} for actions.", ship_name);
         return None;
       }
-      let (f_actions, s_actions, j_actions, p_actions): (
+      let (f_actions, s_actions, j_actions, p_actions, e_actions): (
+        Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
       ) = multiunzip(actions.iter().map(|action| match action {
-        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None, None),
-        ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone())),
+        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => {
+          (Some(action.clone()), None, None, None, None)
+        }
+        ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone()), None),
         ShipAction::JamMissiles
         | ShipAction::BreakSensorLock { .. }
         | ShipAction::SensorLock { .. }
-        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None, None),
-        ShipAction::Jump => (None, None, Some(action.clone()), None),
-        // Engineer actions are not processed in this tuple (handled separately)
-        ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } => (None, None, None, None),
+        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None, None, None),
+        ShipAction::Jump => (None, None, Some(action.clone()), None, None),
+        // Engineer actions are deferred to end-of-turn evaluation.
+        ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } => {
+          (None, None, None, None, Some(action.clone()))
+        }
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), p_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), e_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
       ))
     }));
 
@@ -446,10 +453,16 @@ impl PlayerManager {
     }
     */
 
-    // Reset temporary bonuses (from engineer overload actions) at end of turn
+    // Reset temporary bonuses (from engineer overload actions) at end of turn.
+    // Must run BEFORE engineer_actions so the new bonuses applied this turn
+    // survive into the next turn.
     for ship in entities.ships.values() {
       ship.write().unwrap().reset_temporary_bonuses();
     }
+
+    // Evaluate queued engineer actions at end-of-turn. Effects ride the
+    // existing Effects channel.
+    effects.append(&mut entities.engineer_actions(&engineer_actions, &mut rng));
 
     entities.reset_actions();
 

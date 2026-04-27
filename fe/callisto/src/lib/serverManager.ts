@@ -29,7 +29,6 @@ import {
   Ship,
   Planet,
   MetaData,
-  EngineerActionMsg,
   EngineerActionResult,
 } from "lib/entities";
 import { ViewMode, stringToViewMode } from "lib/view";
@@ -57,12 +56,6 @@ const KEEP_ALIVE_INTERVAL = 60000;
 
 // Define the (global) websocket
 export let socket: WebSocket;
-
-// Map of ship name to callback for engineer action results
-const engineerActionCallbacks = new Map<
-  string,
-  (result: EngineerActionResult) => void
->();
 
 // Result type for saveScenario(). On success the server returns the filename
 // it wrote (with `.json` extension). On failure the raw error string is
@@ -262,14 +255,6 @@ const handleMessage = (event: MessageEvent) => {
     alert(json.Error);
   }
 
-  if ("EngineerActionResult" in json) {
-    const result = json.EngineerActionResult as EngineerActionResult;
-    const callback = engineerActionCallbacks.get(result.ship_name);
-    if (typeof callback === "function") {
-      callback(result);
-      engineerActionCallbacks.delete(result.ship_name);
-    }
-  }
 };
 
 //
@@ -509,17 +494,6 @@ export function logout() {
   socket.send(LOGOUT_REQUEST);
 }
 
-export function sendEngineerAction(
-  msg: EngineerActionMsg,
-  callback: (result: EngineerActionResult) => void,
-) {
-  engineerActionCallbacks.set(msg.ship_name, callback);
-  const payload = { EngineerAction: msg };
-  const jsonStr = JSON.stringify(payload);
-  console.log("(sendEngineerAction) Sending:", jsonStr);
-  socket.send(jsonStr);
-}
-
 //
 // Functions to handle incoming messages that are more complex than a few lines.
 //
@@ -611,8 +585,45 @@ function handleEffect(json: object[]) {
   console.groupCollapsed("Received Effects: ");
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
   console.groupEnd();
-  store.dispatch(setEvents(json as Event[]));
+
+  // Engineer-action effects ride the same Effects channel as combat / sensor
+  // effects but the existing UI expects each event to be one of the visual
+  // kinds (ShipImpact / ExhaustedMissile / ShipDestroyed / BeamHit / Message).
+  // Translate `{kind:"EngineerAction", result:{...}}` into a Message-style
+  // event so it surfaces in the existing ResultsWindow alongside everything
+  // else from the same turn.
+  const events: Event[] = (json as Array<Event | EngineerActionEffect>).map(
+    (event) => {
+      if ((event as EngineerActionEffect).kind === "EngineerAction") {
+        const result = (event as EngineerActionEffect).result;
+        return {
+          kind: "Message",
+          content: formatEngineerResult(result),
+          position: null,
+          target: null,
+          origin: null,
+        } as Event;
+      }
+      return event as Event;
+    },
+  );
+
+  store.dispatch(setEvents(events));
   store.dispatch(setShowResults(true));
+}
+
+interface EngineerActionEffect {
+  kind: "EngineerAction";
+  result: EngineerActionResult;
+}
+
+function formatEngineerResult(result: EngineerActionResult): string {
+  const outcome = result.critical_failure
+    ? "CRITICAL FAILURE"
+    : result.success
+      ? "SUCCESS"
+      : "FAILURE";
+  return `[Engineer ${outcome}] ${result.message} (Check ${result.check} vs ${result.target})`;
 }
 
 function handleUsers(json: [UserContext]) {

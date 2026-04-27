@@ -1,14 +1,14 @@
 import * as React from "react";
-import { useState, useMemo, useEffect } from "react";
+import { useMemo } from "react";
 import {
   Ship,
   ShipSystem,
-  EngineerActionResult,
-  EngineerActionMsg,
   shipSystemToString,
   stringToShipSystem,
 } from "lib/entities";
-import { sendEngineerAction } from "lib/serverManager";
+import { useAppDispatch, useAppSelector } from "state/hooks";
+import { setEngineerAction } from "state/actionsSlice";
+import { EngineerState } from "components/controls/Actions";
 
 // Map ShipSystem enum to display names (must match backend order)
 const SYSTEM_NAMES: Record<ShipSystem, string> = {
@@ -30,14 +30,13 @@ interface EngineerTasksProps {
 }
 
 export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
-  const [lastResult, setLastResult] = useState<EngineerActionResult | null>(
-    null,
+  const dispatch = useAppDispatch();
+  // Engineer action queued for end-of-turn evaluation. We display the result
+  // through the same Effects channel as combat / sensor effects, so this
+  // component no longer holds a local result state — it just queues.
+  const queuedEngineer = useAppSelector(
+    (state) => state.actions[ship.name]?.engineer ?? null,
   );
-
-  // Clear results when ship changes
-  useEffect(() => {
-    setLastResult(null);
-  }, [ship.name]);
 
   // Get list of damaged systems (excluding Hull, Armor, and Crew which cannot be repaired)
   const damagedSystems = useMemo(() => {
@@ -53,27 +52,20 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
       );
   }, [ship.crit_level]);
 
+  const queueAction = (action: EngineerState) => {
+    dispatch(setEngineerAction({ shipName: ship.name, action }));
+  };
+
   const handleOverloadDrive = () => {
-    sendEngineerAction(
-      { ship_name: ship.name, action: "OverloadDrive" },
-      setLastResult,
-    );
+    queueAction({ kind: "OverloadDrive" });
   };
 
   const handleOverloadPlant = () => {
-    sendEngineerAction(
-      { ship_name: ship.name, action: "OverloadPlant" },
-      setLastResult,
-    );
+    queueAction({ kind: "OverloadPlant" });
   };
 
   const handleRepair = (system: ShipSystem) => {
-    const msg: EngineerActionMsg = {
-      ship_name: ship.name,
-      action: { Repair: { system: shipSystemToString(system) } },
-    };
-    console.log("(handleRepair) Sending repair action:", JSON.stringify(msg));
-    sendEngineerAction(msg, setLastResult);
+    queueAction({ kind: "Repair", system: shipSystemToString(system) });
   };
 
   // Calculate repair bonus for display
@@ -88,12 +80,16 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
     return 0;
   };
 
-  // Check if engineer has already taken an action this turn
-  const hasActionTaken = ship.engineer_action_taken ?? false;
+  // An engineer action is queued (locally, in Redux). All engineer actions
+  // are mutually exclusive; queueing a new one replaces any prior selection.
+  const hasActionQueued = queuedEngineer != null;
 
-  // Check if overload is already active
+  // Check if overload bonus is currently in effect on the ship (carries over
+  // from a successful overload last turn).
   const hasOverloadDrive = (ship.temporary_maneuver ?? 0) > 0;
   const hasOverloadPlant = (ship.temporary_power_multiplier ?? 1.0) > 1.0;
+
+  const queuedTooltip = "Engineer action queued for end of turn.";
 
   return (
     <div className="engineer-tasks">
@@ -106,24 +102,16 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
           <button
             className="control-input control-button blue-button"
             onClick={handleOverloadDrive}
-            disabled={hasOverloadDrive || hasActionTaken}
-            title={
-              hasActionTaken
-                ? "Engineer has already taken an action this turn"
-                : ""
-            }
+            disabled={hasOverloadDrive || hasActionQueued}
+            title={hasActionQueued ? queuedTooltip : ""}
           >
             {hasOverloadDrive ? "Drive Overloaded" : "Overload Drive"}
           </button>
           <button
             className="control-input control-button blue-button"
             onClick={handleOverloadPlant}
-            disabled={hasOverloadPlant || hasActionTaken}
-            title={
-              hasActionTaken
-                ? "Engineer has already taken an action this turn"
-                : ""
-            }
+            disabled={hasOverloadPlant || hasActionQueued}
+            title={hasActionQueued ? queuedTooltip : ""}
           >
             {hasOverloadPlant ? "Plant Overloaded" : "Overload Plant"}
           </button>
@@ -145,12 +133,8 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
                 e.target.value = "";
               }
             }}
-            disabled={hasActionTaken}
-            title={
-              hasActionTaken
-                ? "Engineer has already taken an action this turn"
-                : ""
-            }
+            disabled={hasActionQueued}
+            title={hasActionQueued ? queuedTooltip : ""}
             defaultValue=""
           >
             <option value="">Select system to repair...</option>
@@ -166,32 +150,6 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
           </select>
         )}
       </div>
-
-      {/* Result Display - only show if result is for current ship */}
-      {lastResult && lastResult.ship_name === ship.name && (
-        <div
-          className={`engineer-result ${lastResult.success ? "success" : "failure"}`}
-          style={{
-            marginTop: "10px",
-            padding: "8px",
-            backgroundColor: lastResult.success ? "#1a3d1a" : "#3d1a1a",
-            borderRadius: "4px",
-          }}
-        >
-          <p className="plan-accel-text" style={{ margin: 0 }}>
-            {lastResult.message}
-          </p>
-          {lastResult.check !== undefined &&
-            lastResult.target !== undefined && (
-              <p
-                className="plan-accel-text"
-                style={{ margin: "4px 0 0 0", fontSize: "0.9em" }}
-              >
-                Check: {lastResult.check} vs Target: {lastResult.target}
-              </p>
-            )}
-        </div>
-      )}
     </div>
   );
 };

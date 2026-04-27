@@ -5,6 +5,7 @@ export type ActionType = {
     unfire: UnfireState;
     pointDefense: PointDefenseState;
     jump: boolean;
+    engineer: EngineerState;
   };
 };
 
@@ -51,6 +52,15 @@ export function newSensorState(action: SensorAction, target: string) {
   return {action: action, target: target};
 }
 
+// Engineer action queued for end-of-turn evaluation. Mirrors the Rust
+// ShipAction variants (`OverloadDrive` / `OverloadPlant` / `Repair { system }`).
+// `null` means "no engineer action queued for this ship."
+export type EngineerState =
+  | { kind: "OverloadDrive" }
+  | { kind: "OverloadPlant" }
+  | { kind: "Repair"; system: string }
+  | null;
+
 // Marshalling/d-marshalling utilities
 export function actionPayload(actions: ActionType) {
   return Object.entries(actions).map(([key, value]) => {
@@ -72,8 +82,29 @@ export function actionPayload(actions: ActionType) {
       fire_actions.push("Jump");
     }
 
+    if (value.engineer) {
+      const engineer_action = engineerActionPayload(value.engineer);
+      if (engineer_action) {
+        fire_actions.push(engineer_action);
+      }
+    }
+
     return [key, fire_actions];
   });
+}
+
+function engineerActionPayload(engineer: EngineerState) {
+  if (engineer === null) {
+    return undefined;
+  }
+  switch (engineer.kind) {
+    case "OverloadDrive":
+      return "OverloadDrive";
+    case "OverloadPlant":
+      return "OverloadPlant";
+    case "Repair":
+      return {Repair: {system: engineer.system}};
+  }
 }
 
 function sensorActionPayload(sensor: SensorState) {
@@ -131,6 +162,7 @@ export function payloadToAction(payload: object[]): ActionType {
       | {SensorLock: string}
       | {JamComms: string}
       | {Jump: string}
+      | {Repair: {system: string}}
     )[];
     if (!actions) {
       continue;
@@ -181,11 +213,21 @@ export function payloadToAction(payload: object[]): ActionType {
       });
     result[shipName] = {...result[shipName], pointDefense: point_defense_actions};
 
-    const sensor_action = actions.filter(
-      (action) => {
-        return !(((typeof action === "object") && Object.hasOwn(action, "FireAction")) || ((typeof action === "object") && Object.hasOwn(action, "PointDefenseAction")) || (typeof action === "string" && action === "Jump"));
+    // Identify sensor actions explicitly so we don't sweep engineer actions
+    // into the sensor slot.
+    const isSensorAction = (
+      action: string | object
+    ): boolean => {
+      if (typeof action === "string") {
+        return action === "JamMissiles";
       }
-    );
+      return (
+        Object.hasOwn(action, "BreakSensorLock") ||
+        Object.hasOwn(action, "SensorLock") ||
+        Object.hasOwn(action, "JamComms")
+      );
+    };
+    const sensor_action = actions.filter(isSensorAction);
 
     let s = DEFAULT_SENSOR_STATE;
     if (sensor_action.length === 1) {
@@ -212,6 +254,25 @@ export function payloadToAction(payload: object[]): ActionType {
     if (jump_action.length === 1) {
       result[shipName] = {...result[shipName], jump: true};
     }
+
+    // Extract engineer action if any (mutually exclusive — only one per ship).
+    let engineer: EngineerState = null;
+    for (const action of actions) {
+      if (action === "OverloadDrive") {
+        engineer = {kind: "OverloadDrive"};
+        break;
+      }
+      if (action === "OverloadPlant") {
+        engineer = {kind: "OverloadPlant"};
+        break;
+      }
+      if (typeof action === "object" && Object.hasOwn(action, "Repair")) {
+        const repair = (action as {Repair: {system: string}}).Repair;
+        engineer = {kind: "Repair", system: repair.system};
+        break;
+      }
+    }
+    result[shipName] = {...result[shipName], engineer};
   }
   return result;
 }

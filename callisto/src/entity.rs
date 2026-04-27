@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, EngineerAction, EngineerActionResult};
+use crate::payloads::{EffectMsg, EngineerActionResult};
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -1202,55 +1202,68 @@ impl Entities {
     });
   }
 
-  /// Process an engineer action for a ship.
+  /// Evaluate all queued engineer actions at end-of-turn.
+  ///
+  /// Engineer actions are deferred from when the player queues them through
+  /// `ModifyActions` to the end of the turn. This method walks the queued
+  /// list, dispatches each action's specific helper
+  /// (`process_overload_drive`, `process_overload_plant`, or `process_repair`),
+  /// flags `engineer_action_taken` on the ship, and wraps each result in an
+  /// `EffectMsg::EngineerAction` so it rides the existing `Effects` channel
+  /// out to the FE.
+  ///
+  /// Defensive behavior:
+  /// * If a ship is missing from `self.ships`, that entry is logged and skipped.
+  /// * If `engineer_action_taken` is already true (shouldn't happen because
+  ///   the per-turn reset clears it before this runs), the action is logged
+  ///   and skipped to avoid double evaluation.
+  /// * Non-engineer actions in the per-ship list are silently ignored — the
+  ///   caller is expected to filter, but we don't trust it.
   ///
   /// # Arguments
-  /// * `ship_name` - The name of the ship performing the action.
-  /// * `action` - The engineer action to perform.
-  /// * `rng` - The random number generator to use.
+  /// * `actions` - The engineer actions queued for this turn, grouped by ship.
+  /// * `rng` - The random number generator used for skill checks.
   ///
   /// # Returns
-  /// The result of the engineer action.
+  /// One `EffectMsg::EngineerAction` per evaluated action, in input order.
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  pub fn process_engineer_action(
-    &mut self, ship_name: &str, action: &EngineerAction, rng: &mut dyn RngCore,
-  ) -> EngineerActionResult {
-    if !self.ships.contains_key(ship_name) {
-      return EngineerActionResult {
-        ship_name: ship_name.to_string(),
-        action: action.clone(),
-        success: false,
-        check: 0,
-        target: 0,
-        message: format!("Ship {ship_name} not found."),
-        critical_failure: false,
-      };
-    }
+  pub fn engineer_actions(&mut self, actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let mut effects = Vec::new();
 
-    // Check if engineer has already taken an action this turn
-    {
-      let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
-      if ship.has_engineer_action_taken() {
-        return EngineerActionResult {
-          ship_name: ship_name.to_string(),
-          action: action.clone(),
-          success: false,
-          check: 0,
-          target: 0,
-          message: format!("{ship_name}'s engineer has already taken an action this turn."),
-          critical_failure: false,
-        };
+    for (ship_name, ship_actions) in actions {
+      if !self.ships.contains_key(ship_name) {
+        warn!("(engineer_actions) Cannot find ship {ship_name} for engineer action.");
+        continue;
       }
-      ship.set_engineer_action_taken(true);
+
+      for action in ship_actions {
+        // Defensive: skip if already taken (reset_temporary_bonuses should
+        // have cleared this before we ran).
+        {
+          let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
+          if ship.has_engineer_action_taken() {
+            warn!(
+              "(engineer_actions) {ship_name} already has an engineer action taken this turn; skipping {action:?}."
+            );
+            continue;
+          }
+          ship.set_engineer_action_taken(true);
+        }
+
+        let result = match action {
+          ShipAction::OverloadDrive => self.process_overload_drive(ship_name, rng),
+          ShipAction::OverloadPlant => self.process_overload_plant(ship_name, rng),
+          ShipAction::Repair { system } => self.process_repair(ship_name, *system, rng),
+          // Caller is expected to filter, but be defensive.
+          _ => continue,
+        };
+        effects.push(EffectMsg::EngineerAction { result });
+      }
     }
 
-    match action {
-      EngineerAction::OverloadDrive => self.process_overload_drive(ship_name, rng),
-      EngineerAction::OverloadPlant => self.process_overload_plant(ship_name, rng),
-      EngineerAction::Repair { system } => self.process_repair(ship_name, *system, rng),
-    }
+    effects
   }
 
   /// Process an overload drive engineer action.
@@ -1271,7 +1284,7 @@ impl Entities {
     let total = roll + skill;
     let target: u8 = 10;
 
-    let action = EngineerAction::OverloadDrive;
+    let action = ShipAction::OverloadDrive;
 
     if total >= target {
       // Success - set temporary_maneuver = 1
@@ -1329,7 +1342,7 @@ impl Entities {
     let total = roll + skill;
     let target: u8 = 10;
 
-    let action = EngineerAction::OverloadPlant;
+    let action = ShipAction::OverloadPlant;
 
     if total >= target {
       // Success - set temporary_power_multiplier = 1.1
@@ -1382,7 +1395,7 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
   fn process_repair(&mut self, ship_name: &str, system: ShipSystem, rng: &mut dyn RngCore) -> EngineerActionResult {
-    let action = EngineerAction::Repair { system };
+    let action = ShipAction::Repair { system };
 
     // Cannot repair Hull
     if system == ShipSystem::Hull {

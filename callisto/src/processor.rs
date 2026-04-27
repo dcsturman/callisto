@@ -5,8 +5,6 @@ use std::sync::{Arc, Mutex};
 use futures::channel::mpsc::{Receiver, UnboundedReceiver};
 use futures::select;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
-use rand::rngs::SmallRng;
-use rand::SeedableRng;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tokio_tungstenite::tungstenite::{
@@ -705,15 +703,6 @@ impl Processor {
         info!("Received and processing get designs request.");
         vec![ResponseMsg::DesignTemplateResponse(player.get_designs())]
       }
-      RequestMsg::EngineerAction(msg) => {
-        let mut entities = player.server.as_ref().unwrap().get_unlocked_entities().unwrap();
-        let mut rng = get_rng(player.in_test_mode());
-        let result = entities.process_engineer_action(&msg.ship_name, &msg.action, &mut rng);
-        vec![
-          ResponseMsg::EngineerActionResult(result),
-          ResponseMsg::EntityResponse(entities.clone()),
-        ]
-      }
       RequestMsg::Ping => vec![ResponseMsg::Pong],
     }
   }
@@ -915,16 +904,6 @@ fn response_with_update(server: &PlayerManager, result: Result<String, String>) 
 
 fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
   result.map_or_else(error_msg, |msg| vec![ResponseMsg::SimpleMsg(msg)])
-}
-
-fn get_rng(test_mode: bool) -> SmallRng {
-  if test_mode {
-    debug!("(processor.get_rng) Server in TEST mode for random numbers (constant seed of 0).");
-    SmallRng::seed_from_u64(0)
-  } else {
-    debug!("(processor.get_rng) Server in standard mode for random numbers.");
-    SmallRng::from_entropy()
-  }
 }
 
 async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &ResponseMsg, context: &str) {

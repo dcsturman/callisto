@@ -4,6 +4,7 @@ import {createSlice, PayloadAction} from "@reduxjs/toolkit";
 import {
   ActionType,
   SensorState,
+  EngineerState,
   PointDefenseAction,
   UnfireAction,
   FireAction,
@@ -21,6 +22,7 @@ const newShipAction = () => {
     unfire: [],
     pointDefense: [],
     jump: false,
+    engineer: null as EngineerState,
   };
 };
 
@@ -37,6 +39,11 @@ export const actionsSlice = createSlice({
     setSensorAction: (state, item: PayloadAction<{ shipName: string, action: SensorState}>) => {
       state[item.payload.shipName] ??= newShipAction();
       state[item.payload.shipName].sensor = item.payload.action;
+      updateActions(state);
+    },
+    setEngineerAction: (state, item: PayloadAction<{ shipName: string, action: EngineerState}>) => {
+      state[item.payload.shipName] ??= newShipAction();
+      state[item.payload.shipName].engineer = item.payload.action;
       updateActions(state);
     },
     fireWeapon: (
@@ -102,6 +109,7 @@ export const actionsSlice = createSlice({
 export const {
   setActions,
   setSensorAction,
+  setEngineerAction,
   fireWeapon,
   jump,
   pointDefenseWeapon,
