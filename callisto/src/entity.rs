@@ -2130,6 +2130,8 @@ mod tests {
     );
 
     let cmp = json!({
+    "metadata":{"name":"","description":"","owner":""},
+    "filename":"",
     "ships":[
         {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
