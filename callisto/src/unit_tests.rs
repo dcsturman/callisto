@@ -45,7 +45,10 @@ async fn test_simple_get() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
   let body = server.get_entities_json();
-  assert_eq!(body, r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#);
+  assert_eq!(
+    body,
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+  );
 }
 
 /**
@@ -419,7 +422,10 @@ async fn test_remove_ship() {
 
   let entities = server.get_entities_json();
 
-  assert_eq!(entities, r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#);
+  assert_eq!(
+    entities,
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+  );
 
   // Try remove with non-existent ship
   let response = server.remove(&"ship2".to_string());
