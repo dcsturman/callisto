@@ -122,7 +122,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
         className="control-input"
         value={selectedValue}
         onChange={handleEngineerChange}
-        style={{ width: "100%", minWidth: "250px" }}
+        style={{ width: "100%", boxSizing: "border-box" }}
       >
         <option value="none"></option>
         <option value="overload-drive" disabled={hasOverloadDrive}>

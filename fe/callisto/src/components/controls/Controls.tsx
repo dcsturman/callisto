@@ -449,18 +449,29 @@ export function Controls() {
         {computerShip && computerShipName && computerShipDesign && (() => {
           const a = actions[computerShipName];
           if (!a) return null;
+          // Per-role visibility. General sees everything; specialist roles see
+          // only their own action category. Pilot / Observer see nothing here.
+          const seeFire = role === ViewMode.General || role === ViewMode.Gunner;
+          const seeSensor = role === ViewMode.General || role === ViewMode.Sensors;
+          const seeEngineer = role === ViewMode.General || role === ViewMode.Engineer;
+          const fireActions = seeFire ? a.fire || [] : [];
+          const pdActions = seeFire ? a.pointDefense || [] : [];
+          const sensorAction = seeSensor
+            ? a.sensor || DEFAULT_SENSOR_STATE
+            : DEFAULT_SENSOR_STATE;
+          const engineerAction = seeEngineer ? a.engineer ?? null : null;
           const hasAny =
-            (a.fire?.length ?? 0) > 0 ||
-            (a.pointDefense?.length ?? 0) > 0 ||
-            (a.sensor && a.sensor.action !== SensorAction.None) ||
-            a.engineer != null;
+            fireActions.length > 0 ||
+            pdActions.length > 0 ||
+            sensorAction.action !== SensorAction.None ||
+            engineerAction != null;
           if (!hasAny) return null;
           return (
             <Actions
-              fireActions={a.fire || []}
-              pointDefenseActions={a.pointDefense || []}
-              sensorAction={a.sensor || DEFAULT_SENSOR_STATE}
-              engineerAction={a.engineer ?? null}
+              fireActions={fireActions}
+              pointDefenseActions={pdActions}
+              sensorAction={sensorAction}
+              engineerAction={engineerAction}
               design={computerShipDesign}
             />
           );
