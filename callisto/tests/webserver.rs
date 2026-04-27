@@ -528,7 +528,7 @@ async fn integration_add_ship() {
   );
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],
          "design":"Buccaneer",
@@ -604,7 +604,7 @@ async fn integration_add_planet_ship() {
 
   let response = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
   if let ResponseMsg::EntityResponse(entities) = response {
-    let compare = json!({"ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -671,7 +671,7 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"planets":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
       "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
       "gravity_radius_1":4_518_410.048_543_495,
@@ -743,7 +743,7 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"missiles":[],
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
     "actions":[],
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -932,7 +932,7 @@ async fn integration_update_missile() {
 
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,

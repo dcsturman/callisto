@@ -45,7 +45,7 @@ async fn test_simple_get() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
   let body = server.get_entities_json();
-  assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
+  assert_eq!(body, r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#);
 }
 
 /**
@@ -74,7 +74,7 @@ async fn test_add_ship() {
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300,
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11,
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
@@ -110,7 +110,7 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
 
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -162,7 +162,7 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
   let result = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-  let compare = json!({"planets":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
     "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
     "gravity_radius_1":4_518_410.048_543_495,
@@ -221,7 +221,7 @@ async fn test_add_planet_ship() {
   let entities = server.get_entities_json();
 
   let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
-  let compare = json!({"missiles":[],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
   "actions":[],
   "planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -358,7 +358,7 @@ async fn test_update_missile() {
 
   let entities = server.get_entities_json();
   let compare = json!(
-        {"ships":[
+        {"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
@@ -419,7 +419,7 @@ async fn test_remove_ship() {
 
   let entities = server.get_entities_json();
 
-  assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
+  assert_eq!(entities, r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#);
 
   // Try remove with non-existent ship
   let response = server.remove(&"ship2".to_string());
@@ -781,7 +781,7 @@ async fn test_big_fight() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":76,"current_armor":3,
@@ -898,7 +898,7 @@ async fn test_fight_with_crew() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":160,"current_armor":2,
