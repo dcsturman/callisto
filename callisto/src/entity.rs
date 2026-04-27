@@ -78,8 +78,15 @@ pub struct Entities {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct MetaData {
+  // All fields default to empty so legacy scenario files (e.g. ones written
+  // before `owner` existed) still deserialize. Without these defaults a single
+  // missing field drops the whole scenario from the picker — saw exactly that
+  // on canary where existing GCS scenarios predated the owner field.
+  #[serde(default)]
   pub name: String,
+  #[serde(default)]
   pub description: String,
+  #[serde(default)]
   pub owner: String,
 }
 
