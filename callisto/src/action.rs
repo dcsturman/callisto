@@ -39,6 +39,12 @@ pub enum ShipAction {
   Repair {
     system: ShipSystem,
   },
+  // Anti-actions: explicit "clear queued sensor/engineer action" intents.
+  // Sent by the client when the user cancels a queued action (chooser → none,
+  // or click-to-remove from the Actions list). Consumed in `merge`; never
+  // stored in the queue.
+  ClearSensorAction,
+  ClearEngineerAction,
 }
 
 /// Returns true if the action is an engineer action.
@@ -145,10 +151,33 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             current_actions.retain(|action| !is_engineer_action(action));
             current_actions.push(next_action.clone());
           }
+          // Anti-actions: strip the matching kind, don't push anything.
+          ShipAction::ClearSensorAction => {
+            current_actions.retain(|action| {
+              !matches!(
+                action,
+                ShipAction::JamMissiles
+                  | ShipAction::BreakSensorLock { .. }
+                  | ShipAction::SensorLock { .. }
+                  | ShipAction::JamComms { .. }
+              )
+            });
+          }
+          ShipAction::ClearEngineerAction => {
+            current_actions.retain(|action| !is_engineer_action(action));
+          }
         }
       }
     } else {
-      current.push((next_ship, next_action_list));
+      // No prior actions for this ship — anti-actions have nothing to strip,
+      // so drop them. Keep all other actions verbatim.
+      let filtered: Vec<ShipAction> = next_action_list
+        .into_iter()
+        .filter(|a| !matches!(a, ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction))
+        .collect();
+      if !filtered.is_empty() {
+        current.push((next_ship, filtered));
+      }
     }
   }
 

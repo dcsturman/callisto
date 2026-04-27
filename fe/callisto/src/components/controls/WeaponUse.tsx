@@ -2,7 +2,7 @@ import * as React from "react";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { findRangeBand } from "lib/Util";
 import { SHIP_SYSTEMS } from "lib/universal";
-import { Ship, Entity, findShip } from "lib/entities";
+import { Ship, Entity, findShip, stringToShipSystem } from "lib/entities";
 import {
   ShipDesignTemplate,
   compressedWeaponsFromTemplate,
@@ -11,7 +11,15 @@ import {
 } from "lib/shipDesignTemplates";
 import { WeaponMount } from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
-import { FireState, PointDefenseState } from "components/controls/Actions";
+import {
+  FireState,
+  PointDefenseState,
+  SensorAction,
+  SensorState,
+  EngineerState,
+  DEFAULT_SENSOR_STATE,
+} from "components/controls/Actions";
+import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
 
 // Icons for each type of weapon
 import Turret1 from "assets/icons/turret1.svg?react";
@@ -25,6 +33,8 @@ import LargeBay from "assets/icons/bay-l.svg?react";
 // Icons to show fire states.
 import RayIcon from "assets/icons/laser.svg?react";
 import MissileIcon from "assets/icons/missile.svg?react";
+import { GiBinoculars } from "react-icons/gi";
+import { FaCog } from "react-icons/fa";
 import { Tooltip } from "react-tooltip";
 import { vectorDistance } from "lib/Util";
 
@@ -35,6 +45,8 @@ import {
   fireWeapon,
   unfireWeapon,
   updateFireCalledShot,
+  setSensorAction,
+  setEngineerAction,
 } from "state/actionsSlice";
 import { entitiesSelector } from "state/serverSlice";
 
@@ -44,6 +56,19 @@ const WEAPON_COLORS: { [key: string]: string } = {
   Pulse: "blue",
   Missile: "green",
   Particle: "yellow",
+};
+
+const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
+  [SensorAction.JamMissiles]: "green",
+  [SensorAction.JamComms]: "blue",
+  [SensorAction.SensorLock]: "red",
+  [SensorAction.BreakSensorLock]: "orange",
+};
+
+const ENGINEER_ICON_COLORS: { [kind: string]: string } = {
+  OverloadDrive: "green",
+  OverloadPlant: "yellow",
+  Repair: "blue",
 };
 
 export const WeaponButton = (props: {
@@ -498,9 +523,11 @@ export const FireControl: React.FC<FireControlProps> = () => {
   );
 };
 
-export function FireActions(args: {
+export function Actions(args: {
   fireActions: FireState;
   pointDefenseActions: PointDefenseState;
+  sensorAction: SensorState;
+  engineerAction: EngineerState;
   design: ShipDesignTemplate;
 }) {
   const entities = useAppSelector(entitiesSelector);
@@ -518,46 +545,62 @@ export function FireActions(args: {
     );
   };
 
+  const onSensorRowClick = () => {
+    if (!computerShipName) return;
+    dispatch(
+      setSensorAction({
+        shipName: computerShipName,
+        action: DEFAULT_SENSOR_STATE,
+      }),
+    );
+  };
+
+  const onEngineerRowClick = () => {
+    if (!computerShipName) return;
+    dispatch(
+      setEngineerAction({ shipName: computerShipName, action: null }),
+    );
+  };
+
+  let sensorLabel: string | null = null;
+  if (args.sensorAction.action !== SensorAction.None) {
+    switch (args.sensorAction.action) {
+      case SensorAction.JamMissiles:
+        sensorLabel = "Jam Missiles";
+        break;
+      case SensorAction.SensorLock:
+        sensorLabel = "Lock on " + args.sensorAction.target;
+        break;
+      case SensorAction.BreakSensorLock:
+        sensorLabel = "Break Lock on " + args.sensorAction.target;
+        break;
+      case SensorAction.JamComms:
+        sensorLabel = "Jam " + args.sensorAction.target;
+        break;
+    }
+  }
+
+  let engineerLabel: string | null = null;
+  if (args.engineerAction != null) {
+    switch (args.engineerAction.kind) {
+      case "OverloadDrive":
+        engineerLabel = "Overload Drive";
+        break;
+      case "OverloadPlant":
+        engineerLabel = "Overload Plant";
+        break;
+      case "Repair": {
+        const sys = stringToShipSystem(args.engineerAction.system);
+        engineerLabel =
+          "Repair " + (sys != null ? SYSTEM_NAMES[sys] : args.engineerAction.system);
+        break;
+      }
+    }
+  }
+
   return (
     <div className="control-form">
-      <h2>Fire Actions</h2>
-      {args.pointDefenseActions.map((action, index) => {
-        let kind = null;
-        if (args.design.weapons[action.weapon_id].kind === "Beam") {
-          kind = "Beam";
-        } else if (args.design.weapons[action.weapon_id].kind === "Pulse") {
-          kind = "Pulse";
-        } else {
-          console.error(
-            "(FireActions) Illegal weapon kind for point defense: " +
-              args.design.weapons[action.weapon_id].kind,
-          );
-          return (
-            <div className="fire-actions-div" key={index + "bug"}>
-              This is a bug
-            </div>
-          );
-        }
-
-        return ["Beam", "Pulse"].includes(kind) ? (
-          <div className="fire-actions-div" key={index + "_fire_img"}>
-            <div onClick={() => onClick(action.weapon_id)}>
-              <p>
-                <RayIcon
-                  className="beam-type-icon"
-                  style={{
-                    fill: WEAPON_COLORS[kind],
-                  }}
-                />{" "}
-                on Point Defense
-              </p>
-            </div>
-          </div>
-        ) : (
-          <></>
-        );
-      })}
-
+      <h2>Actions</h2>
       {args.fireActions.map((action, index) => {
         let kind = null;
         if (args.design.weapons[action.weapon_id].kind === "Beam") {
@@ -615,6 +658,67 @@ export function FireActions(args: {
           </div>
         );
       })}
+
+      {args.pointDefenseActions.map((action, index) => {
+        let kind = null;
+        if (args.design.weapons[action.weapon_id].kind === "Beam") {
+          kind = "Beam";
+        } else if (args.design.weapons[action.weapon_id].kind === "Pulse") {
+          kind = "Pulse";
+        } else {
+          console.error(
+            "(Actions) Illegal weapon kind for point defense: " +
+              args.design.weapons[action.weapon_id].kind,
+          );
+          return (
+            <div className="fire-actions-div" key={index + "bug"}>
+              This is a bug
+            </div>
+          );
+        }
+
+        return ["Beam", "Pulse"].includes(kind) ? (
+          <div className="fire-actions-div" key={index + "_pd_img"}>
+            <div onClick={() => onClick(action.weapon_id)}>
+              <p>
+                <RayIcon
+                  className="beam-type-icon"
+                  style={{
+                    fill: WEAPON_COLORS[kind],
+                  }}
+                />{" "}
+                on Point Defense
+              </p>
+            </div>
+          </div>
+        ) : (
+          <></>
+        );
+      })}
+
+      {sensorLabel != null && (
+        <div className="fire-actions-div" onClick={onSensorRowClick}>
+          <p>
+            <GiBinoculars
+              className="beam-type-icon"
+              style={{ fill: SENSOR_ICON_COLORS[args.sensorAction.action] }}
+            />{" "}
+            {sensorLabel}
+          </p>
+        </div>
+      )}
+
+      {engineerLabel != null && (
+        <div className="fire-actions-div" onClick={onEngineerRowClick}>
+          <p>
+            <FaCog
+              className="beam-type-icon"
+              style={{ fill: ENGINEER_ICON_COLORS[args.engineerAction!.kind] }}
+            />{" "}
+            {engineerLabel}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -414,6 +414,9 @@ impl PlayerManager {
         ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } => {
           (None, None, None, None, Some(action.clone()))
         }
+        // Anti-actions are consumed by `merge` and should never reach the queue.
+        // If one slips through, drop it from every slice.
+        ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction => (None, None, None, None, None),
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),

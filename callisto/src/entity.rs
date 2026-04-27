@@ -831,7 +831,9 @@ impl Entities {
           | ShipAction::Jump
           | ShipAction::OverloadDrive
           | ShipAction::OverloadPlant
-          | ShipAction::Repair { .. } => {
+          | ShipAction::Repair { .. }
+          | ShipAction::ClearSensorAction
+          | ShipAction::ClearEngineerAction => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }
@@ -1188,11 +1190,15 @@ impl Entities {
           // Keep JamMissiles and PointDefense in all cases.
           ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles => true,
           // Engineer actions should be scrubbed each turn - they are one-time actions.
+          // Anti-actions are consumed by `merge` and should never reach here, but
+          // strip them defensively if they do.
           ShipAction::DeleteFireAction { .. }
           | ShipAction::Jump
           | ShipAction::OverloadDrive
           | ShipAction::OverloadPlant
-          | ShipAction::Repair { .. } => false,
+          | ShipAction::Repair { .. }
+          | ShipAction::ClearSensorAction
+          | ShipAction::ClearEngineerAction => false,
         }
       });
     });

@@ -15,7 +15,8 @@ import { nextRound } from "lib/serverManager";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
-import { FireActions, FireControl } from "./WeaponUse";
+import { Actions, FireControl } from "./WeaponUse";
+import { DEFAULT_SENSOR_STATE, SensorAction } from "components/controls/Actions";
 import { ShipComputer } from "./ShipComputer";
 import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
@@ -445,18 +446,25 @@ export function Controls() {
             )}
           </>
         )}
-        {computerShip &&
-          computerShipName &&
-          computerShipDesign &&
-          actions[computerShipName]?.fire?.length +
-            actions[computerShipName]?.pointDefense?.length >
-            0 && (
-            <FireActions
-              fireActions={actions[computerShipName].fire || []}
-              pointDefenseActions={actions[computerShipName].pointDefense || []}
+        {computerShip && computerShipName && computerShipDesign && (() => {
+          const a = actions[computerShipName];
+          if (!a) return null;
+          const hasAny =
+            (a.fire?.length ?? 0) > 0 ||
+            (a.pointDefense?.length ?? 0) > 0 ||
+            (a.sensor && a.sensor.action !== SensorAction.None) ||
+            a.engineer != null;
+          if (!hasAny) return null;
+          return (
+            <Actions
+              fireActions={a.fire || []}
+              pointDefenseActions={a.pointDefense || []}
+              sensorAction={a.sensor || DEFAULT_SENSOR_STATE}
+              engineerAction={a.engineer ?? null}
               design={computerShipDesign}
             />
-          )}
+          );
+        })()}
       </Accordion>
       <button
         className="control-input control-button blue-button button-next-round"

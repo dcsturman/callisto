@@ -6,6 +6,12 @@ export type ActionType = {
     pointDefense: PointDefenseState;
     jump: boolean;
     engineer: EngineerState;
+    // Transient anti-action flags. Set true when the user explicitly clears a
+    // queued sensor/engineer action; emitted as `ClearSensorAction` /
+    // `ClearEngineerAction` in the next ModifyActions payload so the server
+    // strips its queued action. Reset to false on any subsequent set.
+    clearSensor: boolean;
+    clearEngineer: boolean;
   };
 };
 
@@ -87,6 +93,14 @@ export function actionPayload(actions: ActionType) {
       if (engineer_action) {
         fire_actions.push(engineer_action);
       }
+    }
+
+    // Anti-actions: explicit "strip queued sensor/engineer" intents.
+    if (value.clearSensor) {
+      fire_actions.push("ClearSensorAction");
+    }
+    if (value.clearEngineer) {
+      fire_actions.push("ClearEngineerAction");
     }
 
     return [key, fire_actions];
@@ -273,6 +287,13 @@ export function payloadToAction(payload: object[]): ActionType {
       }
     }
     result[shipName] = {...result[shipName], engineer};
+
+    // Anti-action flags are transient client-only state; server never echoes them.
+    result[shipName] = {
+      ...result[shipName],
+      clearSensor: false,
+      clearEngineer: false,
+    };
   }
   return result;
 }

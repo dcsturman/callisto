@@ -4,6 +4,7 @@ import {createSlice, PayloadAction} from "@reduxjs/toolkit";
 import {
   ActionType,
   SensorState,
+  SensorAction,
   EngineerState,
   PointDefenseAction,
   UnfireAction,
@@ -23,6 +24,8 @@ const newShipAction = () => {
     pointDefense: [],
     jump: false,
     engineer: null as EngineerState,
+    clearSensor: false,
+    clearEngineer: false,
   };
 };
 
@@ -39,11 +42,19 @@ export const actionsSlice = createSlice({
     setSensorAction: (state, item: PayloadAction<{ shipName: string, action: SensorState}>) => {
       state[item.payload.shipName] ??= newShipAction();
       state[item.payload.shipName].sensor = item.payload.action;
+      // Setting None means "clear" — flag the anti-action so the server strips
+      // any sensor action it has queued for this ship. Setting any other
+      // sensor action implicitly replaces, so no clear flag needed.
+      state[item.payload.shipName].clearSensor =
+        item.payload.action.action === SensorAction.None;
       updateActions(state);
     },
     setEngineerAction: (state, item: PayloadAction<{ shipName: string, action: EngineerState}>) => {
       state[item.payload.shipName] ??= newShipAction();
       state[item.payload.shipName].engineer = item.payload.action;
+      // null means "clear" — flag the anti-action. Any other engineer action
+      // replaces on the server side via merge.
+      state[item.payload.shipName].clearEngineer = item.payload.action === null;
       updateActions(state);
     },
     fireWeapon: (
