@@ -112,7 +112,7 @@ async fn spawn_server(
   let handle = handle.spawn()?;
   let _ = pretty_env_logger::try_init();
 
-  sleep(Duration::from_millis(1000)).await;
+  sleep(Duration::from_secs(1)).await;
 
   Ok(handle)
 }

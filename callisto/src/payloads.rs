@@ -455,7 +455,10 @@ mod tests {
       "Failed to deserialize AddPlanetMsg with mass in scientific notation string"
     );
     let msg = result.unwrap();
-    assert_eq!(msg.mass, 5.972e24);
+    // Bit-equal comparison: both values flow through f64::from_str, so they
+    // must produce the same bit pattern. Using to_bits() also sidesteps
+    // clippy::float_cmp without weakening the assertion.
+    assert_eq!(msg.mass.to_bits(), 5.972e24_f64.to_bits());
   }
 
   #[test_log::test]

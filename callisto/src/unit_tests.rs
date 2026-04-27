@@ -286,7 +286,7 @@ fn test_planet_mass_deserialize_scientific_notation() {
   let result: Result<crate::planet::Planet, _> = serde_json::from_str(json_str);
   assert!(result.is_ok(), "Failed to deserialize mass in scientific notation string");
   let planet = result.unwrap();
-  assert_eq!(planet.mass, 5.972e24);
+  assert_eq!(planet.mass.to_bits(), 5.972e24_f64.to_bits());
 }
 
 #[test]
@@ -296,7 +296,7 @@ fn test_planet_mass_deserialize_number() {
   let result: Result<crate::planet::Planet, _> = serde_json::from_str(json_str);
   assert!(result.is_ok(), "Failed to deserialize mass as JSON number");
   let planet = result.unwrap();
-  assert_eq!(planet.mass, 5.972e24);
+  assert_eq!(planet.mass.to_bits(), 5.972e24_f64.to_bits());
 }
 
 /*
@@ -833,7 +833,7 @@ async fn test_fight_with_crew() {
   let server = setup_test_with_server(authenticator).await;
 
   // Ship 1 has a capable crew.
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", 
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
         "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]}}"#;
 
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
