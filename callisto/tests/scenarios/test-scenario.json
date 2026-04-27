@@ -1,7 +1,8 @@
 {
     "metadata": {
         "name": "Test Scenario",
-        "description": "A test scenario"
+        "description": "A test scenario",
+        "owner": "test-user"
     },
     "planets" : [
     {

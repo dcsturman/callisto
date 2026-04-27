@@ -45,7 +45,10 @@ async fn test_simple_get() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
   let body = server.get_entities_json();
-  assert_eq!(body, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
+  assert_eq!(
+    body,
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+  );
 }
 
 /**
@@ -74,7 +77,7 @@ async fn test_add_ship() {
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300,
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11,
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
@@ -110,7 +113,7 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
 
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -162,9 +165,9 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
   let result = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-  let compare = json!({"planets":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-    "color":"red","radius":1.5e6,"mass":3e24,
+    "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
     "gravity_radius_1":4_518_410.048_543_495,
     "gravity_radius_05":6_389_996.771_013_086,
     "gravity_radius_025": 9_036_820.097_086_99,
@@ -221,17 +224,17 @@ async fn test_add_planet_ship() {
   let entities = server.get_entities_json();
 
   let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
-  let compare = json!({"missiles":[],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
   "actions":[],
   "planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-      "color":"red","radius":1.5e6,"mass":3e24,
+      "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
       "gravity_radius_1":4_518_410.048_543_495,
       "gravity_radius_05":6_389_996.771_013_086,
       "gravity_radius_025": 9_036_820.097_086_99,
       "gravity_radius_2": 3_194_998.385_506_543},
   {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
-      "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+      "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1","visual_effects":[],
       "gravity_radius_025":1_649_890.071_763_523_2}],
   "ships":[
       {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -274,6 +277,29 @@ async fn test_add_planet_ship() {
       }]});
 
   assert_json_eq!(&start, &compare);
+}
+
+/*
+ * Test that planet mass can be deserialized from both JSON numbers and scientific notation strings
+ */
+#[test]
+fn test_planet_mass_deserialize_scientific_notation() {
+  // Test deserializing mass as a string in scientific notation
+  let json_str = r#"{"name":"Earth","position":[0,0,0],"velocity":[0,0,0],"color":"blue","radius":6371000,"mass":"5.972e24","visual_effects":[]}"#;
+  let result: Result<crate::planet::Planet, _> = serde_json::from_str(json_str);
+  assert!(result.is_ok(), "Failed to deserialize mass in scientific notation string");
+  let planet = result.unwrap();
+  assert_eq!(planet.mass.to_bits(), 5.972e24_f64.to_bits());
+}
+
+#[test]
+fn test_planet_mass_deserialize_number() {
+  // Test deserializing mass as a JSON number
+  let json_str = r#"{"name":"Earth","position":[0,0,0],"velocity":[0,0,0],"color":"blue","radius":6371000,"mass":5.972e24,"visual_effects":[]}"#;
+  let result: Result<crate::planet::Planet, _> = serde_json::from_str(json_str);
+  assert!(result.is_ok(), "Failed to deserialize mass as JSON number");
+  let planet = result.unwrap();
+  assert_eq!(planet.mass.to_bits(), 5.972e24_f64.to_bits());
 }
 
 /*
@@ -335,7 +361,7 @@ async fn test_update_missile() {
 
   let entities = server.get_entities_json();
   let compare = json!(
-        {"ships":[
+        {"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
@@ -396,7 +422,10 @@ async fn test_remove_ship() {
 
   let entities = server.get_entities_json();
 
-  assert_eq!(entities, r#"{"ships":[],"missiles":[],"planets":[],"actions":[]}"#);
+  assert_eq!(
+    entities,
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+  );
 
   // Try remove with non-existent ship
   let response = server.remove(&"ship2".to_string());
@@ -758,7 +787,7 @@ async fn test_big_fight() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":76,"current_armor":3,
@@ -810,7 +839,7 @@ async fn test_fight_with_crew() {
   let server = setup_test_with_server(authenticator).await;
 
   // Ship 1 has a capable crew.
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", 
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
         "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]}}"#;
 
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -875,7 +904,7 @@ async fn test_fight_with_crew() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":160,"current_armor":2,
@@ -1041,6 +1070,7 @@ async fn test_get_entities() {
       primary: None,
       radius: 6371e3,
       mass: 5.97e24,
+      visual_effects: vec![],
     })
     .unwrap();
 
@@ -1060,6 +1090,7 @@ async fn test_get_entities() {
   assert_eq!(planet.get_name(), planet_name);
   assert_eq!(planet.get_position(), planet_position);
   assert_eq!(planet.color, planet_color);
+  assert!(planet.visual_effects.is_empty());
 
   // Check that there are no missiles
   assert!(entities.missiles.is_empty());

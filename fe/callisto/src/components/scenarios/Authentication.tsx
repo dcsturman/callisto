@@ -77,7 +77,7 @@ export function Authentication() {
 
   return (
     <div className="authentication-container">
-      <h1 className="authentication-title">Callisto 0.2&beta;</h1>
+      <h1 className="authentication-title">Callisto 0.3&beta;</h1>
       <br />
       <br />
       <div className="authentication-blurb">

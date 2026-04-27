@@ -1,20 +1,36 @@
-import {useEffect, useState, useMemo, lazy, Suspense} from "react";
+import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import * as React from "react";
 import * as THREE from "three";
-import {Canvas, useThree} from "@react-three/fiber";
-import {FlyControls} from "./lib/FlyControls";
+import { Canvas, useThree } from "@react-three/fiber";
+import { FlyControls } from "./lib/FlyControls";
 
-import {Authentication} from "components/scenarios/Authentication";
+import { Authentication } from "components/scenarios/Authentication";
 
 // Lazy load 3D components to reduce initial bundle size
 const SpaceView = lazy(() => import("components/space/Spaceview"));
-const Ships = lazy(() => import("./components/space/Ships").then(m => ({default: m.Ships})));
-const Missiles = lazy(() => import("./components/space/Ships").then(m => ({default: m.Missiles})));
-const Route = lazy(() => import("./components/space/Ships").then(m => ({default: m.Route})));
-const Explosions = lazy(() => import("./components/space/Effects").then(m => ({default: m.Explosions})));
-const ResultsWindow = lazy(() => import("./components/space/Effects").then(m => ({default: m.ResultsWindow})));
+const Ships = lazy(() =>
+  import("./components/space/Ships").then((m) => ({ default: m.Ships })),
+);
+const Missiles = lazy(() =>
+  import("./components/space/Ships").then((m) => ({ default: m.Missiles })),
+);
+const Route = lazy(() =>
+  import("./components/space/Ships").then((m) => ({ default: m.Route })),
+);
+const Explosions = lazy(() =>
+  import("./components/space/Effects").then((m) => ({ default: m.Explosions })),
+);
+const ResultsWindow = lazy(() =>
+  import("./components/space/Effects").then((m) => ({
+    default: m.ResultsWindow,
+  })),
+);
 
-import {EntityInfoWindow, Controls, ViewControls} from "./components/controls/Controls";
+import {
+  EntityInfoWindow,
+  Controls,
+  ViewControls,
+} from "./components/controls/Controls";
 import {
   startWebsocket,
   resetServer,
@@ -22,19 +38,22 @@ import {
   setUpKeepAlive,
   socket,
 } from "lib/serverManager";
-import {Users} from "components/UserList";
+import { Users } from "components/UserList";
 
-import {ShipComputer} from "components/controls/ShipComputer";
-import {ViewMode} from "lib/view";
+import { ShipComputer } from "components/controls/ShipComputer";
+import { ViewMode } from "lib/view";
 
-import {RoleChooser} from "components/Role";
-import {ScenarioManager, TUTORIAL_PREFIX} from "components/scenarios/ScenarioManager";
-import {Tutorial} from "components/Tutorial";
+import { RoleChooser } from "components/Role";
+import {
+  ScenarioManager,
+  TUTORIAL_PREFIX,
+} from "components/scenarios/ScenarioManager";
+import { Tutorial } from "components/Tutorial";
 
-import {useAppSelector, useAppDispatch} from "state/hooks";
-import {setTutorialMode} from "state/tutorialSlice";
-import {setJoinedScenario, setRoleShip} from "state/userSlice";
-import {entitiesSelector} from "state/serverSlice";
+import { useAppSelector, useAppDispatch } from "state/hooks";
+import { AppMode, setAppMode } from "state/tutorialSlice";
+import { setJoinedScenario, setRoleShip } from "state/userSlice";
+import { entitiesSelector } from "state/serverSlice";
 
 import "./index.css";
 
@@ -58,14 +77,14 @@ export function App() {
   useEffect(() => {
     if (!authenticated) {
       dispatch(setJoinedScenario(null));
-      dispatch(setTutorialMode(false));
+      dispatch(setAppMode(AppMode.Game));
     }
   }, [authenticated, dispatch]);
 
   useEffect(() => {
     if (!joinedScenario) {
       dispatch(setRoleShip([ViewMode.General, null]));
-      dispatch(setTutorialMode(false));
+      dispatch(setAppMode(AppMode.Game));
     }
   }, [joinedScenario, dispatch]);
 
@@ -81,9 +100,7 @@ export function App() {
       ) : socketReady ? (
         <Authentication />
       ) : (
-        <div>
-          Waiting for socket to open...
-        </div>
+        <div>Waiting for socket to open...</div>
       )}
     </div>
   );
@@ -92,7 +109,9 @@ export function App() {
 function Simulator() {
   const entities = useAppSelector(entitiesSelector);
   const users = useAppSelector((state) => state.server.users);
-  const tutorialMode = useAppSelector((state) => state.tutorial.tutorialMode);
+  const appMode = useAppSelector((state) => state.tutorial.appMode);
+  const tutorialMode = appMode === AppMode.Tutorial;
+  const scenarioBuilderMode = appMode === AppMode.ScenarioBuilder;
 
   const role = useAppSelector((state) => state.user.role);
   const shipName = useAppSelector((state) => state.user.shipName);
@@ -116,7 +135,7 @@ function Simulator() {
         cameraQuaternion[0],
         cameraQuaternion[1],
         cameraQuaternion[2],
-        cameraQuaternion[3]
+        cameraQuaternion[3],
       );
     }
   }, [camera, cameraPos, cameraQuaternion]);
@@ -125,41 +144,53 @@ function Simulator() {
   // const [runTutorial, setRunTutorial] = useState<boolean>(true);
 
   const computerShip = useMemo(() => {
-    return entities.ships.find((ship) => ship.name === computerShipName) || null;
+    return (
+      entities.ships.find((ship) => ship.name === computerShipName) || null
+    );
   }, [entities.ships, computerShipName]);
 
   return (
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
-        {role !== ViewMode.Observer && <Controls />}
-        {[ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(role) && <ViewControls />}
+        {(scenarioBuilderMode || role !== ViewMode.Observer) && <Controls />}
+        {(scenarioBuilderMode ||
+          [ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(
+            role,
+          )) && <ViewControls />}
         <div className="admin-button-window">
           <h2>
             {joinedScenario &&
-              (joinedScenario.startsWith(TUTORIAL_PREFIX) ? "Tutorial" : joinedScenario)}
+              (tutorialMode
+                ? "Tutorial"
+                : scenarioBuilderMode
+                  ? `Scenario Builder`
+                  : joinedScenario)}
           </h2>
           <Users users={users} email={email} />
-          <RoleChooser />
+          {!scenarioBuilderMode && <RoleChooser />}
           <div className="reset-and-logout-buttons">
             <Exit email={email} />
             {role === ViewMode.General && shipName == null && (
               <button
                 className="blue-button"
-                onClick={() => resetServer(joinedScenario?.startsWith(TUTORIAL_PREFIX) ?? false)}>
+                onClick={() => resetServer(appMode)}
+              >
                 Reset
               </button>
             )}
           </div>
         </div>
-        {role === ViewMode.General && computerShip && <ShipComputer ship={computerShip} />}
+        {!scenarioBuilderMode && role === ViewMode.General && computerShip && (
+          <ShipComputer ship={computerShip} />
+        )}
         {showResults && (
           <Suspense fallback={null}>
             <ResultsWindow />
           </Suspense>
         )}
         <Canvas
-          style={{position: "absolute"}}
+          style={{ position: "absolute" }}
           id="main-canvas"
           className="spaceview-canvas"
           camera={{
@@ -168,9 +199,15 @@ function Simulator() {
             far: 200000,
             position: cameraPos,
             quaternion: cameraQuaternion,
-          }}>
+          }}
+        >
           {/* eslint-disable react/no-unknown-property */}
-          <pointLight position={[-148e3, 10, 10]} intensity={6.0} decay={0.01} color="#fff7cd" />
+          <pointLight
+            position={[-148e3, 10, 10]}
+            intensity={6.0}
+            decay={0.01}
+            color="#fff7cd"
+          />
           <ambientLight intensity={1.0} />
           <GrabCamera setCamera={setCamera} />
           <FlyControls
@@ -196,8 +233,8 @@ function Simulator() {
   );
 }
 
-function GrabCamera(args: {setCamera: (camera: THREE.Camera) => void}) {
-  const {camera} = useThree();
+function GrabCamera(args: { setCamera: (camera: THREE.Camera) => void }) {
+  const { camera } = useThree();
   useEffect(() => {
     args.setCamera(camera);
   }, [camera, args, args.setCamera]);
@@ -205,7 +242,7 @@ function GrabCamera(args: {setCamera: (camera: THREE.Camera) => void}) {
   return null;
 }
 
-export function Exit(args: {email: string | null}) {
+export function Exit(args: { email: string | null }) {
   const dispatch = useAppDispatch();
   const exit = () => {
     dispatch(setJoinedScenario(null));

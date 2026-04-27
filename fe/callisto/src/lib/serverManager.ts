@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { Event } from "components/space/Effects";
 import { UserList, UserContext } from "components/UserList";
 import {
@@ -5,7 +6,10 @@ import {
   actionPayload,
   payloadToAction,
 } from "components/controls/Actions";
-import { TUTORIAL_PREFIX } from "components/scenarios/ScenarioManager";
+import {
+  SCENARIO_BUILDER_PREFIX,
+  TUTORIAL_PREFIX,
+} from "components/scenarios/ScenarioManager";
 import {
   setSocketReady,
   setAuthenticated,
@@ -16,13 +20,14 @@ import {
 } from "state/serverSlice";
 import { setEvents, setProposedPlan, setShowResults } from "state/uiSlice";
 import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
-import { setTutorialMode } from "state/tutorialSlice";
+import { AppMode, setAppMode } from "state/tutorialSlice";
 import { setActions } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
 import {
   EntityList,
   Ship,
+  Planet,
   MetaData,
   EngineerActionMsg,
   EngineerActionResult,
@@ -59,6 +64,17 @@ const engineerActionCallbacks = new Map<
   (result: EngineerActionResult) => void
 >();
 
+// Result type for saveScenario(). On success the server returns the filename
+// it wrote (with `.json` extension). On failure the raw error string is
+// returned — the caller pattern-matches on "SCENARIO_EXISTS" or
+// "NOT_OWNER:<email>" prefixes to drive the confirm/error UX.
+export type SaveScenarioResult =
+  | { ok: true; filename: string }
+  | { ok: false; error: string };
+
+// At most one save can be in flight per session; the dialog is modal.
+let pendingSaveCallback: ((result: SaveScenarioResult) => void) | null = null;
+
 //
 // Functions managing the socket connection
 //
@@ -93,6 +109,16 @@ export function startWebsocket() {
     store.dispatch(setSocketReady(false));
     handleClose(event);
   };
+  socket.onerror = (event) => {
+    console.error("(ServerManager.startWebsocket.onerror) Socket error", event);
+    Sentry.captureException(new Error("WebSocket error"), {
+      tags: { component: "serverManager", phase: "websocket-error" },
+      extra: {
+        backend: CALLISTO_BACKEND,
+        readyState: socket?.readyState,
+      },
+    });
+  };
   socket.onmessage = handleMessage;
 }
 
@@ -120,11 +146,31 @@ const handleClose = (event: CloseEvent) => {
     console.log(msg);
   } else {
     console.error(msg);
+    Sentry.captureMessage("WebSocket closed abnormally", {
+      level: "error",
+      tags: { component: "serverManager", phase: "websocket-close" },
+      extra: {
+        backend: CALLISTO_BACKEND,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+      },
+    });
   }
 };
 
 const handleMessage = (event: MessageEvent) => {
-  const json = JSON.parse(event.data);
+  let json;
+  try {
+    json = JSON.parse(event.data);
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { component: "serverManager", phase: "websocket-parse" },
+      extra: { rawData: typeof event.data === "string" ? event.data.slice(0, 500) : "(non-string)" },
+    });
+    console.error("(ServerManager.handleMessage) Failed to parse:", event.data);
+    return;
+  }
 
   // Because these first two aren't an object (just a string)  check for it differently.
   // Response to keepalive message
@@ -195,7 +241,23 @@ const handleMessage = (event: MessageEvent) => {
     return;
   }
 
+  if ("ScenarioSaved" in json) {
+    const cb = pendingSaveCallback;
+    pendingSaveCallback = null;
+    if (cb) cb({ ok: true, filename: json.ScenarioSaved });
+    return;
+  }
+
   if ("Error" in json) {
+    // If a save is in flight, route the error through its callback so the
+    // dialog can handle SCENARIO_EXISTS / NOT_OWNER specifically. Otherwise
+    // fall back to the legacy alert.
+    if (pendingSaveCallback) {
+      const cb = pendingSaveCallback;
+      pendingSaveCallback = null;
+      cb({ ok: false, error: json.Error });
+      return;
+    }
     console.error("Received Error: " + json.Error);
     alert(json.Error);
   }
@@ -226,6 +288,32 @@ export function addShip(ship: Ship) {
       velocity: ship.velocity,
       design: ship.design,
       crew: ship.crew,
+    },
+  };
+
+  socket.send(JSON.stringify(payload));
+}
+
+interface AddPlanetMsg {
+  name: string;
+  position: [number, number, number];
+  color: string;
+  primary: string | null;
+  radius: number;
+  mass: number;
+  visual_effects: Planet["visual_effects"];
+}
+
+export function addPlanet(planet: Planet) {
+  const payload: { AddPlanet: AddPlanetMsg } = {
+    AddPlanet: {
+      name: planet.name,
+      position: planet.position,
+      color: planet.color,
+      primary: planet.primary,
+      radius: planet.radius,
+      mass: planet.mass,
+      visual_effects: planet.visual_effects,
     },
   };
 
@@ -366,6 +454,37 @@ export function createScenario(name: string, scenario: string) {
   socket.send(JSON.stringify(payload));
 }
 
+// Save the current scenario to disk / GCS. The callback fires when the server
+// responds with ScenarioSaved or Error. Pass force_overwrite=true to confirm
+// after a SCENARIO_EXISTS rejection.
+//
+// `name` is the on-disk filename (the server appends `.json` if missing).
+// `displayName` lands in the file's `metadata.name` and is what the picker
+// renders. They're separate concerns: a `planetfun.json` file can hold a
+// "Fun with a planet" display name.
+export function saveScenario(
+  name: string,
+  displayName: string,
+  description: string,
+  forceOverwrite: boolean,
+  callback: (result: SaveScenarioResult) => void,
+) {
+  if (pendingSaveCallback) {
+    callback({ ok: false, error: "A save is already in progress." });
+    return;
+  }
+  pendingSaveCallback = callback;
+  const payload = {
+    SaveScenario: {
+      name,
+      display_name: displayName,
+      description,
+      force_overwrite: forceOverwrite,
+    },
+  };
+  socket.send(JSON.stringify(payload));
+}
+
 export function getEntities() {
   socket.send(ENTITIES_REQUEST);
 }
@@ -374,10 +493,10 @@ export function getTemplates() {
   socket.send(DESIGN_TEMPLATE_REQUEST);
 }
 
-export function resetServer(tutorial: boolean) {
+export function resetServer(appMode: AppMode) {
   if (window.confirm("Are you sure you want to reset the server?")) {
     store.dispatch(resetServerState());
-    store.dispatch(setTutorialMode(tutorial));
+    store.dispatch(setAppMode(appMode));
     socket.send(RESET_REQUEST);
   }
 }
@@ -520,10 +639,23 @@ function handleJoinedScenario(json: { JoinedScenario: string }) {
   const scenario = json["JoinedScenario"] as string;
   if (scenario) {
     store.dispatch(setJoinedScenario(scenario));
-    // check if 'scenario' starts with TUTORIAL_PREFIX
-    if (scenario.startsWith(TUTORIAL_PREFIX)) {
-      store.dispatch(setTutorialMode(true));
-    }
+    syncAppModeForScenario(scenario);
+  }
+}
+
+function syncAppModeForScenario(scenario: string) {
+  if (scenario.startsWith(TUTORIAL_PREFIX)) {
+    store.dispatch(setAppMode(AppMode.Tutorial));
+    return;
+  }
+
+  if (scenario.startsWith(SCENARIO_BUILDER_PREFIX)) {
+    store.dispatch(setAppMode(AppMode.ScenarioBuilder));
+    return;
+  }
+
+  if (store.getState().tutorial.appMode !== AppMode.ScenarioBuilder) {
+    store.dispatch(setAppMode(AppMode.Game));
   }
 }
 
@@ -541,9 +673,7 @@ function handleAuthenticated(json: {
     store.dispatch(setAuthenticated(true));
     if (json.scenario != null) {
       store.dispatch(setJoinedScenario(json.scenario));
-      if (json.scenario.startsWith(TUTORIAL_PREFIX)) {
-        store.dispatch(setTutorialMode(true));
-      }
+      syncAppModeForScenario(json.scenario);
     }
     if (json.role != null) {
       store.dispatch(
