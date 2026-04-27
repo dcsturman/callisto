@@ -62,4 +62,6 @@ jobs:
       - name: "Deploy to Canary Cloud Run"
         run:
           gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }} --timeout=${{ env.TIMEOUT }}
-            --update-secrets=/secrets/google_credentials=google_credentials:latest --args=${{ env.APP_ARGS }},${{ env.GENERAL_ARGS }}
+            --update-secrets=/secrets/google_credentials=google_credentials:latest
+            --update-env-vars=SENTRY_DSN=https://2bd6b4d950ccb59ce589533dcf1b253a@o4511288095080448.ingest.us.sentry.io/4511288117755904,SENTRY_ENVIRONMENT=canary
+            --args=${{ env.APP_ARGS }},${{ env.GENERAL_ARGS }}

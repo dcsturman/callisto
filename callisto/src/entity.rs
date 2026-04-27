@@ -17,7 +17,7 @@ use crate::combat::{
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
-use crate::planet::Planet;
+use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
 use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
 use crate::ship::get_ship_templates_snapshot;
@@ -66,12 +66,21 @@ pub struct Entities {
   // so we store them here so that Entities the single global-state object for a server.
   pub actions: ShipActionList,
   pub metadata: MetaData,
+
+  // Basename of the scenario file this Entities was loaded from (e.g.
+  // "planetfun.json"). Empty for scenarios created from scratch in the builder.
+  // Stored separately from MetaData because the file name is the disk identity,
+  // distinct from the human-readable display name in `metadata.name`. Not
+  // serialized into scenario files (the file knows its own name) but is sent
+  // over the WS so the client can pre-populate save dialogs.
+  pub filename: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct MetaData {
   pub name: String,
   pub description: String,
+  pub owner: String,
 }
 
 impl PartialEq for Entities {
@@ -107,6 +116,7 @@ impl Entities {
       next_missile_id: 0,
       actions: vec![],
       metadata: MetaData::default(),
+      filename: String::new(),
     }
   }
 
@@ -207,6 +217,11 @@ impl Entities {
     let mut entities: Entities =
       with_ship_templates_for_deserialization(ship_templates, || serde_json::from_slice(&scenario_contents))?;
 
+    // Stamp the basename of the scenario file we loaded from. `file_name` may
+    // be a full path ("./scenarios/sol.json" or "gs://bucket/sol.json") — we
+    // only want the basename so the save dialog defaults match the picker.
+    entities.filename = file_name.rsplit('/').next().unwrap_or(file_name).to_string();
+
     entities.fixup_pointers()?;
     entities.reset_gravity_wells();
 
@@ -233,6 +248,48 @@ impl Entities {
     }
     assert!(entities.validate(), "Scenario file failed validation");
     Ok(entities)
+  }
+
+  /// Serialize this `Entities` value into the on-disk scenario JSON format.
+  ///
+  /// The wire-level [`Serialize`] impl (used by `EntityResponse` over the WebSocket)
+  /// intentionally omits `metadata` and `actions`, since neither is meaningful to a
+  /// connected client. Scenario files on disk include `metadata` and follow the
+  /// shape `{ metadata, ships, planets, missiles? }` — this helper emits exactly
+  /// that, with empty arrays elided.
+  ///
+  /// # Errors
+  /// Returns a `serde_json::Error` if any contained ship/missile/planet fails to serialize.
+  ///
+  /// # Panics
+  /// Panics if a ship/missile/planet `RwLock` is poisoned.
+  pub fn to_scenario_file_json(&self) -> Result<Vec<u8>, serde_json::Error> {
+    #[derive(Serialize)]
+    struct ScenarioFile<'a> {
+      metadata: &'a MetaData,
+      #[serde(skip_serializing_if = "Vec::is_empty")]
+      ships: Vec<crate::ship::Ship>,
+      #[serde(skip_serializing_if = "Vec::is_empty")]
+      planets: Vec<Planet>,
+      #[serde(skip_serializing_if = "Vec::is_empty")]
+      missiles: Vec<Missile>,
+    }
+
+    let mut ships: Vec<_> = self.ships.values().map(|s| s.read().unwrap().clone()).collect();
+    let mut planets: Vec<_> = self.planets.values().map(|p| p.read().unwrap().clone()).collect();
+    let mut missiles: Vec<_> = self.missiles.values().map(|m| m.read().unwrap().clone()).collect();
+    // Stable ordering matches the existing wire-level Serialize impl, so file diffs are clean.
+    ships.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    planets.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+    missiles.sort_by(|a, b| a.get_name().partial_cmp(b.get_name()).unwrap());
+
+    let payload = ScenarioFile {
+      metadata: &self.metadata,
+      ships,
+      planets,
+      missiles,
+    };
+    serde_json::to_vec_pretty(&payload)
   }
 
   /// Add a ship to the entities.
@@ -279,8 +336,10 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a planet.
+  #[allow(clippy::too_many_arguments)]
   pub fn add_planet(
     &mut self, name: String, position: Vec3, color: String, primary: Option<String>, radius: f64, mass: f64,
+    visual_effects: Vec<PlanetVisualEffect>,
   ) -> Result<(), String> {
     debug!(
       "Add planet {} with position {:?},  color {:?}, primary {}, radius {:?}, mass {:?}, ",
@@ -298,9 +357,9 @@ impl Entities {
         .get(primary_name)
         .ok_or_else(|| format!("Primary planet {primary_name} not found for planet {name}."))?;
 
-      (&Some(primary.clone()), primary.read().unwrap().dependency + 1)
+      (Some(primary.clone()), primary.read().unwrap().dependency + 1)
     } else {
-      (&None, 0)
+      (None, 0)
     };
 
     // A safety check to ensure we never have a pointer without a name of a primary or vis versa.
@@ -310,10 +369,33 @@ impl Entities {
       ));
     }
 
-    let entity = Planet::new(name.clone(), position, color, radius, mass, primary, primary_ptr, dependency);
+    if let Some(existing_planet) = self.planets.get(&name) {
+      let mut planet = existing_planet.write().unwrap();
+      planet.set_position(position);
+      planet.color = color;
+      planet.primary = primary;
+      planet.primary_ptr = primary_ptr;
+      planet.radius = radius;
+      planet.mass = mass;
+      planet.dependency = dependency;
+      planet.visual_effects = visual_effects;
+      planet.reset_gravity_wells();
+      let updated_velocity = if planet.primary_ptr.is_some() {
+        planet.calculate_rotational_velocity()?
+      } else {
+        Vec3::new(0.0, 0.0, 0.0)
+      };
+      planet.set_velocity(updated_velocity);
 
-    debug!("Added planet with fixed gravity wells {:?}", entity);
-    self.planets.insert(name, Arc::new(RwLock::new(entity)));
+      debug!("Updated existing planet {:?}", planet);
+    } else {
+      let mut entity = Planet::new(name.clone(), position, color, radius, mass, primary, &primary_ptr, dependency);
+      entity.visual_effects = visual_effects;
+
+      debug!("Added planet with fixed gravity wells {:?}", entity);
+      self.planets.insert(name, Arc::new(RwLock::new(entity)));
+    }
+
     Ok(())
   }
 
@@ -999,10 +1081,8 @@ impl Entities {
       match (&planet.primary, planet.primary_ptr.as_ref()) {
         (Some(_), None) => return false,
         (None, Some(_)) => return false,
-        (Some(primary), Some(primary_ptr)) => {
-          if primary_ptr.read().unwrap().get_name() != primary {
-            return false;
-          }
+        (Some(primary), Some(primary_ptr)) if primary_ptr.read().unwrap().get_name() != primary => {
+          return false;
         }
         _ => {}
       }
@@ -1411,7 +1491,9 @@ impl Serialize for Entities {
     S: Serializer,
   {
     #[derive(Serialize)]
-    struct Entities {
+    struct Entities<'a> {
+      metadata: &'a MetaData,
+      filename: &'a str,
       ships: Vec<Ship>,
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
@@ -1419,6 +1501,8 @@ impl Serialize for Entities {
     }
 
     let mut entities = Entities {
+      metadata: &self.metadata,
+      filename: &self.filename,
       ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
       missiles: self
         .missiles
@@ -1486,6 +1570,8 @@ impl<'de> Deserialize<'de> for Entities {
       next_missile_id: 0,
       actions: guts.actions,
       metadata: guts.metadata,
+      // Scenario files don't carry their own basename; load_from_file populates it.
+      filename: String::new(),
     })
   }
 }
@@ -1546,6 +1632,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
 
     // Launch a missile
@@ -1682,6 +1769,7 @@ mod tests {
       None,
       6.96e8,
       1.989e30,
+      vec![],
     )?;
     assert!(entities.validate(), "Entities with a single valid planet should be valid");
 
@@ -1798,7 +1886,15 @@ mod tests {
     let mut entities = Entities::new();
 
     // Create some planets and see if they move.
-    entities.add_planet(String::from("Sun"), Vec3::zero(), String::from("blue"), None, 6.371e6, 6e24)?;
+    entities.add_planet(
+      String::from("Sun"),
+      Vec3::zero(),
+      String::from("blue"),
+      None,
+      6.371e6,
+      6e24,
+      vec![],
+    )?;
 
     // Update the planet a few times
     let ship_snapshot = entities.ship_deep_copy();
@@ -1850,6 +1946,7 @@ mod tests {
       None,
       6.371e6,
       6e24,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet2"),
@@ -1858,6 +1955,7 @@ mod tests {
       None,
       3e7,
       3e23,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet3"),
@@ -1866,6 +1964,7 @@ mod tests {
       None,
       4e6,
       1e26,
+      vec![],
     )?;
 
     // Update the entities a few times
@@ -1925,7 +2024,7 @@ mod tests {
     let tst_str = serde_json::to_string(&tst_planet).unwrap();
     assert_eq!(
       tst_str,
-      r#"{"name":"Sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":700000000.0,"mass":100.0}"#
+      r#"{"name":"Sun","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"color":"yellow","radius":700000000.0,"mass":100.0,"visual_effects":[]}"#
     );
 
     let tst_planet_2 = Planet::new(
@@ -1946,7 +2045,7 @@ mod tests {
     let tst_str = serde_json::to_string(&tst_planet_2).unwrap();
     assert_eq!(
       tst_str,
-      r#"{"name":"planet2","position":[1000000000.0,0.0,0.0],"velocity":[0.0,0.0,2.583215051055564e-9],"color":"red","radius":4000000.0,"mass":100.0,"primary":"planet1"}"#
+      r#"{"name":"planet2","position":[1000000000.0,0.0,0.0],"velocity":[0.0,0.0,2.583215051055564e-9],"color":"red","radius":4000000.0,"mass":100.0,"primary":"planet1","visual_effects":[]}"#
     );
 
     // This is a special case of an planet.  It typically should never have a primary that is Some(...) but a primary_ptr that is None
@@ -1986,6 +2085,7 @@ mod tests {
       None,
       6.371e6,
       5.972e24,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet2"),
@@ -1994,6 +2094,7 @@ mod tests {
       None,
       3e7,
       3.00e23,
+      vec![],
     )?;
     entities.add_planet(
       String::from("Planet3"),
@@ -2002,6 +2103,7 @@ mod tests {
       None,
       4e6,
       1e26,
+      vec![],
     )?;
 
     // Create entities with random positions and names
@@ -2028,6 +2130,8 @@ mod tests {
     );
 
     let cmp = json!({
+    "metadata":{"name":"","description":"","owner":""},
+    "filename":"",
     "ships":[
         {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
@@ -2086,10 +2190,10 @@ mod tests {
     "missiles":[],
     "actions":[],
     "planets":[
-        {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,
+        {"name":"Planet1","position":[151_250_000_000.0,2_000_000.0,0.0],"velocity":[0.0,0.0,0.0],"color":"blue","radius":6_371_000.0,"mass":5.972e24,"visual_effects":[],
         "gravity_radius_1":6_375_069.342_849_095,"gravity_radius_05":9_015_709.525_726_125,"gravity_radius_025":12_750_138.685_698_19},
-        {"name":"Planet2","position":[0.0,5_000_000.0,151_250_000_000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30_000_000.0,"mass":3.00e23},
-        {"name":"Planet3","position":[106_949_900_654.465_3,8000.0,106_949_900_654.465_3],"velocity":[0.0,0.0,0.0],"color":"green","radius":4_000_000.0,"mass":1e26,
+        {"name":"Planet2","position":[0.0,5_000_000.0,151_250_000_000.0],"velocity":[0.0,0.0,0.0],"color":"red","radius":30_000_000.0,"mass":3.00e23,"visual_effects":[]},
+        {"name":"Planet3","position":[106_949_900_654.465_3,8000.0,106_949_900_654.465_3],"velocity":[0.0,0.0,0.0],"color":"green","radius":4_000_000.0,"mass":1e26,"visual_effects":[],
         "gravity_radius_2":18_446_331.779_326_223,"gravity_radius_1":26_087_052.578_356_97,"gravity_radius_05":36_892_663.558_652_446,"gravity_radius_025":52_174_105.156_713_94}
      ]});
 
@@ -2149,7 +2253,7 @@ mod tests {
     ));
 
     let scenario = json!({
-      "metadata": {"name": "Snapshot test", "description": "Template snapshot test"},
+      "metadata": {"name": "Snapshot test", "description": "Template snapshot test", "owner": "test-user"},
       "ships": [{
         "name": "Snapshot Test Ship",
         "position": [0.0, 0.0, 0.0],
@@ -2206,6 +2310,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
     entities2.add_planet(
       "Planet1".to_string(),
@@ -2214,6 +2319,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
 
     // Test equality
@@ -2349,6 +2455,7 @@ mod tests {
       None,
       6371e3,
       5.97e24,
+      vec![],
     )?;
 
     // Test entities with one ship and one planet

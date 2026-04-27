@@ -28,6 +28,7 @@ use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::objects::download::Range;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
 use google_cloud_storage::http::objects::list::ListObjectsRequest;
+use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use once_cell::sync::OnceCell;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -147,6 +148,45 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
   }
 }
 
+/// Write bytes to a file on the local filesystem or to a GCS object.
+///
+/// Mirrors the behavior of [`read_local_or_cloud_file`]: if the path begins
+/// with `gs://` it's uploaded to GCS, otherwise it's written to disk.
+/// Existing files / objects are overwritten unconditionally — caller is
+/// responsible for any "are you sure" / ownership checks.
+///
+/// # Errors
+/// Returns an error if the local file cannot be written or if the GCS upload fails.
+pub async fn write_local_or_cloud_file(filename: &str, contents: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+  debug!("(write_local_or_cloud_file) Writing {} bytes to {filename}", contents.len());
+  if let Some(rest) = filename.strip_prefix("gs://") {
+    let mut parts = rest.splitn(2, '/');
+    let bucket_name = parts
+      .next()
+      .ok_or_else(|| std::io::Error::other(format!("Malformed GCS path: {filename}")))?;
+    let object_name = parts
+      .next()
+      .ok_or_else(|| std::io::Error::other(format!("Malformed GCS path (missing object): {filename}")))?;
+
+    let client = create_gcs_client().await?;
+    let upload_type = UploadType::Simple(Media::new(object_name.to_string()));
+    client
+      .upload_object(
+        &UploadObjectRequest {
+          bucket: bucket_name.to_string(),
+          ..Default::default()
+        },
+        contents,
+        &upload_type,
+      )
+      .await?;
+    Ok(())
+  } else {
+    tokio::fs::write(filename, contents).await?;
+    Ok(())
+  }
+}
+
 /// List the files in a directory.  The directory can be local or on Google cloud storage (encoded in filename)
 ///
 /// # Errors
@@ -224,8 +264,6 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
 /// }
 /// ```
 pub async fn get_file_last_modified_timestamp(filename: &str) -> Result<Option<i64>, Box<dyn std::error::Error>> {
-  debug!("(get_file_last_modified_timestamp) Getting last modified timestamp for file {filename}");
-
   // Check if the filename is a GCS path
   if filename.starts_with("gs://") {
     // Extract bucket name from the GCS URI
@@ -273,6 +311,7 @@ mod tests {
       MetaData {
         name: "Scenario A".to_string(),
         description: "first".to_string(),
+        owner: "test-user".to_string(),
       },
     )]);
     assert_eq!(get_scenarios_snapshot().len(), 1);
@@ -282,6 +321,7 @@ mod tests {
       MetaData {
         name: "Scenario B".to_string(),
         description: "second".to_string(),
+        owner: "test-user".to_string(),
       },
     )]);
 

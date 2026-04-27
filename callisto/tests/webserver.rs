@@ -112,7 +112,7 @@ async fn spawn_server(
   let handle = handle.spawn()?;
   let _ = pretty_env_logger::try_init();
 
-  sleep(Duration::from_millis(1000)).await;
+  sleep(Duration::from_secs(1)).await;
 
   Ok(handle)
 }
@@ -528,7 +528,7 @@ async fn integration_add_ship() {
   );
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],
          "design":"Buccaneer",
@@ -604,7 +604,7 @@ async fn integration_add_planet_ship() {
 
   let response = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
   if let ResponseMsg::EntityResponse(entities) = response {
-    let compare = json!({"ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -661,6 +661,7 @@ async fn integration_add_planet_ship() {
       radius: 1.5e6,
       mass: 3e24,
       primary: None,
+      visual_effects: vec![],
     }),
   )
   .await;
@@ -670,9 +671,9 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"planets":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-      "color":"red","radius":1.5e6,"mass":3e24,
+      "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
       "gravity_radius_1":4_518_410.048_543_495,
       "gravity_radius_05":6_389_996.771_013_086,
       "gravity_radius_025": 9_036_820.097_086_99,
@@ -733,6 +734,7 @@ async fn integration_add_planet_ship() {
       radius: 1.5e6,
       mass: 1e23,
       primary: Some("planet1".to_string()),
+      visual_effects: vec![],
     }),
   )
   .await;
@@ -741,17 +743,17 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"missiles":[],
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
     "actions":[],
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
-        "color":"red","radius":1.5e6,"mass":3e24,
+        "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
         "gravity_radius_1":4_518_410.048_543_495,
         "gravity_radius_05":6_389_996.771_013_086,
         "gravity_radius_025": 9_036_820.097_086_99,
         "gravity_radius_2": 3_194_998.385_506_543},
     {"name":"planet2","position":[1_000_000.0,0.0,0.0],"velocity":[0.0,0.0,14_148.851_543_499_915],
-        "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1",
+        "color":"red","radius":1.5e6,"mass":1e23,"primary":"planet1","visual_effects":[],
         "gravity_radius_025":1_649_890.071_763_523_2}],
     "ships":[
     {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -930,7 +932,7 @@ async fn integration_update_missile() {
 
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
@@ -1298,6 +1300,7 @@ async fn integration_malformed_requests() {
       primary: Some("InvalidPrimary".to_string()),
       radius: 1.5e6,
       mass: 3e24,
+      visual_effects: vec![],
     }),
   )
   .await;
@@ -1384,6 +1387,7 @@ async fn integration_bad_requests() {
     primary: Some("InvalidPlanet".to_string()),
     radius: 1.5e6,
     mass: 3e24,
+    visual_effects: vec![],
   });
   let response = rpc(&mut stream, msg).await;
   assert!(matches!(response, ResponseMsg::Error(_)));

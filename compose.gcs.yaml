@@ -1,0 +1,16 @@
+# Optional override that points the backend at the GCS scenario bucket
+# instead of the local ./callisto/scenarios mount. Layer this on top of
+# compose.yaml (and your personal compose.override.yaml if you have one):
+#
+#   docker compose -f compose.yaml -f compose.override.yaml -f compose.gcs.yaml up be
+#
+# scripts/dev-up.sh --gcs handles this for you.
+#
+# Requires `gcloud auth application-default login` so the gcs_credentials
+# secret in compose.yaml resolves to a valid file.
+services:
+  be:
+    build:
+      args:
+        TLS_UPGRADE: "0"
+    command: --tls-keys-private /run/secrets/tls_keys_private --tls-keys-public /run/secrets/tls_keys_public --oauth-creds /run/secrets/google_credentials --scenario-dir gs://callisto-scenarios --users-file /config/authorized_users.json --design-file /ship_templates/default_ship_templates.json --web-server http://localhost:50001

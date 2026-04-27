@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use cgmath::{ElementWise, InnerSpace, Zero};
 use derivative::Derivative;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
 use crate::debug;
@@ -12,6 +12,60 @@ use crate::payloads::Vec3asVec;
 // This is the Gravitational Constant, not the acceleration due to gravity which is defined as G and used
 // more widely in this codebase.  So intentionally not "pub"
 const G_CONST: f64 = 6.673e-11;
+
+/// Deserialize f64 from either a number or a string (including scientific notation)
+fn deserialize_f64_flexible<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum F64OrString {
+    Number(f64),
+    String(String),
+  }
+
+  match F64OrString::deserialize(deserializer)? {
+    F64OrString::Number(n) => Ok(n),
+    F64OrString::String(s) => s.parse::<f64>().map_err(serde::de::Error::custom),
+  }
+}
+
+// Visual effects enum for planet rendering
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PlanetVisualEffect {
+  PhongLighting,
+  NoiseTexture,
+  Continents,
+  StripedBands,
+  AtmosphereRing,
+  PlanetaryRing,
+  LatitudeColor,
+  AnimatedClouds,
+}
+
+impl PlanetVisualEffect {
+  /// Convert effect to its bit flag value
+  #[must_use]
+  pub fn to_bit(&self) -> u32 {
+    match self {
+      PlanetVisualEffect::PhongLighting => 1 << 0,
+      PlanetVisualEffect::NoiseTexture => 1 << 1,
+      PlanetVisualEffect::Continents => 1 << 2,
+      PlanetVisualEffect::StripedBands => 1 << 3,
+      PlanetVisualEffect::AtmosphereRing => 1 << 4,
+      PlanetVisualEffect::PlanetaryRing => 1 << 5,
+      PlanetVisualEffect::LatitudeColor => 1 << 6,
+      PlanetVisualEffect::AnimatedClouds => 1 << 7,
+    }
+  }
+}
+
+/// Convert a set of effects to a bitmask
+#[must_use]
+pub fn effects_to_bitmask(effects: &[PlanetVisualEffect]) -> u32 {
+  effects.iter().map(PlanetVisualEffect::to_bit).fold(0, |acc, bit| acc | bit)
+}
 
 #[derive(Derivative)]
 #[derivative(PartialEq)]
@@ -28,6 +82,7 @@ pub struct Planet {
   // Any valid color string OR a string starting with "!" then referring to a special template
   pub color: String,
   pub radius: f64,
+  #[serde(deserialize_with = "deserialize_f64_flexible")]
   pub mass: f64,
   #[serde(default)]
   pub primary: Option<String>,
@@ -49,6 +104,10 @@ pub struct Planet {
   pub gravity_radius_05: Option<f64>,
   #[derivative(PartialEq = "ignore")]
   pub gravity_radius_025: Option<f64>,
+
+  // Set of visual effects to apply to this planet. Empty if no effects.
+  #[serde(default)]
+  pub visual_effects: Vec<PlanetVisualEffect>,
 }
 
 fn gravity_radius(power: f64, mass: f64) -> f64 {
@@ -89,6 +148,7 @@ impl Planet {
       gravity_radius_1: None,
       gravity_radius_05: None,
       gravity_radius_025: None,
+      visual_effects: Vec::new(),
     };
 
     p.reset_gravity_wells();
@@ -113,6 +173,12 @@ impl Planet {
     self.gravity_radius_1 = gravity_radius_1;
     self.gravity_radius_05 = gravity_radius_05;
     self.gravity_radius_025 = gravity_radius_025;
+  }
+
+  /// Get the visual effects as a bitmask for efficient checking
+  #[must_use]
+  pub fn get_visual_effects_bitmask(&self) -> u32 {
+    effects_to_bitmask(&self.visual_effects)
   }
 
   /// Calculate the rotational velocity of the planet around its primary.
@@ -315,6 +381,72 @@ mod tests {
     assert!(
       position_velocity_dot.abs() < 5e12,
       "Velocity should be perpendicular to the position vector: {position_velocity_dot}"
+    );
+  }
+
+  #[test_log::test]
+  fn test_planet_visual_effects_deserialize_with_rust_enum_names() {
+    let json = r#"
+      {
+        "name": "Fun",
+        "position": [0.0, 0.0, 0.0],
+        "velocity": [0.0, 0.0, 0.0],
+        "color": "blue",
+        "radius": 5500000.0,
+        "mass": 3.557e24,
+        "visual_effects": ["AtmosphereRing", "LatitudeColor"]
+      }
+    "#;
+
+    let planet: Planet = serde_json::from_str(json).unwrap();
+
+    assert_eq!(
+      planet.visual_effects,
+      vec![PlanetVisualEffect::AtmosphereRing, PlanetVisualEffect::LatitudeColor]
+    );
+  }
+
+  #[test_log::test]
+  fn test_planet_visual_effects_deserialize_planetary_ring() {
+    let json = r#"
+      {
+        "name": "Ringed",
+        "position": [0.0, 0.0, 0.0],
+        "velocity": [0.0, 0.0, 0.0],
+        "color": "gold",
+        "radius": 6000000.0,
+        "mass": 4.0e24,
+        "visual_effects": ["PlanetaryRing", "AnimatedClouds"]
+      }
+    "#;
+
+    let planet: Planet = serde_json::from_str(json).unwrap();
+
+    assert_eq!(
+      planet.visual_effects,
+      vec![PlanetVisualEffect::PlanetaryRing, PlanetVisualEffect::AnimatedClouds]
+    );
+  }
+
+  #[test_log::test]
+  fn test_planet_visual_effects_deserialize_continents() {
+    let json = r#"
+      {
+        "name": "Terra",
+        "position": [0.0, 0.0, 0.0],
+        "velocity": [0.0, 0.0, 0.0],
+        "color": "navy",
+        "radius": 6100000.0,
+        "mass": 4.5e24,
+        "visual_effects": ["Continents", "AtmosphereRing"]
+      }
+    "#;
+
+    let planet: Planet = serde_json::from_str(json).unwrap();
+
+    assert_eq!(
+      planet.visual_effects,
+      vec![PlanetVisualEffect::Continents, PlanetVisualEffect::AtmosphereRing]
     );
   }
 }

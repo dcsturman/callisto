@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "name": "Fun with a planet",
+    "description": "See different ways to visualize a planet.  This scenario is meant to be used for testing and debugging visual effects, so there are no ships or other planets.",
+    "owner": "dcsturman@gmail.com"
+  },
+  "ships": [
+    {
+      "name": "Titus",
+      "position": [
+        30000000.0,
+        30000000.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "current_hull": 176,
+      "current_armor": 3,
+      "current_power": 540,
+      "current_maneuver": 6,
+      "current_jump": 5,
+      "current_fuel": 128,
+      "current_crew": 21,
+      "current_sensors": "Military",
+      "current_computer": 30,
+      "active_weapons": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "sensor_locks": [],
+      "crew": {
+        "pilot": 0,
+        "engineering_jump": 0,
+        "engineering_power": 0,
+        "engineering_maneuver": 0,
+        "sensors": 0,
+        "gunnery": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "planets": [
+    {
+      "name": "Fun",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "color": "#ADD8a6",
+      "radius": 5500000.0,
+      "mass": 3.557e24,
+      "gravity_radius_05": 6957960.259426239,
+      "gravity_radius_025": 9840041.765333606,
+      "visual_effects": [
+        "PlanetaryRing",
+        "AtmosphereRing",
+        "AnimatedClouds",
+        "NoiseTexture"
+      ]
+    }
+  ]
+}

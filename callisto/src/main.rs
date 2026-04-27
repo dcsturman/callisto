@@ -159,6 +159,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   let port = args.port;
 
+  // DSN comes from SENTRY_DSN; SENTRY_ENVIRONMENT and SENTRY_RELEASE are auto-picked
+  // up by the SDK. Skip init in --test mode so integration tests don't send events.
+  let _sentry_guard = (!args.test).then(|| {
+    sentry::init(sentry::ClientOptions {
+      release: sentry::release_name!(),
+      // Capture user IPs and potentially sensitive headers when using HTTP server integrations
+      // see https://docs.sentry.io/platforms/rust/data-management/data-collected for more info
+      send_default_pii: true,
+      ..Default::default()
+    })
+  });
+
   let addr = (args.address.clone(), port)
     .to_socket_addrs()
     .expect("Unable to resolve the IP address for this server")
@@ -395,12 +407,14 @@ async fn load_scenarios_and_metadata(
   let scenarios = join_all(scenarios_list.iter().map(async |scenario| {
     // Load each scenario and read it in to get the metadata.
     // If we cannot open it, just drop it from the scenarios list.
-    let load_result = Entities::load_from_file(&join_dir_entry_path(scenario_dir, scenario)).await;
+    let scenario_path = join_dir_entry_path(scenario_dir, scenario);
+    let load_result = Entities::load_from_file(&scenario_path).await;
     let Ok(entities) = load_result else {
-      error!(
-        "(main) Unable to load scenario file {} from {scenario_dir}: {load_result:?}.  Skipping.",
-        scenario
-      );
+      let error_msg = match &load_result {
+        Err(e) => e.to_string(),
+        Ok(_) => "Unknown error".to_string(),
+      };
+      error!("ERROR: Failed to parse scenario file '{}': {}", scenario_path, error_msg);
       return None;
     };
     Some((scenario.clone(), entities.metadata.clone()))

@@ -2,6 +2,46 @@ import { Crew, createCrew } from "components/controls/CrewBuilder";
 
 export type Acceleration = [[number, number, number], number];
 
+// Planet visual effects enum
+export enum PlanetVisualEffect {
+  PHONG_LIGHTING = "PhongLighting",
+  NOISE_TEXTURE = "NoiseTexture",
+  CONTINENTS = "Continents",
+  STRIPED_BANDS = "StripedBands",
+  ATMOSPHERE_RING = "AtmosphereRing",
+  PLANETARY_RING = "PlanetaryRing",
+  LATITUDE_COLOR = "LatitudeColor",
+  ANIMATED_CLOUDS = "AnimatedClouds",
+}
+
+// Convert effect to its bit flag value
+export function effectToBit(effect: PlanetVisualEffect): number {
+  const bitMap: Record<PlanetVisualEffect, number> = {
+    [PlanetVisualEffect.PHONG_LIGHTING]: 1 << 0,
+    [PlanetVisualEffect.NOISE_TEXTURE]: 1 << 1,
+    [PlanetVisualEffect.CONTINENTS]: 1 << 2,
+    [PlanetVisualEffect.STRIPED_BANDS]: 1 << 3,
+    [PlanetVisualEffect.ATMOSPHERE_RING]: 1 << 4,
+    [PlanetVisualEffect.PLANETARY_RING]: 1 << 5,
+    [PlanetVisualEffect.LATITUDE_COLOR]: 1 << 6,
+    [PlanetVisualEffect.ANIMATED_CLOUDS]: 1 << 7,
+  };
+  return bitMap[effect];
+}
+
+// Convert a set of effects to a bitmask
+export function effectsToBitmask(effects: PlanetVisualEffect[]): number {
+  return effects.reduce((acc, effect) => acc | effectToBit(effect), 0);
+}
+
+// Check if an effect is enabled in a bitmask
+export function hasEffect(
+  bitmask: number,
+  effect: PlanetVisualEffect,
+): boolean {
+  return (bitmask & effectToBit(effect)) !== 0;
+}
+
 export interface Entity {
   name: string;
   position: [number, number, number];
@@ -229,6 +269,7 @@ export interface Planet extends Entity {
   gravity_radius_1: number;
   gravity_radius_05: number;
   gravity_radius_025: number;
+  visual_effects: PlanetVisualEffect[]; // Array of visual effects to apply
 }
 
 export const defaultPlanet = () => {
@@ -244,6 +285,7 @@ export const defaultPlanet = () => {
     gravity_radius_1: 0,
     gravity_radius_05: 0,
     gravity_radius_025: 0,
+    visual_effects: [],
   };
 };
 
@@ -259,6 +301,7 @@ export const createPlanet = (
   gravity_radius_1: number,
   gravity_radius_05: number,
   gravity_radius_025: number,
+  visual_effects: PlanetVisualEffect[] = [],
 ) => {
   return {
     name,
@@ -272,6 +315,7 @@ export const createPlanet = (
     gravity_radius_1,
     gravity_radius_05,
     gravity_radius_025,
+    visual_effects,
   };
 };
 
@@ -292,6 +336,9 @@ export interface EntityList {
   planets: Planet[];
   missiles: Missile[];
   metadata: MetaData;
+  // Basename of the scenario file this list was loaded from (e.g.
+  // "planetfun.json"). Empty for from-scratch builder sessions.
+  filename: string;
 }
 
 export const defaultEntityList = () => {
@@ -300,6 +347,7 @@ export const defaultEntityList = () => {
     planets: [],
     missiles: [],
     metadata: createMetaData("", ""),
+    filename: "",
   };
 };
 
@@ -308,4 +356,11 @@ export const findShip = (entities: EntityList, name: string | null) => {
     return null;
   }
   return entities.ships.find((ship) => ship.name === name) || null;
+};
+
+export const findPlanet = (entities: EntityList, name: string | null) => {
+  if (name == null) {
+    return null;
+  }
+  return entities.planets.find((planet) => planet.name === name) || null;
 };

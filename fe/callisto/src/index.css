@@ -1,664 +1,831 @@
 .App {
-  height: 100%;
-  overflow: hidden;
+    height: 100%;
+    overflow: hidden;
 }
 
 * {
-  margin: 0;
+    margin: 0;
 }
 
 body {
-  margin: 0;
-  font-family: "Orbitron", sans-serif;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  font-size: 9pt;
+    margin: 0;
+    font-family: "Orbitron", sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 9pt;
 }
 
 .axis {
-  color: grey
+    color: grey;
 }
 
 h1 {
-  font-size: 18pt;
+    font-size: 18pt;
 }
 h2 {
-  font-size: 12pt;
+    font-size: 12pt;
 }
 
 h3 {
-  font-size: 10pt;
+    font-size: 10pt;
 }
 
 .ship-list-label {
-  padding-right: 8px;
+    padding-right: 8px;
 }
 
 dt {
-  display: block;
-  float: left;
-  min-width: 100px;
+    display: block;
+    float: left;
+    min-width: 100px;
 }
 
 input {
-  color:white;
-  font-family: "Sono", monospace;
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
-  font-variation-settings:
-    "MONO" 1;  
+    color: white;
+    font-family: "Sono", monospace;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    font-style: normal;
+    font-variation-settings: "MONO" 1;
 }
 .mainscreen-container {
-  display: flex;
-  flex-direction: row;
-  justify-content: left;
-  align-items: flex-end;
-  flex-wrap: nowrap;
-  height: 100vh;
-  width: 100vw;
-  color: white;
+    display: flex;
+    flex-direction: row;
+    justify-content: left;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+    height: 100vh;
+    width: 100vw;
+    color: white;
 }
 
 .spaceview-canvas {
-  position: absolute;
-  background-color:black;
-  color-scheme: dark;
-  z-index: 0;
+    position: absolute;
+    background-color: black;
+    color-scheme: dark;
+    z-index: 0;
 }
 
 .controls-pane {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  height: 100vh;
-  padding-right: 4px;
-  flex-grow: 0;
-  flex-shrink: 0;
-  flex-basis: 250px;
-  border: 1px solid #b6bcae;
-  background-color: black;
-  color-scheme: dark;
-  overflow: hidden auto;
-  z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    height: 100vh;
+    padding-right: 4px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    flex-basis: 250px;
+    border: 1px solid #b6bcae;
+    background-color: black;
+    color-scheme: dark;
+    overflow: hidden auto;
+    z-index: 10;
 }
 
 .control-input {
-  margin: 2px;
-  padding: 2px;
-  width: 50px; 
-  height: 30px;
-  border-radius: 5px;
-  color: black;
-  background-color: whitesmoke;
-  border: 1px solid #333;
-  font-size: 9pt;
+    margin: 2px;
+    padding: 2px;
+    width: 50px;
+    height: 30px;
+    border-radius: 5px;
+    color: black;
+    background-color: whitesmoke;
+    border: 1px solid #333;
+    font-size: 9pt;
+}
+
+.mass-input {
+    width: 80px;
 }
 
 .design-input {
-  width: 150px;
+    width: 150px;
 }
 
 .standoff-input {
-  width: 100px;
+    width: 100px;
 }
 .control-launch-div {
-  display: flex;
-  align-items: center;
+    display: flex;
+    align-items: center;
 }
 
 .control-button {
-  height: 30px;
-  width: 100%
+    height: 30px;
+    width: 100%;
 }
 
 .control-launch-button {
-  width: fit-content;
-  height: 30;
+    width: fit-content;
+    height: 30;
 }
 .coordinate-input {
-  justify-content: space-between;
-  display: flex;
-  flex-direction: row;
-  height: unset
+    justify-content: space-between;
+    display: flex;
+    flex-direction: row;
+    height: unset;
 }
 
 /* This isn't working as I'd like */
 .control-name-input {
-  width: 100%;
-  height: 30px;
-  background-color:#eeebeb;
-  color: black;
+    width: 100%;
+    height: 30px;
+    background-color: #eeebeb;
+    color: black;
 }
 
 .control-label {
-  display: flex;
-  flex-direction: column;
-  font-size:12pt;
-  margin: 0px;
-  padding: 2px;
-  color: white;
-  height: unset
+    display: flex;
+    flex-direction: column;
+    font-size: 12pt;
+    margin: 0px;
+    padding: 2px;
+    color: white;
+    height: unset;
 }
 
 .control-label.h2 {
-  font-size: 12pt;
-  font-weight: bold;
+    font-size: 12pt;
+    font-weight: bold;
 }
 
 .as-form {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  color: black;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    color: black;
 }
 
 .as-input-group {
-  display: flex;
-  flex-direction: row;
-  justify-content: flex-end;
-  align-items: center;
-  color: black;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    color: black;
 }
 .as-label {
-  color: white;
-  font-size: 12pt;
-  margin: 2px;
+    color: white;
+    font-size: 12pt;
+    margin: 2px;
 }
 
 .clickable-label {
-  cursor: pointer;
+    cursor: pointer;
 }
 
 .as-input {
-  color: black;
-  background-color: #eeebeb;
-  border: 1px solid #333;
-  height: 24px;
-  width: 30px;
+    color: black;
+    background-color: #eeebeb;
+    border: 1px solid #333;
+    height: 24px;
+    width: 30px;
 }
 
 .blue-button {
-  background-image: linear-gradient(#42A1EC, #0070C9);
-  border: 1px solid #0077CC;
-  border-radius: 4px;
-  box-sizing: border-box;
-  color: #FFFFFF;
-  cursor: pointer;
-  direction: ltr;
-  letter-spacing: -.022em;
-  line-height: 1.47059;
-  overflow: visible;
-  margin: 2px;
-  text-align: center;
-  vertical-align: baseline;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-  white-space: nowrap;
-  font-family: "Orbitron", sans-serif;
-  font-weight: 600;
-  font-size: 12pt;
+    background-image: linear-gradient(#42a1ec, #0070c9);
+    border: 1px solid #0077cc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    color: #ffffff;
+    cursor: pointer;
+    direction: ltr;
+    letter-spacing: -0.022em;
+    line-height: 1.47059;
+    overflow: visible;
+    margin: 2px;
+    text-align: center;
+    vertical-align: baseline;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    white-space: nowrap;
+    font-family: "Orbitron", sans-serif;
+    font-weight: 600;
+    font-size: 12pt;
 
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .blue-button:disabled {
-  cursor: default;
-  opacity: .3;
+    cursor: default;
+    opacity: 0.3;
 }
 
 .blue-button:hover {
-  background-image: linear-gradient(#51A9EE, #147BCD);
-  border-color: #1482D0;
-  text-decoration: none;
+    background-image: linear-gradient(#51a9ee, #147bcd);
+    border-color: #1482d0;
+    text-decoration: none;
 }
 
 .blue-button:active {
-  background-image: linear-gradient(#3D94D9, #0067B9);
-  border-color: #006DBC;
-  outline: none;
+    background-image: linear-gradient(#3d94d9, #0067b9);
+    border-color: #006dbc;
+    outline: none;
 }
 
 .blue-button:focus {
-  box-shadow: rgba(131, 192, 253, 0.5) 0 0 0 3px;
-  outline: none;
+    box-shadow: rgba(131, 192, 253, 0.5) 0 0 0 3px;
+    outline: none;
 }
 
 .orbitron-special {
-  font-family: "Orbitron", sans-serif;
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
+    font-family: "Orbitron", sans-serif;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    font-style: normal;
 }
 
 .sono-regular {
-  font-family: "Sono", monospace;
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
-  font-variation-settings:
-    "MONO" 1;
+    font-family: "Sono", monospace;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    font-style: normal;
+    font-variation-settings: "MONO" 1;
 }
 
 .plan-accel-text {
-  font-family: "Sono", monospace;
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
-  font-size: 10pt;
-  font-variation-settings:
-    "MONO" 1;
-
+    font-family: "Sono", monospace;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    font-style: normal;
+    font-size: 10pt;
+    font-variation-settings: "MONO" 1;
 }
 .ship-info-window {
-  position: fixed;
-  bottom: 0px;
-  background-color: rgba(0, 0, 0, 0.85);
-  right: 0;
-  width: 400px;
-  border: 3px solid #b6bcae;
-  z-index: 10;
-  color: whitesmoke;
+    position: fixed;
+    bottom: 0px;
+    background-color: rgba(0, 0, 0, 0.85);
+    right: 0;
+    width: 400px;
+    border: 3px solid #b6bcae;
+    z-index: 10;
+    color: whitesmoke;
 }
 
 .computer-window {
-  position: relative;
-  top: 0;
-  left: 0px;
-  padding-right: 4px;
-  border: 1px solid #b6bcae;
-  z-index: 10;
-  overflow: auto;
+    position: relative;
+    top: 0;
+    left: 0px;
+    padding-right: 4px;
+    border: 1px solid #b6bcae;
+    z-index: 10;
+    overflow: auto;
 }
 
 .view-controls-window {
-  position: fixed;
-  top: 0;
-  right: 0px;
-  padding-left: 4px;
-  border: 1px solid #b6bcae;
-  z-index: 12;
+    position: fixed;
+    top: 0;
+    right: 0px;
+    padding-left: 4px;
+    border: 1px solid #b6bcae;
+    z-index: 12;
 }
 
 .control-form {
-  justify-content: space-between;
-  padding-top: 6px;
-  padding-left: 2px;
-  padding-right: 6px;
+    justify-content: space-between;
+    padding-top: 6px;
+    padding-left: 2px;
+    padding-right: 6px;
 }
 
 .vital-stats-bloc {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
 }
 .target-entry-form {
-  display: flex;
-  flex-direction: column;
-  padding-top: 4px;
-  padding-left: 2px;
+    display: flex;
+    flex-direction: column;
+    padding-top: 4px;
+    padding-left: 2px;
 }
 
 .target-specifics-div {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
 }
 
 .target-details-div {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .select-dropdown {
-  font-family: "Orbitron", sans-serif;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    font-family: "Orbitron", sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .beam-type-icon {
-  width: 20px;
-  height: 20px;
-  fill: red;
+    width: 20px;
+    height: 20px;
+    fill: red;
 }
 
 .pulse-type-icon {
-  width: 20px;
-  height: 20px;
-  fill: rgb(0, 140, 255);
+    width: 20px;
+    height: 20px;
+    fill: rgb(0, 140, 255);
 }
 .missile-type-icon {
-  width: 20px;
-  height: 20px;
-  fill: green;
+    width: 20px;
+    height: 20px;
+    fill: green;
 }
 
 .info-icon {
-  font-size: 9pt;
+    font-size: 9pt;
 }
 
 .tooltip-body {
-  z-index: 100;
-  padding: 2px !important;
-  color: #3dfc32 !important;
-  font-size: 2pt;
+    z-index: 100;
+    padding: 2px !important;
+    color: #3dfc32 !important;
+    font-size: 2pt;
 }
 
 #design-tooltip {
-  z-index: 100;
-  color: #fff;
-  background-color: rgb(55, 55, 55);
-  font-size: 8pt;
-  padding: 2px;
-  padding-left: 6px;
-  
+    z-index: 100;
+    color: #fff;
+    background-color: rgb(55, 55, 55);
+    font-size: 8pt;
+    padding: 2px;
+    padding-left: 6px;
 }
 
 .label-with-tooltip {
-  flex-direction: row;
+    flex-direction: row;
 }
 
 .weapon-symbol {
-  background-color:transparent;
-  width: 40px;
-  height: auto;
-  grid-column: 1;
-  grid-row: 1;
-  align-self: flex-end;
+    background-color: transparent;
+    width: 40px;
+    height: auto;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: flex-end;
 }
 
 .barbette-button {
-  bottom: 0;
+    bottom: 0;
 }
 
 .weapon-symbol-count {
-  background-color:transparent;
-  font-size: 10pt;
-  font-weight: bold;
-  color: white;
-  z-index: 3;
-  grid-column: 1;
-  grid-row: 1;
+    background-color: transparent;
+    font-size: 10pt;
+    font-weight: bold;
+    color: white;
+    z-index: 3;
+    grid-column: 1;
+    grid-row: 1;
 }
 
 .weapon-list {
-  display: flex;
-  flex-direction: row;
-  justify-content: left;
-  align-items: center;
+    display: flex;
+    flex-direction: row;
+    justify-content: left;
+    align-items: center;
 }
 
 .weapon-button {
-  display: flex;
-  background-image: linear-gradient(#b0b0b0, #525253);
-  border: 1px solid #545454;
-  border-radius: 4px;
-  box-sizing: border-box;
-  color: #FFFFFF;
-  cursor: pointer;
-  direction: ltr;
-  letter-spacing: -.022em;
-  line-height: 1.47059;
-  overflow: visible;
-  margin: 2px;
-  text-align: center;
-  vertical-align: baseline;
-  -webkit-user-select: none;
-  user-select: none;
-  touch-action: manipulation;
-  white-space: nowrap;
-  font-family: "Orbitron", sans-serif;
-  font-weight: 600;
-  font-size: 12pt;
-  height: 35px;
+    display: flex;
+    background-image: linear-gradient(#b0b0b0, #525253);
+    border: 1px solid #545454;
+    border-radius: 4px;
+    box-sizing: border-box;
+    color: #ffffff;
+    cursor: pointer;
+    direction: ltr;
+    letter-spacing: -0.022em;
+    line-height: 1.47059;
+    overflow: visible;
+    margin: 2px;
+    text-align: center;
+    vertical-align: baseline;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    white-space: nowrap;
+    font-family: "Orbitron", sans-serif;
+    font-weight: 600;
+    font-size: 12pt;
+    height: 35px;
 
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
 
- }
+.weapon-button-tooltip {
+    padding-left: 6px !important;
+}
 
- .weapon-button-tooltip {
-  padding-left: 6px !important;
- }
-
- .weapon-button:disabled {
-  cursor: default;
-  opacity: .3;
+.weapon-button:disabled {
+    cursor: default;
+    opacity: 0.3;
 }
 
 .weapon-button:hover {
-  background-image: linear-gradient(#d0d0d0, #727272);
-  border-color: #777777;
-  text-decoration: none;
+    background-image: linear-gradient(#d0d0d0, #727272);
+    border-color: #777777;
+    text-decoration: none;
 }
 
 .weapon-button:active {
-  background-image: linear-gradient(#a0a0a0, #424243);
-  border-color: #646464;
-  outline: none;
+    background-image: linear-gradient(#a0a0a0, #424243);
+    border-color: #646464;
+    outline: none;
 }
 
 .weapon-button:focus {
-  box-shadow: rgba(131, 192, 253, 0.5) 0 0 0 3px;
-  outline: none;
+    box-shadow: rgba(131, 192, 253, 0.5) 0 0 0 3px;
+    outline: none;
 }
 
- .button-next-round {
-  margin-top: auto
+.button-next-round {
+    margin-top: auto;
 }
 
 .stats-bloc-entry {
-  padding-right: 4px;
+    padding-right: 4px;
 }
 
 .authentication-container {
-  background-image: url("../public/assets/galaxy1.png");
-  background-size: cover;
-  background-repeat: repeat;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  width: 100vw;
-  background-color: black;
-  color: white;
-  font-family: "Orbitron", sans-serif;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    background-image: url("../public/assets/galaxy1.png");
+    background-size: cover;
+    background-repeat: repeat;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    width: 100vw;
+    background-color: black;
+    color: white;
+    font-family: "Orbitron", sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .authentication-title {
-  font-size: 48pt;
-  background-color: transparent
+    font-size: 48pt;
+    text-align: center;
+    background-color: transparent;
 }
 
 .admin-button-window {
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  bottom: 0;
-  right: 0px;
-  padding-left: 4px;
-  border: 0px solid #b6bcae;
-  z-index: 10;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    bottom: 0;
+    right: 0px;
+    padding-left: 4px;
+    border: 0px solid #b6bcae;
+    z-index: 10;
 }
 
 .user-list {
-  padding-right: 0px;
-  border: 1px solid #b6bcae;
-  overflow: auto;
-  padding-inline-start: 0px;
-  
+    padding-right: 0px;
+    border: 1px solid #b6bcae;
+    overflow: auto;
+    padding-inline-start: 0px;
 }
 
 .user-list-list {
-  padding-inline-start: 15px;
-  li::marker {
-    color: rgb(0, 255, 0);
-  }
+    padding-inline-start: 15px;
+    li::marker {
+        color: rgb(0, 255, 0);
+    }
 }
 .logout-button {
-  width: 100%
+    width: 100%;
 }
 
 .authentication-blurb {
-  font-size: 12pt;
-  width: 40%
+    font-size: 12pt;
+    width: 40%;
 }
 
 .ship-design-description-tooltip {
-  max-width: 250px
+    max-width: 250px;
 }
 
 .crew-builder-window {
-  top: 0;
-  left: 0px;
-  padding-right: 4px;
-  display: flex;
-  flex-direction: column;
+    top: 0;
+    left: 0px;
+    padding-right: 4px;
+    display: flex;
+    flex-direction: column;
 }
 
 .crew-builder-input {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
 }
 
 .crew-builder-gun-selector {
-  width: 40px;
+    width: 40px;
 }
 
 .chevron {
-  transition: transform .2s ease-in-out;
+    transition: transform 0.2s ease-in-out;
 }
 
 .chevron.closed {
-  transform: rotate(0deg);
+    transform: rotate(0deg);
 }
 
 .chevron.open {
-  transform: rotate(180deg);
+    transform: rotate(180deg);
 }
 
 .accordion-header {
-  font-size: 14pt;
-  font-weight: bold;
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  padding-left: 0px;
-  padding-right: 4px;
+    font-size: 14pt;
+    font-weight: bold;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding-left: 0px;
+    padding-right: 4px;
 }
 
 #results-window {
-  overflow: auto;
+    overflow: auto;
 }
 
 .crew-actions-form-container {
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: space-between;
-  justify-items: left;
-  align-items: center;
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: space-between;
+    justify-items: left;
+    align-items: center;
 }
 
 .tutorial-instruction-text {
-  color: red;
+    color: red;
 }
 
 .fire-actions-div {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
 }
 
 .called-shot-menu {
-  display: flex;
-  flex-direction: row;
-  border-radius: 5px;
-  color: black;
-  background-color: whitesmoke;
-  border: 1px solid #333;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 9pt;
+    display: flex;
+    flex-direction: row;
+    border-radius: 5px;
+    color: black;
+    background-color: whitesmoke;
+    border: 1px solid #333;
+    font-family: "Orbitron", sans-serif;
+    font-size: 9pt;
 }
 
 .sensor-action-select {
-  width: 100%;
-  margin: 2px;
-  padding: 2px;
+    width: 100%;
+    margin: 2px;
+    padding: 2px;
 }
 
 .role-input {
-  font-size: 8pt;
-  height: 20px;
-  margin: 0px;
-  margin-left: 2px;
+    font-size: 8pt;
+    height: 20px;
+    margin: 0px;
+    margin-left: 2px;
 }
 
 .reset-and-logout-buttons {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
 }
 
 .scenario-manager {
-  background-image: url("../public/assets/galaxy1.png");
-  background-size: cover;
-  background-repeat: repeat;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-evenly;
-  height: 100vh;
-  width: 100vw;
-  background-color: black;
-  color: white;
-  font-family: "Orbitron", sans-serif;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    background-image: url("../public/assets/galaxy1.png");
+    background-size: cover;
+    background-repeat: repeat;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-evenly;
+    height: 100vh;
+    width: 100vw;
+    background-color: black;
+    color: white;
+    font-family: "Orbitron", sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .scenario-join-form {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 400px;
-
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 400px;
 }
 .scenario-create-form {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 400px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 400px;
 }
 
 .label-scenario-name {
-  font-size: 14pt;
+    font-size: 14pt;
 }
 
 .tutorial-button {
-  width: 400px;
+    width: 400px;
+}
+
+.scenario-mode-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 400px;
 }
 
 .scenario-intro {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: center;
-  width: 400px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 400px;
+}
+
+.planet-effect-list {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.planet-effect-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px;
+    font-size: 3px;
+}
+
+.planet-effect-row label {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    margin: 8px;
+    cursor: pointer;
+    font-size: 7pt;
+}
+
+.planet-effect-checkbox {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    accent-color: whitesmoke;
+}
+
+.planet-effect-table {
+    width: 100%;
+    max-width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    box-sizing: border-box;
+}
+
+.planet-effect-table td {
+    padding: 0;
+    text-align: left;
+    overflow: visible;
+}
+
+.planet-effect-table label {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 9pt;
+    padding: 4px 0;
+    width: 100%;
+}
+
+.planet-effect-select {
+    width: 100%;
+    min-width: 180px;
+}
+
+.planet-list {
+    width: 120px;
+}
+
+.planet-list control-input {
+    margin: 2px;
+    padding: 2px;
+    height: 30px;
+    border-radius: 5px;
+    color: black;
+    background-color: whitesmoke;
+    border: 1px solid #333;
+    font-size: 9pt;
+}
+
+.save-scenario-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.save-scenario-dialog {
+    background-color: #1a1a1a;
+    border: 1px solid #b6bcae;
+    border-radius: 6px;
+    padding: 16px 20px;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    color: white;
+}
+
+.save-scenario-dialog h2 {
+    margin-bottom: 12px;
+}
+
+.save-scenario-field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 12px;
+    gap: 4px;
+}
+
+.save-scenario-field input,
+.save-scenario-field textarea {
+    background-color: whitesmoke;
+    color: black;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 10pt;
+    font-family: "Sono", monospace;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.save-scenario-field textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.save-scenario-button-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.save-scenario-button-row button {
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background-color: #2a2a2a;
+    color: white;
+    cursor: pointer;
+    font-family: "Orbitron", sans-serif;
+    font-size: 10pt;
+}
+
+.save-scenario-button-row button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.save-scenario-error {
+    color: #ff8080;
+    margin-bottom: 8px;
+}
+
+/* Pin the Save button to the bottom of the controls pane (which is a column
+   flex container). margin-top: auto consumes any vertical slack between the
+   AddShip/AddPlanet stack and the bottom of the panel. */
+.save-scenario-anchor {
+    margin-top: auto;
+    margin-bottom: 4px;
+    flex-shrink: 0;
 }
