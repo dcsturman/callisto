@@ -522,6 +522,13 @@ impl Processor {
         let effects = player.merge_actions(ship_actions);
         response_with_update(player, Ok(effects))
       }
+      RequestMsg::CaptainAction(msg) => {
+        let result = player.captain_action(&msg);
+        vec![
+          ResponseMsg::CaptainActionResult(result),
+          ResponseMsg::EntityResponse(player.clone_entities()),
+        ]
+      }
       RequestMsg::Update => {
         let effects = player.update();
         vec![

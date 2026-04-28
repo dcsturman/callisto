@@ -18,6 +18,7 @@ import { NavigationPlan } from "./ShipComputer";
 import { Actions, FireControl } from "./WeaponUse";
 import { DEFAULT_SENSOR_STATE, SensorAction } from "components/controls/Actions";
 import { ShipComputer } from "./ShipComputer";
+import { CaptainTasks } from "./CaptainTasks";
 import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
@@ -261,12 +262,6 @@ export function Controls() {
           <hr />
         </>
       )}
-      {true && (
-        <>
-          <AddPlanet />
-          <hr />
-        </>
-      )}
       <Accordion id="ship-computer" title="Ship's Computer" initialOpen={true}>
         {shipName == null ? (
           <ShipList moveCamera={moveCameraToShip} />
@@ -446,25 +441,60 @@ export function Controls() {
             )}
           </>
         )}
+        {/* Captain rolls leadership from the left pane (their main UI).
+            General sees the same panel via the ShipComputer popup, so we
+            don't render it here twice. */}
+        {role === ViewMode.Captain && shipName && (() => {
+          const captainShip = findShip(entities, shipName);
+          if (!captainShip) return null;
+          return <CaptainTasks ship={captainShip} />;
+        })()}
         {computerShip && computerShipName && computerShipDesign && (() => {
+          // Note: don't bail when `actions[computerShipName]` is missing —
+          // pilot state (dodge_thrust / assist_gunners) lives on the ship
+          // itself, not in the actions slice. If the user only sets pilot
+          // actions, the slice has no entry but the Actions list still needs
+          // to render the Evade / Assist Gunner rows.
           const a = actions[computerShipName];
-          if (!a) return null;
           // Per-role visibility. General sees everything; specialist roles see
           // only their own action category. Pilot / Observer see nothing here.
-          const seeFire = role === ViewMode.General || role === ViewMode.Gunner;
-          const seeSensor = role === ViewMode.General || role === ViewMode.Sensors;
-          const seeEngineer = role === ViewMode.General || role === ViewMode.Engineer;
-          const fireActions = seeFire ? a.fire || [] : [];
-          const pdActions = seeFire ? a.pointDefense || [] : [];
+          // Captain needs to see ALL queued actions on the selected ship in
+          // order to mark boost checkboxes against them, so Captain is added
+          // to all three of these visibility flags.
+          const seeFire =
+            role === ViewMode.General ||
+            role === ViewMode.Gunner ||
+            role === ViewMode.Captain;
+          const seeSensor =
+            role === ViewMode.General ||
+            role === ViewMode.Sensors ||
+            role === ViewMode.Captain;
+          const seeEngineer =
+            role === ViewMode.General ||
+            role === ViewMode.Engineer ||
+            role === ViewMode.Captain;
+          const seePilot =
+            role === ViewMode.General ||
+            role === ViewMode.Pilot ||
+            role === ViewMode.Captain;
+          const fireActions = seeFire ? a?.fire || [] : [];
+          const pdActions = seeFire ? a?.pointDefense || [] : [];
           const sensorAction = seeSensor
-            ? a.sensor || DEFAULT_SENSOR_STATE
+            ? a?.sensor || DEFAULT_SENSOR_STATE
             : DEFAULT_SENSOR_STATE;
-          const engineerAction = seeEngineer ? a.engineer ?? null : null;
+          const engineerAction = seeEngineer ? a?.engineer ?? null : null;
+          const dodgeThrust = computerShip?.dodge_thrust ?? 0;
+          const assistGunners = computerShip?.assist_gunners ?? false;
+          const pilotState = seePilot
+            ? { dodgeThrust, assistGunners }
+            : null;
           const hasAny =
             fireActions.length > 0 ||
             pdActions.length > 0 ||
             sensorAction.action !== SensorAction.None ||
-            engineerAction != null;
+            engineerAction != null ||
+            (pilotState != null &&
+              (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
           if (!hasAny) return null;
           return (
             <Actions
@@ -472,25 +502,28 @@ export function Controls() {
               pointDefenseActions={pdActions}
               sensorAction={sensorAction}
               engineerAction={engineerAction}
+              pilotState={pilotState}
               design={computerShipDesign}
             />
           );
         })()}
       </Accordion>
-      <button
-        className="control-input control-button blue-button button-next-round"
-        // Reset the computer and route on the next round.  If this gets any more complex move it into its
-        // own function.
-        onClick={() => {
-          computeFlightPath(null, [0, 0, 0], [0, 0, 0], null, null, 0);
-          // Strip out the details on the weapons and provide an object with just
-          // the name of each possible actor and the FireState they produced during the round.
-          nextRound();
-          //args.setComputerShip(null);
-        }}
-      >
-        Next Round
-      </button>
+      {[ViewMode.General, ViewMode.Captain].includes(role) && (
+        <button
+          className="control-input control-button blue-button button-next-round"
+          // Reset the computer and route on the next round.  If this gets any more complex move it into its
+          // own function.
+          onClick={() => {
+            computeFlightPath(null, [0, 0, 0], [0, 0, 0], null, null, 0);
+            // Strip out the details on the weapons and provide an object with just
+            // the name of each possible actor and the FireState they produced during the round.
+            nextRound();
+            //args.setComputerShip(null);
+          }}
+        >
+          Next Round
+        </button>
+      )}
     </div>
   );
 }

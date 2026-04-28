@@ -4,16 +4,34 @@ export type ActionType = {
     fire: FireState;
     unfire: UnfireState;
     pointDefense: PointDefenseState;
-    jump: boolean;
     engineer: EngineerState;
+    // Captain leadership state. `null` means no LeadershipCheck queued for this
+    // ship. When non-null, `boosts` is the set of action targets to boost.
+    // The actual roll happens server-side when the captain hits the "Captain
+    // Action" button (cached on `ship.leadership_points`); end-of-turn Phase 0
+    // truncates this list to the rolled N.
+    leadershipCheck: { boosts: BoostTarget[] } | null;
     // Transient anti-action flags. Set true when the user explicitly clears a
-    // queued sensor/engineer action; emitted as `ClearSensorAction` /
-    // `ClearEngineerAction` in the next ModifyActions payload so the server
-    // strips its queued action. Reset to false on any subsequent set.
+    // queued sensor/engineer/leadership action; emitted as
+    // `ClearSensorAction` / `ClearEngineerAction` / `ClearLeadershipCheck`
+    // in the next ModifyActions payload so the server strips its queued action.
+    // Reset to false on any subsequent set.
     clearSensor: boolean;
     clearEngineer: boolean;
+    clearLeadership: boolean;
   };
 };
+
+// Wire-form mirror of Rust `BoostTarget`. Field names match the Rust
+// `#[serde]` defaults so encode/decode is structural identity. Jump is an
+// engineer action, so it's boosted via `Engineer`.
+export type BoostTarget =
+  | { kind: "Fire"; ship: string; weapon_id: number }
+  | { kind: "PointDefense"; ship: string; weapon_id: number }
+  | { kind: "Sensor"; ship: string }
+  | { kind: "Engineer"; ship: string }
+  | { kind: "Evade"; ship: string }
+  | { kind: "AssistGunner"; ship: string };
 
 // All the different action types.
 export type FireAction = {
@@ -59,12 +77,13 @@ export function newSensorState(action: SensorAction, target: string) {
 }
 
 // Engineer action queued for end-of-turn evaluation. Mirrors the Rust
-// ShipAction variants (`OverloadDrive` / `OverloadPlant` / `Repair { system }`).
-// `null` means "no engineer action queued for this ship."
+// ShipAction variants (`OverloadDrive` / `OverloadPlant` / `Repair { system }`
+// / `Jump`). `null` means "no engineer action queued for this ship."
 export type EngineerState =
   | { kind: "OverloadDrive" }
   | { kind: "OverloadPlant" }
   | { kind: "Repair"; system: string }
+  | { kind: "Jump" }
   | null;
 
 // Marshalling/d-marshalling utilities
@@ -84,10 +103,6 @@ export function actionPayload(actions: ActionType) {
       fire_actions.push(sensor_action);
     }
 
-    if (value.jump) {
-      fire_actions.push("Jump");
-    }
-
     if (value.engineer) {
       const engineer_action = engineerActionPayload(value.engineer);
       if (engineer_action) {
@@ -95,16 +110,92 @@ export function actionPayload(actions: ActionType) {
       }
     }
 
-    // Anti-actions: explicit "strip queued sensor/engineer" intents.
+    // Captain leadership check (one per ship; mutually exclusive with
+    // `clearLeadership`). Emit whenever there are boosts queued.
+    if (value.leadershipCheck && value.leadershipCheck.boosts.length > 0) {
+      fire_actions.push({
+        LeadershipCheck: {
+          boosts: value.leadershipCheck.boosts.map(boostTargetToWire),
+        },
+      });
+    }
+
+    // Anti-actions: explicit "strip queued sensor/engineer/leadership" intents.
     if (value.clearSensor) {
       fire_actions.push("ClearSensorAction");
     }
     if (value.clearEngineer) {
       fire_actions.push("ClearEngineerAction");
     }
+    if (value.clearLeadership) {
+      fire_actions.push("ClearLeadershipCheck");
+    }
 
     return [key, fire_actions];
   });
+}
+
+// FE BoostTarget -> Rust JSON wire form.
+export function boostTargetToWire(b: BoostTarget): object {
+  switch (b.kind) {
+    case "Fire":
+      return { Fire: { ship: b.ship, weapon_id: b.weapon_id } };
+    case "PointDefense":
+      return { PointDefense: { ship: b.ship, weapon_id: b.weapon_id } };
+    case "Sensor":
+      return { Sensor: { ship: b.ship } };
+    case "Engineer":
+      return { Engineer: { ship: b.ship } };
+    case "Evade":
+      return { Evade: { ship: b.ship } };
+    case "AssistGunner":
+      return { AssistGunner: { ship: b.ship } };
+  }
+}
+
+// Rust JSON wire form -> FE BoostTarget. Returns null on unrecognized shapes.
+export function wireToBoostTarget(raw: unknown): BoostTarget | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  if (Object.hasOwn(obj, "Fire")) {
+    const v = obj["Fire"] as { ship: string; weapon_id: number };
+    return { kind: "Fire", ship: v.ship, weapon_id: v.weapon_id };
+  }
+  if (Object.hasOwn(obj, "PointDefense")) {
+    const v = obj["PointDefense"] as { ship: string; weapon_id: number };
+    return { kind: "PointDefense", ship: v.ship, weapon_id: v.weapon_id };
+  }
+  if (Object.hasOwn(obj, "Sensor")) {
+    const v = obj["Sensor"] as { ship: string };
+    return { kind: "Sensor", ship: v.ship };
+  }
+  if (Object.hasOwn(obj, "Engineer")) {
+    const v = obj["Engineer"] as { ship: string };
+    return { kind: "Engineer", ship: v.ship };
+  }
+  if (Object.hasOwn(obj, "Evade")) {
+    const v = obj["Evade"] as { ship: string };
+    return { kind: "Evade", ship: v.ship };
+  }
+  if (Object.hasOwn(obj, "AssistGunner")) {
+    const v = obj["AssistGunner"] as { ship: string };
+    return { kind: "AssistGunner", ship: v.ship };
+  }
+  return null;
+}
+
+// Stable equality for BoostTarget. Used by reducers that idempotently
+// add/remove boost entries.
+export function boostTargetEquals(a: BoostTarget, b: BoostTarget): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.ship !== b.ship) return false;
+  if ((a.kind === "Fire" || a.kind === "PointDefense") &&
+      (b.kind === "Fire" || b.kind === "PointDefense")) {
+    return a.weapon_id === b.weapon_id;
+  }
+  return true;
 }
 
 function engineerActionPayload(engineer: EngineerState) {
@@ -118,6 +209,8 @@ function engineerActionPayload(engineer: EngineerState) {
       return "OverloadPlant";
     case "Repair":
       return {Repair: {system: engineer.system}};
+    case "Jump":
+      return "Jump";
   }
 }
 
@@ -175,8 +268,8 @@ export function payloadToAction(payload: object[]): ActionType {
       | {BreakSensorLock: string}
       | {SensorLock: string}
       | {JamComms: string}
-      | {Jump: string}
       | {Repair: {system: string}}
+      | {LeadershipCheck: {boosts: unknown[]}}
     )[];
     if (!actions) {
       continue;
@@ -264,12 +357,8 @@ export function payloadToAction(payload: object[]): ActionType {
     }
     result[shipName] = {...result[shipName], sensor: s};
 
-    const jump_action = actions.filter((action) => action === "Jump");
-    if (jump_action.length === 1) {
-      result[shipName] = {...result[shipName], jump: true};
-    }
-
     // Extract engineer action if any (mutually exclusive — only one per ship).
+    // Jump is one of the engineer actions.
     let engineer: EngineerState = null;
     for (const action of actions) {
       if (action === "OverloadDrive") {
@@ -280,6 +369,10 @@ export function payloadToAction(payload: object[]): ActionType {
         engineer = {kind: "OverloadPlant"};
         break;
       }
+      if (action === "Jump") {
+        engineer = {kind: "Jump"};
+        break;
+      }
       if (typeof action === "object" && Object.hasOwn(action, "Repair")) {
         const repair = (action as {Repair: {system: string}}).Repair;
         engineer = {kind: "Repair", system: repair.system};
@@ -288,11 +381,26 @@ export function payloadToAction(payload: object[]): ActionType {
     }
     result[shipName] = {...result[shipName], engineer};
 
+    // Extract a queued LeadershipCheck (mutually exclusive — only one per ship).
+    let leadershipCheck: ActionType[string]["leadershipCheck"] = null;
+    for (const action of actions) {
+      if (typeof action === "object" && Object.hasOwn(action, "LeadershipCheck")) {
+        const raw = (action as {LeadershipCheck: {boosts: unknown[]}}).LeadershipCheck;
+        const boosts: BoostTarget[] = (raw.boosts ?? [])
+          .map(wireToBoostTarget)
+          .filter((b): b is BoostTarget => b !== null);
+        leadershipCheck = { boosts };
+        break;
+      }
+    }
+    result[shipName] = {...result[shipName], leadershipCheck};
+
     // Anti-action flags are transient client-only state; server never echoes them.
     result[shipName] = {
       ...result[shipName],
       clearSensor: false,
       clearEngineer: false,
+      clearLeadership: false,
     };
   }
   return result;

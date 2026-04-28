@@ -4,7 +4,7 @@
  */
 use std::collections::HashMap;
 
-use super::action::{ShipAction, ShipActionList};
+use super::action::{BoostTarget, ShipAction, ShipActionList};
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
@@ -188,6 +188,16 @@ pub enum EffectMsg {
   EngineerAction {
     result: EngineerActionResult,
   },
+  /// Reports the result of a captain's `LeadershipCheck` resolution. `points`
+  /// is the signed leadership N (`2d6 + leadership − 8`); negative values are
+  /// reported but mean no boosts applied. `boosts_applied` is the actual list
+  /// of targets that received a +1 (already truncated by N and filtered down
+  /// to live queue entries).
+  LeadershipAction {
+    ship_name: String,
+    points: i16,
+    boosts_applied: Vec<BoostTarget>,
+  },
 }
 
 impl EffectMsg {
@@ -219,6 +229,23 @@ pub struct EngineerActionResult {
   pub critical_failure: bool,
 }
 
+/// Captain hits the "Captain Action" button → server rolls the leadership
+/// check immediately and stores the resulting points on the ship until end
+/// of turn.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CaptainActionMsg {
+  pub ship_name: String,
+}
+
+/// Result of a `CaptainAction` request: the rolled effect (2d6 + leadership − 8).
+/// `points <= 0` means the captain cannot inspire any tasks this turn.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CaptainActionResult {
+  pub ship_name: String,
+  pub points: i16,
+  pub message: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum Role {
   General = 0,
@@ -227,6 +254,7 @@ pub enum Role {
   Gunner,
   Engineer,
   Observer,
+  Captain,
 }
 
 #[serde_as]
@@ -310,6 +338,7 @@ pub enum RequestMsg {
   SetPilotActions(SetPilotActions),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
+  CaptainAction(CaptainActionMsg),
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),
@@ -336,6 +365,7 @@ pub enum ResponseMsg {
   Scenarios(ScenariosMsg),
   JoinedScenario(String),
   ScenarioSaved(String),
+  CaptainActionResult(CaptainActionResult),
   SimpleMsg(String),
   // LogoutResponse is a faux message never sent back.  However,
   // it allows us to signal between the message handling layer and the connection

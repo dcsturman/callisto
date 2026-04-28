@@ -71,6 +71,8 @@ export interface Ship extends Entity {
   temporary_maneuver?: number;
   temporary_power_multiplier?: number;
   engineer_action_taken?: boolean;
+  leadership_points?: number;
+  leadership_rolled?: boolean;
 }
 
 export enum ShipSystem {

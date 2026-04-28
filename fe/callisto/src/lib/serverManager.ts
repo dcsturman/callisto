@@ -241,6 +241,13 @@ const handleMessage = (event: MessageEvent) => {
     return;
   }
 
+  if ("CaptainActionResult" in json) {
+    // Result fields are also reflected on the ship via the followup
+    // EntityResponse (leadership_points + leadership_rolled), so the FE
+    // derives its display from there. Nothing more to do here.
+    return;
+  }
+
   if ("Error" in json) {
     // If a save is in flight, route the error through its callback so the
     // dialog can handle SCENARIO_EXISTS / NOT_OWNER specifically. Otherwise
@@ -369,7 +376,25 @@ export function updateActions(actions: ActionType) {
 }
 
 export function nextRound() {
+  // Flush any locally-held boost state to the server before ending the round.
+  // Boost toggles don't round-trip on every click anymore (see
+  // actionsSlice.toggleBoost), so the captain's pending list is in Redux
+  // only — pin it to the server here.
+  updateActions(store.getState().actions);
   const payload = UPDATE_REQUEST;
+  socket.send(JSON.stringify(payload));
+}
+
+// Captain hits the "Captain Action" button. Server rolls leadership 2d6 +
+// leadership − 8 immediately and replies with `CaptainActionResult`. The
+// result is also stored on the captain's ship as `leadership_points` until
+// end-of-turn Phase 0 consumes it.
+export function captainAction(shipName: string) {
+  // Pin the captain's intended boost list to the server at roll time so the
+  // server has the right LeadershipCheck queued when the rolled
+  // `leadership_points` is consumed at end-of-turn.
+  updateActions(store.getState().actions);
+  const payload = { CaptainAction: { ship_name: shipName } };
   socket.send(JSON.stringify(payload));
 }
 
@@ -546,10 +571,26 @@ function handleEntities(json: object) {
   console.groupEnd();
   console.groupEnd();
   store.dispatch(setEntities(entities));
+  // The captain's local leadership boost list is held in Redux only between
+  // explicit flushes; thread their shipName into setActions so the reducer
+  // can preserve it across this server-driven overwrite. Also pass
+  // `leadership_rolled` so the reducer can drop the local list at end-of-turn
+  // (when the server resets that flag back to false).
+  const captainShipName = store.getState().user.shipName ?? null;
+  const captainShip = captainShipName
+    ? entities.ships.find((s) => s.name === captainShipName)
+    : null;
+  const captainLeadershipRolled = captainShip?.leadership_rolled ?? false;
   if (Object.hasOwn(json, "actions")) {
     const actions = (json as { actions: object[] }).actions;
     const parsed_actions = payloadToAction(actions);
-    store.dispatch(setActions(parsed_actions));
+    store.dispatch(
+      setActions({
+        parsed: parsed_actions,
+        captainShipName,
+        captainLeadershipRolled,
+      })
+    );
 
     console.groupCollapsed("Received Actions: ");
     console.log(JSON.stringify(actions));
@@ -557,7 +598,13 @@ function handleEntities(json: object) {
   } else {
     console.log(JSON.stringify(json));
     console.groupEnd();
-    store.dispatch(setActions({}));
+    store.dispatch(
+      setActions({
+        parsed: {} as ActionType,
+        captainShipName,
+        captainLeadershipRolled,
+      })
+    );
   }
 }
 
@@ -592,21 +639,31 @@ function handleEffect(json: object[]) {
   // Translate `{kind:"EngineerAction", result:{...}}` into a Message-style
   // event so it surfaces in the existing ResultsWindow alongside everything
   // else from the same turn.
-  const events: Event[] = (json as Array<Event | EngineerActionEffect>).map(
-    (event) => {
-      if ((event as EngineerActionEffect).kind === "EngineerAction") {
-        const result = (event as EngineerActionEffect).result;
-        return {
-          kind: "Message",
-          content: formatEngineerResult(result),
-          position: null,
-          target: null,
-          origin: null,
-        } as Event;
-      }
-      return event as Event;
-    },
-  );
+  const events: Event[] = (
+    json as Array<Event | EngineerActionEffect | LeadershipActionEffect>
+  ).map((event) => {
+    if ((event as EngineerActionEffect).kind === "EngineerAction") {
+      const result = (event as EngineerActionEffect).result;
+      return {
+        kind: "Message",
+        content: formatEngineerResult(result),
+        position: null,
+        target: null,
+        origin: null,
+      } as Event;
+    }
+    if ((event as LeadershipActionEffect).kind === "LeadershipAction") {
+      const lead = event as LeadershipActionEffect;
+      return {
+        kind: "Message",
+        content: formatLeadershipResult(lead),
+        position: null,
+        target: null,
+        origin: null,
+      } as Event;
+    }
+    return event as Event;
+  });
 
   store.dispatch(setEvents(events));
   store.dispatch(setShowResults(true));
@@ -624,6 +681,35 @@ function formatEngineerResult(result: EngineerActionResult): string {
       ? "SUCCESS"
       : "FAILURE";
   return `[Engineer ${outcome}] ${result.message} (Check ${result.check} vs ${result.target})`;
+}
+
+interface LeadershipActionEffect {
+  kind: "LeadershipAction";
+  ship_name: string;
+  points: number;
+  boosts_applied: object[];
+}
+
+function formatLeadershipResult(lead: LeadershipActionEffect): string {
+  const summary =
+    lead.boosts_applied.length === 0
+      ? "no boosts"
+      : `${lead.boosts_applied.length} boost(s): ${lead.boosts_applied
+          .map((b) => describeBoost(b))
+          .join(", ")}`;
+  return `[Captain] ${lead.ship_name} rolled ${lead.points} leadership point(s); ${summary}.`;
+}
+
+function describeBoost(b: object): string {
+  // Wire form is `{Fire: {ship, weapon_id}}` etc. Convert to a readable
+  // "Kind on ship[/weapon]" string.
+  const obj = b as Record<string, { ship: string; weapon_id?: number }>;
+  const kind = Object.keys(obj)[0];
+  const v = obj[kind];
+  const wid = v.weapon_id;
+  return wid !== undefined
+    ? `${kind} ${v.ship}#${wid}`
+    : `${kind} ${v.ship}`;
 }
 
 function handleUsers(json: [UserContext]) {

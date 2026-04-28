@@ -99,6 +99,7 @@ fn get_ship_template_for_deserialization(name: &str) -> Option<Arc<ShipDesignTem
 #[derive(Derivative)]
 #[derivative(PartialEq, Debug)]
 #[derive(Serialize, Deserialize, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Ship {
   name: String,
   #[serde_as(as = "Vec3asVec")]
@@ -178,6 +179,33 @@ pub struct Ship {
   #[serde(skip_deserializing, default, skip_serializing_if = "is_false")]
   engineer_action_taken: bool,
 
+  // Tracks whether the captain's Evade boost has already been consumed against
+  // the FIRST attack on this ship this turn. Cleared by
+  // `reset_temporary_bonuses`.
+  //
+  // Note the asymmetry: there is no `assist_gunner_boost_used` field. The
+  // assist-gunner first-only check is local to `do_fire_actions` (one
+  // attacker per call, multiple weapons in the same closure), so a
+  // ship-level flag is unnecessary there.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_false")]
+  evade_boost_used: bool,
+
+  // Leadership points the captain rolled this turn. Set by the server when
+  // the captain hits "Captain Action"; consumed at end-of-turn Phase 0 to
+  // truncate the captain's queued boost list. Reset to 0 by
+  // `reset_temporary_bonuses` so each turn requires a fresh roll.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_i16")]
+  leadership_points: i16,
+
+  // Whether the captain has rolled this turn. Lets the FE distinguish
+  // "rolled and got 0" from "haven't rolled yet" without an extra option type.
+  // Reset by `reset_temporary_bonuses`.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_false")]
+  leadership_rolled: bool,
+
   // Index by turning ShipSystem enum into usize.
   // Skip deserializing as we don't expect them when loading from a file
   // and don't intend to receive them from the client.
@@ -213,6 +241,11 @@ fn is_zero_u8(value: &u8) -> bool {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(value: &bool) -> bool {
   !value
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_i16(value: &i16) -> bool {
+  *value == 0
 }
 
 fn format_ship_template_name_only(value: &Arc<ShipDesignTemplate>, f: &mut Formatter<'_>) -> FmtResult {
@@ -356,6 +389,9 @@ impl Ship {
       last_repair_component: None,
       repair_bonus: 0,
       engineer_action_taken: false,
+      evade_boost_used: false,
+      leadership_points: 0,
+      leadership_rolled: false,
       point_defense_list: vec![],
     }
   }
@@ -611,6 +647,24 @@ impl Ship {
     self.temporary_maneuver = 0;
     self.temporary_power_multiplier = 1.0;
     self.engineer_action_taken = false;
+    self.evade_boost_used = false;
+    self.leadership_points = 0;
+    self.leadership_rolled = false;
+  }
+
+  #[must_use]
+  pub fn get_leadership_points(&self) -> i16 {
+    self.leadership_points
+  }
+
+  pub fn set_leadership_points(&mut self, value: i16) {
+    self.leadership_points = value;
+    self.leadership_rolled = true;
+  }
+
+  #[must_use]
+  pub fn has_leadership_rolled(&self) -> bool {
+    self.leadership_rolled
   }
 
   /// Resets repair bonus tracking when engineer switches to a different component.
@@ -626,6 +680,15 @@ impl Ship {
 
   pub fn set_engineer_action_taken(&mut self, value: bool) {
     self.engineer_action_taken = value;
+  }
+
+  #[must_use]
+  pub fn has_evade_boost_used(&self) -> bool {
+    self.evade_boost_used
+  }
+
+  pub fn set_evade_boost_used(&mut self, value: bool) {
+    self.evade_boost_used = value;
   }
 
   /// Returns the effective power including temporary multiplier.
@@ -2171,5 +2234,27 @@ mod tests {
     for (system, expected) in test_cases {
       assert_eq!(String::from(system), expected);
     }
+  }
+
+  #[test_log::test]
+  fn test_reset_temporary_bonuses_clears_evade_boost_used() {
+    let mut ship = Ship::new(
+      "TestShip".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &Arc::new(ShipDesignTemplate::default()),
+      None,
+    );
+
+    // Engineer flag also covered alongside evade for symmetry.
+    ship.set_engineer_action_taken(true);
+    ship.set_evade_boost_used(true);
+    assert!(ship.has_engineer_action_taken());
+    assert!(ship.has_evade_boost_used());
+
+    ship.reset_temporary_bonuses();
+
+    assert!(!ship.has_engineer_action_taken());
+    assert!(!ship.has_evade_boost_used());
   }
 }

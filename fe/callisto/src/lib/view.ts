@@ -4,7 +4,8 @@ export enum ViewMode {
   Sensors,
   Gunner,
   Engineer,
-  Observer
+  Observer,
+  Captain,
 }
 
 export function stringToViewMode(role: string) {
@@ -21,5 +22,7 @@ export function stringToViewMode(role: string) {
       return ViewMode.Engineer;
     case "Observer":
       return ViewMode.Observer;
+    case "Captain":
+      return ViewMode.Captain;
   }
 }

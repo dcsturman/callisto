@@ -17,9 +17,13 @@ import {
   SensorAction,
   SensorState,
   EngineerState,
+  BoostTarget,
   DEFAULT_SENSOR_STATE,
+  boostTargetEquals,
 } from "components/controls/Actions";
+import { ViewMode } from "lib/view";
 import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
+import { setCrewActions } from "lib/serverManager";
 
 // Icons for each type of weapon
 import Turret1 from "assets/icons/turret1.svg?react";
@@ -33,7 +37,7 @@ import LargeBay from "assets/icons/bay-l.svg?react";
 // Icons to show fire states.
 import RayIcon from "assets/icons/laser.svg?react";
 import MissileIcon from "assets/icons/missile.svg?react";
-import { GiBinoculars } from "react-icons/gi";
+import { GiBinoculars, GiRocket } from "react-icons/gi";
 import { FaCog } from "react-icons/fa";
 import { Tooltip } from "react-tooltip";
 import { vectorDistance } from "lib/Util";
@@ -47,6 +51,7 @@ import {
   updateFireCalledShot,
   setSensorAction,
   setEngineerAction,
+  toggleBoost,
 } from "state/actionsSlice";
 import { entitiesSelector } from "state/serverSlice";
 
@@ -69,6 +74,12 @@ const ENGINEER_ICON_COLORS: { [kind: string]: string } = {
   OverloadDrive: "green",
   OverloadPlant: "yellow",
   Repair: "blue",
+  Jump: "magenta",
+};
+
+const PILOT_ICON_COLORS = {
+  Evade: "cyan",
+  AssistGunner: "purple",
 };
 
 export const WeaponButton = (props: {
@@ -528,11 +539,81 @@ export function Actions(args: {
   pointDefenseActions: PointDefenseState;
   sensorAction: SensorState;
   engineerAction: EngineerState;
+  pilotState: { dodgeThrust: number; assistGunners: boolean } | null;
   design: ShipDesignTemplate;
 }) {
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
+  const role = useAppSelector((state) => state.user.role);
+  const userShipName = useAppSelector((state) => state.user.shipName);
+  // Boost checkboxes render for Captains and Generals (per spec: "There should
+  // be a check box for the captain (and general of course) view to the far
+  // right of each action."). Captains always issue boosts against their own
+  // assigned ship. Generals (the GM-style role) might have no assigned ship —
+  // in that case fall back to the currently-viewed ship so the General can
+  // roll leadership on whichever ship's popup they're inspecting.
+  const captainShipName = userShipName ?? computerShipName;
+  const showBoostCheckbox =
+    role === ViewMode.Captain || role === ViewMode.General;
+  const boostDispatchEnabled = showBoostCheckbox && captainShipName != null;
+  const captainBoosts = useAppSelector((state) => {
+    if (!captainShipName) return [] as BoostTarget[];
+    return state.actions[captainShipName]?.leadershipCheck?.boosts ?? [];
+  });
   const dispatch = useAppDispatch();
+
+  // Captain's leadership cap. The cap is the rolled `leadership_points`, but
+  // only after the captain has actually rolled this turn — pre-roll
+  // `leadership_points` is stale from last turn, so gate on `leadership_rolled`.
+  const captainShip = useMemo(
+    () => (captainShipName ? findShip(entities, captainShipName) : null),
+    [entities, captainShipName],
+  );
+  const cap = useMemo(() => {
+    if (!captainShip) return 0;
+    if (!(captainShip.leadership_rolled ?? false)) return 0;
+    return Math.max(0, captainShip.leadership_points ?? 0);
+  }, [captainShip]);
+  const atLimit = captainBoosts.length >= cap;
+
+  const isBoosted = (target: BoostTarget) =>
+    captainBoosts.some((b) => boostTargetEquals(b, target));
+
+  const onBoostToggle = (target: BoostTarget) => {
+    if (!captainShipName) return;
+    dispatch(toggleBoost({ shipName: captainShipName, target }));
+  };
+
+  const renderBoostCheckbox = (target: BoostTarget) => {
+    if (!showBoostCheckbox) return null;
+    const checked = boostDispatchEnabled ? isBoosted(target) : false;
+    // Checked boxes stay toggleable so the user can free a slot. Only
+    // unchecked-at-limit and the no-ship-bound case disable.
+    const disabled =
+      !boostDispatchEnabled || (!checked && atLimit);
+    let title: string;
+    if (!boostDispatchEnabled) {
+      title = "Sit on a ship to apply leadership boosts";
+    } else if (!(captainShip?.leadership_rolled ?? false)) {
+      title = "Roll the captain action first";
+    } else if (atLimit && !checked) {
+      title = "Captain limit reached — uncheck another to free a slot";
+    } else {
+      title = "Boost this action with leadership";
+    }
+    return (
+      <span className="boost-checkbox-cell">
+        <input
+          type="checkbox"
+          className="boost-checkbox"
+          checked={checked}
+          onChange={() => onBoostToggle(target)}
+          disabled={disabled}
+          title={title}
+        />
+      </span>
+    );
+  };
 
   const computerShip = useMemo(
     () => findShip(entities, computerShipName),
@@ -595,12 +676,20 @@ export function Actions(args: {
           "Repair " + (sys != null ? SYSTEM_NAMES[sys] : args.engineerAction.system);
         break;
       }
+      case "Jump":
+        engineerLabel = "Jump";
+        break;
     }
   }
 
   return (
     <div className="control-form">
       <h2>Actions</h2>
+      {showBoostCheckbox && (
+        <div className="actions-column-header">
+          <span className="boost-column-label">Assist</span>
+        </div>
+      )}
       {args.fireActions.map((action, index) => {
         let kind = null;
         if (args.design.weapons[action.weapon_id].kind === "Beam") {
@@ -612,6 +701,12 @@ export function Actions(args: {
         } else {
           kind = "Missile";
         }
+
+        const fireBoostTarget: BoostTarget = {
+          kind: "Fire",
+          ship: computerShipName ?? "",
+          weapon_id: action.weapon_id,
+        };
 
         return ["Beam", "Pulse", "Particle"].includes(kind) ? (
           <div className="fire-actions-div" key={index + "_fire_img"}>
@@ -640,21 +735,25 @@ export function Actions(args: {
                 )
               }
             />
+            {renderBoostCheckbox(fireBoostTarget)}
           </div>
         ) : (
           <div
+            className="fire-actions-div"
             key={index + "_fire_img"}
-            onClick={() => onClick(action.weapon_id)}
           >
-            <p>
-              <MissileIcon
-                className="missile-type-icon"
-                style={{
-                  fill: WEAPON_COLORS[kind],
-                }}
-              />{" "}
-              to {action.target}
-            </p>
+            <div onClick={() => onClick(action.weapon_id)}>
+              <p>
+                <MissileIcon
+                  className="missile-type-icon"
+                  style={{
+                    fill: WEAPON_COLORS[kind],
+                  }}
+                />{" "}
+                to {action.target}
+              </p>
+            </div>
+            {renderBoostCheckbox(fireBoostTarget)}
           </div>
         );
       })}
@@ -677,6 +776,12 @@ export function Actions(args: {
           );
         }
 
+        const pdBoostTarget: BoostTarget = {
+          kind: "PointDefense",
+          ship: computerShipName ?? "",
+          weapon_id: action.weapon_id,
+        };
+
         return ["Beam", "Pulse"].includes(kind) ? (
           <div className="fire-actions-div" key={index + "_pd_img"}>
             <div onClick={() => onClick(action.weapon_id)}>
@@ -690,33 +795,91 @@ export function Actions(args: {
                 on Point Defense
               </p>
             </div>
+            {renderBoostCheckbox(pdBoostTarget)}
           </div>
         ) : (
           <></>
         );
       })}
 
+      {args.pilotState != null && args.pilotState.dodgeThrust > 0 && (
+        <div className="fire-actions-div">
+          <div
+            onClick={() =>
+              computerShipName &&
+              setCrewActions(
+                computerShipName,
+                0,
+                args.pilotState!.assistGunners,
+              )
+            }
+          >
+            <p>
+              <GiRocket
+                className="beam-type-icon"
+                style={{ fill: PILOT_ICON_COLORS.Evade }}
+              />{" "}
+              Evade
+            </p>
+          </div>
+          {renderBoostCheckbox({ kind: "Evade", ship: computerShipName ?? "" })}
+        </div>
+      )}
+
+      {args.pilotState != null && args.pilotState.assistGunners && (
+        <div className="fire-actions-div">
+          <div
+            onClick={() =>
+              computerShipName &&
+              setCrewActions(
+                computerShipName,
+                args.pilotState!.dodgeThrust,
+                false,
+              )
+            }
+          >
+            <p>
+              <GiRocket
+                className="beam-type-icon"
+                style={{ fill: PILOT_ICON_COLORS.AssistGunner }}
+              />{" "}
+              Assist Gunner
+            </p>
+          </div>
+          {renderBoostCheckbox({
+            kind: "AssistGunner",
+            ship: computerShipName ?? "",
+          })}
+        </div>
+      )}
+
       {sensorLabel != null && (
-        <div className="fire-actions-div" onClick={onSensorRowClick}>
-          <p>
-            <GiBinoculars
-              className="beam-type-icon"
-              style={{ fill: SENSOR_ICON_COLORS[args.sensorAction.action] }}
-            />{" "}
-            {sensorLabel}
-          </p>
+        <div className="fire-actions-div">
+          <div onClick={onSensorRowClick}>
+            <p>
+              <GiBinoculars
+                className="beam-type-icon"
+                style={{ fill: SENSOR_ICON_COLORS[args.sensorAction.action] }}
+              />{" "}
+              {sensorLabel}
+            </p>
+          </div>
+          {renderBoostCheckbox({ kind: "Sensor", ship: computerShipName ?? "" })}
         </div>
       )}
 
       {engineerLabel != null && (
-        <div className="fire-actions-div" onClick={onEngineerRowClick}>
-          <p>
-            <FaCog
-              className="beam-type-icon"
-              style={{ fill: ENGINEER_ICON_COLORS[args.engineerAction!.kind] }}
-            />{" "}
-            {engineerLabel}
-          </p>
+        <div className="fire-actions-div">
+          <div onClick={onEngineerRowClick}>
+            <p>
+              <FaCog
+                className="beam-type-icon"
+                style={{ fill: ENGINEER_ICON_COLORS[args.engineerAction!.kind] }}
+              />{" "}
+              {engineerLabel}
+            </p>
+          </div>
+          {renderBoostCheckbox({ kind: "Engineer", ship: computerShipName ?? "" })}
         </div>
       )}
     </div>

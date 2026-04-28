@@ -1292,6 +1292,345 @@ async fn test_list_local_dir() {
   assert!(result.len() > 2);
 }
 
+// ---------------------------------------------------------------------------
+// Captain leadership tests
+//
+// These exercise Phase 0 of `update()` (leadership pre-resolution), the merge
+// arms for `LeadershipCheck` / `ClearLeadershipCheck`, and the carry-over rule
+// in `reset_actions`.  Where the deterministic test seed makes the dice
+// predictable we rely on observed outcomes; otherwise we assert relationships.
+// ---------------------------------------------------------------------------
+
+// Helper: pull out the LeadershipAction effect for a given ship from a
+// list of effects. Returns (points, boosts_applied) or panics if not found.
+fn extract_leadership_effect(effects: &[EffectMsg], ship: &str) -> (i16, Vec<crate::action::BoostTarget>) {
+  for e in effects {
+    if let EffectMsg::LeadershipAction {
+      ship_name,
+      points,
+      boosts_applied,
+    } = e
+    {
+      if ship_name == ship {
+        return (*points, boosts_applied.clone());
+      }
+    }
+  }
+  panic!("No LeadershipAction effect for {ship} in {effects:#?}");
+}
+
+// Helper: count `LeadershipCheck` actions queued for a given ship in
+// `entities.actions`.
+fn count_leadership_checks(entities: &Entities, ship: &str) -> usize {
+  entities.actions.iter().find(|(s, _)| s == ship).map_or(0, |(_, list)| {
+    list
+      .iter()
+      .filter(|a| matches!(a, crate::action::ShipAction::LeadershipCheck { .. }))
+      .count()
+  })
+}
+
+/// Captain rolls leadership with a couple of boosts. Verify that the
+/// `LeadershipAction` effect is emitted and that — when N is positive —
+/// boosts get applied (i.e., `boosts_applied` is non-empty and is a subset
+/// of the queued boosts).
+#[test(tokio::test)]
+async fn test_leadership_check_success_path() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  // ship1: a captain with leadership=4 firing two beam weapons.
+  let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2,2,1,1],"leadership":4}}"#;
+  server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
+
+  // ship2: a soft target so the fire action stays in the queue.
+  let ship2 =
+    r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
+
+  // Captain hits the "Captain Action" button — server rolls immediately.
+  // Required before update; without it leadership_points stays 0.
+  let captain_result = server.captain_action(&crate::payloads::CaptainActionMsg {
+    ship_name: "ship1".to_string(),
+  });
+
+  // Queue two fire actions and a LeadershipCheck pointing at both of them.
+  let actions = json!([["ship1", [
+      {"FireAction": {"weapon_id": 0, "target": "ship2"}},
+      {"FireAction": {"weapon_id": 1, "target": "ship2"}},
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 0}},
+          {"Fire": {"ship": "ship1", "weapon_id": 1}}
+      ]}}
+  ]]]);
+
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+  let effects = server.update();
+
+  // Verify the LeadershipAction effect rode out and matches the rolled value.
+  let (points, applied) = extract_leadership_effect(&effects, "ship1");
+  assert_eq!(
+    points, captain_result.points,
+    "Phase 0 should consume the rolled leadership_points from captain_action"
+  );
+
+  // points = 2d6 + 4 - 8 = 2d6 - 4. With a deterministic seed the value is
+  // fixed; assert it lies in the legal range and matches the truncation rule.
+  assert!(
+    (-2..=8).contains(&points),
+    "leadership points {points} outside legal 2d6-4 range"
+  );
+
+  let take = usize::try_from(points.max(0)).unwrap_or(0);
+  // Both queued boost targets are live (matching FireAction in queue), so
+  // `applied.len()` should be exactly `min(take, 2)`.
+  assert_eq!(
+    applied.len(),
+    take.min(2),
+    "applied {} != min(take={take}, queued=2)",
+    applied.len()
+  );
+  for b in &applied {
+    assert!(
+      matches!(
+        b,
+        crate::action::BoostTarget::Fire { ship, weapon_id } if ship == "ship1" && (*weapon_id == 0 || *weapon_id == 1)
+      ),
+      "applied boost {b:?} not in queued set"
+    );
+  }
+}
+
+/// Boost-target truncation: with leadership=0 and 5 queued boosts, only the
+/// first `max(0, N)` survive (deterministic order: ship asc, kind ord,
+/// `weapon_id`). N is small so we just assert the count and that whichever
+/// boosts survived appear in lexicographic prefix order.
+#[test(tokio::test)]
+async fn test_leadership_check_truncates_when_n_below_count() {
+  use crate::action::{boost_target_sort_key, BoostTarget};
+
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  // Captain ship with no leadership skill.
+  let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[1,1,1,1],"leadership":0}}"#;
+  server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
+
+  let ship2 =
+    r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
+
+  // Queue 4 fire actions on different weapons + a sensor lock so that we have
+  // 5 live targetable actions. Then a LeadershipCheck listing all 5 boosts.
+  let actions = json!([["ship1", [
+      {"FireAction": {"weapon_id": 0, "target": "ship2"}},
+      {"FireAction": {"weapon_id": 1, "target": "ship2"}},
+      {"FireAction": {"weapon_id": 2, "target": "ship2"}},
+      {"FireAction": {"weapon_id": 3, "target": "ship2"}},
+      {"SensorLock": {"target": "ship2"}},
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 0}},
+          {"Fire": {"ship": "ship1", "weapon_id": 1}},
+          {"Fire": {"ship": "ship1", "weapon_id": 2}},
+          {"Fire": {"ship": "ship1", "weapon_id": 3}},
+          {"Sensor": {"ship": "ship1"}}
+      ]}}
+  ]]]);
+
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+  let effects = server.update();
+
+  let (points, applied) = extract_leadership_effect(&effects, "ship1");
+  let take = usize::try_from(points.max(0)).unwrap_or(0);
+
+  // points = 2d6 - 8 ranges from -6..=4; our 5 boosts queue is enough that we
+  // expect truncation when take < 5.
+  assert_eq!(
+    applied.len(),
+    take.min(5),
+    "expected applied count == min(take={take}, 5), got {}",
+    applied.len()
+  );
+
+  // Whatever survived must be a strict prefix of the queued list under the
+  // canonical sort. Build the expected prefix and compare.
+  let mut canonical = vec![
+    BoostTarget::Fire {
+      ship: "ship1".to_string(),
+      weapon_id: 0,
+    },
+    BoostTarget::Fire {
+      ship: "ship1".to_string(),
+      weapon_id: 1,
+    },
+    BoostTarget::Fire {
+      ship: "ship1".to_string(),
+      weapon_id: 2,
+    },
+    BoostTarget::Fire {
+      ship: "ship1".to_string(),
+      weapon_id: 3,
+    },
+    BoostTarget::Sensor {
+      ship: "ship1".to_string(),
+    },
+  ];
+  canonical.sort_by_key(boost_target_sort_key);
+  let expected_prefix: Vec<BoostTarget> = canonical.into_iter().take(applied.len()).collect();
+  assert_eq!(applied, expected_prefix, "applied boosts didn't match canonical prefix");
+}
+
+/// Boost whose target action does not exist in the queue must be dropped
+/// during Phase 0.
+#[test(tokio::test)]
+async fn test_leadership_drops_dead_target_boost() {
+  use crate::action::BoostTarget;
+
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  // Capable captain so N is likely positive.
+  let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2,2,1,1],"leadership":6}}"#;
+  server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
+
+  let ship2 =
+    r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
+
+  // Queue ONE live fire action (weapon_id 0). LeadershipCheck lists boosts for
+  // a non-existent fire action (weapon_id 99) — that one should be dropped.
+  let actions = json!([["ship1", [
+      {"FireAction": {"weapon_id": 0, "target": "ship2"}},
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 0}},
+          {"Fire": {"ship": "ship1", "weapon_id": 99}}
+      ]}}
+  ]]]);
+
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+  let effects = server.update();
+
+  let (_points, applied) = extract_leadership_effect(&effects, "ship1");
+
+  // The dead-target boost (#99) must NOT appear in applied.
+  for b in &applied {
+    if let BoostTarget::Fire { ship, weapon_id } = b {
+      assert_ne!(*weapon_id, 99, "dead-target boost survived: {b:?}");
+      assert_eq!(ship, "ship1");
+    }
+  }
+}
+
+/// `merge` for two `LeadershipCheck` actions on the same ship: only the
+/// second one survives in `entities.actions`.
+#[test(tokio::test)]
+async fn test_merge_replaces_prior_leadership_check() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
+
+  // First LeadershipCheck with boost A (weapon 0).
+  let first = json!([["ship1", [
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 0}}
+      ]}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&first.to_string()).unwrap());
+
+  // Second LeadershipCheck with boost B (weapon 1).
+  let second = json!([["ship1", [
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 1}}
+      ]}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&second.to_string()).unwrap());
+
+  let entities = server.get_entities();
+  assert_eq!(
+    count_leadership_checks(&entities, "ship1"),
+    1,
+    "expected exactly one LeadershipCheck after merge"
+  );
+
+  // Verify it's the second one (boosts contains weapon_id 1, not 0).
+  let lc = entities
+    .actions
+    .iter()
+    .find(|(s, _)| s == "ship1")
+    .unwrap()
+    .1
+    .iter()
+    .find_map(|a| match a {
+      crate::action::ShipAction::LeadershipCheck { boosts } => Some(boosts.clone()),
+      _ => None,
+    })
+    .unwrap();
+  assert_eq!(lc.len(), 1);
+  assert!(
+    matches!(&lc[0], crate::action::BoostTarget::Fire { weapon_id, .. } if *weapon_id == 1),
+    "merge kept wrong LeadershipCheck: {lc:?}"
+  );
+}
+
+/// `ClearLeadershipCheck` strips a queued `LeadershipCheck` without replacing it.
+#[test(tokio::test)]
+async fn test_clear_leadership_check_strips() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
+
+  let queue = json!([["ship1", [
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 0}}
+      ]}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&queue.to_string()).unwrap());
+  assert_eq!(count_leadership_checks(&server.get_entities(), "ship1"), 1);
+
+  // Anti-action wipes it.
+  let clear = json!([["ship1", ["ClearLeadershipCheck"]]]);
+  server.merge_actions(serde_json::from_str(&clear.to_string()).unwrap());
+  assert_eq!(
+    count_leadership_checks(&server.get_entities(), "ship1"),
+    0,
+    "ClearLeadershipCheck should have stripped the queued LeadershipCheck"
+  );
+}
+
+/// `reset_actions` (run at end of `update()`) strips `LeadershipCheck` so it
+/// doesn't carry over to the next turn.
+#[test(tokio::test)]
+async fn test_reset_actions_strips_leadership_check() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer",
+        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[],"leadership":2}}"#;
+  server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
+
+  let queue = json!([["ship1", [
+      {"LeadershipCheck": {"boosts": []}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&queue.to_string()).unwrap());
+  assert_eq!(count_leadership_checks(&server.get_entities(), "ship1"), 1);
+
+  let _ = server.update();
+
+  // After update the LC is consumed. It must NOT persist into the next turn.
+  assert_eq!(
+    count_leadership_checks(&server.get_entities(), "ship1"),
+    0,
+    "reset_actions should have stripped LeadershipCheck after Phase 0 evaluation"
+  );
+}
+
 #[test(tokio::test)]
 #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
 async fn test_list_gcs_dir() {

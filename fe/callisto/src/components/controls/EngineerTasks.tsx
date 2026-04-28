@@ -74,6 +74,8 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
     selectedValue = "overload-drive";
   } else if (queuedEngineer?.kind === "OverloadPlant") {
     selectedValue = "overload-plant";
+  } else if (queuedEngineer?.kind === "Jump") {
+    selectedValue = "jump";
   } else if (queuedEngineer?.kind === "Repair") {
     const sys = stringToShipSystem(queuedEngineer.system);
     if (sys != null) selectedValue = `repair-${sys}`;
@@ -99,6 +101,13 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
           action: { kind: "OverloadPlant" },
         }),
       );
+    } else if (value === "jump") {
+      dispatch(
+        setEngineerAction({
+          shipName: ship.name,
+          action: { kind: "Jump" },
+        }),
+      );
     } else if (value.startsWith("repair-")) {
       const n = parseInt(value.substring("repair-".length), 10);
       if (!Number.isNaN(n)) {
@@ -117,7 +126,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
 
   return (
     <div className="engineer-tasks">
-      <h2 className="control-form">Engineer Tasks</h2>
+      <div className="section-tag">Engineer</div>
       <select
         className="control-input"
         value={selectedValue}
@@ -131,21 +140,27 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
         <option value="overload-plant" disabled={hasOverloadPlant}>
           Overload Plant
         </option>
-        {damagedSystems.map(({ system, level }) => {
-          const bonus = getRepairBonus(system);
-          const bonusText = bonus > 0 ? ` (+${bonus} bonus)` : "";
-          return (
-            <option key={system} value={`repair-${system}`}>
-              Repair {SYSTEM_NAMES[system]} (Crit Level {level}){bonusText}
-            </option>
-          );
-        })}
+        <option value="jump" disabled={!ship.can_jump}>
+          Jump
+        </option>
+        {damagedSystems.length === 0 ? (
+          <option disabled value="no-damage">
+            No damaged systems to repair
+          </option>
+        ) : (
+          damagedSystems.map(({ system, level }) => {
+            const bonus = getRepairBonus(system);
+            const bonusText = bonus > 0 ? ` (+${bonus} bonus)` : "";
+            return (
+              <option key={system} value={`repair-${system}`}>
+                Repair {SYSTEM_NAMES[system]} (Crit Level {level}){bonusText}
+              </option>
+            );
+          })
+        )}
       </select>
       {hasOverloadDrive && <p className="plan-accel-text">Drive Overloaded</p>}
       {hasOverloadPlant && <p className="plan-accel-text">Plant Overloaded</p>}
-      {damagedSystems.length === 0 && (
-        <p className="plan-accel-text">No damaged systems</p>
-      )}
     </div>
   );
 };
