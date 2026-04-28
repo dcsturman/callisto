@@ -240,13 +240,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   replace_ship_templates(templates);
 
-  replace_scenarios(
-    load_scenarios_and_metadata(&args.scenario_dir)
-      .await
-      .unwrap_or_else(|e| panic!("Unable to load scenarios from {}. Reason {:?}", args.scenario_dir, e)),
-  );
+  // Don't crash the server if scenario loading fails — a transient GCS
+  // metadata-server flake at cold start would otherwise take down a fresh
+  // Cloud Run instance permanently. Log and start with empty scenarios; the
+  // reload watcher (5s polling, fingerprint-based) is told to seed its
+  // fingerprint as empty when the initial load failed, so the next poll
+  // triggers a retry. This is the self-healing path.
+  let initial_scenario_load_ok = match load_scenarios_and_metadata(&args.scenario_dir).await {
+    Ok(scenarios) => {
+      replace_scenarios(scenarios);
+      true
+    }
+    Err(e) => {
+      warn!(
+        "(main) Initial scenario load from {} failed: {e}. Starting with empty list; the reload watcher will retry every {}s.",
+        args.scenario_dir, RELOAD_POLL_INTERVAL.as_secs()
+      );
+      replace_scenarios(Vec::new());
+      false
+    }
+  };
   let (reload_sender, reload_receiver) = unbounded();
-  tokio::spawn(watch_reloadable_data(design_file.clone(), scenario_dir.clone(), reload_sender));
+  tokio::spawn(watch_reloadable_data(
+    design_file.clone(),
+    scenario_dir.clone(),
+    initial_scenario_load_ok,
+    reload_sender,
+  ));
 
   // Keep track of session keys (cookies) on connections.
   let session_keys = Arc::new(Mutex::new(HashMap::new()));
@@ -321,7 +341,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 }
 
 async fn watch_reloadable_data(
-  design_file: String, scenario_dir: String, reload_sender: UnboundedSender<ReloadNotification>,
+  design_file: String, scenario_dir: String, initial_scenario_load_ok: bool,
+  reload_sender: UnboundedSender<ReloadNotification>,
 ) {
   let mut last_design_modified = callisto::get_file_last_modified_timestamp(&design_file)
     .await
@@ -331,10 +352,20 @@ async fn watch_reloadable_data(
     })
     .unwrap_or_default();
 
-  let mut last_scenario_fingerprint = get_local_or_cloud_dir_fingerprint(&scenario_dir).await.unwrap_or_else(|e| {
-    warn!("(main) Unable to fingerprint scenario directory {scenario_dir}: {e}");
+  // If the initial scenario load in main() succeeded, seed the fingerprint
+  // with the current bucket state so the first poll only reloads on real
+  // changes. If it failed (e.g. cold-start GCS metadata-server flake),
+  // seed empty so the very next poll triggers a retry — that's the
+  // self-healing path: a transient failure clears once the metadata server
+  // recovers, without needing the bucket to be touched.
+  let mut last_scenario_fingerprint = if initial_scenario_load_ok {
+    get_local_or_cloud_dir_fingerprint(&scenario_dir).await.unwrap_or_else(|e| {
+      warn!("(main) Unable to fingerprint scenario directory {scenario_dir}: {e}");
+      Vec::new()
+    })
+  } else {
     Vec::new()
-  });
+  };
 
   loop {
     tokio::time::sleep(RELOAD_POLL_INTERVAL).await;
@@ -404,26 +435,46 @@ async fn load_scenarios_and_metadata(
 
   event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Loaded scenario");
 
-  let scenarios = join_all(scenarios_list.iter().map(async |scenario| {
-    // Load each scenario and read it in to get the metadata.
-    // If we cannot open it, just drop it from the scenarios list.
+  // Track per-file load outcomes so the caller can distinguish "all good" from
+  // "partial failure". Partial failure must be returned as Err so the
+  // fingerprint-based reload watcher leaves `last_scenario_fingerprint`
+  // unchanged and naturally retries on the next 5s poll. This is the
+  // self-healing path for the cold-start GCS-token-fetch stampede: a
+  // metadata-server flake at startup no longer wedges SCENARIOS as empty
+  // until the bucket happens to change.
+  let results = join_all(scenarios_list.iter().map(async |scenario| {
     let scenario_path = join_dir_entry_path(scenario_dir, scenario);
     let load_result = Entities::load_from_file(&scenario_path).await;
-    let Ok(entities) = load_result else {
-      let error_msg = match &load_result {
-        Err(e) => e.to_string(),
-        Ok(_) => "Unknown error".to_string(),
-      };
-      error!("ERROR: Failed to parse scenario file '{}': {}", scenario_path, error_msg);
-      return None;
-    };
-    Some((scenario.clone(), entities.metadata.clone()))
+    match load_result {
+      Ok(entities) => Ok((scenario.clone(), entities.metadata.clone())),
+      Err(e) => {
+        error!("ERROR: Failed to parse scenario file '{}': {}", scenario_path, e);
+        Err(format!("{scenario_path}: {e}"))
+      }
+    }
   }))
-  .await
-  .iter()
-  .flatten()
-  .cloned()
-  .collect::<Vec<_>>();
+  .await;
+
+  let mut scenarios = Vec::with_capacity(results.len());
+  let mut failures = Vec::new();
+  for r in results {
+    match r {
+      Ok(s) => scenarios.push(s),
+      Err(msg) => failures.push(msg),
+    }
+  }
+
+  if !failures.is_empty() {
+    return Err(
+      format!(
+        "Failed to load {} of {} scenario file(s): {}",
+        failures.len(),
+        scenarios.len() + failures.len(),
+        failures.join("; ")
+      )
+      .into(),
+    );
+  }
 
   Ok(scenarios)
 }
