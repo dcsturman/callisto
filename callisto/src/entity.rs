@@ -1143,9 +1143,7 @@ impl Entities {
       actions.retain(|action| {
         match action {
           // Keep FireActions, JamComms if the target still exists.
-          ShipAction::JamComms { target } | ShipAction::FireAction { target, .. } => {
-            self.ships.contains_key(target)
-          }
+          ShipAction::JamComms { target } | ShipAction::FireAction { target, .. } => self.ships.contains_key(target),
           // Keep SensorLock only while the lock isn't yet established.
           ShipAction::SensorLock { target } => self.ships.contains_key(target) && !attacker_has_lock_on(target),
           // Keep BreakSensorLock if the target still exists and the target has a sensor lock.
