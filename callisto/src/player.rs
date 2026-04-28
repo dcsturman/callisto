@@ -7,13 +7,13 @@ use itertools::multiunzip;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::action::{merge, ShipAction};
+use crate::action::{boost_target_alive, boost_target_sort_key, merge, BoostMap, BoostTarget, ShipAction};
 use crate::authentication::Authenticator;
 use crate::computer::FlightParams;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
-  AddPlanetMsg, AddShipMsg, AuthResponse, ChangeRole, ComputePathMsg, EffectMsg, FlightPathMsg, LoginMsg,
-  RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
+  AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate};
@@ -357,6 +357,51 @@ impl PlayerManager {
     "Actions added.".to_string()
   }
 
+  /// Roll the captain's leadership check immediately. Stores the resulting
+  /// points on the ship until `reset_temporary_bonuses` clears them at end
+  /// of turn. The captain has up to N boosts to apply; assigning more than
+  /// N is allowed but only the first N (per `boost_target_sort_key`) take
+  /// effect at end of turn.
+  ///
+  /// If the ship is missing, returns a result with `points: 0` and an error
+  /// message — the FE renders that the same way as a failed roll.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on `Entities` or if the server
+  /// is not initialized.
+  #[must_use]
+  pub fn captain_action(&self, msg: &CaptainActionMsg) -> CaptainActionResult {
+    let mut rng = get_rng(self.test_mode);
+    let entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    let Some(ship) = entities.ships.get(&msg.ship_name) else {
+      return CaptainActionResult {
+        ship_name: msg.ship_name.clone(),
+        points: 0,
+        message: format!("Ship {} not found.", msg.ship_name),
+      };
+    };
+    let leadership = i16::from(ship.read().unwrap().get_crew().get_leadership());
+    let roll = i16::from(crate::combat::roll_dice(2, &mut rng));
+    let points = roll + leadership - 8;
+    ship.write().unwrap().set_leadership_points(points);
+
+    let message = if points > 0 {
+      format!(
+        "Captain on {} rolled {points}: can inspire {points} task{}.",
+        msg.ship_name,
+        if points == 1 { "" } else { "s" },
+      )
+    } else {
+      format!("Captain on {} rolled {points}: cannot boost tasks this turn.", msg.ship_name)
+    };
+
+    CaptainActionResult {
+      ship_name: msg.ship_name.clone(),
+      points,
+      message,
+    }
+  }
+
   /// Update all the entities by having actions occur.  This includes all the innate actions for each entity
   /// (e.g. move a ship, planet or missile) as well as new fire actions.
   ///
@@ -364,6 +409,7 @@ impl PlayerManager {
   /// Panics if the lock cannot be obtained to read the entities or if the server
   /// has not yet been initialized.
   #[must_use]
+  #[allow(clippy::too_many_lines)]
   pub fn update(&self) -> Vec<EffectMsg> {
     let mut rng = get_rng(self.test_mode);
 
@@ -375,15 +421,65 @@ impl PlayerManager {
       .get_unlocked_entities()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
 
+    // Phase 0: Resolve queued LeadershipCheck actions to build the BoostMap
+    // for this turn. The leadership dice roll itself happens BEFORE end-of-turn
+    // (when the captain hits the "Captain Action" button — see
+    // `PlayerManager::captain_action`). The rolled effect lives on
+    // `ship.leadership_points` until reset_temporary_bonuses clears it. Here
+    // we just truncate the captain's queued boost list to the cached N and
+    // emit a summary `EffectMsg::LeadershipAction`.
+    //
+    // Stacking semantics: multiple captains pool boosts via the underlying
+    // HashSet — duplicate (same target from two captains) collapses to one
+    // +1. Multi-captain stacking is intentionally not supported.
+    let mut boost_map: BoostMap = BoostMap::default();
+    let mut leadership_effects: Vec<EffectMsg> = Vec::new();
+    {
+      // Snapshot of the action queue to use for "is this target action still
+      // live?" checks. Cloning is cheap relative to a turn cycle.
+      let queue_snapshot = entities.actions.clone();
+      for (ship_name, ship_actions) in &entities.actions {
+        // Defensive: skip leadership checks for ships that don't exist.
+        let Some(ship_lock) = entities.ships.get(ship_name) else {
+          continue;
+        };
+        for action in ship_actions {
+          let ShipAction::LeadershipCheck { boosts } = action else {
+            continue;
+          };
+          // Pull the pre-rolled leadership effect off the captain's ship. If
+          // the captain never hit the button this turn, n is 0 and no boosts
+          // apply.
+          let n = ship_lock.read().unwrap().get_leadership_points();
+          let take = if n > 0 { usize::try_from(n).unwrap_or(0) } else { 0 };
+
+          // Deterministic order: by ship asc, kind ordinal, then weapon_id.
+          let mut sorted: Vec<BoostTarget> = boosts.clone();
+          sorted.sort_by_key(boost_target_sort_key);
+          // Drop boosts whose target action no longer exists in the queue.
+          sorted.retain(|t| boost_target_alive(t, &queue_snapshot, &entities.ships));
+
+          let truncated: Vec<BoostTarget> = sorted.into_iter().take(take).collect();
+          for t in &truncated {
+            boost_map.insert(t.clone());
+          }
+
+          leadership_effects.push(EffectMsg::LeadershipAction {
+            ship_name: ship_name.clone(),
+            points: n,
+            boosts_applied: truncated,
+          });
+        }
+      }
+    }
+
     let actions = &entities.actions;
     debug!("(/update) Ship actions: {:?}", actions);
 
-    // Sort all the actions by type.  This big messy functional action sorts through all the ship actions and creates
-    // three vectors with all the fire actions for each ship in the first, the sensor actions for each ship in the second, and
-    // ships making jump attempts in the third
-    // Was very explicit with types here (more than necessary) to make it easier to read and understand.
+    // Sort all the actions by type.  Slice into fire / sensor / point-defense /
+    // engineer (Jump is an engineer action, so it lands in the engineer slice).
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, jump_actions, point_defense_actions): (
+    let (fire_actions, sensor_actions, point_defense_actions, engineer_actions): (
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
@@ -393,27 +489,36 @@ impl PlayerManager {
         warn!("(update) Cannot find ship {} for actions.", ship_name);
         return None;
       }
-      let (f_actions, s_actions, j_actions, p_actions): (
+      let (f_actions, s_actions, p_actions, e_actions): (
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
       ) = multiunzip(actions.iter().map(|action| match action {
         ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None, None),
-        ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone())),
+        ShipAction::PointDefenseAction { .. } => (None, None, Some(action.clone()), None),
         ShipAction::JamMissiles
         | ShipAction::BreakSensorLock { .. }
         | ShipAction::SensorLock { .. }
         | ShipAction::JamComms { .. } => (None, Some(action.clone()), None, None),
-        ShipAction::Jump => (None, None, Some(action.clone()), None),
-        // Engineer actions are not processed in this tuple (handled separately)
-        ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } => (None, None, None, None),
+        // Engineer actions (including Jump) are deferred to end-of-turn evaluation.
+        ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump => {
+          (None, None, None, Some(action.clone()))
+        }
+        // LeadershipCheck is consumed in Phase 0 below; it does not flow into
+        // any of the per-category slices.
+        ShipAction::LeadershipCheck { .. } => (None, None, None, None),
+        // Anti-actions are consumed by `merge` and should never reach the queue.
+        // If one slips through, drop it from every slice.
+        ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction | ShipAction::ClearLeadershipCheck => {
+          (None, None, None, None)
+        }
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
-        (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), p_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), e_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
       ))
     }));
 
@@ -422,8 +527,12 @@ impl PlayerManager {
     // or destroyed they still get to take their actions.
     let ship_snapshot: HashMap<String, Ship> = entities.ship_deep_copy();
 
+    // First emit the leadership-action effects so the FE knows the +1
+    // assignments before any sensor/fire results land.
+    let mut effects = leadership_effects;
+
     // First process all sensor actions. They can remove missiles and change modifiers for ship combat.
-    let mut effects = entities.sensor_actions(&sensor_actions, &mut rng);
+    effects.append(&mut entities.sensor_actions(&sensor_actions, &boost_map, &mut rng));
 
     // 1. This method will make a clone of all ships to use as attacker while impacting damage on the primary copy of ships.  This way ships still get ot attack
     // even when damaged.  This gives us a "simultaneous" attack semantics.
@@ -431,13 +540,19 @@ impl PlayerManager {
     // 3. Then update all the entities.  Note this means ship movement is after combat so a ship with degraded maneuver might not move as much as expected.
     // Its not clear to me if this is the right order - or should they move then take damage - but we'll do it this way for now.
     // 3. Return a set of effects
-    effects.append(&mut entities.fire_actions(&fire_actions, &point_defense_actions, &ship_snapshot, &mut rng));
+    effects.append(&mut entities.fire_actions(
+      &fire_actions,
+      &point_defense_actions,
+      &ship_snapshot,
+      &boost_map,
+      &mut rng,
+    ));
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
-    effects.append(&mut entities.update_all(&ship_snapshot, &mut rng));
+    effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));
 
-    // 5. Attempt jumps at end of round.
-    effects.append(&mut entities.attempt_jumps(&jump_actions, &mut rng));
+    // Jumps are now resolved as part of `engineer_actions` below (Jump is an
+    // engineer-class action) — no separate phase here.
 
     // Decided we don't want to reset this - default should be to keep the same actions.
     // 6. Reset all ship agility setting as the round is over.
@@ -446,10 +561,16 @@ impl PlayerManager {
     }
     */
 
-    // Reset temporary bonuses (from engineer overload actions) at end of turn
+    // Reset temporary bonuses (from engineer overload actions) at end of turn.
+    // Must run BEFORE engineer_actions so the new bonuses applied this turn
+    // survive into the next turn.
     for ship in entities.ships.values() {
       ship.write().unwrap().reset_temporary_bonuses();
     }
+
+    // Evaluate queued engineer actions at end-of-turn. Effects ride the
+    // existing Effects channel.
+    effects.append(&mut entities.engineer_actions(&engineer_actions, &boost_map, &mut rng));
 
     entities.reset_actions();
 

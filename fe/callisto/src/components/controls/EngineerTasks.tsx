@@ -1,17 +1,16 @@
 import * as React from "react";
-import { useState, useMemo, useEffect } from "react";
+import { useMemo } from "react";
 import {
   Ship,
   ShipSystem,
-  EngineerActionResult,
-  EngineerActionMsg,
   shipSystemToString,
   stringToShipSystem,
 } from "lib/entities";
-import { sendEngineerAction } from "lib/serverManager";
+import { useAppDispatch, useAppSelector } from "state/hooks";
+import { setEngineerAction } from "state/actionsSlice";
 
 // Map ShipSystem enum to display names (must match backend order)
-const SYSTEM_NAMES: Record<ShipSystem, string> = {
+export const SYSTEM_NAMES: Record<ShipSystem, string> = {
   [ShipSystem.Sensors]: "Sensors",
   [ShipSystem.Powerplant]: "Power Plant",
   [ShipSystem.Fuel]: "Fuel",
@@ -30,14 +29,13 @@ interface EngineerTasksProps {
 }
 
 export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
-  const [lastResult, setLastResult] = useState<EngineerActionResult | null>(
-    null,
+  const dispatch = useAppDispatch();
+  // Engineer action queued for end-of-turn evaluation. We display the result
+  // through the same Effects channel as combat / sensor effects, so this
+  // component no longer holds a local result state — it just queues.
+  const queuedEngineer = useAppSelector(
+    (state) => state.actions[ship.name]?.engineer ?? null,
   );
-
-  // Clear results when ship changes
-  useEffect(() => {
-    setLastResult(null);
-  }, [ship.name]);
 
   // Get list of damaged systems (excluding Hull, Armor, and Crew which cannot be repaired)
   const damagedSystems = useMemo(() => {
@@ -53,29 +51,6 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
       );
   }, [ship.crit_level]);
 
-  const handleOverloadDrive = () => {
-    sendEngineerAction(
-      { ship_name: ship.name, action: "OverloadDrive" },
-      setLastResult,
-    );
-  };
-
-  const handleOverloadPlant = () => {
-    sendEngineerAction(
-      { ship_name: ship.name, action: "OverloadPlant" },
-      setLastResult,
-    );
-  };
-
-  const handleRepair = (system: ShipSystem) => {
-    const msg: EngineerActionMsg = {
-      ship_name: ship.name,
-      action: { Repair: { system: shipSystemToString(system) } },
-    };
-    console.log("(handleRepair) Sending repair action:", JSON.stringify(msg));
-    sendEngineerAction(msg, setLastResult);
-  };
-
   // Calculate repair bonus for display
   const getRepairBonus = (system: ShipSystem): number => {
     if (
@@ -88,110 +63,105 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
     return 0;
   };
 
-  // Check if engineer has already taken an action this turn
-  const hasActionTaken = ship.engineer_action_taken ?? false;
-
-  // Check if overload is already active
+  // Check if overload bonus is currently in effect on the ship (carries over
+  // from a successful overload last turn).
   const hasOverloadDrive = (ship.temporary_maneuver ?? 0) > 0;
   const hasOverloadPlant = (ship.temporary_power_multiplier ?? 1.0) > 1.0;
 
+  // Derive controlled-select value from the queued engineer action.
+  let selectedValue = "none";
+  if (queuedEngineer?.kind === "OverloadDrive") {
+    selectedValue = "overload-drive";
+  } else if (queuedEngineer?.kind === "OverloadPlant") {
+    selectedValue = "overload-plant";
+  } else if (queuedEngineer?.kind === "Jump") {
+    selectedValue = "jump";
+  } else if (queuedEngineer?.kind === "Repair") {
+    const sys = stringToShipSystem(queuedEngineer.system);
+    if (sys != null) selectedValue = `repair-${sys}`;
+  }
+
+  const handleEngineerChange = (
+    e: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
+    const value = e.target.value;
+    if (value === "none") {
+      dispatch(setEngineerAction({ shipName: ship.name, action: null }));
+    } else if (value === "overload-drive") {
+      dispatch(
+        setEngineerAction({
+          shipName: ship.name,
+          action: { kind: "OverloadDrive" },
+        }),
+      );
+    } else if (value === "overload-plant") {
+      dispatch(
+        setEngineerAction({
+          shipName: ship.name,
+          action: { kind: "OverloadPlant" },
+        }),
+      );
+    } else if (value === "jump") {
+      dispatch(
+        setEngineerAction({
+          shipName: ship.name,
+          action: { kind: "Jump" },
+        }),
+      );
+    } else if (value.startsWith("repair-")) {
+      const n = parseInt(value.substring("repair-".length), 10);
+      if (!Number.isNaN(n)) {
+        dispatch(
+          setEngineerAction({
+            shipName: ship.name,
+            action: {
+              kind: "Repair",
+              system: shipSystemToString(n as ShipSystem),
+            },
+          }),
+        );
+      }
+    }
+  };
+
   return (
     <div className="engineer-tasks">
-      <h2 className="control-form">Engineer Tasks</h2>
-
-      {/* Overload Actions */}
-      <div className="engineer-overload-section">
-        <h3 className="control-label">Overload Systems</h3>
-        <div className="engineer-buttons">
-          <button
-            className="control-input control-button blue-button"
-            onClick={handleOverloadDrive}
-            disabled={hasOverloadDrive || hasActionTaken}
-            title={
-              hasActionTaken
-                ? "Engineer has already taken an action this turn"
-                : ""
-            }
-          >
-            {hasOverloadDrive ? "Drive Overloaded" : "Overload Drive"}
-          </button>
-          <button
-            className="control-input control-button blue-button"
-            onClick={handleOverloadPlant}
-            disabled={hasOverloadPlant || hasActionTaken}
-            title={
-              hasActionTaken
-                ? "Engineer has already taken an action this turn"
-                : ""
-            }
-          >
-            {hasOverloadPlant ? "Plant Overloaded" : "Overload Plant"}
-          </button>
-        </div>
-      </div>
-
-      {/* Repair Actions */}
-      <div className="engineer-repair-section">
-        <h3 className="control-label">Repair Damaged Systems</h3>
+      <div className="section-tag">Engineer</div>
+      <select
+        className="control-input"
+        value={selectedValue}
+        onChange={handleEngineerChange}
+        style={{ width: "100%", boxSizing: "border-box" }}
+      >
+        <option value="none"></option>
+        {/* Overload bonuses last only one turn — always allow re-queueing
+            the action even when a bonus is currently active. The queued
+            action evaluates at end-of-turn AFTER reset_temporary_bonuses
+            zeroes the active bonus, so a successful re-roll seamlessly
+            extends overload into the next turn. */}
+        <option value="overload-drive">Overload Drive</option>
+        <option value="overload-plant">Overload Plant</option>
+        <option value="jump" disabled={!ship.can_jump}>
+          Jump
+        </option>
         {damagedSystems.length === 0 ? (
-          <p className="plan-accel-text">No damaged systems to repair</p>
+          <option disabled value="no-damage">
+            No damaged systems to repair
+          </option>
         ) : (
-          <select
-            className="control-input"
-            style={{ width: "100%", minWidth: "250px" }}
-            onChange={(e) => {
-              if (e.target.value) {
-                handleRepair(parseInt(e.target.value) as ShipSystem);
-                e.target.value = "";
-              }
-            }}
-            disabled={hasActionTaken}
-            title={
-              hasActionTaken
-                ? "Engineer has already taken an action this turn"
-                : ""
-            }
-            defaultValue=""
-          >
-            <option value="">Select system to repair...</option>
-            {damagedSystems.map(({ system, level }) => {
-              const bonus = getRepairBonus(system);
-              const bonusText = bonus > 0 ? ` (+${bonus} bonus)` : "";
-              return (
-                <option key={system} value={system}>
-                  {SYSTEM_NAMES[system]} (Crit Level {level}){bonusText}
-                </option>
-              );
-            })}
-          </select>
+          damagedSystems.map(({ system, level }) => {
+            const bonus = getRepairBonus(system);
+            const bonusText = bonus > 0 ? ` (+${bonus} bonus)` : "";
+            return (
+              <option key={system} value={`repair-${system}`}>
+                Repair {SYSTEM_NAMES[system]} (Crit Level {level}){bonusText}
+              </option>
+            );
+          })
         )}
-      </div>
-
-      {/* Result Display - only show if result is for current ship */}
-      {lastResult && lastResult.ship_name === ship.name && (
-        <div
-          className={`engineer-result ${lastResult.success ? "success" : "failure"}`}
-          style={{
-            marginTop: "10px",
-            padding: "8px",
-            backgroundColor: lastResult.success ? "#1a3d1a" : "#3d1a1a",
-            borderRadius: "4px",
-          }}
-        >
-          <p className="plan-accel-text" style={{ margin: 0 }}>
-            {lastResult.message}
-          </p>
-          {lastResult.check !== undefined &&
-            lastResult.target !== undefined && (
-              <p
-                className="plan-accel-text"
-                style={{ margin: "4px 0 0 0", fontSize: "0.9em" }}
-              >
-                Check: {lastResult.check} vs Target: {lastResult.target}
-              </p>
-            )}
-        </div>
-      )}
+      </select>
+      {hasOverloadDrive && <p className="plan-accel-text">Drive Overloaded</p>}
+      {hasOverloadPlant && <p className="plan-accel-text">Plant Overloaded</p>}
     </div>
   );
 };

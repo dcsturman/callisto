@@ -71,6 +71,8 @@ export interface Ship extends Entity {
   temporary_maneuver?: number;
   temporary_power_multiplier?: number;
   engineer_action_taken?: boolean;
+  leadership_points?: number;
+  leadership_rolled?: boolean;
 }
 
 export enum ShipSystem {
@@ -123,19 +125,17 @@ export function stringToShipSystem(name: string): ShipSystem | null {
   return mapping[name] ?? null;
 }
 
-// EngineerAction enum matches the Rust enum (unit variants and struct variant)
-// Note: ShipSystem serializes as a string (e.g., "Sensors", "Powerplant", etc.)
+// EngineerActionType is the queued engineer-slot's value type, mirroring the
+// Rust ShipAction variants for OverloadDrive / OverloadPlant / Repair.
+// Sent as part of ModifyActions; received as the `action` field on
+// EngineerActionResult inside an EngineerAction effect.
+// Note: ShipSystem serializes as a string (e.g., "Sensors", "Powerplant").
 export type EngineerActionType =
   | "OverloadDrive"
   | "OverloadPlant"
   | { Repair: { system: string } };
 
-// EngineerActionMsg matches the Rust struct
-export interface EngineerActionMsg {
-  ship_name: string;
-  action: EngineerActionType;
-}
-
+// Inner shape of `EffectMsg::EngineerAction { result: ... }` from the backend.
 export interface EngineerActionResult {
   ship_name: string;
   action: EngineerActionType;

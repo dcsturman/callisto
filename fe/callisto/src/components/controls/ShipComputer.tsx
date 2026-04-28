@@ -9,11 +9,12 @@ import {SensorState, SensorAction, newSensorState} from "components/controls/Act
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
 import {EngineerTasks} from "components/controls/EngineerTasks";
+import {CaptainTasks} from "components/controls/CaptainTasks";
 
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
 import {setComputerShipName} from "state/uiSlice";
-import {setSensorAction, jump} from "state/actionsSlice";
+import {setSensorAction} from "state/actionsSlice";
 import {computeFlightPath} from "lib/serverManager";
 
 // Distance in km for standoff from another ship.
@@ -260,35 +261,26 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     }
     return (
       <>
-        <h2 className="control-form">Pilot Actions</h2>
-        <div id="crew-actions-form" className="control-form">
-          <div className="crew-actions-form-container">
-            <label className="control-label">Dodge</label>
-            <input
-              className="control-input"
-              type="text"
-              value={agility.toString()}
-              onChange={(event) =>
-                handleCrewActionChange(Number(event.target.value), assistGunners)
-              }
-            />
-            <label className="control-label">Assist Gunner</label>
-            <input
-              type="checkbox"
-              checked={assistGunners}
-              onChange={() => handleCrewActionChange(agility, !assistGunners)}
-            />
-          </div>
+        <div className="section-tag">Pilot</div>
+        <div className="pilot-actions-row">
+          <label className="control-label">Evade</label>
+          <input
+            className="control-input"
+            type="text"
+            value={agility.toString()}
+            onChange={(event) =>
+              handleCrewActionChange(Number(event.target.value), assistGunners)
+            }
+          />
+          <label className="control-label">Assist Gunner</label>
+          <input
+            type="checkbox"
+            checked={assistGunners}
+            onChange={() => handleCrewActionChange(agility, !assistGunners)}
+          />
         </div>
       </>
     );
-  }
-
-  function attemptJump() {
-    const name = ship.name;
-    if (window.confirm(`Are you sure you want to have ${name} attempt a jump?`)) {
-      dispatch(jump(name));
-    }
   }
 
   const title = ship.name + " Controls";
@@ -299,17 +291,17 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     <div id="computer-window" className="computer-window">
       <div id="crew-actions-window">
         {role === ViewMode.General && <h1>{title}</h1>}
+        {/* Captain only sees the panel on their own ship. General sees it on
+            their assigned ship if any; if General has no ship (GM-style),
+            panel renders on whichever ship's popup they're viewing so they
+            can roll leadership for it. */}
+        {((role === ViewMode.Captain && ship.name === shipName) ||
+          (role === ViewMode.General && (shipName == null || ship.name === shipName))) && (
+          <CaptainTasks ship={ship} />
+        )}
         {[ViewMode.General, ViewMode.Pilot].includes(role) && pilotActions()}
         {[ViewMode.General, ViewMode.Sensors].includes(role) && (
           <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
-        )}
-        {[ViewMode.General, ViewMode.Pilot].includes(role) && (
-          <button
-            className="control-input control-button blue-button"
-            disabled={!ship.can_jump}
-            onClick={attemptJump}>
-            Jump
-          </button>
         )}
         {[ViewMode.General, ViewMode.Engineer].includes(role) && (
           <EngineerTasks ship={ship} />
@@ -548,7 +540,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
 
   return (
     <div className="control-label">
-      <h2 className="control-label">Sensor Actions</h2>
+      <div className="section-tag">Sensors</div>
       <select
         className="sensor-action-select control-input "
         value={sensorActionToString(currentSensor)}
@@ -581,15 +573,10 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
           ))}
       </select>
       {ship.sensor_locks.length > 0 && (
-        <>
-          <div className="control-label">
-            <h3 className="control-label">Sensor Locks</h3>
-            <span className="plan-accel-text">
-              {" "}
-              {entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
-            </span>
-          </div>
-        </>
+        <p className="plan-accel-text">
+          Locks:{" "}
+          {entities.ships.find((s) => ship.name === s.name)?.sensor_locks.join(", ")}
+        </p>
       )}
     </div>
   );
