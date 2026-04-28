@@ -4,12 +4,12 @@
  */
 use std::collections::HashMap;
 
-use super::action::ShipActionList;
+use super::action::{BoostTarget, ShipAction, ShipActionList};
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{ShipDesignTemplate, ShipSystem};
+use super::ship::ShipDesignTemplate;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -185,6 +185,19 @@ pub enum EffectMsg {
   Message {
     content: String,
   },
+  EngineerAction {
+    result: EngineerActionResult,
+  },
+  /// Reports the result of a captain's `LeadershipCheck` resolution. `points`
+  /// is the signed leadership N (`2d6 + leadership − 8`); negative values are
+  /// reported but mean no boosts applied. `boosts_applied` is the actual list
+  /// of targets that received a +1 (already truncated by N and filtered down
+  /// to live queue entries).
+  LeadershipAction {
+    ship_name: String,
+    points: i16,
+    boosts_applied: Vec<BoostTarget>,
+  },
 }
 
 impl EffectMsg {
@@ -202,28 +215,35 @@ impl Display for EffectMsg {
 
 pub type ShipDesignTemplateMsg = HashMap<String, ShipDesignTemplate>;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum EngineerAction {
-  OverloadDrive,
-  OverloadPlant,
-  Repair { system: ShipSystem },
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EngineerActionMsg {
-  pub ship_name: String,
-  pub action: EngineerAction,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct EngineerActionResult {
   pub ship_name: String,
-  pub action: EngineerAction,
+  /// The engineer action that was evaluated. Carries the same `OverloadDrive`,
+  /// `OverloadPlant`, or `Repair { system }` shape as the queued `ShipAction`
+  /// so the FE can route it through the existing action union.
+  pub action: ShipAction,
   pub success: bool,
   pub check: u8,
   pub target: u8,
   pub message: String,
   pub critical_failure: bool,
+}
+
+/// Captain hits the "Captain Action" button → server rolls the leadership
+/// check immediately and stores the resulting points on the ship until end
+/// of turn.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CaptainActionMsg {
+  pub ship_name: String,
+}
+
+/// Result of a `CaptainAction` request: the rolled effect (2d6 + leadership − 8).
+/// `points <= 0` means the captain cannot inspire any tasks this turn.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CaptainActionResult {
+  pub ship_name: String,
+  pub points: i16,
+  pub message: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -234,6 +254,7 @@ pub enum Role {
   Gunner,
   Engineer,
   Observer,
+  Captain,
 }
 
 #[serde_as]
@@ -317,7 +338,7 @@ pub enum RequestMsg {
   SetPilotActions(SetPilotActions),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
-  EngineerAction(EngineerActionMsg),
+  CaptainAction(CaptainActionMsg),
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),
@@ -341,10 +362,10 @@ pub enum ResponseMsg {
   Effects(Vec<EffectMsg>),
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
-  EngineerActionResult(EngineerActionResult),
   Scenarios(ScenariosMsg),
   JoinedScenario(String),
   ScenarioSaved(String),
+  CaptainActionResult(CaptainActionResult),
   SimpleMsg(String),
   // LogoutResponse is a faux message never sent back.  However,
   // it allows us to signal between the message handling layer and the connection
@@ -635,27 +656,5 @@ mod tests {
     let json_str = r#"{"code": "auth_code_123"}"#;
     let deserialized: LoginMsg = serde_json::from_str(json_str).unwrap();
     assert_eq!(deserialized.code, "auth_code_123".to_string());
-  }
-
-  #[test]
-  fn test_engineer_action_repair_deserialization() {
-    use crate::ship::ShipSystem;
-
-    // Test deserialization of Repair action with string system
-    let json_str = r#"{"ship_name":"Cicendai","action":{"Repair":{"system":"Sensors"}}}"#;
-    let result: Result<EngineerActionMsg, _> = serde_json::from_str(json_str);
-
-    match result {
-      Ok(msg) => {
-        assert_eq!(msg.ship_name, "Cicendai");
-        match msg.action {
-          EngineerAction::Repair { system } => {
-            assert_eq!(system, ShipSystem::Sensors);
-          }
-          _ => panic!("Expected Repair action"),
-        }
-      }
-      Err(e) => panic!("Failed to deserialize: {e}"),
-    }
   }
 }

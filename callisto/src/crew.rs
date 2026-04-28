@@ -8,6 +8,17 @@ pub enum Skills {
   EngineeringManeuver,
   Gunnery,
   Sensors,
+  Leadership,
+}
+
+// Helper used by serde `skip_serializing_if` so that zero-valued integer
+// crew skills are omitted from the JSON wire form. Keeps existing scenario
+// JSON stable when new skills are added (e.g. `leadership`).
+// Serde requires the predicate to take a reference, so suppress the
+// pass-by-value lint that fires on this 1-byte type.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &u8) -> bool {
+  *value == 0
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -24,6 +35,8 @@ pub struct Crew {
   sensors: u8,
   #[serde(default = "default_gunnery")]
   gunnery: Vec<u8>,
+  #[serde(default, skip_serializing_if = "is_zero")]
+  leadership: u8,
 }
 
 // Function just to provide a default value for gunnery deserialization
@@ -41,6 +54,7 @@ impl Crew {
       engineering_maneuver: 0,
       sensors: 0,
       gunnery: vec![],
+      leadership: 0,
     }
   }
 
@@ -61,6 +75,7 @@ impl Crew {
       Skills::EngineeringPower => self.engineering_power,
       Skills::EngineeringManeuver => self.engineering_maneuver,
       Skills::Sensors => self.sensors,
+      Skills::Leadership => self.leadership,
       Skills::Gunnery => panic!("(Crew.getSkill) Multiple gunners possible."),
     }
   }
@@ -91,6 +106,11 @@ impl Crew {
   }
 
   #[must_use]
+  pub fn get_leadership(&self) -> u8 {
+    self.leadership
+  }
+
+  #[must_use]
   pub fn get_gunnery(&self, gun: usize) -> u8 {
     if gun >= self.gunnery.len() {
       return 0;
@@ -114,6 +134,7 @@ impl Crew {
       Skills::EngineeringPower => self.engineering_power = value,
       Skills::EngineeringManeuver => self.engineering_maneuver = value,
       Skills::Sensors => self.sensors = value,
+      Skills::Leadership => self.leadership = value,
       Skills::Gunnery => panic!("Cannot use set_skill for gunnery. Use add_gunnery instead."),
     }
   }
@@ -143,6 +164,7 @@ mod tests {
     assert_eq!(crew.engineering_power, 0);
     assert_eq!(crew.engineering_maneuver, 0);
     assert_eq!(crew.sensors, 0);
+    assert_eq!(crew.leadership, 0);
     assert_eq!(crew.gunnery, Vec::<u8>::new());
   }
 
@@ -154,12 +176,14 @@ mod tests {
     crew.engineering_power = 1;
     crew.engineering_maneuver = 4;
     crew.sensors = 5;
+    crew.leadership = 6;
 
     assert_eq!(crew.get_skill(Skills::Pilot), 3);
     assert_eq!(crew.get_skill(Skills::EngineeringJump), 2);
     assert_eq!(crew.get_skill(Skills::EngineeringPower), 1);
     assert_eq!(crew.get_skill(Skills::EngineeringManeuver), 4);
     assert_eq!(crew.get_skill(Skills::Sensors), 5);
+    assert_eq!(crew.get_skill(Skills::Leadership), 6);
   }
 
   #[test_log::test]
@@ -177,12 +201,14 @@ mod tests {
     crew.engineering_power = 1;
     crew.engineering_maneuver = 4;
     crew.sensors = 5;
+    crew.leadership = 6;
 
     assert_eq!(crew.get_pilot(), 3);
     assert_eq!(crew.get_engineering_jump(), 2);
     assert_eq!(crew.get_engineering_power(), 1);
     assert_eq!(crew.get_engineering_maneuver(), 4);
     assert_eq!(crew.get_sensors(), 5);
+    assert_eq!(crew.get_leadership(), 6);
   }
 
   #[test_log::test]
@@ -205,12 +231,14 @@ mod tests {
     crew.set_skill(Skills::EngineeringPower, 1);
     crew.set_skill(Skills::EngineeringManeuver, 4);
     crew.set_skill(Skills::Sensors, 5);
+    crew.set_skill(Skills::Leadership, 6);
 
     assert_eq!(crew.pilot, 3);
     assert_eq!(crew.engineering_jump, 2);
     assert_eq!(crew.engineering_power, 1);
     assert_eq!(crew.engineering_maneuver, 4);
     assert_eq!(crew.sensors, 5);
+    assert_eq!(crew.leadership, 6);
   }
 
   #[test_log::test]
@@ -246,6 +274,7 @@ mod tests {
     crew.engineering_maneuver = 4;
     crew.sensors = 5;
     crew.gunnery = vec![1, 2, 3];
+    crew.leadership = 7;
 
     let serialized = serde_json::to_string(&crew).unwrap();
     let deserialized: Crew = serde_json::from_str(&serialized).unwrap();
@@ -256,5 +285,6 @@ mod tests {
     assert_eq!(crew.engineering_maneuver, deserialized.engineering_maneuver);
     assert_eq!(crew.sensors, deserialized.sensors);
     assert_eq!(crew.gunnery, deserialized.gunnery);
+    assert_eq!(crew.leadership, deserialized.leadership);
   }
 }

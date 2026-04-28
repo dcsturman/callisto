@@ -272,6 +272,10 @@ input {
     padding-right: 4px;
     border: 1px solid #b6bcae;
     z-index: 10;
+    /* `mainscreen-container` is `align-items: flex-end`, so this popup is
+       bottom-anchored. Cap height at the viewport so any overflow produces an
+       internal scrollbar instead of pushing the top out of view. */
+    max-height: 100vh;
     overflow: auto;
 }
 
@@ -580,6 +584,72 @@ input {
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
+}
+
+.actions-column-header {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.boost-column-label {
+    display: inline-block;
+    width: 60px;
+    text-align: center;
+    font-size: 1em;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+.boost-checkbox-cell {
+    display: inline-block;
+    width: 60px;
+    text-align: center;
+}
+
+/* Compact section header used in the per-ship Controls popup. Replaces the
+   bulky `<h2>` per role section so the controls themselves are the visual
+   focus instead of the labels. */
+.section-tag {
+    /* Absolute pt so the tag's size is consistent regardless of whichever
+       parent's font-size context it lands in (e.g. `.control-label` parents
+       compute em differently from naked containers). */
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+    border-bottom: 1px solid #4a4f48;
+    padding: 6px 0 2px 0;
+    margin: 8px 0 4px 0;
+}
+
+/* Normalize all interactive content inside the per-ship Controls popup to a
+   single font-size so labels, inputs, dropdowns, and buttons read at the
+   same scale. The base rules `.control-label` (12pt) and `.control-input`
+   (9pt) clash visually inside this dense panel; here we collapse them. */
+#crew-actions-window .control-label,
+#crew-actions-window .control-input,
+#crew-actions-window button,
+#crew-actions-window select,
+#crew-actions-window input,
+#crew-actions-window p {
+    font-size: 11pt;
+}
+
+/* Pack Pilot Actions onto a single row: Dodge label/input + Assist Gunner
+   label/checkbox. */
+.pilot-actions-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.pilot-actions-row .control-label {
+    margin: 0;
+}
+.pilot-actions-row input[type="text"] {
+    width: 40px;
 }
 
 .called-shot-menu {

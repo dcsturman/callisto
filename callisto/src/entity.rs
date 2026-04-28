@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, EngineerAction, EngineerActionResult};
+use crate::payloads::{EffectMsg, EngineerActionResult};
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 use tracing::{event, Level};
 
-use crate::action::{ShipAction, ShipActionList};
+use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, ShipAction, ShipActionList};
 use crate::combat::{
   attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, roll_dice, use_next_point_defense,
 };
@@ -499,7 +499,7 @@ impl Entities {
   /// Panics if the lock cannot be obtained to read a ship.
   pub fn fire_actions(
     &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
-    ship_snapshot: &HashMap<String, Ship>, rng: &mut dyn RngCore,
+    ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Create a snapshot of all the sand capabilities of each ship.
     let mut sand_counts = create_sand_counts(ship_snapshot);
@@ -516,7 +516,7 @@ impl Entities {
       };
 
       let mut ship = ship.write().unwrap();
-      let tallies = build_point_defense_tallies(&ship, actions);
+      let tallies = build_point_defense_tallies(&ship, actions, boost_map, defender);
       ship.set_point_defense_list(tallies);
     }
 
@@ -528,7 +528,8 @@ impl Entities {
           return vec![];
         };
 
-        let (missiles, effects) = do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, rng);
+        let (missiles, effects) =
+          do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
         for missile in missiles {
           if let Err(msg) = self.launch_missile(&missile.source, &missile.target) {
             warn!("Could not launch missile: {}", msg);
@@ -588,7 +589,9 @@ impl Entities {
   /// # Panics
   /// Panics if the lock (read or write) cannot be obtained when reading any specific entity.
   #[allow(clippy::too_many_lines)]
-  pub fn update_all(&mut self, ship_snapshot: &HashMap<String, Ship>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  pub fn update_all(
+    &mut self, ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
     let mut planets = self.planets.values_mut().collect::<Vec<_>>();
     planets.sort_by(|a, b| {
       let a_ent = a.read().unwrap();
@@ -698,6 +701,7 @@ impl Entities {
                   &FAKE_MISSILE_LAUNCHER,
                   // Missiles cannot do called shots
                   None,
+                  boost_map,
                   rng,
                 );
                 cleanup_missile_list.push(missile);
@@ -786,7 +790,9 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
-  pub fn sensor_actions(&mut self, actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  pub fn sensor_actions(
+    &mut self, actions: &[(String, Vec<ShipAction>)], boost_map: &BoostMap, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
     // First build a table that, for each ship, notes all the ships that have senor locks on it (i.e. we're reversing
     // the structure).  That is for any ship name (entry), provide a list of every ship that has a sensor lock on the entry.
     // We do this once, up front, to avoid rebuilding on each ShipAction::BreakSensorLock action.
@@ -803,12 +809,13 @@ impl Entities {
     let mut effects = Vec::<EffectMsg>::new();
 
     for (ship_name, actions) in actions {
+      let boost = boost_for_sensor(boost_map, ship_name);
       // Process the actions for each ship.
       for action in actions {
         effects.append(&mut match action {
-          ShipAction::JamMissiles => self.jam_missiles(ship_name, rng),
+          ShipAction::JamMissiles => self.jam_missiles(ship_name, boost, rng),
           ShipAction::BreakSensorLock { target } => {
-            self.break_sensor_lock(ship_name, target, &reverse_sensor_locks, rng)
+            self.break_sensor_lock(ship_name, target, &reverse_sensor_locks, boost, rng)
           }
 
           ShipAction::SensorLock { target } => {
@@ -816,14 +823,14 @@ impl Entities {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for sensor lock.", target);
               return Vec::default();
             }
-            self.sensor_lock(ship_name, target, rng)
+            self.sensor_lock(ship_name, target, boost, rng)
           }
           ShipAction::JamComms { target } => {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for jamming comms.", target);
               return Vec::default();
             }
-            self.jam_comms(ship_name, target, rng)
+            self.jam_comms(ship_name, target, boost, rng)
           }
           ShipAction::PointDefenseAction { .. }
           | ShipAction::FireAction { .. }
@@ -831,7 +838,11 @@ impl Entities {
           | ShipAction::Jump
           | ShipAction::OverloadDrive
           | ShipAction::OverloadPlant
-          | ShipAction::Repair { .. } => {
+          | ShipAction::Repair { .. }
+          | ShipAction::LeadershipCheck { .. }
+          | ShipAction::ClearSensorAction
+          | ShipAction::ClearEngineerAction
+          | ShipAction::ClearLeadershipCheck => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
           }
@@ -860,7 +871,7 @@ impl Entities {
     SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(ship.crew.get_sensors())
   }
 
-  fn sensor_lock(&mut self, ship_name: &String, target: &str, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  fn sensor_lock(&mut self, ship_name: &String, target: &str, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
     // First check if there is already a sensor lock and if so just return.
     if self
       .ships
@@ -874,6 +885,7 @@ impl Entities {
     let check = i16::from(roll_dice(2, rng))
       + self.sensor_quality_modifiers(ship_name)
       + self.sensor_stealth_modifiers(ship_name, target)
+      + boost
       - 8;
 
     if check > 0 {
@@ -901,10 +913,11 @@ impl Entities {
     }
   }
 
-  fn jam_comms(&self, ship_name: &String, target: &str, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  fn jam_comms(&self, ship_name: &String, target: &str, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
     let check = i16::from(roll_dice(2, rng))
       + self.sensor_quality_modifiers(ship_name)
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + boost
       - i16::from(roll_dice(2, rng))
       - self.sensor_quality_modifiers(target)
       - countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures);
@@ -919,7 +932,7 @@ impl Entities {
       }]
     }
   }
-  fn jam_missiles(&mut self, ship_name: &String, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  fn jam_missiles(&mut self, ship_name: &String, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
     let mut effects = Vec::<EffectMsg>::new();
     // Find all missiles targeting this ship.
     let targeting_missiles = self
@@ -933,6 +946,7 @@ impl Entities {
     let check = i16::from(dice)
       + self.sensor_quality_modifiers(ship_name)
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + boost
       - 10;
 
     debug!(
@@ -977,7 +991,8 @@ impl Entities {
   }
 
   fn break_sensor_lock(
-    &self, ship_name: &String, target: &str, reverse_sensor_locks: &HashMap<String, Vec<String>>, rng: &mut dyn RngCore,
+    &self, ship_name: &String, target: &str, reverse_sensor_locks: &HashMap<String, Vec<String>>, boost: i16,
+    rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Check if the target of the BreakSensorLock has a sensor lock on this ship.
     // Get the list of every ship with a sensor lock on current ship; make sure the target of the BreakSensorLock is in that list.
@@ -988,6 +1003,7 @@ impl Entities {
       // Make an opposed check - this ship vs the one with the lock..
       let check = i16::from(roll_dice(2, rng)) + self.sensor_quality_modifiers(ship_name)
         + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+        + boost
         - self.sensor_quality_modifiers(target)
         // In this case the steal modifiers (which will be negative or 0) are a bonus.
         - self.sensor_stealth_modifiers(ship_name, target)
@@ -1013,62 +1029,6 @@ impl Entities {
     } else {
       Vec::default()
     }
-  }
-
-  /// Attempt to jump all ships that have jump actions.
-  ///
-  /// We assume (for now) a prior successful Astrogation check.  All that remains is the engineering check.
-  /// Engineering check cannot stop you from jumping but can cause a mis-jump on failure.
-  ///
-  /// # Arguments
-  /// * `jump_actions` - The jump actions to process.
-  /// * `rng` - The random number generator to use for engineering jump checks.
-  ///
-  /// # Returns
-  /// * A list of all the effects resulting from the jump attempts.
-  ///
-  /// # Panics
-  /// Panics if the lock cannot be obtained to read a ship.
-  pub fn attempt_jumps(&mut self, jump_actions: &[(String, Vec<ShipAction>)], rng: &mut dyn RngCore) -> Vec<EffectMsg> {
-    let mut effects = Vec::<EffectMsg>::new();
-    let mut jumped_ships = Vec::<String>::new();
-    for (ship_name, actions) in jump_actions {
-      // If there is even a single jump action (really should never be more than one) then attempt jump.
-      if !actions.is_empty() {
-        let Some(ship) = self.ships.get(ship_name) else {
-          warn!("(Entity.attempt_jumps) Cannot find ship {} for jump.", ship_name);
-          continue;
-        };
-
-        let ship = ship.read().unwrap();
-
-        if ship.can_jump() && ship.current_fuel > ship.design.hull / 10 {
-          // We intentionally skip the Astrogation check for now as there isn't astrogation skill in the simulation.
-          // Also it could have happened at any time before this so its confusing.
-          // Thus only relevant skill is engineering_jump.
-          // The check should be an Easy (4+) check. However, in combat its rushed so its a Routine (6+) check.
-          let check = i16::from(roll_dice(2, rng)) + i16::from(ship.crew.get_engineering_jump()) - 6;
-
-          if check >= 0 {
-            effects.push(EffectMsg::Message {
-              content: format!("{ship_name} jumps successfully!"),
-            });
-          } else {
-            effects.push(EffectMsg::Message {
-              content: format!("{ship_name} jumped but with issues. Effect is {check}"),
-            });
-          }
-
-          jumped_ships.push(ship_name.clone());
-        }
-      }
-    }
-
-    for ship_name in jumped_ships {
-      self.ships.remove(&ship_name);
-    }
-
-    effects
   }
 
   /// Validate the entity data structure, performing some important post-load checks.
@@ -1188,11 +1148,19 @@ impl Entities {
           // Keep JamMissiles and PointDefense in all cases.
           ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles => true,
           // Engineer actions should be scrubbed each turn - they are one-time actions.
+          // LeadershipCheck is also one-shot (the captain re-queues it each
+          // turn through the Captain HUD).
+          // Anti-actions are consumed by `merge` and should never reach here, but
+          // strip them defensively if they do.
           ShipAction::DeleteFireAction { .. }
           | ShipAction::Jump
           | ShipAction::OverloadDrive
           | ShipAction::OverloadPlant
-          | ShipAction::Repair { .. } => false,
+          | ShipAction::Repair { .. }
+          | ShipAction::LeadershipCheck { .. }
+          | ShipAction::ClearSensorAction
+          | ShipAction::ClearEngineerAction
+          | ShipAction::ClearLeadershipCheck => false,
         }
       });
     });
@@ -1202,54 +1170,150 @@ impl Entities {
     });
   }
 
-  /// Process an engineer action for a ship.
+  /// Evaluate all queued engineer actions at end-of-turn.
+  ///
+  /// Engineer actions are deferred from when the player queues them through
+  /// `ModifyActions` to the end of the turn. This method walks the queued
+  /// list, dispatches each action's specific helper
+  /// (`process_overload_drive`, `process_overload_plant`, or `process_repair`),
+  /// flags `engineer_action_taken` on the ship, and wraps each result in an
+  /// `EffectMsg::EngineerAction` so it rides the existing `Effects` channel
+  /// out to the FE.
+  ///
+  /// Defensive behavior:
+  /// * If a ship is missing from `self.ships`, that entry is logged and skipped.
+  /// * If `engineer_action_taken` is already true (shouldn't happen because
+  ///   the per-turn reset clears it before this runs), the action is logged
+  ///   and skipped to avoid double evaluation.
+  /// * Non-engineer actions in the per-ship list are silently ignored — the
+  ///   caller is expected to filter, but we don't trust it.
   ///
   /// # Arguments
-  /// * `ship_name` - The name of the ship performing the action.
-  /// * `action` - The engineer action to perform.
-  /// * `rng` - The random number generator to use.
+  /// * `actions` - The engineer actions queued for this turn, grouped by ship.
+  /// * `rng` - The random number generator used for skill checks.
   ///
   /// # Returns
-  /// The result of the engineer action.
+  /// One `EffectMsg::EngineerAction` per evaluated action, in input order.
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  pub fn process_engineer_action(
-    &mut self, ship_name: &str, action: &EngineerAction, rng: &mut dyn RngCore,
-  ) -> EngineerActionResult {
-    if !self.ships.contains_key(ship_name) {
-      return EngineerActionResult {
-        ship_name: ship_name.to_string(),
-        action: action.clone(),
-        success: false,
-        check: 0,
-        target: 0,
-        message: format!("Ship {ship_name} not found."),
-        critical_failure: false,
-      };
+  pub fn engineer_actions(
+    &mut self, actions: &[(String, Vec<ShipAction>)], boost_map: &BoostMap, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
+    let mut effects = Vec::new();
+    // Ships that successfully jumped this turn — removed from the world after
+    // the loop, since iteration borrows `self.ships`.
+    let mut jumped_ships = Vec::<String>::new();
+
+    for (ship_name, ship_actions) in actions {
+      if !self.ships.contains_key(ship_name) {
+        warn!("(engineer_actions) Cannot find ship {ship_name} for engineer action.");
+        continue;
+      }
+
+      let boost = boost_for_engineer(boost_map, ship_name);
+
+      for action in ship_actions {
+        // Defensive: skip if already taken (reset_temporary_bonuses should
+        // have cleared this before we ran).
+        {
+          let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
+          if ship.has_engineer_action_taken() {
+            warn!(
+              "(engineer_actions) {ship_name} already has an engineer action taken this turn; skipping {action:?}."
+            );
+            continue;
+          }
+          ship.set_engineer_action_taken(true);
+        }
+
+        let result = match action {
+          ShipAction::OverloadDrive => self.process_overload_drive(ship_name, boost, rng),
+          ShipAction::OverloadPlant => self.process_overload_plant(ship_name, boost, rng),
+          ShipAction::Repair { system } => self.process_repair(ship_name, *system, boost, rng),
+          ShipAction::Jump => {
+            let (result, jumped) = self.process_jump(ship_name, boost, rng);
+            if jumped {
+              jumped_ships.push(ship_name.clone());
+            }
+            result
+          }
+          // Caller is expected to filter, but be defensive.
+          _ => continue,
+        };
+        effects.push(EffectMsg::EngineerAction { result });
+      }
     }
 
-    // Check if engineer has already taken an action this turn
-    {
-      let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
-      if ship.has_engineer_action_taken() {
-        return EngineerActionResult {
+    for ship_name in jumped_ships {
+      self.ships.remove(&ship_name);
+    }
+
+    effects
+  }
+
+  /// Process a jump engineer action. Returns the result plus a flag indicating
+  /// whether the ship actually jumped (so the caller can remove it from
+  /// `self.ships` once iteration finishes).
+  ///
+  /// Mechanics: requires `can_jump == true` and enough fuel. Engineering check
+  /// is `2d6 + engineering_jump + boost − 6`. Pass = clean jump. Fail = misjump
+  /// (the ship still leaves the system but flagged as `critical_failure`).
+  /// If preconditions aren't met the ship doesn't jump at all (`success: false`,
+  /// no critical failure).
+  fn process_jump(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> (EngineerActionResult, bool) {
+    let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+    let action = ShipAction::Jump;
+
+    if !ship.can_jump() || ship.current_fuel <= ship.design.hull / 10 {
+      return (
+        EngineerActionResult {
           ship_name: ship_name.to_string(),
-          action: action.clone(),
+          action,
           success: false,
           check: 0,
           target: 0,
-          message: format!("{ship_name}'s engineer has already taken an action this turn."),
+          message: format!("{ship_name} cannot jump: insufficient fuel or not clear of gravity wells."),
           critical_failure: false,
-        };
-      }
-      ship.set_engineer_action_taken(true);
+        },
+        false,
+      );
     }
 
-    match action {
-      EngineerAction::OverloadDrive => self.process_overload_drive(ship_name, rng),
-      EngineerAction::OverloadPlant => self.process_overload_plant(ship_name, rng),
-      EngineerAction::Repair { system } => self.process_repair(ship_name, *system, rng),
+    let skill = ship.crew.get_engineering_jump();
+    drop(ship);
+
+    let roll = roll_dice(2, rng);
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let total = roll + skill + boost.max(0) as u8;
+    let target: u8 = 6;
+
+    if total >= target {
+      (
+        EngineerActionResult {
+          ship_name: ship_name.to_string(),
+          action,
+          success: true,
+          check: total,
+          target,
+          message: format!("{ship_name} jumps successfully!"),
+          critical_failure: false,
+        },
+        true,
+      )
+    } else {
+      (
+        EngineerActionResult {
+          ship_name: ship_name.to_string(),
+          action,
+          success: false,
+          check: total,
+          target,
+          message: format!("{ship_name} misjumps! Ship is lost in jump space."),
+          critical_failure: true,
+        },
+        true,
+      )
     }
   }
 
@@ -1264,14 +1328,16 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_overload_drive(&mut self, ship_name: &str, rng: &mut dyn RngCore) -> EngineerActionResult {
+  fn process_overload_drive(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_maneuver();
     let roll = roll_dice(2, rng);
-    let total = roll + skill;
+    // Boost is 0 or 1 (HashSet membership); cast through u8 is safe.
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 10;
 
-    let action = EngineerAction::OverloadDrive;
+    let action = ShipAction::OverloadDrive;
 
     if total >= target {
       // Success - set temporary_maneuver = 1
@@ -1322,14 +1388,15 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_overload_plant(&mut self, ship_name: &str, rng: &mut dyn RngCore) -> EngineerActionResult {
+  fn process_overload_plant(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_power();
     let roll = roll_dice(2, rng);
-    let total = roll + skill;
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 10;
 
-    let action = EngineerAction::OverloadPlant;
+    let action = ShipAction::OverloadPlant;
 
     if total >= target {
       // Success - set temporary_power_multiplier = 1.1
@@ -1381,8 +1448,10 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_repair(&mut self, ship_name: &str, system: ShipSystem, rng: &mut dyn RngCore) -> EngineerActionResult {
-    let action = EngineerAction::Repair { system };
+  fn process_repair(
+    &mut self, ship_name: &str, system: ShipSystem, boost: i16, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    let action = ShipAction::Repair { system };
 
     // Cannot repair Hull
     if system == ShipSystem::Hull {
@@ -1419,7 +1488,8 @@ impl Entities {
     };
 
     let roll = roll_dice(2, rng);
-    let total = u8::saturating_sub(roll + skill + repair_bonus, crit_level);
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let total = u8::saturating_sub(roll + skill + repair_bonus + boost.max(0) as u8, crit_level);
     let target: u8 = 8;
 
     if total >= target {
@@ -1733,11 +1803,11 @@ mod tests {
 
     // Update the entities a few times
     let ship_snapshot = entities.ship_deep_copy();
-    entities.update_all(&ship_snapshot, &mut rng);
+    entities.update_all(&ship_snapshot, &BoostMap::default(), &mut rng);
     let ship_snapshot = entities.ship_deep_copy();
-    entities.update_all(&ship_snapshot, &mut rng);
+    entities.update_all(&ship_snapshot, &BoostMap::default(), &mut rng);
     let ship_snapshot = entities.ship_deep_copy();
-    entities.update_all(&ship_snapshot, &mut rng);
+    entities.update_all(&ship_snapshot, &BoostMap::default(), &mut rng);
 
     // Validate the new positions for each entity
     let expected_position1 = Vec3::new(5_720_442.4, 5_721_442.4, 5_722_442.4);
@@ -1905,11 +1975,11 @@ mod tests {
 
     // Update the planet a few times
     let ship_snapshot = entities.ship_deep_copy();
-    entities.update_all(&ship_snapshot, &mut rng);
+    entities.update_all(&ship_snapshot, &BoostMap::default(), &mut rng);
     let ship_snapshot = entities.ship_deep_copy();
-    entities.update_all(&ship_snapshot, &mut rng);
+    entities.update_all(&ship_snapshot, &BoostMap::default(), &mut rng);
     let ship_snapshot = entities.ship_deep_copy();
-    entities.update_all(&ship_snapshot, &mut rng);
+    entities.update_all(&ship_snapshot, &BoostMap::default(), &mut rng);
 
     // Validate the position remains the same
     let expected_position = Vec3::new(0.0, 0.0, 0.0);
@@ -1975,9 +2045,9 @@ mod tests {
     )?;
 
     // Update the entities a few times
-    entities.update_all(&entities.ship_deep_copy(), &mut rng);
-    entities.update_all(&entities.ship_deep_copy(), &mut rng);
-    entities.update_all(&entities.ship_deep_copy(), &mut rng);
+    entities.update_all(&entities.ship_deep_copy(), &BoostMap::default(), &mut rng);
+    entities.update_all(&entities.ship_deep_copy(), &BoostMap::default(), &mut rng);
+    entities.update_all(&entities.ship_deep_copy(), &BoostMap::default(), &mut rng);
 
     // FIXME: This isn't really testing what we want to test.
     // Fix it so we have real primaries and test the distance to those.
@@ -2632,7 +2702,8 @@ mod tests {
 
     entities.fixup_pointers().unwrap();
 
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     // With a roll of 6 and sensor skill of 4, check should be positive
     // resulting in successful jamming
@@ -2661,7 +2732,8 @@ mod tests {
 
     entities.fixup_pointers().unwrap();
 
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     // With a roll of 1 and sensor skill of 4, check should be negative
     // resulting in failed jamming
@@ -2690,13 +2762,15 @@ mod tests {
     entities.ships.insert("attacker".to_string(), Arc::new(RwLock::new(ship1)));
     entities.ships.insert("target".to_string(), Arc::new(RwLock::new(ship2)));
 
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("not established by")
     )));
     let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
 
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     // With a roll of 6 and sensor skill of 4, the lock should be established
     assert!(effects.iter().any(|e| matches!(e,
@@ -2731,7 +2805,8 @@ mod tests {
       .ships
       .insert("attacker".to_string(), Arc::new(RwLock::new(ship2.clone())));
 
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     // Check that the lock was broken
     assert!(effects.iter().any(|e| matches!(e,
@@ -2752,7 +2827,8 @@ mod tests {
       .unwrap()
       .sensor_locks
       .push("defender".to_string());
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     // Check that the lock was not broken
     assert!(effects.iter().any(|e| matches!(e,
@@ -2779,14 +2855,16 @@ mod tests {
     entities.ships.insert("jammer".to_string(), Arc::new(RwLock::new(ship1)));
     entities.ships.insert("target".to_string(), Arc::new(RwLock::new(ship2)));
 
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("failed to jam comms on")
     )));
 
     let mut rng = StepRng::new(4, 1); // Going past 6 on second two rolls ensures jammer wins
-    let effects = entities.sensor_actions(&actions, &mut rng);
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     // With high sensor skill and good roll, jamming should succeed
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("is jamming comms on")
