@@ -134,12 +134,13 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
         style={{ width: "100%", boxSizing: "border-box" }}
       >
         <option value="none"></option>
-        <option value="overload-drive" disabled={hasOverloadDrive}>
-          Overload Drive
-        </option>
-        <option value="overload-plant" disabled={hasOverloadPlant}>
-          Overload Plant
-        </option>
+        {/* Overload bonuses last only one turn — always allow re-queueing
+            the action even when a bonus is currently active. The queued
+            action evaluates at end-of-turn AFTER reset_temporary_bonuses
+            zeroes the active bonus, so a successful re-roll seamlessly
+            extends overload into the next turn. */}
+        <option value="overload-drive">Overload Drive</option>
+        <option value="overload-plant">Overload Plant</option>
         <option value="jump" disabled={!ship.can_jump}>
           Jump
         </option>

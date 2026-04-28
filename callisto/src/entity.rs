@@ -1129,14 +1129,25 @@ impl Entities {
         return;
       }
 
+      // Whether THIS ship already holds a sensor lock on `target`. SensorLock
+      // is an *attempt*; once successful the lock persists in the attacker's
+      // `sensor_locks` and the queued action should drop. Re-queue manually
+      // if the lock is later broken.
+      let attacker_has_lock_on = |target: &str| -> bool {
+        self
+          .ships
+          .get(ship_name)
+          .is_some_and(|s| s.read().unwrap().sensor_locks.iter().any(|n| n == target))
+      };
+
       actions.retain(|action| {
         match action {
-          // Keep FireActions, JamComms if the target still exists
-          // Keep SensorLock if the target still exists. We could have it so we also drop this if
-          // the lock is established, but since locks come and go, best to keep persistent.
-          ShipAction::SensorLock { target }
-          | ShipAction::JamComms { target }
-          | ShipAction::FireAction { target, .. } => self.ships.contains_key(target),
+          // Keep FireActions, JamComms if the target still exists.
+          ShipAction::JamComms { target } | ShipAction::FireAction { target, .. } => {
+            self.ships.contains_key(target)
+          }
+          // Keep SensorLock only while the lock isn't yet established.
+          ShipAction::SensorLock { target } => self.ships.contains_key(target) && !attacker_has_lock_on(target),
           // Keep BreakSensorLock if the target still exists and the target has a sensor lock.
           ShipAction::BreakSensorLock { target } => {
             if let Some(target_ship) = self.ships.get(target) {
