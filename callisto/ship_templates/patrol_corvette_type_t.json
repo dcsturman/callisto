@@ -1,0 +1,40 @@
+{
+  "name": "Patrol Corvette - Type T",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 4,
+  "maneuver": 4,
+  "jump": 3,
+  "power": 405,
+  "fuel": 124,
+  "crew": 17,
+  "sensors": "Military",
+  "computer": 15,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 12
+}

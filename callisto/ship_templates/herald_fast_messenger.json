@@ -1,0 +1,28 @@
+{
+  "name": "Herald Fast Messenger",
+  "displacement": 300,
+  "hull": 120,
+  "armor": 4,
+  "maneuver": 2,
+  "jump": 4,
+  "power": 240,
+  "fuel": 123,
+  "crew": 7,
+  "sensors": "Civilian",
+  "computer": 15,
+  "weapons": [
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 15
+}

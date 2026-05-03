@@ -1,0 +1,40 @@
+{
+  "name": "Void Trader",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 4,
+  "maneuver": 2,
+  "jump": 2,
+  "power": 195,
+  "fuel": 82,
+  "crew": 6,
+  "sensors": "Military",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 9
+}

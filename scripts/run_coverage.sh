@@ -26,7 +26,7 @@ echo "Test help"
 echo "Test version"
 ./target/debug/callisto --version
 echo "Test long flags"
-cargo run -- --port 4100  --scenario_file ./tests/test_scenario.json --design_file ./tests/test_ship_templates.json --users_file ./config/authorized_users.json --web-server http://localhost:50001 &
+cargo run -- --port 4100  --scenario-dir ./scenarios --design-dir ./ship_templates --users-file ./config/authorized_users.json --web-server http://localhost:50001 &
 echo "Test long test flag"
 cargo run -- --port 4101  --test &
 

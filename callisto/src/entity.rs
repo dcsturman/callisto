@@ -2885,9 +2885,9 @@ mod tests {
     target_design: &str,
   ) -> Entities {
     // Load ship templates
-    let templates = crate::ship::load_ship_templates_from_file(crate::ship::DEFAULT_SHIP_TEMPLATES_FILE)
+    let templates = crate::ship::load_ship_templates_from_dir(crate::ship::DEFAULT_SHIP_TEMPLATES_DIR)
       .await
-      .expect("Unable to load ship template file.");
+      .expect("Unable to load ship templates directory.");
 
     // Create entities
     let mut entities = Entities::new();
