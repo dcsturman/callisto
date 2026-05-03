@@ -425,6 +425,32 @@ impl Processor {
           connections.remove(i);
         }
 
+        // The connection walk above only touches users currently online. To
+        // prevent a blacklisted user from re-admitting themselves via a
+        // cached cookie on the next reconnect (which `build_connection`
+        // resurrects from `session_keys` alone), purge any session_keys entry
+        // whose email is now in the blacklist set.
+        let purged_count = {
+          let mut keys = self
+            .session_keys
+            .lock()
+            .expect("(handle_reload_notification) session_keys lock poisoned");
+          let before = keys.len();
+          keys.retain(|_session_key, email_opt| match email_opt {
+            Some(email) => !new_dir.is_blacklisted(email),
+            None => true,
+          });
+          before - keys.len()
+        };
+        if purged_count > 0 {
+          event!(
+            target: LOGOUT,
+            Level::INFO,
+            count = purged_count,
+            action = "purged: blacklisted offline session_keys"
+          );
+        }
+
         self.last_directory_seen = new_dir;
       }
     }
@@ -452,6 +478,29 @@ impl Processor {
     // to a login message.  In the case though of having been previously logged in and part of a scenario we need to
     // include the scenario state in the Auth message AND send an Entities message.
     if let Some(email) = email {
+      // Security: cookie-based session resume MUST NOT bypass the blacklist.
+      // Login and Register both consult the directory; this code path resurrects
+      // the email from the in-process `session_keys` map alone, so we have to
+      // re-check before issuing a fresh AuthResponse. If the user is now
+      // blacklisted, drop their session_key entry and degrade to the
+      // unauthenticated path so a subsequent Login is required (which will then
+      // be rejected by the directory-aware authenticate_user).
+      let is_blacklisted = self
+        .directory_handle
+        .read()
+        .expect("(build_connection) directory_handle lock poisoned")
+        .is_blacklisted(email);
+      if is_blacklisted {
+        event!(
+          target: LOGOUT,
+          Level::INFO,
+          email = email.as_str(),
+          action = "rejected: blacklisted on session resume"
+        );
+        connection.player.logout(&self.session_keys);
+        return Some(connection);
+      }
+
       if let Some((old_server, old_email, old_role, old_ship)) =
         self.members.find_scenario_info_by_session_key(session_key)
       {
@@ -666,6 +715,25 @@ impl Processor {
             debug!("(ValidateSession) Session key is valid, user email: {}", email);
             let email_clone = email.clone();
             drop(session_keys_lock);
+            // Security: blacklisted users must not be re-admitted via a cached
+            // session cookie. Drop the session_keys entry and require a fresh
+            // login (which will then be rejected by the directory-aware
+            // authenticate_user).
+            let is_blacklisted = self
+              .directory_handle
+              .read()
+              .expect("(ValidateSession) directory_handle lock poisoned")
+              .is_blacklisted(&email_clone);
+            if is_blacklisted {
+              event!(
+                target: LOGOUT,
+                Level::INFO,
+                email = email_clone.as_str(),
+                action = "rejected: blacklisted on validate-session"
+              );
+              player.logout(&self.session_keys);
+              return vec![ResponseMsg::PleaseLogin];
+            }
             let (role, ship) = player.get_role();
             vec![ResponseMsg::AuthResponse(AuthResponse {
               email: email_clone,
