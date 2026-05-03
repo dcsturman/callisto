@@ -1,0 +1,34 @@
+{
+  "name": "Threshing Oar",
+  "displacement": 300,
+  "hull": 120,
+  "armor": 2,
+  "maneuver": 4,
+  "jump": 1,
+  "power": 210,
+  "fuel": 61,
+  "crew": 6,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 9
+}

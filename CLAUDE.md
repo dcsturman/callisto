@@ -54,7 +54,7 @@ Core types and where they live:
 Global, hot-reloadable state lives in `OnceCell<RwLock<Arc<...>>>`s:
 
 - Scenarios: `lib.rs::SCENARIOS` — populated from `--scenario-dir` (local path or `gs://` GCS bucket).
-- Ship templates: `ship::SHIP_TEMPLATES` (similar pattern) — populated from `--design-file`.
+- Ship templates: `ship::SHIP_TEMPLATES` (similar pattern) — populated from `--design-dir`. Each design lives in its own JSON file inside that directory; reloads merge new/updated entries and never delete existing ones (so a removed-on-disk design keeps working in memory until the next restart).
 
 A background task (`watch_reloadable_data`) polls fingerprints every 5s and pushes `ReloadNotification::{Scenarios,ShipTemplates}` into the processor when the source changes. This is why edits to files under `callisto/scenarios/` and `callisto/ship_templates/` take effect without restart.
 

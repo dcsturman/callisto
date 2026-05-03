@@ -1,0 +1,36 @@
+{
+  "name": "Gazelle",
+  "displacement": 400,
+  "hull": 176,
+  "armor": 3,
+  "maneuver": 6,
+  "jump": 5,
+  "power": 540,
+  "fuel": 128,
+  "crew": 21,
+  "sensors": "Military",
+  "computer": 30,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15
+}

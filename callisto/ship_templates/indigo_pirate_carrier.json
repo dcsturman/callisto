@@ -1,0 +1,52 @@
+{
+  "name": "Indigo Pirate Carrier",
+  "displacement": 300,
+  "hull": 180,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 135,
+  "fuel": 81,
+  "crew": 27,
+  "sensors": "Military",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 15
+}

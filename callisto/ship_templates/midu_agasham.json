@@ -1,0 +1,143 @@
+{
+  "name": "Midu Agasham",
+  "displacement": 3000,
+  "hull": 1320,
+  "armor": 4,
+  "maneuver": 6,
+  "jump": 4,
+  "power": 3540,
+  "fuel": 1236,
+  "crew": 97,
+  "sensors": "Advanced",
+  "countermeasures": "Standard",
+  "computer": 70,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15
+}
