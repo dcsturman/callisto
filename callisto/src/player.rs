@@ -85,7 +85,10 @@ impl PlayerManager {
   /// * `session_keys` - The session keys for all connections.  This is a map of session keys to email addresses.  Used here when a user logs in (to update this info)
   ///
   /// # Errors
-  /// Returns an error if the user cannot be authenticated.
+  /// Returns an error if the user cannot be authenticated. For blacklisted
+  /// emails the error string is `"NOT_AUTHORIZED"` (the wire-pinned tag the
+  /// FE branches on); other failures use the legacy "Unable to authenticate"
+  /// wording.
   pub async fn login(
     &mut self, login: LoginMsg, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<AuthResponse, String> {
@@ -95,9 +98,45 @@ impl PlayerManager {
       .authenticator
       .authenticate_user(&login.code, session_keys)
       .await
-      .map_err(|e| format!("(PlayerManager.login) Unable to authenticate user: {e:?}"))?;
+      .map_err(|e| {
+        // BlacklistedUserError's Display IS the wire contract: "NOT_AUTHORIZED".
+        // Keep it pinned by checking the type rather than relying on the
+        // stringified Debug below.
+        if e.is::<crate::authentication::BlacklistedUserError>() {
+          "NOT_AUTHORIZED".to_string()
+        } else {
+          format!("(PlayerManager.login) Unable to authenticate user: {e:?}")
+        }
+      })?;
 
     debug!("(PlayerManager.login) Authenticated user {} with session key.", email);
+
+    Ok(AuthResponse {
+      email,
+      scenario: None,
+      role: None,
+      ship: None,
+    })
+  }
+
+  /// Register a new user. Mirrors `login` but reaches `register_user` on the
+  /// authenticator so it can persist the email into the authorized-users
+  /// directory. The `Err(String)` carries one of the wire-pinned tags
+  /// `NOT_AUTHORIZED`, `ALREADY_REGISTERED`, `AUTH_FAILED`, or
+  /// `REGISTRATION_FAILED` — `RegisterError`'s `Display` is the contract.
+  ///
+  /// # Errors
+  /// Returns an error if the user cannot be registered (see above).
+  pub async fn register(
+    &mut self, msg: LoginMsg, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> Result<AuthResponse, String> {
+    info!("(PlayerManager.register) Received and processing register request.");
+
+    let email = self
+      .authenticator
+      .register_user(&msg.code, session_keys)
+      .await
+      .map_err(|e| e.to_string())?;
 
     Ok(AuthResponse {
       email,

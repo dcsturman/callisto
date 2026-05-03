@@ -19,8 +19,8 @@ Two-part app communicating over a JSON-over-WebSocket protocol:
 - Lint (must pass; CI uses clippy pedantic with `-D warnings`): `cargo fmt -- --check` and `cargo clippy --all-targets --all-features -- -D warnings`
 - Unit + integration tests: `cargo test --release` (or `cargo nextest r --all --features ci,no_tls_upgrade` to match CI)
 - Run a single test: `cargo test --release <test_name>` — integration tests live in `tests/webserver.rs`; unit tests live next to their modules and are aggregated under `src/unit_tests.rs`
-- Coverage: `./run_coverage.sh` (uses `cargo llvm-cov`)
-- Integration tests require TLS certs. Generate them once: `cd callisto/keys && bash ../build_keys.sh` (accept defaults). Or run with `--features no_tls_upgrade` to skip TLS entirely.
+- Coverage: `./scripts/run_coverage.sh` (uses `cargo llvm-cov`; cd's into `callisto/` itself)
+- Integration tests require TLS certs. Generate them once: `./scripts/build_keys.sh` (accept defaults; cd's into `callisto/keys/` itself). Or run with `--features no_tls_upgrade` to skip TLS entirely.
 
 ### Frontend (run from `fe/callisto/`)
 

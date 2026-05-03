@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::ToSocketAddrs;
 use std::panic;
 use std::process;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use futures::channel::mpsc::{channel, unbounded, UnboundedSender};
@@ -30,7 +30,9 @@ use tracing_subscriber::{layer::SubscriberExt, EnvFilter};
 
 extern crate callisto;
 
-use callisto::authentication::{Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator};
+use callisto::authentication::{
+  load_user_directory, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator, UserDirectory,
+};
 
 use callisto::entity::Entities;
 use callisto::processor::{Processor, ReloadNotification};
@@ -261,6 +263,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     }
   };
   let (reload_sender, reload_receiver) = unbounded();
+  // Clone for the users-file watcher we spawn below; the scenario/design
+  // watcher takes the original.
+  let users_reload_sender = reload_sender.clone();
   tokio::spawn(watch_reloadable_data(
     design_file.clone(),
     scenario_dir.clone(),
@@ -273,9 +278,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 
   let (mut connection_sender, connection_receiver) = channel(MAX_CHANNEL_DEPTH);
 
+  // Shared user directory + register lock. Both must be created BEFORE the
+  // authenticator so the GoogleAuthenticator constructor can seed the cell
+  // and the Processor can read from the same Arc. The register lock is only
+  // consumed by GoogleAuthenticator; mock mode owns its own swap discipline.
+  let user_directory: Arc<RwLock<Arc<UserDirectory>>> = Arc::new(RwLock::new(Arc::new(UserDirectory::default())));
+
+  // Seed the directory cell from the users file. In test mode the
+  // GoogleAuthenticator path doesn't run, but tests still want to inject
+  // pre-seeded blacklists by writing the file. Failure is non-fatal — an
+  // empty cell behaves as "everyone allowed" under MockAuthenticator and
+  // "nobody allowed" under GoogleAuthenticator (which then errors below).
+  match load_user_directory(&args.users_file).await {
+    Ok(initial) => {
+      *user_directory.write().expect("(main) user_directory lock poisoned at startup") = Arc::new(initial);
+      event!(target: LOG_FILE_USE, Level::INFO, file_name = args.users_file.as_str(), use = "Seed authorized users");
+    }
+    Err(e) => {
+      warn!(
+        "(main) Initial users-file load from {} failed: {e}. Starting with empty directory; the watcher will retry.",
+        args.users_file
+      );
+    }
+  }
+
   // Create an Authenticator to be cloned on each new connection.
   let auth_template: Box<dyn Authenticator> = if test_mode {
-    Box::new(MockAuthenticator::new(&args.address))
+    Box::new(MockAuthenticator::new(&args.address).with_directory(user_directory.clone()))
   } else {
     // All the data shared between authenticators.
     let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
@@ -283,14 +312,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let my_credentials = Arc::new(my_credentials);
     let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
 
+    let register_lock = Arc::new(tokio::sync::Mutex::new(()));
     Box::new(
-      GoogleAuthenticator::new(&args.web_server, my_credentials, google_keys, &args.users_file)
-        .await
-        .expect("Failed to create GoogleAuthenticator"),
+      GoogleAuthenticator::new(
+        &args.web_server,
+        my_credentials,
+        google_keys,
+        &args.users_file,
+        user_directory.clone(),
+        register_lock,
+      )
+      .await
+      .expect("Failed to create GoogleAuthenticator"),
     )
   };
 
+  // Spawn the users-file watcher (separate from the design/scenario watcher
+  // because the polling path differs — single file, not a directory).
+  let users_file_clone = args.users_file.clone();
+  let user_directory_for_watcher = user_directory.clone();
+  tokio::spawn(watch_users_file(
+    users_file_clone,
+    user_directory_for_watcher,
+    users_reload_sender,
+  ));
+
   let session_keys_clone = session_keys.clone();
+  let directory_handle = user_directory.clone();
   tokio::task::spawn(async move {
     let mut processor = Processor::new(
       connection_receiver,
@@ -299,6 +347,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       session_keys_clone,
       &scenario_dir,
       test_mode,
+      directory_handle,
     );
     processor.processor().await;
   });
@@ -418,6 +467,55 @@ async fn watch_reloadable_data(
         }
         Err(e) => {
           warn!("(main) Unable to reload scenarios from {scenario_dir}: {e:?}");
+        }
+      }
+    }
+  }
+}
+
+/// Poll the authorized-users file every `RELOAD_POLL_INTERVAL` and push a
+/// `ReloadNotification::AuthorizedUsers` whenever it changes. Same shape as
+/// the design-template watcher (one file, mtime-based) but runs on its own
+/// task so a slow GCS poll on one watcher doesn't starve the other.
+async fn watch_users_file(
+  users_file: String, directory_handle: Arc<RwLock<Arc<UserDirectory>>>,
+  reload_sender: UnboundedSender<ReloadNotification>,
+) {
+  // Seed last-known mtime from whatever the GoogleAuthenticator already
+  // loaded. If the directory cell is still default (test mode), this will
+  // be 0 and the first poll will pick the file up.
+  let mut last_users_modified = directory_handle
+    .read()
+    .expect("(watch_users_file) directory_handle lock poisoned")
+    .last_modified;
+
+  loop {
+    tokio::time::sleep(RELOAD_POLL_INTERVAL).await;
+
+    let users_reload = match callisto::get_file_last_modified_timestamp(&users_file).await {
+      Ok(Some(last_modified)) if last_modified > last_users_modified => Some(last_modified),
+      Ok(_) => None,
+      Err(e) => {
+        warn!("(watch_users_file) Unable to check users file timestamp for {users_file}: {e}");
+        None
+      }
+    };
+
+    if let Some(last_modified) = users_reload {
+      match load_user_directory(&users_file).await {
+        Ok(new_dir) => {
+          last_users_modified = last_modified;
+          *directory_handle
+            .write()
+            .expect("(watch_users_file) directory_handle lock poisoned for write") = Arc::new(new_dir);
+          event!(target: LOG_FILE_USE, Level::INFO, file_name = users_file.as_str(), use = "Reloaded authorized users");
+          if let Err(e) = reload_sender.unbounded_send(ReloadNotification::AuthorizedUsers) {
+            warn!("(watch_users_file) Unable to notify processor of users reload: {e:?}");
+            break;
+          }
+        }
+        Err(e) => {
+          warn!("(watch_users_file) Unable to reload users file {users_file}: {e:?}");
         }
       }
     }

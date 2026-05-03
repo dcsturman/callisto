@@ -1,6 +1,6 @@
 use std::boxed::Box;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use futures::channel::mpsc::{Receiver, UnboundedReceiver};
 use futures::select;
@@ -18,7 +18,7 @@ use tokio_rustls::server::TlsStream;
 
 use dyn_clone::clone_box;
 
-use crate::authentication::Authenticator;
+use crate::authentication::{Authenticator, UserDirectory};
 
 use crate::entity::MetaData;
 use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenariosMsg};
@@ -47,6 +47,17 @@ pub struct Processor {
   // Unchanging value with directory for all scenarios.
   scenario_dir: String,
 
+  /// Shared user-directory cell. Mirrors the one inside the auth template so
+  /// kick-on-reload can read the latest blacklist without going through an
+  /// authenticator clone.
+  directory_handle: Arc<RwLock<Arc<UserDirectory>>>,
+  /// Last directory snapshot we processed. Future use: compute the new
+  /// blacklist delta on `ReloadNotification::AuthorizedUsers` to avoid
+  /// re-walking every connection. For now we just track it so subsequent
+  /// reload-notification handlers can diff.
+  #[allow(dead_code)]
+  last_directory_seen: Arc<UserDirectory>,
+
   // Test mode is here as its an aspect of the entire server (mostly how we authenticate)
   // not a particular scenario.
   test_mode: bool,
@@ -64,6 +75,10 @@ struct Connection {
 pub enum ReloadNotification {
   Scenarios,
   ShipTemplates,
+  /// External edit to the authorized-users file (CLI script or direct GCS
+  /// poke). Triggers a reload of the directory cell and a kick-on-reload
+  /// pass over open connections.
+  AuthorizedUsers,
 }
 
 type IncomingConnection = (WebSocketStream<SubStream>, String, Option<String>);
@@ -80,14 +95,25 @@ enum ActiveProcessorEvent {
 }
 
 impl Processor {
+  /// Build a new processor.
+  ///
+  /// # Panics
+  /// Panics if the `directory_handle` `RwLock` is poisoned at construction
+  /// (process startup; never expected in normal operation).
   #[must_use]
   pub fn new(
     connection_receiver: Receiver<(WebSocketStream<SubStream>, String, Option<String>)>,
     reload_receiver: UnboundedReceiver<ReloadNotification>, auth_template: Box<dyn Authenticator>,
     session_keys: Arc<Mutex<HashMap<String, Option<String>>>>, scenario_dir: &str, test_mode: bool,
+    directory_handle: Arc<RwLock<Arc<UserDirectory>>>,
   ) -> Self {
     // Clean up scenario_dir so that it does not have a trailing slash.
     let scenario_dir = scenario_dir.trim_end_matches('/').to_string();
+
+    let last_directory_seen = directory_handle
+      .read()
+      .expect("(Processor.new) directory_handle lock poisoned")
+      .clone();
 
     Processor {
       connection_receiver,
@@ -97,6 +123,8 @@ impl Processor {
       servers: HashMap::new(),
       members: ServerMembersTable::new(),
       scenario_dir,
+      directory_handle,
+      last_directory_seen,
       test_mode,
       reload_notifications_enabled: true,
     }
@@ -326,7 +354,7 @@ impl Processor {
     }
   }
 
-  async fn handle_reload_notification(&self, connections: &mut [Connection], notification: ReloadNotification) {
+  async fn handle_reload_notification(&mut self, connections: &mut Vec<Connection>, notification: ReloadNotification) {
     match notification {
       ReloadNotification::Scenarios => {
         let scenarios_message = ResponseMsg::Scenarios(self.build_scenarios_msg());
@@ -353,6 +381,51 @@ impl Processor {
           let design_message = ResponseMsg::DesignTemplateResponse(connection.player.get_designs());
           send_response(&mut connection.stream, &design_message, "live design refresh").await;
         }
+      }
+      ReloadNotification::AuthorizedUsers => {
+        // Pull the freshest snapshot from the shared cell. The watcher has
+        // already loaded it and swapped it in by the time we get here.
+        let new_dir = self
+          .directory_handle
+          .read()
+          .expect("(handle_reload_notification) directory_handle lock poisoned")
+          .clone();
+
+        // Walk connections and force-disconnect any whose email is now in
+        // the blacklist set. We collect indexes first so we can mutate the
+        // vector after iteration without trying to hold a mutable borrow
+        // across the await boundary.
+        let mut to_disconnect: Vec<usize> = Vec::new();
+        for (i, connection) in connections.iter().enumerate() {
+          let Some(email) = connection.player.get_email() else {
+            continue;
+          };
+          if new_dir.is_blacklisted(&email) {
+            to_disconnect.push(i);
+          }
+        }
+
+        // Iterate in reverse so removals don't shift later indexes.
+        for &i in to_disconnect.iter().rev() {
+          let email = connections[i].player.get_email().unwrap_or_default();
+          event!(
+            target: LOGOUT,
+            Level::INFO,
+            email = email.as_str(),
+            action = "forced: blacklisted"
+          );
+          // Clear the session key entry then close the socket. Mirrors
+          // RequestMsg::Logout.
+          connections[i].player.logout(&self.session_keys);
+          if let Err(e) = connections[i].stream.close(None).await {
+            if !matches!(e, Error::Protocol(ProtocolError::SendAfterClosing)) {
+              error!("(handle_reload_notification) Failed to close blacklisted connection: {e:?}");
+            }
+          }
+          connections.remove(i);
+        }
+
+        self.last_directory_seen = new_dir;
       }
     }
   }
@@ -461,9 +534,11 @@ impl Processor {
     event!(Level::INFO, request = Into::<&str>::into(&message), contents = ?message);
 
     // If the connection has not logged in yet, that is the priority.
-    // Nothing else is processed until login is complete.
+    // Nothing else is processed until login is complete. Register also
+    // bypasses the gate so a fresh user can self-onboard.
     if !player.validated_user()
       && !matches!(message, RequestMsg::Login(_))
+      && !matches!(message, RequestMsg::Register(_))
       && !matches!(message, RequestMsg::Quit)
       && !matches!(message, RequestMsg::ValidateSession)
     {
@@ -483,6 +558,12 @@ impl Processor {
             self.build_successful_auth_msgs(player, auth_response)
           })
       }
+      RequestMsg::Register(register_msg) => player
+        .register(register_msg, &self.session_keys)
+        .await
+        .map_or_else(error_msg, |auth_response| {
+          self.build_successful_auth_msgs(player, auth_response)
+        }),
 
       RequestMsg::Reset => response_with_update(player, player.reset()),
       RequestMsg::AddShip(ship) => response_with_update(player, player.add_ship(ship)),
