@@ -1,0 +1,28 @@
+{
+  "name": "Harrier",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 4,
+  "maneuver": 6,
+  "jump": 2,
+  "power": 260,
+  "fuel": 42,
+  "crew": 11,
+  "sensors": "Advanced",
+  "countermeasures": "Military",
+  "stealth": "Advanced",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 15
+}

@@ -1,0 +1,22 @@
+{
+  "name": "Light Fighter",
+  "displacement": 10,
+  "hull": 4,
+  "armor": 2,
+  "maneuver": 6,
+  "jump": 0,
+  "power": 15,
+  "fuel": 1,
+  "crew": 1,
+  "sensors": "Military",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 12
+}

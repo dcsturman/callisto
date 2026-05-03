@@ -81,13 +81,13 @@ fn get_next_port() -> u16 {
 }
 
 async fn spawn_server(
-  port: u16, test_mode: bool, scenario_dir: Option<String>, design_file: Option<String>, auto_kill: bool,
+  port: u16, test_mode: bool, scenario_dir: Option<String>, design_dir: Option<String>, auto_kill: bool,
 ) -> Result<Child, io::Error> {
-  spawn_server_full(port, test_mode, scenario_dir, design_file, None, auto_kill).await
+  spawn_server_full(port, test_mode, scenario_dir, design_dir, None, auto_kill).await
 }
 
 async fn spawn_server_full(
-  port: u16, test_mode: bool, scenario_dir: Option<String>, design_file: Option<String>, users_file: Option<String>,
+  port: u16, test_mode: bool, scenario_dir: Option<String>, design_dir: Option<String>, users_file: Option<String>,
   auto_kill: bool,
 ) -> Result<Child, io::Error> {
   let mut handle = Command::new(SERVER_PATH);
@@ -112,8 +112,8 @@ async fn spawn_server_full(
   if let Some(scenario) = scenario_dir {
     handle = handle.arg("--scenario-dir").arg(scenario);
   }
-  if let Some(design_file) = design_file {
-    handle = handle.arg("-d").arg(design_file);
+  if let Some(design_dir) = design_dir {
+    handle = handle.arg("-d").arg(design_dir);
   }
   if let Some(users_file) = users_file {
     handle = handle.arg("-u").arg(users_file);
@@ -198,7 +198,7 @@ async fn next_response_with_timeout(stream: &mut MyWebSocket, duration: Duration
 fn setup_reloadable_test_files(port: u16) -> (PathBuf, String, String, String) {
   let root = std::env::temp_dir().join(format!("callisto_live_reload_{port}_{}", std::process::id()));
   let scenario_dir = root.join("scenarios");
-  let design_file = root.join("ship_templates.json");
+  let design_dir = root.join("ship_templates");
   let added_scenario = "live_reload_scenario.json".to_string();
 
   if root.exists() {
@@ -206,24 +206,44 @@ fn setup_reloadable_test_files(port: u16) -> (PathBuf, String, String, String) {
   }
 
   fs::create_dir_all(&scenario_dir).unwrap();
-  fs::copy("ship_templates/default_ship_templates.json", &design_file).unwrap();
+  fs::create_dir_all(&design_dir).unwrap();
+  // Mirror the production layout: copy every per-design file from the
+  // source ship_templates dir into the test temp dir.
+  for entry in fs::read_dir("ship_templates").unwrap() {
+    let entry = entry.unwrap();
+    fs::copy(entry.path(), design_dir.join(entry.file_name())).unwrap();
+  }
   fs::copy("scenarios/tutorial.json", scenario_dir.join("tutorial.json")).unwrap();
 
   (
     root,
     scenario_dir.to_string_lossy().into_owned(),
-    design_file.to_string_lossy().into_owned(),
+    design_dir.to_string_lossy().into_owned(),
     added_scenario,
   )
 }
 
-fn append_test_design(design_file: &str, design_name: &str) {
-  let contents = fs::read_to_string(design_file).unwrap();
-  let mut templates = serde_json::from_str::<Vec<serde_json::Value>>(&contents).unwrap();
-  let mut new_template = templates.first().unwrap().clone();
-  new_template["name"] = json!(design_name);
-  templates.push(new_template);
-  fs::write(design_file, serde_json::to_string_pretty(&templates).unwrap()).unwrap();
+fn append_test_design(design_dir: &str, design_name: &str) {
+  // Pick any existing design as a starting point, copy it, rename, and
+  // drop it into the dir as its own file. The watcher's directory
+  // fingerprint changes when a file is added, triggering a reload.
+  let dir = PathBuf::from(design_dir);
+  let first = fs::read_dir(&dir)
+    .unwrap()
+    .next()
+    .expect("(append_test_design) design dir is empty")
+    .unwrap()
+    .path();
+  let contents = fs::read_to_string(&first).unwrap();
+  let mut template = serde_json::from_str::<serde_json::Value>(&contents).unwrap();
+  template["name"] = json!(design_name);
+  let slug = design_name
+    .to_lowercase()
+    .chars()
+    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+    .collect::<String>();
+  let new_path = dir.join(format!("{slug}.json"));
+  fs::write(new_path, serde_json::to_string_pretty(&template).unwrap()).unwrap();
 }
 
 fn add_test_scenario(scenario_dir: &str, scenario_name: &str) {
@@ -413,8 +433,8 @@ async fn integration_get_designs() {
 #[test_log::test(tokio::test)]
 async fn integration_live_reload_pushes_scenarios_and_designs() {
   let port = get_next_port();
-  let (_root, scenario_dir, design_file, added_scenario) = setup_reloadable_test_files(port);
-  let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_file.clone()), true)
+  let (_root, scenario_dir, design_dir, added_scenario) = setup_reloadable_test_files(port);
+  let mut _server = spawn_server(port, true, Some(scenario_dir.clone()), Some(design_dir.clone()), true)
     .await
     .unwrap();
 
@@ -422,7 +442,7 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   let _ = test_authenticate(&mut stream).await.unwrap();
 
   let new_design_name = "Live Reload Test Design";
-  append_test_design(&design_file, new_design_name);
+  append_test_design(&design_dir, new_design_name);
   add_test_scenario(&scenario_dir, &added_scenario);
 
   let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
@@ -1635,12 +1655,12 @@ async fn integration_create_regular_server() {
   let mut server1 = spawn_server(port_1, false, None, None, true).await.unwrap();
   assert!(server1.try_wait().unwrap().is_none());
 
-  // Test server with design file
+  // Test server with design directory
   let mut server2 = spawn_server(
     port_2,
     false,
     Some("./scenarios".to_string()),
-    Some("./ship_templates/default_ship_templates.json".to_string()),
+    Some("./ship_templates".to_string()),
     true,
   )
   .await

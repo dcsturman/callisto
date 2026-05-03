@@ -14,13 +14,22 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
+use futures::future::join_all;
+
 use crate::computer::MAX_ACCEL_WIGGLE_ROOM;
 use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
-use crate::read_local_or_cloud_file;
 use crate::{debug, error, warn};
-pub const DEFAULT_SHIP_TEMPLATES_FILE: &str = "./ship_templates/default_ship_templates.json";
+use crate::{list_local_or_cloud_dir, read_local_or_cloud_file};
+
+/// Directory holding one ship-design JSON file per design. Mirrors the
+/// scenarios layout: each file is a self-contained `ShipDesignTemplate`
+/// (object, not array). Adding/changing a file triggers a watcher reload
+/// and the new design is merged into the global registry. Removing a file
+/// is intentionally harmless — the in-memory copy persists so any in-flight
+/// scenario that references the design keeps working.
+pub const DEFAULT_SHIP_TEMPLATES_DIR: &str = "./ship_templates/";
 
 pub type ShipTemplateTable = HashMap<String, Arc<ShipDesignTemplate>>;
 type SharedShipTemplateTable = Arc<ShipTemplateTable>;
@@ -55,6 +64,38 @@ where
   *templates_lock
     .write()
     .expect("(replace_ship_templates) Unable to update ship templates") = templates;
+}
+
+/// Merge the supplied templates into the current global snapshot. Existing
+/// entries with the same name are overwritten by the new ones. Entries that
+/// are NOT present in the new map are preserved — this is the intended
+/// reload semantics so that a removed-on-disk design doesn't disappear
+/// from memory while an active scenario may still be referencing it.
+///
+/// # Panics
+///
+/// Panics if the write lock is poisoned.
+pub fn merge_ship_templates<S>(new_templates: HashMap<String, Arc<ShipDesignTemplate>, S>)
+where
+  S: BuildHasher,
+{
+  let merged: ShipTemplateTable = match SHIP_TEMPLATES.get() {
+    Some(lock) => {
+      let existing = lock
+        .read()
+        .expect("(merge_ship_templates) Unable to read existing ship templates")
+        .clone();
+      let mut merged: ShipTemplateTable = (*existing).clone();
+      for (name, template) in new_templates {
+        merged.insert(name, template);
+      }
+      merged
+    }
+    None => new_templates.into_iter().collect(),
+  };
+  let merged_arc = Arc::new(merged);
+  let lock = SHIP_TEMPLATES.get_or_init(|| RwLock::new(merged_arc.clone()));
+  *lock.write().expect("(merge_ship_templates) Unable to update ship templates") = merged_arc;
 }
 
 /// Return the current global ship-template snapshot.
@@ -831,38 +872,92 @@ serde_with::serde_conv!(
     }
 );
 
-/// Load ship templates from a file. The file can be local or on Google cloud storage (encoded in filename)
+enum ShipTemplateFileOutcome {
+  Loaded(ShipDesignTemplate),
+  ParseError(String, String),
+  ReadError(String, String),
+}
+
+/// Load every ship design from a directory of per-design JSON files.
+///
+/// Each file in the directory must contain a single `ShipDesignTemplate`
+/// JSON object (not an array).
+///
+/// Per-file failures are split:
+/// * **Read errors** (network/auth/transient) cause the WHOLE load to fail,
+///   which leaves the watcher's directory fingerprint un-advanced so the
+///   next poll retries. This is the self-healing path for a cold-start
+///   GCS metadata-server flake — without it, a transient auth blip during
+///   startup can permanently wedge the registry until restart.
+/// * **Parse errors** (permanent — malformed JSON, wrong shape) are logged
+///   and skipped. Otherwise one corrupt file would block every reload
+///   forever. Once the operator fixes/removes the file the directory
+///   fingerprint changes and we naturally re-attempt.
 ///
 /// # Errors
 ///
-/// If the file cannot be read or if GCS cannot be reached (depending on url of file)
-pub async fn load_ship_templates_from_file(
-  file_name: &str,
+/// Returns `Err` if listing the directory fails OR if any per-file read
+/// fails. Per-file parse errors are not propagated.
+pub async fn load_ship_templates_from_dir(
+  dir: &str,
 ) -> Result<HashMap<String, Arc<ShipDesignTemplate>>, Box<dyn std::error::Error>> {
-  let templates: Vec<ShipDesignTemplate> =
-    serde_json::from_slice(read_local_or_cloud_file(file_name).await?.as_slice())?;
+  let entries = list_local_or_cloud_dir(dir).await?;
+  let dir_normalized = dir.trim_end_matches('/').to_string();
 
-  // From the list of templates, create a hash table and wrap each in an Arc.
-  let table = templates
-    .into_iter()
-    .map(|template| {
-      //template.weapons.sort();
-      (template.name.clone(), Arc::new(template))
-    })
-    .collect();
+  let results = join_all(entries.into_iter().map(|entry| {
+    let path = format!("{dir_normalized}/{entry}");
+    async move {
+      match read_local_or_cloud_file(&path).await {
+        Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
+          Ok(template) => ShipTemplateFileOutcome::Loaded(template),
+          Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
+        },
+        Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
+      }
+    }
+  }))
+  .await;
 
+  let mut table = HashMap::new();
+  let mut read_errors: Vec<String> = Vec::new();
+  for r in results {
+    match r {
+      ShipTemplateFileOutcome::Loaded(template) => {
+        table.insert(template.name.clone(), Arc::new(template));
+      }
+      ShipTemplateFileOutcome::ParseError(path, msg) => {
+        warn!("(load_ship_templates_from_dir) Skipping {path}: {msg}");
+      }
+      ShipTemplateFileOutcome::ReadError(path, msg) => {
+        read_errors.push(format!("{path}: {msg}"));
+      }
+    }
+  }
+  if !read_errors.is_empty() {
+    return Err(
+      format!(
+        "Failed to read {} of {} ship-design file(s): {}",
+        read_errors.len(),
+        read_errors.len() + table.len(),
+        read_errors.join("; ")
+      )
+      .into(),
+    );
+  }
   Ok(table)
 }
 
-/// Helper method that loads ship templates from a file.  This is designed only for use in tests to load templates from a default file.
+/// Helper method that loads ship templates from the default templates
+/// directory. Used by tests to seed the global registry from a known
+/// good fixture.
 ///
 /// # Panics
 ///
-/// If the file cannot be loaded.
+/// If the directory cannot be listed.
 pub async fn config_test_ship_templates() {
-  let templates = load_ship_templates_from_file(DEFAULT_SHIP_TEMPLATES_FILE)
+  let templates = load_ship_templates_from_dir(DEFAULT_SHIP_TEMPLATES_DIR)
     .await
-    .expect("Unable to load ship template file.");
+    .expect("Unable to load ship templates directory.");
   replace_ship_templates(templates);
 }
 

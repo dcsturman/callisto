@@ -1,0 +1,22 @@
+{
+  "name": "Scout/Courier",
+  "displacement": 100,
+  "hull": 40,
+  "armor": 4,
+  "maneuver": 2,
+  "jump": 2,
+  "power": 60,
+  "fuel": 23,
+  "crew": 3,
+  "sensors": "Military",
+  "computer": 5,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 12
+}

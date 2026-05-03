@@ -1,0 +1,28 @@
+{
+  "name": "Star Ray Interceptor",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 4,
+  "maneuver": 3,
+  "jump": 1,
+  "power": 140,
+  "fuel": 42,
+  "crew": 13,
+  "sensors": "Improved",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 12
+}

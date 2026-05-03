@@ -1,0 +1,29 @@
+{
+  "name": "System Defense Boat",
+  "displacement": 200,
+  "hull": 88,
+  "armor": 13,
+  "maneuver": 9,
+  "jump": 0,
+  "power": 240,
+  "fuel": 6,
+  "crew": 13,
+  "sensors": "Improved",
+  "countermeasures": "Standard",
+  "computer": 35,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15
+}

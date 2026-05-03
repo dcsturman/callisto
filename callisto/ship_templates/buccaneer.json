@@ -1,0 +1,40 @@
+{
+  "name": "Buccaneer",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 5,
+  "maneuver": 3,
+  "jump": 2,
+  "power": 300,
+  "fuel": 81,
+  "crew": 11,
+  "sensors": "Improved",
+  "computer": 5,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 15
+}

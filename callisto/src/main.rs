@@ -36,8 +36,8 @@ use callisto::authentication::{
 
 use callisto::entity::Entities;
 use callisto::processor::{Processor, ReloadNotification};
-use callisto::ship::DEFAULT_SHIP_TEMPLATES_FILE;
-use callisto::ship::{load_ship_templates_from_file, replace_ship_templates};
+use callisto::ship::DEFAULT_SHIP_TEMPLATES_DIR;
+use callisto::ship::{load_ship_templates_from_dir, merge_ship_templates};
 use callisto::{get_local_or_cloud_dir_fingerprint, replace_scenarios};
 
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
@@ -61,9 +61,12 @@ struct Args {
   #[arg(short, long, default_value = "./scenarios/")]
   scenario_dir: String,
 
-  /// JSON file for ship templates in scenario
-  #[arg(short, long, default_value = DEFAULT_SHIP_TEMPLATES_FILE)]
-  design_file: String,
+  /// Directory holding ship-design templates. Each design lives in its own
+  /// JSON file (single object, not array). Adding or changing a file
+  /// triggers a watcher reload; removing a file is intentionally harmless
+  /// (the in-memory copy persists).
+  #[arg(short, long, default_value = DEFAULT_SHIP_TEMPLATES_DIR)]
+  design_dir: String,
 
   /// Run in test mode. Specifically, this will use a fixed random number generator.
   #[arg(short, long)]
@@ -156,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     .with(tracing_stackdriver::layer());
   tracing::subscriber::set_global_default(subscriber)?;
   let args = Args::parse();
-  let design_file = args.design_file.clone();
+  let design_dir = args.design_dir.clone();
   let scenario_dir = args.scenario_dir.clone();
 
   let port = args.port;
@@ -233,14 +236,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     }));
   }
 
-  debug!("(main) Loading ship templates from {}...", &args.design_file);
-  let templates = load_ship_templates_from_file(&args.design_file)
-    .await
-    .unwrap_or_else(|e| panic!("Unable to load ship template file {}. Reason {:?}", args.design_file, e));
-
-  event!(target: LOG_FILE_USE, Level::INFO, file_name = &args.design_file, use = "Load ship templates.");
-
-  replace_ship_templates(templates);
+  debug!("(main) Loading ship templates from {}...", &args.design_dir);
+  // Soft-fail like scenarios: a transient GCS hiccup on cold start
+  // shouldn't wedge the instance. The watcher polls the directory
+  // fingerprint and will retry on the next tick if the initial listing
+  // failed. Per-file parse errors inside `load_ship_templates_from_dir`
+  // are already swallowed and logged; the only error path here is the
+  // listing itself failing.
+  let initial_design_load_ok = match load_ship_templates_from_dir(&args.design_dir).await {
+    Ok(templates) => {
+      let count = templates.len();
+      merge_ship_templates(templates);
+      event!(
+        target: LOG_FILE_USE,
+        Level::INFO,
+        file_name = &args.design_dir,
+        count,
+        use = "Load ship templates."
+      );
+      true
+    }
+    Err(e) => {
+      warn!(
+        "(main) Initial ship-template load from {} failed: {e}. Starting with empty registry; the reload watcher will retry every {}s.",
+        args.design_dir, RELOAD_POLL_INTERVAL.as_secs()
+      );
+      // Initialize the global to an empty map so callers don't panic on
+      // first lookup. A subsequent successful watcher reload will merge in.
+      merge_ship_templates(HashMap::<String, Arc<callisto::ship::ShipDesignTemplate>>::new());
+      false
+    }
+  };
 
   // Don't crash the server if scenario loading fails — a transient GCS
   // metadata-server flake at cold start would otherwise take down a fresh
@@ -267,9 +293,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   // watcher takes the original.
   let users_reload_sender = reload_sender.clone();
   tokio::spawn(watch_reloadable_data(
-    design_file.clone(),
+    design_dir.clone(),
     scenario_dir.clone(),
     initial_scenario_load_ok,
+    initial_design_load_ok,
     reload_sender,
   ));
 
@@ -390,16 +417,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
 }
 
 async fn watch_reloadable_data(
-  design_file: String, scenario_dir: String, initial_scenario_load_ok: bool,
+  design_dir: String, scenario_dir: String, initial_scenario_load_ok: bool, initial_design_load_ok: bool,
   reload_sender: UnboundedSender<ReloadNotification>,
 ) {
-  let mut last_design_modified = callisto::get_file_last_modified_timestamp(&design_file)
-    .await
-    .unwrap_or_else(|e| {
-      warn!("(main) Unable to read design file timestamp for {design_file}: {e}");
-      None
+  // Same self-healing fingerprint seed as scenarios: if the initial load
+  // failed, seed the fingerprint as empty so the very next poll retries.
+  let mut last_design_fingerprint = if initial_design_load_ok {
+    get_local_or_cloud_dir_fingerprint(&design_dir).await.unwrap_or_else(|e| {
+      warn!("(main) Unable to fingerprint design directory {design_dir}: {e}");
+      Vec::new()
     })
-    .unwrap_or_default();
+  } else {
+    Vec::new()
+  };
 
   // If the initial scenario load in main() succeeded, seed the fingerprint
   // with the current bucket state so the first poll only reloads on real
@@ -419,28 +449,35 @@ async fn watch_reloadable_data(
   loop {
     tokio::time::sleep(RELOAD_POLL_INTERVAL).await;
 
-    let design_reload = match callisto::get_file_last_modified_timestamp(&design_file).await {
-      Ok(Some(last_modified)) if last_modified > last_design_modified => Some(last_modified),
+    let design_reload = match get_local_or_cloud_dir_fingerprint(&design_dir).await {
+      Ok(fingerprint) if fingerprint != last_design_fingerprint => Some(fingerprint),
       Ok(_) => None,
       Err(e) => {
-        warn!("(main) Unable to check ship template timestamp for {design_file}: {e}");
+        warn!("(main) Unable to check design directory {design_dir}: {e}");
         None
       }
     };
 
-    if let Some(last_modified) = design_reload {
-      match load_ship_templates_from_file(&design_file).await {
+    if let Some(fingerprint) = design_reload {
+      match load_ship_templates_from_dir(&design_dir).await {
         Ok(templates) => {
-          replace_ship_templates(templates);
-          last_design_modified = last_modified;
-          event!(target: LOG_FILE_USE, Level::INFO, file_name = &design_file, use = "Reloaded ship templates");
+          let count = templates.len();
+          merge_ship_templates(templates);
+          last_design_fingerprint = fingerprint;
+          event!(
+            target: LOG_FILE_USE,
+            Level::INFO,
+            file_name = &design_dir,
+            count,
+            use = "Reloaded ship templates"
+          );
           if let Err(e) = reload_sender.unbounded_send(ReloadNotification::ShipTemplates) {
             warn!("(main) Unable to notify processor of ship template reload: {e:?}");
             break;
           }
         }
         Err(e) => {
-          warn!("(main) Unable to reload ship templates from {design_file}: {e:?}");
+          warn!("(main) Unable to reload ship templates from {design_dir}: {e:?}");
         }
       }
     }
