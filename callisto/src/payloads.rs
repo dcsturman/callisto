@@ -261,9 +261,17 @@ pub enum Role {
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserData {
-  pub email: String,
+  pub display_name: String,
   pub role: Role,
   pub ship: Option<String>,
+}
+
+/// Convert an email address to the display name used on the wire. We trim the
+/// domain (`@example.com`) so only the local part is surfaced to other players.
+/// Server-side records and logs continue to use the full email.
+#[must_use]
+pub fn email_to_display_name(email: &str) -> String {
+  email.split('@').next().unwrap_or(email).to_string()
 }
 
 #[serde_as]
@@ -330,6 +338,7 @@ serde_with::serde_conv!(
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 pub enum RequestMsg {
   Login(LoginMsg),
+  Register(LoginMsg),
   AddShip(AddShipMsg),
   AddPlanet(AddPlanetMsg),
   Remove(RemoveEntityMsg),

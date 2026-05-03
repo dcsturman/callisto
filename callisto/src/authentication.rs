@@ -1,20 +1,24 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use once_cell::sync::Lazy;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use dyn_clone::DynClone;
 use tracing::{event, Level};
 
 use tokio_tungstenite::tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 
-use crate::{get_file_last_modified_timestamp, read_local_or_cloud_file, LOG_AUTH_RESULT};
+use crate::{
+  get_file_last_modified_timestamp, read_local_or_cloud_file_with_generation,
+  write_local_or_cloud_file_if_generation_match, GenerationWriteError, LOG_AUTH_RESULT,
+};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn, LOG_FILE_USE};
@@ -24,6 +28,132 @@ type GoogleProfile = String;
 const GOOGLE_X509_CERT_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 const SESSION_COOKIE_NAME: &str = "callisto-session-key";
 const COOKIE_ID: &str = "cookie";
+
+/// Maximum number of attempts for a generation-guarded write before giving up.
+const REGISTER_WRITE_MAX_ATTEMPTS: u32 = 5;
+
+/// Per-user account status. Stored in the authorized-users file alongside
+/// timestamps. `Active` users may log in and play; `Blacklisted` users are
+/// kicked at every gate (Login, Register, and on watcher-driven reload).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UserStatus {
+  Active,
+  Blacklisted,
+}
+
+/// On-disk record for a single user. The file is a JSON object with
+/// `version: 1` and a `users` array of these. Legacy `Vec<String>` files
+/// are accepted on read and synthesized into records with
+/// `status: Active, registered_at: 0`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserRecord {
+  pub email: String,
+  pub status: UserStatus,
+  pub registered_at: i64,
+  #[serde(skip_serializing_if = "Option::is_none", default)]
+  pub blacklisted_at: Option<i64>,
+}
+
+/// In-memory snapshot of the authorized-users file. `active`/`blacklisted`
+/// are derived sets for O(1) gating; `raw` preserves the original ordering
+/// for re-serialization. `generation` is the GCS object generation (or
+/// `None` for local files / first-write); `last_modified` is the file's
+/// mtime (used by the watcher to detect external changes).
+#[derive(Debug, Default, Clone)]
+pub struct UserDirectory {
+  pub active: HashSet<String>,
+  pub blacklisted: HashSet<String>,
+  pub raw: Vec<UserRecord>,
+  pub generation: Option<i64>,
+  pub last_modified: i64,
+}
+
+impl UserDirectory {
+  #[must_use]
+  pub fn is_blacklisted(&self, email: &str) -> bool {
+    self.blacklisted.contains(&email.to_lowercase())
+  }
+
+  #[must_use]
+  pub fn is_active(&self, email: &str) -> bool {
+    self.active.contains(&email.to_lowercase())
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct UsersFileV1 {
+  version: u32,
+  users: Vec<UserRecord>,
+}
+
+/// Parse the authorized-users file body. Only the V1 shape is accepted.
+/// The legacy `Vec<String>` format must be migrated via the bundled CLI
+/// (`scripts/migrate-users-file.sh <users-file>`) before the server will
+/// start.
+fn parse_user_directory_body(body: &[u8]) -> Result<Vec<UserRecord>, Box<dyn std::error::Error>> {
+  if body.is_empty() {
+    return Ok(Vec::new());
+  }
+  match serde_json::from_slice::<UsersFileV1>(body) {
+    Ok(file) => Ok(file.users),
+    Err(v1_err) => {
+      // Detect the legacy shape only to give an actionable error message.
+      if serde_json::from_slice::<Vec<String>>(body).is_ok() {
+        Err(
+          "Legacy users file format detected. \
+           Run `scripts/migrate-users-file.sh <users-file>` to promote it \
+           to the V1 format before starting the server."
+            .into(),
+        )
+      } else {
+        Err(Box::new(v1_err))
+      }
+    }
+  }
+}
+
+fn build_directory_from_records(
+  records: Vec<UserRecord>, generation: Option<i64>, last_modified: i64,
+) -> UserDirectory {
+  let mut active = HashSet::new();
+  let mut blacklisted = HashSet::new();
+  let mut raw = Vec::with_capacity(records.len());
+  for record in records {
+    let lower = UserRecord {
+      email: record.email.to_lowercase(),
+      ..record
+    };
+    match lower.status {
+      UserStatus::Active => {
+        active.insert(lower.email.clone());
+      }
+      UserStatus::Blacklisted => {
+        blacklisted.insert(lower.email.clone());
+      }
+    }
+    raw.push(lower);
+  }
+  UserDirectory {
+    active,
+    blacklisted,
+    raw,
+    generation,
+    last_modified,
+  }
+}
+
+/// Load the authorized-users file from disk or GCS into a `UserDirectory`.
+///
+/// # Errors
+/// Returns an error if the file cannot be read or if both the v1 and legacy
+/// shapes fail to parse.
+pub async fn load_user_directory(filename: &str) -> Result<UserDirectory, Box<dyn std::error::Error>> {
+  let (body, generation) = read_local_or_cloud_file_with_generation(filename).await?;
+  let last_modified = get_file_last_modified_timestamp(filename).await?.unwrap_or(0);
+  let records = parse_user_directory_body(&body)?;
+  Ok(build_directory_from_records(records, generation, last_modified))
+}
 
 /// Trait defining the authentication behavior for the application
 #[async_trait]
@@ -37,6 +167,14 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
     &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>>;
 
+  /// Register a new user. Mirrors `authenticate_user`'s `(code, session_keys)`
+  /// shape so the wire-side `Login` / `Register` paths share the same client
+  /// payload (`LoginMsg { code }`). On success, the email is added to the
+  /// authorized-users directory and the session key is recorded.
+  async fn register_user(
+    &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> Result<GoogleProfile, Box<dyn Error>>;
+
   /// Checks if this socket has been validated, i.e. has successfully logged in.
   /// # Returns
   /// `true` if the user is validated, `false` otherwise.
@@ -46,29 +184,69 @@ pub trait Authenticator: Send + Sync + DynClone + Debug {
   fn set_session_key(&mut self, session_key: &str);
   fn get_email(&self) -> Option<String>;
   fn get_session_key(&self) -> Option<String>;
+
+  /// Snapshot of the live user directory, if this authenticator has one.
+  /// Default implementation returns `None` (e.g. legacy mocks without state).
+  fn directory_snapshot(&self) -> Option<Arc<UserDirectory>> {
+    None
+  }
 }
 
-/// Load the list of authorized users from a file.  The file is a JSON array of strings.  This is just a wrapper
-/// around `load_authorized_users_from_file` that handles any errors.
+/// Tagged error used by `register_user` so the processor can map to the
+/// pinned wire strings the FE branches on. The `Display` impl IS the wire
+/// contract — keep the strings exact.
+#[derive(Debug)]
+pub enum RegisterError {
+  /// Blacklisted email address tried to register.
+  NotAuthorized,
+  /// Email is already registered as active.
+  AlreadyRegistered,
+  /// Google JWT validation failed (bad code, expired token, etc.).
+  AuthFailed,
+  /// Generation-guarded write retries were exhausted.
+  WriteFailed,
+}
+
+impl std::fmt::Display for RegisterError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let s = match self {
+      RegisterError::NotAuthorized => "NOT_AUTHORIZED",
+      RegisterError::AlreadyRegistered => "ALREADY_REGISTERED",
+      RegisterError::AuthFailed => "AUTH_FAILED",
+      RegisterError::WriteFailed => "REGISTRATION_FAILED",
+    };
+    write!(f, "{s}")
+  }
+}
+
+impl Error for RegisterError {}
+
+/// Load the list of active authorized users from a file. Wrapper around the
+/// shared parser that flattens the new directory shape down to "just the
+/// active emails" for any remaining caller that doesn't care about status.
+///
+/// New code should prefer [`load_user_directory`] which exposes both the
+/// active set and the blacklist.
 ///
 /// # Arguments
 /// * `users_file` - The name of the file to load.
 ///
 /// # Returns
-/// A list of all the authorized users.  If the file is invalid, then note the warning and return the empty list.
+/// A list of all the active authorized users. If the file is invalid, then
+/// note the warning and return the empty list.
 ///
 /// # Panics
 /// If the file cannot be read.
 pub async fn load_authorized_users(users_file: &str) -> Vec<String> {
-  let authorized_users = load_authorized_users_from_file(users_file).await.unwrap_or_else(|_| {
+  let directory = load_user_directory(users_file).await.unwrap_or_else(|_| {
     panic!("(load_authorized_users) Unable to load authorized users file. No such file or directory '{users_file}'.");
   });
   info!(
-    "(Authentication.load_authorized_users) Loaded {} authorized users from file {}",
-    authorized_users.len(),
+    "(Authentication.load_authorized_users) Loaded {} active authorized users from file {}",
+    directory.active.len(),
     users_file
   );
-  authorized_users
+  directory.active.into_iter().collect()
 }
 
 pub struct HeaderCallback {
@@ -108,17 +286,24 @@ pub struct GoogleAuthenticator {
    */
   google_keys: Arc<GooglePublicKeys>,
   /**
-   * The list of authorized users.
+   * Shared, hot-reloadable user directory. Every per-connection clone of
+   * this authenticator points at the same backing `RwLock<Arc<...>>`, so a
+   * successful register-write swaps the inner `Arc` and is immediately
+   * visible to all sessions. (This is the per-clone-Arc bug fix from the
+   * old `authorized_users: Arc<Vec<String>>` design.)
    */
-  authorized_users: Arc<Vec<String>>,
+  directory: Arc<RwLock<Arc<UserDirectory>>>,
+  /**
+   * Serializes concurrent `register_user` calls within this replica. Single
+   * deployment topology + GCS generation preconditions handle inter-replica
+   * concurrency; this lock just coalesces same-process registrations so we
+   * don't burn retry budget on self-conflicts.
+   */
+  register_lock: Arc<tokio::sync::Mutex<()>>,
   /**
    * The path to the authorized users file.
    */
   authorized_users_file: String,
-  /**
-   * The last time the authorized users file was reloaded (Unix timestamp).
-   */
-  last_authorized_users_reload: i64,
 }
 
 impl GoogleAuthenticator {
@@ -129,69 +314,283 @@ impl GoogleAuthenticator {
   /// * `credentials` - The Google credentials for this server's domain (for oauth2).
   /// * `google_keys` - A copy of the previously fetched Google public keys.
   /// * `authorized_users_file` - The path to the authorized users file.
+  /// * `directory` - Shared user directory (reload-cell). Cloned authenticators
+  ///   point at the same cell so a register-write is visible everywhere.
+  /// * `register_lock` - Shared lock used to serialize registrations.
   ///
   /// # Errors
   /// Returns `Err` if the authorized users file cannot be read or parsed.
+  ///
+  /// # Panics
+  /// Panics if the directory `RwLock` is poisoned (process startup; never
+  /// expected in normal operation).
   pub async fn new(
     web_server: &str, credentials: Arc<GoogleCredentials>, google_keys: Arc<GooglePublicKeys>,
-    authorized_users_file: &str,
+    authorized_users_file: &str, directory: Arc<RwLock<Arc<UserDirectory>>>,
+    register_lock: Arc<tokio::sync::Mutex<()>>,
   ) -> Result<Self, Box<dyn std::error::Error>> {
-    // Load the authorized users from the file
-    let authorized_users = Arc::new(load_authorized_users_from_file(authorized_users_file).await?);
+    // Seed the directory cell from the file. Any later changes (CLI edits,
+    // register_user) will update the same cell.
+    let initial = load_user_directory(authorized_users_file).await?;
+    *directory.write().expect("(GoogleAuthenticator.new) directory lock poisoned") = Arc::new(initial);
 
     Ok(GoogleAuthenticator {
       credentials,
       email: None,
       session_key: None,
-      authorized_users,
+      directory,
+      register_lock,
       google_keys,
       web_server: web_server.to_string(),
       authorized_users_file: authorized_users_file.to_string(),
-      last_authorized_users_reload: 0, // Initialize to 0 to force initial reload
     })
   }
 
-  async fn maybe_reload_authorized_users(&mut self) {
+  /// Snapshot of the currently-loaded directory.
+  fn directory(&self) -> Arc<UserDirectory> {
+    self
+      .directory
+      .read()
+      .expect("(GoogleAuthenticator.directory) directory lock poisoned")
+      .clone()
+  }
+
+  /// Reload the directory if the source file has been touched since the last
+  /// load. Returns the latest snapshot regardless of whether a reload happened.
+  async fn maybe_reload_user_directory(&self) -> Arc<UserDirectory> {
     let last_modified = match get_file_last_modified_timestamp(&self.authorized_users_file).await {
       Ok(last_modified) => last_modified,
       Err(e) => {
         warn!(
-          "(authenticate_google_user) Unable to check authorized users file {}: {e}",
+          "(maybe_reload_user_directory) Unable to check authorized users file {}: {e}",
           self.authorized_users_file
         );
-        return;
+        return self.directory();
       }
     };
 
-    match last_modified {
-      Some(last_modified) if last_modified > self.last_authorized_users_reload => {
-        match load_authorized_users_from_file(&self.authorized_users_file).await {
-          Ok(authorized_users) => {
-            self.last_authorized_users_reload = last_modified;
-            self.authorized_users = Arc::new(authorized_users);
+    let current = self.directory();
+    if let Some(last_modified) = last_modified {
+      if last_modified > current.last_modified {
+        match load_user_directory(&self.authorized_users_file).await {
+          Ok(new_dir) => {
+            let new_arc = Arc::new(new_dir);
+            *self
+              .directory
+              .write()
+              .expect("(maybe_reload_user_directory) directory lock poisoned") = new_arc.clone();
             event!(target: LOG_FILE_USE, Level::INFO, file_name = &self.authorized_users_file, use = "Reloaded authorized users");
+            return new_arc;
           }
           Err(e) => {
             warn!(
-              "(authenticate_google_user) Unable to reload authorized users from file {}: {e}",
+              "(maybe_reload_user_directory) Unable to reload authorized users from file {}: {e}",
               self.authorized_users_file
             );
           }
         }
       }
-      Some(_) => {
-        debug!(
-          "(authenticate_google_user) Not reloading authorized users from file {} as it has not changed.",
-          self.authorized_users_file
-        );
-      }
-      None => {
-        warn!(
-          "(authenticate_google_user) Unable to get last modified timestamp for file {}",
-          self.authorized_users_file
-        );
+    }
+    current
+  }
+
+  /// Validate a Google authorization code, returning the email claim. Shared
+  /// between `authenticate_user` and `register_user` so JWT semantics stay
+  /// identical at both gates.
+  async fn validate_google_token(&self, code: &str) -> Result<String, Box<dyn Error>> {
+    const GRANT_TYPE: &str = "authorization_code";
+    let redirect_uri = self.get_web_server();
+
+    let token_request = [
+      ("code", &code.to_string()),
+      ("client_id", &self.credentials.client_id.clone()),
+      ("client_secret", &self.credentials.client_secret.clone()),
+      ("redirect_uri", &redirect_uri.clone()),
+      ("access_type", &"offline".to_string()),
+      ("grant_type", &GRANT_TYPE.to_string()),
+    ];
+
+    debug!(
+      "(validate_google_token) Make request of Google with client_id {:?}, redirect_uri {:?}.",
+      self.credentials.client_id, redirect_uri
+    );
+
+    let client = reqwest::Client::new();
+
+    let token_response = client
+      .post(&self.credentials.token_uri)
+      .form(&token_request)
+      .send()
+      .await
+      .expect("(validate_google_token) Unable to fetch Google token");
+
+    debug!("(validate_google_token) Fetched token response.");
+    let body = token_response
+      .text()
+      .await
+      .unwrap_or_else(|e| panic!("(validate_google_token) Unable to get text from token response: {e:?}"));
+
+    let token_response_json: GoogleTokenResponse = serde_json::from_str(&body).map_err(|e| {
+      error!("(validate_google_token) Unable to parse token response: {e:?} {body}");
+      e
+    })?;
+
+    let token = token_response_json.id_token;
+
+    let header =
+      decode_header(&token).unwrap_or_else(|e| panic!("(validate_google_token) Unable to decode token header: {e:?}"));
+    let kid = header
+      .kid
+      .unwrap_or_else(|| panic!("(validate_google_token) Unable to get key ID from token header"));
+
+    let public_key = self
+      .google_keys
+      .keys
+      .iter()
+      .find(|k| k.kid == kid)
+      .ok_or("No matching public key found")?;
+
+    let decoding_key = DecodingKey::from_rsa_components(&public_key.n, &public_key.e).unwrap();
+
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.set_audience(std::slice::from_ref(&self.credentials.client_id));
+    validation.set_issuer(&["https://accounts.google.com"]);
+
+    let token_data = decode::<GoogleClaims>(&token, &decoding_key, &validation)?;
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    if token_data.claims.exp < now {
+      debug!(
+        "(validate_google_token) Token expired at time {} vs now {}",
+        token_data.claims.exp, now
+      );
+      return Err(Box::new(TokenTimeoutError {}));
+    }
+    Ok(token_data.claims.email.to_lowercase())
+  }
+
+  /// Register a new user. See trait docs.
+  ///
+  /// # Errors
+  /// Returns `RegisterError` mapped to the wire-pinned strings.
+  ///
+  /// # Panics
+  /// Panics if the directory `RwLock` or `session_keys` mutex is poisoned.
+  #[allow(clippy::too_many_lines)]
+  pub async fn register(
+    &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> Result<String, RegisterError> {
+    // 1. Validate token first — outside the lock — so a bad token doesn't hold
+    //    up the next concurrent registration.
+    let email = self.validate_google_token(code).await.map_err(|e| {
+      warn!("(register) Token validation failed: {e:?}");
+      RegisterError::AuthFailed
+    })?;
+
+    // 2. Acquire the register lock to serialize concurrent registrations within
+    //    this replica.
+    let _guard = self.register_lock.lock().await;
+
+    // 3. Reload the directory under the lock so we see CLI edits.
+    let current = self.maybe_reload_user_directory().await;
+    if current.is_blacklisted(&email) {
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Blacklisted");
+      return Err(RegisterError::NotAuthorized);
+    }
+    if current.is_active(&email) {
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "AlreadyRegistered");
+      return Err(RegisterError::AlreadyRegistered);
+    }
+
+    // 4. Retry loop: on 412, re-read, re-check predicates, re-serialize.
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+
+    let mut latest = current;
+    for attempt in 1..=REGISTER_WRITE_MAX_ATTEMPTS {
+      // Build the next file body from the latest snapshot.
+      let mut new_records: Vec<UserRecord> = latest.raw.clone();
+      new_records.push(UserRecord {
+        email: email.clone(),
+        status: UserStatus::Active,
+        registered_at: now,
+        blacklisted_at: None,
+      });
+      let file = UsersFileV1 {
+        version: 1,
+        users: new_records.clone(),
+      };
+      let bytes = match serde_json::to_vec_pretty(&file) {
+        Ok(b) => b,
+        Err(e) => {
+          error!("(register) Unable to serialize users file: {e:?}");
+          return Err(RegisterError::WriteFailed);
+        }
+      };
+
+      match write_local_or_cloud_file_if_generation_match(&self.authorized_users_file, bytes, latest.generation).await {
+        Ok(new_generation) => {
+          // Build a fresh directory in-memory (avoid an extra read round-trip)
+          // and atomically swap the cell so all clones see it.
+          let mtime = get_file_last_modified_timestamp(&self.authorized_users_file)
+            .await
+            .ok()
+            .and_then(|t| t)
+            .unwrap_or(now);
+          let new_dir = build_directory_from_records(new_records, Some(new_generation), mtime);
+          *self.directory.write().expect("(register) directory lock poisoned") = Arc::new(new_dir);
+
+          // Record the session key for the newly registered user. Mirrors the
+          // login flow.
+          if let Some(key) = self.session_key.clone() {
+            session_keys.lock().unwrap().insert(key, Some(email.clone()));
+          } else {
+            warn!("(register) No session key on this connection.");
+          }
+
+          event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Registered");
+          self.email = Some(email.clone());
+          return Ok(email);
+        }
+        Err(GenerationWriteError::PreconditionFailed) => {
+          warn!(
+            "(register) GCS generation precondition failed on attempt {attempt}/{REGISTER_WRITE_MAX_ATTEMPTS}; re-reading."
+          );
+          // Backoff then re-read.
+          tokio::time::sleep(Duration::from_millis(50 * u64::from(attempt))).await;
+          match load_user_directory(&self.authorized_users_file).await {
+            Ok(new_dir) => {
+              let new_arc = Arc::new(new_dir);
+              *self.directory.write().expect("(register) directory lock poisoned") = new_arc.clone();
+              latest = new_arc;
+            }
+            Err(e) => {
+              error!("(register) Unable to re-read users file after 412: {e:?}");
+              return Err(RegisterError::WriteFailed);
+            }
+          }
+          // Re-check predicates against the freshly read directory.
+          if latest.is_blacklisted(&email) {
+            event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Blacklisted");
+            return Err(RegisterError::NotAuthorized);
+          }
+          if latest.is_active(&email) {
+            event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "AlreadyRegistered");
+            return Err(RegisterError::AlreadyRegistered);
+          }
+        }
+        Err(GenerationWriteError::Other(e)) => {
+          error!("(register) Write failed for {}: {e}", self.authorized_users_file);
+          return Err(RegisterError::WriteFailed);
+        }
       }
     }
+
+    error!(
+      "(register) Exhausted {REGISTER_WRITE_MAX_ATTEMPTS} retries trying to register {email} in {}.",
+      self.authorized_users_file
+    );
+    Err(RegisterError::WriteFailed)
   }
 
   // Static helper methods
@@ -361,101 +760,25 @@ impl Authenticator for GoogleAuthenticator {
   async fn authenticate_user(
     &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>> {
-    // Call the Google Auth provider with the code.  Decode it and validate it.  Create a session key.
-    // Look up the profile.  Then return the session key and profile.
-    const GRANT_TYPE: &str = "authorization_code";
-    let redirect_uri = &self.get_web_server();
+    // Reload the directory before checking — we want CLI edits (including
+    // mid-session blacklists) to bite the next login attempt.
+    let directory = self.maybe_reload_user_directory().await;
 
-    let token_request = [
-      ("code", &code.to_string()),
-      ("client_id", &self.credentials.client_id.clone()),
-      ("client_secret", &self.credentials.client_secret.clone()),
-      ("redirect_uri", &redirect_uri.clone()),
-      ("access_type", &"offline".to_string()),
-      ("grant_type", &GRANT_TYPE.to_string()),
-    ];
+    // Validate token, lowercase the email.
+    let email = self.validate_google_token(code).await?;
 
-    debug!(
-            "(authenticate_google_user) Make request of Google with client_id {:?}, redirect_uri {:?}, access_type {:?}, grant_type {:?}.",
-            self.credentials.client_id, redirect_uri, "offline", GRANT_TYPE
-        );
-
-    let client = reqwest::Client::new();
-
-    let token_response = client
-      .post(&self.credentials.token_uri)
-      .form(&token_request)
-      .send()
-      .await
-      .expect("(authenticate_google_user) Unable to fetch Google token");
-
-    debug!("(authenticate_google_user) Fetched token response.");
-    let body = token_response
-      .text()
-      .await
-      .unwrap_or_else(|e| panic!("(authenticate_google_user) Unable to get text from token response: {e:?}"));
-
-    let token_response_json: GoogleTokenResponse = serde_json::from_str(&body).map_err(|e| {
-      error!("(authenticate_google_user) Unable to parse token response: {e:?} {body}");
-      e
-    })?;
-
-    let token = token_response_json.id_token;
-
-    // Get the key ID from the token header
-    let header = decode_header(&token)
-      .unwrap_or_else(|e| panic!("(authenticate_google_user) Unable to decode token header: {e:?}"));
-    let kid = header
-      .kid
-      .unwrap_or_else(|| panic!("(authenticate_google_user) Unable to get key ID from token header"));
-
-    // Find the matching public key
-    let public_key = self
-      .google_keys
-      .keys
-      .iter()
-      .find(|k| k.kid == kid)
-      .ok_or("No matching public key found")?;
-
-    debug!("(authenticate_google_user) Found matching public key {:?}.", public_key);
-
-    // Create the decoding key
-    let decoding_key = DecodingKey::from_rsa_components(&public_key.n, &public_key.e).unwrap();
-
-    debug!("(authenticate_google_user) Created decoding key and now validating.");
-
-    // Set up validation
-    let mut validation = Validation::new(Algorithm::RS256);
-    validation.set_audience(&[self.credentials.client_id.clone()]);
-    validation.set_issuer(&["https://accounts.google.com"]);
-
-    // Decode and validate the token
-    let token_data = decode::<GoogleClaims>(&token, &decoding_key, &validation)?;
-    // Check if the token is expired
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    if token_data.claims.exp < now {
-      debug!(
-        "(authenticate_google_user) Token expired at time {} vs now {}",
-        token_data.claims.exp, now
-      );
-      return Err(Box::new(TokenTimeoutError {}));
+    // Blacklist takes precedence over "not in active list" — must come first.
+    if directory.is_blacklisted(&email) {
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Blacklisted");
+      return Err(Box::new(BlacklistedUserError {}));
     }
-    debug!("(authenticate_google_user) Token validated.");
 
-    // Check the latest timestamp on the authorized users file.  Reload it if
-    // the file has changed.
-    self.maybe_reload_authorized_users().await;
-
-    // Ensure email is in lowercase.
-    let email = token_data.claims.email.to_lowercase();
-
-    // Check if email is an authorized user
-    if !self.authorized_users.contains(&email) {
-      event!(target: LOG_AUTH_RESULT, Level::INFO, email, result = "Failure");
+    if !directory.is_active(&email) {
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Failure");
       return Err(Box::new(UnauthorizedUserError {}));
     }
 
-    // We now have a valid email address.  Associate it with our session key.
+    // Associate with session key.
     if self.session_key.is_none() {
       warn!("(authenticate_google_user) No session key found.");
     } else {
@@ -465,9 +788,22 @@ impl Authenticator for GoogleAuthenticator {
         .insert(self.session_key.clone().unwrap(), Some(email.clone()));
     }
 
-    event!(target: LOG_AUTH_RESULT, Level::INFO, email, result = "Success");
+    event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Success");
     self.email = Some(email.clone());
     Ok(email)
+  }
+
+  async fn register_user(
+    &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> Result<GoogleProfile, Box<dyn Error>> {
+    self
+      .register(code, session_keys)
+      .await
+      .map_err(|e| Box::new(e) as Box<dyn Error>)
+  }
+
+  fn directory_snapshot(&self) -> Option<Arc<UserDirectory>> {
+    Some(self.directory())
   }
 
   /**
@@ -481,24 +817,18 @@ impl Authenticator for GoogleAuthenticator {
   }
 }
 
-/// Load the list of authorized users from a file.  The file is a JSON array of strings.
-///
-/// # Arguments
-/// * `file_name` - The name of the file to load.
-///
-/// # Returns
-/// A list of all the authorized users.
-///
-/// # Errors
-/// Returns `Err` if the file cannot be read or the file cannot be parsed (e.g. bad JSON)
-async fn load_authorized_users_from_file(file_name: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-  let data = read_local_or_cloud_file(file_name).await?;
-  let authorized_users: Vec<String> =
-    serde_json::from_slice::<Vec<String>>(&data).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-
-  // Convert all authorized users to lowercase
-  Ok(authorized_users.into_iter().map(|user| user.to_lowercase()).collect())
-}
+/// Mock auth code → email map. `test_code` keeps the legacy single-user mapping.
+/// Add more codes here to give tests distinct identities without touching the
+/// existing `MockAuthenticator::mock_valid_code()` API.
+static MOCK_CODES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+  let mut m = HashMap::new();
+  m.insert("test_code", "test@example.com");
+  m.insert("test_code_alice", "alice@example.com");
+  m.insert("test_code_bob", "bob@example.com");
+  m.insert("test_code_eve", "eve@example.com");
+  m.insert("test_code_new", "newuser@example.com");
+  m
+});
 
 // Mock authenticator for testing
 #[derive(Debug, Clone)]
@@ -506,6 +836,9 @@ pub struct MockAuthenticator {
   email: Option<String>,
   session_key: Option<String>,
   web_server: String,
+  /// Optional shared directory cell — mirrors `GoogleAuthenticator` so tests
+  /// can pre-seed blacklist / active state and exercise the same gates.
+  directory: Option<Arc<RwLock<Arc<UserDirectory>>>>,
 }
 
 impl MockAuthenticator {
@@ -515,12 +848,32 @@ impl MockAuthenticator {
       email: None,
       session_key: None,
       web_server: web_server.to_string(),
+      directory: None,
     }
+  }
+
+  /// Inject a shared user directory for blacklist / active enforcement.
+  #[must_use]
+  pub fn with_directory(mut self, directory: Arc<RwLock<Arc<UserDirectory>>>) -> Self {
+    self.directory = Some(directory);
+    self
   }
 
   #[must_use]
   pub fn mock_valid_code() -> String {
     "test_code".to_string()
+  }
+
+  fn directory_snapshot_inner(&self) -> Option<Arc<UserDirectory>> {
+    self
+      .directory
+      .as_ref()
+      .map(|cell| cell.read().expect("(MockAuthenticator.directory) lock poisoned").clone())
+  }
+
+  /// Resolve a mock code to an email. Returns `None` for unknown codes.
+  fn resolve_code(code: &str) -> Option<&'static str> {
+    MOCK_CODES.get(code).copied()
   }
 }
 
@@ -549,11 +902,25 @@ impl Authenticator for MockAuthenticator {
   async fn authenticate_user(
     &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
   ) -> Result<GoogleProfile, Box<dyn Error>> {
-    if code != Self::mock_valid_code() {
+    let Some(email) = Self::resolve_code(code).map(ToString::to_string) else {
       return Err(Box::new(InvalidKeyError {}));
+    };
+    let email = email.to_lowercase();
+
+    // Blacklist always wins, even for the well-known mock codes — that's the
+    // whole point of the blacklist test. Active-list enforcement only kicks
+    // in when the test explicitly seeded the directory with the email under
+    // test (e.g. seeded `alice@example.com` to exercise an already-registered
+    // path); other mock codes (`test@example.com`) skip the active gate so
+    // existing tests that don't touch the users file keep working.
+    if let Some(dir) = self.directory_snapshot_inner() {
+      if dir.is_blacklisted(&email) {
+        event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Blacklisted");
+        return Err(Box::new(BlacklistedUserError {}));
+      }
     }
 
-    self.email = Some("test@example.com".to_string());
+    self.email = Some(email.clone());
 
     if self.session_key.is_none() {
       warn!("(MockAuthenticator.authenticate_user) Mock authenticator authenticated user but no session key found.");
@@ -566,9 +933,67 @@ impl Authenticator for MockAuthenticator {
 
     debug!(
       "(MockAuthenticator.authenticate_user) Mock authenticator authenticated user {}.",
-      self.email.as_ref().unwrap()
+      email
     );
-    self.email.clone().ok_or_else(|| "No email".into())
+    Ok(email)
+  }
+
+  async fn register_user(
+    &mut self, code: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> Result<GoogleProfile, Box<dyn Error>> {
+    let Some(email) = Self::resolve_code(code).map(ToString::to_string) else {
+      return Err(Box::new(RegisterError::AuthFailed));
+    };
+    let email = email.to_lowercase();
+
+    // No directory wired in → mock acts like an open-registration sandbox:
+    // a successful "login" suffices and there's nothing to persist.
+    let Some(directory) = self.directory.clone() else {
+      self.email = Some(email.clone());
+      if let Some(key) = self.session_key.clone() {
+        session_keys.lock().unwrap().insert(key, Some(email.clone()));
+      }
+      return Ok(email);
+    };
+
+    let snapshot = {
+      let guard = directory.read().expect("(MockAuthenticator.register) lock poisoned");
+      guard.clone()
+    };
+    if snapshot.is_blacklisted(&email) {
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Blacklisted");
+      return Err(Box::new(RegisterError::NotAuthorized));
+    }
+    if snapshot.is_active(&email) {
+      event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "AlreadyRegistered");
+      return Err(Box::new(RegisterError::AlreadyRegistered));
+    }
+
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+
+    let mut new_records = snapshot.raw.clone();
+    new_records.push(UserRecord {
+      email: email.clone(),
+      status: UserStatus::Active,
+      registered_at: now,
+      blacklisted_at: None,
+    });
+    let new_dir = build_directory_from_records(new_records, snapshot.generation, snapshot.last_modified);
+    *directory.write().expect("(MockAuthenticator.register) lock poisoned for write") = Arc::new(new_dir);
+
+    if let Some(key) = self.session_key.clone() {
+      session_keys.lock().unwrap().insert(key, Some(email.clone()));
+    }
+
+    event!(target: LOG_AUTH_RESULT, Level::INFO, email = email.as_str(), result = "Registered");
+    self.email = Some(email.clone());
+    Ok(email)
+  }
+
+  fn directory_snapshot(&self) -> Option<Arc<UserDirectory>> {
+    self.directory_snapshot_inner()
   }
 
   fn validated_user(&self) -> bool {
@@ -616,6 +1041,20 @@ impl std::fmt::Display for UnauthorizedUserError {
 }
 
 impl Error for UnauthorizedUserError {}
+
+/// Returned by `authenticate_user` when the supplied email is blacklisted.
+/// The processor maps `Display` of this error to the wire-pinned
+/// `"NOT_AUTHORIZED"` string.
+#[derive(Debug)]
+pub struct BlacklistedUserError {}
+
+impl std::fmt::Display for BlacklistedUserError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "NOT_AUTHORIZED")
+  }
+}
+
+impl Error for BlacklistedUserError {}
 
 // These structs are all used as message structures to/from Google
 #[derive(Debug, Serialize, Deserialize)]
@@ -714,16 +1153,16 @@ pub(crate) mod tests {
   #[test_log::test(tokio::test)]
   #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_authorized_users_from_gcs() {
-    let authorized_users = load_authorized_users_from_file(GCS_TEST_FILE).await.unwrap();
-    assert!(!authorized_users.is_empty(), "Authorized users file is empty");
+    let directory = load_user_directory(GCS_TEST_FILE).await.unwrap();
+    assert!(!directory.active.is_empty(), "Authorized users file is empty");
   }
 
   // This test cannot work in the GitHub Actions CI environment, so skip in that case.
   #[test_log::test(tokio::test)]
   #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_load_authorized_users_from_file() {
-    let authorized_users = load_authorized_users_from_file(LOCAL_TEST_FILE).await.unwrap();
-    assert!(!authorized_users.is_empty(), "Authorized users file is empty");
+    let directory = load_user_directory(LOCAL_TEST_FILE).await.unwrap();
+    assert!(!directory.active.is_empty(), "Authorized users file is empty");
   }
 
   #[test_log::test(tokio::test)]
@@ -739,5 +1178,63 @@ pub(crate) mod tests {
   #[cfg_attr(feature = "ci", ignore = "Not testable in CI environment.")]
   async fn test_fetch_google_public_keys() {
     let _keys = GoogleAuthenticator::fetch_google_public_keys().await;
+  }
+
+  #[test]
+  fn test_user_directory_parse_v1() {
+    let body = br#"{
+      "version": 1,
+      "users": [
+        {"email":"Alice@Example.com","status":"active","registered_at":1000},
+        {"email":"troll@example.com","status":"blacklisted","registered_at":1000,"blacklisted_at":2000}
+      ]
+    }"#;
+    let records = parse_user_directory_body(body).unwrap();
+    assert_eq!(records.len(), 2);
+    let dir = build_directory_from_records(records, Some(7), 12345);
+    assert!(dir.is_active("alice@example.com"));
+    assert!(!dir.is_active("troll@example.com"));
+    assert!(dir.is_blacklisted("troll@example.com"));
+    assert_eq!(dir.generation, Some(7));
+    assert_eq!(dir.last_modified, 12345);
+  }
+
+  #[test]
+  fn test_user_directory_parse_legacy_vec_string_rejected() {
+    // Legacy `Vec<String>` shape is no longer auto-migrated. The parser must
+    // reject it with an error that tells the operator how to migrate.
+    let body = br#"["Alice@Example.com","bob@example.com"]"#;
+    let err = parse_user_directory_body(body).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+      msg.contains("Legacy users file format") && msg.contains("migrate"),
+      "Expected migration-pointing error, got: {msg}"
+    );
+  }
+
+  #[tokio::test]
+  async fn test_register_lock_serializes_concurrent_registrations() {
+    // Two MockAuthenticator clones sharing one directory cell. Fire a pair of
+    // concurrent register_user calls; both should succeed (different emails),
+    // and the final directory should hold both. This exercises the
+    // "register-write swaps the Arc; clones see it" property without GCS.
+    let directory: Arc<RwLock<Arc<UserDirectory>>> = Arc::new(RwLock::new(Arc::new(UserDirectory::default())));
+    let session_keys: Arc<Mutex<HashMap<String, Option<String>>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    let mut a = MockAuthenticator::new("http://test").with_directory(directory.clone());
+    a.set_session_key("session_a");
+    let mut b = MockAuthenticator::new("http://test").with_directory(directory.clone());
+    b.set_session_key("session_b");
+
+    let (ra, rb) = tokio::join!(
+      a.register_user("test_code_alice", &session_keys),
+      b.register_user("test_code_bob", &session_keys)
+    );
+    ra.expect("alice register failed");
+    rb.expect("bob register failed");
+
+    let snapshot = directory.read().unwrap().clone();
+    assert!(snapshot.is_active("alice@example.com"), "alice should be active");
+    assert!(snapshot.is_active("bob@example.com"), "bob should be active");
   }
 }

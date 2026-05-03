@@ -1,21 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import {
   googleLogout,
   useGoogleLogin,
   CodeResponse,
 } from "@react-oauth/google";
-import { login, logout } from "lib/serverManager";
+import { login, logout, register } from "lib/serverManager";
 import { setEmail } from "state/userSlice";
-import { setAuthenticated } from "state/serverSlice";
+import {
+  setAuthenticated,
+  setAuthBanner,
+  authBannerSelector,
+} from "state/serverSlice";
 
 import { useAppDispatch, useAppSelector } from "state/hooks";
+
+type AuthMode = "login" | "register";
 
 export function Authentication() {
   const [googleAuthResponse, setGoogleAuthResponse] = useState<CodeResponse | null>(null);
   const [secureState, setSecureState] = useState<string | undefined>();
+  // Tracks the mode at the moment we triggered the OAuth popup. We use a ref
+  // (rather than `useState`) so the OAuth callback effect closes over the
+  // most recent value without needing to re-create the effect or re-trigger
+  // the popup when the mode toggles.
+  const pendingModeRef = useRef<AuthMode>("login");
 
-  /** 
+  const dispatch = useAppDispatch();
+  const authBanner = useAppSelector(authBannerSelector);
+
+  /**
  * The out of the box version of useGoogleLogin is missing options on the type signature.  So to make this wor
  * I had to "Go to Definition" and modify to look like this:
  interface AuthCodeFlowOptions extends Omit<CodeClientConfig, 'client_id' | 'scope' | 'callback'> {
@@ -27,7 +41,7 @@ export function Authentication() {
     accessType?: 'offline' | 'online';
     isSignedIn: boolean;
     responseType?: 'code' | 'token';
-    prompt?: '' | 'none' | 'consent' | 'select_account'; 
+    prompt?: '' | 'none' | 'consent' | 'select_account';
   }
  */
   const googleLogin = useGoogleLogin({
@@ -51,19 +65,19 @@ export function Authentication() {
   }, [googleLogin, secureState]);
 
   useEffect(() => {
-    function loginToCallisto() {
-      console.log("Logging in to Callisto");
-      if (googleAuthResponse) {
-        login(googleAuthResponse.code);
-      } else {
+    function authToCallisto() {
+      if (!googleAuthResponse) {
         console.error("No code received from Google");
+        return;
+      }
+      if (pendingModeRef.current === "register") {
+        console.log("Registering with Callisto");
+        register(googleAuthResponse.code);
+      } else {
+        console.log("Logging in to Callisto");
+        login(googleAuthResponse.code);
       }
     }
-
-    // Uncomment when debugging but don't generally want this in the logs in the client.
-    //console.log("(Authentication) OAuth ClientID = " + GOOGLE_OAUTH_CLIENT_ID);
-
-    console.log(process.env);
 
     if (googleAuthResponse) {
       if (googleAuthResponse.state !== secureState) {
@@ -71,54 +85,96 @@ export function Authentication() {
         return;
       }
 
-      loginToCallisto();
+      authToCallisto();
     }
   }, [googleAuthResponse, secureState]);
 
+  function triggerOAuth() {
+    // initialize SubtleCrypto
+    const operations = window.crypto.subtle;
+
+    // if Web Crypto is not supported, notify the user
+    if (!operations) {
+      alert("Web Crypto is not supported on this browser");
+      console.warn("Web Crypto API not supported");
+    }
+    const stateToken = window.crypto.getRandomValues(new Uint8Array(48));
+    const token = btoa(stateToken.toString());
+    setSecureState(token);
+  }
+
+  function onSignIn() {
+    dispatch(setAuthBanner(null));
+    pendingModeRef.current = "login";
+    triggerOAuth();
+  }
+
+  function onRegister() {
+    dispatch(setAuthBanner(null));
+    pendingModeRef.current = "register";
+    triggerOAuth();
+  }
+
+  // Build a banner from any pinned auth error.
+  let bannerNode: React.ReactNode = null;
+  if (authBanner === "ALREADY_REGISTERED") {
+    bannerNode = (
+      <div role="alert" className="auth-banner auth-banner-info">
+        You are already registered for Callisto &mdash; please use Sign in with Google to continue.
+      </div>
+    );
+  } else if (authBanner === "NOT_AUTHORIZED") {
+    bannerNode = (
+      <div role="alert" className="auth-banner auth-banner-error" style={{ color: "red" }}>
+        This Google account is not permitted to use Callisto.
+      </div>
+    );
+  } else if (authBanner === "REGISTRATION_FAILED") {
+    bannerNode = (
+      <div role="alert" className="auth-banner auth-banner-error" style={{ color: "red" }}>
+        Registration could not complete &mdash; please try again in a moment.
+      </div>
+    );
+  } else if (authBanner === "AUTH_FAILED") {
+    bannerNode = (
+      <div role="alert" className="auth-banner auth-banner-error" style={{ color: "red" }}>
+        Sign-in failed &mdash; please try again.
+      </div>
+    );
+  }
+
   return (
     <div className="authentication-container">
-      <h1 className="authentication-title">Callisto 0.3&beta;</h1>
+      <h1 className="authentication-title">Callisto 1.0</h1>
       <br />
       <br />
       <div className="authentication-blurb">
         Welcome to Callisto! Callisto is a space combat simulator based
-        the Traveler universe. Callisto is a <em>vector-based</em> ship combat system.  A vector-based 
+        the Traveler universe. Callisto is a <em>vector-based</em> ship combat system.  A vector-based
         system is based on the physics rules governing object motion, so the only tool for piloting a craft
         is via acceleration - which then changes your velocity and thus position.  There is no banking or rapid breaking
-        in a vector-based system!  
+        in a vector-based system!
         <p />
         With Callisto you can deploy ships, steer around
         planets, and battle each other in medium sized space engagements. All
         movement is based on real physics and the built in flight computer
-        attempt to help humans pilot in this complex environment.  
+        attempt to help humans pilot in this complex environment.
         <a href="https://github.com/dcsturman/callisto/blob/main/callisto/FAQ.md">
         This FAQ </a>
         provides more details on how the game mechanics
         differ from the traditional Mongoose Traveller ship combat system.
         <br />
         <br />
-        Callisto is currently in <em style={{"color" : "red"}}>closed beta</em>. If you have been
-        pre-authorized to trial Callisto please log in with your Google Id.  Otherwise please be patient!  
-        We will have a more broadly open beta soon followed by opening Callisto up to everyone!
+        Callisto is open to anyone with a Google account &mdash; sign in to play, or click Register if this is your first visit.
       </div>
 
       <br />
-      <button
-        className="blue-button"
-        onClick={() => {
-          // initialize SubtleCrypto
-          const operations = window.crypto.subtle;
-
-          // if Web Crypto is not supported, notify the user
-          if (!operations) {
-            alert("Web Crypto is not supported on this browser");
-            console.warn("Web Crypto API not supported");
-          }
-          const stateToken = window.crypto.getRandomValues(new Uint8Array(48));
-          const token = btoa(stateToken.toString());
-          setSecureState(token);
-        }}>
+      {bannerNode}
+      <button className="blue-button" onClick={onSignIn}>
         Sign in with Google{" "}
+      </button>
+      <button className="blue-button" onClick={onRegister}>
+        Register{" "}
       </button>
     </div>
   );

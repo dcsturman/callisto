@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
 
 use crate::entity::Entities;
-use crate::payloads::{Role, UserData};
+use crate::payloads::{email_to_display_name, Role, UserData};
 use crate::ship::{get_ship_templates_snapshot, ShipDesignTemplate};
 use crate::{error, warn, LOG_SCENARIO_ACTIVITY};
 use tracing::{event, Level};
@@ -204,7 +204,7 @@ impl ServerMembersTable {
       .table
       .values()
       .map(|entry| UserData {
-        email: entry.email.clone(),
+        display_name: email_to_display_name(&entry.email),
         role: entry.role,
         ship: entry.ship.clone(),
       })
