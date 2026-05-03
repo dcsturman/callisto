@@ -1,4 +1,8 @@
 #!/bin/zsh
+# Run from `callisto/` so all the relative paths below
+# (./target, ./tests, ./config, ./coverage) resolve as expected.
+cd "$(dirname "$0")/../callisto"
+
 # Set the environment variables needed to get coverage.
 source <(cargo llvm-cov show-env --export-prefix)
 # Remove artifacts that may affect the coverage results.

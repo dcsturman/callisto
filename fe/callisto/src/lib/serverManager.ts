@@ -17,6 +17,8 @@ import {
   setEntities,
   setUsers,
   setScenarios,
+  setAuthBanner,
+  AuthBanner,
 } from "state/serverSlice";
 import { setEvents, setProposedPlan, setShowResults } from "state/uiSlice";
 import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
@@ -258,17 +260,44 @@ const handleMessage = (event: MessageEvent) => {
       cb({ ok: false, error: json.Error });
       return;
     }
+    // Pinned auth-banner codes are routed to the Authentication splash via
+    // Redux. Any other Error string keeps the legacy alert behavior.
+    if (isAuthBannerError(json.Error)) {
+      console.error("Received auth Error: " + json.Error);
+      store.dispatch(setAuthBanner(json.Error));
+      return;
+    }
     console.error("Received Error: " + json.Error);
     alert(json.Error);
   }
 
 };
 
+const AUTH_BANNER_ERRORS: readonly AuthBanner[] = [
+  "NOT_AUTHORIZED",
+  "ALREADY_REGISTERED",
+  "REGISTRATION_FAILED",
+  "AUTH_FAILED",
+];
+
+function isAuthBannerError(value: string): value is AuthBanner {
+  return (AUTH_BANNER_ERRORS as readonly string[]).includes(value);
+}
+
 //
 // Functions called to communicate to the server
 //
 export function login(code: string) {
   const payload = { Login: { code: code } };
+  socket.send(JSON.stringify(payload));
+}
+
+// Registers a new player with the server. Mirrors `login` — the server hits
+// Google with the auth code, validates the JWT, and replies with either an
+// `AuthResponse` (then `Scenarios` + `DesignTemplateResponse`) or an `Error`
+// pinned to one of NOT_AUTHORIZED / ALREADY_REGISTERED / REGISTRATION_FAILED.
+export function register(code: string) {
+  const payload = { Register: { code: code } };
   socket.send(JSON.stringify(payload));
 }
 
@@ -716,7 +745,7 @@ function handleUsers(json: [UserContext]) {
   const users: UserList = [];
   for (const user of json) {
     const c: UserContext = {} as UserContext;
-    c.email = user.email;
+    c.display_name = user.display_name;
     c.role =
       stringToViewMode(user.role as unknown as string) ?? ViewMode.General;
     c.ship = user.ship;
@@ -768,6 +797,8 @@ function handleAuthenticated(json: {
   if (json.email != null) {
     store.dispatch(setEmail(json.email));
     store.dispatch(setAuthenticated(true));
+    // Clear any prior auth-banner state once we successfully authenticate.
+    store.dispatch(setAuthBanner(null));
     if (json.scenario != null) {
       store.dispatch(setJoinedScenario(json.scenario));
       syncAppModeForScenario(json.scenario);

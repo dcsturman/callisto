@@ -18,7 +18,7 @@ Helper scripts live in `scripts/` and wrap the long command lines.
    `http://localhost:50001` as a redirect URI.
 4. (Only if you plan to run integration tests with TLS) generate dev certs:
    ```bash
-   cd callisto/keys && bash ../build_keys.sh
+   ./scripts/build_keys.sh
    ```
    For everyday dev the scripts use `--features no_tls_upgrade`, so this is optional.
 
@@ -108,4 +108,4 @@ need it just to iterate on the builder UI.
   `gsutil ls gs://callisto-scenarios`.
 
 **Integration tests fail with "Connection refused":**
-- Run `cd callisto/keys && bash ../build_keys.sh` to (re)generate TLS keys.
+- Run `./scripts/build_keys.sh` to (re)generate TLS keys.

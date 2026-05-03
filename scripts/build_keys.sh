@@ -1,3 +1,12 @@
+#!/usr/bin/env bash
+# Generate the local-dev TLS material used by the integration test suite
+# when run with TLS upgrade. Idempotent — re-running overwrites the existing
+# files. The script can be invoked from anywhere in the repo: it cd's into
+# `callisto/keys/` (creating it if absent) before running openssl.
+keys_dir="$(cd "$(dirname "$0")/.." && pwd)/callisto/keys"
+mkdir -p "$keys_dir"
+cd "$keys_dir"
+
 # Create unencrypted private key and a CSR (certificate signing request)
 openssl req -newkey rsa:2048 -nodes -keyout localhost.key -out localhost.csr
 

@@ -83,6 +83,13 @@ fn get_next_port() -> u16 {
 async fn spawn_server(
   port: u16, test_mode: bool, scenario_dir: Option<String>, design_file: Option<String>, auto_kill: bool,
 ) -> Result<Child, io::Error> {
+  spawn_server_full(port, test_mode, scenario_dir, design_file, None, auto_kill).await
+}
+
+async fn spawn_server_full(
+  port: u16, test_mode: bool, scenario_dir: Option<String>, design_file: Option<String>, users_file: Option<String>,
+  auto_kill: bool,
+) -> Result<Child, io::Error> {
   let mut handle = Command::new(SERVER_PATH);
   let mut handle = handle
     .env("RUST_LOG", var("RUST_LOG").unwrap_or_else(|_| String::new()))
@@ -107,6 +114,9 @@ async fn spawn_server(
   }
   if let Some(design_file) = design_file {
     handle = handle.arg("-d").arg(design_file);
+  }
+  if let Some(users_file) = users_file {
+    handle = handle.arg("-u").arg(users_file);
   }
 
   let handle = handle.spawn()?;
@@ -1636,4 +1646,240 @@ async fn integration_create_regular_server() {
   .await
   .unwrap();
   assert!(server2.try_wait().unwrap().is_none());
+}
+
+// ---------- Register / blacklist / kick-on-reload integration tests ----------
+
+/// Build a per-test scratch dir + write a v1 users file holding the supplied
+/// active and blacklisted emails. Returns `(scratch_dir, users_file_path)`.
+fn seed_users_file(port: u16, active: &[&str], blacklisted: &[&str]) -> (PathBuf, String) {
+  let root = std::env::temp_dir().join(format!("callisto_users_{port}_{}", std::process::id()));
+  if root.exists() {
+    fs::remove_dir_all(&root).unwrap();
+  }
+  fs::create_dir_all(&root).unwrap();
+  let users_file = root.join("authorized_users.json");
+
+  let mut users = Vec::<serde_json::Value>::new();
+  for email in active {
+    users.push(json!({"email": email.to_lowercase(), "status": "active", "registered_at": 1}));
+  }
+  for email in blacklisted {
+    users.push(json!({
+      "email": email.to_lowercase(),
+      "status": "blacklisted",
+      "registered_at": 1,
+      "blacklisted_at": 2,
+    }));
+  }
+  let body = json!({"version": 1, "users": users});
+  fs::write(&users_file, serde_json::to_string_pretty(&body).unwrap()).unwrap();
+  (root, users_file.to_string_lossy().into_owned())
+}
+
+async fn spawn_with_users_file(port: u16, users_file: String) -> Child {
+  spawn_server_full(port, true, None, None, Some(users_file), false)
+    .await
+    .unwrap()
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_register_new_user_success() {
+  let port = get_next_port();
+  // Seed an empty users file so newuser@example.com is neither active nor
+  // blacklisted; Register should add it and return AuthResponse.
+  let (_root, users_path) = seed_users_file(port, &[], &[]);
+  let _server = spawn_with_users_file(port, users_path).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let body = rpc(
+    &mut stream,
+    RequestMsg::Register(LoginMsg {
+      code: "test_code_new".to_string(),
+    }),
+  )
+  .await;
+  match body {
+    ResponseMsg::AuthResponse(resp) => {
+      assert_eq!(resp.email, "newuser@example.com");
+    }
+    other => panic!("Expected AuthResponse on register success, got {other:?}"),
+  }
+  drain_initialization_messages(&mut stream).await;
+  send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_register_already_registered() {
+  let port = get_next_port();
+  // alice is already active; registering again should yield ALREADY_REGISTERED.
+  let (_root, users_path) = seed_users_file(port, &["alice@example.com"], &[]);
+  let _server = spawn_with_users_file(port, users_path).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let body = rpc(
+    &mut stream,
+    RequestMsg::Register(LoginMsg {
+      code: "test_code_alice".to_string(),
+    }),
+  )
+  .await;
+  match body {
+    ResponseMsg::Error(msg) => assert_eq!(msg, "ALREADY_REGISTERED"),
+    other => panic!("Expected Error(ALREADY_REGISTERED), got {other:?}"),
+  }
+  send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_register_blacklisted_email() {
+  let port = get_next_port();
+  let (_root, users_path) = seed_users_file(port, &[], &["eve@example.com"]);
+  let _server = spawn_with_users_file(port, users_path).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let body = rpc(
+    &mut stream,
+    RequestMsg::Register(LoginMsg {
+      code: "test_code_eve".to_string(),
+    }),
+  )
+  .await;
+  match body {
+    ResponseMsg::Error(msg) => assert_eq!(msg, "NOT_AUTHORIZED"),
+    other => panic!("Expected Error(NOT_AUTHORIZED), got {other:?}"),
+  }
+  send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_login_blacklisted_email() {
+  let port = get_next_port();
+  // eve was previously a registered user but is now blacklisted: login must
+  // be rejected with the wire-pinned NOT_AUTHORIZED tag.
+  let (_root, users_path) = seed_users_file(port, &[], &["eve@example.com"]);
+  let _server = spawn_with_users_file(port, users_path).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let body = rpc(
+    &mut stream,
+    RequestMsg::Login(LoginMsg {
+      code: "test_code_eve".to_string(),
+    }),
+  )
+  .await;
+  match body {
+    ResponseMsg::Error(msg) => assert_eq!(msg, "NOT_AUTHORIZED"),
+    other => panic!("Expected Error(NOT_AUTHORIZED) on blacklisted login, got {other:?}"),
+  }
+  send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_users_message_uses_display_name() {
+  let port = get_next_port();
+  // Use the default test_code (test@example.com) so we hit the well-known
+  // test user; that mock-code path skips the directory check.
+  let _server = spawn_test_server(port).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+
+  // Grab the users response from the create-scenario flow. We re-issue an
+  // EntitiesRequest to settle the queue, then ask for users via SetRole
+  // (which echoes a Users message). Easier: just take the existing one off
+  // the wire from create_scenario.
+  // The drain_post_scenario_messages already consumed it. Trigger a new
+  // Users response by issuing SetRole.
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::SetRole(callisto::payloads::ChangeRole {
+      role: callisto::payloads::Role::General,
+      ship: None,
+    }),
+  )
+  .await;
+  let users_msg = next_response_with_timeout(&mut stream, Duration::from_secs(2)).await;
+  match users_msg {
+    ResponseMsg::Users(users) => {
+      assert!(!users.is_empty(), "Users response should not be empty");
+      // Display name = local part. test@example.com → "test".
+      assert!(
+        users.iter().any(|u| u.display_name == "test"),
+        "Expected a user with display_name 'test', got {users:?}"
+      );
+      // Wire shape MUST NOT carry the email field (renamed to display_name).
+      let serialized = serde_json::to_value(&users).unwrap();
+      let users_arr = serialized.as_array().unwrap();
+      assert!(
+        users_arr.iter().all(|u| !u.as_object().unwrap().contains_key("email")),
+        "UserData on the wire must not contain an `email` field"
+      );
+      assert!(
+        users_arr.iter().all(|u| u.as_object().unwrap().contains_key("display_name")),
+        "UserData on the wire must contain a `display_name` field"
+      );
+    }
+    other => panic!("Expected Users response, got {other:?}"),
+  }
+  send_quit(&mut stream).await;
+}
+
+#[test_log::test(tokio::test)]
+async fn integration_blacklist_kick_on_reload() {
+  let port = get_next_port();
+  // alice is initially active; she logs in successfully. Then we rewrite the
+  // users file to blacklist her; the watcher (5s poll) should pick it up,
+  // emit ReloadNotification::AuthorizedUsers, and the processor should
+  // force-disconnect her socket.
+  let (_root, users_path) = seed_users_file(port, &["alice@example.com"], &[]);
+  let _server = spawn_with_users_file(port, users_path.clone()).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let body = rpc(
+    &mut stream,
+    RequestMsg::Login(LoginMsg {
+      code: "test_code_alice".to_string(),
+    }),
+  )
+  .await;
+  assert!(matches!(body, ResponseMsg::AuthResponse(_)), "Login should succeed: {body:?}");
+  drain_initialization_messages(&mut stream).await;
+
+  // Rewrite the users file to blacklist alice.
+  let body = json!({
+    "version": 1,
+    "users": [
+      {"email":"alice@example.com","status":"blacklisted","registered_at":1,"blacklisted_at":2}
+    ]
+  });
+  fs::write(&users_path, serde_json::to_string_pretty(&body).unwrap()).unwrap();
+
+  // Wait up to ~12s for the watcher poll to fire and the kick to land. The
+  // socket should close (Close frame or stream end).
+  let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
+  let mut closed = false;
+  while tokio::time::Instant::now() < deadline {
+    let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+    match timeout(remaining.min(Duration::from_secs(8)), stream.next()).await {
+      Ok(Some(Err(_))) => {
+        closed = true;
+        break;
+      }
+      Ok(Some(Ok(msg))) if msg.is_close() => {
+        closed = true;
+        break;
+      }
+      // Anything else (broadcast, timeout, None): keep polling.
+      _ => {}
+    }
+  }
+  assert!(closed, "Expected the blacklisted user's socket to be closed within ~12s");
+
+  // Original socket was closed by the kick. Open a fresh one and send Quit
+  // to invoke the test-mode shutdown hook so the server task terminates and
+  // the test doesn't leak resources.
+  let mut shutdown_stream = open_socket(port).await.unwrap();
+  send_quit(&mut shutdown_stream).await;
 }

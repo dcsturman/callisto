@@ -29,6 +29,7 @@ use google_cloud_storage::http::objects::download::Range;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
 use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
+use google_cloud_storage::http::Error as GcsHttpError;
 use once_cell::sync::OnceCell;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -145,6 +146,149 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
     let mut content: Vec<u8> = Vec::with_capacity(1024);
     buf_reader.read_to_end(&mut content)?;
     Ok(content)
+  }
+}
+
+/// Read a file's bytes plus its GCS generation number (or `None` for local
+/// files). Used by callers that intend to follow up with a generation-guarded
+/// write so they can detect concurrent modification.
+///
+/// # Errors
+/// Returns an error if the file cannot be read or if GCS cannot be reached.
+pub async fn read_local_or_cloud_file_with_generation(
+  filename: &str,
+) -> Result<(Vec<u8>, Option<i64>), Box<dyn std::error::Error>> {
+  if filename.starts_with("gs://") {
+    let parts: Vec<&str> = filename.split('/').collect();
+    let bucket_name = parts[2];
+    let object_name = parts[3..].join("/");
+
+    let client = create_gcs_client().await?;
+
+    // Fetch metadata first so we can capture the generation. If the object
+    // doesn't exist we still want a clean (empty bytes, None) result so the
+    // caller can write a fresh object with `if_generation_match=0`.
+    let object_meta = client
+      .get_object(&GetObjectRequest {
+        bucket: bucket_name.to_string(),
+        object: object_name.clone(),
+        ..Default::default()
+      })
+      .await;
+
+    match object_meta {
+      Ok(meta) => {
+        let data = client
+          .download_object(
+            &GetObjectRequest {
+              bucket: bucket_name.to_string(),
+              object: object_name,
+              generation: Some(meta.generation),
+              ..Default::default()
+            },
+            &Range::default(),
+          )
+          .await?;
+        Ok((data, Some(meta.generation)))
+      }
+      Err(GcsHttpError::Response(err)) if err.code == 404 => Ok((Vec::new(), None)),
+      Err(e) => Err(Box::new(e)),
+    }
+  } else {
+    match tokio::fs::read(filename).await {
+      Ok(data) => Ok((data, None)),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok((Vec::new(), None)),
+      Err(e) => Err(Box::new(e)),
+    }
+  }
+}
+
+/// Error returned by [`write_local_or_cloud_file_if_generation_match`].
+/// `PreconditionFailed` indicates the GCS generation precondition (HTTP 412)
+/// was rejected and the caller should re-read and retry. `Other` wraps any
+/// non-precondition error.
+#[derive(Debug)]
+pub enum GenerationWriteError {
+  PreconditionFailed,
+  Other(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl std::fmt::Display for GenerationWriteError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      GenerationWriteError::PreconditionFailed => write!(f, "GCS precondition failed (generation mismatch)"),
+      GenerationWriteError::Other(e) => write!(f, "{e}"),
+    }
+  }
+}
+
+impl std::error::Error for GenerationWriteError {}
+
+/// Write bytes to a file with an optional GCS generation precondition. For
+/// local paths the precondition is a no-op. For `gs://` paths the request
+/// uses `if_generation_match`: `Some(gen)` requires the live object to be at
+/// generation `gen`; `None` means "create-only" (`if_generation_match=0`),
+/// which only succeeds when there is no live version. Returns the new
+/// generation on success.
+///
+/// # Errors
+/// Returns `GenerationWriteError::PreconditionFailed` on HTTP 412 from GCS.
+/// Returns `GenerationWriteError::Other` for any other failure (network,
+/// auth, local I/O).
+pub async fn write_local_or_cloud_file_if_generation_match(
+  filename: &str, contents: Vec<u8>, expected: Option<i64>,
+) -> Result<i64, GenerationWriteError> {
+  debug!(
+    "(write_local_or_cloud_file_if_generation_match) Writing {} bytes to {filename} (expected gen={:?})",
+    contents.len(),
+    expected
+  );
+
+  if let Some(rest) = filename.strip_prefix("gs://") {
+    let mut parts = rest.splitn(2, '/');
+    let bucket_name = parts.next().ok_or_else(|| {
+      GenerationWriteError::Other(Box::new(std::io::Error::other(format!("Malformed GCS path: {filename}"))))
+    })?;
+    let object_name = parts.next().ok_or_else(|| {
+      GenerationWriteError::Other(Box::new(std::io::Error::other(format!(
+        "Malformed GCS path (missing object): {filename}"
+      ))))
+    })?;
+
+    let client = create_gcs_client()
+      .await
+      .map_err(|e| GenerationWriteError::Other(Box::new(std::io::Error::other(e.to_string()))))?;
+    let upload_type = UploadType::Simple(Media::new(object_name.to_string()));
+
+    // Setting `if_generation_match=Some(0)` only succeeds when there is no live
+    // object. Some non-zero value requires the current generation to match.
+    let if_generation_match = Some(expected.unwrap_or(0));
+
+    let result = client
+      .upload_object(
+        &UploadObjectRequest {
+          bucket: bucket_name.to_string(),
+          if_generation_match,
+          ..Default::default()
+        },
+        contents,
+        &upload_type,
+      )
+      .await;
+
+    match result {
+      Ok(obj) => Ok(obj.generation),
+      Err(GcsHttpError::Response(err)) if err.code == 412 => Err(GenerationWriteError::PreconditionFailed),
+      Err(e) => Err(GenerationWriteError::Other(Box::new(std::io::Error::other(e.to_string())))),
+    }
+  } else {
+    // Local file: no precondition enforcement. Single-replica deployment plus
+    // the in-process register lock makes this safe within the server; CLI vs
+    // server races on local filesystem are the user's problem.
+    tokio::fs::write(filename, contents)
+      .await
+      .map_err(|e| GenerationWriteError::Other(Box::new(e)))?;
+    Ok(0)
   }
 }
 
