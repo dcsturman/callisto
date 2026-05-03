@@ -872,27 +872,32 @@ serde_with::serde_conv!(
     }
 );
 
-/// Load ship templates from a file. The file can be local or on Google cloud storage (encoded in filename)
-///
-/// # Errors
-///
-/// If the file cannot be read or if GCS cannot be reached (depending on url of file)
+enum ShipTemplateFileOutcome {
+  Loaded(ShipDesignTemplate),
+  ParseError(String, String),
+  ReadError(String, String),
+}
+
 /// Load every ship design from a directory of per-design JSON files.
 ///
 /// Each file in the directory must contain a single `ShipDesignTemplate`
-/// JSON object (not an array). Files that fail to read or parse are
-/// logged and skipped — successfully-parsed designs are still returned.
-/// This per-file forgiveness matters because a fingerprint reload that
-/// flagged a change could otherwise wipe out the entire in-memory
-/// registry on one bad edit; with the merge-on-reload semantics in
-/// `merge_ship_templates`, partial successes still update what they can.
+/// JSON object (not an array).
+///
+/// Per-file failures are split:
+/// * **Read errors** (network/auth/transient) cause the WHOLE load to fail,
+///   which leaves the watcher's directory fingerprint un-advanced so the
+///   next poll retries. This is the self-healing path for a cold-start
+///   GCS metadata-server flake — without it, a transient auth blip during
+///   startup can permanently wedge the registry until restart.
+/// * **Parse errors** (permanent — malformed JSON, wrong shape) are logged
+///   and skipped. Otherwise one corrupt file would block every reload
+///   forever. Once the operator fixes/removes the file the directory
+///   fingerprint changes and we naturally re-attempt.
 ///
 /// # Errors
 ///
-/// Returns `Err` only if listing the directory itself fails (e.g. the
-/// directory does not exist or the GCS bucket is unreachable). Per-file
-/// failures are logged and the function still returns `Ok` with the
-/// successfully-loaded subset.
+/// Returns `Err` if listing the directory fails OR if any per-file read
+/// fails. Per-file parse errors are not propagated.
 pub async fn load_ship_templates_from_dir(
   dir: &str,
 ) -> Result<HashMap<String, Arc<ShipDesignTemplate>>, Box<dyn std::error::Error>> {
@@ -904,25 +909,40 @@ pub async fn load_ship_templates_from_dir(
     async move {
       match read_local_or_cloud_file(&path).await {
         Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
-          Ok(template) => Ok(template),
-          Err(e) => Err((path, format!("parse error: {e}"))),
+          Ok(template) => ShipTemplateFileOutcome::Loaded(template),
+          Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
         },
-        Err(e) => Err((path, format!("read error: {e}"))),
+        Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
       }
     }
   }))
   .await;
 
   let mut table = HashMap::new();
+  let mut read_errors: Vec<String> = Vec::new();
   for r in results {
     match r {
-      Ok(template) => {
+      ShipTemplateFileOutcome::Loaded(template) => {
         table.insert(template.name.clone(), Arc::new(template));
       }
-      Err((path, msg)) => {
+      ShipTemplateFileOutcome::ParseError(path, msg) => {
         warn!("(load_ship_templates_from_dir) Skipping {path}: {msg}");
       }
+      ShipTemplateFileOutcome::ReadError(path, msg) => {
+        read_errors.push(format!("{path}: {msg}"));
+      }
     }
+  }
+  if !read_errors.is_empty() {
+    return Err(
+      format!(
+        "Failed to read {} of {} ship-design file(s): {}",
+        read_errors.len(),
+        read_errors.len() + table.len(),
+        read_errors.join("; ")
+      )
+      .into(),
+    );
   }
   Ok(table)
 }
