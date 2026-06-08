@@ -1055,6 +1055,92 @@ async fn integration_remove_ship() {
   send_quit(&mut stream).await;
 }
 
+/// Removing a planet that another planet orbits used to corrupt entity
+/// state so the next deep-clone (`fixup_pointers`) would panic and crash
+/// the tokio worker. The fix is two-fold:
+/// 1. `Player::remove` refuses to remove a planet with children, returning
+///    an actionable error to the client.
+/// 2. `Entities::deep_copy` returns a `Result` so that even if a dangling
+///    reference slips through, we surface an `Error` response instead of
+///    panicking the worker.
+/// This test exercises (1): place a star + orbiting planet, attempt to
+/// remove the star, expect an error message and both bodies still present.
+#[tokio::test]
+async fn integration_remove_planet_with_children_rejected() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let _cookie = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+
+  // Star
+  let message = rpc(
+    &mut stream,
+    RequestMsg::AddPlanet(AddPlanetMsg {
+      name: "Star".to_string(),
+      position: [0.0, 0.0, 0.0].into(),
+      color: "yellow".to_string(),
+      radius: 1.0e9,
+      mass: 2.0e30,
+      primary: None,
+      visual_effects: vec![],
+    }),
+  )
+  .await;
+  assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
+  drain_entity_response(&mut stream).await;
+
+  // Child planet
+  let message = rpc(
+    &mut stream,
+    RequestMsg::AddPlanet(AddPlanetMsg {
+      name: "Earth".to_string(),
+      position: [1.5e11, 0.0, 0.0].into(),
+      color: "blue".to_string(),
+      radius: 6.4e6,
+      mass: 6.0e24,
+      primary: Some("Star".to_string()),
+      visual_effects: vec![],
+    }),
+  )
+  .await;
+  assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Add planet action executed"));
+  drain_entity_response(&mut stream).await;
+
+  // Attempting to delete the Star should be REJECTED (Earth still orbits it).
+  let message = rpc(&mut stream, RequestMsg::Remove("Star".to_string())).await;
+  match message {
+    ResponseMsg::Error(err) => {
+      assert!(
+        err.contains("Star") && err.contains("Earth"),
+        "Expected error to mention both planet names, got: {err}"
+      );
+    }
+    other => panic!("Expected Error response, got {other:?}"),
+  }
+
+  // Verify nothing changed: both planets still present, no entity response leaked.
+  let body = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
+  match body {
+    ResponseMsg::EntityResponse(entities) => {
+      assert_eq!(entities.planets.len(), 2, "Both planets should remain");
+    }
+    other => panic!("Expected EntityResponse, got {other:?}"),
+  }
+
+  // Removing the child first should succeed, and only THEN the parent.
+  let message = rpc(&mut stream, RequestMsg::Remove("Earth".to_string())).await;
+  assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Remove action executed"));
+  drain_entity_response(&mut stream).await;
+
+  let message = rpc(&mut stream, RequestMsg::Remove("Star".to_string())).await;
+  assert!(matches!(message, ResponseMsg::SimpleMsg(msg) if msg == "Remove action executed"));
+  drain_entity_response(&mut stream).await;
+
+  send_quit(&mut stream).await;
+}
+
 /**
  * Test that creates a ship entity, assigns an acceleration, and then gets all entities to check that the acceleration is properly set.
  */

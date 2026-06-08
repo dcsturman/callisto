@@ -1039,7 +1039,7 @@ async fn test_get_entities() {
   let server = setup_test_with_server(authenticator).await;
 
   // Test getting entities from an empty server
-  let empty_entities = server.get_entities();
+  let empty_entities = server.get_entities().unwrap();
   assert!(empty_entities.ships.is_empty());
   assert!(empty_entities.planets.is_empty());
   assert!(empty_entities.missiles.is_empty());
@@ -1075,7 +1075,7 @@ async fn test_get_entities() {
     .unwrap();
 
   // Test getting entities after adding a ship and a planet
-  let entities = server.get_entities();
+  let entities = server.get_entities().unwrap();
 
   // Check the ship
   assert_eq!(entities.ships.len(), 1);
@@ -1200,7 +1200,7 @@ async fn test_set_agility() {
   assert_eq!(result.unwrap(), "Set crew action executed");
 
   // Verify the ship's agility has been updated
-  let entities = server.get_entities();
+  let entities = server.get_entities().unwrap();
   let ship = entities.ships.get("agile_ship").unwrap().read().unwrap();
   assert_eq!(ship.get_dodge_thrust(), 1);
 
@@ -1240,7 +1240,7 @@ async fn test_set_pilot_actions_aid_gunner() {
   assert_eq!(result.unwrap(), "Set crew action executed");
 
   // Verify the ship's crew actions have been updated
-  let entities = server.get_entities();
+  let entities = server.get_entities().unwrap();
   let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
   assert!(ship.get_assist_gunners());
 
@@ -1253,7 +1253,7 @@ async fn test_set_pilot_actions_aid_gunner() {
   assert_eq!(result.unwrap(), "Set crew action executed");
 
   // Verify the ship's crew actions have been updated
-  let entities = server.get_entities();
+  let entities = server.get_entities().unwrap();
   let ship = entities.ships.get("test_ship").unwrap().read().unwrap();
   assert!(!ship.get_assist_gunners());
 
@@ -1550,7 +1550,7 @@ async fn test_merge_replaces_prior_leadership_check() {
   ]]]);
   server.merge_actions(serde_json::from_str(&second.to_string()).unwrap());
 
-  let entities = server.get_entities();
+  let entities = server.get_entities().unwrap();
   assert_eq!(
     count_leadership_checks(&entities, "ship1"),
     1,
@@ -1592,13 +1592,13 @@ async fn test_clear_leadership_check_strips() {
       ]}}
   ]]]);
   server.merge_actions(serde_json::from_str(&queue.to_string()).unwrap());
-  assert_eq!(count_leadership_checks(&server.get_entities(), "ship1"), 1);
+  assert_eq!(count_leadership_checks(&server.get_entities().unwrap(), "ship1"), 1);
 
   // Anti-action wipes it.
   let clear = json!([["ship1", ["ClearLeadershipCheck"]]]);
   server.merge_actions(serde_json::from_str(&clear.to_string()).unwrap());
   assert_eq!(
-    count_leadership_checks(&server.get_entities(), "ship1"),
+    count_leadership_checks(&server.get_entities().unwrap(), "ship1"),
     0,
     "ClearLeadershipCheck should have stripped the queued LeadershipCheck"
   );
@@ -1619,13 +1619,13 @@ async fn test_reset_actions_strips_leadership_check() {
       {"LeadershipCheck": {"boosts": []}}
   ]]]);
   server.merge_actions(serde_json::from_str(&queue.to_string()).unwrap());
-  assert_eq!(count_leadership_checks(&server.get_entities(), "ship1"), 1);
+  assert_eq!(count_leadership_checks(&server.get_entities().unwrap(), "ship1"), 1);
 
   let _ = server.update();
 
   // After update the LC is consumed. It must NOT persist into the next turn.
   assert_eq!(
-    count_leadership_checks(&server.get_entities(), "ship1"),
+    count_leadership_checks(&server.get_entities().unwrap(), "ship1"),
     0,
     "reset_actions should have stripped LeadershipCheck after Phase 0 evaluation"
   );

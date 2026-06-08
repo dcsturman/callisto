@@ -137,19 +137,33 @@ impl Entities {
     self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
   }
 
-  // Do a deep copy and create and return the copy.
-  #[must_use]
-  pub fn deep_copy(&self) -> Self {
+  /// Do a deep copy and create and return the copy.
+  ///
+  /// # Errors
+  /// Returns an error if [`fixup_pointers`](Self::fixup_pointers) fails on
+  /// the copy because a missile target or planet primary references a name
+  /// that no longer exists in the source. This signals an inconsistent
+  /// `Entities` state — `Player::remove` is responsible for keeping these
+  /// references intact when removing ships or planets.
+  pub fn deep_copy(&self) -> Result<Self, String> {
     let mut entities = Entities::new();
-    self.deep_copy_into(&mut entities);
-    entities
+    self.deep_copy_into(&mut entities)?;
+    Ok(entities)
   }
 
   /// Do a deep copy from one `Entities` to another.
   ///
+  /// # Errors
+  /// Returns an error if `fixup_pointers` fails on the destination. Prior
+  /// to this guard the code unwrapped here and a single dangling reference
+  /// would take down the whole tokio worker (and cascade through
+  /// `main.rs::try_send` to crash the container). Callers in the wire
+  /// path should propagate the error into a `ResponseMsg::Error` instead
+  /// of letting it bubble up.
+  ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
-  pub fn deep_copy_into(&self, dest: &mut Self) {
+  pub fn deep_copy_into(&self, dest: &mut Self) -> Result<(), String> {
     dest.ships.clear();
     dest.missiles.clear();
     dest.planets.clear();
@@ -178,8 +192,9 @@ impl Entities {
     dest.next_missile_id = self.next_missile_id;
     dest.actions.clone_from(&self.actions);
 
-    dest.fixup_pointers().unwrap();
+    dest.fixup_pointers()?;
     dest.reset_gravity_wells();
+    Ok(())
   }
 
   // Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
@@ -1621,9 +1636,15 @@ impl std::fmt::Display for Entities {
 }
 
 // If we ever clone Entities (almost always for testing) we want it to be deep!
+// Production wire-path code should call [`Entities::deep_copy`] directly so
+// inconsistent state surfaces as a `Result::Err` instead of a panic. This
+// `Clone` impl keeps tests + scenario-reset terse, but it WILL panic if the
+// source's pointer references are dangling (planet primary / missile target).
 impl Clone for Entities {
   fn clone(&self) -> Self {
-    self.deep_copy()
+    self
+      .deep_copy()
+      .expect("Entities::clone: dangling reference; call deep_copy() directly to handle the error")
   }
 }
 
