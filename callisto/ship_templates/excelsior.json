@@ -1,5 +1,5 @@
 {
-  "name": "Harrier",
+  "name": "HMS Excelsior",
   "displacement": 200,
   "hull": 80,
   "armor": 4,
@@ -19,6 +19,12 @@
     },
     {
       "kind": "Missile",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Sand",
       "mount": {
         "Turret": 1
       }
