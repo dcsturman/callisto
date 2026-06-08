@@ -115,9 +115,22 @@ impl Server {
     self.entities.lock()
   }
 
+  /// Look up a ship design by name.
+  ///
+  /// Checks the per-Server snapshot first (so designs known at scenario
+  /// load time keep working even if a watcher reload mutates the global
+  /// registry), then falls back to the live global registry. The fallback
+  /// is what lets the user place a ship from a design that was uploaded
+  /// AFTER the scenario was created — without it, `add_ship` would fail
+  /// with "Could not find design X" for any post-creation upload, even
+  /// though X appears in the live dropdown.
   #[must_use]
   pub fn get_ship_template(&self, design_name: &str) -> Option<Arc<ShipDesignTemplate>> {
-    self.ship_templates.get(design_name).cloned()
+    self
+      .ship_templates
+      .get(design_name)
+      .cloned()
+      .or_else(|| get_ship_templates_snapshot().get(design_name).cloned())
   }
 }
 
