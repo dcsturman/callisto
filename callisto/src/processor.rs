@@ -619,6 +619,7 @@ impl Processor {
       RequestMsg::SetPilotActions(request) => response_with_update(player, player.set_pilot_actions(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
+      RequestMsg::RenameEntity(msg) => response_with_update(player, player.rename(&msg)),
       RequestMsg::SetPlan(plan) => response_with_update(player, player.set_plan(&plan)),
       RequestMsg::SetRole(role) => {
         if player.get_email().is_none() {

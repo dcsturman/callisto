@@ -358,13 +358,16 @@ export function setCrewActions(
 }
 
 export function removeEntity(target: string) {
-  const payload = {
-    RemoveEntity: {
-      name: target,
-    },
-  };
+  // Backend variant is `Remove(String)` — wire shape is `{"Remove": "name"}`.
+  socket.send(JSON.stringify({ Remove: target }));
+}
 
-  socket.send(JSON.stringify(payload));
+export function renameEntity(current: string, newName: string) {
+  socket.send(
+    JSON.stringify({
+      RenameEntity: { current, new_name: newName },
+    }),
+  );
 }
 
 export async function setPlan(

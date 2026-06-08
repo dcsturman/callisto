@@ -118,6 +118,12 @@ pub struct AddPlanetMsg {
 pub type RemoveEntityMsg = String;
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct RenameEntityMsg {
+  pub current: String,
+  pub new_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SetPlanMsg {
   pub name: String,
   pub plan: FlightPlan,
@@ -342,6 +348,7 @@ pub enum RequestMsg {
   AddShip(AddShipMsg),
   AddPlanet(AddPlanetMsg),
   Remove(RemoveEntityMsg),
+  RenameEntity(RenameEntityMsg),
   SetPlan(SetPlanMsg),
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),

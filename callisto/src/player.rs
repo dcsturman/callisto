@@ -13,7 +13,8 @@ use crate::computer::FlightParams;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg,
+  ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate};
@@ -361,6 +362,21 @@ impl PlayerManager {
     Ok("Remove action executed".to_string())
   }
 
+  /// Rename a ship or planet in the active scenario in place. See
+  /// [`Entities::rename`] for the semantics and constraints.
+  ///
+  /// # Errors
+  /// Returns an error if the rename fails (collision, empty name,
+  /// missing target, missile target, etc.).
+  ///
+  /// # Panics
+  /// Panics if the server has not yet been initialized or the entities
+  /// lock cannot be obtained.
+  pub fn rename(&self, msg: &RenameEntityMsg) -> Result<String, String> {
+    let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    entities.rename(&msg.current, &msg.new_name)
+  }
+
   /// Sets the flight plan for a ship.
   ///
   /// # Arguments
@@ -520,10 +536,22 @@ impl PlayerManager {
     let actions = &entities.actions;
     debug!("(/update) Ship actions: {:?}", actions);
 
-    // Sort all the actions by type.  Slice into fire / sensor / point-defense /
-    // engineer (Jump is an engineer action, so it lands in the engineer slice).
+    // Sort all the actions by type.  Slice into fire / sensor / jam-missile /
+    // point-defense / engineer (Jump is an engineer action, so it lands in
+    // the engineer slice).
+    //
+    // `sensor_actions` covers SensorLock / BreakSensorLock / JamComms — those
+    // are inputs to `fire_actions` (lock state feeds to-hit modifiers; comms
+    // jam feeds leadership) so they must run pre-fire as today.
+    //
+    // `jam_missile_actions` is split out because `JamMissiles` operates
+    // directly on the live missile pool. It must run AFTER `fire_actions`
+    // so it can target missiles launched this same round (close-range
+    // engagements where the missile would otherwise impact in the same
+    // round it was launched, with no defensive opportunity).
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, point_defense_actions, engineer_actions): (
+    let (fire_actions, sensor_actions, jam_missile_actions, point_defense_actions, engineer_actions): (
+      Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
@@ -533,34 +561,38 @@ impl PlayerManager {
         warn!("(update) Cannot find ship {} for actions.", ship_name);
         return None;
       }
-      let (f_actions, s_actions, p_actions, e_actions): (
+      let (f_actions, s_actions, j_actions, p_actions, e_actions): (
+        Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
       ) = multiunzip(actions.iter().map(|action| match action {
-        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None, None),
-        ShipAction::PointDefenseAction { .. } => (None, None, Some(action.clone()), None),
-        ShipAction::JamMissiles
-        | ShipAction::BreakSensorLock { .. }
-        | ShipAction::SensorLock { .. }
-        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None, None),
+        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => {
+          (Some(action.clone()), None, None, None, None)
+        }
+        ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone()), None),
+        ShipAction::JamMissiles => (None, None, Some(action.clone()), None, None),
+        ShipAction::BreakSensorLock { .. } | ShipAction::SensorLock { .. } | ShipAction::JamComms { .. } => {
+          (None, Some(action.clone()), None, None, None)
+        }
         // Engineer actions (including Jump) are deferred to end-of-turn evaluation.
         ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump => {
-          (None, None, None, Some(action.clone()))
+          (None, None, None, None, Some(action.clone()))
         }
         // LeadershipCheck is consumed in Phase 0 below; it does not flow into
         // any of the per-category slices.
-        ShipAction::LeadershipCheck { .. } => (None, None, None, None),
+        ShipAction::LeadershipCheck { .. } => (None, None, None, None, None),
         // Anti-actions are consumed by `merge` and should never reach the queue.
         // If one slips through, drop it from every slice.
         ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction | ShipAction::ClearLeadershipCheck => {
-          (None, None, None, None)
+          (None, None, None, None, None)
         }
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), p_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), e_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
       ))
@@ -575,7 +607,9 @@ impl PlayerManager {
     // assignments before any sensor/fire results land.
     let mut effects = leadership_effects;
 
-    // First process all sensor actions. They can remove missiles and change modifiers for ship combat.
+    // First process the targeting/comms sensor actions (SensorLock,
+    // BreakSensorLock, JamComms). These feed into fire to-hit modifiers and
+    // leadership bonuses, so they must run pre-fire.
     effects.append(&mut entities.sensor_actions(&sensor_actions, &boost_map, &mut rng));
 
     // 1. This method will make a clone of all ships to use as attacker while impacting damage on the primary copy of ships.  This way ships still get ot attack
@@ -591,6 +625,14 @@ impl PlayerManager {
       &boost_map,
       &mut rng,
     ));
+
+    // Now process JamMissiles. This runs AFTER fire_actions so the jam can
+    // target missiles launched in this same round (close-range engagements
+    // where the missile would otherwise impact in update_all without ever
+    // having been visible to a pre-fire jam check). Long-range missiles still
+    // get jam checks on subsequent rounds because they sit in self.missiles
+    // until they reach their target.
+    effects.append(&mut entities.sensor_actions(&jam_missile_actions, &boost_map, &mut rng));
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));
