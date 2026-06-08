@@ -282,13 +282,18 @@ impl PlayerManager {
 
   /// Gets the ship designs and serializes it to JSON.
   ///
+  /// Always returns the LIVE global registry, not the scenario-server's
+  /// frozen snapshot. The wire payload feeds the client's design dropdown,
+  /// which must reflect the latest set after a watcher reload (e.g. a new
+  /// design file added to the bucket). The per-server snapshot is kept for
+  /// scenario-internal lookups where stability matters; the wire path does
+  /// not need that stability.
+  ///
   /// # Panics
   /// Panics if the ship templates have not been loaded.
+  #[must_use]
   pub fn get_designs(&self) -> ShipDesignTemplateMsg {
-    let templates = self
-      .server
-      .as_ref()
-      .map_or_else(get_ship_templates_snapshot, |server| server.get_ship_templates_snapshot());
+    let templates = get_ship_templates_snapshot();
 
     // Strip the Arc, etc. from the ShipTemplates before marshalling back.
     let clean_templates: HashMap<String, ShipDesignTemplate> = templates
