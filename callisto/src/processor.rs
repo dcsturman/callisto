@@ -655,17 +655,20 @@ impl Processor {
       }
       RequestMsg::CaptainAction(msg) => {
         let result = player.captain_action(&msg);
-        vec![
-          ResponseMsg::CaptainActionResult(result),
-          ResponseMsg::EntityResponse(player.clone_entities()),
-        ]
+        match player.clone_entities() {
+          Ok(entities) => vec![
+            ResponseMsg::CaptainActionResult(result),
+            ResponseMsg::EntityResponse(entities),
+          ],
+          Err(e) => entity_clone_failure_response(&e),
+        }
       }
       RequestMsg::Update => {
         let effects = player.update();
-        vec![
-          ResponseMsg::Effects(effects),
-          ResponseMsg::EntityResponse(player.clone_entities()),
-        ]
+        match player.clone_entities() {
+          Ok(entities) => vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities)],
+          Err(e) => entity_clone_failure_response(&e),
+        }
       }
       RequestMsg::ComputePath(path_goal) => player
         .compute_path(&path_goal)
@@ -853,8 +856,10 @@ impl Processor {
       }
       RequestMsg::EntitiesRequest => {
         info!("Received and processing get request.");
-        let json = player.get_entities();
-        vec![ResponseMsg::EntityResponse(json)]
+        match player.get_entities() {
+          Ok(entities) => vec![ResponseMsg::EntityResponse(entities)],
+          Err(e) => entity_clone_failure_response(&e),
+        }
       }
       RequestMsg::DesignTemplateRequest => {
         info!("Received and processing get designs request.");
@@ -1051,12 +1056,19 @@ fn error_msg(err_msg: String) -> Vec<ResponseMsg> {
 }
 
 fn response_with_update(server: &PlayerManager, result: Result<String, String>) -> Vec<ResponseMsg> {
-  result.map_or_else(error_msg, |msg| {
-    vec![
-      ResponseMsg::SimpleMsg(msg),
-      ResponseMsg::EntityResponse(server.clone_entities()),
-    ]
+  result.map_or_else(error_msg, |msg| match server.clone_entities() {
+    Ok(entities) => vec![ResponseMsg::SimpleMsg(msg), ResponseMsg::EntityResponse(entities)],
+    Err(e) => entity_clone_failure_response(&e),
   })
+}
+
+/// Build the Error response we send when `clone_entities` returns Err.
+/// Logging here gives us a single chokepoint for diagnosing the inconsistent
+/// state that triggered it (typically a planet/missile reference that points
+/// at a removed entity — `Player::remove` should reject those).
+fn entity_clone_failure_response(err: &str) -> Vec<ResponseMsg> {
+  error!(target: "callisto::processor", "(processor) clone_entities failed: {err}");
+  vec![ResponseMsg::Error(format!("Internal entity state inconsistent: {err}"))]
 }
 
 fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {

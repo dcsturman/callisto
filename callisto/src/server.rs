@@ -82,9 +82,19 @@ impl Server {
         })
     };
 
+    // `deep_copy` returns an error on dangling references inside the
+    // scenario file (missile target / planet primary). At Server::new
+    // time this is a hard-failure: the file is malformed and the scenario
+    // wouldn't function. Panic with the error so the bad file is obvious
+    // — the higher-level scenario load already swallows broken files
+    // and logs them; this expect path is only reachable in tests with
+    // hand-built `Entities`.
+    let live_copy = initial_scenario
+      .deep_copy()
+      .expect("Server::new: initial scenario has dangling references; check the scenario file");
     Server {
       id: id.to_string(),
-      entities: Mutex::new(initial_scenario.deep_copy()),
+      entities: Mutex::new(live_copy),
       initial_scenario,
       ship_templates,
     }

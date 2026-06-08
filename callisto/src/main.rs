@@ -407,7 +407,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     match upgrade {
       Ok((ws_stream, session_key, email)) => {
         info!("(main) Successfully established websocket connection to {peer_addr}.");
-        connection_sender.try_send((ws_stream, session_key, email)).unwrap();
+        // Hardened: never unwrap here. If the processor task has died (or
+        // the channel is full and the receive side is wedged), an `unwrap`
+        // would crash the main accept loop too — turning a single worker
+        // panic into a full container crash. Log and continue instead so
+        // Cloud Run's healthcheck still sees a live process.
+        if let Err(e) = connection_sender.try_send((ws_stream, session_key, email)) {
+          error!(
+            "(main) Could not hand websocket from {peer_addr} to processor (channel full or closed): {e}. Dropping connection."
+          );
+        }
       }
       Err(e) => {
         warn!("(main) Server at {addr} failed to establish websocket connection from {peer_addr}: {e}");

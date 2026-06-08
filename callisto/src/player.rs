@@ -68,13 +68,21 @@ impl PlayerManager {
     self.authenticator.get_session_key()
   }
 
-  /// Returns a clone of the entities.
+  /// Returns a deep clone of the entities, propagating any
+  /// `fixup_pointers` failure to the caller instead of panicking.
+  ///
+  /// # Errors
+  /// Returns an error if the cloned entities have dangling references
+  /// (e.g. a missile targeting a removed ship, or a planet whose primary
+  /// no longer exists). Live state should never reach that condition if
+  /// `Player::remove` is used correctly, but propagation keeps a buggy
+  /// state from crashing the tokio worker.
+  ///
   /// # Panics
-  /// Panics if the lock on entities cannot be obtained or if the server hasn't
-  /// been initialized.
-  #[must_use]
-  pub fn clone_entities(&self) -> Entities {
-    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().clone()
+  /// Panics if the lock on entities cannot be obtained or if the server
+  /// hasn't been initialized.
+  pub fn clone_entities(&self) -> Result<Entities, String> {
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().deep_copy()
   }
 
   /// Authenticates a user.
@@ -157,12 +165,16 @@ impl PlayerManager {
   pub fn reset(&self) -> Result<String, String> {
     if self.role == Role::General && self.ship.is_none() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
+      // initial_scenario was validated at scenario-load time, so this
+      // shouldn't fail in practice. Propagate the error rather than
+      // panicking so a malformed-on-disk scenario surfaces as a clean
+      // reset-failure response instead of a worker crash.
       self
         .server
         .as_ref()
         .unwrap()
         .initial_scenario
-        .deep_copy_into(&mut self.server.as_ref().unwrap().get_unlocked_entities().unwrap());
+        .deep_copy_into(&mut self.server.as_ref().unwrap().get_unlocked_entities().unwrap())?;
       Ok("Server reset.".to_string())
     } else {
       warn!(
@@ -265,11 +277,14 @@ impl PlayerManager {
 
   /// Gets the current entities and returns them in a `Result`.
   ///
+  /// # Errors
+  /// Returns an error if the cloned entities have dangling references —
+  /// see [`Self::clone_entities`].
+  ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read the entities.
-  #[must_use]
-  pub fn get_entities(&self) -> Entities {
-    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().clone()
+  pub fn get_entities(&self) -> Result<Entities, String> {
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().deep_copy()
   }
 
   /// Get the entities marshalled into JSON
@@ -336,30 +351,66 @@ impl PlayerManager {
     Ok("Add planet action executed".to_string())
   }
 
-  /// Removes an entity from the entities.
+  /// Removes an entity from the entities, keeping internal references
+  /// consistent so a subsequent deep-clone doesn't blow up in
+  /// `fixup_pointers`.
+  ///
+  /// * Planets: refused if any other planet's `primary` field references
+  ///   this planet. The operator must re-parent (rename) or remove the
+  ///   children first. Cascade-orphaning would leave moons floating in
+  ///   space silently — preferring an actionable error.
+  /// * Ships: also drops any in-flight missile whose `target` was this
+  ///   ship. Those missiles can no longer hit anything, and leaving them
+  ///   in `entities.missiles` with a dangling target name would panic the
+  ///   next deep-clone (`target_ptr` fixup fails).
+  /// * Missiles: removed directly; nothing else references them by name.
   ///
   /// # Arguments
   /// * `name` - The name of the entity to remove.
   ///
   /// # Errors
-  /// Returns an error if the name entity does not exist in the list of entities.
+  /// Returns an error if the entity does not exist, or if the entity is a
+  /// planet that is the primary of another planet.
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to write the entities or if the server
-  /// has not yet been initialized.
+  /// Panics if the lock cannot be obtained to write the entities, if the
+  /// server has not yet been initialized, or if a planet/missile `RwLock`
+  /// is poisoned.
   pub fn remove(&self, name: &RemoveEntityMsg) -> Result<String, String> {
-    // Remove the entity from the server
     let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
-    if entities.ships.remove(name).is_none()
-      && entities.planets.remove(name).is_none()
-      && entities.missiles.remove(name).is_none()
-    {
-      warn!("Unable to find entity named {} to remove", name);
-      let err_msg = format!("Unable to find entity named {name} to remove");
-      return Err(err_msg);
+
+    if entities.planets.contains_key(name) {
+      // Find any planet (excluding the target itself) that orbits this one.
+      let dependent = entities
+        .planets
+        .iter()
+        .find(|(other_name, planet)| {
+          other_name.as_str() != name.as_str() && planet.read().unwrap().primary.as_deref() == Some(name.as_str())
+        })
+        .map(|(other, _)| other.clone());
+      if let Some(child) = dependent {
+        let err_msg =
+          format!("Cannot remove planet {name}: {child} orbits it as primary. Re-parent or remove children first.");
+        warn!("{err_msg}");
+        return Err(err_msg);
+      }
+      entities.planets.remove(name);
+      return Ok("Remove action executed".to_string());
     }
 
-    Ok("Remove action executed".to_string())
+    if entities.ships.remove(name).is_some() {
+      // Drop any missile that was targeting this ship — its target_ptr
+      // would otherwise be unresolvable on next deep-clone.
+      entities.missiles.retain(|_, missile| missile.read().unwrap().target != *name);
+      return Ok("Remove action executed".to_string());
+    }
+
+    if entities.missiles.remove(name).is_some() {
+      return Ok("Remove action executed".to_string());
+    }
+
+    warn!("Unable to find entity named {} to remove", name);
+    Err(format!("Unable to find entity named {name} to remove"))
   }
 
   /// Rename a ship or planet in the active scenario in place. See
