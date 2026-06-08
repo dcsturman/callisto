@@ -119,7 +119,6 @@ impl Server {
   pub fn get_ship_template(&self, design_name: &str) -> Option<Arc<ShipDesignTemplate>> {
     self.ship_templates.get(design_name).cloned()
   }
-
 }
 
 impl ServerMembersTable {
