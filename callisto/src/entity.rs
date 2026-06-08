@@ -956,6 +956,9 @@ impl Entities {
     );
 
     if check >= 0 {
+      effects.append(&mut vec![EffectMsg::Message {
+        content: format!("{ship_name} jams missiles with roll {dice} for effect {check}"),
+      }]);
       // Deal with effect needing to allow one missile impact when the roll is made exactly.
       // Cast is safe because from above check >= 0.
       #[allow(clippy::cast_sign_loss)]
@@ -984,7 +987,7 @@ impl Entities {
     } else {
       // If the EW check failed, just let the users know.
       effects.push(EffectMsg::Message {
-        content: format!("Missile jamming attempt by {ship_name} failed."),
+        content: format!("Missile jamming attempt by {ship_name} failed with roll {dice} for effect {check}."),
       });
     }
     effects
@@ -2717,7 +2720,7 @@ mod tests {
     // With a roll of 6 and sensor skill of 4, check should be positive
     // resulting in successful jamming
     assert_eq!(entities.missiles.len(), 1); // Only one missile should be left
-    assert_eq!(effects.len(), 14); // One message for jamming success and one for missile destruction
+    assert_eq!(effects.len(), 15); // One message for jamming success and one for missile destruction
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("destroyed by jamming")
     )));
