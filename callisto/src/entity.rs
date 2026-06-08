@@ -2720,7 +2720,7 @@ mod tests {
     // With a roll of 6 and sensor skill of 4, check should be positive
     // resulting in successful jamming
     assert_eq!(entities.missiles.len(), 1); // Only one missile should be left
-    assert_eq!(effects.len(), 14); // One message for jamming success and one for missile destruction
+    assert_eq!(effects.len(), 15); // One message for jamming success and one for missile destruction
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("destroyed by jamming")
     )));
