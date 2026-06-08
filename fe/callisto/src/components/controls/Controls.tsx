@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { Accordion } from "lib/Accordion";
 import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
+import { EntityList } from "./EntityList";
 import { POSITION_SCALE, SCALE } from "lib/universal";
 import { Ship, Entity, Planet, findShip } from "lib/entities";
 import { ViewMode } from "lib/view";
@@ -198,6 +199,8 @@ function ScenarioBuilderControls(args: {
         </>
       )}
       <AddPlanet />
+      <hr />
+      <EntityList />
       <button
         type="button"
         className="control-button blue-button save-scenario-anchor"
