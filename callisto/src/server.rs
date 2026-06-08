@@ -120,10 +120,6 @@ impl Server {
     self.ship_templates.get(design_name).cloned()
   }
 
-  #[must_use]
-  pub fn get_ship_templates_snapshot(&self) -> Arc<HashMap<String, Arc<ShipDesignTemplate>>> {
-    self.ship_templates.clone()
-  }
 }
 
 impl ServerMembersTable {

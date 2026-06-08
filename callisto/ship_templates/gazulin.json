@@ -1,0 +1,64 @@
+{
+  "name": "Gazulin Trader",
+  "displacement": 800,
+  "hull": 320,
+  "armor": 8,
+  "maneuver": 2,
+  "jump": 2,
+  "power": 340,
+  "fuel": 155,
+  "crew": 13,
+  "sensors": "Civilian",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 12
+}
