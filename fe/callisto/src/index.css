@@ -111,6 +111,71 @@ input {
     align-items: center;
 }
 
+/* Scenario-builder entity list (ships + planets) */
+.entity-list {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.entity-list-title {
+    font-size: 14px;
+    margin: 0 0 4px 0;
+}
+
+.entity-list-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.entity-list-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.entity-list-kind-icon {
+    flex: 0 0 auto;
+    font-size: 16px;
+    opacity: 0.85;
+}
+
+.entity-list-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.entity-list-name-input {
+    flex: 1 1 auto;
+    height: 22px;
+    background-color: #eeebeb;
+    color: black;
+    border: 1px solid #888;
+    padding: 0 4px;
+    font: inherit;
+}
+
+.entity-list-icon-button {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    padding: 2px 4px;
+    font-size: 12px;
+}
+
+.entity-list-icon-button:hover {
+    opacity: 0.7;
+}
+
+.entity-list-delete {
+    color: #d22;
+}
+
 .control-button {
     height: 30px;
     width: 100%;
@@ -279,13 +344,54 @@ input {
     overflow: auto;
 }
 
-.view-controls-window {
+/* Container that stacks the ship-summary box above the view controls in
+   the top-right of the viewport. Both children sit inside this one fixed
+   anchor so they don't overlap and stay visually grouped. */
+.top-right-stack {
     position: fixed;
     top: 0;
     right: 0px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 12;
+}
+
+.view-controls-window {
     padding-left: 4px;
     border: 1px solid #b6bcae;
-    z-index: 12;
+}
+
+.ship-summary-window {
+    padding: 2px 6px;
+    border: 1px solid #b6bcae;
+}
+
+.ship-summary-title {
+    margin: 2px 0;
+}
+
+.ship-summary-rows {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.ship-summary-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    column-gap: 10px;
+    align-items: baseline;
+}
+
+.ship-summary-hull {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.ship-summary-thrust {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .control-form {

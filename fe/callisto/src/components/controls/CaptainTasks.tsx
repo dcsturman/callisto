@@ -41,7 +41,7 @@ export const CaptainTasks: React.FC<CaptainTasksProps> = ({ ship }) => {
   if (rolled && points > 0) {
     postRollText = `Captain can inspire ${points} task${points === 1 ? "" : "s"}.`;
   } else if (rolled) {
-    postRollText = `Captain cannot boost tasks this turn (rolled ${points}).`;
+    postRollText = `Captain cannot boost tasks this turn (effect ${points}).`;
   }
 
   const buttonLabel = "Leadership";
@@ -54,7 +54,9 @@ export const CaptainTasks: React.FC<CaptainTasksProps> = ({ ship }) => {
         className="control-input control-button blue-button"
         disabled={rolled}
         onClick={() => captainAction(ship.name)}
-        title={rolled ? "Already rolled this turn" : "Roll the leadership check"}
+        title={
+          rolled ? "Already rolled this turn" : "Roll the leadership check"
+        }
         style={{ width: "100%", boxSizing: "border-box" }}
       >
         {buttonLabel}

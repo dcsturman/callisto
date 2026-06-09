@@ -13,7 +13,8 @@ use crate::computer::FlightParams;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg,
+  ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate};
@@ -67,13 +68,21 @@ impl PlayerManager {
     self.authenticator.get_session_key()
   }
 
-  /// Returns a clone of the entities.
+  /// Returns a deep clone of the entities, propagating any
+  /// `fixup_pointers` failure to the caller instead of panicking.
+  ///
+  /// # Errors
+  /// Returns an error if the cloned entities have dangling references
+  /// (e.g. a missile targeting a removed ship, or a planet whose primary
+  /// no longer exists). Live state should never reach that condition if
+  /// `Player::remove` is used correctly, but propagation keeps a buggy
+  /// state from crashing the tokio worker.
+  ///
   /// # Panics
-  /// Panics if the lock on entities cannot be obtained or if the server hasn't
-  /// been initialized.
-  #[must_use]
-  pub fn clone_entities(&self) -> Entities {
-    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().clone()
+  /// Panics if the lock on entities cannot be obtained or if the server
+  /// hasn't been initialized.
+  pub fn clone_entities(&self) -> Result<Entities, String> {
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().deep_copy()
   }
 
   /// Authenticates a user.
@@ -156,12 +165,16 @@ impl PlayerManager {
   pub fn reset(&self) -> Result<String, String> {
     if self.role == Role::General && self.ship.is_none() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
+      // initial_scenario was validated at scenario-load time, so this
+      // shouldn't fail in practice. Propagate the error rather than
+      // panicking so a malformed-on-disk scenario surfaces as a clean
+      // reset-failure response instead of a worker crash.
       self
         .server
         .as_ref()
         .unwrap()
         .initial_scenario
-        .deep_copy_into(&mut self.server.as_ref().unwrap().get_unlocked_entities().unwrap());
+        .deep_copy_into(&mut self.server.as_ref().unwrap().get_unlocked_entities().unwrap())?;
       Ok("Server reset.".to_string())
     } else {
       warn!(
@@ -264,11 +277,14 @@ impl PlayerManager {
 
   /// Gets the current entities and returns them in a `Result`.
   ///
+  /// # Errors
+  /// Returns an error if the cloned entities have dangling references —
+  /// see [`Self::clone_entities`].
+  ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read the entities.
-  #[must_use]
-  pub fn get_entities(&self) -> Entities {
-    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().clone()
+  pub fn get_entities(&self) -> Result<Entities, String> {
+    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().deep_copy()
   }
 
   /// Get the entities marshalled into JSON
@@ -335,30 +351,81 @@ impl PlayerManager {
     Ok("Add planet action executed".to_string())
   }
 
-  /// Removes an entity from the entities.
+  /// Removes an entity from the entities, keeping internal references
+  /// consistent so a subsequent deep-clone doesn't blow up in
+  /// `fixup_pointers`.
+  ///
+  /// * Planets: refused if any other planet's `primary` field references
+  ///   this planet. The operator must re-parent (rename) or remove the
+  ///   children first. Cascade-orphaning would leave moons floating in
+  ///   space silently — preferring an actionable error.
+  /// * Ships: also drops any in-flight missile whose `target` was this
+  ///   ship. Those missiles can no longer hit anything, and leaving them
+  ///   in `entities.missiles` with a dangling target name would panic the
+  ///   next deep-clone (`target_ptr` fixup fails).
+  /// * Missiles: removed directly; nothing else references them by name.
   ///
   /// # Arguments
   /// * `name` - The name of the entity to remove.
   ///
   /// # Errors
-  /// Returns an error if the name entity does not exist in the list of entities.
+  /// Returns an error if the entity does not exist, or if the entity is a
+  /// planet that is the primary of another planet.
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to write the entities or if the server
-  /// has not yet been initialized.
+  /// Panics if the lock cannot be obtained to write the entities, if the
+  /// server has not yet been initialized, or if a planet/missile `RwLock`
+  /// is poisoned.
   pub fn remove(&self, name: &RemoveEntityMsg) -> Result<String, String> {
-    // Remove the entity from the server
     let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
-    if entities.ships.remove(name).is_none()
-      && entities.planets.remove(name).is_none()
-      && entities.missiles.remove(name).is_none()
-    {
-      warn!("Unable to find entity named {} to remove", name);
-      let err_msg = format!("Unable to find entity named {name} to remove");
-      return Err(err_msg);
+
+    if entities.planets.contains_key(name) {
+      // Find any planet (excluding the target itself) that orbits this one.
+      let dependent = entities
+        .planets
+        .iter()
+        .find(|(other_name, planet)| {
+          other_name.as_str() != name.as_str() && planet.read().unwrap().primary.as_deref() == Some(name.as_str())
+        })
+        .map(|(other, _)| other.clone());
+      if let Some(child) = dependent {
+        let err_msg =
+          format!("Cannot remove planet {name}: {child} orbits it as primary. Re-parent or remove children first.");
+        warn!("{err_msg}");
+        return Err(err_msg);
+      }
+      entities.planets.remove(name);
+      return Ok("Remove action executed".to_string());
     }
 
-    Ok("Remove action executed".to_string())
+    if entities.ships.remove(name).is_some() {
+      // Drop any missile that was targeting this ship — its target_ptr
+      // would otherwise be unresolvable on next deep-clone.
+      entities.missiles.retain(|_, missile| missile.read().unwrap().target != *name);
+      return Ok("Remove action executed".to_string());
+    }
+
+    if entities.missiles.remove(name).is_some() {
+      return Ok("Remove action executed".to_string());
+    }
+
+    warn!("Unable to find entity named {} to remove", name);
+    Err(format!("Unable to find entity named {name} to remove"))
+  }
+
+  /// Rename a ship or planet in the active scenario in place. See
+  /// [`Entities::rename`] for the semantics and constraints.
+  ///
+  /// # Errors
+  /// Returns an error if the rename fails (collision, empty name,
+  /// missing target, missile target, etc.).
+  ///
+  /// # Panics
+  /// Panics if the server has not yet been initialized or the entities
+  /// lock cannot be obtained.
+  pub fn rename(&self, msg: &RenameEntityMsg) -> Result<String, String> {
+    let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    entities.rename(&msg.current, &msg.new_name)
   }
 
   /// Sets the flight plan for a ship.
@@ -520,10 +587,22 @@ impl PlayerManager {
     let actions = &entities.actions;
     debug!("(/update) Ship actions: {:?}", actions);
 
-    // Sort all the actions by type.  Slice into fire / sensor / point-defense /
-    // engineer (Jump is an engineer action, so it lands in the engineer slice).
+    // Sort all the actions by type.  Slice into fire / sensor / jam-missile /
+    // point-defense / engineer (Jump is an engineer action, so it lands in
+    // the engineer slice).
+    //
+    // `sensor_actions` covers SensorLock / BreakSensorLock / JamComms — those
+    // are inputs to `fire_actions` (lock state feeds to-hit modifiers; comms
+    // jam feeds leadership) so they must run pre-fire as today.
+    //
+    // `jam_missile_actions` is split out because `JamMissiles` operates
+    // directly on the live missile pool. It must run AFTER `fire_actions`
+    // so it can target missiles launched this same round (close-range
+    // engagements where the missile would otherwise impact in the same
+    // round it was launched, with no defensive opportunity).
     #[allow(clippy::type_complexity)]
-    let (fire_actions, sensor_actions, point_defense_actions, engineer_actions): (
+    let (fire_actions, sensor_actions, jam_missile_actions, point_defense_actions, engineer_actions): (
+      Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
       Vec<(String, Vec<ShipAction>)>,
@@ -533,34 +612,38 @@ impl PlayerManager {
         warn!("(update) Cannot find ship {} for actions.", ship_name);
         return None;
       }
-      let (f_actions, s_actions, p_actions, e_actions): (
+      let (f_actions, s_actions, j_actions, p_actions, e_actions): (
+        Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
         Vec<Option<ShipAction>>,
       ) = multiunzip(actions.iter().map(|action| match action {
-        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => (Some(action.clone()), None, None, None),
-        ShipAction::PointDefenseAction { .. } => (None, None, Some(action.clone()), None),
-        ShipAction::JamMissiles
-        | ShipAction::BreakSensorLock { .. }
-        | ShipAction::SensorLock { .. }
-        | ShipAction::JamComms { .. } => (None, Some(action.clone()), None, None),
+        ShipAction::FireAction { .. } | ShipAction::DeleteFireAction { .. } => {
+          (Some(action.clone()), None, None, None, None)
+        }
+        ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone()), None),
+        ShipAction::JamMissiles => (None, None, Some(action.clone()), None, None),
+        ShipAction::BreakSensorLock { .. } | ShipAction::SensorLock { .. } | ShipAction::JamComms { .. } => {
+          (None, Some(action.clone()), None, None, None)
+        }
         // Engineer actions (including Jump) are deferred to end-of-turn evaluation.
         ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump => {
-          (None, None, None, Some(action.clone()))
+          (None, None, None, None, Some(action.clone()))
         }
         // LeadershipCheck is consumed in Phase 0 below; it does not flow into
         // any of the per-category slices.
-        ShipAction::LeadershipCheck { .. } => (None, None, None, None),
+        ShipAction::LeadershipCheck { .. } => (None, None, None, None, None),
         // Anti-actions are consumed by `merge` and should never reach the queue.
         // If one slips through, drop it from every slice.
         ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction | ShipAction::ClearLeadershipCheck => {
-          (None, None, None, None)
+          (None, None, None, None, None)
         }
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), s_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
+        (ship_name.clone(), j_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), p_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
         (ship_name.clone(), e_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
       ))
@@ -575,7 +658,9 @@ impl PlayerManager {
     // assignments before any sensor/fire results land.
     let mut effects = leadership_effects;
 
-    // First process all sensor actions. They can remove missiles and change modifiers for ship combat.
+    // First process the targeting/comms sensor actions (SensorLock,
+    // BreakSensorLock, JamComms). These feed into fire to-hit modifiers and
+    // leadership bonuses, so they must run pre-fire.
     effects.append(&mut entities.sensor_actions(&sensor_actions, &boost_map, &mut rng));
 
     // 1. This method will make a clone of all ships to use as attacker while impacting damage on the primary copy of ships.  This way ships still get ot attack
@@ -591,6 +676,14 @@ impl PlayerManager {
       &boost_map,
       &mut rng,
     ));
+
+    // Now process JamMissiles. This runs AFTER fire_actions so the jam can
+    // target missiles launched in this same round (close-range engagements
+    // where the missile would otherwise impact in update_all without ever
+    // having been visible to a pre-fire jam check). Long-range missiles still
+    // get jam checks on subsequent rounds because they sit in self.missiles
+    // until they reach their target.
+    effects.append(&mut entities.sensor_actions(&jam_missile_actions, &boost_map, &mut rng));
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));

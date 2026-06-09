@@ -82,9 +82,19 @@ impl Server {
         })
     };
 
+    // `deep_copy` returns an error on dangling references inside the
+    // scenario file (missile target / planet primary). At Server::new
+    // time this is a hard-failure: the file is malformed and the scenario
+    // wouldn't function. Panic with the error so the bad file is obvious
+    // — the higher-level scenario load already swallows broken files
+    // and logs them; this expect path is only reachable in tests with
+    // hand-built `Entities`.
+    let live_copy = initial_scenario
+      .deep_copy()
+      .expect("Server::new: initial scenario has dangling references; check the scenario file");
     Server {
       id: id.to_string(),
-      entities: Mutex::new(initial_scenario.deep_copy()),
+      entities: Mutex::new(live_copy),
       initial_scenario,
       ship_templates,
     }
@@ -115,9 +125,22 @@ impl Server {
     self.entities.lock()
   }
 
+  /// Look up a ship design by name.
+  ///
+  /// Checks the per-Server snapshot first (so designs known at scenario
+  /// load time keep working even if a watcher reload mutates the global
+  /// registry), then falls back to the live global registry. The fallback
+  /// is what lets the user place a ship from a design that was uploaded
+  /// AFTER the scenario was created — without it, `add_ship` would fail
+  /// with "Could not find design X" for any post-creation upload, even
+  /// though X appears in the live dropdown.
   #[must_use]
   pub fn get_ship_template(&self, design_name: &str) -> Option<Arc<ShipDesignTemplate>> {
-    self.ship_templates.get(design_name).cloned()
+    self
+      .ship_templates
+      .get(design_name)
+      .cloned()
+      .or_else(|| get_ship_templates_snapshot().get(design_name).cloned())
   }
 }
 

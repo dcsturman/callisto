@@ -137,19 +137,33 @@ impl Entities {
     self.ships.is_empty() && self.missiles.is_empty() && self.planets.is_empty()
   }
 
-  // Do a deep copy and create and return the copy.
-  #[must_use]
-  pub fn deep_copy(&self) -> Self {
+  /// Do a deep copy and create and return the copy.
+  ///
+  /// # Errors
+  /// Returns an error if [`fixup_pointers`](Self::fixup_pointers) fails on
+  /// the copy because a missile target or planet primary references a name
+  /// that no longer exists in the source. This signals an inconsistent
+  /// `Entities` state — `Player::remove` is responsible for keeping these
+  /// references intact when removing ships or planets.
+  pub fn deep_copy(&self) -> Result<Self, String> {
     let mut entities = Entities::new();
-    self.deep_copy_into(&mut entities);
-    entities
+    self.deep_copy_into(&mut entities)?;
+    Ok(entities)
   }
 
   /// Do a deep copy from one `Entities` to another.
   ///
+  /// # Errors
+  /// Returns an error if `fixup_pointers` fails on the destination. Prior
+  /// to this guard the code unwrapped here and a single dangling reference
+  /// would take down the whole tokio worker (and cascade through
+  /// `main.rs::try_send` to crash the container). Callers in the wire
+  /// path should propagate the error into a `ResponseMsg::Error` instead
+  /// of letting it bubble up.
+  ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
-  pub fn deep_copy_into(&self, dest: &mut Self) {
+  pub fn deep_copy_into(&self, dest: &mut Self) -> Result<(), String> {
     dest.ships.clear();
     dest.missiles.clear();
     dest.planets.clear();
@@ -178,8 +192,9 @@ impl Entities {
     dest.next_missile_id = self.next_missile_id;
     dest.actions.clone_from(&self.actions);
 
-    dest.fixup_pointers().unwrap();
+    dest.fixup_pointers()?;
     dest.reset_gravity_wells();
+    Ok(())
   }
 
   // Build a deep clone of the ships. It does not need to be thread safe so we can drop the use of Arc
@@ -404,6 +419,59 @@ impl Entities {
     }
 
     Ok(())
+  }
+
+  /// Rename a ship or planet in place, preserving the underlying entity
+  /// (and any references to its Arc). Missile renames are not supported.
+  ///
+  /// On a planet rename, any other planet whose `primary` field points at
+  /// the old name is also updated so the parent-child chain stays
+  /// consistent.
+  ///
+  /// # Errors
+  ///
+  /// Returns `Err` if:
+  /// * `new_name` is empty after trimming,
+  /// * `new_name` is already in use by any ship, planet, or missile,
+  /// * `current` does not match any ship or planet,
+  /// * `current` matches a missile (rename not supported for missiles).
+  ///
+  /// Renaming an entity to its current name is a no-op and returns `Ok`.
+  ///
+  /// # Panics
+  /// Panics if a ship or planet `RwLock` is poisoned.
+  pub fn rename(&mut self, current: &str, new_name: &str) -> Result<String, String> {
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() {
+      return Err("New name cannot be empty.".to_string());
+    }
+    if current == trimmed {
+      return Ok(format!("Entity {current} renamed (no change)."));
+    }
+    if self.ships.contains_key(trimmed) || self.planets.contains_key(trimmed) || self.missiles.contains_key(trimmed) {
+      return Err(format!("Name '{trimmed}' is already in use."));
+    }
+    if let Some(ship_arc) = self.ships.remove(current) {
+      ship_arc.write().unwrap().set_name(trimmed.to_string());
+      self.ships.insert(trimmed.to_string(), ship_arc);
+      return Ok(format!("Renamed ship {current} to {trimmed}."));
+    }
+    if let Some(planet_arc) = self.planets.remove(current) {
+      planet_arc.write().unwrap().set_name(trimmed.to_string());
+      self.planets.insert(trimmed.to_string(), planet_arc);
+      // Re-parent any planets that referenced the old name.
+      for other in self.planets.values() {
+        let mut other = other.write().unwrap();
+        if other.primary.as_deref() == Some(current) {
+          other.primary = Some(trimmed.to_string());
+        }
+      }
+      return Ok(format!("Renamed planet {current} to {trimmed}."));
+    }
+    if self.missiles.contains_key(current) {
+      return Err(format!("Cannot rename missile {current}."));
+    }
+    Err(format!("Entity {current} not found."))
   }
 
   /// Launch a missile from a ship at a ship.
@@ -956,6 +1024,9 @@ impl Entities {
     );
 
     if check >= 0 {
+      effects.append(&mut vec![EffectMsg::Message {
+        content: format!("{ship_name} jams missiles with roll {dice} for effect {check}"),
+      }]);
       // Deal with effect needing to allow one missile impact when the roll is made exactly.
       // Cast is safe because from above check >= 0.
       #[allow(clippy::cast_sign_loss)]
@@ -984,7 +1055,7 @@ impl Entities {
     } else {
       // If the EW check failed, just let the users know.
       effects.push(EffectMsg::Message {
-        content: format!("Missile jamming attempt by {ship_name} failed."),
+        content: format!("Missile jamming attempt by {ship_name} failed with roll {dice} for effect {check}."),
       });
     }
     effects
@@ -1565,9 +1636,15 @@ impl std::fmt::Display for Entities {
 }
 
 // If we ever clone Entities (almost always for testing) we want it to be deep!
+// Production wire-path code should call [`Entities::deep_copy`] directly so
+// inconsistent state surfaces as a `Result::Err` instead of a panic. This
+// `Clone` impl keeps tests + scenario-reset terse, but it WILL panic if the
+// source's pointer references are dangling (planet primary / missile target).
 impl Clone for Entities {
   fn clone(&self) -> Self {
-    self.deep_copy()
+    self
+      .deep_copy()
+      .expect("Entities::clone: dangling reference; call deep_copy() directly to handle the error")
   }
 }
 
@@ -1763,6 +1840,75 @@ mod tests {
     assert_eq!(entities.ships.get("Ship1").unwrap().read().unwrap().get_name(), "Ship1");
     assert_eq!(entities.ships.get("Ship2").unwrap().read().unwrap().get_name(), "Ship2");
     assert_eq!(entities.ships.get("Ship3").unwrap().read().unwrap().get_name(), "Ship3");
+  }
+
+  #[test_log::test]
+  fn test_rename_ship_and_planet() {
+    let _ = pretty_env_logger::try_init();
+    let mut entities = Entities::new();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
+    entities.add_ship(String::from("Ship2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), &design, None);
+    entities
+      .add_planet(
+        String::from("Star"),
+        Vec3::zero(),
+        String::from("yellow"),
+        None,
+        1.0e9,
+        2.0e30,
+        Vec::new(),
+      )
+      .unwrap();
+    entities
+      .add_planet(
+        String::from("Planet1"),
+        Vec3::new(1.0e11, 0.0, 0.0),
+        String::from("blue"),
+        Some(String::from("Star")),
+        6.4e6,
+        6.0e24,
+        Vec::new(),
+      )
+      .unwrap();
+
+    // Capture the Arc identity so we can confirm rename mutates in place
+    // rather than constructing a new entity (which would clone state).
+    let ship1_arc_before = Arc::clone(entities.ships.get("Ship1").unwrap());
+
+    // Happy path: rename Ship1 → Buccaneer.
+    entities.rename("Ship1", "Buccaneer").unwrap();
+    assert!(!entities.ships.contains_key("Ship1"), "Old key should be gone");
+    let renamed = entities.ships.get("Buccaneer").expect("New key should exist");
+    assert_eq!(renamed.read().unwrap().get_name(), "Buccaneer");
+    assert!(
+      Arc::ptr_eq(renamed, &ship1_arc_before),
+      "Should preserve Arc identity (no copy)"
+    );
+
+    // Happy path planet rename also rewrites child planet's `primary`.
+    entities.rename("Star", "Sol").unwrap();
+    assert!(!entities.planets.contains_key("Star"));
+    assert_eq!(entities.planets.get("Sol").unwrap().read().unwrap().get_name(), "Sol");
+    assert_eq!(
+      entities.planets.get("Planet1").unwrap().read().unwrap().primary.as_deref(),
+      Some("Sol")
+    );
+
+    // No-op when current == new.
+    assert!(entities.rename("Buccaneer", "Buccaneer").is_ok());
+
+    // Whitespace-only new name.
+    assert!(entities.rename("Buccaneer", "   ").is_err());
+
+    // Collision with an existing ship.
+    assert!(entities.rename("Buccaneer", "Ship2").is_err());
+
+    // Collision with an existing planet.
+    assert!(entities.rename("Ship2", "Sol").is_err());
+
+    // Missing entity.
+    assert!(entities.rename("DoesNotExist", "Anything").is_err());
   }
 
   #[test_log::test]
@@ -2717,7 +2863,7 @@ mod tests {
     // With a roll of 6 and sensor skill of 4, check should be positive
     // resulting in successful jamming
     assert_eq!(entities.missiles.len(), 1); // Only one missile should be left
-    assert_eq!(effects.len(), 14); // One message for jamming success and one for missile destruction
+    assert_eq!(effects.len(), 15); // One message for jamming success and one for missile destruction
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("destroyed by jamming")
     )));
@@ -2751,6 +2897,55 @@ mod tests {
     assert!(effects.iter().any(|e| matches!(e,
         EffectMsg::Message { content } if content.contains("jamming attempt by defender failed")
     )));
+  }
+
+  /// Same-round-impact jamming: when an attacker launches a missile at a
+  /// nearby defender close enough that the missile would impact during the
+  /// same round's `update_all`, the defender's `JamMissiles` action must
+  /// still be able to destroy it. This is the bug fixed by moving the
+  /// `JamMissiles` pass to after `fire_actions` in `Player::update`. Here
+  /// we exercise the same ordering directly on `Entities`: launch the
+  /// missile, then run the jam pass, and confirm the just-launched missile
+  /// is destroyed (and never had a chance to impact).
+  #[test_log::test]
+  fn test_jam_missiles_after_same_round_launch() {
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(5, 0); // Roll 6 → jamming succeeds with sensor 4
+
+    // Attacker and a defender with strong sensors. No specific positioning
+    // is required to exercise the bug at the Entities level — what matters
+    // is that the missile is in `self.missiles` when `jam_missiles` runs,
+    // which is exactly what happens once the jam pass moves after
+    // `fire_actions`.
+    entities.ships.insert(
+      "attacker".to_string(),
+      Arc::new(RwLock::new(create_test_ship_sensors("attacker", 0))),
+    );
+    entities.ships.insert(
+      "defender".to_string(),
+      Arc::new(RwLock::new(create_test_ship_sensors("defender", 4))),
+    );
+
+    // Mimic the post-fix round ordering: a launch (from fire_actions) followed
+    // by a jam pass (the second sensor_actions call).
+    entities.launch_missile("attacker", "defender").unwrap();
+    assert_eq!(entities.missiles.len(), 1, "Missile should be in flight after launch");
+
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
+    let boost_map = BoostMap::default();
+    let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
+
+    assert_eq!(
+      entities.missiles.len(),
+      0,
+      "Just-launched missile should be destroyed by post-fire jamming"
+    );
+    assert!(
+      effects.iter().any(|e| matches!(e,
+        EffectMsg::Message { content } if content.contains("destroyed by jamming")
+      )),
+      "Expected a 'destroyed by jamming' effect message"
+    );
   }
 
   #[test_log::test]
