@@ -31,6 +31,7 @@ import {
   Controls,
   ViewControls,
 } from "./components/controls/Controls";
+import { ShipSummary } from "./components/controls/ShipSummary";
 import {
   startWebsocket,
   resetServer,
@@ -157,7 +158,12 @@ function Simulator() {
         {(scenarioBuilderMode ||
           [ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(
             role,
-          )) && <ViewControls />}
+          )) && (
+          <div className="top-right-stack">
+            <ShipSummary />
+            <ViewControls />
+          </div>
+        )}
         <div className="admin-button-window">
           <h2>
             {joinedScenario &&

@@ -1,0 +1,40 @@
+{
+  "name": "McClellan Trader",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 160,
+  "fuel": 78,
+  "crew": 7,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 12
+}

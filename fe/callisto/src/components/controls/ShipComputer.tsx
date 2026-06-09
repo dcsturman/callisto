@@ -13,7 +13,6 @@ import {CaptainTasks} from "components/controls/CaptainTasks";
 
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
-import {setComputerShipName} from "state/uiSlice";
 import {setSensorAction} from "state/actionsSlice";
 import {computeFlightPath} from "lib/serverManager";
 
@@ -29,7 +28,6 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
   const role = useAppSelector((state) => state.user.role);
   const shipName = useAppSelector((state) => state.user.shipName);
   const proposedPlan = useAppSelector((state) => state.ui.proposedPlan);
-  const dispatch = useAppDispatch();
 
   const initNavigationTargetState = useMemo(() => {
     return {
@@ -455,16 +453,6 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
             </div>
           )}
         </>
-      )}
-      {role === ViewMode.General && !shipName && (
-        <button
-          className="control-input control-button blue-button"
-          onClick={() => {
-            computeFlightPath(null, [0, 0, 0], [0, 0, 0], null, null, 0);
-            dispatch(setComputerShipName(null));
-          }}>
-          Close
-        </button>
       )}
     </div>
   );

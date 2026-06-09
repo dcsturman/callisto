@@ -344,13 +344,54 @@ input {
     overflow: auto;
 }
 
-.view-controls-window {
+/* Container that stacks the ship-summary box above the view controls in
+   the top-right of the viewport. Both children sit inside this one fixed
+   anchor so they don't overlap and stay visually grouped. */
+.top-right-stack {
     position: fixed;
     top: 0;
     right: 0px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 12;
+}
+
+.view-controls-window {
     padding-left: 4px;
     border: 1px solid #b6bcae;
-    z-index: 12;
+}
+
+.ship-summary-window {
+    padding: 2px 6px;
+    border: 1px solid #b6bcae;
+}
+
+.ship-summary-title {
+    margin: 2px 0;
+}
+
+.ship-summary-rows {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.ship-summary-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    column-gap: 10px;
+    align-items: baseline;
+}
+
+.ship-summary-hull {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.ship-summary-thrust {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .control-form {
