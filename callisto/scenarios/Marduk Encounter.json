@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "name": "Marduk Encounter",
+    "description": "The party encounters a fat merchant!  But is it easy prey?",
+    "owner": "dcsturman@gmail.com"
+  },
+  "ships": [
+    {
+      "name": "HMS Excelsior",
+      "position": [801000000.0, 0.0, 0.0],
+      "velocity": [0.0, 0.0, 0.0],
+      "plan": [[[0.0, 0.0, 0.0], 50000]],
+      "design": "HMS Excelsior",
+      "current_hull": 80,
+      "current_armor": 4,
+      "current_power": 260,
+      "current_maneuver": 6,
+      "current_jump": 2,
+      "current_fuel": 42,
+      "current_crew": 11,
+      "current_sensors": "Advanced",
+      "current_computer": 20,
+      "active_weapons": [true, true, true],
+      "sensor_locks": [],
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "sensors": 4,
+        "gunnery": [
+          2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        "leadership": 3
+      },
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "name": "Tobia",
+      "position": [700000000.0, 0.0, 0.0],
+      "velocity": [0.0, 0.0, 0.0],
+      "plan": [[[0.0, 0.0, 0.0], 50000]],
+      "design": "McClellan Trader",
+      "current_hull": 160,
+      "current_armor": 0,
+      "current_power": 160,
+      "current_maneuver": 1,
+      "current_jump": 2,
+      "current_fuel": 78,
+      "current_crew": 7,
+      "current_sensors": "Civilian",
+      "current_computer": 10,
+      "active_weapons": [true, true, true, true],
+      "sensor_locks": [],
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 1,
+        "engineering_power": 0,
+        "engineering_maneuver": 2,
+        "sensors": 2,
+        "gunnery": [1, 1, 1, 1],
+        "leadership": 2
+      },
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  ],
+  "planets": [
+    {
+      "name": "Marduk",
+      "position": [0.0, 0.0, 0.0],
+      "velocity": [0.0, 0.0, 0.0],
+      "color": "lightblue",
+      "radius": 4000000.0,
+      "mass": 1e24,
+      "gravity_radius_025": 5217410.515671394,
+      "visual_effects": ["Continents", "AnimatedClouds"]
+    }
+  ]
+}

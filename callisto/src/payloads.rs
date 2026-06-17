@@ -369,6 +369,12 @@ pub enum RequestMsg {
   Quit,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct ScenarioLoadErrorMsg {
+  pub filename: String,
+  pub error: String,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ResponseMsg {
   AuthResponse(AuthResponse),
@@ -379,6 +385,10 @@ pub enum ResponseMsg {
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
   Scenarios(ScenariosMsg),
+  // Sent only to the owner of one or more scenario files that failed to
+  // load on the server side. Surfaced post-login so the user knows their
+  // file is broken instead of silently disappearing from the picker.
+  ScenarioLoadErrors(Vec<ScenarioLoadErrorMsg>),
   JoinedScenario(String),
   ScenarioSaved(String),
   CaptainActionResult(CaptainActionResult),
