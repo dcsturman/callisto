@@ -31,6 +31,7 @@ use google_cloud_storage::http::objects::list::ListObjectsRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use google_cloud_storage::http::Error as GcsHttpError;
 use once_cell::sync::OnceCell;
+use serde::Deserialize;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::sync::{Arc, RwLock};
@@ -38,7 +39,21 @@ use std::sync::{Arc, RwLock};
 pub type ScenarioMetadataList = Vec<(String, MetaData)>;
 type SharedScenarioMetadataList = Arc<ScenarioMetadataList>;
 
+/// A single scenario file that failed to load. Surfaced server-side to the
+/// owner (when known) so they see their broken scenario instead of silently
+/// dropping it from the picker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenarioFailure {
+  pub filename: String,
+  pub owner: String,
+  pub error: String,
+}
+
+pub type ScenarioFailureList = Vec<ScenarioFailure>;
+type SharedScenarioFailureList = Arc<ScenarioFailureList>;
+
 pub static SCENARIOS: OnceCell<RwLock<SharedScenarioMetadataList>> = OnceCell::new();
+pub static SCENARIO_FAILURES: OnceCell<RwLock<SharedScenarioFailureList>> = OnceCell::new();
 pub const LOG_FILE_USE: &str = "READ_FILE";
 pub const LOG_AUTH_RESULT: &str = "LOGIN_ATTEMPT";
 pub const LOGOUT: &str = "LOGOUT";
@@ -68,6 +83,60 @@ pub fn get_scenarios_snapshot() -> SharedScenarioMetadataList {
     .read()
     .expect("(get_scenarios_snapshot) Unable to read scenarios")
     .clone()
+}
+
+/// Replace the current global scenario-failure snapshot.
+///
+/// # Panics
+///
+/// Panics if the write lock is poisoned.
+pub fn replace_scenario_failures(failures: ScenarioFailureList) {
+  let failures = Arc::new(failures);
+  let failures_lock = SCENARIO_FAILURES.get_or_init(|| RwLock::new(failures.clone()));
+  *failures_lock
+    .write()
+    .expect("(replace_scenario_failures) Unable to update scenario failures") = failures;
+}
+
+/// Return the current global scenario-failure snapshot. Returns an empty
+/// list if the registry has not been initialized yet (e.g. before the first
+/// scenario load completes).
+///
+/// # Panics
+///
+/// Panics if the read lock is poisoned.
+#[must_use]
+pub fn get_scenario_failures_snapshot() -> SharedScenarioFailureList {
+  SCENARIO_FAILURES.get().map_or_else(
+    || Arc::new(Vec::new()),
+    |lock| {
+      lock
+        .read()
+        .expect("(get_scenario_failures_snapshot) Unable to read scenario failures")
+        .clone()
+    },
+  )
+}
+
+/// Lenient owner extraction. Used when full scenario parse fails so we can
+/// still tell which user owns the broken file. Reads only `metadata.owner`
+/// from the JSON; if even that fails (truly malformed JSON), returns an
+/// empty string. Never errors — best-effort by design.
+#[must_use]
+pub fn extract_scenario_owner(scenario_contents: &[u8]) -> String {
+  #[derive(Deserialize)]
+  struct OwnerOnly {
+    #[serde(default)]
+    metadata: MetaDataOwnerOnly,
+  }
+  #[derive(Deserialize, Default)]
+  struct MetaDataOwnerOnly {
+    #[serde(default)]
+    owner: String,
+  }
+  serde_json::from_slice::<OwnerOnly>(scenario_contents)
+    .map(|o| o.metadata.owner)
+    .unwrap_or_default()
 }
 
 fn join_dir_entry_path(dir: &str, entry: &str) -> String {
@@ -490,5 +559,44 @@ mod tests {
     // Test with a file that doesn't exist
     let result = get_file_last_modified_timestamp("nonexistent_file.txt").await;
     assert!(result.is_err());
+  }
+
+  #[test]
+  fn test_extract_scenario_owner_well_formed() {
+    let json = br#"{"metadata":{"name":"S","description":"","owner":"alice@example.com"},"ships":[]}"#;
+    assert_eq!(extract_scenario_owner(json), "alice@example.com");
+  }
+
+  #[test]
+  fn test_extract_scenario_owner_missing_owner_field() {
+    let json = br#"{"metadata":{"name":"S","description":""},"ships":[]}"#;
+    assert_eq!(extract_scenario_owner(json), "");
+  }
+
+  #[test]
+  fn test_extract_scenario_owner_missing_metadata_block() {
+    let json = br#"{"ships":[]}"#;
+    assert_eq!(extract_scenario_owner(json), "");
+  }
+
+  #[test]
+  fn test_extract_scenario_owner_malformed_json() {
+    let json = b"not even json";
+    assert_eq!(extract_scenario_owner(json), "");
+  }
+
+  #[test]
+  fn test_replace_and_get_scenario_failures() {
+    replace_scenario_failures(vec![ScenarioFailure {
+      filename: "Broken.json".to_string(),
+      owner: "alice@example.com".to_string(),
+      error: "missing design".to_string(),
+    }]);
+    let snap = get_scenario_failures_snapshot();
+    assert_eq!(snap.len(), 1);
+    assert_eq!(snap[0].filename, "Broken.json");
+
+    replace_scenario_failures(Vec::new());
+    assert_eq!(get_scenario_failures_snapshot().len(), 0);
   }
 }

@@ -220,6 +220,24 @@ impl Entities {
     Self::load_from_file_with_ship_templates(file_name, get_ship_templates_snapshot()).await
   }
 
+  /// Parse a scenario from in-memory bytes using the global ship-template
+  /// snapshot. Caller provides the path-or-basename for diagnostics and so
+  /// the loaded `Entities` can be stamped with its filename.
+  ///
+  /// Splitting this out from `load_from_file` lets the scenario watcher
+  /// salvage `metadata.owner` from a file whose full parse failed — it
+  /// reads the bytes once and tries both attempts.
+  ///
+  /// # Errors
+  /// Returns an error if the JSON cannot be parsed (e.g. an unknown
+  /// design name or malformed body) or pointer fix-up fails.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship, missile, or planet.
+  pub fn load_from_bytes(scenario_contents: &[u8], file_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    Self::parse_bytes_with_ship_templates(scenario_contents, file_name, get_ship_templates_snapshot())
+  }
+
   /// Load a scenario file using the provided ship-template snapshot.
   ///
   /// This ensures all ships deserialized from the scenario point at the same
@@ -236,8 +254,14 @@ impl Entities {
     event!(target: LOG_FILE_USE, Level::INFO, file_name, use = "Load scenario.");
 
     let scenario_contents = read_local_or_cloud_file(file_name).await?;
+    Self::parse_bytes_with_ship_templates(&scenario_contents, file_name, ship_templates)
+  }
+
+  fn parse_bytes_with_ship_templates(
+    scenario_contents: &[u8], file_name: &str, ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
+  ) -> Result<Self, Box<dyn std::error::Error>> {
     let mut entities: Entities =
-      with_ship_templates_for_deserialization(ship_templates, || serde_json::from_slice(&scenario_contents))?;
+      with_ship_templates_for_deserialization(ship_templates, || serde_json::from_slice(scenario_contents))?;
 
     // Stamp the basename of the scenario file we loaded from. `file_name` may
     // be a full path ("./scenarios/sol.json" or "gs://bucket/sol.json") — we

@@ -21,10 +21,13 @@ use dyn_clone::clone_box;
 use crate::authentication::{Authenticator, UserDirectory};
 
 use crate::entity::MetaData;
-use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenariosMsg};
+use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenarioLoadErrorMsg, ScenariosMsg};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
-use crate::{get_scenarios_snapshot, read_local_or_cloud_file, replace_scenarios, write_local_or_cloud_file};
+use crate::{
+  get_scenario_failures_snapshot, get_scenarios_snapshot, read_local_or_cloud_file, replace_scenarios,
+  write_local_or_cloud_file,
+};
 use crate::{LOGOUT, LOG_FILE_USE};
 
 #[cfg(feature = "no_tls_upgrade")]
@@ -885,11 +888,15 @@ impl Processor {
   #[allow(clippy::implicit_hasher)]
   #[must_use]
   pub fn build_successful_auth_msgs(&self, player: &PlayerManager, auth_response: AuthResponse) -> Vec<ResponseMsg> {
-    vec![
+    let mut msgs = vec![
       ResponseMsg::AuthResponse(auth_response),
       ResponseMsg::Scenarios(self.build_scenarios_msg()),
       ResponseMsg::DesignTemplateResponse(player.get_designs()),
-    ]
+    ];
+    if let Some(errors_msg) = build_scenario_load_errors_for_player(player) {
+      msgs.push(errors_msg);
+    }
+    msgs
   }
 
   /// Build the list of scenarios and scenario templates to send back to the client.
@@ -1073,6 +1080,30 @@ fn entity_clone_failure_response(err: &str) -> Vec<ResponseMsg> {
 
 fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
   result.map_or_else(error_msg, |msg| vec![ResponseMsg::SimpleMsg(msg)])
+}
+
+/// Filter the scenario-failure registry to entries the given player owns and
+/// wrap them in a `ScenarioLoadErrors` response. Returns `None` if the
+/// player has no email (cannot match an owner) or no scenarios of theirs
+/// are broken. Owner matching is case-insensitive to match how emails are
+/// normalized elsewhere in the auth flow.
+fn build_scenario_load_errors_for_player(player: &PlayerManager) -> Option<ResponseMsg> {
+  let email = player.get_email()?;
+  let email_lc = email.to_lowercase();
+  let failures = get_scenario_failures_snapshot();
+  let owned: Vec<ScenarioLoadErrorMsg> = failures
+    .iter()
+    .filter(|f| !f.owner.is_empty() && f.owner.to_lowercase() == email_lc)
+    .map(|f| ScenarioLoadErrorMsg {
+      filename: f.filename.clone(),
+      error: f.error.clone(),
+    })
+    .collect();
+  if owned.is_empty() {
+    None
+  } else {
+    Some(ResponseMsg::ScenarioLoadErrors(owned))
+  }
 }
 
 async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &ResponseMsg, context: &str) {
