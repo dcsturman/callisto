@@ -87,3 +87,26 @@ describe("Error inbound handling", () => {
     expect(alertSpy).toHaveBeenCalledWith("SCENARIO_EXISTS");
   });
 });
+
+describe("ScenarioLoadErrors inbound handling", () => {
+  async function fireMessage(payload: unknown) {
+    expect(mockSocket.onmessage).toBeTruthy();
+    mockSocket.onmessage!(
+      new MessageEvent("message", { data: JSON.stringify(payload) }),
+    );
+  }
+
+  it("stores the failure list in serverSlice", async () => {
+    const { store } = await import("state/store");
+    await fireMessage({
+      ScenarioLoadErrors: [
+        { filename: "Marduk Encounter.json", error: "missing design" },
+        { filename: "Other.json", error: "bad json" },
+      ],
+    });
+    const errors = store.getState().server.scenarioLoadErrors;
+    expect(errors).toHaveLength(2);
+    expect(errors[0].filename).toBe("Marduk Encounter.json");
+    expect(errors[1].error).toBe("bad json");
+  });
+});

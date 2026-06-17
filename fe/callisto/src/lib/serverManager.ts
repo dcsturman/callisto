@@ -18,7 +18,9 @@ import {
   setUsers,
   setScenarios,
   setAuthBanner,
+  setScenarioLoadErrors,
   AuthBanner,
+  ScenarioLoadError,
 } from "state/serverSlice";
 import { setEvents, setProposedPlan, setShowResults } from "state/uiSlice";
 import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
@@ -217,6 +219,12 @@ const handleMessage = (event: MessageEvent) => {
   if ("Scenarios" in json) {
     const response = json.Scenarios;
     handleScenarioList(response);
+    return;
+  }
+
+  if ("ScenarioLoadErrors" in json) {
+    const response: ScenarioLoadError[] = json.ScenarioLoadErrors;
+    store.dispatch(setScenarioLoadErrors(response));
     return;
   }
 

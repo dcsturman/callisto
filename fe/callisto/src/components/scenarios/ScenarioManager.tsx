@@ -8,6 +8,10 @@ import { MetaData } from "lib/entities";
 import { RootState, store, resetState } from "state/store";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { AppMode, setAppMode } from "state/tutorialSlice";
+import {
+  scenarioLoadErrorsSelector,
+  dismissScenarioLoadErrors,
+} from "state/serverSlice";
 
 const TUTORIAL_SCENARIO = "tutorial.json";
 export const TUTORIAL_PREFIX = "$TUTORIAL-";
@@ -151,6 +155,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
   const scenarioTemplates = useAppSelector(
     (state) => state.server.scenarioTemplates,
   );
+  const scenarioLoadErrors = useAppSelector(scenarioLoadErrorsSelector);
   const sortedSelector = createSelector(
     (state: RootState) => state.server.scenarioTemplates,
     (templates: [string, MetaData][]) => {
@@ -346,6 +351,29 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
       )}
       {!showScenarioIntro && (
         <>
+          {scenarioLoadErrors.length > 0 && (
+            <div className="scenario-load-errors">
+              <h2>Your scenario file(s) failed to load</h2>
+              <ul>
+                {scenarioLoadErrors.map((err) => (
+                  <li key={err.filename}>
+                    <strong>{err.filename}</strong>: {err.error}
+                  </li>
+                ))}
+              </ul>
+              <p>
+                These scenarios are not available in the picker until the
+                server can parse them. Fix the file and re-upload to clear
+                this message.
+              </p>
+              <button
+                className="blue-button"
+                onClick={() => dispatch(dismissScenarioLoadErrors())}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           <div className="authentication-container">
             {screen === "mode-select" && (
               <>

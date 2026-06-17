@@ -12,6 +12,14 @@ export type AuthBanner =
     | "REGISTRATION_FAILED"
     | "AUTH_FAILED";
 
+// One scenario file the server failed to parse. Surfaced post-login to the
+// owner so they can see (and fix) their broken scenario instead of having
+// it silently disappear from the picker.
+export interface ScenarioLoadError {
+    filename: string;
+    error: string;
+}
+
 export interface ServerState {
     authenticated: boolean;
     socketReady: boolean;
@@ -21,6 +29,7 @@ export interface ServerState {
     activeScenarios: [string, string][];
     scenarioTemplates: [string, MetaData][];
     authBanner: AuthBanner | null;
+    scenarioLoadErrors: ScenarioLoadError[];
 }
 
 const initialState: ServerState  = {
@@ -32,6 +41,7 @@ const initialState: ServerState  = {
     activeScenarios: [],
     scenarioTemplates: [],
     authBanner: null,
+    scenarioLoadErrors: [],
 }
 
 export const serverSlice = createSlice({
@@ -60,6 +70,12 @@ export const serverSlice = createSlice({
     },
     setAuthBanner: (state, action: PayloadAction<AuthBanner | null>) => {
         state.authBanner = action.payload;
+    },
+    setScenarioLoadErrors: (state, action: PayloadAction<ScenarioLoadError[]>) => {
+        state.scenarioLoadErrors = action.payload;
+    },
+    dismissScenarioLoadErrors: (state) => {
+        state.scenarioLoadErrors = [];
     }
   }
 });
@@ -67,7 +83,8 @@ export const serverSlice = createSlice({
 export const entitiesSelector = (state: { server: ServerState }) => state.server.entities;
 export const templatesSelector = (state: { server: ServerState }) => state.server.templates;
 export const authBannerSelector = (state: { server: ServerState }) => state.server.authBanner;
+export const scenarioLoadErrorsSelector = (state: { server: ServerState }) => state.server.scenarioLoadErrors;
 
-export const { setAuthenticated, setSocketReady, setEntities, setTemplates, setUsers, setScenarios, setAuthBanner } = serverSlice.actions;
+export const { setAuthenticated, setSocketReady, setEntities, setTemplates, setUsers, setScenarios, setAuthBanner, setScenarioLoadErrors, dismissScenarioLoadErrors } = serverSlice.actions;
 export type ServerReducer = ReturnType<typeof serverSlice.reducer>;
 export default serverSlice.reducer;

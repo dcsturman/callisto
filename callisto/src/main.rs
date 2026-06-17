@@ -38,7 +38,10 @@ use callisto::entity::Entities;
 use callisto::processor::{Processor, ReloadNotification};
 use callisto::ship::DEFAULT_SHIP_TEMPLATES_DIR;
 use callisto::ship::{load_ship_templates_from_dir, merge_ship_templates};
-use callisto::{get_local_or_cloud_dir_fingerprint, replace_scenarios};
+use callisto::{
+  extract_scenario_owner, get_local_or_cloud_dir_fingerprint, read_local_or_cloud_file, replace_scenario_failures,
+  replace_scenarios, ScenarioFailure,
+};
 
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
 
@@ -274,9 +277,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   // reload watcher (5s polling, fingerprint-based) is told to seed its
   // fingerprint as empty when the initial load failed, so the next poll
   // triggers a retry. This is the self-healing path.
+  //
+  // Per-file parse errors are NOT a load failure — the directory was readable,
+  // so we publish the scenarios that did load and record the failed ones in
+  // the failure registry. The reload watcher advances its fingerprint and only
+  // retries when the bucket changes. Owners of broken files see a notice on
+  // their next login.
   let initial_scenario_load_ok = match load_scenarios_and_metadata(&args.scenario_dir).await {
-    Ok(scenarios) => {
-      replace_scenarios(scenarios);
+    Ok(results) => {
+      replace_scenarios(results.scenarios);
+      replace_scenario_failures(results.failures);
       true
     }
     Err(e) => {
@@ -285,6 +295,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         args.scenario_dir, RELOAD_POLL_INTERVAL.as_secs()
       );
       replace_scenarios(Vec::new());
+      replace_scenario_failures(Vec::new());
       false
     }
   };
@@ -502,8 +513,9 @@ async fn watch_reloadable_data(
 
     if let Some(fingerprint) = scenario_reload {
       match load_scenarios_and_metadata(&scenario_dir).await {
-        Ok(scenarios) => {
-          replace_scenarios(scenarios);
+        Ok(results) => {
+          replace_scenarios(results.scenarios);
+          replace_scenario_failures(results.failures);
           last_scenario_fingerprint = fingerprint;
           event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Reloaded scenarios");
           if let Err(e) = reload_sender.unbounded_send(ReloadNotification::Scenarios) {
@@ -572,53 +584,73 @@ fn join_dir_entry_path(dir: &str, entry: &str) -> String {
   format!("{}/{entry}", dir.trim_end_matches('/'))
 }
 
-async fn load_scenarios_and_metadata(
-  scenario_dir: &str,
-) -> Result<Vec<(String, callisto::entity::MetaData)>, Box<dyn std::error::Error>> {
+/// Result of loading all scenarios in a directory.
+///
+/// Listing the directory is the only operation that can fail the whole call
+/// — a transient GCS metadata-server flake there means we can't see any
+/// files and must retry. Per-file parse errors are NOT fatal: they're
+/// collected into `failures` so the caller can publish the successful
+/// scenarios immediately and surface the broken ones to their owners. A
+/// single bad scenario must never poison the entire catalog.
+struct ScenarioLoadResults {
+  scenarios: callisto::ScenarioMetadataList,
+  failures: Vec<ScenarioFailure>,
+}
+
+async fn load_scenarios_and_metadata(scenario_dir: &str) -> Result<ScenarioLoadResults, Box<dyn std::error::Error>> {
   let scenarios_list = callisto::list_local_or_cloud_dir(scenario_dir).await?;
 
   event!(target: LOG_FILE_USE, Level::INFO, file_name = &scenario_dir, use = "Loaded scenario");
 
-  // Track per-file load outcomes so the caller can distinguish "all good" from
-  // "partial failure". Partial failure must be returned as Err so the
-  // fingerprint-based reload watcher leaves `last_scenario_fingerprint`
-  // unchanged and naturally retries on the next 5s poll. This is the
-  // self-healing path for the cold-start GCS-token-fetch stampede: a
-  // metadata-server flake at startup no longer wedges SCENARIOS as empty
-  // until the bucket happens to change.
+  // Per-file: read the bytes first so we can attempt owner extraction even
+  // when the full parse fails — the parse error usually fires deep in ship
+  // deserialization (e.g. "Could not find design X"), but `metadata.owner`
+  // sits at the top of the JSON and is almost always still readable.
   let results = join_all(scenarios_list.iter().map(async |scenario| {
     let scenario_path = join_dir_entry_path(scenario_dir, scenario);
-    let load_result = Entities::load_from_file(&scenario_path).await;
-    match load_result {
+    let bytes = match read_local_or_cloud_file(&scenario_path).await {
+      Ok(b) => b,
+      Err(e) => {
+        error!("ERROR: Failed to read scenario file '{scenario_path}': {e}");
+        return Err(ScenarioFailure {
+          filename: scenario.clone(),
+          owner: String::new(),
+          error: format!("Failed to read file: {e}"),
+        });
+      }
+    };
+    match Entities::load_from_bytes(&bytes, &scenario_path) {
       Ok(entities) => Ok((scenario.clone(), entities.metadata.clone())),
       Err(e) => {
-        error!("ERROR: Failed to parse scenario file '{}': {}", scenario_path, e);
-        Err(format!("{scenario_path}: {e}"))
+        let owner = extract_scenario_owner(&bytes);
+        error!("ERROR: Failed to parse scenario file '{scenario_path}' (owner='{owner}'): {e}");
+        Err(ScenarioFailure {
+          filename: scenario.clone(),
+          owner,
+          error: e.to_string(),
+        })
       }
     }
   }))
   .await;
 
-  let mut scenarios = Vec::with_capacity(results.len());
+  let mut scenarios = callisto::ScenarioMetadataList::with_capacity(results.len());
   let mut failures = Vec::new();
   for r in results {
     match r {
       Ok(s) => scenarios.push(s),
-      Err(msg) => failures.push(msg),
+      Err(f) => failures.push(f),
     }
   }
 
   if !failures.is_empty() {
-    return Err(
-      format!(
-        "Failed to load {} of {} scenario file(s): {}",
-        failures.len(),
-        scenarios.len() + failures.len(),
-        failures.join("; ")
-      )
-      .into(),
+    warn!(
+      "(load_scenarios_and_metadata) Loaded {} of {} scenario file(s); {} failed.",
+      scenarios.len(),
+      scenarios.len() + failures.len(),
+      failures.len()
     );
   }
 
-  Ok(scenarios)
+  Ok(ScenarioLoadResults { scenarios, failures })
 }
