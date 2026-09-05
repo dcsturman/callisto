@@ -340,6 +340,11 @@ weapon count and mount count:
 **Four did not divide evenly.** Rule applied: regroup by majority; on a tie, split into
 single-weapon turrets so no gun is invented or lost. **These four need your review:**
 
+> **SUPERSEDED 2026-09-05** — the table below records what was originally encoded and the
+> question that was asked. The user has since ruled on all four; see
+> "RESOLVED — mixed turrets and pre-existing divergences" at the end of this file for the
+> armament actually in the files today.
+
 | Design | Book | Encoded | Effect |
 |---|---|---|---|
 | Gunship - Fiery (p12) | 1x Triple (2 sand + 1 beam) | `Sand T3` | majority sand; +1 sand, -1 beam, 1 mount |
@@ -355,6 +360,10 @@ gun count here too, Hraye / Ktiyhui / Aoa'iw would change.
 
 These files came from this book but do not match it. **Not yet corrected**, pending decision:
 
+> **SUPERSEDED 2026-09-05** — all five have been ruled on; see
+> "RESOLVED — mixed turrets and pre-existing divergences" at the end of this file.
+> The table below is kept as a record of the divergences as first found.
+
 | File | Ours | Book |
 |---|---|---|
 | `star_ray_interceptor.json` | 2x Beam **Turret(3)** | "Double Turrets (beam lasers) x 2" = Turret(2) |
@@ -365,3 +374,133 @@ These files came from this book but do not match it. **Not yet corrected**, pend
 
 Note `buccaneer.json` is also the source of `impl Default for ShipDesignTemplate`
 (src/ship.rs), so correcting it should include that Default impl.
+
+---
+
+# RESOLVED — mixed turrets and pre-existing divergences (2026-09-05)
+
+The user has ruled on the eight open questions above. Both earlier tables ("These four need
+your review" and "OPEN — divergences in the five pre-existing designs") are **superseded**
+by this section; they are kept above only as a record of what was originally asked.
+
+## Mixed turrets — final armament
+
+The four Reach designs that did not regroup evenly were re-armed by user decision. The
+guiding principle is **mount count wins over gun count** (same call as Cargo Carrier - MK
+Mora), and mixed turrets are collapsed to a single weapon type rather than split.
+
+| File | Book | Now encoded as |
+|---|---|---|
+| `gunship_fiery.json` | 1x Triple (2 sand + 1 beam) | `Particle Bay(Small)`, `Particle Barbette`, `Beam T3`, `Sand T3` |
+| `scout_hraye.json` | 1x Double (1 pulse + 1 missile) | `Pulse T2` — one mount, all pulse |
+| `courier_ktiyhui.json` | 2x Double: (pulse+missile), (sand+missile) | `Missile T2`, `Pulse T2` — two mounts, no sand |
+| `light_trader_aoa_iw.json` | 2x Double beam + 1x Double (1 missile + 1 sand) | `Beam T2`, `Beam T2`, `Missile T2` |
+
+Notes:
+
+- **Gunship - Fiery** gains a full `Beam T3` alongside its `Sand T3` (previously the mixed
+  triple collapsed to sand only). Its Particle bay and barbette are unchanged.
+- **Scout - Hraye** loses its missile rack entirely; the single double turret is now all
+  pulse laser.
+- **Courier - Ktiyhui** drops the sandcaster; the two turrets are a missile double and a
+  pulse double.
+- **Light Trader - Aoa'iw** keeps its two existing beam doubles unchanged; the old
+  `Missile T1 + Sand T1` pair is replaced by a single `Missile T2`.
+
+## Pre-existing designs — final decisions
+
+| File | Decision |
+|---|---|
+| `star_ray_interceptor.json` | **Kept as-is by user choice.** Our `2x Beam Turret(3)` stands against the book's `Turret(2)`; this is a deliberate divergence, not an error to fix. |
+| `indigo_pirate_carrier.json` | `crew` **27 -> 17**, matching the book's crew box. Nothing else changed. |
+| `buccaneer.json` | Weapons now `Pulse T2`, `Pulse T2`, `Pulse T2`, `Sand T2` (3 pulse doubles + 1 sand double), matching the book's gun mix. |
+| `ekawsiykua_escort.json` | `tl` **12 -> 13**, `crew` **31 -> 35**, matching the book. |
+| `herald_fast_messenger.json` | **No change** — already matched the book exactly. |
+
+**`buccaneer.json` now diverges from `impl Default for ShipDesignTemplate` in
+`callisto/src/ship.rs` by design.** That Default impl happens to be named "Buccaneer" but is
+a synthetic test fixture used throughout `unit_tests.rs` and `entity.rs`; the user explicitly
+chose to leave it alone. Do not "fix" the two to agree — the JSON file is the ship, the
+Default impl is a fixture.
+
+---
+
+# Design metadata backfill (2026-09-05)
+
+`role` and `source` were previously carried only by the 25 "Ships of the Reach" designs.
+Both fields are now present on **all 79** designs in `ship_templates/`. Both are
+`Option<String>` in `ShipDesignTemplate`, so older files without them still load; the
+backfill just means nothing is ungrouped in the design picker any more.
+
+## `source` values
+
+| Value | Count | Which |
+|---|---|---|
+| `High Guard` | 43 | The Mongoose High Guard (April 2024) imports, plus the Core Rulebook designs that were updated to High Guard values under the "High Guard wins" ruling above |
+| `Ships of the Reach` | 15 | Includes the four pre-existing files identified as Reach designs: `buccaneer`, `herald_fast_messenger`, `indigo_pirate_carrier`, `star_ray_interceptor` |
+| `Ships of the Reach (Aslan)` | 15 | Includes `ekawsiykua_escort` |
+| `Custom` | 6 | `excelsior`, `harrier`, `gazulin`, `stretched_trader`, `threshing_oar`, `void_trader` — designs of our own, not from any book |
+
+## `role` values
+
+The existing Reach vocabulary was reused rather than extended, with two additions:
+**`Small Craft`** for non-jump-capable auxiliary craft (launches, boats, pinnaces, cutters,
+shuttles, gigs) and **`Fighter`** for fighters and the torpedo boat.
+
+Trader 12, Small Craft 10, Escort 8, Raider 6, Scout 6, Courier 5, Cruiser 4, Fighter 4,
+Liner 4, Carrier 3, Support 3, Transport 3, Warship 3, Prospector 2, Research 2, Utility 2,
+Gunship 1, Slaver 1.
+
+Judgment calls worth knowing about:
+
+- The three Custom armed ships used as pirates in `scenarios/` — `harrier` ("Killer" in
+  *First Prize* and *Tutorial*), `threshing_oar` (the Oghman raiders in *Raiders Attack*)
+  and `excelsior` (the aggressor in *Marduk Encounter*) — are all **Raider**, taken from how
+  the scenarios actually use them rather than from their names.
+- `safari_ship_type_k` and `yacht_type_y` are **Liner**: unarmed passenger carriers, and
+  the closest existing label. There is no "Yacht" or "Charter" role.
+- `system_defense_boat` and `system_defence_boat_dragon` are **Warship**, not Small Craft —
+  they are jump-0 but 200t and 400t of armed hull, well past auxiliary-craft scale.
+- `troop_transport` (50t, jump 0) is an assault shuttle, so **Small Craft** despite its name.
+- `jump_shuttle` is **Transport**, not Small Craft — it has jump 3.
+- `midu_agasham` (3,000t, jump 4, particle bay + 20 turrets) is **Cruiser**.
+- `survey_scout_donosev` is **Scout** rather than Research; `laboratory_ship_type_l` is
+  **Research**.
+
+## Verification
+
+- All 79 files parse as JSON and load as `ShipDesignTemplate`.
+- Zero designs missing `role` or `source`.
+- No duplicate `name` values across the directory.
+- `cargo test --features ci,no_tls_upgrade`: 147 unit + 24 integration + 1 doc test, all
+  passing. No test expectation needed changing — the unit tests that mention "Buccaneer"
+  use the `Default` fixture, not `buccaneer.json`.
+
+## Ktiyhui displacement corrected (book typo)
+
+`courier_ktiyhui.json` displacement **100 -> 200 tons**. The stat table prints
+"Hull 100 tons, Streamlined" but the prose on the same page reads "Using a heavily
+armoured 200-ton hull", and the component tonnages only balance at 200:
+
+| Component | Printed | At 100t | At 200t |
+|---|---|---|---|
+| Crystaliron Armour 12 | 30 t | 15 t | **30 t** |
+| M-Drive Thrust 4 | 8 t | 4 t | **8 t** |
+| J-Drive Jump 3 | 20 t | 12.5 t | **20 t** |
+
+Hull points stay at the printed 88, which is 0.44 x 200 — the *reinforced* ratio,
+consistent with "heavily armoured". At 200 tons the ship gets 2 hardpoints, so its two
+double turrets are legal; at the printed 100 tons they would not have been.
+
+## Bucket cleanup
+
+`gs://callisto-ship-templates/default_ship_templates.json` and
+`old_default_ship_templates.json` were deleted (2026-09-05). They were pre-per-file-rework
+aggregates — JSON *arrays* of 16 and 7 designs — which the loader cannot parse as a single
+`ShipDesignTemplate`, so they logged a parse error on every load and reload. Every design
+inside them already exists as an individual file in both the bucket and the repo, so
+nothing was lost. Backups: `~/callisto-bucket-backup-2026-09-05/`.
+
+**Note:** the deployed services read designs from `gs://callisto-ship-templates`, not from
+this directory, and **prod and canary share that bucket**. The 60 new designs are in git
+but NOT in the bucket, so they are not live anywhere yet.

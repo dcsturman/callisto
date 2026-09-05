@@ -11,5 +11,7 @@
   "sensors": "Military",
   "computer": 20,
   "weapons": [],
-  "tl": 12
+  "tl": 12,
+  "role": "Cruiser",
+  "source": "High Guard"
 }

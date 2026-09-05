@@ -30,5 +30,7 @@
       }
     }
   ],
-  "tl": 9
+  "tl": 9,
+  "role": "Raider",
+  "source": "Custom"
 }

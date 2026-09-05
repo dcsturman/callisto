@@ -11,5 +11,7 @@
   "sensors": "Improved",
   "computer": 10,
   "weapons": [],
-  "tl": 12
+  "tl": 12,
+  "role": "Research",
+  "source": "High Guard"
 }

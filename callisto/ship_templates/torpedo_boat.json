@@ -16,5 +16,7 @@
       "mount": "Barbette"
     }
   ],
-  "tl": 12
+  "tl": 12,
+  "role": "Fighter",
+  "source": "High Guard"
 }

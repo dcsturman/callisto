@@ -66,5 +66,7 @@
       }
     }
   ],
-  "tl": 15
+  "tl": 15,
+  "role": "Escort",
+  "source": "High Guard"
 }

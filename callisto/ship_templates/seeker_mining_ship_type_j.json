@@ -11,5 +11,7 @@
   "sensors": "Military",
   "computer": 5,
   "weapons": [],
-  "tl": 12
+  "tl": 12,
+  "role": "Prospector",
+  "source": "High Guard"
 }

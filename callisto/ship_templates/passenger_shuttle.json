@@ -11,5 +11,7 @@
   "sensors": "Civilian",
   "computer": 5,
   "weapons": [],
-  "tl": 9
+  "tl": 9,
+  "role": "Small Craft",
+  "source": "High Guard"
 }

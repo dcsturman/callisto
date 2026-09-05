@@ -26,13 +26,7 @@
     {
       "kind": "Missile",
       "mount": {
-        "Turret": 1
-      }
-    },
-    {
-      "kind": "Sand",
-      "mount": {
-        "Turret": 1
+        "Turret": 2
       }
     }
   ],

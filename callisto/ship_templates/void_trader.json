@@ -36,5 +36,7 @@
       }
     }
   ],
-  "tl": 9
+  "tl": 9,
+  "role": "Trader",
+  "source": "Custom"
 }

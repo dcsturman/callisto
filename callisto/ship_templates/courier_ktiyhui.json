@@ -1,6 +1,6 @@
 {
   "name": "Courier - Ktiyhui",
-  "displacement": 100,
+  "displacement": 200,
   "hull": 88,
   "armor": 12,
   "maneuver": 4,
@@ -20,13 +20,7 @@
     {
       "kind": "Pulse",
       "mount": {
-        "Turret": 1
-      }
-    },
-    {
-      "kind": "Sand",
-      "mount": {
-        "Turret": 1
+        "Turret": 2
       }
     }
   ],

@@ -7,7 +7,7 @@
   "jump": 2,
   "power": 135,
   "fuel": 81,
-  "crew": 27,
+  "crew": 17,
   "sensors": "Military",
   "computer": 10,
   "weapons": [
@@ -48,5 +48,7 @@
       }
     }
   ],
-  "tl": 15
+  "tl": 15,
+  "role": "Carrier",
+  "source": "Ships of the Reach"
 }

@@ -24,7 +24,7 @@
       }
     },
     {
-      "kind": "Sand",
+      "kind": "Pulse",
       "mount": {
         "Turret": 2
       }
@@ -36,5 +36,7 @@
       }
     }
   ],
-  "tl": 15
+  "tl": 15,
+  "role": "Raider",
+  "source": "Ships of the Reach"
 }

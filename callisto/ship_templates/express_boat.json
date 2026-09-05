@@ -11,5 +11,7 @@
   "sensors": "Basic",
   "computer": 15,
   "weapons": [],
-  "tl": 13
+  "tl": 13,
+  "role": "Courier",
+  "source": "High Guard"
 }

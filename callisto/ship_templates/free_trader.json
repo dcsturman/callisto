@@ -24,5 +24,7 @@
       }
     }
   ],
-  "tl": 12
+  "tl": 12,
+  "role": "Trader",
+  "source": "High Guard"
 }

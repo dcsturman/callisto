@@ -72,5 +72,7 @@
       }
     }
   ],
-  "tl": 15
+  "tl": 15,
+  "role": "Transport",
+  "source": "High Guard"
 }

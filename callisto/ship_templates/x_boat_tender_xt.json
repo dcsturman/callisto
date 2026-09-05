@@ -11,5 +11,7 @@
   "sensors": "Civilian",
   "computer": 15,
   "weapons": [],
-  "tl": 14
+  "tl": 14,
+  "role": "Support",
+  "source": "High Guard"
 }
