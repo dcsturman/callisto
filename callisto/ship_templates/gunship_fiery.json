@@ -1,0 +1,40 @@
+{
+  "name": "Gunship - Fiery",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 6,
+  "maneuver": 6,
+  "jump": 2,
+  "power": 525,
+  "fuel": 84,
+  "crew": 41,
+  "sensors": "Military",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 12,
+  "role": "Gunship",
+  "source": "Ships of the Reach"
+}

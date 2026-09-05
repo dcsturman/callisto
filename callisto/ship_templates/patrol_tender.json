@@ -1,0 +1,54 @@
+{
+  "name": "Patrol Tender",
+  "displacement": 1000,
+  "hull": 400,
+  "armor": 4,
+  "maneuver": 2,
+  "jump": 4,
+  "power": 600,
+  "fuel": 404,
+  "crew": 15,
+  "sensors": "Military",
+  "computer": 15,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Support",
+  "source": "Ships of the Reach"
+}

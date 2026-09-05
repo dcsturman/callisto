@@ -1,0 +1,36 @@
+{
+  "name": "Corsair",
+  "displacement": 600,
+  "hull": 240,
+  "armor": 0,
+  "maneuver": 3,
+  "jump": 2,
+  "power": 660,
+  "fuel": 128,
+  "crew": 16,
+  "sensors": "Military",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Raider",
+  "source": "Ships of the Reach"
+}

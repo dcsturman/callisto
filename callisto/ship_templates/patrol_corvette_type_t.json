@@ -5,8 +5,8 @@
   "armor": 4,
   "maneuver": 4,
   "jump": 3,
-  "power": 405,
-  "fuel": 124,
+  "power": 300,
+  "fuel": 122,
   "crew": 17,
   "sensors": "Military",
   "computer": 15,
@@ -36,5 +36,7 @@
       }
     }
   ],
-  "tl": 12
+  "tl": 12,
+  "role": "Escort",
+  "source": "High Guard"
 }

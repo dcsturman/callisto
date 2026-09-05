@@ -1,0 +1,22 @@
+{
+  "name": "Torpedo Boat",
+  "displacement": 70,
+  "hull": 30,
+  "armor": 12,
+  "maneuver": 6,
+  "jump": 0,
+  "power": 66,
+  "fuel": 1,
+  "crew": 2,
+  "sensors": "Improved",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Missile",
+      "mount": "Barbette"
+    }
+  ],
+  "tl": 12,
+  "role": "Fighter",
+  "source": "High Guard"
+}

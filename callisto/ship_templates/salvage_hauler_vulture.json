@@ -1,0 +1,24 @@
+{
+  "name": "Salvage Hauler - Vulture",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 135,
+  "fuel": 82,
+  "crew": 5,
+  "sensors": "Civilian",
+  "computer": 5,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Utility",
+  "source": "Ships of the Reach"
+}

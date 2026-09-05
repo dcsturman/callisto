@@ -1,0 +1,17 @@
+{
+  "name": "Laboratory Ship - Type L",
+  "displacement": 360,
+  "hull": 160,
+  "armor": 0,
+  "maneuver": 2,
+  "jump": 2,
+  "power": 180,
+  "fuel": 82,
+  "crew": 2,
+  "sensors": "Improved",
+  "computer": 10,
+  "weapons": [],
+  "tl": 12,
+  "role": "Research",
+  "source": "High Guard"
+}

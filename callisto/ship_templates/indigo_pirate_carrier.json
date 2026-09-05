@@ -7,46 +7,30 @@
   "jump": 2,
   "power": 135,
   "fuel": 81,
-  "crew": 27,
+  "crew": 17,
   "sensors": "Military",
   "computer": 10,
   "weapons": [
     {
       "kind": "Beam",
       "mount": {
-        "Turret": 2
-      }
-    },
-    {
-      "kind": "Missile",
-      "mount": {
-        "Turret": 1
+        "Turret": 3
       }
     },
     {
       "kind": "Beam",
       "mount": {
-        "Turret": 2
+        "Turret": 3
       }
     },
     {
       "kind": "Missile",
       "mount": {
-        "Turret": 1
-      }
-    },
-    {
-      "kind": "Beam",
-      "mount": {
-        "Turret": 2
-      }
-    },
-    {
-      "kind": "Missile",
-      "mount": {
-        "Turret": 1
+        "Turret": 3
       }
     }
   ],
-  "tl": 15
+  "tl": 15,
+  "role": "Carrier",
+  "source": "Ships of the Reach"
 }

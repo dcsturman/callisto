@@ -1,0 +1,17 @@
+{
+  "name": "Mercenary Cruiser - Type C",
+  "displacement": 800,
+  "hull": 320,
+  "armor": 3,
+  "maneuver": 3,
+  "jump": 3,
+  "power": 540,
+  "fuel": 250,
+  "crew": 12,
+  "sensors": "Military",
+  "computer": 20,
+  "weapons": [],
+  "tl": 12,
+  "role": "Cruiser",
+  "source": "High Guard"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Fast Trader - Type A3",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 2,
+  "maneuver": 4,
+  "jump": 2,
+  "power": 135,
+  "fuel": 41,
+  "crew": 5,
+  "sensors": "Civilian",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12,
+  "role": "Trader",
+  "source": "Ships of the Reach"
+}

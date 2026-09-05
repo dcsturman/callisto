@@ -1,0 +1,36 @@
+{
+  "name": "Corsair - Type P",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 5,
+  "maneuver": 3,
+  "jump": 2,
+  "power": 230,
+  "fuel": 82,
+  "crew": 11,
+  "sensors": "Advanced",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Raider",
+  "source": "High Guard"
+}

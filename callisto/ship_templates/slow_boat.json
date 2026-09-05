@@ -1,0 +1,17 @@
+{
+  "name": "Slow Boat",
+  "displacement": 30,
+  "hull": 12,
+  "armor": 0,
+  "maneuver": 3,
+  "jump": 0,
+  "power": 15,
+  "fuel": 1,
+  "crew": 1,
+  "sensors": "Basic",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12,
+  "role": "Small Craft",
+  "source": "High Guard"
+}

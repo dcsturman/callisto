@@ -1,0 +1,25 @@
+{
+  "name": "Ultralight Fighter",
+  "displacement": 6,
+  "hull": 2,
+  "armor": 3,
+  "maneuver": 6,
+  "jump": 0,
+  "power": 15,
+  "fuel": 1,
+  "crew": 1,
+  "sensors": "Civilian",
+  "stealth": "Improved",
+  "computer": 5,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 12,
+  "role": "Fighter",
+  "source": "High Guard"
+}

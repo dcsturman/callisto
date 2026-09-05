@@ -1,0 +1,44 @@
+{
+  "name": "Colonial Cruiser - Kinunir",
+  "displacement": 1200,
+  "hull": 528,
+  "armor": 4,
+  "maneuver": 4,
+  "jump": 4,
+  "power": 1400,
+  "fuel": 463,
+  "crew": 55,
+  "sensors": "Advanced",
+  "computer": 35,
+  "weapons": [
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Cruiser",
+  "source": "High Guard"
+}

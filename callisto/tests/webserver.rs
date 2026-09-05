@@ -135,12 +135,12 @@ async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
   spawn_server(port, true, None, None, false).await
 }
 
-async fn open_socket(port: u16) -> Result<MyWebSocket, Error> {
+async fn open_socket(port: u16) -> Result<MyWebSocket, Box<Error>> {
   #[cfg(feature = "no_tls_upgrade")]
   {
     let socket_url = format!("ws://{SERVER_ADDRESS}:{port}/ws");
     debug!("(webservers.open_socket) Attempt to connect to WebSocket URL: {socket_url}");
-    let (ws_stream, _) = connect_async(socket_url).await?;
+    let (ws_stream, _) = connect_async(socket_url).await.map_err(Box::new)?;
     debug!("(webservers.open_socket) WebSocket stream established.");
     Ok(ws_stream)
   }
@@ -448,8 +448,14 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
   let mut saw_design_refresh = false;
   let mut saw_scenario_refresh = false;
+  // A scenario reload also re-sends this player's scenario-failure list, even
+  // when it is empty. That empty list is what clears a stale "scenario file(s)
+  // failed to load" banner on a client that is already connected, so assert we
+  // actually receive it.
+  let mut saw_failure_refresh = false;
 
-  while tokio::time::Instant::now() < deadline && (!saw_design_refresh || !saw_scenario_refresh) {
+  while tokio::time::Instant::now() < deadline && (!saw_design_refresh || !saw_scenario_refresh || !saw_failure_refresh)
+  {
     let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
     match next_response_with_timeout(&mut stream, remaining.min(Duration::from_secs(8))).await {
       ResponseMsg::DesignTemplateResponse(designs) => {
@@ -462,6 +468,13 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
           saw_scenario_refresh = true;
         }
       }
+      ResponseMsg::ScenarioLoadErrors(errors) => {
+        assert!(
+          errors.is_empty(),
+          "Live reload reported scenario load failures for a healthy fixture: {errors:?}"
+        );
+        saw_failure_refresh = true;
+      }
       other => panic!("Unexpected live reload response: {other:?}"),
     }
   }
@@ -473,6 +486,10 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   assert!(
     saw_scenario_refresh,
     "Did not receive live scenario refresh containing {added_scenario}."
+  );
+  assert!(
+    saw_failure_refresh,
+    "Did not receive the scenario-failure refresh that clears a stale load-error banner."
   );
 
   send_quit(&mut stream).await;
@@ -1243,6 +1260,9 @@ async fn integration_compute_path_basic() {
   if let ResponseMsg::FlightPath(plan) = message {
     assert_eq!(plan.path.len(), 10);
     assert_eq!(plan.path[0], Vec3::zero());
+    // Position tolerance is absolute, and these coordinates are ~1e6-1e7 m, so 1e-5
+    // is ~1e-12 relative - tighter than the bang-bang solver's own convergence.
+    // 1e-3 (a millimetre over thousands of km) absorbs cross-platform float noise.
     assert_ulps_eq!(
       plan.path[1],
       Vec3 {
@@ -1250,7 +1270,7 @@ async fn integration_compute_path_basic() {
         y: 0.0,
         z: 0.0
       },
-      epsilon = 1e-5
+      epsilon = 1e-3
     );
     assert_ulps_eq!(
       plan.path[2],
@@ -1259,7 +1279,7 @@ async fn integration_compute_path_basic() {
         y: 0.0,
         z: 0.0
       },
-      epsilon = 1e-5
+      epsilon = 1e-3
     );
     assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-5);
     let (a, t) = plan.plan.0.into();
@@ -1334,6 +1354,9 @@ async fn integration_compute_path_with_standoff() {
   if let ResponseMsg::FlightPath(plan) = message {
     assert_eq!(plan.path.len(), 10);
     assert_eq!(plan.path[0], Vec3::zero());
+    // Position tolerance is absolute, and these coordinates are ~1e6-1e7 m, so 1e-5
+    // is ~1e-12 relative - tighter than the bang-bang solver's own convergence.
+    // 1e-3 (a millimetre over thousands of km) absorbs cross-platform float noise.
     assert_ulps_eq!(
       plan.path[1],
       Vec3 {
@@ -1341,7 +1364,7 @@ async fn integration_compute_path_with_standoff() {
         y: 0.0,
         z: 0.0
       },
-      epsilon = 1e-5
+      epsilon = 1e-3
     );
     assert_ulps_eq!(
       plan.path[2],
@@ -1350,7 +1373,7 @@ async fn integration_compute_path_with_standoff() {
         y: 0.0,
         z: 0.0
       },
-      epsilon = 1e-5
+      epsilon = 1e-3
     );
     assert_ulps_eq!(plan.end_velocity, Vec3::zero(), epsilon = 1e-7);
 

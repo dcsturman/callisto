@@ -1,0 +1,17 @@
+{
+  "name": "Subsidised Liner - Type M",
+  "displacement": 600,
+  "hull": 240,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 3,
+  "power": 360,
+  "fuel": 183,
+  "crew": 20,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [],
+  "tl": 12,
+  "role": "Liner",
+  "source": "High Guard"
+}

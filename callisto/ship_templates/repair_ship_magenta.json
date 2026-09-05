@@ -1,0 +1,24 @@
+{
+  "name": "Repair Ship - Magenta",
+  "displacement": 700,
+  "hull": 280,
+  "armor": 1,
+  "maneuver": 1,
+  "jump": 3,
+  "power": 240,
+  "fuel": 216,
+  "crew": 13,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 12,
+  "role": "Utility",
+  "source": "Ships of the Reach"
+}

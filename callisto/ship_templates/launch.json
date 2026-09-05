@@ -1,0 +1,17 @@
+{
+  "name": "Launch",
+  "displacement": 20,
+  "hull": 8,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 0,
+  "power": 10,
+  "fuel": 1,
+  "crew": 1,
+  "sensors": "Basic",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12,
+  "role": "Small Craft",
+  "source": "High Guard"
+}

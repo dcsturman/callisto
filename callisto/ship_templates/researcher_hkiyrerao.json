@@ -1,0 +1,17 @@
+{
+  "name": "Researcher - Hkiyrerao",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 3,
+  "power": 240,
+  "fuel": 128,
+  "crew": 6,
+  "sensors": "Improved",
+  "computer": 25,
+  "weapons": [],
+  "tl": 14,
+  "role": "Research",
+  "source": "Ships of the Reach (Aslan)"
+}

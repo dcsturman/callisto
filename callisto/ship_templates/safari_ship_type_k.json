@@ -1,0 +1,17 @@
+{
+  "name": "Safari Ship - Type K",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 105,
+  "fuel": 41,
+  "crew": 5,
+  "sensors": "Civilian",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12,
+  "role": "Liner",
+  "source": "High Guard"
+}

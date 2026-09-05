@@ -1,0 +1,71 @@
+{
+  "name": "Destroyer Escort - Fer-de-Lance",
+  "displacement": 1000,
+  "hull": 440,
+  "armor": 2,
+  "maneuver": 6,
+  "jump": 4,
+  "power": 1000,
+  "fuel": 370,
+  "crew": 47,
+  "sensors": "Advanced",
+  "countermeasures": "Standard",
+  "computer": 35,
+  "weapons": [
+    {
+      "kind": "Missile",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Missile",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Missile",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Missile",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Escort",
+  "source": "High Guard"
+}

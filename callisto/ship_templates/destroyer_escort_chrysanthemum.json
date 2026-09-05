@@ -1,0 +1,72 @@
+{
+  "name": "Destroyer Escort - Chrysanthemum",
+  "displacement": 1000,
+  "hull": 440,
+  "armor": 2,
+  "maneuver": 6,
+  "jump": 4,
+  "power": 1280,
+  "fuel": 414,
+  "crew": 45,
+  "sensors": "Advanced",
+  "computer": 35,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Escort",
+  "source": "High Guard"
+}

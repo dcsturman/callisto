@@ -1,0 +1,17 @@
+{
+  "name": "Yacht - Type Y",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 1,
+  "power": 90,
+  "fuel": 22,
+  "crew": 5,
+  "sensors": "Civilian",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12,
+  "role": "Liner",
+  "source": "High Guard"
+}

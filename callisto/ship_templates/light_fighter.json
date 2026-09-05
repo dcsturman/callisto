@@ -8,8 +8,8 @@
   "power": 15,
   "fuel": 1,
   "crew": 1,
-  "sensors": "Military",
-  "computer": 10,
+  "sensors": "Improved",
+  "computer": 5,
   "weapons": [
     {
       "kind": "Pulse",
@@ -18,5 +18,7 @@
       }
     }
   ],
-  "tl": 12
+  "tl": 12,
+  "role": "Fighter",
+  "source": "High Guard"
 }

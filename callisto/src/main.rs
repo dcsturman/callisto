@@ -48,6 +48,25 @@ const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
 const MAX_CHANNEL_DEPTH: usize = 10;
 const RELOAD_POLL_INTERVAL: Duration = Duration::from_secs(5);
 
+/// How many times a startup load from the scenario/design directory is
+/// attempted before falling back to serving an empty registry.
+const STARTUP_LOAD_ATTEMPTS: u32 = 5;
+
+/// Delay before the second startup-load attempt. Doubles each retry, so five
+/// attempts span roughly 3.75s of backoff in the worst case.
+const STARTUP_LOAD_BACKOFF: Duration = Duration::from_millis(250);
+
+/// Cap on a single startup-load attempt.
+///
+/// The failure this retries is not always a fast refusal: a cold-start GCS read
+/// can hang. Canary was observed taking about four minutes per attempt, which
+/// would let five attempts stall startup for twenty minutes. That matters
+/// because the listener is bound before these loads run but does not accept
+/// until after them, so Cloud Run routes traffic to an instance that answers
+/// nothing. Timing out each attempt bounds the whole sequence to roughly a
+/// minute, after which the caller's soft-fail path starts serving.
+const STARTUP_LOAD_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Server to implement physically pseudo-realistic spaceflight and possibly combat.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -246,7 +265,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   // failed. Per-file parse errors inside `load_ship_templates_from_dir`
   // are already swallowed and logged; the only error path here is the
   // listing itself failing.
-  let initial_design_load_ok = match load_ship_templates_from_dir(&args.design_dir).await {
+  let initial_design_load_ok = match retry_startup_load("ship templates", || {
+    Box::pin(load_ship_templates_from_dir(&args.design_dir))
+  })
+  .await
+  {
     Ok(templates) => {
       let count = templates.len();
       merge_ship_templates(templates);
@@ -283,7 +306,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   // the failure registry. The reload watcher advances its fingerprint and only
   // retries when the bucket changes. Owners of broken files see a notice on
   // their next login.
-  let initial_scenario_load_ok = match load_scenarios_and_metadata(&args.scenario_dir).await {
+  let initial_scenario_load_ok = match retry_startup_load("scenarios", || {
+    Box::pin(load_scenarios_and_metadata(&args.scenario_dir))
+  })
+  .await
+  {
     Ok(results) => {
       replace_scenarios(results.scenarios);
       replace_scenario_failures(results.failures);
@@ -484,6 +511,18 @@ async fn watch_reloadable_data(
           let count = templates.len();
           merge_ship_templates(templates);
           last_design_fingerprint = fingerprint;
+          // Scenario parsing resolves every ship's `design` field against the
+          // template registry, so any scenario parsed while that registry was
+          // empty or incomplete failed with "Could not find design" and is now
+          // cached as a failure. Because scenario reloads are gated on the
+          // *scenario* directory fingerprint, those stale failures would
+          // otherwise persist until someone touched the scenario bucket - which
+          // is exactly what happens after a cold-start GCS auth flake leaves an
+          // instance with an empty registry. Clearing the scenario fingerprint
+          // forces a re-parse further down this same loop iteration, so the
+          // scenarios recover as soon as the designs do. This also covers the
+          // ordinary case of uploading a design a scenario was waiting on.
+          last_scenario_fingerprint = Vec::new();
           event!(
             target: LOG_FILE_USE,
             Level::INFO,
@@ -597,6 +636,65 @@ struct ScenarioLoadResults {
   failures: Vec<ScenarioFailure>,
 }
 
+/// Boxed future returned by a startup loader. Boxing keeps
+/// [`retry_startup_load`] usable with closures that borrow their directory
+/// argument, which a bare `impl Fn() -> impl Future` bound cannot express.
+type StartupLoadFuture<'a, T> =
+  std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, Box<dyn std::error::Error>>> + 'a>>;
+
+/// Run a startup load, retrying a bounded number of times with exponential
+/// backoff before letting the caller fall back to its soft-fail path.
+///
+/// A cold-starting Cloud Run instance is sometimes refused a token by the
+/// metadata server at 169.254.169.254, which fails the initial GCS read. The
+/// instance then goes live with an empty registry: every scenario fails to
+/// parse with "Could not find design" until the reload watcher heals it up to
+/// `RELOAD_POLL_INTERVAL` later. The metadata server is normally ready within
+/// a second or two, so retrying here closes that window rather than merely
+/// recovering from it.
+///
+/// Each attempt is capped at [`STARTUP_LOAD_ATTEMPT_TIMEOUT`], because the
+/// failure mode is often a hang rather than a refusal.
+///
+/// This deliberately does NOT replace the caller's soft-fail: if every attempt
+/// fails the error is returned and the caller still starts with an empty
+/// registry and self-heals, so a genuine GCS outage cannot wedge the instance.
+/// On the happy path the first attempt succeeds and nothing is added.
+async fn retry_startup_load<'a, T>(
+  what: &str, mut load: impl FnMut() -> StartupLoadFuture<'a, T>,
+) -> Result<T, Box<dyn std::error::Error>> {
+  let mut backoff = STARTUP_LOAD_BACKOFF;
+  let mut last_err = None;
+  for attempt in 1..=STARTUP_LOAD_ATTEMPTS {
+    // Bound each attempt: a hung read is indistinguishable from a slow one, and
+    // without this a stalled GCS call blocks startup for minutes at a time.
+    let outcome = match tokio::time::timeout(STARTUP_LOAD_ATTEMPT_TIMEOUT, load()).await {
+      Ok(result) => result,
+      Err(_) => Err(format!("attempt exceeded {}s", STARTUP_LOAD_ATTEMPT_TIMEOUT.as_secs()).into()),
+    };
+    match outcome {
+      Ok(value) => {
+        if attempt > 1 {
+          warn!("(main) Startup load of {what} succeeded on attempt {attempt}.");
+        }
+        return Ok(value);
+      }
+      Err(e) => {
+        if attempt < STARTUP_LOAD_ATTEMPTS {
+          warn!(
+            "(main) Startup load of {what} failed on attempt {attempt}/{STARTUP_LOAD_ATTEMPTS}: {e}. Retrying in {}ms.",
+            backoff.as_millis()
+          );
+          tokio::time::sleep(backoff).await;
+          backoff *= 2;
+        }
+        last_err = Some(e);
+      }
+    }
+  }
+  Err(last_err.unwrap_or_else(|| "no attempts made".into()))
+}
+
 async fn load_scenarios_and_metadata(scenario_dir: &str) -> Result<ScenarioLoadResults, Box<dyn std::error::Error>> {
   let scenarios_list = callisto::list_local_or_cloud_dir(scenario_dir).await?;
 
@@ -653,4 +751,93 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) -> Result<ScenarioLoadR
   }
 
   Ok(ScenarioLoadResults { scenarios, failures })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{retry_startup_load, STARTUP_LOAD_ATTEMPTS, STARTUP_LOAD_ATTEMPT_TIMEOUT};
+  use std::cell::Cell;
+
+  /// The happy path must not retry or sleep: one call, one success.
+  #[tokio::test(start_paused = true)]
+  async fn retry_startup_load_succeeds_first_try() {
+    let calls = Cell::new(0);
+    let result: Result<u32, _> = retry_startup_load("test", || {
+      calls.set(calls.get() + 1);
+      Box::pin(async { Ok(7) })
+    })
+    .await;
+    assert_eq!(result.unwrap(), 7);
+    assert_eq!(calls.get(), 1, "Happy path must not retry");
+  }
+
+  /// The case this exists for: the metadata server refuses a token for the
+  /// first moment of a cold start, then recovers.
+  #[tokio::test(start_paused = true)]
+  async fn retry_startup_load_recovers_after_transient_failures() {
+    let calls = Cell::new(0);
+    let result: Result<u32, _> = retry_startup_load("test", || {
+      calls.set(calls.get() + 1);
+      let n = calls.get();
+      Box::pin(async move {
+        if n < 3 {
+          Err("metadata server not ready".into())
+        } else {
+          Ok(42)
+        }
+      })
+    })
+    .await;
+    assert_eq!(result.unwrap(), 42);
+    assert_eq!(calls.get(), 3, "Should stop retrying once it succeeds");
+  }
+
+  /// A hung load must be abandoned rather than waited on. This is the case
+  /// that motivated the per-attempt timeout: canary was seen spending about
+  /// four minutes inside a single GCS read, which would stall startup for
+  /// twenty minutes across five attempts.
+  #[tokio::test(start_paused = true)]
+  async fn retry_startup_load_times_out_a_hung_attempt() {
+    let calls = Cell::new(0);
+    let start = tokio::time::Instant::now();
+    let result: Result<u32, _> = retry_startup_load("test", || {
+      calls.set(calls.get() + 1);
+      let n = calls.get();
+      Box::pin(async move {
+        if n == 1 {
+          // Hangs far longer than the per-attempt cap.
+          tokio::time::sleep(STARTUP_LOAD_ATTEMPT_TIMEOUT * 100).await;
+          Ok(0)
+        } else {
+          Ok(99)
+        }
+      })
+    })
+    .await;
+    assert_eq!(result.unwrap(), 99, "Should abandon the hung attempt and retry");
+    assert_eq!(calls.get(), 2);
+    assert!(
+      start.elapsed() < STARTUP_LOAD_ATTEMPT_TIMEOUT * 2,
+      "Gave up on the hung attempt too late: {:?}",
+      start.elapsed()
+    );
+  }
+
+  /// A real outage must still give up so the caller can fall back to its
+  /// soft-fail path rather than blocking startup forever.
+  #[tokio::test(start_paused = true)]
+  async fn retry_startup_load_gives_up_and_returns_error() {
+    let calls = Cell::new(0);
+    let result: Result<u32, _> = retry_startup_load("test", || {
+      calls.set(calls.get() + 1);
+      Box::pin(async { Err("gcs down".into()) })
+    })
+    .await;
+    assert!(result.is_err(), "Persistent failure must surface as an error");
+    assert_eq!(
+      calls.get(),
+      i32::try_from(STARTUP_LOAD_ATTEMPTS).unwrap(),
+      "Should make exactly STARTUP_LOAD_ATTEMPTS attempts"
+    );
+  }
 }

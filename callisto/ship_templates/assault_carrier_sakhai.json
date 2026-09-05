@@ -1,0 +1,114 @@
+{
+  "name": "Assault Carrier - Sakhai",
+  "displacement": 2000,
+  "hull": 880,
+  "armor": 8,
+  "maneuver": 3,
+  "jump": 3,
+  "power": 1500,
+  "fuel": 610,
+  "crew": 189,
+  "sensors": "Improved",
+  "computer": 25,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": {
+        "Bay": "Medium"
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 12,
+  "role": "Carrier",
+  "source": "Ships of the Reach (Aslan)"
+}

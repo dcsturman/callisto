@@ -1,0 +1,17 @@
+{
+  "name": "Express Boat",
+  "displacement": 100,
+  "hull": 40,
+  "armor": 0,
+  "maneuver": 0,
+  "jump": 4,
+  "power": 20,
+  "fuel": 41,
+  "crew": 1,
+  "sensors": "Basic",
+  "computer": 15,
+  "weapons": [],
+  "tl": 13,
+  "role": "Courier",
+  "source": "High Guard"
+}

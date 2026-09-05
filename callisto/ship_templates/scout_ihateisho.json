@@ -1,0 +1,24 @@
+{
+  "name": "Scout - Ihateisho",
+  "displacement": 100,
+  "hull": 40,
+  "armor": 0,
+  "maneuver": 2,
+  "jump": 4,
+  "power": 60,
+  "fuel": 43,
+  "crew": 3,
+  "sensors": "Military",
+  "computer": 15,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 13,
+  "role": "Scout",
+  "source": "Ships of the Reach (Aslan)"
+}

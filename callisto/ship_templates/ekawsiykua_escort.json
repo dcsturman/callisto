@@ -7,7 +7,7 @@
   "jump": 4,
   "power": 540,
   "fuel": 324,
-  "crew": 31,
+  "crew": 35,
   "sensors": "Improved",
   "computer": 20,
   "weapons": [
@@ -60,5 +60,7 @@
       }
     }
   ],
-  "tl": 12
+  "tl": 13,
+  "role": "Escort",
+  "source": "Ships of the Reach (Aslan)"
 }

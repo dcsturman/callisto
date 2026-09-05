@@ -1,0 +1,17 @@
+{
+  "name": "Pinnace",
+  "displacement": 40,
+  "hull": 16,
+  "armor": 0,
+  "maneuver": 5,
+  "jump": 0,
+  "power": 30,
+  "fuel": 1,
+  "crew": 1,
+  "sensors": "Basic",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12,
+  "role": "Small Craft",
+  "source": "High Guard"
+}

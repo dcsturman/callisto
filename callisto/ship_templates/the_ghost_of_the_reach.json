@@ -1,0 +1,43 @@
+{
+  "name": "The Ghost of the Reach",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 6,
+  "maneuver": 3,
+  "jump": 3,
+  "power": 360,
+  "fuel": 123,
+  "crew": 17,
+  "sensors": "Advanced",
+  "stealth": "Advanced",
+  "computer": 15,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Scout",
+  "source": "Ships of the Reach"
+}

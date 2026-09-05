@@ -1,0 +1,31 @@
+{
+  "name": "Troop Transport",
+  "displacement": 50,
+  "hull": 22,
+  "armor": 5,
+  "maneuver": 9,
+  "jump": 0,
+  "power": 60,
+  "fuel": 1,
+  "crew": 2,
+  "sensors": "Improved",
+  "stealth": "Improved",
+  "computer": 25,
+  "weapons": [
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Small Craft",
+  "source": "High Guard"
+}
