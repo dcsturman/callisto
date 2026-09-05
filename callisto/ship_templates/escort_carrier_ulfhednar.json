@@ -1,0 +1,79 @@
+{
+  "name": "Escort Carrier - Ulfhednar",
+  "displacement": 2000,
+  "hull": 800,
+  "armor": 4,
+  "maneuver": 4,
+  "jump": 4,
+  "power": 2205,
+  "fuel": 825,
+  "crew": 47,
+  "sensors": "Improved",
+  "countermeasures": "Standard",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 13,
+  "role": "Carrier",
+  "source": "Ships of the Reach"
+}

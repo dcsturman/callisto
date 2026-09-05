@@ -1,40 +1,40 @@
 {
-  "name": "Patrol Corvette - Type T",
+  "name": "Fleet Courier",
   "displacement": 400,
   "hull": 160,
-  "armor": 4,
-  "maneuver": 4,
-  "jump": 3,
-  "power": 300,
-  "fuel": 122,
-  "crew": 17,
-  "sensors": "Military",
-  "computer": 15,
+  "armor": 0,
+  "maneuver": 5,
+  "jump": 5,
+  "power": 380,
+  "fuel": 230,
+  "crew": 8,
+  "sensors": "Advanced",
+  "computer": 30,
   "weapons": [
     {
-      "kind": "Pulse",
+      "kind": "Beam",
       "mount": {
         "Turret": 3
       }
     },
     {
-      "kind": "Pulse",
+      "kind": "Beam",
       "mount": {
         "Turret": 3
       }
     },
     {
-      "kind": "Missile",
+      "kind": "Sand",
       "mount": {
         "Turret": 3
       }
     },
     {
-      "kind": "Missile",
+      "kind": "Sand",
       "mount": {
         "Turret": 3
       }
     }
   ],
-  "tl": 12
+  "tl": 15
 }

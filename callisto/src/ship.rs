@@ -311,6 +311,12 @@ pub struct ShipDesignTemplate {
   pub computer: u32,
   pub weapons: Vec<Weapon>,
   pub tl: u8,
+  /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
+  /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
+  pub role: Option<String>,
+  /// Where the design came from, e.g. "High Guard", "Ships of the Reach".
+  /// Used as a secondary grouping and shown in the design tooltip.
+  pub source: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -947,6 +953,31 @@ pub async fn load_ship_templates_from_dir(
   Ok(table)
 }
 
+/// Test support: serializes access to the process-wide `SHIP_TEMPLATES`
+/// registry.
+///
+/// `config_test_ship_templates` replaces that registry wholesale, so a test
+/// that installs a registry of its own and then asserts on it can have its
+/// entries wiped by any other test re-seeding the registry concurrently. Such
+/// a test holds this lock for its whole body (acquiring it with
+/// `lock_ship_templates_for_test` and re-seeding via
+/// `config_test_ship_templates_locked`); the ordinary re-seeding path only
+/// takes it around its own write, which is enough to keep it out of the
+/// exclusive window.
+///
+/// This is a `tokio::sync::Mutex` rather than a `std::sync::Mutex` both
+/// because holders await while holding it and because it has no poisoning: a
+/// test that panics releases the lock cleanly instead of cascading "poisoned
+/// lock" failures across the rest of the suite.
+static SHIP_TEMPLATE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Take exclusive ownership of the global ship-template registry for the
+/// duration of a test. Hold the returned guard for as long as the test depends
+/// on the contents it installs. See [`SHIP_TEMPLATE_TEST_LOCK`].
+pub async fn lock_ship_templates_for_test() -> tokio::sync::MutexGuard<'static, ()> {
+  SHIP_TEMPLATE_TEST_LOCK.lock().await
+}
+
 /// Helper method that loads ship templates from the default templates
 /// directory. Used by tests to seed the global registry from a known
 /// good fixture.
@@ -955,10 +986,26 @@ pub async fn load_ship_templates_from_dir(
 ///
 /// If the directory cannot be listed.
 pub async fn config_test_ship_templates() {
-  let templates = load_ship_templates_from_dir(DEFAULT_SHIP_TEMPLATES_DIR)
-    .await
-    .expect("Unable to load ship templates directory.");
+  let templates = load_test_ship_templates().await;
+  let _lock = SHIP_TEMPLATE_TEST_LOCK.lock().await;
   replace_ship_templates(templates);
+}
+
+/// Same as [`config_test_ship_templates`], for callers that already hold the
+/// guard from [`lock_ship_templates_for_test`]. The lock is not reentrant, so
+/// those callers must not take it a second time.
+///
+/// # Panics
+///
+/// If the directory cannot be listed.
+pub async fn config_test_ship_templates_locked(_lock: &tokio::sync::MutexGuard<'static, ()>) {
+  replace_ship_templates(load_test_ship_templates().await);
+}
+
+async fn load_test_ship_templates() -> ShipTemplateTable {
+  load_ship_templates_from_dir(DEFAULT_SHIP_TEMPLATES_DIR)
+    .await
+    .expect("Unable to load ship templates directory.")
 }
 
 impl ShipDesignTemplate {
@@ -1390,6 +1437,8 @@ impl Default for ShipDesignTemplate {
         },
       ],
       tl: 15,
+      role: None,
+      source: None,
     }
   }
 }
@@ -1544,7 +1593,11 @@ mod tests {
 
   #[test_log::test(tokio::test)]
   async fn test_replacing_global_templates_does_not_mutate_existing_ship_designs() {
-    config_test_ship_templates().await;
+    // Held for the whole test: it installs its own global registry and asserts
+    // on it further down, so no other test may re-seed SHIP_TEMPLATES in the
+    // meantime. Declared before the restore guard so the guard runs first.
+    let templates_lock = lock_ship_templates_for_test().await;
+    config_test_ship_templates_locked(&templates_lock).await;
 
     let previous_templates = get_ship_templates_snapshot();
     let _restore_guard = ShipTemplateRestoreGuard(previous_templates.as_ref().clone());
@@ -1565,6 +1618,8 @@ mod tests {
       computer: 1,
       weapons: vec![],
       tl: 10,
+      role: None,
+      source: None,
     });
     let mut templates = previous_templates.as_ref().clone();
     templates.insert("Test Design".to_string(), original_template.clone());
@@ -1882,7 +1937,7 @@ mod tests {
     assert!(ship2 > ship1);
     assert!(ship1 <= ship2);
     assert!(ship2 >= ship1);
-    assert!(ship1 != ship2);
+    assert_ne!(ship1, ship2);
   }
 
   #[test_log::test]
@@ -2147,6 +2202,8 @@ mod tests {
         },
       ],
       tl: 12,
+      role: None,
+      source: None,
     });
 
     // Create a ship with lower current values
@@ -2280,6 +2337,8 @@ mod tests {
       computer: 10,
       weapons: vec![],
       tl: 12,
+      role: None,
+      source: None,
     };
 
     // Test normal case

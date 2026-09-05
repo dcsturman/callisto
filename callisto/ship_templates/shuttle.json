@@ -1,0 +1,15 @@
+{
+  "name": "Shuttle",
+  "displacement": 95,
+  "hull": 38,
+  "armor": 0,
+  "maneuver": 3,
+  "jump": 0,
+  "power": 48,
+  "fuel": 1,
+  "crew": 1,
+  "sensors": "Basic",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12
+}

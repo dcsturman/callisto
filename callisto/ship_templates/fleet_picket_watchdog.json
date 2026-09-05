@@ -1,0 +1,49 @@
+{
+  "name": "Fleet Picket - Watchdog",
+  "displacement": 500,
+  "hull": 200,
+  "armor": 8,
+  "maneuver": 3,
+  "jump": 4,
+  "power": 330,
+  "fuel": 210,
+  "crew": 12,
+  "sensors": "Improved",
+  "countermeasures": "Standard",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 13,
+  "role": "Escort",
+  "source": "Ships of the Reach"
+}

@@ -1,0 +1,90 @@
+{
+  "name": "Pocket Warship - Halaheike",
+  "displacement": 1200,
+  "hull": 528,
+  "armor": 10,
+  "maneuver": 3,
+  "jump": 3,
+  "power": 720,
+  "fuel": 364,
+  "crew": 32,
+  "sensors": "Improved",
+  "computer": 30,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 14,
+  "role": "Warship",
+  "source": "Ships of the Reach (Aslan)"
+}

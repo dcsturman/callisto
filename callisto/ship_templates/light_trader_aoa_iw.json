@@ -1,0 +1,42 @@
+{
+  "name": "Light Trader - Aoa'iw",
+  "displacement": 300,
+  "hull": 120,
+  "armor": 4,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 130,
+  "fuel": 62,
+  "crew": 6,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 11,
+  "role": "Trader",
+  "source": "Ships of the Reach (Aslan)"
+}

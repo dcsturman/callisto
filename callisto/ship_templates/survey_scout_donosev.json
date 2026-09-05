@@ -1,0 +1,15 @@
+{
+  "name": "Survey Scout - Donosev",
+  "displacement": 400,
+  "hull": 144,
+  "armor": 0,
+  "maneuver": 3,
+  "jump": 3,
+  "power": 210,
+  "fuel": 124,
+  "crew": 10,
+  "sensors": "Improved",
+  "computer": 25,
+  "weapons": [],
+  "tl": 14
+}

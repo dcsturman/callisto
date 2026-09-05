@@ -1,0 +1,15 @@
+{
+  "name": "Far Trader - Type A2",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 2,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 75,
+  "fuel": 41,
+  "crew": 4,
+  "sensors": "Civilian",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12
+}

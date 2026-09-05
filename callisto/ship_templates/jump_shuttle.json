@@ -1,0 +1,15 @@
+{
+  "name": "Jump Shuttle",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 0,
+  "maneuver": 3,
+  "jump": 3,
+  "power": 105,
+  "fuel": 115,
+  "crew": 3,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [],
+  "tl": 13
+}

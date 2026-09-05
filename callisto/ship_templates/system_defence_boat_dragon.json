@@ -1,0 +1,38 @@
+{
+  "name": "System Defence Boat - Dragon",
+  "displacement": 400,
+  "hull": 176,
+  "armor": 13,
+  "maneuver": 7,
+  "jump": 0,
+  "power": 450,
+  "fuel": 12,
+  "crew": 19,
+  "sensors": "Improved",
+  "stealth": "Improved",
+  "countermeasures": "Standard",
+  "computer": 25,
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 2
+      }
+    }
+  ],
+  "tl": 13
+}

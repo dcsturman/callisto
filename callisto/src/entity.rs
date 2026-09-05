@@ -810,7 +810,7 @@ impl Entities {
             }
           }
           UpdateAction::ExhaustedMissile { name } => {
-            assert!(name == missile_name);
+            assert_eq!(name, missile_name);
             debug!("(Entity.update_all) Removing missile {}", name);
             cleanup_missile_list.push(name.clone());
             Some(vec![EffectMsg::ExhaustedMissile { position: missile_pos }])
@@ -1178,7 +1178,7 @@ impl Entities {
         let looked_up = self
           .planets
           .get(primary)
-          .ok_or_else(|| format!("Unable to find entity named {} as primary for {}", primary, &name))?;
+          .ok_or_else(|| format!("Unable to find entity named {primary} as primary for {name}"))?;
         planet.primary_ptr.replace(looked_up.clone());
       }
     }
@@ -1189,7 +1189,7 @@ impl Entities {
       let looked_up = self
         .ships
         .get(&missile.target)
-        .ok_or_else(|| format!("Unable to find entity named {} as target for {}", missile.target, &name))?;
+        .ok_or_else(|| format!("Unable to find entity named {} as target for {name}", missile.target))?;
       missile.target_ptr.replace(looked_up.clone());
     }
     Ok(())
@@ -1769,8 +1769,8 @@ mod tests {
   use crate::crew::{Crew, Skills};
   use crate::debug;
   use crate::ship::{
-    config_test_ship_templates, get_ship_template, get_ship_templates_snapshot, replace_ship_templates,
-    ShipDesignTemplate, ShipTemplateTable,
+    config_test_ship_templates, config_test_ship_templates_locked, get_ship_template, get_ship_templates_snapshot,
+    lock_ship_templates_for_test, replace_ship_templates, ShipDesignTemplate, ShipTemplateTable,
   };
   use assert_json_diff::assert_json_eq;
   use cgmath::assert_relative_eq;
@@ -2468,7 +2468,11 @@ mod tests {
 
   #[test_log::test(tokio::test)]
   async fn test_load_from_file_uses_provided_ship_template_snapshot() {
-    config_test_ship_templates().await;
+    // Held for the whole test: it installs its own global registry and asserts
+    // on it further down, so no other test may re-seed SHIP_TEMPLATES in the
+    // meantime. Declared before the restore guard so the guard runs first.
+    let templates_lock = lock_ship_templates_for_test().await;
+    config_test_ship_templates_locked(&templates_lock).await;
 
     let previous_templates = get_ship_templates_snapshot();
     let _restore_guard = ShipTemplateRestoreGuard(previous_templates.as_ref().clone());
@@ -2490,6 +2494,8 @@ mod tests {
       computer: 1,
       weapons: vec![],
       tl: 10,
+      role: None,
+      source: None,
     });
 
     let mut scenario_templates = previous_templates.as_ref().clone();
@@ -3167,7 +3173,9 @@ mod tests {
     let test_cases = [
       // (attack_design, attack_skill, expected_modifier)
       ("Free Trader", 0, -2),
-      ("Light Fighter", 3, 3),
+      // Light Fighter carries Improved sensors per High Guard (p137); it was
+      // Military in the older Core Rulebook stats, which scored 3 here.
+      ("Light Fighter", 3, 4),
       ("Buccaneer", 0, 1),
       ("Harrier", 2, 4),
     ];

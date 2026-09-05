@@ -1,0 +1,36 @@
+{
+  "name": "Courier - Ktiyhui",
+  "displacement": 100,
+  "hull": 88,
+  "armor": 12,
+  "maneuver": 4,
+  "jump": 3,
+  "power": 135,
+  "fuel": 61,
+  "crew": 6,
+  "sensors": "Improved",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 13,
+  "role": "Courier",
+  "source": "Ships of the Reach (Aslan)"
+}

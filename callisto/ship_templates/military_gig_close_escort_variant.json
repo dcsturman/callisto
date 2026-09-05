@@ -1,0 +1,23 @@
+{
+  "name": "Military Gig - Close Escort Variant",
+  "displacement": 20,
+  "hull": 8,
+  "armor": 4,
+  "maneuver": 8,
+  "jump": 0,
+  "power": 30,
+  "fuel": 1,
+  "crew": 2,
+  "sensors": "Basic",
+  "stealth": "Improved",
+  "computer": 5,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 14
+}

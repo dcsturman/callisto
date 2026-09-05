@@ -1,0 +1,15 @@
+{
+  "name": "X-Boat Tender - XT",
+  "displacement": 1000,
+  "hull": 400,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 1,
+  "power": 450,
+  "fuel": 115,
+  "crew": 7,
+  "sensors": "Civilian",
+  "computer": 15,
+  "weapons": [],
+  "tl": 14
+}

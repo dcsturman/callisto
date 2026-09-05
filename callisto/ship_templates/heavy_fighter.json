@@ -1,0 +1,28 @@
+{
+  "name": "Heavy Fighter",
+  "displacement": 50,
+  "hull": 22,
+  "armor": 15,
+  "maneuver": 9,
+  "jump": 0,
+  "power": 70,
+  "fuel": 1,
+  "crew": 2,
+  "sensors": "Advanced",
+  "computer": 35,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    }
+  ],
+  "tl": 15
+}

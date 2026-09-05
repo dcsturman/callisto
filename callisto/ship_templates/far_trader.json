@@ -2,7 +2,7 @@
   "name": "Far Trader",
   "displacement": 200,
   "hull": 80,
-  "armor": 2,
+  "armor": 0,
   "maneuver": 1,
   "jump": 2,
   "power": 90,
@@ -14,13 +14,13 @@
     {
       "kind": "Beam",
       "mount": {
-        "Turret": 1
+        "Turret": 2
       }
     },
     {
       "kind": "Beam",
       "mount": {
-        "Turret": 1
+        "Turret": 2
       }
     }
   ],

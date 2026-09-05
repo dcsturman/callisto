@@ -1,0 +1,15 @@
+{
+  "name": "Modular Cutter",
+  "displacement": 50,
+  "hull": 20,
+  "armor": 0,
+  "maneuver": 4,
+  "jump": 0,
+  "power": 30,
+  "fuel": 1,
+  "crew": 1,
+  "sensors": "Basic",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12
+}

@@ -1,0 +1,36 @@
+{
+  "name": "Tender - OwatarL",
+  "displacement": 600,
+  "hull": 216,
+  "armor": 4,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 255,
+  "fuel": 122,
+  "crew": 10,
+  "sensors": "Military",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 12,
+  "role": "Support",
+  "source": "Ships of the Reach (Aslan)"
+}

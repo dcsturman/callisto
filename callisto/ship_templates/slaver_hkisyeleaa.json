@@ -1,0 +1,36 @@
+{
+  "name": "Slaver - Hkisyeleaa",
+  "displacement": 1000,
+  "hull": 400,
+  "armor": 0,
+  "maneuver": 2,
+  "jump": 2,
+  "power": 510,
+  "fuel": 204,
+  "crew": 9,
+  "sensors": "Military",
+  "computer": 5,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Sand",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 12,
+  "role": "Slaver",
+  "source": "Ships of the Reach (Aslan)"
+}

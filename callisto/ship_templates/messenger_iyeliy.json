@@ -1,0 +1,24 @@
+{
+  "name": "Messenger - Iyeliy",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 5,
+  "power": 150,
+  "fuel": 101,
+  "crew": 4,
+  "sensors": "Military",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 14,
+  "role": "Courier",
+  "source": "Ships of the Reach (Aslan)"
+}

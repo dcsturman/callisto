@@ -1,0 +1,17 @@
+{
+  "name": "Clan Transport - Khtukhao",
+  "displacement": 600,
+  "hull": 240,
+  "armor": 0,
+  "maneuver": 2,
+  "jump": 2,
+  "power": 255,
+  "fuel": 122,
+  "crew": 5,
+  "sensors": "Civilian",
+  "computer": 5,
+  "weapons": [],
+  "tl": 12,
+  "role": "Transport",
+  "source": "Ships of the Reach (Aslan)"
+}

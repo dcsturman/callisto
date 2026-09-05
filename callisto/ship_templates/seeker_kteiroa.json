@@ -1,0 +1,17 @@
+{
+  "name": "Seeker - Kteiroa",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 0,
+  "maneuver": 2,
+  "jump": 2,
+  "power": 90,
+  "fuel": 41,
+  "crew": 4,
+  "sensors": "Civilian",
+  "computer": 5,
+  "weapons": [],
+  "tl": 11,
+  "role": "Prospector",
+  "source": "Ships of the Reach (Aslan)"
+}

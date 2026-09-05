@@ -1,15 +1,15 @@
 {
-  "name": "Patrol Corvette - Type T",
+  "name": "Subsidised Merchant - Type RQ",
   "displacement": 400,
   "hull": 160,
-  "armor": 4,
+  "armor": 8,
   "maneuver": 4,
-  "jump": 3,
-  "power": 300,
-  "fuel": 122,
-  "crew": 17,
-  "sensors": "Military",
-  "computer": 15,
+  "jump": 1,
+  "power": 315,
+  "fuel": 43,
+  "crew": 29,
+  "sensors": "Improved",
+  "computer": 20,
   "weapons": [
     {
       "kind": "Pulse",
@@ -24,17 +24,19 @@
       }
     },
     {
-      "kind": "Missile",
+      "kind": "Pulse",
       "mount": {
         "Turret": 3
       }
     },
     {
-      "kind": "Missile",
+      "kind": "Pulse",
       "mount": {
         "Turret": 3
       }
     }
   ],
-  "tl": 12
+  "tl": 12,
+  "role": "Trader",
+  "source": "Ships of the Reach"
 }

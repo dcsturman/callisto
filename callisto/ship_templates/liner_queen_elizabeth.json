@@ -1,0 +1,17 @@
+{
+  "name": "Liner - Queen Elizabeth",
+  "displacement": 1200,
+  "hull": 480,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 3,
+  "power": 600,
+  "fuel": 365,
+  "crew": 14,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [],
+  "tl": 12,
+  "role": "Liner",
+  "source": "Ships of the Reach"
+}

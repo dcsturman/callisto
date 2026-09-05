@@ -1,0 +1,72 @@
+{
+  "name": "Merchant Cruiser - Leviathan",
+  "displacement": 1800,
+  "hull": 720,
+  "armor": 0,
+  "maneuver": 4,
+  "jump": 3,
+  "power": 1665,
+  "fuel": 588,
+  "crew": 35,
+  "sensors": "Civilian",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 1
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": "Barbette"
+    },
+    {
+      "kind": "Missile",
+      "mount": "Barbette"
+    }
+  ],
+  "tl": 12
+}
