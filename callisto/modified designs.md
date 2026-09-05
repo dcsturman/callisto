@@ -530,3 +530,10 @@ Recomputed across all 79 designs, only two genuine overruns existed:
 craft" rule but do not: the book gives each a single turret *plus a fixed mount*, and our
 schema has no `FixedMount` — both encode as `Turret(1)`. See the design doc for the
 recommendation to add that variant.
+
+**Correction (2026-09-05):** `excelsior` is *not* an overrun. It is a particle barbette plus
+one triple turret holding 2 missile racks and a sandcaster — 2 mounts, 2 hardpoints, legal.
+Our schema cannot express a mixed turret, so it is stored as `Missile T2` + `Sand T1` and
+counts as 3. Left as-is deliberately. With that understood and `indigo_pirate_carrier`
+regrouped, **no design in the library breaks the hardpoint or firmpoint rules** — all four
+apparent violations were schema gaps (no `FixedMount` variant, no mixed-turret support).

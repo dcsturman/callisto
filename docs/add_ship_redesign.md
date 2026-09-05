@@ -175,9 +175,20 @@ artifacts of our schema rather than bad data:**
 | `heavy_fighter` | 50 | 2 firmpoints | 2 | **Legal.** Book: *Single Turret (beam laser)* + *Fixed Mount (missile rack)*. |
 | `troop_transport` | 50 | 2 firmpoints | 2 | **Legal.** Book: *Single Turret (sandcaster)* + *Fixed Mount (missile rack)*. |
 | `indigo_pirate_carrier` | 300 | 3 hardpoints | 6 -> 3 | **Was a real overrun**, since fixed: regrouped to 2x Beam T3 + 1x Missile T3, conserving 6 beam + 3 missile. |
-| `excelsior` | 200 | 2 hardpoints | 3 | **Real overrun.** A custom design (particle barbette + missile double + sand single). Needs a decision. |
+| `excelsior` | 200 | 2 hardpoints | 3 | **Legal in intent; a schema artifact.** It is a particle barbette plus *one triple turret holding 2 missile racks and a sandcaster* - 2 hardpoints. `WeaponMount` cannot express a mixed turret, so it is stored as `Missile T2` + `Sand T1` and counts as 3. Left as-is by choice. |
 
-**The schema gap this exposes.** `WeaponMount` has no `FixedMount`; fixed mounts are
+**Every one of the four flags is a schema gap, not bad data.** With the rules applied
+correctly and `indigo_pirate_carrier` regrouped, **no design in the library actually breaks
+the hardpoint or firmpoint rules.** Two gaps produce all the false positives:
+
+**Gap 1: mixed turrets.** A turret may hold different weapon types (Core Rulebook, "Double
+and Triple Turrets"), but `Weapon` has a single `kind`, so a mixed turret must be split into
+one mount per type. That inflates the mount count and therefore the apparent hardpoint use -
+which is exactly what happens to `excelsior`. Supporting mixed turrets would also remove the
+need for the regrouping policy applied to the book designs, which currently loses or gains a
+gun in the cases that do not divide evenly.
+
+**Gap 2: fixed mounts.** `WeaponMount` has no `FixedMount`; fixed mounts are
 currently encoded as `Turret(1)`, indistinguishable from a genuine single turret. That is
 harmless on large hulls where both cost 1 hardpoint, but on small craft it matters twice
 over: only one Firmpoint may be a turret, and a fixed mount is direction-limited while a
@@ -186,9 +197,11 @@ are not. Designs currently affected: `ultralight_fighter`, `light_fighter`,
 `military_gig_close_escort_variant`, `heavy_fighter`, `troop_transport`,
 `merchant_cruiser_leviathan`.
 
-**Recommendation:** add `WeaponMount::FixedMount` before building the hardpoint editor. The
-UI needs it as a distinct dropdown option regardless, and without it the editor cannot
-enforce "at most one turret" on small craft.
+**Recommendation:** add `WeaponMount::FixedMount` before building the hardpoint editor -
+the UI needs it as a distinct dropdown option regardless, and without it the editor cannot
+enforce "at most one turret" on small craft. Mixed-turret support is the larger change and
+can follow; until it lands, the editor should count hardpoints by *distinct turret*, not by
+mount, or designs like `excelsior` will read as over-allowance.
 
 ### 2.4 Hardpoint allowance formula
 
