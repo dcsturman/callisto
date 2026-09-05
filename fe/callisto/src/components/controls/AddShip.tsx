@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { CrewBuilder, Crew, createCrew } from "components/controls/CrewBuilder";
 import { POSITION_SCALE } from "lib/universal";
 import {
+  ShipDesignTemplate,
   ShipDesignTemplates,
   compressedWeaponsFromTemplate,
 } from "lib/shipDesignTemplates";
@@ -302,11 +303,32 @@ const ShipDesignDetails = (render: {
   );
 };
 
+// Both `role` and `source` are optional and free-form on the server side, so
+// designs missing either still need a home in the picker.
+const UNSPECIFIED = "Other";
+const ALL_SOURCES = "All";
+
+const byDisplacementThenName = (
+  a: ShipDesignTemplate,
+  b: ShipDesignTemplate,
+) =>
+  a.displacement > b.displacement
+    ? 1
+    : a.displacement < b.displacement
+      ? -1
+      : a.name.localeCompare(b.name);
+
+// Alphabetical, with the catch-all bucket pinned last.
+const byGroupLabel = (a: string, b: string) =>
+  a === UNSPECIFIED ? 1 : b === UNSPECIFIED ? -1 : a.localeCompare(b);
+
 function ShipDesignList(args: {
   shipDesignName: string;
   setShipDesignName: (designName: string) => void;
   shipDesigns: ShipDesignTemplates;
 }) {
+  const [source, setSource] = useState(ALL_SOURCES);
+
   const selectRef = useRef<HTMLSelectElement>(null);
   useEffect(() => {
     if (selectRef.current != null) {
@@ -323,6 +345,69 @@ function ShipDesignList(args: {
     [args],
   );
 
+  const handleSourceChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) =>
+      setSource(event.target.value),
+    [setSource],
+  );
+
+  // Every distinct source in the library, derived from the data itself.
+  const sources = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(args.shipDesigns).map(
+            (design) => design.source || UNSPECIFIED,
+          ),
+        ),
+      ).sort(byGroupLabel),
+    [args.shipDesigns],
+  );
+
+  // Designs matching the source filter, bucketed by role for <optgroup>.
+  const groups = useMemo(() => {
+    const buckets = Object.values(args.shipDesigns)
+      .filter(
+        (design) =>
+          source === ALL_SOURCES || (design.source || UNSPECIFIED) === source,
+      )
+      .reduce(
+        (accumulator, design) => {
+          const role = design.role || UNSPECIFIED;
+          accumulator[role] = (accumulator[role] || []).concat(design);
+          return accumulator;
+        },
+        {} as { [role: string]: ShipDesignTemplate[] },
+      );
+
+    return Object.keys(buckets)
+      .sort(byGroupLabel)
+      .map((role) => ({
+        role,
+        designs: buckets[role].sort(byDisplacementThenName),
+      }));
+  }, [args.shipDesigns, source]);
+
+  const visible = useMemo(
+    () =>
+      groups.reduce<ShipDesignTemplate[]>(
+        (all, group) => all.concat(group.designs),
+        [],
+      ),
+    [groups],
+  );
+
+  // The filter can hide whatever is currently selected; move the selection to
+  // the first design still on offer so the form never submits a hidden design.
+  useEffect(() => {
+    if (
+      visible.length > 0 &&
+      !visible.some((design) => design.name === args.shipDesignName)
+    ) {
+      args.setShipDesignName(visible[0].name);
+    }
+  }, [visible, args]);
+
   const ciCircle = useMemo(
     () => <CiCircleQuestion className="info-icon" />,
     [],
@@ -330,6 +415,24 @@ function ShipDesignList(args: {
 
   return (
     <>
+      <div className="control-launch-div">
+        <div className="control-label">Source</div>
+        <select
+          className="select-dropdown control-name-input control-input"
+          name="ship_source_choice"
+          value={source}
+          onChange={handleSourceChange}
+        >
+          <option key="all-ship_source" value={ALL_SOURCES}>
+            {ALL_SOURCES}
+          </option>
+          {sources.map((name) => (
+            <option key={name + "-ship_source"} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="control-launch-div">
         <div className="control-label">
           <div className="control-label label-with-tooltip">
@@ -347,20 +450,16 @@ function ShipDesignList(args: {
           data-tooltip-content={args.shipDesignName}
           data-tooltip-delay-show={700}
         >
-          {Object.values(args.shipDesigns)
-            .sort((a, b) =>
-              a.displacement > b.displacement
-                ? 1
-                : a.displacement < b.displacement
-                  ? -1
-                  : a.name.localeCompare(b.name),
-            )
-            .map((design) => (
-              <option
-                key={design.name + "-ship_list"}
-                value={design.name}
-              >{`${design.name} (${design.displacement})`}</option>
-            ))}
+          {groups.map((group) => (
+            <optgroup key={group.role + "-ship_role"} label={group.role}>
+              {group.designs.map((design) => (
+                <option
+                  key={design.name + "-ship_list"}
+                  value={design.name}
+                >{`${design.name} (${design.displacement})`}</option>
+              ))}
+            </optgroup>
+          ))}
         </select>
         <Tooltip
           id={args.shipDesignName + "ship-description-tip"}

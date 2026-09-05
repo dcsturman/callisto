@@ -1,4 +1,8 @@
-export type WeaponMount = string | {Turret: number} | {BaySize: string};
+export type BaySize = "Small" | "Medium" | "Large";
+
+// Mirrors the Rust `WeaponMount` enum: unit variants (`Barbette`) serialize as a
+// bare string, tuple variants as a single-key object.
+export type WeaponMount = string | {Turret: number} | {Bay: BaySize};
 
 export interface Weapon {
   kind: string;

@@ -16,6 +16,10 @@ export interface ShipDesignTemplate {
   computer: number;
   weapons: Weapon[];
   tl: number;
+  // Both are free-form and optional on the Rust side (`Option<String>`, omitted
+  // from the wire when unset).  Used only to organize the design picker.
+  role?: string | null;
+  source?: string | null;
 }
 
 export const defaultShipDesignTemplate = () => {
