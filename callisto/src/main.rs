@@ -484,6 +484,18 @@ async fn watch_reloadable_data(
           let count = templates.len();
           merge_ship_templates(templates);
           last_design_fingerprint = fingerprint;
+          // Scenario parsing resolves every ship's `design` field against the
+          // template registry, so any scenario parsed while that registry was
+          // empty or incomplete failed with "Could not find design" and is now
+          // cached as a failure. Because scenario reloads are gated on the
+          // *scenario* directory fingerprint, those stale failures would
+          // otherwise persist until someone touched the scenario bucket - which
+          // is exactly what happens after a cold-start GCS auth flake leaves an
+          // instance with an empty registry. Clearing the scenario fingerprint
+          // forces a re-parse further down this same loop iteration, so the
+          // scenarios recover as soon as the designs do. This also covers the
+          // ordinary case of uploading a design a scenario was waiting on.
+          last_scenario_fingerprint = Vec::new();
           event!(
             target: LOG_FILE_USE,
             Level::INFO,
