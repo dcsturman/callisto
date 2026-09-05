@@ -56,6 +56,17 @@ const STARTUP_LOAD_ATTEMPTS: u32 = 5;
 /// attempts span roughly 3.75s of backoff in the worst case.
 const STARTUP_LOAD_BACKOFF: Duration = Duration::from_millis(250);
 
+/// Cap on a single startup-load attempt.
+///
+/// The failure this retries is not always a fast refusal: a cold-start GCS read
+/// can hang. Canary was observed taking about four minutes per attempt, which
+/// would let five attempts stall startup for twenty minutes. That matters
+/// because the listener is bound before these loads run but does not accept
+/// until after them, so Cloud Run routes traffic to an instance that answers
+/// nothing. Timing out each attempt bounds the whole sequence to roughly a
+/// minute, after which the caller's soft-fail path starts serving.
+const STARTUP_LOAD_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Server to implement physically pseudo-realistic spaceflight and possibly combat.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -642,6 +653,9 @@ type StartupLoadFuture<'a, T> =
 /// a second or two, so retrying here closes that window rather than merely
 /// recovering from it.
 ///
+/// Each attempt is capped at [`STARTUP_LOAD_ATTEMPT_TIMEOUT`], because the
+/// failure mode is often a hang rather than a refusal.
+///
 /// This deliberately does NOT replace the caller's soft-fail: if every attempt
 /// fails the error is returned and the caller still starts with an empty
 /// registry and self-heals, so a genuine GCS outage cannot wedge the instance.
@@ -652,7 +666,13 @@ async fn retry_startup_load<'a, T>(
   let mut backoff = STARTUP_LOAD_BACKOFF;
   let mut last_err = None;
   for attempt in 1..=STARTUP_LOAD_ATTEMPTS {
-    match load().await {
+    // Bound each attempt: a hung read is indistinguishable from a slow one, and
+    // without this a stalled GCS call blocks startup for minutes at a time.
+    let outcome = match tokio::time::timeout(STARTUP_LOAD_ATTEMPT_TIMEOUT, load()).await {
+      Ok(result) => result,
+      Err(_) => Err(format!("attempt exceeded {}s", STARTUP_LOAD_ATTEMPT_TIMEOUT.as_secs()).into()),
+    };
+    match outcome {
       Ok(value) => {
         if attempt > 1 {
           warn!("(main) Startup load of {what} succeeded on attempt {attempt}.");
@@ -735,7 +755,7 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) -> Result<ScenarioLoadR
 
 #[cfg(test)]
 mod tests {
-  use super::{retry_startup_load, STARTUP_LOAD_ATTEMPTS};
+  use super::{retry_startup_load, STARTUP_LOAD_ATTEMPTS, STARTUP_LOAD_ATTEMPT_TIMEOUT};
   use std::cell::Cell;
 
   /// The happy path must not retry or sleep: one call, one success.
@@ -770,6 +790,37 @@ mod tests {
     .await;
     assert_eq!(result.unwrap(), 42);
     assert_eq!(calls.get(), 3, "Should stop retrying once it succeeds");
+  }
+
+  /// A hung load must be abandoned rather than waited on. This is the case
+  /// that motivated the per-attempt timeout: canary was seen spending about
+  /// four minutes inside a single GCS read, which would stall startup for
+  /// twenty minutes across five attempts.
+  #[tokio::test(start_paused = true)]
+  async fn retry_startup_load_times_out_a_hung_attempt() {
+    let calls = Cell::new(0);
+    let start = tokio::time::Instant::now();
+    let result: Result<u32, _> = retry_startup_load("test", || {
+      calls.set(calls.get() + 1);
+      let n = calls.get();
+      Box::pin(async move {
+        if n == 1 {
+          // Hangs far longer than the per-attempt cap.
+          tokio::time::sleep(STARTUP_LOAD_ATTEMPT_TIMEOUT * 100).await;
+          Ok(0)
+        } else {
+          Ok(99)
+        }
+      })
+    })
+    .await;
+    assert_eq!(result.unwrap(), 99, "Should abandon the hung attempt and retry");
+    assert_eq!(calls.get(), 2);
+    assert!(
+      start.elapsed() < STARTUP_LOAD_ATTEMPT_TIMEOUT * 2,
+      "Gave up on the hung attempt too late: {:?}",
+      start.elapsed()
+    );
   }
 
   /// A real outage must still give up so the caller can fall back to its
