@@ -448,8 +448,14 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
   let mut saw_design_refresh = false;
   let mut saw_scenario_refresh = false;
+  // A scenario reload also re-sends this player's scenario-failure list, even
+  // when it is empty. That empty list is what clears a stale "scenario file(s)
+  // failed to load" banner on a client that is already connected, so assert we
+  // actually receive it.
+  let mut saw_failure_refresh = false;
 
-  while tokio::time::Instant::now() < deadline && (!saw_design_refresh || !saw_scenario_refresh) {
+  while tokio::time::Instant::now() < deadline && (!saw_design_refresh || !saw_scenario_refresh || !saw_failure_refresh)
+  {
     let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
     match next_response_with_timeout(&mut stream, remaining.min(Duration::from_secs(8))).await {
       ResponseMsg::DesignTemplateResponse(designs) => {
@@ -462,6 +468,13 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
           saw_scenario_refresh = true;
         }
       }
+      ResponseMsg::ScenarioLoadErrors(errors) => {
+        assert!(
+          errors.is_empty(),
+          "Live reload reported scenario load failures for a healthy fixture: {errors:?}"
+        );
+        saw_failure_refresh = true;
+      }
       other => panic!("Unexpected live reload response: {other:?}"),
     }
   }
@@ -473,6 +486,10 @@ async fn integration_live_reload_pushes_scenarios_and_designs() {
   assert!(
     saw_scenario_refresh,
     "Did not receive live scenario refresh containing {added_scenario}."
+  );
+  assert!(
+    saw_failure_refresh,
+    "Did not receive the scenario-failure refresh that clears a stale load-error banner."
   );
 
   send_quit(&mut stream).await;

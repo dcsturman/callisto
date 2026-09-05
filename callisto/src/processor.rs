@@ -370,6 +370,13 @@ impl Processor {
         );
         for connection in connections.iter_mut().filter(|connection| connection.player.validated_user()) {
           send_response(&mut connection.stream, &scenarios_message, "live scenario refresh").await;
+          // Re-send this player's scenario failures too. The list may now be
+          // empty - scenarios that failed only because the ship-template
+          // registry was momentarily empty re-parse successfully - and an
+          // empty list is what clears the client's banner.
+          if let Some(errors_msg) = build_scenario_load_errors_refresh(&connection.player) {
+            send_response(&mut connection.stream, &errors_msg, "live scenario failure refresh").await;
+          }
         }
       }
       ReloadNotification::ShipTemplates => {
@@ -1083,10 +1090,11 @@ fn simple_response(result: Result<String, String>) -> Vec<ResponseMsg> {
 }
 
 /// Filter the scenario-failure registry to entries the given player owns and
-/// wrap them in a `ScenarioLoadErrors` response. Returns `None` if the
-/// player has no email (cannot match an owner) or no scenarios of theirs
-/// are broken. Owner matching is case-insensitive to match how emails are
-/// normalized elsewhere in the auth flow.
+/// wrap them in a `ScenarioLoadErrors` response. Returns `None` if the player
+/// has no email (cannot match an owner) or no scenarios of theirs are broken.
+/// Owner matching is case-insensitive to match how emails are normalized
+/// elsewhere in the auth flow. See [`build_scenario_load_errors_refresh`] for
+/// the variant used after a reload.
 fn build_scenario_load_errors_for_player(player: &PlayerManager) -> Option<ResponseMsg> {
   let email = player.get_email()?;
   let email_lc = email.to_lowercase();
@@ -1104,6 +1112,32 @@ fn build_scenario_load_errors_for_player(player: &PlayerManager) -> Option<Respo
   } else {
     Some(ResponseMsg::ScenarioLoadErrors(owned))
   }
+}
+
+/// As [`build_scenario_load_errors_for_player`], but yields a message even when
+/// the player has no broken scenarios.
+///
+/// This is the refresh path, used after a scenario reload. An *empty* list is
+/// exactly how a connected client is told its previously-reported failures have
+/// cleared: a scenario that failed only because the ship-template registry was
+/// briefly empty on a cold start re-parses successfully, and without this the
+/// client would keep showing a stale "scenario file(s) failed to load" banner
+/// until the page was reloaded.
+///
+/// Login deliberately keeps the `Option` form instead - a client starts with an
+/// empty banner already, so an empty message there is just noise on the wire.
+fn build_scenario_load_errors_refresh(player: &PlayerManager) -> Option<ResponseMsg> {
+  let email = player.get_email()?;
+  let email_lc = email.to_lowercase();
+  let owned: Vec<ScenarioLoadErrorMsg> = get_scenario_failures_snapshot()
+    .iter()
+    .filter(|f| !f.owner.is_empty() && f.owner.to_lowercase() == email_lc)
+    .map(|f| ScenarioLoadErrorMsg {
+      filename: f.filename.clone(),
+      error: f.error.clone(),
+    })
+    .collect();
+  Some(ResponseMsg::ScenarioLoadErrors(owned))
 }
 
 async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &ResponseMsg, context: &str) {

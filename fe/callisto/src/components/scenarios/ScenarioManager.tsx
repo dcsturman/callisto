@@ -363,8 +363,9 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
               </ul>
               <p>
                 These scenarios are not available in the picker until the
-                server can parse them. Fix the file and re-upload to clear
-                this message.
+                server can parse them. If the server was still starting up,
+                this clears on its own within a few seconds. If it persists,
+                fix the file and re-upload.
               </p>
               <button
                 className="blue-button"
