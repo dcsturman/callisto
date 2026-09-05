@@ -15,7 +15,9 @@ export const createWeapon = (kind: string, mount: WeaponMount): Weapon => {
 };
 
 export const weaponToString = (weapon: Weapon): string => {
-    if (typeof weapon.mount === "string") {
+    if (weapon.mount === "FixedMount") {
+      return `${weapon.kind} Fixed Mount`;
+    } else if (typeof weapon.mount === "string") {
       return `${weapon.kind} Barbette`;
     } else if ("Turret" in weapon.mount) {
       if (weapon.mount.Turret === 1) {

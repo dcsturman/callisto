@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::ShipDesignTemplate;
+use super::ship::{ShipDesignTemplate, Weapon};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -71,6 +71,8 @@ pub struct AddShipMsg {
   pub velocity: Vec3,
   pub design: String,
   pub crew: Option<Crew>,
+  /// The ship's armament.  Absent (or null) means it uses its design's weapons.
+  pub weapons: Option<Vec<Weapon>>,
 }
 
 #[skip_serializing_none]
@@ -423,6 +425,7 @@ mod tests {
       velocity: Vec3::zero(),
       design: default_template_name.clone(),
       crew: None,
+      weapons: None,
     };
     let json = json!({
         "name": "ship1",
@@ -447,6 +450,7 @@ mod tests {
       velocity: Vec3::zero(),
       design: default_template_name.clone(),
       crew: Some(crew),
+      weapons: None,
     };
     let json = json!({
         "name": "ship1",

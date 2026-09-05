@@ -246,6 +246,7 @@ mod tests {
         Vec3::zero(),
         &Arc::new(ShipDesignTemplate::default()),
         None,
+        None,
       ))),
       Vec3::zero(),
       Vec3::zero(),
