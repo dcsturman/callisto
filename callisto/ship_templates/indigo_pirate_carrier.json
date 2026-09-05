@@ -14,37 +14,19 @@
     {
       "kind": "Beam",
       "mount": {
-        "Turret": 2
-      }
-    },
-    {
-      "kind": "Missile",
-      "mount": {
-        "Turret": 1
+        "Turret": 3
       }
     },
     {
       "kind": "Beam",
       "mount": {
-        "Turret": 2
+        "Turret": 3
       }
     },
     {
       "kind": "Missile",
       "mount": {
-        "Turret": 1
-      }
-    },
-    {
-      "kind": "Beam",
-      "mount": {
-        "Turret": 2
-      }
-    },
-    {
-      "kind": "Missile",
-      "mount": {
-        "Turret": 1
+        "Turret": 3
       }
     }
   ],

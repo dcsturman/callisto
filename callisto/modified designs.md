@@ -504,3 +504,29 @@ nothing was lost. Backups: `~/callisto-bucket-backup-2026-09-05/`.
 **Note:** the deployed services read designs from `gs://callisto-ship-templates`, not from
 this directory, and **prod and canary share that bucket**. The 60 new designs are in git
 but NOT in the bucket, so they are not live anywhere yet.
+
+## Hardpoint compliance (corrected 2026-09-05)
+
+High Guard p.26 and p.31: ships of 100+ tons get 1 Hardpoint per 100 tons; a Fixed Mount,
+Turret, Barbette, Small Bay or Medium Bay each costs 1, a **Large Bay costs 5**, a Spinal
+Mount costs tonnage/100. Ships under 100 tons use **Firmpoints** instead: 1 under 35 tons,
+2 for 35-69, 3 for 70-99. A Firmpoint holds one weapon; exactly one may be upgraded to a
+*single* turret; a Barbette consumes three Firmpoints.
+
+A turret costs 1 hardpoint whether single, double or triple — which is why regrouping mixed
+turrets while preserving **mount** count (the policy chosen here) also preserves hardpoint
+usage, while splitting them into more mounts silently overruns the allowance.
+
+Recomputed across all 79 designs, only two genuine overruns existed:
+
+- **`indigo_pirate_carrier`** — 6 mounts on 3 hardpoints, because it still carried the old
+  *split* encoding of "Triple Turrets (beam lasers x2, missile rack) x3". **Fixed:** now
+  2x Beam T3 + 1x Missile T3, conserving 6 beam + 3 missile and fitting 3 hardpoints. This
+  had been missed when the other mixed turrets were resolved.
+- **`excelsior`** — 3 mounts on 2 hardpoints (particle barbette + missile double + sand
+  single). A custom design, not from any book. **Still open.**
+
+`heavy_fighter` and `troop_transport` initially appeared to break the "one turret per small
+craft" rule but do not: the book gives each a single turret *plus a fixed mount*, and our
+schema has no `FixedMount` — both encode as `Turret(1)`. See the design doc for the
+recommendation to add that variant.

@@ -128,80 +128,99 @@ Warship 1  Research 1  Prospector 1  Slaver 1
 16 distinct roles, 10 of which have exactly one design. `role` is `Option<String>` on the
 Rust side — free-form. The UI must derive the option list from the data, never hardcode it.
 
-### 2.2 Hardpoint allowance vs. actual armament
+### 2.2 Hardpoint and Firmpoint rules (corrected)
 
-`hardpoints = floor(displacement / 100)`. **11 of 79 designs exceed their allowance:**
+**An earlier draft of this document was wrong on two counts** — it claimed bays do not
+consume hardpoints, and it assumed sub-100-ton craft simply get `floor(tons/100) = 0`.
+Both are corrected below from High Guard pp. 26 and 31.
 
-| Design | Displacement | Allowance | Weapons |
-| --- | ---: | ---: | ---: |
-| `light_fighter.json` | 10 | 0 | 1 |
-| `ultralight_fighter.json` | 6 | 0 | 1 |
-| `military_gig_close_escort_variant.json` | 20 | 0 | 1 |
-| `torpedo_boat.json` | 70 | 0 | 1 (Barbette) |
-| `heavy_fighter.json` | 50 | 0 | 2 |
-| `troop_transport.json` | 50 | 0 | 2 |
-| `courier_ktiyhui.json` | 100 | 1 | 3 |
-| `scout_hraye.json` | 100 | 1 | 2 |
-| `excelsior.json` | 200 | 2 | 3 |
-| `indigo_pirate_carrier.json` | 300 | 3 | 6 |
-| `light_trader_aoa_iw.json` | 300 | 3 | 4 |
+**Ships of 100 tons or more** get **one Hardpoint per 100 tons of hull**, and each weapon
+system consumes hardpoints per High Guard p.26:
 
-**Important verified detail:** in Mongoose Traveller, bays do not consume hardpoints. I
-recomputed the table excluding bay-mounted weapons and **the over-allowance list is
-identical — the same 11 files.** Every bay in the library sits on a large hull that is
-comfortably under its allowance (e.g. `assault_carrier_sakhai` 2000 t = 20 hardpoints,
-11 turrets + 3 barbettes + 3 bays; `fleet_escort_p_f_sloan` 5000 t = 50 hardpoints,
-32 turrets + 2 bays). So the choice of whether to count bays against hardpoints does not
-change back-compat at all. That removes what would otherwise be the hardest question.
+| Weapon System | Hardpoints used |
+| --- | ---: |
+| Fixed Mount | 1 |
+| Turret (single/double/triple) | 1 |
+| Barbette | 1 |
+| Small Bay | 1 |
+| Medium Bay | 1 |
+| **Large Bay** | **5** |
+| Spinal Mount | weapon tonnage / 100 |
 
-### 2.3 Sub-100-ton small craft
+Note a turret costs 1 hardpoint regardless of whether it is single, double or triple — the
+turret is the hardpoint, not the guns in it. This is why regrouping mixed turrets while
+preserving *mount* count (the policy adopted for these designs) also preserves hardpoint
+usage, whereas splitting them into more mounts silently overruns the allowance.
 
-14 designs are under 100 tons. Under naive `floor(disp/100)` **every one of them gets zero
-hardpoints**, including six that are armed today:
+**Ships under 100 tons** have **Firmpoints** instead (High Guard p.26):
+
+| Hull | Firmpoints |
+| --- | ---: |
+| under 35 tons | 1 |
+| 35-69 tons | 2 |
+| 70-99 tons | 3 |
+
+- A Firmpoint holds **only one weapon**.
+- **One (and only one)** Firmpoint may be upgraded to a **single** turret — not double or
+  triple — which may fire in all directions as normal.
+- A Barbette consumes **three** Firmpoints.
+
+### 2.3 Actual compliance across the library
+
+Recomputed over all 79 designs with the rules above. **4 designs flag, and 2 of those are
+artifacts of our schema rather than bad data:**
+
+| Design | Tons | Allowance | Used | Status |
+| --- | ---: | --- | ---: | --- |
+| `heavy_fighter` | 50 | 2 firmpoints | 2 | **Legal.** Book: *Single Turret (beam laser)* + *Fixed Mount (missile rack)*. |
+| `troop_transport` | 50 | 2 firmpoints | 2 | **Legal.** Book: *Single Turret (sandcaster)* + *Fixed Mount (missile rack)*. |
+| `indigo_pirate_carrier` | 300 | 3 hardpoints | 6 -> 3 | **Was a real overrun**, since fixed: regrouped to 2x Beam T3 + 1x Missile T3, conserving 6 beam + 3 missile. |
+| `excelsior` | 200 | 2 hardpoints | 3 | **Real overrun.** A custom design (particle barbette + missile double + sand single). Needs a decision. |
+
+**The schema gap this exposes.** `WeaponMount` has no `FixedMount`; fixed mounts are
+currently encoded as `Turret(1)`, indistinguishable from a genuine single turret. That is
+harmless on large hulls where both cost 1 hardpoint, but on small craft it matters twice
+over: only one Firmpoint may be a turret, and a fixed mount is direction-limited while a
+turret is not. It is why `heavy_fighter` and `troop_transport` above look illegal when they
+are not. Designs currently affected: `ultralight_fighter`, `light_fighter`,
+`military_gig_close_escort_variant`, `heavy_fighter`, `troop_transport`,
+`merchant_cruiser_leviathan`.
+
+**Recommendation:** add `WeaponMount::FixedMount` before building the hardpoint editor. The
+UI needs it as a distinct dropdown option regardless, and without it the editor cannot
+enforce "at most one turret" on small craft.
+
+### 2.4 Hardpoint allowance formula
 
 ```
-armed:    ultralight_fighter 6t/1w   light_fighter 10t/1w   military_gig 20t/1w
-          troop_transport 50t/2w     heavy_fighter 50t/2w   torpedo_boat 70t/1w
-unarmed:  launch 20t   ship_s_boat 30t   slow_boat 30t   pinnace 40t
-          slow_pinnace 40t   modular_cutter 50t   shuttle 95t   passenger_shuttle 95t
+capacity(design) =
+    displacement >= 100 -> ("hardpoints", displacement / 100)
+    displacement <  35  -> ("firmpoints", 1)
+    displacement <  70  -> ("firmpoints", 2)
+    otherwise           -> ("firmpoints", 3)
+
+cost(mount) =
+    Bay(Large)                  -> 5
+    Barbette on a small craft   -> 3
+    anything else               -> 1
 ```
 
-A naive formula makes small craft permanently unarmable, which is unacceptable — the
-frontend already has a fighter-heavy design library.
+With the corrected rules the "never shrink below the design's existing weapons" clause
+proposed in the earlier draft is **no longer needed for compatibility** — once
+`indigo_pirate_carrier` is regrouped, every book design fits its allowance. Only
+`excelsior`, a custom design, exceeds it. That is a much better place to be: the editor can
+enforce the real rule rather than grandfathering violations.
 
-### 2.4 Recommended hardpoint formula
+### 2.5 Deferred Firmpoint rules (TODO, not implemented)
 
-```
-hardpoints(design) = max(
-    floor(design.displacement / 100),                       // the stated rule
-    design.displacement >= 10 ? 1 : 0,                      // small-craft floor
-    design.weapons.length                                   // never lose existing armament
-)
-```
+Recorded so they are not lost. None of these are modelled yet:
 
-Three clauses, each earning its place:
-
-1. **The stated rule.** 1 per 100 tons.
-2. **Small-craft floor.** Any hull of 10 t or more gets at least one hardpoint. This makes
-   all 14 sub-100 t designs armable with a single mount. `ultralight_fighter` at 6 t falls
-   below the floor but is rescued by clause 3.
-3. **Never-shrink clause.** The row count is at least the number of weapons the design
-   already declares. This is the back-compat guarantee: opening any of the 11
-   over-allowance designs shows all of its weapons, editable, with nothing silently
-   dropped. Without this clause `indigo_pirate_carrier` would lose 3 of its 6 turrets the
-   moment a user opened the dialog.
-
-Rows produced by clause 3 beyond `floor(disp/100)` are rendered with an
-**over-allowance marker** (a `⚠` and a tooltip: "beyond the 1-per-100-tons allowance;
-inherited from the design"). They remain editable and can be set to `None`, but the UI
-never *offers* to add a row past the allowance. Net effect: a referee can never make a
-ship more over-armed than its design already is, but can always preserve or reduce.
-
-Because bays don't change the back-compat picture (§2.2), I recommend **listing bays in
-the same mount dropdown** as the user asked. It is simpler, and the engine performs no
-legality validation of any kind, so nothing downstream cares.
-
----
+- Firmpoints other than the single upgraded turret fire only along the thrust vector.
+- A weapon on a Firmpoint has Medium range or less reduced to **Close**, and its range may
+  not be increased beyond Close by any means.
+- Those range limits do **not** apply to missiles or torpedoes.
+- Power requirements for a weapon on a Firmpoint are reduced by 25% (rounding up).
+- Torpedoes are not implemented at all (currently mapped to missiles).
 
 ## 3. Proposed UI
 
