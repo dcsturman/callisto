@@ -3,10 +3,23 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { CrewBuilder, Crew, createCrew } from "components/controls/CrewBuilder";
 import { POSITION_SCALE } from "lib/universal";
 import {
+  ShipDesignTemplate,
   ShipDesignTemplates,
-  compressedWeaponsFromTemplate,
+  compressedWeapons,
+  shipWeapons,
 } from "lib/shipDesignTemplates";
-import { WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import { Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import {
+  DEFAULT_WEAPON_KIND,
+  MOUNT_OPTIONS,
+  WEAPON_KINDS,
+  checkAllowance,
+  compactWeaponRows,
+  mountForOptionId,
+  mountOptionId,
+  padWeaponRows,
+  rowCountForDesign,
+} from "lib/hardpoints";
 import { Accordion } from "lib/Accordion";
 import { Tooltip } from "react-tooltip";
 import { CiCircleQuestion } from "react-icons/ci";
@@ -31,8 +44,30 @@ export const AddShip: React.FC<AddShipProps> = () => {
   const designRef = useRef<HTMLSelectElement>(null);
   const shipNameRef = useRef<HTMLInputElement>(null);
 
-  const initialTemplate = useMemo(
-    () => ({
+  // One editor row per weapon mount.  Normally that is one row per point of
+  // hardpoint/firmpoint allowance; a design whose own armament already exceeds
+  // its allowance gets enough rows to show all of it rather than losing mounts.
+  const buildWeaponRows = useCallback(
+    (designName: string, existing?: Weapon[]) => {
+      const design = shipDesignTemplates[designName];
+      if (!design) {
+        return [];
+      }
+      const source = existing ?? design.weapons;
+      return padWeaponRows(
+        source,
+        rowCountForDesign(
+          design.displacement,
+          Math.max(design.weapons.length, source.length),
+        ),
+      );
+    },
+    [shipDesignTemplates],
+  );
+
+  const initialTemplate = useMemo(() => {
+    const firstDesign = Object.values(shipDesignTemplates)[0];
+    return {
       name: unique_ship_name(entities),
       xpos: "0",
       ypos: "0",
@@ -40,11 +75,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
       xvel: "0",
       yvel: "0",
       zvel: "0",
-      design: Object.values(shipDesignTemplates)[0].name,
-      crew: createCrew(Object.values(shipDesignTemplates)[0].weapons.length),
-    }),
-    [shipDesignTemplates, entities],
-  );
+      design: firstDesign.name,
+      crew: createCrew(firstDesign.weapons.length),
+      weapons: buildWeaponRows(firstDesign.name),
+    };
+  }, [shipDesignTemplates, entities, buildWeaponRows]);
 
   const [addShipData, setAddShipData] = useState(initialTemplate);
 
@@ -62,10 +97,15 @@ export const AddShip: React.FC<AddShipProps> = () => {
         zvel: current.velocity[2].toString(),
         design: current.design,
         crew: current.crew,
+        // An existing ship's own armament, which may differ from its design's.
+        weapons: buildWeaponRows(
+          current.design,
+          shipWeapons(current, shipDesignTemplates),
+        ),
       };
       setAddShipData(template);
     }
-  }, [addShipData.name, entities.ships]);
+  }, [addShipData.name, entities.ships, buildWeaponRows, shipDesignTemplates]);
 
   const handleChange = useMemo(
     () => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,6 +129,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
               zvel: ship.velocity[2].toString(),
               design: ship.design,
               crew: ship.crew,
+              weapons: buildWeaponRows(
+                ship.design,
+                shipWeapons(ship, shipDesignTemplates),
+              ),
             });
           }
         }
@@ -98,7 +142,15 @@ export const AddShip: React.FC<AddShipProps> = () => {
         [event.target.name]: event.target.value,
       });
     },
-    [designRef, shipNames, entities, setAddShipData, addShipData],
+    [
+      designRef,
+      shipNames,
+      entities,
+      setAddShipData,
+      addShipData,
+      buildWeaponRows,
+      shipDesignTemplates,
+    ],
   );
 
   const handleSubmit = useCallback(
@@ -122,17 +174,47 @@ export const AddShip: React.FC<AddShipProps> = () => {
       const crew = addShipData.crew;
       const ship = findShip(entities, name) || defaultShip();
 
-      const revision = { ...ship, name, position, velocity, design, crew };
+      // Dense list, empty rows removed: `weapon_id` stays a 0-based index into
+      // the ship's weapons, exactly as FireAction and BoostTarget assume.
+      // Hardpoint row numbers are a UI concept and never go over the wire.
+      const weapons = compactWeaponRows(addShipData.weapons);
+      const designWeapons = shipDesignTemplates[design]?.weapons ?? [];
+      // Send nothing when the armament is just the design's, so an unmodified
+      // ship keeps inheriting from its design rather than freezing a copy.
+      const armament = sameWeapons(weapons, designWeapons) ? undefined : weapons;
+
+      const revision = {
+        ...ship,
+        name,
+        position,
+        velocity,
+        design,
+        crew,
+        weapons: armament,
+      };
 
       addShip(revision);
       setAddShipData(initialTemplate);
       shipNameRef.current!.style.color = "black";
     },
-    [addShipData, entities, initialTemplate, shipNameRef],
+    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates],
   );
 
+  // Changing the design changes the allowance and the default armament, so the
+  // rows are rebuilt from the new design rather than carried over.
   const handleDesignChange = useCallback(
-    (design: string) => setAddShipData({ ...addShipData, design: design }),
+    (design: string) =>
+      setAddShipData({
+        ...addShipData,
+        design: design,
+        weapons: buildWeaponRows(design),
+      }),
+    [addShipData, setAddShipData, buildWeaponRows],
+  );
+
+  const handleWeaponsChange = useCallback(
+    (weapons: (Weapon | null)[]) =>
+      setAddShipData({ ...addShipData, weapons: weapons }),
     [addShipData, setAddShipData],
   );
 
@@ -223,11 +305,17 @@ export const AddShip: React.FC<AddShipProps> = () => {
           />
         </div>
         <hr />
+        <HardpointList
+          design={shipDesignTemplates[addShipData.design]}
+          weapons={addShipData.weapons}
+          setWeapons={handleWeaponsChange}
+        />
+        <hr />
         <CrewBuilder
           shipName={addShipData.name}
           currentCrew={addShipData.crew}
           updateCrew={handleCrewChange}
-          shipDesign={shipDesignTemplates[addShipData.design]}
+          num_gunners={compactWeaponRows(addShipData.weapons).length}
         />
         <input
           className="control-input control-button blue-button"
@@ -238,6 +326,154 @@ export const AddShip: React.FC<AddShipProps> = () => {
     </Accordion>
   );
 };
+
+// Two armaments are the same when they are the same weapons in the same order.
+// Used to decide whether a ship needs its own weapon list at all.
+const sameWeapons = (a: Weapon[], b: Weapon[]) =>
+  a.length === b.length &&
+  a.every(
+    (weapon, index) =>
+      weapon.kind === b[index].kind &&
+      weaponToString(weapon) === weaponToString(b[index]),
+  );
+
+// One row per weapon mount, with a running count against what the hull allows.
+// The allowance is advisory: the engine never validates armament, so an
+// over-allowance ship is flagged but still submittable.
+function HardpointList(args: {
+  design: ShipDesignTemplate | undefined;
+  weapons: (Weapon | null)[];
+  setWeapons: (weapons: (Weapon | null)[]) => void;
+}) {
+  const displacement = args.design?.displacement ?? 0;
+
+  const report = useMemo(
+    () => checkAllowance(args.weapons, displacement),
+    [args.weapons, displacement],
+  );
+
+  const replaceRow = useCallback(
+    (index: number, weapon: Weapon | null) => {
+      const next = args.weapons.slice();
+      next[index] = weapon;
+      args.setWeapons(next);
+    },
+    [args],
+  );
+
+  const handleMountChange = useCallback(
+    (index: number, optionId: string) => {
+      const mount = mountForOptionId(optionId);
+      if (mount === null) {
+        replaceRow(index, null);
+        return;
+      }
+      // Keep whatever weapon the row already carried; only the mount changed.
+      const kind = args.weapons[index]?.kind ?? DEFAULT_WEAPON_KIND;
+      replaceRow(index, createWeapon(kind, mount));
+    },
+    [args.weapons, replaceRow],
+  );
+
+  const handleKindChange = useCallback(
+    (index: number, kind: string) => {
+      const current = args.weapons[index];
+      if (current == null) {
+        return;
+      }
+      replaceRow(index, createWeapon(kind, current.mount));
+    },
+    [args.weapons, replaceRow],
+  );
+
+  if (!args.design) {
+    return <></>;
+  }
+
+  const { allowance } = report;
+  const allowanceLabel =
+    allowance.kind === "hardpoints" ? "Hardpoints" : "Firmpoints";
+
+  return (
+    <div className="hardpoint-list">
+      <div className="hardpoint-header">
+        <h3 className="hardpoint-title">{allowanceLabel}</h3>
+        <span
+          className={
+            report.overAllowance
+              ? "hardpoint-usage hardpoint-over"
+              : "hardpoint-usage"
+          }
+        >
+          {report.used} of {allowance.total} used
+        </span>
+      </div>
+      {args.weapons.map((weapon, index) => {
+        const optionId = mountOptionId(weapon?.mount ?? null);
+        const problem = report.rowProblems[index];
+        return (
+          <div
+            className="hardpoint-row"
+            key={"hardpoint-" + index}
+            title={problem ?? undefined}
+          >
+            <span
+              className={
+                problem ? "hardpoint-index hardpoint-over" : "hardpoint-index"
+              }
+            >
+              {index + 1}
+            </span>
+            <select
+              className="select-dropdown control-input hardpoint-mount"
+              name={"hardpoint-mount-" + index}
+              aria-label={"Hardpoint " + (index + 1) + " mount"}
+              value={optionId ?? "unsupported"}
+              onChange={(event) => handleMountChange(index, event.target.value)}
+            >
+              {/* A mount no option covers (a mixed turret stored oddly, say)
+                  still has to be visible rather than silently rewritten. */}
+              {optionId === null && weapon != null && (
+                <option value="unsupported">{weaponToString(weapon)}</option>
+              )}
+              {MOUNT_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {weapon != null && (
+              <select
+                className="select-dropdown control-input hardpoint-weapon"
+                name={"hardpoint-weapon-" + index}
+                aria-label={"Hardpoint " + (index + 1) + " weapon"}
+                value={weapon.kind}
+                onChange={(event) =>
+                  handleKindChange(index, event.target.value)
+                }
+              >
+                {/* A design may name a weapon kind this build does not list. */}
+                {!WEAPON_KINDS.includes(weapon.kind) && (
+                  <option value={weapon.kind}>{weapon.kind}</option>
+                )}
+                {WEAPON_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        );
+      })}
+      {report.problems.map((problem) => (
+        <div className="hardpoint-problem" key={problem}>
+          {problem}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const ShipDesignDetails = (render: {
   content: string | null;
@@ -251,7 +487,7 @@ const ShipDesignDetails = (render: {
     return designs[render.content];
   }, [designs, render.content]);
   const compressed = useMemo(
-    () => Object.values(compressedWeaponsFromTemplate(design)),
+    () => Object.values(compressedWeapons(design?.weapons ?? null)),
     [design],
   );
   const describeWeapon = useMemo(
@@ -302,11 +538,32 @@ const ShipDesignDetails = (render: {
   );
 };
 
+// Both `role` and `source` are optional and free-form on the server side, so
+// designs missing either still need a home in the picker.
+const UNSPECIFIED = "Other";
+const ALL_SOURCES = "All";
+
+const byDisplacementThenName = (
+  a: ShipDesignTemplate,
+  b: ShipDesignTemplate,
+) =>
+  a.displacement > b.displacement
+    ? 1
+    : a.displacement < b.displacement
+      ? -1
+      : a.name.localeCompare(b.name);
+
+// Alphabetical, with the catch-all bucket pinned last.
+const byGroupLabel = (a: string, b: string) =>
+  a === UNSPECIFIED ? 1 : b === UNSPECIFIED ? -1 : a.localeCompare(b);
+
 function ShipDesignList(args: {
   shipDesignName: string;
   setShipDesignName: (designName: string) => void;
   shipDesigns: ShipDesignTemplates;
 }) {
+  const [source, setSource] = useState(ALL_SOURCES);
+
   const selectRef = useRef<HTMLSelectElement>(null);
   useEffect(() => {
     if (selectRef.current != null) {
@@ -323,6 +580,69 @@ function ShipDesignList(args: {
     [args],
   );
 
+  const handleSourceChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) =>
+      setSource(event.target.value),
+    [setSource],
+  );
+
+  // Every distinct source in the library, derived from the data itself.
+  const sources = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(args.shipDesigns).map(
+            (design) => design.source || UNSPECIFIED,
+          ),
+        ),
+      ).sort(byGroupLabel),
+    [args.shipDesigns],
+  );
+
+  // Designs matching the source filter, bucketed by role for <optgroup>.
+  const groups = useMemo(() => {
+    const buckets = Object.values(args.shipDesigns)
+      .filter(
+        (design) =>
+          source === ALL_SOURCES || (design.source || UNSPECIFIED) === source,
+      )
+      .reduce(
+        (accumulator, design) => {
+          const role = design.role || UNSPECIFIED;
+          accumulator[role] = (accumulator[role] || []).concat(design);
+          return accumulator;
+        },
+        {} as { [role: string]: ShipDesignTemplate[] },
+      );
+
+    return Object.keys(buckets)
+      .sort(byGroupLabel)
+      .map((role) => ({
+        role,
+        designs: buckets[role].sort(byDisplacementThenName),
+      }));
+  }, [args.shipDesigns, source]);
+
+  const visible = useMemo(
+    () =>
+      groups.reduce<ShipDesignTemplate[]>(
+        (all, group) => all.concat(group.designs),
+        [],
+      ),
+    [groups],
+  );
+
+  // The filter can hide whatever is currently selected; move the selection to
+  // the first design still on offer so the form never submits a hidden design.
+  useEffect(() => {
+    if (
+      visible.length > 0 &&
+      !visible.some((design) => design.name === args.shipDesignName)
+    ) {
+      args.setShipDesignName(visible[0].name);
+    }
+  }, [visible, args]);
+
   const ciCircle = useMemo(
     () => <CiCircleQuestion className="info-icon" />,
     [],
@@ -330,6 +650,24 @@ function ShipDesignList(args: {
 
   return (
     <>
+      <div className="control-launch-div">
+        <div className="control-label">Source</div>
+        <select
+          className="select-dropdown control-name-input control-input"
+          name="ship_source_choice"
+          value={source}
+          onChange={handleSourceChange}
+        >
+          <option key="all-ship_source" value={ALL_SOURCES}>
+            {ALL_SOURCES}
+          </option>
+          {sources.map((name) => (
+            <option key={name + "-ship_source"} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="control-launch-div">
         <div className="control-label">
           <div className="control-label label-with-tooltip">
@@ -347,20 +685,16 @@ function ShipDesignList(args: {
           data-tooltip-content={args.shipDesignName}
           data-tooltip-delay-show={700}
         >
-          {Object.values(args.shipDesigns)
-            .sort((a, b) =>
-              a.displacement > b.displacement
-                ? 1
-                : a.displacement < b.displacement
-                  ? -1
-                  : a.name.localeCompare(b.name),
-            )
-            .map((design) => (
-              <option
-                key={design.name + "-ship_list"}
-                value={design.name}
-              >{`${design.name} (${design.displacement})`}</option>
-            ))}
+          {groups.map((group) => (
+            <optgroup key={group.role + "-ship_role"} label={group.role}>
+              {group.designs.map((design) => (
+                <option
+                  key={design.name + "-ship_list"}
+                  value={design.name}
+                >{`${design.name} (${design.displacement})`}</option>
+              ))}
+            </optgroup>
+          ))}
         </select>
         <Tooltip
           id={args.shipDesignName + "ship-description-tip"}

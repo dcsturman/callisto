@@ -14,9 +14,7 @@
   "weapons": [
     {
       "kind": "Pulse",
-      "mount": {
-        "Turret": 1
-      }
+      "mount": "FixedMount"
     }
   ],
   "tl": 12,

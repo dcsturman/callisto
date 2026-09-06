@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 
 use crate::computer::MAX_ACCEL_WIGGLE_ROOM;
 use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
 use crate::{debug, error, warn};
-use crate::{list_local_or_cloud_dir, read_local_or_cloud_file};
+use crate::{list_local_or_cloud_dir, read_local_or_cloud_file, MAX_CONCURRENT_DIR_FILE_READS};
 
 /// Directory holding one ship-design JSON file per design. Mirrors the
 /// scenarios layout: each file is a self-contained `ShipDesignTemplate`
@@ -153,6 +153,12 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[derivative(Debug(format_with = "format_ship_template_name_only"))]
   pub design: Arc<ShipDesignTemplate>,
+
+  /// Per-ship armament.  `None` means "use the design's weapons", which is what
+  /// every pre-existing scenario deserializes to and what we store whenever a
+  /// client omits the field.  Read it through [`Ship::weapons`], never directly.
+  #[serde(default)]
+  weapons: Option<Vec<Weapon>>,
 
   #[serde(default)]
   pub current_hull: u32,
@@ -330,6 +336,9 @@ pub enum WeaponMount {
   Turret(u8),
   Barbette,
   Bay(BaySize),
+  /// A single weapon bolted to the hull.  Unlike a turret it cannot traverse,
+  /// so it fires along the thrust vector only and cannot serve as point defense.
+  FixedMount,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -407,13 +416,16 @@ impl Ship {
   #[must_use]
   pub fn new(
     name: String, position: Vec3, velocity: Vec3, design: &Arc<ShipDesignTemplate>, crew: Option<Crew>,
+    weapons: Option<Vec<Weapon>>,
   ) -> Self {
+    let num_weapons = weapons.as_ref().map_or(design.weapons.len(), Vec::len);
     Ship {
       name,
       position,
       velocity,
       plan: FlightPlan::default(),
       design: design.clone(),
+      weapons,
       current_hull: design.hull,
       current_armor: design.armor,
       current_power: design.power,
@@ -423,7 +435,7 @@ impl Ship {
       current_crew: design.crew,
       current_sensors: design.sensors,
       current_computer: design.computer,
-      active_weapons: vec![true; design.weapons.len()],
+      active_weapons: vec![true; num_weapons],
       sensor_locks: vec![],
       crit_level: [0; 11],
       attack_dm: 0,
@@ -452,7 +464,7 @@ impl Ship {
     self.current_fuel = u32::max(self.current_fuel, self.design.fuel);
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
-    self.active_weapons = vec![true; self.design.weapons.len()];
+    self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.attack_dm = 0;
     self.dodge_thrust = 0;
@@ -549,9 +561,22 @@ impl Ship {
     self.current_armor
   }
 
+  /// This ship's armament: its own if it was given one, otherwise its design's.
+  #[must_use]
+  pub fn weapons(&self) -> &[Weapon] {
+    self.weapons.as_deref().unwrap_or(&self.design.weapons)
+  }
+
+  /// Replace this ship's armament.  `None` reverts it to the design's weapons.
+  /// Callers must follow this with [`Ship::fixup_current_values`] so
+  /// `active_weapons` matches the new list.
+  pub fn set_weapons(&mut self, weapons: Option<Vec<Weapon>>) {
+    self.weapons = weapons;
+  }
+
   #[must_use]
   pub fn get_weapon(&self, weapon_id: usize) -> &Weapon {
-    &self.design.weapons[weapon_id]
+    &self.weapons()[weapon_id]
   }
 
   #[must_use]
@@ -764,6 +789,7 @@ impl Default for Ship {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
     ship.fixup_current_values();
     ship
@@ -910,19 +936,24 @@ pub async fn load_ship_templates_from_dir(
   let entries = list_local_or_cloud_dir(dir).await?;
   let dir_normalized = dir.trim_end_matches('/').to_string();
 
-  let results = join_all(entries.into_iter().map(|entry| {
-    let path = format!("{dir_normalized}/{entry}");
-    async move {
-      match read_local_or_cloud_file(&path).await {
-        Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
-          Ok(template) => ShipTemplateFileOutcome::Loaded(template),
-          Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
-        },
-        Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
+  // Bounded fan-out: see `MAX_CONCURRENT_DIR_FILE_READS`. Results arrive out of
+  // order, which is fine — they go straight into a `HashMap` keyed by name.
+  let results = stream::iter(entries)
+    .map(|entry| {
+      let path = format!("{dir_normalized}/{entry}");
+      async move {
+        match read_local_or_cloud_file(&path).await {
+          Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
+            Ok(template) => ShipTemplateFileOutcome::Loaded(template),
+            Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
+          },
+          Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
+        }
       }
-    }
-  }))
-  .await;
+    })
+    .buffer_unordered(MAX_CONCURRENT_DIR_FILE_READS)
+    .collect::<Vec<_>>()
+    .await;
 
   let mut table = HashMap::new();
   let mut read_errors: Vec<String> = Vec::new();
@@ -1063,6 +1094,10 @@ impl Ord for Weapon {
       (WeaponMount::Turret(_), WeaponMount::Bay(_)) => std::cmp::Ordering::Greater,
       (WeaponMount::Turret(_), WeaponMount::Barbette) => std::cmp::Ordering::Greater,
       (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.cmp(&other.kind),
+      // A fixed mount is the least capable mount, so it sorts after everything else.
+      (WeaponMount::Turret(_), WeaponMount::FixedMount) => std::cmp::Ordering::Less,
+      (WeaponMount::FixedMount, WeaponMount::FixedMount) => self.kind.cmp(&other.kind),
+      (WeaponMount::FixedMount, _) => std::cmp::Ordering::Greater,
     }
   }
 }
@@ -1166,6 +1201,7 @@ impl From<&Weapon> for String {
       (_, WeaponMount::Turret(size)) => {
         panic!("(From<Weapon> for String) illegal turret size {size}.")
       }
+      (kind, WeaponMount::FixedMount) => format!("{} fixed mount", String::from(kind)),
       (kind, WeaponMount::Barbette) => format!("{} barbette", String::from(kind)),
       (kind, WeaponMount::Bay(BaySize::Small)) => format!("{} small bay", String::from(kind)),
       (kind, WeaponMount::Bay(BaySize::Medium)) => {
@@ -1509,6 +1545,81 @@ mod tests {
     }
   }
 
+  /// Scratch directory for the design-loader tests. The caller removes it.
+  fn make_design_scratch_dir(tag: &str) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .expect("clock before epoch")
+      .as_nanos();
+    let dir = std::env::temp_dir().join(format!("callisto_designs_{tag}_{nanos}"));
+    std::fs::create_dir_all(&dir).expect("unable to create scratch dir");
+    dir
+  }
+
+  fn minimal_design_json(name: &str) -> String {
+    format!(
+      r#"{{"name":"{name}","displacement":100,"hull":40,"armor":0,"maneuver":1,"jump":1,
+          "power":50,"fuel":10,"crew":4,"sensors":"Civilian","computer":5,
+          "weapons":[{{"kind":"Beam","mount":{{"Turret":1}}}}],"tl":12}}"#
+    )
+  }
+
+  /// The loader reads files with bounded concurrency
+  /// ([`MAX_CONCURRENT_DIR_FILE_READS`]) rather than firing them all at once.
+  /// Bounding must not lose files: with more designs than the limit, every one
+  /// still has to come back. Results also arrive out of completion order, so
+  /// this pins that the table is keyed by design name, not by position.
+  #[test_log::test(tokio::test)]
+  async fn test_load_ship_templates_reads_more_files_than_the_concurrency_limit() {
+    let dir = make_design_scratch_dir("bounded");
+    let count = MAX_CONCURRENT_DIR_FILE_READS * 3 + 1;
+    for i in 0..count {
+      std::fs::write(
+        dir.join(format!("design_{i}.json")),
+        minimal_design_json(&format!("Design {i}")),
+      )
+      .expect("unable to write design file");
+    }
+
+    let table = load_ship_templates_from_dir(dir.to_str().expect("non-utf8 scratch path"))
+      .await
+      .expect("loading a directory of valid designs must succeed");
+
+    assert_eq!(table.len(), count, "Every design must survive the bounded fan-out");
+    for i in 0..count {
+      assert!(table.contains_key(&format!("Design {i}")), "Missing design {i}");
+    }
+
+    std::fs::remove_dir_all(&dir).ok();
+  }
+
+  /// Bounding the fan-out must not change the error policy: a single malformed
+  /// file is logged and skipped, and the rest of the directory still loads.
+  #[test_log::test(tokio::test)]
+  async fn test_load_ship_templates_skips_unparseable_files() {
+    let dir = make_design_scratch_dir("parse_error");
+    for i in 0..MAX_CONCURRENT_DIR_FILE_READS + 2 {
+      std::fs::write(
+        dir.join(format!("design_{i}.json")),
+        minimal_design_json(&format!("Design {i}")),
+      )
+      .expect("unable to write design file");
+    }
+    std::fs::write(dir.join("broken.json"), b"{ not json").expect("unable to write broken file");
+
+    let table = load_ship_templates_from_dir(dir.to_str().expect("non-utf8 scratch path"))
+      .await
+      .expect("a single malformed file must not fail the whole load");
+
+    assert_eq!(
+      table.len(),
+      MAX_CONCURRENT_DIR_FILE_READS + 2,
+      "Only the broken file may be dropped"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+  }
+
   #[test_log::test]
   fn test_digit_to_int() {
     // Test digits 0-9
@@ -1631,6 +1742,7 @@ mod tests {
       Vec3::zero(),
       &get_ship_template("Test Design").unwrap(),
       None,
+      None,
     );
 
     let mut updated_template = (*original_template).clone();
@@ -1681,6 +1793,7 @@ mod tests {
       initial_position,
       initial_velocity,
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
 
@@ -1871,6 +1984,7 @@ mod tests {
       initial_velocity,
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     // Test case 1: Set a valid flight plan
@@ -1925,12 +2039,14 @@ mod tests {
       Vec3::new(0.0, 0.0, 0.0),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
     let ship2 = Ship::new(
       "ship2".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
     assert!(ship1 < ship2);
@@ -2000,6 +2116,7 @@ mod tests {
       Vec3::new(0.0, 0.0, 0.0),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     // Test setting a valid agility thrust
@@ -2038,6 +2155,7 @@ mod tests {
       Vec3::new(0.0, 0.0, 0.0),
       &Arc::new(ShipDesignTemplate::default()),
       Some(Crew::new()),
+      None,
     );
 
     // Test get_crew
@@ -2058,6 +2176,7 @@ mod tests {
       Vec3::new(0.0, 0.0, 0.0),
       &Arc::new(ShipDesignTemplate::default()),
       Some(Crew::new()),
+      None,
     );
 
     // Test get_crew_mut
@@ -2151,6 +2270,35 @@ mod tests {
     assert!(turret > large_bay_beam); // Turret > Large bay
     assert!(turret > medium_bay); // Turret > Medium bay
     assert!(turret > small_bay); // Turret > Small bay
+
+    // A fixed mount is the least capable mount, so it sorts after everything.
+    let fixed = Weapon {
+      kind: WeaponType::Beam,
+      mount: WeaponMount::FixedMount,
+    };
+    let fixed_pulse = Weapon {
+      kind: WeaponType::Pulse,
+      mount: WeaponMount::FixedMount,
+    };
+    assert!(fixed > turret);
+    assert!(turret < fixed);
+    assert!(fixed > barbette);
+    assert!(fixed > small_bay);
+    assert!(fixed < fixed_pulse);
+  }
+
+  #[test_log::test]
+  fn test_fixed_mount_naming_and_serde() {
+    let fixed = Weapon {
+      kind: WeaponType::Missile,
+      mount: WeaponMount::FixedMount,
+    };
+    assert_eq!(String::from(&fixed), "missile fixed mount");
+
+    // The wire form is a bare string, like the other unit variant (Barbette).
+    let json = serde_json::to_string(&fixed).unwrap();
+    assert_eq!(json, r#"{"kind":"Missile","mount":"FixedMount"}"#);
+    assert_eq!(serde_json::from_str::<Weapon>(&json).unwrap(), fixed);
   }
 
   #[test_log::test]
@@ -2207,7 +2355,7 @@ mod tests {
     });
 
     // Create a ship with lower current values
-    let mut ship = Ship::new("TestShip".to_string(), Vec3::zero(), Vec3::zero(), &design, None);
+    let mut ship = Ship::new("TestShip".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
 
     // Manually set current values to be lower than design values
     ship.current_hull = 50; // Lower than design.hull (100)
@@ -2397,6 +2545,7 @@ mod tests {
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
 

@@ -1,4 +1,5 @@
 import { Crew, createCrew } from "components/controls/CrewBuilder";
+import { Weapon } from "lib/weapon";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -51,6 +52,10 @@ export interface Entity {
 export interface Ship extends Entity {
   plan: [Acceleration, Acceleration | null];
   design: string;
+  // Per-ship armament.  Absent means the ship uses its design's weapons, which
+  // is what every ship built before this field existed does.  Read it through
+  // `shipWeapons`, never directly.
+  weapons?: Weapon[];
   current_hull: number;
   current_armor: number;
   current_power: number;
@@ -364,3 +369,4 @@ export const findPlanet = (entities: EntityList, name: string | null) => {
   }
   return entities.planets.find((planet) => planet.name === name) || null;
 };
+

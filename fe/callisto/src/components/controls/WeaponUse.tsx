@@ -4,12 +4,12 @@ import { findRangeBand } from "lib/Util";
 import { SHIP_SYSTEMS } from "lib/universal";
 import { Ship, Entity, findShip, stringToShipSystem } from "lib/entities";
 import {
-  ShipDesignTemplate,
-  compressedWeaponsFromTemplate,
+  compressedWeapons,
   getWeaponName,
   findNthWeapon,
+  shipWeapons,
 } from "lib/shipDesignTemplates";
-import { WeaponMount } from "lib/weapon";
+import { Weapon, WeaponMount } from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
   FireState,
@@ -340,32 +340,35 @@ export const FireControl: React.FC<FireControlProps> = () => {
     () => findShip(entities, computerShipName),
     [computerShipName, entities],
   );
-  const computerShipDesign = useMemo(
-    () => (computerShip ? shipTemplates[computerShip.design] : null),
+  // The ship's own armament, which is not necessarily its design's — see
+  // `shipWeapons`.  Every weapon_id below indexes into this list.
+  const computerShipWeapons = useMemo(
+    () => shipWeapons(computerShip, shipTemplates),
     [shipTemplates, computerShip],
   );
   const dispatch = useAppDispatch();
 
-  const weaponDetails = useMemo(() => {
-    return compressedWeaponsFromTemplate(computerShipDesign);
-  }, [computerShipDesign]);
+  const weaponDetails = useMemo(
+    () => compressedWeapons(computerShipWeapons),
+    [computerShipWeapons],
+  );
 
   const availableCounts = useMemo(() => {
     const counts = {} as { [key: string]: number };
     // Count up all the actions by weapon
-    if (computerShipDesign && actions[computerShipName!]?.fire) {
+    if (actions[computerShipName!]?.fire) {
       for (const action of actions[computerShipName!].fire) {
-        counts[getWeaponName(computerShipDesign, action.weapon_id)] =
-          (counts[getWeaponName(computerShipDesign, action.weapon_id)] || 0) +
+        counts[getWeaponName(computerShipWeapons, action.weapon_id)] =
+          (counts[getWeaponName(computerShipWeapons, action.weapon_id)] || 0) +
           1;
       }
     }
 
     // Count up all the actions in point defense
-    if (computerShipDesign && actions[computerShipName!]?.pointDefense) {
+    if (actions[computerShipName!]?.pointDefense) {
       for (const action of actions[computerShipName!].pointDefense) {
-        counts[getWeaponName(computerShipDesign, action.weapon_id)] =
-          (counts[getWeaponName(computerShipDesign, action.weapon_id)] || 0) +
+        counts[getWeaponName(computerShipWeapons, action.weapon_id)] =
+          (counts[getWeaponName(computerShipWeapons, action.weapon_id)] || 0) +
           1;
       }
     }
@@ -376,7 +379,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
       available[weapon] = weaponDetails[weapon].total - (counts[weapon] || 0);
     }
     return available;
-  }, [computerShipName, computerShipDesign, weaponDetails, actions]);
+  }, [computerShipName, computerShipWeapons, weaponDetails, actions]);
 
   const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
@@ -399,17 +402,15 @@ export const FireControl: React.FC<FireControlProps> = () => {
 
   const handleFireCommand = useCallback(
     (attacker: string, target: string, weapon_name: string) => {
-      if (!computerShipDesign) {
+      if (computerShipWeapons.length === 0) {
         console.error(
-          "(Controls.handleFireCommand) No computer ship design for " +
-            attacker +
-            ".",
+          "(Controls.handleFireCommand) No weapons known for " + attacker + ".",
         );
         return;
       }
 
       const weapon_id = findNthWeapon(
-        computerShipDesign,
+        computerShipWeapons,
         weapon_name,
         weaponDetails[weapon_name].total - availableCounts[weapon_name] + 1,
       );
@@ -440,7 +441,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
       }
     },
     [
-      computerShipDesign,
+      computerShipWeapons,
       weaponDetails,
       availableCounts,
       dispatch,
@@ -493,7 +494,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
   const weaponButtons = useMemo(
     () =>
       computerShipName &&
-      Object.entries(compressedWeaponsFromTemplate(computerShipDesign)).map(
+      Object.entries(compressedWeapons(computerShipWeapons)).map(
         ([weapon_name, weapon]) =>
           !weapon_name.includes("Sand") && (
             <WeaponButton
@@ -508,7 +509,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
       ),
     [
       computerShipName,
-      computerShipDesign,
+      computerShipWeapons,
       availableCounts,
       handleWeaponClick,
       isWeaponDisabled,
@@ -540,7 +541,8 @@ export function Actions(args: {
   sensorAction: SensorState;
   engineerAction: EngineerState;
   pilotState: { dodgeThrust: number; assistGunners: boolean } | null;
-  design: ShipDesignTemplate;
+  // The acting ship's own armament, not its design's: `weapon_id` indexes this.
+  weapons: Weapon[];
 }) {
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
@@ -692,11 +694,11 @@ export function Actions(args: {
       )}
       {args.fireActions.map((action, index) => {
         let kind = null;
-        if (args.design.weapons[action.weapon_id].kind === "Beam") {
+        if (args.weapons[action.weapon_id].kind === "Beam") {
           kind = "Beam";
-        } else if (args.design.weapons[action.weapon_id].kind === "Pulse") {
+        } else if (args.weapons[action.weapon_id].kind === "Pulse") {
           kind = "Pulse";
-        } else if (args.design.weapons[action.weapon_id].kind === "Particle") {
+        } else if (args.weapons[action.weapon_id].kind === "Particle") {
           kind = "Particle";
         } else {
           kind = "Missile";
@@ -760,14 +762,14 @@ export function Actions(args: {
 
       {args.pointDefenseActions.map((action, index) => {
         let kind = null;
-        if (args.design.weapons[action.weapon_id].kind === "Beam") {
+        if (args.weapons[action.weapon_id].kind === "Beam") {
           kind = "Beam";
-        } else if (args.design.weapons[action.weapon_id].kind === "Pulse") {
+        } else if (args.weapons[action.weapon_id].kind === "Pulse") {
           kind = "Pulse";
         } else {
           console.error(
             "(Actions) Illegal weapon kind for point defense: " +
-              args.design.weapons[action.weapon_id].kind,
+              args.weapons[action.weapon_id].kind,
           );
           return (
             <div className="fire-actions-div" key={index + "bug"}>

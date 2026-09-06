@@ -317,6 +317,10 @@ export function addShip(ship: Ship) {
       velocity: ship.velocity,
       design: ship.design,
       crew: ship.crew,
+      // Omitted when the ship just uses its design's armament.  The server
+      // reads an absent `weapons` as "inherit from the design", so leaving it
+      // out is what keeps old behaviour for unmodified ships.
+      ...(ship.weapons ? { weapons: ship.weapons } : {}),
     },
   };
 

@@ -242,6 +242,8 @@ pub fn attack(
       WeaponMount::Turret(num) => {
         damage += (u32::from(num) - 1) * u32::from(DAMAGE_WEAPON_DICE[weapon.kind as usize]);
       }
+      // A fixed mount holds a single weapon, so damage is unmodified.
+      WeaponMount::FixedMount => {}
       WeaponMount::Barbette => {
         damage *= 3;
       }
@@ -503,11 +505,12 @@ fn apply_crit(crit_level: u8, location: ShipSystem, defender: &mut Ship, rng: &m
             .map(|(index, _)| index)
             .unwrap();
 
+          // Name the weapon before disabling it: `weapons()` borrows the ship.
+          let disabled = String::from(&defender.weapons()[selected_index]);
           defender.active_weapons[selected_index] = false;
           vec![EffectMsg::message(format!(
-            "{}'s weapon critical hit (level {level}) and {} disabled.",
+            "{}'s weapon critical hit (level {level}) and {disabled} disabled.",
             defender.get_name(),
-            String::from(&defender.design.weapons[selected_index])
           ))]
         } else {
           vec![EffectMsg::message(format!(
@@ -849,6 +852,7 @@ pub fn do_fire_actions<S: BuildHasher>(
           // Missiles don't actually attack when fired.  They'll come back and call the attack function on impact.
           let num_missiles = match weapon.mount {
             WeaponMount::Turret(num) => num,
+            WeaponMount::FixedMount => 1,
             WeaponMount::Barbette => 5,
             WeaponMount::Bay(BaySize::Small) => 12,
             WeaponMount::Bay(BaySize::Medium) => 24,
@@ -1009,14 +1013,14 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
       (
         name.clone(),
         ship
-          .design
-          .weapons
+          .weapons()
           .iter()
           .enumerate()
           .filter_map(|(index, weapon)| {
             if weapon.kind == WeaponType::Sand && ship.active_weapons[index] {
               match weapon.mount {
                 WeaponMount::Turret(n) => Some(i32::from(n) - 1 + i32::from(ship.get_crew().get_gunnery(index))),
+                WeaponMount::FixedMount => Some(i32::from(ship.get_crew().get_gunnery(index))),
                 WeaponMount::Barbette => {
                   error!("Barbette sand mount not supported.");
                   None
@@ -1045,7 +1049,8 @@ fn point_defense_score(weapon: &Weapon) -> u16 {
     WeaponType::Missile | WeaponType::Sand | WeaponType::Particle => 0,
   }) * match weapon.mount {
     WeaponMount::Turret(num) => u16::from(num),
-    WeaponMount::Barbette | WeaponMount::Bay(_) => 0,
+    // Barbettes, bays and fixed mounts cannot track an incoming missile.
+    WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount => 0,
   }
 }
 
@@ -1060,8 +1065,7 @@ pub fn build_point_defense_tallies(
   // A table indexed by weapon of the score for that weapon.
   // The score is one more than the bonus to the check; 0 means it cannot be used for point defense.
   let weapon_scores = ship
-    .design
-    .weapons
+    .weapons()
     .iter()
     .enumerate()
     .map(|(index, weapon)| {
@@ -1201,12 +1205,14 @@ mod tests {
       Vec3::zero(),
       &Arc::new(attacker_design),
       None,
+      None,
     );
     let target = Ship::new(
       "Target".to_string(),
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
       &Arc::new(target_design),
+      None,
       None,
     );
 
@@ -1284,6 +1290,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     // Test Hull critical hits
@@ -1328,7 +1335,14 @@ mod tests {
     };
 
     // Reset ship
-    ship = Ship::new("TestShip".to_string(), Vec3::zero(), Vec3::zero(), &Arc::new(design), None);
+    ship = Ship::new(
+      "TestShip".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      &Arc::new(design),
+      None,
+      None,
+    );
 
     // Test Armor critical hits
     for level in 1..=6 {
@@ -1530,6 +1544,7 @@ mod tests {
       Vec3::zero(),
       &attacker_design,
       None,
+      None,
     );
 
     let mut defender = Ship::new(
@@ -1537,6 +1552,7 @@ mod tests {
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
       &defender_design,
+      None,
       None,
     );
 
@@ -1623,6 +1639,7 @@ mod tests {
         Vec3::zero(),
         &defender_design,
         None,
+        None,
       );
     }
 
@@ -1678,6 +1695,7 @@ mod tests {
         Vec3::zero(),
         &defender_design,
         None,
+        None,
       );
 
       let mut effects = vec![];
@@ -1725,12 +1743,14 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
     let mut defender = Ship::new(
       "Defender".to_string(),
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
 
@@ -1800,6 +1820,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
     let mut defender = Ship::new(
       "Defender".to_string(),
@@ -1807,6 +1828,7 @@ mod tests {
       Vec3::new(6_000_000.0, 6_000_000.0, 6_000_000.0),
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
 
@@ -1839,6 +1861,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     #[allow(clippy::cast_sign_loss)]
@@ -1867,6 +1890,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     // Defender with a non-zero pilot skill so the modifier is non-zero
@@ -1879,6 +1903,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       Some(defender_crew),
+      None,
     );
 
     // Two dodge points so the second attack still has dodge_thrust > 0.
@@ -1942,6 +1967,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     let make_defender = || {
@@ -1956,6 +1982,7 @@ mod tests {
           ..ShipDesignTemplate::default()
         }),
         Some(crew),
+        None,
       );
       d.set_pilot_actions(Some(1), None).expect("(test) failed to set pilot actions");
       d
@@ -2032,12 +2059,14 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
     let mut defender = Ship::new(
       "Defender".to_string(),
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
     assert_eq!(defender.get_dodge_thrust(), 0);
@@ -2116,6 +2145,7 @@ mod tests {
         Vec3::zero(),
         &attacker_design,
         Some(crew),
+        None,
       );
       a.set_pilot_actions(None, Some(true)).expect("(test) set assist gunners");
       assert!(a.get_assist_gunners());
@@ -2140,6 +2170,7 @@ mod tests {
         Vec3::new(1000.0, 0.0, 0.0),
         Vec3::zero(),
         &target_design,
+        None,
         None,
       );
       let max_hull = target_unboosted.get_max_hull_points();
@@ -2168,6 +2199,7 @@ mod tests {
         Vec3::new(1000.0, 0.0, 0.0),
         Vec3::zero(),
         &target_design,
+        None,
         None,
       );
       let mut ships_boosted: HashMap<String, Arc<RwLock<Ship>>> = HashMap::new();
@@ -2250,6 +2282,7 @@ mod tests {
       Vec3::zero(),
       &attacker_design,
       Some(crew),
+      None,
     );
     attacker.set_pilot_actions(None, Some(true)).unwrap();
 
@@ -2258,6 +2291,7 @@ mod tests {
       Vec3::new(1000.0, 0.0, 0.0),
       Vec3::zero(),
       &target_design,
+      None,
       None,
     );
     let mut ships: HashMap<String, Arc<RwLock<Ship>>> = HashMap::new();

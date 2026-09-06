@@ -558,6 +558,7 @@ async fn integration_add_ship() {
     velocity: [0.0, 0.0, 0.0].into(),
     design: "Buccaneer".to_string(),
     crew: None,
+    weapons: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -628,6 +629,7 @@ async fn integration_add_planet_ship() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -643,6 +645,7 @@ async fn integration_add_planet_ship() {
       velocity: [10000.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -872,6 +875,7 @@ async fn integration_update_ship() {
       velocity: [1000.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -924,6 +928,7 @@ async fn integration_update_missile() {
       velocity: [1000.0, 0.0, 0.0].into(),
       design: "System Defense Boat".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -938,6 +943,7 @@ async fn integration_update_missile() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "System Defense Boat".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1050,6 +1056,7 @@ async fn integration_remove_ship() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1180,6 +1187,7 @@ async fn integration_set_acceleration() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1238,6 +1246,7 @@ async fn integration_compute_path_basic() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1331,6 +1340,7 @@ async fn integration_compute_path_with_standoff() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1424,6 +1434,7 @@ async fn integration_malformed_requests() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "NonexistentDesign".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1631,6 +1642,7 @@ async fn integration_set_crew_actions() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: Some(crew),
+      weapons: None,
     }),
   )
   .await;
@@ -1709,6 +1721,7 @@ async fn integration_multi_client_test() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1721,6 +1734,7 @@ async fn integration_multi_client_test() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
@@ -1739,6 +1753,7 @@ async fn integration_multi_client_test() {
       velocity: [0.0, 0.0, 0.0].into(),
       design: "Buccaneer".to_string(),
       crew: None,
+      weapons: None,
     }),
   )
   .await;
