@@ -335,9 +335,17 @@ describe("bulk gunner skill", () => {
     expect(commonGunnery(groups)).toBe(2);
   });
 
-  it("reports nothing for an unarmed ship", () => {
-    expect(commonGunnery([emptyGroup()])).toBeNull();
+  // With nothing armed the field still has a job: it shows the skill the next
+  // row will inherit.  Returning null there would render it empty and make
+  // every keystroke compute back to empty.
+  it("falls back to the pending rows when nothing is armed yet", () => {
+    expect(commonGunnery([emptyGroup(2)])).toBe(2);
     expect(commonGunnery([])).toBeNull();
+  });
+
+  it("still answers when a row is mid-edit at a count of zero", () => {
+    const groups = [{ ...turret(3, "Beam", 0), gunnery: 4 }, emptyGroup(4)];
+    expect(commonGunnery(groups)).toBe(4);
   });
 
   it("writes one skill through to every row", () => {
