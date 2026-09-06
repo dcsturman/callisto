@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::FromRepr;
 
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 
 use crate::computer::MAX_ACCEL_WIGGLE_ROOM;
 use crate::crew::Crew;
 use crate::entity::{Entity, UpdateAction, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
 use crate::{debug, error, warn};
-use crate::{list_local_or_cloud_dir, read_local_or_cloud_file};
+use crate::{list_local_or_cloud_dir, read_local_or_cloud_file, MAX_CONCURRENT_DIR_FILE_READS};
 
 /// Directory holding one ship-design JSON file per design. Mirrors the
 /// scenarios layout: each file is a self-contained `ShipDesignTemplate`
@@ -936,19 +936,24 @@ pub async fn load_ship_templates_from_dir(
   let entries = list_local_or_cloud_dir(dir).await?;
   let dir_normalized = dir.trim_end_matches('/').to_string();
 
-  let results = join_all(entries.into_iter().map(|entry| {
-    let path = format!("{dir_normalized}/{entry}");
-    async move {
-      match read_local_or_cloud_file(&path).await {
-        Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
-          Ok(template) => ShipTemplateFileOutcome::Loaded(template),
-          Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
-        },
-        Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
+  // Bounded fan-out: see `MAX_CONCURRENT_DIR_FILE_READS`. Results arrive out of
+  // order, which is fine — they go straight into a `HashMap` keyed by name.
+  let results = stream::iter(entries)
+    .map(|entry| {
+      let path = format!("{dir_normalized}/{entry}");
+      async move {
+        match read_local_or_cloud_file(&path).await {
+          Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
+            Ok(template) => ShipTemplateFileOutcome::Loaded(template),
+            Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
+          },
+          Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
+        }
       }
-    }
-  }))
-  .await;
+    })
+    .buffer_unordered(MAX_CONCURRENT_DIR_FILE_READS)
+    .collect::<Vec<_>>()
+    .await;
 
   let mut table = HashMap::new();
   let mut read_errors: Vec<String> = Vec::new();
@@ -1538,6 +1543,81 @@ mod tests {
     fn drop(&mut self) {
       replace_ship_templates(self.0.clone());
     }
+  }
+
+  /// Scratch directory for the design-loader tests. The caller removes it.
+  fn make_design_scratch_dir(tag: &str) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .expect("clock before epoch")
+      .as_nanos();
+    let dir = std::env::temp_dir().join(format!("callisto_designs_{tag}_{nanos}"));
+    std::fs::create_dir_all(&dir).expect("unable to create scratch dir");
+    dir
+  }
+
+  fn minimal_design_json(name: &str) -> String {
+    format!(
+      r#"{{"name":"{name}","displacement":100,"hull":40,"armor":0,"maneuver":1,"jump":1,
+          "power":50,"fuel":10,"crew":4,"sensors":"Civilian","computer":5,
+          "weapons":[{{"kind":"Beam","mount":{{"Turret":1}}}}],"tl":12}}"#
+    )
+  }
+
+  /// The loader reads files with bounded concurrency
+  /// ([`MAX_CONCURRENT_DIR_FILE_READS`]) rather than firing them all at once.
+  /// Bounding must not lose files: with more designs than the limit, every one
+  /// still has to come back. Results also arrive out of completion order, so
+  /// this pins that the table is keyed by design name, not by position.
+  #[test_log::test(tokio::test)]
+  async fn test_load_ship_templates_reads_more_files_than_the_concurrency_limit() {
+    let dir = make_design_scratch_dir("bounded");
+    let count = MAX_CONCURRENT_DIR_FILE_READS * 3 + 1;
+    for i in 0..count {
+      std::fs::write(
+        dir.join(format!("design_{i}.json")),
+        minimal_design_json(&format!("Design {i}")),
+      )
+      .expect("unable to write design file");
+    }
+
+    let table = load_ship_templates_from_dir(dir.to_str().expect("non-utf8 scratch path"))
+      .await
+      .expect("loading a directory of valid designs must succeed");
+
+    assert_eq!(table.len(), count, "Every design must survive the bounded fan-out");
+    for i in 0..count {
+      assert!(table.contains_key(&format!("Design {i}")), "Missing design {i}");
+    }
+
+    std::fs::remove_dir_all(&dir).ok();
+  }
+
+  /// Bounding the fan-out must not change the error policy: a single malformed
+  /// file is logged and skipped, and the rest of the directory still loads.
+  #[test_log::test(tokio::test)]
+  async fn test_load_ship_templates_skips_unparseable_files() {
+    let dir = make_design_scratch_dir("parse_error");
+    for i in 0..MAX_CONCURRENT_DIR_FILE_READS + 2 {
+      std::fs::write(
+        dir.join(format!("design_{i}.json")),
+        minimal_design_json(&format!("Design {i}")),
+      )
+      .expect("unable to write design file");
+    }
+    std::fs::write(dir.join("broken.json"), b"{ not json").expect("unable to write broken file");
+
+    let table = load_ship_templates_from_dir(dir.to_str().expect("non-utf8 scratch path"))
+      .await
+      .expect("a single malformed file must not fail the whole load");
+
+    assert_eq!(
+      table.len(),
+      MAX_CONCURRENT_DIR_FILE_READS + 2,
+      "Only the broken file may be dropped"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
   }
 
   #[test_log::test]

@@ -59,6 +59,21 @@ pub const LOG_AUTH_RESULT: &str = "LOGIN_ATTEMPT";
 pub const LOGOUT: &str = "LOGOUT";
 pub const LOG_SCENARIO_ACTIVITY: &str = "SCENARIO";
 
+/// Maximum number of files read concurrently when loading a whole directory.
+///
+/// A directory load fans out one read per file. Against GCS each of those is a
+/// separate HTTPS request, and issuing all of them simultaneously (79 designs,
+/// 79 sockets) makes a handful fail at the transport layer on essentially every
+/// attempt. A single read error fails the whole load, so the reload watcher
+/// retries until one attempt happens to win: startup takes minutes and users
+/// briefly see a spurious "failed to load" banner.
+///
+/// This is the same unbounded fan-out that made every file fetch its own OAuth
+/// token before the clients were shared (see [`gcs_client`]), one layer down.
+/// Eight in flight is enough to keep the pipe full while staying well inside
+/// what the endpoint will accept. Local directories are fast either way.
+pub const MAX_CONCURRENT_DIR_FILE_READS: usize = 8;
+
 /// Replace the current global scenario metadata snapshot.
 ///
 /// # Panics
@@ -139,10 +154,6 @@ pub fn extract_scenario_owner(scenario_contents: &[u8]) -> String {
     .unwrap_or_default()
 }
 
-fn join_dir_entry_path(dir: &str, entry: &str) -> String {
-  format!("{}/{entry}", dir.trim_end_matches('/'))
-}
-
 /// Process-wide GCS client, built once and shared by every caller.
 ///
 /// Constructing a client calls `ClientConfig::with_auth()`, which on Cloud Run
@@ -204,21 +215,18 @@ async fn gcs_client() -> Result<&'static Client, Box<dyn std::error::Error>> {
 
 /// Build a deterministic fingerprint of a directory by listing files and their last-modified timestamps.
 ///
+/// This runs every [`RELOAD_POLL_INTERVAL`](crate) tick, so it takes its
+/// timestamps from the directory listing itself rather than issuing a metadata
+/// request per file — one GCS request per poll instead of one per design.
+///
 /// # Errors
 ///
-/// Returns an error if the directory cannot be listed or if any file timestamp cannot be read.
+/// Returns an error if the directory cannot be listed.
 pub async fn get_local_or_cloud_dir_fingerprint(
   dir: &str,
 ) -> Result<Vec<(String, Option<i64>)>, Box<dyn std::error::Error>> {
-  let mut files = list_local_or_cloud_dir(dir).await?;
-  files.sort_unstable();
-
-  let mut fingerprint = Vec::with_capacity(files.len());
-  for file in files {
-    let full_path = join_dir_entry_path(dir, &file);
-    let last_modified = get_file_last_modified_timestamp(&full_path).await?;
-    fingerprint.push((file, last_modified));
-  }
+  let mut fingerprint = list_local_or_cloud_dir_with_timestamps(dir).await?;
+  fingerprint.sort_unstable();
 
   Ok(fingerprint)
 }
@@ -454,10 +462,30 @@ pub async fn write_local_or_cloud_file(filename: &str, contents: Vec<u8>) -> Res
 /// # Errors
 /// If the directory cannot be read or if GCS cannot be reached (depending on url of file)
 ///
-/// # Panics
-/// Panics if the GCS list response omits the `items` field.
-///
 pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+  Ok(
+    list_local_or_cloud_dir_with_timestamps(dir)
+      .await?
+      .into_iter()
+      .map(|(name, _)| name)
+      .collect(),
+  )
+}
+
+/// List the files in a directory along with each file's last-modified time.
+///
+/// The GCS listing already carries every object's `updated` field, so pairing
+/// the two here costs one request for the whole directory. That is what lets
+/// [`get_local_or_cloud_dir_fingerprint`] poll without a `get_object` per file.
+///
+/// `None` for a timestamp means the backing store did not report one; it is not
+/// an error.
+///
+/// # Errors
+/// If the directory cannot be read or if GCS cannot be reached (depending on url of file)
+async fn list_local_or_cloud_dir_with_timestamps(
+  dir: &str,
+) -> Result<Vec<(String, Option<i64>)>, Box<dyn std::error::Error>> {
   if dir.starts_with("gs://") {
     // Extract bucket name from the GCS URI
     let parts: Vec<&str> = dir.split('/').collect();
@@ -472,23 +500,40 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
         ..Default::default()
       })
       .await?;
-    let mut files = Vec::new();
-    for object in objects.items.unwrap() {
-      files.push(object.name);
-    }
-    Ok(files)
+
+    // `items` is absent rather than empty for an empty bucket.
+    Ok(
+      objects
+        .items
+        .unwrap_or_default()
+        .into_iter()
+        .map(|object| (object.name, object.updated.map(time::OffsetDateTime::unix_timestamp)))
+        .collect(),
+    )
   } else {
     // List the files locally
     let mut files = Vec::new();
     for entry in std::fs::read_dir(dir)? {
       let entry = entry?;
-      let path = entry.path();
-      if path.is_file() {
-        files.push(entry.file_name().to_string_lossy().into_owned());
+      // Stat through the path rather than the `DirEntry` so symlinked files are
+      // followed, matching what `Path::is_file` used to do here.
+      let metadata = std::fs::metadata(entry.path())?;
+      if metadata.is_file() {
+        files.push((entry.file_name().to_string_lossy().into_owned(), file_modified_unix(&metadata)));
       }
     }
     Ok(files)
   }
+}
+
+/// Last-modified time of a local file as a Unix timestamp, or `None` if the
+/// platform does not report one (or it predates the epoch / overflows `i64`).
+fn file_modified_unix(metadata: &std::fs::Metadata) -> Option<i64> {
+  metadata
+    .modified()
+    .ok()
+    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+    .and_then(|d| i64::try_from(d.as_secs()).ok())
 }
 
 /// Get the last modified timestamp for a file, supporting both local files and Google Cloud Storage files.
@@ -632,6 +677,88 @@ mod tests {
   fn test_extract_scenario_owner_malformed_json() {
     let json = b"not even json";
     assert_eq!(extract_scenario_owner(json), "");
+  }
+
+  /// Scratch directory helper for the directory-listing tests. Returns a fresh
+  /// empty directory that the caller is responsible for removing.
+  fn make_scratch_dir(tag: &str) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .expect("clock before epoch")
+      .as_nanos();
+    let dir = std::env::temp_dir().join(format!("callisto_{tag}_{nanos}"));
+    std::fs::create_dir_all(&dir).expect("unable to create scratch dir");
+    dir
+  }
+
+  /// The fingerprint is sorted by name and carries a timestamp per file. It is
+  /// polled every reload tick, so it must be cheap AND stable: two calls with
+  /// nothing touched have to compare equal or the watcher reloads forever.
+  #[tokio::test]
+  async fn test_dir_fingerprint_is_sorted_and_stable() {
+    let dir = make_scratch_dir("fingerprint");
+    for name in ["c.json", "a.json", "b.json"] {
+      std::fs::write(dir.join(name), b"{}").expect("unable to write scratch file");
+    }
+    // A subdirectory must not appear: only files are fingerprinted.
+    std::fs::create_dir(dir.join("nested")).expect("unable to create nested dir");
+
+    let dir_str = dir.to_str().expect("non-utf8 scratch path");
+    let fingerprint = get_local_or_cloud_dir_fingerprint(dir_str).await.unwrap();
+
+    let names: Vec<&str> = fingerprint.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, vec!["a.json", "b.json", "c.json"], "Fingerprint must be name-sorted");
+    assert!(
+      fingerprint.iter().all(|(_, ts)| ts.is_some()),
+      "Local files must report a last-modified timestamp"
+    );
+
+    let again = get_local_or_cloud_dir_fingerprint(dir_str).await.unwrap();
+    assert_eq!(fingerprint, again, "An untouched directory must fingerprint identically");
+
+    std::fs::remove_dir_all(&dir).ok();
+  }
+
+  /// A changed file must change the fingerprint, otherwise nothing ever reloads.
+  #[tokio::test]
+  async fn test_dir_fingerprint_changes_when_a_file_is_touched() {
+    let dir = make_scratch_dir("fingerprint_touch");
+    let file = dir.join("a.json");
+    std::fs::write(&file, b"{}").expect("unable to write scratch file");
+    let dir_str = dir.to_str().expect("non-utf8 scratch path");
+
+    let before = get_local_or_cloud_dir_fingerprint(dir_str).await.unwrap();
+
+    // Timestamps are whole seconds, so set the mtime explicitly rather than
+    // rewriting and hoping the clock ticked.
+    let bumped = std::time::SystemTime::now() + std::time::Duration::from_secs(120);
+    std::fs::File::options()
+      .write(true)
+      .open(&file)
+      .expect("unable to open scratch file")
+      .set_modified(bumped)
+      .expect("unable to set mtime");
+
+    let after = get_local_or_cloud_dir_fingerprint(dir_str).await.unwrap();
+    assert_ne!(before, after, "A touched file must change the directory fingerprint");
+
+    std::fs::remove_dir_all(&dir).ok();
+  }
+
+  /// `list_local_or_cloud_dir` is now a projection of the timestamped listing.
+  /// It must still return bare file names, and still skip directories.
+  #[tokio::test]
+  async fn test_list_local_dir_returns_file_names_only() {
+    let dir = make_scratch_dir("listdir");
+    std::fs::write(dir.join("only.json"), b"{}").expect("unable to write scratch file");
+    std::fs::create_dir(dir.join("nested")).expect("unable to create nested dir");
+
+    let files = list_local_or_cloud_dir(dir.to_str().expect("non-utf8 scratch path"))
+      .await
+      .unwrap();
+    assert_eq!(files, vec!["only.json".to_string()]);
+
+    std::fs::remove_dir_all(&dir).ok();
   }
 
   #[test]

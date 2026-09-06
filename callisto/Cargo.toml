@@ -28,6 +28,9 @@ jsonwebtoken = "9.3.0"
 reqwest = { version = "0.12.4", features = ["json"] }
 base64 = "0.22.1"
 google-cloud-storage = "0.22.1"
+# Direct dependency only so GCS object timestamps (`OffsetDateTime`) can be
+# converted without naming a private re-export path. Same version google-cloud-storage already pulls in.
+time = "0.3"
 async-trait = "0.1.83"
 quit = "2.0.0"
 rustls = "0.23.21"
