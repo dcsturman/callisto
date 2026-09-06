@@ -463,10 +463,10 @@ function HardpointList(args: {
         />
       </label>
       <div className="hardpoint-row hardpoint-column-labels">
-        <span className="hardpoint-count-label">Qty</span>
-        <span className="hardpoint-mount">Mount</span>
-        <span className="hardpoint-weapon">Weapon</span>
-        <span className="hardpoint-gunnery-label">Gun</span>
+        <span>Qty</span>
+        <span>Mount</span>
+        <span>Weapon</span>
+        <span>Skill</span>
       </div>
       {args.groups.map((group, index) => {
         const optionId = mountOptionId(group.mount);
@@ -497,7 +497,11 @@ function HardpointList(args: {
               onChange={(event) => handleCountChange(index, event.target.value)}
             />
             <select
-              className="select-dropdown control-input hardpoint-mount"
+              className={
+                empty
+                  ? "select-dropdown control-input hardpoint-mount hardpoint-mount-wide"
+                  : "select-dropdown control-input hardpoint-mount"
+              }
               name={"hardpoint-mount-" + index}
               aria-label={"Group " + (index + 1) + " mount"}
               value={optionId ?? "unsupported"}

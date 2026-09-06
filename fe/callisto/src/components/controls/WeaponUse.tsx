@@ -30,6 +30,7 @@ import Turret1 from "assets/icons/turret1.svg?react";
 import Turret2 from "assets/icons/turret2.svg?react";
 import Turret3 from "assets/icons/turret3.svg?react";
 import Barbette from "assets/icons/barbette.svg?react";
+import FixedMount from "assets/icons/fixed-mount.svg?react";
 import SmallBay from "assets/icons/bay-s.svg?react";
 import MediumBay from "assets/icons/bay-m.svg?react";
 import LargeBay from "assets/icons/bay-l.svg?react";
@@ -61,6 +62,7 @@ const WEAPON_COLORS: { [key: string]: string } = {
   Pulse: "blue",
   Missile: "green",
   Particle: "yellow",
+  Sand: "tan",
 };
 
 const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
@@ -89,6 +91,35 @@ export const WeaponButton = (props: {
   onClick: () => void;
   disabled: boolean;
 }) => {
+  // FixedMount is a bare string like Barbette, so it has to be matched first or
+  // it falls into the Barbette arm and draws the wrong weapon entirely.
+  if (props.mount === "FixedMount") {
+    return (
+      <>
+        <button
+          id={props.weapon + "-fixed-mount-button"}
+          className="weapon-button"
+          data-tooltip-id={props.weapon + props.mount}
+          data-tooltip-content={`${props.weapon} Fixed Mount`}
+          data-tooltip-delay-show={700}
+          onClick={props.onClick}
+          disabled={props.disabled}
+        >
+          <FixedMount
+            className="weapon-symbol fixed-mount-button"
+            style={{
+              fill: WEAPON_COLORS[props.weapon],
+            }}
+          />
+          <span className="weapon-symbol-count">{props.count}</span>
+        </button>
+        <Tooltip
+          id={props.weapon + props.mount}
+          className="tooltip-body weapon-button-tooltip"
+        />
+      </>
+    );
+  }
   if (typeof props.mount === "string") {
     return (
       <>

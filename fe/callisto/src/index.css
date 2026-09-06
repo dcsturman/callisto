@@ -496,6 +496,10 @@ input {
     bottom: 0;
 }
 
+.fixed-mount-button {
+    bottom: 0;
+}
+
 .weapon-symbol-count {
     background-color: transparent;
     font-size: 10pt;
@@ -1059,11 +1063,30 @@ input {
     flex-shrink: 0;
 }
 
-/* Add Ship hardpoint editor: one row per run of identical mounts. */
+/* Add Ship hardpoint editor: one row per run of identical mounts.
+   The whole editor is a single four-column grid and each row is
+   `display: contents`, so the column headings and every field below them share
+   one set of column tracks.  Per-row flex boxes cannot do that: a row with no
+   weapon or skill field sizes its remaining cells differently and the columns
+   drift apart. */
 .hardpoint-list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1.25fr) minmax(0, 1fr) 46px;
+    column-gap: 4px;
+    row-gap: 2px;
+    align-items: center;
     padding-right: 4px;
+}
+
+.hardpoint-row {
+    display: contents;
+}
+
+/* Full-width bands between the rows. */
+.hardpoint-header,
+.hardpoint-bulk-gunnery,
+.hardpoint-problem {
+    grid-column: 1 / -1;
 }
 
 .hardpoint-header {
@@ -1087,14 +1110,6 @@ input {
     font-weight: bold;
 }
 
-.hardpoint-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 4px;
-    margin-top: 2px;
-}
-
 /* Bulk gunner skill: one field that writes through to every row, since the
    usual case is a whole crew at the same effective skill. */
 .hardpoint-bulk-gunnery {
@@ -1106,45 +1121,56 @@ input {
     margin-top: 4px;
 }
 
-.hardpoint-column-labels {
+.hardpoint-column-labels > span {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     opacity: 0.6;
+    text-align: center;
 }
 
-.hardpoint-count {
-    flex: 0 0 42px;
-    width: 42px;
-    min-width: 0;
-    text-align: right;
+/* One height and one box model for every control in the grid, so the number
+   inputs and the dropdowns line up on both edges. */
+.hardpoint-list .control-input {
+    margin: 0;
+    width: 100%;
+    height: 26px;
+    padding: 0 4px;
+    box-sizing: border-box;
 }
 
-.hardpoint-count-label {
-    flex: 0 0 42px;
-    text-align: right;
-}
-
-.hardpoint-mount {
-    flex: 1 1 50%;
-    min-width: 0;
-}
-
-.hardpoint-weapon {
-    flex: 1 1 38%;
-    min-width: 0;
-}
-
+.hardpoint-count,
 .hardpoint-gunnery {
-    flex: 0 0 42px;
-    width: 42px;
-    min-width: 0;
-    text-align: right;
+    text-align: center;
 }
 
-.hardpoint-gunnery-label {
-    flex: 0 0 42px;
-    text-align: right;
+/* The bulk field sits in a flex band, not the grid, so it needs its width
+   stated; matching the Skill column puts it directly above that column. */
+.hardpoint-bulk-gunnery .control-input {
+    flex: 0 0 46px;
+    width: 46px;
+}
+
+/* The spinners cost more width than they earn in a 46px column; these are
+   one- or two-digit values and are quicker to type. */
+.hardpoint-count::-webkit-inner-spin-button,
+.hardpoint-count::-webkit-outer-spin-button,
+.hardpoint-gunnery::-webkit-inner-spin-button,
+.hardpoint-gunnery::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+}
+
+.hardpoint-count,
+.hardpoint-gunnery {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+/* An empty row has no weapon or skill to show, so its mount select takes the
+   space they would have used. */
+.hardpoint-mount-wide {
+    grid-column: 2 / -1;
 }
 
 .hardpoint-problem {
