@@ -258,6 +258,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     }));
   }
 
+  // Build the shared GCS client up front, before anything reads a directory.
+  //
+  // Every GCS read used to construct its own client, and each construction
+  // fetches an OAuth token from the instance metadata server. Loading a
+  // directory fans out over its files, so N designs meant N simultaneous token
+  // requests; the metadata server refuses that burst. At 19 designs it failed
+  // intermittently, at 79 it failed for over half of them every time.
+  //
+  // The client is now shared and cached, so warming it here means exactly one
+  // token request happens, while the instance still has its startup CPU boost,
+  // rather than racing a fan-out. Skipped entirely when no `gs://` path is
+  // configured - local dev and the test suite have no credentials and never
+  // touch GCS.
+  //
+  // A failure here is not fatal. It is retried on the lazy path, and the
+  // scenario/design loads below keep their own soft-fail, so a genuine GCS
+  // outage still cannot stop the instance coming up.
+  if args.design_dir.starts_with("gs://") || args.scenario_dir.starts_with("gs://") {
+    match retry_startup_load("GCS client", || Box::pin(callisto::ensure_gcs_client())).await {
+      Ok(()) => {
+        info!("(main) GCS client ready.");
+      }
+      Err(e) => {
+        warn!("(main) Could not pre-build the GCS client: {e}. Falling back to building it on demand.");
+      }
+    }
+  }
+
   debug!("(main) Loading ship templates from {}...", &args.design_dir);
   // Soft-fail like scenarios: a transient GCS hiccup on cold start
   // shouldn't wedge the instance. The watcher polls the directory
