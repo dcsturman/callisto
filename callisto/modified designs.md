@@ -70,6 +70,32 @@ No schema field exists for these; they were dropped:
 
 ---
 
+## TODO 5 — `MAX_SHIP_WEAPONS` is too small above 6,400 tons
+
+`player.rs:25` caps client-supplied armament at **64 weapons**:
+
+```rust
+const MAX_SHIP_WEAPONS: usize = 64;
+```
+
+Hardpoints are one per 100 tons, so a hull of 6,400 tons has exactly 64 and any ship
+larger than that cannot be fully armed through `add_ship` — a 6,500-ton design wants 65
+and is rejected outright. The limit is not a rules constraint; it exists only to stop a
+malformed or hostile request allocating an unbounded weapon list.
+
+Not urgent: the library currently stops at 5,000 tons (50 hardpoints) because larger
+designs were deliberately out of scope for the import. It becomes a real bug the moment a
+design over 6,400 tons is added, and it will fail as a confusing "more than the limit"
+error rather than anything that points at tonnage.
+
+**When fixing:** derive the cap from displacement rather than raising the constant to
+another arbitrary number — the allowance is already computable from the design. Keep an
+absolute ceiling for the malformed-request case, but make the normal path scale. Note that
+bays complicate this slightly: a Large Bay costs 5 hardpoints but is still 1 weapon, so a
+displacement-derived cap is an upper bound, never an exact count.
+
+---
+
 ## Mixed-turret refactoring
 
 Per the Core Rulebook ("Double and Triple Turrets"), a turret holding *different* weapon
