@@ -1071,7 +1071,7 @@ input {
    drift apart. */
 .hardpoint-list {
     display: grid;
-    grid-template-columns: 46px minmax(0, 1.25fr) minmax(0, 1fr) 46px;
+    grid-template-columns: 32px minmax(0, 1.3fr) minmax(0, 1fr) 32px;
     column-gap: 4px;
     row-gap: 2px;
     align-items: center;
@@ -1122,7 +1122,7 @@ input {
 }
 
 .hardpoint-column-labels > span {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     opacity: 0.6;
@@ -1135,7 +1135,7 @@ input {
     margin: 0;
     width: 100%;
     height: 26px;
-    padding: 0 4px;
+    padding: 0 2px;
     box-sizing: border-box;
 }
 
@@ -1147,8 +1147,8 @@ input {
 /* The bulk field sits in a flex band, not the grid, so it needs its width
    stated; matching the Skill column puts it directly above that column. */
 .hardpoint-bulk-gunnery .control-input {
-    flex: 0 0 46px;
-    width: 46px;
+    flex: 0 0 32px;
+    width: 32px;
 }
 
 /* The spinners cost more width than they earn in a 46px column; these are
