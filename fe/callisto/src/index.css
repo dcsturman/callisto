@@ -1071,7 +1071,7 @@ input {
    drift apart. */
 .hardpoint-list {
     display: grid;
-    grid-template-columns: 32px minmax(0, 1.3fr) minmax(0, 1fr) 32px;
+    grid-template-columns: 30px minmax(0, 1.15fr) minmax(0, 1fr) 30px;
     column-gap: 4px;
     row-gap: 2px;
     align-items: center;
@@ -1137,6 +1137,11 @@ input {
     height: 26px;
     padding: 0 2px;
     box-sizing: border-box;
+    /* Grid items default to `min-width: auto`, i.e. their min-content width.
+       For an <input> that comes from the default `size` of 20 characters and
+       for a <select> from its widest option, so both refuse to shrink into
+       their tracks and the column definition above is quietly ignored. */
+    min-width: 0;
 }
 
 .hardpoint-count,
@@ -1147,8 +1152,8 @@ input {
 /* The bulk field sits in a flex band, not the grid, so it needs its width
    stated; matching the Skill column puts it directly above that column. */
 .hardpoint-bulk-gunnery .control-input {
-    flex: 0 0 32px;
-    width: 32px;
+    flex: 0 0 30px;
+    width: 30px;
 }
 
 /* The spinners cost more width than they earn in a 46px column; these are
