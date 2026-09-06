@@ -19,9 +19,7 @@
     },
     {
       "kind": "Missile",
-      "mount": {
-        "Turret": 1
-      }
+      "mount": "FixedMount"
     }
   ],
   "tl": 15,
