@@ -143,14 +143,63 @@ fn join_dir_entry_path(dir: &str, entry: &str) -> String {
   format!("{}/{entry}", dir.trim_end_matches('/'))
 }
 
-async fn create_gcs_client() -> Result<Client, Box<dyn std::error::Error>> {
-  let config = ClientConfig::default().with_auth().await.map_err(|e| {
-    Box::new(std::io::Error::other(format!(
-      "Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?"
-    ))) as Box<dyn std::error::Error>
-  })?;
+/// Process-wide GCS client, built once and shared by every caller.
+///
+/// Constructing a client calls `ClientConfig::with_auth()`, which on Cloud Run
+/// fetches an OAuth token from the instance metadata server at 169.254.169.254.
+/// Building one per operation is what made loading a directory of designs a
+/// burst of simultaneous token requests - one per file - which the metadata
+/// server refuses under load. At 19 designs that failed intermittently; at 79
+/// it failed for roughly half of them on every attempt.
+///
+/// A `tokio::sync::OnceCell` is used rather than `once_cell::sync::OnceCell`
+/// because initialisation is async, and specifically for its failure
+/// semantics: see [`gcs_client`].
+static GCS_CLIENT: tokio::sync::OnceCell<Client> = tokio::sync::OnceCell::const_new();
 
-  Ok(Client::new(config))
+/// Force the shared GCS client to be built now, rather than on first use.
+///
+/// Called at startup so the token fetch happens once, up front, while the
+/// instance still has its startup CPU boost - instead of racing a directory
+/// load. Safe to call more than once; after the first success it is a no-op.
+///
+/// Only worth calling when a `gs://` path is actually configured. Local
+/// scenario/design directories never touch GCS, and building a client without
+/// credentials would fail for no reason.
+///
+/// # Errors
+/// Returns an error if the client cannot be built or authenticated. Nothing is
+/// cached on failure, so a later call - or the lazy path - will retry.
+pub async fn ensure_gcs_client() -> Result<(), Box<dyn std::error::Error>> {
+  gcs_client().await.map(|_| ())
+}
+
+/// Return the shared GCS client, building and authenticating it on first use.
+///
+/// Recovery from a failed build is the point of `get_or_try_init`:
+///
+/// - On error **nothing is cached**. The cell stays empty and the very next
+///   caller retries. A transient metadata-server failure at startup therefore
+///   cannot poison the process, which a plain `OnceCell` holding a
+///   `Result` would do.
+/// - Concurrent callers do not each attempt initialisation. The first one runs
+///   it while the rest await the same attempt, so N concurrent file reads
+///   produce **one** token request rather than N. That is what removes the
+///   thundering herd, independent of any caching benefit.
+/// - On success the client is reused for the life of the process. The client
+///   owns a token source that refreshes expiring tokens internally, so a
+///   long-lived client does not go stale.
+async fn gcs_client() -> Result<&'static Client, Box<dyn std::error::Error>> {
+  GCS_CLIENT
+    .get_or_try_init(|| async {
+      let config = ClientConfig::default().with_auth().await.map_err(|e| {
+        Box::new(std::io::Error::other(format!(
+          "Error {e} authenticating with GCS. Did you do `gcloud auth application-default login` before running?"
+        ))) as Box<dyn std::error::Error>
+      })?;
+      Ok(Client::new(config))
+    })
+    .await
 }
 
 /// Build a deterministic fingerprint of a directory by listing files and their last-modified timestamps.
@@ -194,7 +243,7 @@ pub async fn read_local_or_cloud_file(filename: &str) -> Result<Vec<u8>, Box<dyn
     let bucket_name = parts[2];
     let object_name = parts[3..].join("/");
 
-    let client = create_gcs_client().await?;
+    let client = gcs_client().await?;
 
     // Read the file from GCS
     let data = client
@@ -232,7 +281,7 @@ pub async fn read_local_or_cloud_file_with_generation(
     let bucket_name = parts[2];
     let object_name = parts[3..].join("/");
 
-    let client = create_gcs_client().await?;
+    let client = gcs_client().await?;
 
     // Fetch metadata first so we can capture the generation. If the object
     // doesn't exist we still want a clean (empty bytes, None) result so the
@@ -324,7 +373,7 @@ pub async fn write_local_or_cloud_file_if_generation_match(
       ))))
     })?;
 
-    let client = create_gcs_client()
+    let client = gcs_client()
       .await
       .map_err(|e| GenerationWriteError::Other(Box::new(std::io::Error::other(e.to_string()))))?;
     let upload_type = UploadType::Simple(Media::new(object_name.to_string()));
@@ -381,7 +430,7 @@ pub async fn write_local_or_cloud_file(filename: &str, contents: Vec<u8>) -> Res
       .next()
       .ok_or_else(|| std::io::Error::other(format!("Malformed GCS path (missing object): {filename}")))?;
 
-    let client = create_gcs_client().await?;
+    let client = gcs_client().await?;
     let upload_type = UploadType::Simple(Media::new(object_name.to_string()));
     client
       .upload_object(
@@ -414,7 +463,7 @@ pub async fn list_local_or_cloud_dir(dir: &str) -> Result<Vec<String>, Box<dyn s
     let parts: Vec<&str> = dir.split('/').collect();
     let bucket_name = parts[2];
 
-    let client = create_gcs_client().await?;
+    let client = gcs_client().await?;
 
     // List the files in the directory
     let objects = client
@@ -484,7 +533,7 @@ pub async fn get_file_last_modified_timestamp(filename: &str) -> Result<Option<i
     let bucket_name = parts[2];
     let object_name = parts[3..].join("/");
 
-    let client = create_gcs_client().await?;
+    let client = gcs_client().await?;
 
     // Get the object metadata from GCS
     let object = client
@@ -598,5 +647,72 @@ mod tests {
 
     replace_scenario_failures(Vec::new());
     assert_eq!(get_scenario_failures_snapshot().len(), 0);
+  }
+
+  /// Pins the failure semantics [`gcs_client`] depends on.
+  ///
+  /// The shared GCS client must not cache a failed build: a transient
+  /// metadata-server error at startup would otherwise poison the process for
+  /// its whole life. `tokio::sync::OnceCell::get_or_try_init` gives us that -
+  /// on `Err` nothing is stored and the next caller retries. This test exists
+  /// so that swapping in a plain `OnceCell`, or caching a `Result`, fails
+  /// loudly rather than silently reintroducing the bug.
+  #[tokio::test]
+  async fn once_cell_does_not_cache_initialisation_failures() {
+    let cell: tokio::sync::OnceCell<u32> = tokio::sync::OnceCell::const_new();
+    let attempts = std::sync::atomic::AtomicU32::new(0);
+
+    let init = || async {
+      let n = attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+      if n < 3 {
+        Err("metadata server unavailable")
+      } else {
+        Ok(n)
+      }
+    };
+
+    assert!(cell.get_or_try_init(init).await.is_err(), "first attempt should fail");
+    assert!(cell.get().is_none(), "a failed attempt must not be cached");
+    assert!(cell.get_or_try_init(init).await.is_err(), "second attempt should fail");
+    assert_eq!(*cell.get_or_try_init(init).await.unwrap(), 3, "third attempt should succeed");
+    assert_eq!(*cell.get_or_try_init(init).await.unwrap(), 3, "success must now be cached");
+    assert_eq!(
+      attempts.load(std::sync::atomic::Ordering::SeqCst),
+      3,
+      "once initialised, no further attempts should be made"
+    );
+  }
+
+  /// Concurrent callers must share a single initialisation rather than each
+  /// starting their own. This is what collapses an N-file directory load into
+  /// one token request instead of N, which is the actual fix for the metadata
+  /// server refusing a burst of simultaneous requests.
+  #[tokio::test]
+  async fn once_cell_initialises_once_under_concurrency() {
+    let cell: std::sync::Arc<tokio::sync::OnceCell<u32>> = std::sync::Arc::new(tokio::sync::OnceCell::const_new());
+    let attempts = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+
+    let mut handles = Vec::new();
+    for _ in 0..64 {
+      let cell = cell.clone();
+      let attempts = attempts.clone();
+      handles.push(tokio::spawn(async move {
+        *cell
+          .get_or_init(|| async {
+            attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            7_u32
+          })
+          .await
+      }));
+    }
+    for h in handles {
+      assert_eq!(h.await.unwrap(), 7);
+    }
+    assert_eq!(
+      attempts.load(std::sync::atomic::Ordering::SeqCst),
+      1,
+      "64 concurrent callers must produce exactly one initialisation"
+    );
   }
 }
