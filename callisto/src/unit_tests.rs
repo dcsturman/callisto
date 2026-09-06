@@ -1798,6 +1798,119 @@ async fn test_add_ship_rejects_illegal_armament() {
   );
 }
 
+/// Queued actions address weapons by index, so re-arming a ship must drop its
+/// fire and point-defense orders.  Non-weapon actions are unrelated to the
+/// armament and stay queued.
+#[test(tokio::test)]
+async fn test_rearming_a_ship_clears_its_weapon_actions() {
+  use crate::action::ShipAction;
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
+  let target = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0],"design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(target).unwrap()).unwrap();
+
+  let actions = json!([["ship1", [
+      {"FireAction": {"weapon_id": 3, "target": "ship2"}},
+      {"PointDefenseAction": {"weapon_id": 2}},
+      {"SensorLock": {"target": "ship2"}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+
+  // Re-arm ship1 down to two weapons: weapon_id 3 and 2 no longer exist.
+  let rearmed = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer",
+        "weapons":[{"kind":"Beam","mount":{"Turret":3}},{"kind":"Missile","mount":"FixedMount"}]}"#;
+  server.add_ship(serde_json::from_str(rearmed).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let (_, remaining) = entities
+    .actions
+    .iter()
+    .find(|(name, _)| name == "ship1")
+    .expect("ship1 keeps its non-weapon actions");
+  assert_eq!(
+    remaining,
+    &vec![ShipAction::SensorLock {
+      target: "ship2".to_string()
+    }],
+    "only the weapon-bound actions should have been dropped"
+  );
+}
+
+/// A captain's boosts live under the *captain's* ship, so re-arming a ship has
+/// to sweep every action list — not just that ship's own.
+#[test(tokio::test)]
+async fn test_rearming_a_ship_clears_boosts_aimed_at_its_weapons() {
+  use crate::action::{BoostTarget, ShipAction};
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  for name in ["ship1", "ship2"] {
+    let ship = format!(r#"{{"name":"{name}","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer"}}"#);
+    server.add_ship(serde_json::from_str(&ship).unwrap()).unwrap();
+  }
+
+  // ship2's captain boosts one of ship1's weapons and one of its own.
+  let actions = json!([["ship2", [
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 3}},
+          {"Fire": {"ship": "ship2", "weapon_id": 0}}
+      ]}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+
+  let rearmed = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer",
+        "weapons":[{"kind":"Beam","mount":{"Turret":3}}]}"#;
+  server.add_ship(serde_json::from_str(rearmed).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let (_, remaining) = entities
+    .actions
+    .iter()
+    .find(|(name, _)| name == "ship2")
+    .expect("ship2 keeps its own boost");
+  assert_eq!(
+    remaining,
+    &vec![ShipAction::LeadershipCheck {
+      boosts: vec![BoostTarget::Fire {
+        ship: "ship2".to_string(),
+        weapon_id: 0
+      }]
+    }],
+    "only the boost pointed at the re-armed ship should have been dropped"
+  );
+}
+
+/// Re-submitting a ship without changing its armament must not disturb the
+/// queue: the "Update" path is used for position edits too.
+#[test(tokio::test)]
+async fn test_updating_a_ship_without_rearming_keeps_fire_actions() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
+  let target = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0],"design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(target).unwrap()).unwrap();
+
+  let actions = json!([["ship1", [{"FireAction": {"weapon_id": 1, "target": "ship2"}}]]]);
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+
+  // Same design, no explicit weapons: the armament is unchanged, only position.
+  let moved = r#"{"name":"ship1","position":[100,0,0],"velocity":[0,0,0],"design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(moved).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let (_, remaining) = entities
+    .actions
+    .iter()
+    .find(|(name, _)| name == "ship1")
+    .expect("ship1 keeps its fire action");
+  assert_eq!(remaining.len(), 1, "an unchanged armament must not clear the queue");
+}
+
 /// Scenario files round-trip: a ship with its own armament writes a `weapons`
 /// array back out, and a ship without one still writes no key at all.
 #[test(tokio::test)]
