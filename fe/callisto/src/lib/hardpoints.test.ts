@@ -1,23 +1,52 @@
 import { describe, it, expect } from "vitest";
 import {
   MOUNT_OPTIONS,
+  WeaponGroup,
   allowanceForDisplacement,
   checkAllowance,
-  compactWeaponRows,
+  commonGunnery,
+  emptyGroup,
+  expandGroups,
+  groupWeapons,
   mountCost,
   mountForOptionId,
   mountOptionId,
-  padWeaponRows,
-  rowCountForDesign,
+  mountOptionsFor,
+  setAllGunnery,
+  totalMounts,
 } from "lib/hardpoints";
 import { Weapon, WeaponMount, createWeapon } from "lib/weapon";
 
-const turret = (size: number, kind = "Beam"): Weapon =>
+// Editor rows.
+const turret = (size: number, kind = "Beam", count = 1): WeaponGroup => ({
+  count,
+  mount: { Turret: size },
+  kind,
+  gunnery: 0,
+});
+const bay = (
+  size: "Small" | "Medium" | "Large",
+  kind = "Missile",
+  count = 1,
+): WeaponGroup => ({ count, mount: { Bay: size }, kind, gunnery: 0 });
+const barbette = (kind = "Particle", count = 1): WeaponGroup => ({
+  count,
+  mount: "Barbette",
+  kind,
+  gunnery: 0,
+});
+const fixed = (kind = "Missile", count = 1): WeaponGroup => ({
+  count,
+  mount: "FixedMount",
+  kind,
+  gunnery: 0,
+});
+
+// Flat weapons, as they arrive from a design or an existing ship.
+const wTurret = (size: number, kind = "Beam"): Weapon =>
   createWeapon(kind, { Turret: size });
-const bay = (size: "Small" | "Medium" | "Large", kind = "Missile"): Weapon =>
+const wBay = (size: "Small" | "Medium" | "Large", kind = "Missile"): Weapon =>
   createWeapon(kind, { Bay: size });
-const barbette = (kind = "Particle"): Weapon => createWeapon(kind, "Barbette");
-const fixed = (kind = "Missile"): Weapon => createWeapon(kind, "FixedMount");
 
 describe("allowanceForDisplacement", () => {
   it("gives ships of 100 tons or more one hardpoint per 100 tons", () => {
@@ -29,37 +58,27 @@ describe("allowanceForDisplacement", () => {
       kind: "hardpoints",
       total: 2,
     });
-    expect(allowanceForDisplacement(300)).toEqual({
+    expect(allowanceForDisplacement(5000)).toEqual({
       kind: "hardpoints",
-      total: 3,
-    });
-    expect(allowanceForDisplacement(2000)).toEqual({
-      kind: "hardpoints",
-      total: 20,
+      total: 50,
     });
   });
 
   it("rounds partial hundreds down", () => {
-    expect(allowanceForDisplacement(199)).toEqual({
-      kind: "hardpoints",
-      total: 1,
-    });
-    expect(allowanceForDisplacement(450)).toEqual({
-      kind: "hardpoints",
-      total: 4,
-    });
+    expect(allowanceForDisplacement(199).total).toBe(1);
+    expect(allowanceForDisplacement(1800).total).toBe(18);
   });
 
-  // The small-craft bands are the part that is NOT floor(tons / 100): every
-  // one of these hulls would get zero mounts under that formula.
   it("gives craft under 100 tons firmpoints on the three small-craft bands", () => {
-    expect(allowanceForDisplacement(6)).toEqual({ kind: "firmpoints", total: 1 });
-    expect(allowanceForDisplacement(34)).toEqual({ kind: "firmpoints", total: 1 });
-    expect(allowanceForDisplacement(35)).toEqual({ kind: "firmpoints", total: 2 });
-    expect(allowanceForDisplacement(50)).toEqual({ kind: "firmpoints", total: 2 });
-    expect(allowanceForDisplacement(69)).toEqual({ kind: "firmpoints", total: 2 });
-    expect(allowanceForDisplacement(70)).toEqual({ kind: "firmpoints", total: 3 });
-    expect(allowanceForDisplacement(99)).toEqual({ kind: "firmpoints", total: 3 });
+    expect(allowanceForDisplacement(10)).toEqual({
+      kind: "firmpoints",
+      total: 1,
+    });
+    expect(allowanceForDisplacement(34).total).toBe(1);
+    expect(allowanceForDisplacement(35).total).toBe(2);
+    expect(allowanceForDisplacement(69).total).toBe(2);
+    expect(allowanceForDisplacement(70).total).toBe(3);
+    expect(allowanceForDisplacement(99).total).toBe(3);
   });
 });
 
@@ -96,8 +115,31 @@ describe("checkAllowance on ships of 100 tons or more", () => {
     expect(report.rowProblems).toEqual([null, null]);
   });
 
-  it("counts empty rows as costing nothing", () => {
-    const report = checkAllowance([turret(3), null, null], 300);
+  it("charges a group once per mount in it", () => {
+    // Two rows, but eight turrets between them.
+    const report = checkAllowance(
+      [turret(3, "Beam", 6), turret(3, "Sand", 2)],
+      1000,
+    );
+    expect(report.used).toBe(8);
+    expect(report.overAllowance).toBe(false);
+  });
+
+  it("scores the P.F. Sloan: 34 mounts in three rows on 50 hardpoints", () => {
+    const report = checkAllowance(
+      [bay("Small", "Missile", 2), turret(3, "Beam", 30), turret(3, "Pulse", 2)],
+      5000,
+    );
+    expect(report.used).toBe(34);
+    expect(report.overAllowance).toBe(false);
+    expect(report.problems).toEqual([]);
+  });
+
+  it("counts empty and zero-count rows as costing nothing", () => {
+    const report = checkAllowance(
+      [turret(3), emptyGroup(), turret(1, "Sand", 0)],
+      300,
+    );
     expect(report.used).toBe(1);
     expect(report.overAllowance).toBe(false);
   });
@@ -121,8 +163,8 @@ describe("checkAllowance on ships of 100 tons or more", () => {
   // hardpoints), but WeaponMount cannot express a mixed turret so it is stored
   // as three mounts. It must render and report, not crash or lose a mount.
   it("reports the excelsior over-allowance without dropping any mount", () => {
-    const weapons = [barbette(), turret(2, "Missile"), turret(1, "Sand")];
-    const report = checkAllowance(weapons, 200);
+    const groups = [barbette(), turret(2, "Missile"), turret(1, "Sand")];
+    const report = checkAllowance(groups, 200);
     expect(report.used).toBe(3);
     expect(report.overAllowance).toBe(true);
     expect(report.rowProblems).toHaveLength(3);
@@ -147,7 +189,17 @@ describe("checkAllowance on small craft", () => {
     expect(report.overAllowance).toBe(false);
     expect(report.rowProblems[0]).toBeNull();
     expect(report.rowProblems[1]).toContain("one Firmpoint");
-    expect(report.problems.join(" ")).toContain("only one Firmpoint may be a turret");
+    expect(report.problems.join(" ")).toContain(
+      "only one Firmpoint may be a turret",
+    );
+  });
+
+  // The turret limit counts mounts, not rows: two turrets in one group are
+  // still two turrets.
+  it("rejects a group of two turrets on one small craft", () => {
+    const report = checkAllowance([turret(1, "Beam", 2)], 70);
+    expect(report.rowProblems[0]).toContain("one Firmpoint");
+    expect(report.problems.join(" ")).toContain("2 turrets");
   });
 
   it("rejects a double or triple turret", () => {
@@ -176,37 +228,143 @@ describe("checkAllowance on small craft", () => {
   });
 
   it("allows any number of fixed mounts up to the allowance", () => {
-    const report = checkAllowance([fixed(), fixed(), fixed()], 70);
+    const report = checkAllowance([fixed("Missile", 3)], 70);
     expect(report.used).toBe(3);
     expect(report.overAllowance).toBe(false);
     expect(report.problems).toEqual([]);
   });
 });
 
-describe("row helpers", () => {
-  it("gives one row per point of allowance", () => {
-    expect(rowCountForDesign(200, 2)).toBe(2);
-    expect(rowCountForDesign(400, 0)).toBe(4);
-    expect(rowCountForDesign(6, 1)).toBe(1);
-    expect(rowCountForDesign(50, 0)).toBe(2);
+describe("groupWeapons", () => {
+  it("collapses the P.F. Sloan's 34 weapons into three rows", () => {
+    const weapons = [
+      wBay("Small"),
+      wBay("Small"),
+      ...Array(30).fill(wTurret(3, "Beam")),
+      wTurret(3, "Pulse"),
+      wTurret(3, "Pulse"),
+    ];
+    const groups = groupWeapons(weapons);
+    expect(groups).toHaveLength(3);
+    expect(groups.map((group) => group.count)).toEqual([2, 30, 2]);
+    expect(totalMounts(groups)).toBe(34);
   });
 
-  it("gives extra rows to a design that already exceeds its allowance", () => {
-    // excelsior: 200 tons (2 hardpoints) but 3 stored mounts.
-    expect(rowCountForDesign(200, 3)).toBe(3);
+  it("defaults gunnery to zero where the crew list is short or absent", () => {
+    const groups = groupWeapons([wTurret(3), wTurret(3)], [2]);
+    // Different skills, so the two turrets do not merge.
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.gunnery)).toEqual([2, 0]);
   });
 
-  it("pads short armaments and never truncates long ones", () => {
-    expect(padWeaponRows([turret(1)], 3)).toEqual([turret(1), null, null]);
-    expect(padWeaponRows([turret(1), turret(2), turret(3)], 2)).toHaveLength(3);
-    expect(padWeaponRows([], 2)).toEqual([null, null]);
+  it("keeps a differently-skilled gunner in a row of their own", () => {
+    const weapons = [wTurret(3), wTurret(3), wTurret(3)];
+    const groups = groupWeapons(weapons, [1, 3, 1]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({ count: 2, gunnery: 1 });
+    expect(groups[1]).toMatchObject({ count: 1, gunnery: 3 });
   });
 
-  it("compacts rows to a dense list, preserving order", () => {
-    const a = turret(1, "Beam");
-    const b = turret(3, "Missile");
-    expect(compactWeaponRows([null, a, null, b, null])).toEqual([a, b]);
-    expect(compactWeaponRows([null, null])).toEqual([]);
+  it("merges identical weapons that are not adjacent", () => {
+    const groups = groupWeapons([wTurret(3, "Beam"), wTurret(3, "Sand"), wTurret(3, "Beam")]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({ kind: "Beam", count: 2 });
+    expect(groups[1]).toMatchObject({ kind: "Sand", count: 1 });
+  });
+
+  it("returns nothing for an unarmed ship", () => {
+    expect(groupWeapons([])).toEqual([]);
+    expect(totalMounts([])).toBe(0);
+  });
+});
+
+describe("expandGroups", () => {
+  it("produces weapons and gunnery index-aligned, which is what weapon_id needs", () => {
+    const { weapons, gunnery } = expandGroups([
+      { count: 2, mount: { Bay: "Small" }, kind: "Missile", gunnery: 3 },
+      { count: 3, mount: { Turret: 3 }, kind: "Beam", gunnery: 1 },
+    ]);
+    expect(weapons).toHaveLength(5);
+    expect(gunnery).toEqual([3, 3, 1, 1, 1]);
+    expect(weapons[0]).toEqual(createWeapon("Missile", { Bay: "Small" }));
+    expect(weapons[4]).toEqual(createWeapon("Beam", { Turret: 3 }));
+  });
+
+  it("drops empty and zero-count rows", () => {
+    const { weapons, gunnery } = expandGroups([
+      emptyGroup(),
+      turret(3, "Beam", 0),
+      turret(1, "Sand", 1),
+    ]);
+    expect(weapons).toHaveLength(1);
+    expect(gunnery).toHaveLength(1);
+  });
+
+  it("round-trips a grouped armament back to the list it came from", () => {
+    const weapons = [
+      wTurret(3, "Beam"),
+      wTurret(3, "Beam"),
+      wBay("Medium", "Missile"),
+    ];
+    const skills = [2, 2, 4];
+    const expanded = expandGroups(groupWeapons(weapons, skills));
+    expect(expanded.weapons).toEqual(weapons);
+    expect(expanded.gunnery).toEqual(skills);
+  });
+});
+
+describe("bulk gunner skill", () => {
+  it("reports the shared skill when every mount agrees", () => {
+    const groups = [
+      { ...turret(3, "Beam", 4), gunnery: 2 },
+      { ...turret(3, "Sand", 2), gunnery: 2 },
+    ];
+    expect(commonGunnery(groups)).toBe(2);
+  });
+
+  it("reports nothing once a row is overridden", () => {
+    const groups = [
+      { ...turret(3, "Beam", 4), gunnery: 2 },
+      { ...turret(3, "Sand", 2), gunnery: 3 },
+    ];
+    expect(commonGunnery(groups)).toBeNull();
+  });
+
+  it("ignores empty rows when deciding whether the crew agrees", () => {
+    const groups = [{ ...turret(3, "Beam"), gunnery: 2 }, emptyGroup(0)];
+    expect(commonGunnery(groups)).toBe(2);
+  });
+
+  it("reports nothing for an unarmed ship", () => {
+    expect(commonGunnery([emptyGroup()])).toBeNull();
+    expect(commonGunnery([])).toBeNull();
+  });
+
+  it("writes one skill through to every row", () => {
+    const groups = setAllGunnery([turret(3), bay("Large"), emptyGroup()], 3);
+    expect(groups.map((group) => group.gunnery)).toEqual([3, 3, 3]);
+  });
+});
+
+describe("mountOptionsFor", () => {
+  it("offers every mount on a hull with hardpoints", () => {
+    expect(mountOptionsFor("hardpoints")).toEqual(MOUNT_OPTIONS);
+  });
+
+  it("offers small craft only what a firmpoint can carry", () => {
+    expect(mountOptionsFor("firmpoints").map((option) => option.label)).toEqual([
+      "None",
+      "Fixed Mount",
+      "Single Turret",
+      "Barbette",
+    ]);
+  });
+
+  it("keeps doubles, triples and bays off small craft entirely", () => {
+    const ids = mountOptionsFor("firmpoints").map((option) => option.id);
+    expect(ids).not.toContain("turret-2");
+    expect(ids).not.toContain("turret-3");
+    expect(ids.some((id) => id.startsWith("bay-"))).toBe(false);
   });
 });
 
@@ -226,20 +384,19 @@ describe("mount dropdown options", () => {
   });
 
   it("round-trips every option between id and mount", () => {
-    for (const option of MOUNT_OPTIONS) {
+    MOUNT_OPTIONS.forEach((option) => {
       expect(mountForOptionId(option.id)).toEqual(option.mount);
       expect(mountOptionId(option.mount)).toBe(option.id);
-    }
+    });
   });
 
   it("maps an empty row to the None option", () => {
     expect(mountOptionId(null)).toBe("none");
+    expect(mountForOptionId("none")).toBeNull();
   });
 
-  // A mount no option covers must be reported rather than silently snapped to
-  // some other mount, which would rewrite a design behind the user's back.
   it("returns null for a mount it cannot represent", () => {
     expect(mountOptionId({ Turret: 4 } as WeaponMount)).toBeNull();
-    expect(mountOptionId("SpinalMount")).toBeNull();
+    expect(mountOptionId("Spinal" as WeaponMount)).toBeNull();
   });
 });

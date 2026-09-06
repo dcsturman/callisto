@@ -10,15 +10,19 @@ import {
 } from "lib/shipDesignTemplates";
 import { Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
 import {
-  DEFAULT_WEAPON_KIND,
+  DEFAULT_GUNNERY,
   MOUNT_OPTIONS,
   WEAPON_KINDS,
+  WeaponGroup,
   checkAllowance,
-  compactWeaponRows,
+  commonGunnery,
+  emptyGroup,
+  expandGroups,
+  groupWeapons,
   mountForOptionId,
   mountOptionId,
-  padWeaponRows,
-  rowCountForDesign,
+  mountOptionsFor,
+  setAllGunnery,
 } from "lib/hardpoints";
 import { Accordion } from "lib/Accordion";
 import { Tooltip } from "react-tooltip";
@@ -44,23 +48,17 @@ export const AddShip: React.FC<AddShipProps> = () => {
   const designRef = useRef<HTMLSelectElement>(null);
   const shipNameRef = useRef<HTMLInputElement>(null);
 
-  // One editor row per weapon mount.  Normally that is one row per point of
-  // hardpoint/firmpoint allowance; a design whose own armament already exceeds
-  // its allowance gets enough rows to show all of it rather than losing mounts.
+  // One editor row per *run* of identical weapons rather than one per
+  // hardpoint, so a ship with thirty matching turrets is one row and not
+  // thirty.  A trailing empty row is always present as the next slot to fill.
   const buildWeaponRows = useCallback(
-    (designName: string, existing?: Weapon[]) => {
+    (designName: string, existing?: Weapon[], gunnery?: number[]) => {
       const design = shipDesignTemplates[designName];
       if (!design) {
         return [];
       }
-      const source = existing ?? design.weapons;
-      return padWeaponRows(
-        source,
-        rowCountForDesign(
-          design.displacement,
-          Math.max(design.weapons.length, source.length),
-        ),
-      );
+      const groups = groupWeapons(existing ?? design.weapons, gunnery ?? []);
+      return [...groups, emptyGroup(commonGunnery(groups) ?? DEFAULT_GUNNERY)];
     },
     [shipDesignTemplates],
   );
@@ -76,8 +74,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
       yvel: "0",
       zvel: "0",
       design: firstDesign.name,
-      crew: createCrew(firstDesign.weapons.length),
-      weapons: buildWeaponRows(firstDesign.name),
+      crew: createCrew(),
+      armament: buildWeaponRows(firstDesign.name),
     };
   }, [shipDesignTemplates, entities, buildWeaponRows]);
 
@@ -97,10 +95,12 @@ export const AddShip: React.FC<AddShipProps> = () => {
         zvel: current.velocity[2].toString(),
         design: current.design,
         crew: current.crew,
-        // An existing ship's own armament, which may differ from its design's.
-        weapons: buildWeaponRows(
+        // An existing ship's own armament, which may differ from its design's,
+        // and the gunner skill already recorded against each of its weapons.
+        armament: buildWeaponRows(
           current.design,
           shipWeapons(current, shipDesignTemplates),
+          current.crew?.gunnery,
         ),
       };
       setAddShipData(template);
@@ -129,9 +129,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
               zvel: ship.velocity[2].toString(),
               design: ship.design,
               crew: ship.crew,
-              weapons: buildWeaponRows(
+              armament: buildWeaponRows(
                 ship.design,
                 shipWeapons(ship, shipDesignTemplates),
+                ship.crew?.gunnery,
               ),
             });
           }
@@ -171,13 +172,15 @@ export const AddShip: React.FC<AddShipProps> = () => {
       const design: string = addShipData.design;
       setAddShipData({ ...addShipData, design: design });
 
-      const crew = addShipData.crew;
       const ship = findShip(entities, name) || defaultShip();
 
-      // Dense list, empty rows removed: `weapon_id` stays a 0-based index into
-      // the ship's weapons, exactly as FireAction and BoostTarget assume.
-      // Hardpoint row numbers are a UI concept and never go over the wire.
-      const weapons = compactWeaponRows(addShipData.weapons);
+      // Groups flatten to a dense list here: `weapon_id` stays a 0-based index
+      // into the ship's weapons, exactly as FireAction and BoostTarget assume,
+      // and `gunnery` is emitted index-aligned with it so weapon N and the
+      // skill firing it always carry the same id.  Rows are a UI concept and
+      // never go over the wire.
+      const { weapons, gunnery } = expandGroups(addShipData.armament);
+      const crew = { ...addShipData.crew, gunnery };
       const designWeapons = shipDesignTemplates[design]?.weapons ?? [];
       // Send nothing when the armament is just the design's, so an unmodified
       // ship keeps inheriting from its design rather than freezing a copy.
@@ -207,14 +210,13 @@ export const AddShip: React.FC<AddShipProps> = () => {
       setAddShipData({
         ...addShipData,
         design: design,
-        weapons: buildWeaponRows(design),
+        armament: buildWeaponRows(design),
       }),
     [addShipData, setAddShipData, buildWeaponRows],
   );
 
   const handleWeaponsChange = useCallback(
-    (weapons: (Weapon | null)[]) =>
-      setAddShipData({ ...addShipData, weapons: weapons }),
+    (armament: WeaponGroup[]) => setAddShipData({ ...addShipData, armament }),
     [addShipData, setAddShipData],
   );
 
@@ -307,15 +309,14 @@ export const AddShip: React.FC<AddShipProps> = () => {
         <hr />
         <HardpointList
           design={shipDesignTemplates[addShipData.design]}
-          weapons={addShipData.weapons}
-          setWeapons={handleWeaponsChange}
+          groups={addShipData.armament}
+          setGroups={handleWeaponsChange}
         />
         <hr />
         <CrewBuilder
           shipName={addShipData.name}
           currentCrew={addShipData.crew}
           updateCrew={handleCrewChange}
-          num_gunners={compactWeaponRows(addShipData.weapons).length}
         />
         <input
           className="control-input control-button blue-button"
@@ -337,26 +338,41 @@ const sameWeapons = (a: Weapon[], b: Weapon[]) =>
       weaponToString(weapon) === weaponToString(b[index]),
   );
 
-// One row per weapon mount, with a running count against what the hull allows.
-// The allowance is advisory: the engine never validates armament, so an
+// One row per run of identical weapons — count, mount, weapon and the gunner
+// skill serving them — with a running total against what the hull allows.  The
+// allowance is advisory: the engine never validates armament, so an
 // over-allowance ship is flagged but still submittable.
 function HardpointList(args: {
   design: ShipDesignTemplate | undefined;
-  weapons: (Weapon | null)[];
-  setWeapons: (weapons: (Weapon | null)[]) => void;
+  groups: WeaponGroup[];
+  setGroups: (groups: WeaponGroup[]) => void;
 }) {
   const displacement = args.design?.displacement ?? 0;
 
   const report = useMemo(
-    () => checkAllowance(args.weapons, displacement),
-    [args.weapons, displacement],
+    () => checkAllowance(args.groups, displacement),
+    [args.groups, displacement],
+  );
+
+  const bulkGunnery = useMemo(() => commonGunnery(args.groups), [args.groups]);
+
+  // Small craft cannot carry a double or triple turret, or a bay at all, so
+  // those are not offered on a firmpoint hull.
+  const options = useMemo(
+    () => mountOptionsFor(report.allowance.kind),
+    [report.allowance.kind],
   );
 
   const replaceRow = useCallback(
-    (index: number, weapon: Weapon | null) => {
-      const next = args.weapons.slice();
-      next[index] = weapon;
-      args.setWeapons(next);
+    (index: number, group: WeaponGroup) => {
+      const next = args.groups.slice();
+      next[index] = group;
+      // Filling the last row opens a fresh one beneath it, so there is always
+      // somewhere to add the next mount without hunting for a button.
+      if (group.mount !== null && index === next.length - 1) {
+        next.push(emptyGroup(group.gunnery));
+      }
+      args.setGroups(next);
     },
     [args],
   );
@@ -364,26 +380,49 @@ function HardpointList(args: {
   const handleMountChange = useCallback(
     (index: number, optionId: string) => {
       const mount = mountForOptionId(optionId);
-      if (mount === null) {
-        replaceRow(index, null);
+      // Clearing a row removes it outright rather than leaving a hole; the
+      // trailing empty row is the only empty one the editor keeps.
+      if (mount === null && index < args.groups.length - 1) {
+        args.setGroups(args.groups.filter((_, i) => i !== index));
         return;
       }
-      // Keep whatever weapon the row already carried; only the mount changed.
-      const kind = args.weapons[index]?.kind ?? DEFAULT_WEAPON_KIND;
-      replaceRow(index, createWeapon(kind, mount));
+      replaceRow(index, { ...args.groups[index], mount });
     },
-    [args.weapons, replaceRow],
+    [args, replaceRow],
   );
 
   const handleKindChange = useCallback(
-    (index: number, kind: string) => {
-      const current = args.weapons[index];
-      if (current == null) {
-        return;
-      }
-      replaceRow(index, createWeapon(kind, current.mount));
-    },
-    [args.weapons, replaceRow],
+    (index: number, kind: string) =>
+      replaceRow(index, { ...args.groups[index], kind }),
+    [args.groups, replaceRow],
+  );
+
+  // Zero is allowed so the field can be cleared mid-edit; a zero-count row
+  // simply contributes no weapons.
+  const handleCountChange = useCallback(
+    (index: number, value: string) =>
+      replaceRow(index, {
+        ...args.groups[index],
+        count: Math.max(0, Math.floor(Number(value) || 0)),
+      }),
+    [args.groups, replaceRow],
+  );
+
+  const handleGunneryChange = useCallback(
+    (index: number, value: string) =>
+      replaceRow(index, {
+        ...args.groups[index],
+        gunnery: Math.max(0, Math.floor(Number(value) || 0)),
+      }),
+    [args.groups, replaceRow],
+  );
+
+  const handleBulkGunneryChange = useCallback(
+    (value: string) =>
+      args.setGroups(
+        setAllGunnery(args.groups, Math.max(0, Math.floor(Number(value) || 0))),
+      ),
+    [args],
   );
 
   if (!args.design) {
@@ -408,53 +447,89 @@ function HardpointList(args: {
           {report.used} of {allowance.total} used
         </span>
       </div>
-      {args.weapons.map((weapon, index) => {
-        const optionId = mountOptionId(weapon?.mount ?? null);
+      <label className="hardpoint-bulk-gunnery">
+        Gunner skill
+        <input
+          className="control-input hardpoint-gunnery"
+          name="hardpoint-bulk-gunnery"
+          type="number"
+          min={0}
+          /* Blank once any row is overridden, rather than implying agreement
+             the armament does not have. */
+          value={bulkGunnery ?? ""}
+          placeholder="mixed"
+          aria-label="Gunner skill for every weapon"
+          onChange={(event) => handleBulkGunneryChange(event.target.value)}
+        />
+      </label>
+      <div className="hardpoint-row hardpoint-column-labels">
+        <span className="hardpoint-count-label">Qty</span>
+        <span className="hardpoint-mount">Mount</span>
+        <span className="hardpoint-weapon">Weapon</span>
+        <span className="hardpoint-gunnery-label">Gun</span>
+      </div>
+      {args.groups.map((group, index) => {
+        const optionId = mountOptionId(group.mount);
         const problem = report.rowProblems[index];
+        const empty = group.mount === null;
+        const rowOptions =
+          optionId != null && !options.some((option) => option.id === optionId)
+            ? [...options, ...MOUNT_OPTIONS.filter((o) => o.id === optionId)]
+            : options;
         return (
           <div
             className="hardpoint-row"
             key={"hardpoint-" + index}
             title={problem ?? undefined}
           >
-            <span
+            <input
               className={
-                problem ? "hardpoint-index hardpoint-over" : "hardpoint-index"
+                problem
+                  ? "control-input hardpoint-count hardpoint-over"
+                  : "control-input hardpoint-count"
               }
-            >
-              {index + 1}
-            </span>
+              name={"hardpoint-count-" + index}
+              type="number"
+              min={0}
+              aria-label={"Number of mounts in group " + (index + 1)}
+              value={empty ? "" : group.count}
+              disabled={empty}
+              onChange={(event) => handleCountChange(index, event.target.value)}
+            />
             <select
               className="select-dropdown control-input hardpoint-mount"
               name={"hardpoint-mount-" + index}
-              aria-label={"Hardpoint " + (index + 1) + " mount"}
+              aria-label={"Group " + (index + 1) + " mount"}
               value={optionId ?? "unsupported"}
               onChange={(event) => handleMountChange(index, event.target.value)}
             >
               {/* A mount no option covers (a mixed turret stored oddly, say)
                   still has to be visible rather than silently rewritten. */}
-              {optionId === null && weapon != null && (
-                <option value="unsupported">{weaponToString(weapon)}</option>
+              {optionId === null && group.mount != null && (
+                <option value="unsupported">
+                  {weaponToString({ kind: group.kind, mount: group.mount })}
+                </option>
               )}
-              {MOUNT_OPTIONS.map((option) => (
+              {/* A design may already carry a mount this hull may not choose —
+                  an out-of-allowance turret, say.  Keep it listed so the row
+                  shows what the ship really has instead of blanking. */}
+              {rowOptions.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
                 </option>
               ))}
             </select>
-            {weapon != null && (
+            {!empty && (
               <select
                 className="select-dropdown control-input hardpoint-weapon"
                 name={"hardpoint-weapon-" + index}
-                aria-label={"Hardpoint " + (index + 1) + " weapon"}
-                value={weapon.kind}
-                onChange={(event) =>
-                  handleKindChange(index, event.target.value)
-                }
+                aria-label={"Group " + (index + 1) + " weapon"}
+                value={group.kind}
+                onChange={(event) => handleKindChange(index, event.target.value)}
               >
                 {/* A design may name a weapon kind this build does not list. */}
-                {!WEAPON_KINDS.includes(weapon.kind) && (
-                  <option value={weapon.kind}>{weapon.kind}</option>
+                {!WEAPON_KINDS.includes(group.kind) && (
+                  <option value={group.kind}>{group.kind}</option>
                 )}
                 {WEAPON_KINDS.map((kind) => (
                   <option key={kind} value={kind}>
@@ -462,6 +537,19 @@ function HardpointList(args: {
                   </option>
                 ))}
               </select>
+            )}
+            {!empty && (
+              <input
+                className="control-input hardpoint-gunnery"
+                name={"hardpoint-gunnery-" + index}
+                type="number"
+                min={0}
+                aria-label={"Group " + (index + 1) + " gunner skill"}
+                value={group.gunnery}
+                onChange={(event) =>
+                  handleGunneryChange(index, event.target.value)
+                }
+              />
             )}
           </div>
         );
@@ -650,7 +738,10 @@ function ShipDesignList(args: {
 
   return (
     <>
-      <div className="control-launch-div">
+      {/* Source and Design share one grid so their dropdowns line up on the
+          same left edge; a per-row flex would size each label to its own text
+          and stagger them. */}
+      <div className="design-picker">
         <div className="control-label">Source</div>
         <select
           className="select-dropdown control-name-input control-input"
@@ -667,13 +758,9 @@ function ShipDesignList(args: {
             </option>
           ))}
         </select>
-      </div>
-      <div className="control-launch-div">
-        <div className="control-label">
-          <div className="control-label label-with-tooltip">
-            Design
-            {ciCircle}
-          </div>
+        <div className="control-label label-with-tooltip">
+          Design
+          {ciCircle}
         </div>
         <select
           className="select-dropdown control-name-input control-input"
@@ -696,12 +783,12 @@ function ShipDesignList(args: {
             </optgroup>
           ))}
         </select>
-        <Tooltip
-          id={args.shipDesignName + "ship-description-tip"}
-          className="tooltip-body"
-          render={ShipDesignDetails}
-        />
       </div>
+      <Tooltip
+        id={args.shipDesignName + "ship-description-tip"}
+        className="tooltip-body"
+        render={ShipDesignDetails}
+      />
       <Tooltip
         id="design-tooltip"
         anchorSelect=".info-icon"

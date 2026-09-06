@@ -111,6 +111,16 @@ input {
     align-items: center;
 }
 
+/* Source and Design sit in one grid so both dropdowns share a left edge.  A
+   flex row per pair would size each label to its own text and stagger them. */
+.design-picker {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    align-items: center;
+    column-gap: 4px;
+    row-gap: 2px;
+}
+
 /* Scenario-builder entity list (ships + planets) */
 .entity-list {
     margin-top: 8px;
@@ -1049,7 +1059,7 @@ input {
     flex-shrink: 0;
 }
 
-/* Add Ship hardpoint editor: one row per weapon mount. */
+/* Add Ship hardpoint editor: one row per run of identical mounts. */
 .hardpoint-list {
     display: flex;
     flex-direction: column;
@@ -1085,24 +1095,68 @@ input {
     margin-top: 2px;
 }
 
-.hardpoint-index {
-    width: 16px;
+/* Bulk gunner skill: one field that writes through to every row, since the
+   usual case is a whole crew at the same effective skill. */
+.hardpoint-bulk-gunnery {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     font-size: 12px;
+    margin-top: 4px;
+}
+
+.hardpoint-column-labels {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+.hardpoint-count {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 0;
+    text-align: right;
+}
+
+.hardpoint-count-label {
+    flex: 0 0 42px;
     text-align: right;
 }
 
 .hardpoint-mount {
-    flex: 1 1 55%;
+    flex: 1 1 50%;
     min-width: 0;
 }
 
 .hardpoint-weapon {
-    flex: 1 1 45%;
+    flex: 1 1 38%;
     min-width: 0;
+}
+
+.hardpoint-gunnery {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 0;
+    text-align: right;
+}
+
+.hardpoint-gunnery-label {
+    flex: 0 0 42px;
+    text-align: right;
 }
 
 .hardpoint-problem {
     font-size: 12px;
     color: #b00;
     margin-top: 2px;
+}
+
+/* Gunnery moved to the hardpoint rows; this keeps its absence from reading as
+   an oversight. */
+.crew-builder-note {
+    font-size: 12px;
+    opacity: 0.7;
+    margin: 4px 0 0 0;
 }
