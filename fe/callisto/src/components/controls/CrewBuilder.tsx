@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import * as React from "react";
-import { ShipDesignTemplate } from "lib/shipDesignTemplates";
 import { findShip } from "lib/entities";
 
 import { useAppSelector } from "state/hooks";
@@ -33,17 +32,18 @@ interface CrewBuilderProps {
   updateCrew: (crew: Crew) => void;
   currentCrew: Crew;
   shipName: string;
-  shipDesign: ShipDesignTemplate;
+  // Gunner slots track the ship's actual armament, which is not necessarily its
+  // design's — a ship built with custom hardpoints has its own weapon count.
+  num_gunners: number;
 }
 
 export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   updateCrew,
   currentCrew,
   shipName,
-  shipDesign,
+  num_gunners,
 }) => {
   const entities = useAppSelector(entitiesSelector);
-  const num_gunners = shipDesign.weapons.length;
 
   const initialCrew = useMemo(() => {
     return currentCrew ?? createCrew(num_gunners);

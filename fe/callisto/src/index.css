@@ -1048,3 +1048,61 @@ input {
     margin-bottom: 4px;
     flex-shrink: 0;
 }
+
+/* Add Ship hardpoint editor: one row per weapon mount. */
+.hardpoint-list {
+    display: flex;
+    flex-direction: column;
+    padding-right: 4px;
+}
+
+.hardpoint-header {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.hardpoint-title {
+    margin: 0;
+}
+
+.hardpoint-usage {
+    font-size: 12px;
+}
+
+/* Over-allowance is advisory only: the ship is still submittable. */
+.hardpoint-over {
+    color: #b00;
+    font-weight: bold;
+}
+
+.hardpoint-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+.hardpoint-index {
+    width: 16px;
+    font-size: 12px;
+    text-align: right;
+}
+
+.hardpoint-mount {
+    flex: 1 1 55%;
+    min-width: 0;
+}
+
+.hardpoint-weapon {
+    flex: 1 1 45%;
+    min-width: 0;
+}
+
+.hardpoint-problem {
+    font-size: 12px;
+    color: #b00;
+    margin-top: 2px;
+}

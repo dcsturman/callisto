@@ -11,6 +11,7 @@ import { AddPlanet } from "./AddPlanet";
 import { EntityList } from "./EntityList";
 import { POSITION_SCALE, SCALE } from "lib/universal";
 import { Ship, Entity, Planet, findShip } from "lib/entities";
+import { shipWeapons } from "lib/shipDesignTemplates";
 import { ViewMode } from "lib/view";
 import { nextRound } from "lib/serverManager";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
@@ -506,7 +507,7 @@ export function Controls() {
               sensorAction={sensorAction}
               engineerAction={engineerAction}
               pilotState={pilotState}
-              design={computerShipDesign}
+              weapons={shipWeapons(computerShip, shipTemplates)}
             />
           );
         })()}

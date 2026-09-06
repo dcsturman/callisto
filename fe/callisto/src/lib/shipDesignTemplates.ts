@@ -1,4 +1,7 @@
 import {Weapon, CompressedWeapon, weaponToString} from "./weapon";
+// Type-only: `lib/entities` sits in an import cycle with the Redux slices, and
+// a value import from here would drag this module into it.
+import type {Ship} from "./entities";
 
 export interface ShipDesignTemplate {
   name: string;
@@ -42,14 +45,14 @@ export const defaultShipDesignTemplate = () => {
   };
 };
 
-export const compressedWeaponsFromTemplate = (design: ShipDesignTemplate | null) => {
+export const compressedWeapons = (weapons: Weapon[] | null) => {
   const initial_acc: CompressedWeapon = {};
 
-  if (design === null) {
+  if (weapons === null) {
     return initial_acc;
   }
 
-  return design.weapons.reduce((accumulator, weapon) => {
+  return weapons.reduce((accumulator, weapon) => {
     const weapon_name = weaponToString(weapon);
     if (accumulator[weapon_name]) {
       accumulator[weapon_name].total += 1;
@@ -67,9 +70,9 @@ export const compressedWeaponsFromTemplate = (design: ShipDesignTemplate | null)
 // Find the weapon_id of the nth with a given name.  This is part of going
 // backwards from compress weapons to the actual weapon IDs (as the server has
 // no idea about compressed weapons).
-export const findNthWeapon = (design: ShipDesignTemplate, weapon_name: string, n: number) => {
-  for (let count = 0; count < design.weapons.length; count++) {
-    if (weaponToString(design.weapons[count]) === weapon_name) {
+export const findNthWeapon = (weapons: Weapon[], weapon_name: string, n: number) => {
+  for (let count = 0; count < weapons.length; count++) {
+    if (weaponToString(weapons[count]) === weapon_name) {
       n -= 1;
       if (n === 0) {
         return count;
@@ -79,8 +82,27 @@ export const findNthWeapon = (design: ShipDesignTemplate, weapon_name: string, n
   return -1;
 };
 
-export const getWeaponName = (design: ShipDesignTemplate, weapon_id: number) => {
-  return weaponToString(design.weapons[weapon_id]);
+export const getWeaponName = (weapons: Weapon[], weapon_id: number) => {
+  const weapon = weapons[weapon_id];
+  return weapon === undefined ? "" : weaponToString(weapon);
 };
 
 export type ShipDesignTemplates = {[key: string]: ShipDesignTemplate};
+
+/**
+ * A ship's actual armament: its own weapons when it has been given some,
+ * otherwise the ones its design comes with.
+ *
+ * Mirrors `Ship::weapons()` on the server.  Every weapon read in the UI must go
+ * through here, or a ship with custom armament will display its design's
+ * weapons instead of its own.
+ */
+export const shipWeapons = (
+  ship: Ship | null,
+  templates: ShipDesignTemplates,
+): Weapon[] => {
+  if (ship === null) {
+    return [];
+  }
+  return ship.weapons ?? templates[ship.design]?.weapons ?? [];
+};

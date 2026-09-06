@@ -23,7 +23,7 @@ use crate::list_local_or_cloud_dir;
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::player::PlayerManager;
 use crate::server::Server;
-use crate::ship::{ShipDesignTemplate, ShipSystem, Weapon, WeaponMount, WeaponType};
+use crate::ship::{BaySize, ShipDesignTemplate, ShipSystem, Weapon, WeaponMount, WeaponType};
 
 fn setup_authenticator() -> Box<dyn Authenticator> {
   Box::new(MockAuthenticator::new("http://test.com"))
@@ -1688,6 +1688,64 @@ async fn test_add_ship_with_weapons() {
   assert_eq!(
     wire["ships"][0]["weapons"],
     json!([{"kind":"Beam","mount":{"Turret":3}},{"kind":"Missile","mount":"FixedMount"}])
+  );
+}
+
+/// Every mount the hardpoint editor can produce must survive the round trip.
+/// The editor offers bays and barbettes as well as turrets and fixed mounts, so
+/// a client can now send mount shapes no shipped design happens to use.
+#[test(tokio::test)]
+async fn test_add_ship_accepts_every_mount_shape() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let request = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer",
+        "weapons":[{"kind":"Particle","mount":"Barbette"},
+                   {"kind":"Missile","mount":{"Bay":"Small"}},
+                   {"kind":"Beam","mount":{"Bay":"Medium"}},
+                   {"kind":"Pulse","mount":{"Bay":"Large"}},
+                   {"kind":"Sand","mount":{"Turret":1}}]}"#;
+  server.add_ship(serde_json::from_str(request).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+  assert_eq!(
+    ship.weapons(),
+    vec![
+      Weapon {
+        kind: WeaponType::Particle,
+        mount: WeaponMount::Barbette
+      },
+      Weapon {
+        kind: WeaponType::Missile,
+        mount: WeaponMount::Bay(BaySize::Small)
+      },
+      Weapon {
+        kind: WeaponType::Beam,
+        mount: WeaponMount::Bay(BaySize::Medium)
+      },
+      Weapon {
+        kind: WeaponType::Pulse,
+        mount: WeaponMount::Bay(BaySize::Large)
+      },
+      Weapon {
+        kind: WeaponType::Sand,
+        mount: WeaponMount::Turret(1)
+      },
+    ]
+  );
+  assert_eq!(ship.active_weapons.len(), 5);
+  drop(ship);
+
+  // And it comes back out on the wire exactly as sent.
+  let wire: serde_json::Value = serde_json::from_str(&server.get_entities_json()).unwrap();
+  assert_eq!(
+    wire["ships"][0]["weapons"],
+    json!([{"kind":"Particle","mount":"Barbette"},
+           {"kind":"Missile","mount":{"Bay":"Small"}},
+           {"kind":"Beam","mount":{"Bay":"Medium"}},
+           {"kind":"Pulse","mount":{"Bay":"Large"}},
+           {"kind":"Sand","mount":{"Turret":1}}])
   );
 }
 
