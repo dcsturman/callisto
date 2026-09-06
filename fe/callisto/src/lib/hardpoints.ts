@@ -249,14 +249,21 @@ export function totalMounts(groups: readonly WeaponGroup[]): number {
  *
  * Drives the bulk "Gunner skill" field: it reads as the crew's skill when the
  * whole ship agrees, and blanks out once any row is overridden.
+ *
+ * Armed rows decide the answer.  With none — a ship with no weapons yet, or one
+ * whose only row is mid-edit at a count of zero — it falls back to the rows as
+ * written, so the field still shows the skill new rows will inherit.  Without
+ * that fallback the field renders empty and every keystroke computes straight
+ * back to empty, which reads as a dead control.
  */
 export function commonGunnery(groups: readonly WeaponGroup[]): number | null {
-  const manned = groups.filter((group) => group.mount !== null && group.count > 0);
-  if (manned.length === 0) {
+  const armed = groups.filter((group) => group.mount !== null);
+  const pool = armed.length > 0 ? armed : groups;
+  if (pool.length === 0) {
     return null;
   }
-  const first = manned[0].gunnery;
-  return manned.every((group) => group.gunnery === first) ? first : null;
+  const first = pool[0].gunnery;
+  return pool.every((group) => group.gunnery === first) ? first : null;
 }
 
 /** Set every row's gunner skill, for the bulk field. */
