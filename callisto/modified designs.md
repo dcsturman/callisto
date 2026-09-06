@@ -70,7 +70,7 @@ No schema field exists for these; they were dropped:
 
 ---
 
-## TODO 5 — `MAX_SHIP_WEAPONS` is too small above 6,400 tons
+## TODO 5 — `MAX_SHIP_WEAPONS` binds long before the rules do
 
 `player.rs:25` caps client-supplied armament at **64 weapons**:
 
@@ -78,21 +78,46 @@ No schema field exists for these; they were dropped:
 const MAX_SHIP_WEAPONS: usize = 64;
 ```
 
-Hardpoints are one per 100 tons, so a hull of 6,400 tons has exactly 64 and any ship
-larger than that cannot be fully armed through `add_ship` — a 6,500-ton design wants 65
-and is rejected outright. The limit is not a rules constraint; it exists only to stop a
+Hardpoints are one per 100 tons, so the cap binds at **6,400 tons** — a 6,500-ton design
+wants 65 mounts and is rejected outright, with a "more than the limit of 64" error that
+says nothing about tonnage. The limit is not a rules constraint; it exists only to stop a
 malformed or hostile request allocating an unbounded weapon list.
 
-Not urgent: the library currently stops at 5,000 tons (50 hardpoints) because larger
-designs were deliberately out of scope for the import. It becomes a real bug the moment a
-design over 6,400 tons is added, and it will fail as a confusing "more than the limit"
-error rather than anything that points at tonnage.
+**Not urgent.** The library stops at 5,000 tons (50 hardpoints) because larger designs were
+deliberately out of scope for the import, and per TODO 6 much bigger work gates real
+capital ships anyway.
 
 **When fixing:** derive the cap from displacement rather than raising the constant to
 another arbitrary number — the allowance is already computable from the design. Keep an
-absolute ceiling for the malformed-request case, but make the normal path scale. Note that
-bays complicate this slightly: a Large Bay costs 5 hardpoints but is still 1 weapon, so a
+absolute ceiling for the malformed-request case, but make the normal path scale. Bays
+complicate it slightly: a Large Bay costs 5 hardpoints but is still 1 weapon, so a
 displacement-derived cap is an upper bound, never an exact count.
+
+## TODO 6 — Capital ships need batteries, not longer weapon lists
+
+Traveller hulls go to **1,000,000 tons**, which is 10,000 hardpoints. Raising
+`MAX_SHIP_WEAPONS` does not get us there: `Ship.weapons` is a flat `Vec<Weapon>` and
+`weapon_id` is an index into it, so a capital ship would carry ten thousand individually
+addressable weapons and combat would resolve ten thousand separate attacks. The
+representation gives out well before the cap does.
+
+The book's own answer is **batteries** — turrets grouped and fired as one unit. That is the
+model to adopt, and note the UI already works this way: the Add Ship hardpoint editor
+groups identical mounts into a single row with a count (`fe/callisto/src/lib/hardpoints.ts`),
+because no design in the library has more than five distinct mount/weapon combinations. The
+data model should follow the same shape rather than the editor flattening groups out on
+submit.
+
+Blocking real capital ships, roughly in order:
+
+- **Batteries** — grouped turrets resolved as one attack, per above.
+- **Spinal mounts** — no `WeaponMount` variant exists at all (see TODO 1).
+- **Torpedoes** — currently substituted with `Missile` (see TODO 1).
+- **Meson guns, railguns, repulsors, mass drivers** — all unimplemented (see TODO 1).
+- **Defensive screens** — meson screens, nuclear dampers, black globes (see TODO 4).
+
+**Current position: the 5,000-ton import limit stands and is fine.** None of the above is
+worth starting until we actually want ships above that.
 
 ---
 
