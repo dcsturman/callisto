@@ -1,4 +1,4 @@
-import { BaySize, Weapon, WeaponMount } from "./weapon";
+import { BaySize, Weapon, WeaponMount, createWeapon } from "./weapon";
 
 // Hardpoint and Firmpoint accounting, per High Guard pp. 26 and 31.
 //
@@ -6,6 +6,13 @@ import { BaySize, Weapon, WeaponMount } from "./weapon";
 // never validates armament against tonnage, power or cost.  The editor shows
 // the referee when a ship's armament breaks the book rules; it does not stop
 // them.
+//
+// The editor works in *groups* — "30 x Triple Beam Turret" — not one row per
+// hardpoint.  That matches how the books write designs, and it matters at
+// scale: the largest ship in the library mounts 34 weapons but only three
+// distinct kinds, and no design anywhere has more than five.  Groups are
+// flattened back to a dense weapon list on submit, because `weapon_id` on the
+// wire is a plain index into that list.
 
 export type AllowanceKind = "hardpoints" | "firmpoints";
 
@@ -13,6 +20,22 @@ export interface Allowance {
   kind: AllowanceKind;
   total: number;
 }
+
+/**
+ * A run of identical weapons and the gunner skill serving them.
+ *
+ * `mount` is `null` for the trailing empty row.  `gunnery` is the effective
+ * skill level — the referee folds DEX and anything else into one number, so
+ * there is nothing here to decompose.
+ */
+export interface WeaponGroup {
+  count: number;
+  mount: WeaponMount | null;
+  kind: string;
+  gunnery: number;
+}
+
+export const DEFAULT_GUNNERY = 0;
 
 /**
  * Weapon-mount allowance for a hull of the given displacement.
@@ -64,36 +87,35 @@ export interface AllowanceReport {
   used: number;
   /** True when `used` exceeds the allowance. */
   overAllowance: boolean;
-  /** One entry per input row; `null` where the row is legal or empty. */
+  /** One entry per input group; `null` where the group is legal or empty. */
   rowProblems: (string | null)[];
-  /** Problems that belong to the armament as a whole, not to one row. */
+  /** Problems that belong to the armament as a whole, not to one group. */
   problems: string[];
 }
 
 /**
  * Score an armament against a hull's allowance.
  *
- * `weapons` is the row list straight out of the editor, so `null` entries
- * (mount "None") are expected and cost nothing.
+ * `groups` is the row list straight out of the editor, so empty rows (mount
+ * `null`) are expected and cost nothing.
  */
 export function checkAllowance(
-  weapons: (Weapon | null)[],
+  groups: readonly WeaponGroup[],
   displacement: number,
 ): AllowanceReport {
   const allowance = allowanceForDisplacement(displacement);
-  const rowProblems: (string | null)[] = weapons.map(() => null);
+  const rowProblems: (string | null)[] = groups.map(() => null);
   const problems: string[] = [];
 
   let used = 0;
   // Which rows pushed the running total past the allowance.  Charging the
   // overrun to the later rows means a legal ship stays clean and the referee
   // sees which additions are the ones that broke it.
-  weapons.forEach((weapon, index) => {
-    if (weapon === null) {
+  groups.forEach((group, index) => {
+    if (group.mount === null || group.count <= 0) {
       return;
     }
-    const cost = mountCost(weapon.mount, allowance.kind);
-    used += cost;
+    used += mountCost(group.mount, allowance.kind) * group.count;
     if (used > allowance.total) {
       rowProblems[index] = `Exceeds the ${allowance.total} ${allowance.kind} this hull allows`;
     }
@@ -101,14 +123,15 @@ export function checkAllowance(
 
   if (allowance.kind === "firmpoints") {
     // A Firmpoint holds one weapon.  Exactly one may be upgraded to a turret,
-    // and only to a single turret — not a double or a triple.
+    // and only to a single turret — not a double or a triple.  A group of two
+    // single turrets is already two turrets, so count carries here.
     let turretsSeen = 0;
-    weapons.forEach((weapon, index) => {
-      if (weapon === null || !isTurret(weapon.mount)) {
+    groups.forEach((group, index) => {
+      if (group.mount === null || group.count <= 0 || !isTurret(group.mount)) {
         return;
       }
-      turretsSeen += 1;
-      const size = turretSize(weapon.mount);
+      turretsSeen += group.count;
+      const size = turretSize(group.mount);
       if (size !== 1) {
         rowProblems[index] =
           rowProblems[index] ??
@@ -136,38 +159,112 @@ export function checkAllowance(
   };
 }
 
+/** An empty trailing row, ready for the referee to fill in. */
+export function emptyGroup(gunnery: number = DEFAULT_GUNNERY): WeaponGroup {
+  return { count: 1, mount: null, kind: DEFAULT_WEAPON_KIND, gunnery };
+}
+
+function groupKey(weapon: Weapon, gunnery: number): string {
+  return `${JSON.stringify(weapon.mount)}|${weapon.kind}|${gunnery}`;
+}
+
 /**
- * Number of editor rows to show for a design.
+ * Collapse a flat weapon list into editor rows.
  *
- * Normally one row per point of allowance.  A design whose own armament
- * already exceeds its allowance gets enough rows to show all of it — otherwise
- * loading such a design would silently drop mounts.  `excelsior` is the one
- * design in the library that needs this: it is really a barbette plus a single
- * mixed triple turret (2 hardpoints), but `WeaponMount` cannot express a mixed
- * turret so it is stored as three mounts.
+ * Weapons that share a mount, a kind *and* a gunner skill become one row;
+ * gunnery is part of the key because merging across it would silently level
+ * the ace on the missile bay down to everyone else.  Rows come out in
+ * first-appearance order, matching `compressedWeapons`, which the design
+ * summary alongside this editor already uses.
+ *
+ * `gunnery` is positional — index `i` is the skill for weapon `i` — and short
+ * or missing entries read as {@link DEFAULT_GUNNERY}, exactly as the Rust
+ * `Crew::get_gunnery` does for an out-of-range index.
  */
-export function rowCountForDesign(
-  displacement: number,
-  designWeaponCount: number,
-): number {
-  return Math.max(allowanceForDisplacement(displacement).total, designWeaponCount);
-}
-
-/** Pad (or keep) an armament out to `rows` entries, empty rows last. */
-export function padWeaponRows(
+export function groupWeapons(
   weapons: readonly Weapon[],
-  rows: number,
-): (Weapon | null)[] {
-  const padded: (Weapon | null)[] = weapons.slice(0, Math.max(rows, weapons.length));
-  while (padded.length < rows) {
-    padded.push(null);
-  }
-  return padded;
+  gunnery: readonly number[] = [],
+): WeaponGroup[] {
+  const byKey = new Map<string, WeaponGroup>();
+  const groups: WeaponGroup[] = [];
+
+  weapons.forEach((weapon, index) => {
+    const skill = gunnery[index] ?? DEFAULT_GUNNERY;
+    const key = groupKey(weapon, skill);
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+    const group: WeaponGroup = {
+      count: 1,
+      mount: weapon.mount,
+      kind: weapon.kind,
+      gunnery: skill,
+    };
+    byKey.set(key, group);
+    groups.push(group);
+  });
+
+  return groups;
 }
 
-/** Drop the empty rows, preserving order.  This is what goes on the wire. */
-export function compactWeaponRows(weapons: readonly (Weapon | null)[]): Weapon[] {
-  return weapons.filter((weapon): weapon is Weapon => weapon !== null);
+/**
+ * Flatten editor rows back into the dense arrays that go over the wire.
+ *
+ * The two arrays are index-aligned by construction, which is what lets
+ * `FireAction`/`BoostTarget` keep addressing a weapon and its gunner by the
+ * same `weapon_id`.  Empty and non-positive rows contribute nothing.
+ */
+export function expandGroups(groups: readonly WeaponGroup[]): {
+  weapons: Weapon[];
+  gunnery: number[];
+} {
+  const weapons: Weapon[] = [];
+  const gunnery: number[] = [];
+
+  groups.forEach((group) => {
+    if (group.mount === null) {
+      return;
+    }
+    for (let n = 0; n < group.count; n++) {
+      weapons.push(createWeapon(group.kind, group.mount));
+      gunnery.push(group.gunnery);
+    }
+  });
+
+  return { weapons, gunnery };
+}
+
+/** Total mounts across all rows — the number of weapons the ship will have. */
+export function totalMounts(groups: readonly WeaponGroup[]): number {
+  return groups.reduce(
+    (sum, group) => (group.mount === null ? sum : sum + Math.max(group.count, 0)),
+    0,
+  );
+}
+
+/**
+ * The gunner skill shared by every mount, or `null` when they differ.
+ *
+ * Drives the bulk "Gunner skill" field: it reads as the crew's skill when the
+ * whole ship agrees, and blanks out once any row is overridden.
+ */
+export function commonGunnery(groups: readonly WeaponGroup[]): number | null {
+  const manned = groups.filter((group) => group.mount !== null && group.count > 0);
+  if (manned.length === 0) {
+    return null;
+  }
+  const first = manned[0].gunnery;
+  return manned.every((group) => group.gunnery === first) ? first : null;
+}
+
+/** Set every row's gunner skill, for the bulk field. */
+export function setAllGunnery(
+  groups: readonly WeaponGroup[],
+  gunnery: number,
+): WeaponGroup[] {
+  return groups.map((group) => ({ ...group, gunnery }));
 }
 
 // --- Dropdown option tables -------------------------------------------------
@@ -194,6 +291,26 @@ export const MOUNT_OPTIONS: MountOption[] = [
     mount: { Bay: size } as WeaponMount,
   })),
 ];
+
+// Small craft mount one weapon per Firmpoint.  A single Firmpoint may be
+// upgraded to a turret, but only a single turret; doubles and triples need a
+// real Hardpoint.  Bays are ship-scale weapons and have no place on a hull too
+// small to have Hardpoints at all.
+const FIRMPOINT_OPTION_IDS = new Set(["none", "fixed", "turret-1", "barbette"]);
+
+/**
+ * The mounts the editor should offer for a hull of this allowance kind.
+ *
+ * Filtering here is belt-and-braces: {@link checkAllowance} still flags an
+ * illegal mount that arrives from a design file, since existing data must stay
+ * visible rather than be silently rewritten.  This only stops the referee
+ * *choosing* a mount the hull could never carry.
+ */
+export function mountOptionsFor(kind: AllowanceKind): MountOption[] {
+  return kind === "hardpoints"
+    ? MOUNT_OPTIONS
+    : MOUNT_OPTIONS.filter((option) => FIRMPOINT_OPTION_IDS.has(option.id));
+}
 
 /**
  * The option id matching an existing mount, or `"none"` for an empty row.
