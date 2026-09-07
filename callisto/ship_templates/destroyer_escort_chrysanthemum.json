@@ -12,7 +12,7 @@
   "computer": 35,
   "weapons": [
     {
-      "kind": "Particle",
+      "kind": "Fusion",
       "mount": "Barbette"
     },
     {

@@ -10,8 +10,8 @@ use crate::action::{
 };
 use crate::entity::Entity;
 use crate::payloads::{EffectMsg, LaunchMissileMsg};
-use crate::rules_tables::{DAMAGE_WEAPON_DICE, HIT_WEAPON_MOD, RANGE_BANDS, RANGE_MOD};
-use crate::ship::{BaySize, Range, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
+use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
+use crate::ship::{MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
 use crate::{debug, error, info, warn};
 use tracing::event;
 use tracing::Level;
@@ -73,6 +73,22 @@ pub fn attack(
 ) -> Vec<EffectMsg> {
   let attacker_name = attacker.get_name();
 
+  // Damage, range, hit modifier and armour penetration all depend on how the
+  // weapon is mounted, so everything below reads from the profile rather than
+  // from the weapon type alone.
+  let Some(profile) = profile_for(weapon.kind, &weapon.mount) else {
+    error!(
+      "(Combat.attack) {} cannot be mounted as a {}, so {attacker_name} cannot fire it.",
+      String::from(&weapon.kind),
+      String::from(weapon)
+    );
+    return vec![EffectMsg::message(format!(
+      "{}'s {} is not a mount this weapon can be fired from.",
+      attacker_name,
+      String::from(&weapon.kind)
+    ))];
+  };
+
   // This in theory could be lossy but that would require there to be more than 4.29x10^9m which is VERY far.  If we
   // wanted to be safer we check if the magnitude was greater than u32::MAX and then just use that.
   // Note we will lose precision here but this is just for range so okay.
@@ -120,9 +136,11 @@ pub fn attack(
     0
   };
 
-  let range_mod = if weapon.kind == WeaponType::Missile {
+  // Launchers have "Special" range: the salvo flies to the target, so the
+  // firing range never modifies the roll and never rules the shot out.
+  let range_mod = if profile.salvo.is_some() {
     0
-  } else if weapon.kind.in_range(range_band) {
+  } else if profile.reaches(range_band) {
     RANGE_MOD[range_band as usize]
   } else {
     // We are out of range so cannot attack
@@ -152,7 +170,7 @@ pub fn attack(
   info!(
         "(Combat.attack) Ship {attacker_name} attacking with {weapon:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
         defender.get_name(),
-        HIT_WEAPON_MOD[weapon.kind as usize]
+        profile.hit_mod
     );
 
   if let Some(cs) = called_shot_system {
@@ -160,8 +178,7 @@ pub fn attack(
   }
 
   let roll = i32::from(roll_dice(2, rng));
-  let hit_roll =
-    roll + hit_mod + HIT_WEAPON_MOD[weapon.kind as usize] + range_mod + called_mod + lock_mod + defensive_modifier;
+  let hit_roll = roll + hit_mod + profile.hit_mod + range_mod + called_mod + lock_mod + defensive_modifier;
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(
@@ -185,7 +202,7 @@ pub fn attack(
 
   // Damage is compute as the weapon dice for the given weapon
   // + the effect of the hit roll
-  let roll = u32::from(roll_dice(DAMAGE_WEAPON_DICE[weapon.kind as usize], rng));
+  let roll = u32::from(roll_dice(profile.damage_dice, rng));
   let mut damage = roll + effect;
 
   damage = if i64::from(damage) + i64::from(damage_mod) < 0 {
@@ -194,8 +211,12 @@ pub fn attack(
     u32::try_from(i32::try_from(damage).unwrap_or(i32::MAX) + damage_mod).unwrap_or(0)
   };
 
-  damage = if damage > defender.get_current_armor() {
-    damage - defender.get_current_armor()
+  // AP comes off the armour before the armour comes off the damage
+  // (High Guard p. 29).  Meson guns carry AP_INFINITE and so ignore it wholly.
+  let effective_armor = defender.get_current_armor().saturating_sub(u32::from(profile.ap));
+
+  damage = if damage > effective_armor {
+    damage - effective_armor
   } else {
     debug!(
             "(Combat.attack) Due too armor, {} does no damage to {} after rolling {}, adjustment with damage modifier {}, hit effect {}, and defender armor -{}.",
@@ -218,18 +239,25 @@ pub fn attack(
   debug!(
         "(Combat.attack) {attacker_name} does {damage} damage to {} after rolling {roll} ({}D), adjustment with damage modifier {}, hit effect {}, and defender armor -{}.",
         defender.get_name(),
-        DAMAGE_WEAPON_DICE[weapon.kind as usize],
+        profile.damage_dice,
         damage_mod,
         (hit_roll - STANDARD_ROLL_THRESHOLD),
         defender.get_current_armor()
     );
 
-  // Calculate additional damage multipliers (for non missiles) and effects for non-crits now.
-  let mut effects = if weapon.kind == WeaponType::Missile {
+  // Calculate additional damage multipliers and effects for non-crits now.
+  // This runs on the impact of a single object for launched weapons, so a
+  // salvo resolves once per missile or torpedo rather than once per launcher.
+  let mut effects = if profile.salvo.is_some() {
     // Create two effects: a message stating the damage and a ship impact on the defender.
     vec![
       EffectMsg::Message {
-        content: format!("{} hit by a missile for {} damage.", defender.get_name(), damage),
+        content: format!(
+          "{} hit by a {} for {} damage.",
+          defender.get_name(),
+          String::from(&weapon.kind),
+          damage
+        ),
       },
       EffectMsg::ShipImpact {
         target: defender.get_name().to_string(),
@@ -237,28 +265,19 @@ pub fn attack(
       },
     ]
   } else {
-    // Weapon multiples are only for non-missiles.  Larger missile mounts just launch more missiles.
-    match weapon.mount {
-      WeaponMount::Turret(num) => {
-        damage += (u32::from(num) - 1) * u32::from(DAMAGE_WEAPON_DICE[weapon.kind as usize]);
-      }
-      // A fixed mount holds a single weapon, so damage is unmodified.
-      WeaponMount::FixedMount => {}
-      WeaponMount::Barbette => {
-        damage *= 3;
-      }
-      WeaponMount::Bay(size) => match size {
-        BaySize::Small => {
-          damage *= 10;
-        }
-        BaySize::Medium => {
-          damage *= 20;
-        }
-        BaySize::Large => {
-          damage *= 100;
-        }
-      },
+    // Guns in a multi-weapon turret fire together, adding their dice to the
+    // one roll.  This is a bonus for filling the turret, not a Damage
+    // Multiple, so it applies before (and independently of) the multiple.
+    if let WeaponMount::Turret(num) = weapon.mount {
+      damage += (u32::from(num) - 1) * u32::from(profile.damage_dice);
     }
+
+    // Damage Multiples (High Guard p. 29).  Launchers never reach here; their
+    // scaling is salvo size, which is why the two are mutually exclusive.
+    if profile.use_multiple {
+      damage *= damage_multiple(MountClass::from(&weapon.mount));
+    }
+
     vec![
       EffectMsg::Message {
         content: format!(
@@ -830,7 +849,22 @@ pub fn do_fire_actions<S: BuildHasher>(
       #[allow(clippy::cast_sign_loss)]
       #[allow(clippy::cast_possible_truncation)]
       let range_band = find_range_band((target.get_position() - attacker.get_position()).magnitude() as u32);
-      if weapon.kind != WeaponType::Missile && !weapon.kind.in_range(range_band) {
+      let Some(profile) = profile_for(weapon.kind, &weapon.mount) else {
+        error!(
+          "(Combat.do_fire_actions) {} cannot mount {} as a {}.",
+          attacker.get_name(),
+          String::from(&weapon.kind),
+          String::from(weapon)
+        );
+        return vec![EffectMsg::message(format!(
+          "{}'s {} cannot be fired from that mount.",
+          attacker.get_name(),
+          String::from(&weapon.kind)
+        ))];
+      };
+
+      // Launchers have "Special" range and are never ruled out by distance.
+      if !profile.reaches(range_band) {
         // We are out of range so cannot attack
         debug!(
           "(Combat.attack) {} is out of range of {}'s {}.",
@@ -847,38 +881,43 @@ pub fn do_fire_actions<S: BuildHasher>(
       }
 
       // At this point all these attacks should be in range.
-      match weapon.kind {
-        WeaponType::Missile => {
-          // Missiles don't actually attack when fired.  They'll come back and call the attack function on impact.
-          let num_missiles = match weapon.mount {
-            WeaponMount::Turret(num) => num,
-            WeaponMount::FixedMount => 1,
-            WeaponMount::Barbette => 5,
-            WeaponMount::Bay(BaySize::Small) => 12,
-            WeaponMount::Bay(BaySize::Medium) => 24,
-            WeaponMount::Bay(BaySize::Large) => 120,
-          };
-          for _ in 0..num_missiles {
-            new_missiles.push(LaunchMissileMsg {
-              source: attacker.get_name().to_string(),
-              target: target.get_name().to_string(),
-            });
-          }
-
-          debug!(
-            "(Combat.do_fire_actions) {} launches {} missile at {}.",
-            attacker.get_name(),
-            num_missiles,
-            target.get_name()
-          );
-
-          vec![EffectMsg::message(format!(
-            "{} launches {} missile(s) at {}.",
-            attacker.get_name(),
-            num_missiles,
-            target.get_name()
-          ))]
+      if let Some(salvo) = profile.salvo {
+        // Launched weapons don't attack when fired.  Each object comes back and
+        // calls attack() on impact, carrying the weapon that threw it so a
+        // torpedo resolves as a torpedo rather than as a missile.
+        let count = match salvo {
+          Salvo::PerGun => match weapon.mount {
+            WeaponMount::Turret(num) => u16::from(num),
+            _ => 1,
+          },
+          Salvo::Fixed(n) => n,
+        };
+        for _ in 0..count {
+          new_missiles.push(LaunchMissileMsg {
+            source: attacker.get_name().to_string(),
+            target: target.get_name().to_string(),
+            weapon: weapon.clone(),
+          });
         }
+
+        debug!(
+          "(Combat.do_fire_actions) {} launches {} {} at {}.",
+          attacker.get_name(),
+          count,
+          String::from(&weapon.kind),
+          target.get_name()
+        );
+
+        return vec![EffectMsg::message(format!(
+          "{} launches {} {}(s) at {}.",
+          attacker.get_name(),
+          count,
+          String::from(&weapon.kind),
+          target.get_name()
+        ))];
+      }
+
+      match weapon.kind {
         WeaponType::Beam | WeaponType::Pulse => {
           // Lasers are special as sand can be used against them.
           debug!(
@@ -1044,9 +1083,20 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
 // Result here is one more than the bonus to the check. 0 means it cannot
 // be used for point defense.
 fn point_defense_score(weapon: &Weapon) -> u16 {
+  // Only lasers track a missile well enough to swat it (High Guard p. 30 notes
+  // barbettes explicitly cannot, which the mount term below already enforces).
   (match weapon.kind {
     WeaponType::Beam | WeaponType::Pulse => 1,
-    WeaponType::Missile | WeaponType::Sand | WeaponType::Particle => 0,
+    WeaponType::Missile
+    | WeaponType::Sand
+    | WeaponType::Particle
+    | WeaponType::Torpedo
+    | WeaponType::Fusion
+    | WeaponType::Plasma
+    | WeaponType::Railgun
+    | WeaponType::Meson
+    | WeaponType::MassDriver
+    | WeaponType::Repulsor => 0,
   }) * match weapon.mount {
     WeaponMount::Turret(num) => u16::from(num),
     // Barbettes, bays and fixed mounts cannot track an incoming missile.
@@ -1564,7 +1614,10 @@ mod tests {
       (0, 0, WeaponType::Pulse, WeaponMount::Barbette, true),
       (6, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Small), true),
       (2, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Medium), false),
-      (1, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Large), false),
+      // Flipped from miss to hit when pulse barbettes started rolling their
+      // correct 3D (High Guard p. 30) rather than a turret's 2D, which consumes
+      // a different amount of the seeded stream and shifts every later roll.
+      (1, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Large), true),
       (10, 0, WeaponType::Beam, WeaponMount::Turret(1), true), // High hit mod
       (0, 10, WeaponType::Beam, WeaponMount::Turret(1), true), // High damage mod
     ];

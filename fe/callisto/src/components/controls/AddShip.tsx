@@ -12,7 +12,8 @@ import { Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
 import {
   DEFAULT_GUNNERY,
   MOUNT_OPTIONS,
-  WEAPON_KINDS,
+  weaponKindsForMount,
+  isLegalPairing,
   WeaponGroup,
   checkAllowance,
   commonGunnery,
@@ -386,7 +387,14 @@ function HardpointList(args: {
         args.setGroups(args.groups.filter((_, i) => i !== index));
         return;
       }
-      replaceRow(index, { ...args.groups[index], mount });
+      // Not every weapon fits every mount, so switching to a bay while holding
+      // a sandcaster has to move the weapon too.  Falling back to the first
+      // legal option keeps the row valid instead of leaving it unfireable.
+      const group = args.groups[index];
+      const kind = isLegalPairing(group.kind, mount)
+        ? group.kind
+        : (weaponKindsForMount(mount)[0] ?? group.kind);
+      replaceRow(index, { ...group, mount, kind });
     },
     [args, replaceRow],
   );
@@ -531,11 +539,13 @@ function HardpointList(args: {
                 value={group.kind}
                 onChange={(event) => handleKindChange(index, event.target.value)}
               >
-                {/* A design may name a weapon kind this build does not list. */}
-                {!WEAPON_KINDS.includes(group.kind) && (
+                {/* A design may name a weapon kind this build does not list,
+                    or one the rules do not allow in this mount.  Either way it
+                    stays selectable so existing data is never silently rewritten. */}
+                {!weaponKindsForMount(group.mount).includes(group.kind) && (
                   <option value={group.kind}>{group.kind}</option>
                 )}
-                {WEAPON_KINDS.map((kind) => (
+                {weaponKindsForMount(group.mount).map((kind) => (
                   <option key={kind} value={kind}>
                     {kind}
                   </option>

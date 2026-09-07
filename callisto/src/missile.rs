@@ -8,7 +8,7 @@ use serde_with::{serde_as, skip_serializing_none};
 use crate::computer::TargetParams;
 use crate::entity::{Entity, UpdateAction, Vec3, DELTA_TIME, DELTA_TIME_F64, G};
 use crate::payloads::Vec3asVec;
-use crate::ship::Ship;
+use crate::ship::{Ship, Weapon, WeaponMount, WeaponType};
 use crate::{debug, error, info};
 
 // Temporary until missiles have actual acceleration built in
@@ -35,6 +35,20 @@ pub struct Missile {
   #[serde_as(as = "Vec3asVec")]
   pub acceleration: Vec3,
   pub burns: i32,
+  /// The weapon that launched this object.  Carried so a torpedo resolves with
+  /// a torpedo's damage on impact instead of a missile's, and defaulted so
+  /// scenarios saved before torpedoes existed still load.
+  #[serde(default = "default_launcher")]
+  pub weapon: Weapon,
+}
+
+/// A single missile rack, matching how every launch behaved before the
+/// launching weapon was recorded.
+fn default_launcher() -> Weapon {
+  Weapon {
+    kind: WeaponType::Missile,
+    mount: WeaponMount::Turret(1),
+  }
 }
 
 impl Missile {
@@ -43,9 +57,12 @@ impl Missile {
   /// # Panics
   ///
   /// Panics if the lock cannot be obtained to read the target ship.
+  // Every parameter is an independent property of the launch; bundling them
+  // into a struct would only move the same list one level out.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     name: String, source: String, target: String, target_ptr: Arc<RwLock<Ship>>, position: Vec3, velocity: Vec3,
-    burns: i32,
+    burns: i32, weapon: Weapon,
   ) -> Self {
     // We need to construct an initial route for the missile primarily so
     // it can be shown in the UX once creation of the missile returns.
@@ -82,6 +99,7 @@ impl Missile {
       target_ptr: Some(target_ptr),
       acceleration,
       burns,
+      weapon,
     }
   }
 }
@@ -221,6 +239,7 @@ impl Default for Missile {
       target_ptr: None,
       acceleration: Vec3::zero(),
       burns: 0,
+      weapon: default_launcher(),
     }
   }
 }
@@ -251,6 +270,7 @@ mod tests {
       Vec3::zero(),
       Vec3::zero(),
       100,
+      default_launcher(),
     );
     assert_eq!(missile.get_name(), "missile1");
     assert_eq!(missile.get_position(), Vec3::zero());

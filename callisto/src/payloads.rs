@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{ShipDesignTemplate, Weapon};
+use super::ship::{ShipDesignTemplate, Weapon, WeaponMount, WeaponType};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -99,6 +99,20 @@ impl SetPilotActions {
 pub struct LaunchMissileMsg {
   pub source: String,
   pub target: String,
+  /// The weapon that threw this object, so a torpedo resolves with a torpedo's
+  /// damage on impact rather than a missile's.  Defaulted so scenarios saved
+  /// before torpedoes existed still load.
+  #[serde(default = "default_launcher")]
+  pub weapon: Weapon,
+}
+
+/// A single missile rack, matching how every launch behaved before the
+/// launching weapon was recorded.
+fn default_launcher() -> Weapon {
+  Weapon {
+    kind: WeaponType::Missile,
+    mount: WeaponMount::Turret(1),
+  }
 }
 
 #[serde_as]

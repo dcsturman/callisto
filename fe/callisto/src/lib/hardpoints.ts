@@ -1,4 +1,5 @@
 import { BaySize, Weapon, WeaponMount, createWeapon } from "./weapon";
+import WEAPON_MOUNTS from "./weaponMounts.json";
 
 // Hardpoint and Firmpoint accounting, per High Guard pp. 26 and 31.
 //
@@ -118,6 +119,13 @@ export function checkAllowance(
     used += mountCost(group.mount, allowance.kind) * group.count;
     if (used > allowance.total) {
       rowProblems[index] = `Exceeds the ${allowance.total} ${allowance.kind} this hull allows`;
+    }
+    // The rules do not sell every weapon in every mount — there is no torpedo
+    // turret and no laser bay.  The dropdown will not offer these, but a design
+    // file can still contain one, so flag it rather than quietly accepting it.
+    if (!isLegalPairing(group.kind, group.mount)) {
+      rowProblems[index] =
+        rowProblems[index] ?? `A ${group.kind} cannot be mounted this way`;
     }
   });
 
@@ -281,21 +289,82 @@ export interface MountOption {
   label: string;
   /** `null` is the "None" option: the row carries no weapon. */
   mount: WeaponMount | null;
+  /** Key into {@link WEAPON_MOUNTS}; `null` for the "None" option. */
+  mountClass: MountClass | null;
+}
+
+/**
+ * Mirrors the Rust `MountClass`: a mount with the turret size erased, which is
+ * the granularity the rules describe weapons at.
+ */
+export type MountClass =
+  | "Turret"
+  | "Fixed"
+  | "Barbette"
+  | "SmallBay"
+  | "MediumBay"
+  | "LargeBay";
+
+/** The mount class of a concrete mount, matching Rust's `From<&WeaponMount>`. */
+export function mountClassOf(mount: WeaponMount): MountClass | null {
+  if (mount === "FixedMount") {
+    return "Fixed";
+  }
+  if (mount === "Barbette") {
+    return "Barbette";
+  }
+  if (typeof mount === "object" && "Turret" in mount) {
+    return "Turret";
+  }
+  if (typeof mount === "object" && "Bay" in mount) {
+    return `${mount.Bay}Bay` as MountClass;
+  }
+  return null;
+}
+
+/**
+ * Whether the rules sell this weapon in this mount.
+ *
+ * The table is generated from the Rust `weapon_profile` table, so the editor
+ * cannot drift from what the server will actually fire — see the
+ * `frontend_mount_matrix_is_current` test in `rules_tables.rs`.
+ */
+export function isLegalPairing(kind: string, mount: WeaponMount | null): boolean {
+  if (mount === null) {
+    return true;
+  }
+  const mountClass = mountClassOf(mount);
+  const legal = (WEAPON_MOUNTS as Record<string, string[]>)[kind];
+  // An unknown weapon kind comes from a design this build does not know about.
+  // Leave it alone rather than declaring the referee's data illegal.
+  if (mountClass === null || legal === undefined) {
+    return true;
+  }
+  return legal.includes(mountClass);
+}
+
+/** The weapons the rules allow in a given mount, in {@link WEAPON_KINDS} order. */
+export function weaponKindsForMount(mount: WeaponMount | null): string[] {
+  if (mount === null) {
+    return WEAPON_KINDS;
+  }
+  return WEAPON_KINDS.filter((kind) => isLegalPairing(kind, mount));
 }
 
 const BAY_SIZES: BaySize[] = ["Small", "Medium", "Large"];
 
 export const MOUNT_OPTIONS: MountOption[] = [
-  { id: "none", label: "None", mount: null },
-  { id: "fixed", label: "Fixed Mount", mount: "FixedMount" },
-  { id: "turret-1", label: "Single Turret", mount: { Turret: 1 } },
-  { id: "turret-2", label: "Double Turret", mount: { Turret: 2 } },
-  { id: "turret-3", label: "Triple Turret", mount: { Turret: 3 } },
-  { id: "barbette", label: "Barbette", mount: "Barbette" },
+  { id: "none", label: "None", mount: null, mountClass: null },
+  { id: "fixed", label: "Fixed Mount", mount: "FixedMount", mountClass: "Fixed" },
+  { id: "turret-1", label: "Single Turret", mount: { Turret: 1 }, mountClass: "Turret" },
+  { id: "turret-2", label: "Double Turret", mount: { Turret: 2 }, mountClass: "Turret" },
+  { id: "turret-3", label: "Triple Turret", mount: { Turret: 3 }, mountClass: "Turret" },
+  { id: "barbette", label: "Barbette", mount: "Barbette", mountClass: "Barbette" },
   ...BAY_SIZES.map((size) => ({
     id: `bay-${size.toLowerCase()}`,
     label: `${size} Bay`,
     mount: { Bay: size } as WeaponMount,
+    mountClass: `${size}Bay` as MountClass,
   })),
 ];
 
@@ -352,13 +421,12 @@ export function mountForOptionId(id: string): WeaponMount | null {
   return MOUNT_OPTIONS.find((option) => option.id === id)?.mount ?? null;
 }
 
-/** Mirrors the Rust `WeaponType` enum. */
-export const WEAPON_KINDS: string[] = [
-  "Beam",
-  "Pulse",
-  "Missile",
-  "Sand",
-  "Particle",
-];
+/**
+ * Mirrors the Rust `WeaponType` enum, in declaration order.
+ *
+ * Taken from the generated mount matrix so a weapon added on the server shows up
+ * here without a second edit.
+ */
+export const WEAPON_KINDS: string[] = Object.keys(WEAPON_MOUNTS);
 
 export const DEFAULT_WEAPON_KIND = WEAPON_KINDS[0];

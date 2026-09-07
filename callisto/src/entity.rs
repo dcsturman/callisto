@@ -21,8 +21,8 @@ use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
 use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
 use crate::ship::get_ship_templates_snapshot;
+use crate::ship::Weapon;
 use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Ship, ShipDesignTemplate, ShipSystem};
-use crate::ship::{Weapon, WeaponMount, WeaponType};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn, LOG_FILE_USE};
@@ -557,7 +557,7 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
-  pub fn launch_missile(&mut self, source: &str, target: &str) -> Result<(), String> {
+  pub fn launch_missile(&mut self, source: &str, target: &str, weapon: Weapon) -> Result<(), String> {
     // Could use a random number generator here for the name but that makes tests flakey (random)
     // So this counter used to distinguish missiles between the same source and target
     let id = self.next_missile_id;
@@ -594,6 +594,7 @@ impl Entities {
       position,
       velocity,
       crate::missile::DEFAULT_BURN,
+      weapon,
     );
 
     debug!("(Entities.launch_missile) Added missile {}", &name);
@@ -670,7 +671,7 @@ impl Entities {
         let (missiles, effects) =
           do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
         for missile in missiles {
-          if let Err(msg) = self.launch_missile(&missile.source, &missile.target) {
+          if let Err(msg) = self.launch_missile(&missile.source, &missile.target, missile.weapon) {
             warn!("Could not launch missile: {}", msg);
           }
         }
@@ -768,6 +769,8 @@ impl Entities {
         let update = missile.update();
         let missile_name = missile.get_name();
         let missile_pos = missile.get_position();
+        // Captured before the match, whose arm shadows `missile` with its name.
+        let launcher = missile.weapon.clone();
         let Some(missile_source) = ship_snapshot.get(&missile.source) else {
           warn!(
             "(Entity.update_all) Cannot find source {} for missile. It may have been destroyed.",
@@ -780,11 +783,8 @@ impl Entities {
         // than being embedded in the missile update code.  Also enables elimination of missiles.
         match update? {
           UpdateAction::ShipImpact { ship: target_name, missile } => {
-            // When a missile impacts, fake it as an attack by a single turret missile.
-            const FAKE_MISSILE_LAUNCHER: Weapon = Weapon {
-              kind: WeaponType::Missile,
-              mount: WeaponMount::Turret(1),
-            };
+            // Resolve the impact as an attack by the weapon that launched this
+            // object, so a torpedo does a torpedo's 6D rather than a missile's 4D.
             debug!("(Entity.update_all) Missile impact on {} by missile {}.", target_name, missile);
             let target = self.ships.get(&target_name).map_or_else(
               || {
@@ -837,7 +837,7 @@ impl Entities {
                   0,
                   missile_source,
                   &mut target,
-                  &FAKE_MISSILE_LAUNCHER,
+                  &launcher,
                   // Missiles cannot do called shots
                   None,
                   boost_map,
@@ -1812,6 +1812,16 @@ impl<'de> Deserialize<'de> for Entities {
 
 #[cfg(test)]
 mod tests {
+  use crate::ship::{WeaponMount, WeaponType};
+
+  /// The launcher every pre-torpedo test implicitly assumed: a single missile rack.
+  fn test_missile_weapon() -> Weapon {
+    Weapon {
+      kind: WeaponType::Missile,
+      mount: WeaponMount::Turret(1),
+    }
+  }
+
   use super::*;
   use crate::crew::{Crew, Skills};
   use crate::debug;
@@ -1872,7 +1882,7 @@ mod tests {
     )?;
 
     // Launch a missile
-    entities.launch_missile("Ship1", "Ship2").unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
 
     // Test Display trait
     let display_output = format!("{entities}");
@@ -2142,7 +2152,7 @@ mod tests {
     );
 
     // Test 5: Add a valid missile
-    entities.launch_missile("Ship1", "Ship2").unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
     assert!(
       entities.validate(),
       "Entities with a valid planet, two ships, and missile should be valid"
@@ -2207,7 +2217,7 @@ mod tests {
       None,
       None,
     );
-    entities.launch_missile("Ship1", "Ship2").unwrap();
+    entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
     // Test 8: Create a missile with no target_ptr
     {
       entities
@@ -2740,7 +2750,7 @@ mod tests {
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Add some missiles to test
-    entities1.launch_missile("Ship1", "Ship2").unwrap();
+    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
 
     // Test the two should not be equal
     assert_ne!(
@@ -2749,15 +2759,15 @@ mod tests {
     );
 
     // Add the same missile to entities2
-    entities2.launch_missile("Ship1", "Ship2").unwrap();
+    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Test with a different missile
-    entities1.launch_missile("Ship1", "Ship2").unwrap();
+    entities1.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
     assert_ne!(entities1, entities2, "Entities should not be equal with different missiles");
 
     // Add the same missile to entities2
-    entities2.launch_missile("Ship1", "Ship2").unwrap();
+    entities2.launch_missile("Ship1", "Ship2", test_missile_weapon()).unwrap();
     assert_eq!(entities1, entities2, "Entities should be equal again");
 
     // Test with floating-point precision issues
@@ -2858,13 +2868,13 @@ mod tests {
 
     // Test launching a missile with an invalid target
     assert!(
-      entities.launch_missile("Ship1", "Ship2").is_err(),
+      entities.launch_missile("Ship1", "Ship2", test_missile_weapon()).is_err(),
       "Launching a missile with an invalid target should be an error"
     );
 
     // Test launching a missile with an invalid source
     assert!(
-      entities.launch_missile("Ship2", "Ship1").is_err(),
+      entities.launch_missile("Ship2", "Ship1", test_missile_weapon()).is_err(),
       "Launching a missile with an invalid source should be an error"
     );
   }
@@ -3077,7 +3087,7 @@ mod tests {
 
     // Mimic the post-fix round ordering: a launch (from fire_actions) followed
     // by a jam pass (the second sensor_actions call).
-    entities.launch_missile("attacker", "defender").unwrap();
+    entities.launch_missile("attacker", "defender", test_missile_weapon()).unwrap();
     assert_eq!(entities.missiles.len(), 1, "Missile should be in flight after launch");
 
     let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
