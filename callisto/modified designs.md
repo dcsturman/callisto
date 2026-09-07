@@ -48,12 +48,25 @@ High Guard weapon modifications have nowhere to live in the schema. Dropped from
 | Merchant Cruiser - Leviathan (p217) | energy efficient x3 |
 | Cargo Carrier - MK Mora (p223) | long range, high yield, accurate |
 
-## TODO 3 — `add ship` needs weapon customization (HIGH PRIORITY)
+## ~~TODO 3 — `add ship` needs weapon customization~~ DONE (2026-09-06)
 
-The "add ship" flow currently pins a ship to its design's fixed weapon list. Real play needs
+~~The "add ship" flow currently pins a ship to its design's fixed weapon list. Real play needs
 per-ship armament: a Free Trader or Far Trader may be fitted with almost anything, and 11 of
-these designs ship with **empty mounts** the crew is expected to fill. This is not a small
-feature — but it is why so many designs below have `"weapons": []`.
+these designs ship with **empty mounts** the crew is expected to fill.~~
+
+**Shipped.** `Ship.weapons: Option<Vec<Weapon>>` holds a ship's own armament, with `None`
+meaning "inherit from the design" — so every scenario written before the field existed keeps
+working untouched. Add Ship gained a hardpoint editor: rows are *groups* ("30 x Triple Beam
+Turret") rather than one row per mount, checked against the hull's Hardpoint or Firmpoint
+allowance, with gunner skill on each row. Re-arming a ship clears its stale queued fire
+orders, since `weapon_id` is an index into the list.
+
+The allowance is advisory throughout — the engine never validates armament, so a referee can
+still exceed it deliberately. `player.rs` rejects only what would panic later: turret sizes
+outside 1-3, and more than `MAX_SHIP_WEAPONS` (see TODO 5).
+
+The list below stays as reference: these are the designs the book leaves unarmed, and they
+are now fittable in the UI rather than stuck empty.
 
 Designs with empty mounts in the book, recorded here as `"weapons": []`:
 Ship's Boat, Slow Boat, Pinnace, Slow Pinnace, Modular Cutter, Shuttle,
