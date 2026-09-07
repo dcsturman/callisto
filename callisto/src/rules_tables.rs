@@ -347,4 +347,46 @@ mod tests {
       "{PATH} is stale.  Regenerate it with:\n    UPDATE_WEAPON_MOUNTS=1 cargo test frontend_mount_matrix_is_current"
     );
   }
+
+  /// Every weapon in the shipped design library must be one the rules allow.
+  ///
+  /// Designs are hand-edited JSON, so this is the guard against a typo or a
+  /// half-finished migration leaving a ship carrying something that cannot be
+  /// fired -- `attack()` refuses an illegal pairing at runtime, which would
+  /// silently disarm the ship mid-game rather than failing loudly here.
+  #[test]
+  fn shipped_designs_use_legal_mounts() {
+    use crate::ship::Weapon;
+
+    #[derive(serde::Deserialize)]
+    struct JustWeapons {
+      #[serde(default)]
+      weapons: Vec<Weapon>,
+    }
+
+    let mut checked = 0;
+    let mut problems = Vec::new();
+    for entry in std::fs::read_dir("ship_templates").expect("ship_templates should be readable") {
+      let path = entry.expect("readable directory entry").path();
+      if path.extension().is_none_or(|ext| ext != "json") {
+        continue;
+      }
+      let body = std::fs::read_to_string(&path).expect("design should be readable");
+      let design: JustWeapons =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
+      for weapon in &design.weapons {
+        checked += 1;
+        if profile_for(weapon.kind, &weapon.mount).is_none() {
+          problems.push(format!("{}: {}", path.display(), String::from(weapon)));
+        }
+      }
+    }
+
+    assert!(
+      problems.is_empty(),
+      "designs carry weapons the rules do not allow:\n  {}",
+      problems.join("\n  ")
+    );
+    assert!(checked > 0, "no weapons were checked, so this test proves nothing");
+  }
 }

@@ -56,24 +56,31 @@ Weapon types NOT needed under 5,000 tons but required before we can support larg
 meson guns (incl. spinal mounts), particle accelerator spinal mounts, railguns, repulsors,
 orbital strike mass drivers. **There is no spinal mount concept in `WeaponMount` at all.**
 
-## TODO 8 — Migrate the designs that still use substituted weapons
+## ~~TODO 8 — Migrate the designs that still use substituted weapons~~ DONE (2026-09-07)
 
-The weapons in TODO 1's substitution table now exist, but the ship templates were never
-rewritten — they still carry the stand-ins, so they read as the wrong weapon and roll the
-wrong dice:
+**Shipped.** Three designs carried stand-ins because the real weapon did not exist yet.
+Each was re-checked against the book rather than trusted from the table above:
 
-| Design | Currently encoded as | Should become |
-|---|---|---|
-| Torpedo Boat (p152) | `Missile` / `Barbette` | `Torpedo` / `Barbette` |
-| Merchant Cruiser - Leviathan (p217, x2) | `Missile` / `Barbette` | `Torpedo` / `Barbette` |
-| Destroyer Escort - Chrysanthemum (p207) | `Particle` / `Barbette` | `Fusion` / `Barbette` |
+| Design | Was | Now | Book |
+|---|---|---|---|
+| Torpedo Boat (p152) | `Missile` / `Barbette` | `Torpedo` / `Barbette` | "Torpedo Barbette" |
+| Merchant Cruiser - Leviathan (p217) | `Missile` / `Barbette` x2 | `Torpedo` / `Barbette` x2 | "Torpedo Barbettes x2" |
+| Destroyer Escort - Chrysanthemum (p207) | `Particle` / `Barbette` x3 | `Fusion` x1 + `Particle` x2 | "Fusion Barbette" + "Particle Barbettes x2" |
 
-This is a data change only, and it is not cosmetic: a torpedo barbette fires one 6D
-torpedo where a missile barbette fires five 4D missiles, so these ships currently fight
-quite differently from the ships in the book.
+Not changed, having been checked and found correct: the **Fer-de-Lance**'s four barbettes
+really are missile barbettes (the book's "accurate" modifier is still dropped, per TODO 2),
+and the Leviathan's two **Fixed Mount** missile racks are genuinely missiles — only its
+barbettes were torpedoes.
 
-The Point Defence Laser Battery substitutions in that table should be left alone until
-the PD battery design lands — they are a separate mechanic.
+Every other new-weapon mention in the book (meson screens and spinal mounts, repulsor
+bays, large meson gun bays, fusion barbettes x12) belongs to a hull over 5,000 tons and
+is therefore out of scope — see "Out of scope" below.
+
+`rules_tables.rs::shipped_designs_use_legal_mounts` now walks the whole library and fails
+if any design carries a weapon the rules do not allow in that mount, so a future typo
+cannot silently disarm a ship at runtime.
+
+The Point Defence Laser Battery substitutions are deliberately left alone; see TODO 9.
 
 ---
 
@@ -208,6 +215,30 @@ Ion is sold as a barbette and as all three bay sizes, never a turret:
 Note the fleet-battle rules (p. 132) give ion weapons a *separate* damage track
 (Effect per Weapon: barbette 75, bays 200/500/3,500) used only at fleet scale. That is
 a different system from the ship-scale rule above and should not be conflated with it.
+
+---
+
+## TODO 9 — Point Defence Laser Batteries
+
+Designed but not built. The full memo is `docs/pd_batteries_design.md`; the short of it:
+
+A point-defence battery is **not a weapon**. High Guard p. 40 makes it a passive,
+always-on sink that removes 2D/4D/6D missiles from an incoming salvo outright — no attack
+roll, no damage, no range band, no gunner, no offensive mode, and it costs no action.
+
+That is why the current stopgap understates them so badly. Encoded as pulse laser
+turrets they resolve through the ordinary point-defence path, which rolls 2D vs 8 and
+removes *Effect* missiles. On the *Dragon* that is worth about **1.7 missiles per round**
+where the book says **14**.
+
+Affected designs, still carrying the stopgap:
+
+| Design | Encoded as | Should be |
+|---|---|---|
+| System Defence Boat - Dragon (p193) | `Pulse` / `Turret(2)` | PD Laser Battery Type II |
+| Colonial Cruiser - Kinunir (p215) | `Pulse` / `Turret(3)` | PD Laser Battery Type III |
+| Fleet Escort - P.F. Sloan (p232, x2) | `Pulse` / `Turret(3)` | PD Laser Battery Type III |
+| Midu Agasham | *omitted entirely* | PD Laser Battery Type III x2 |
 
 ---
 

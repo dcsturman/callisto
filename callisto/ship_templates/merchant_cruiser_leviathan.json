@@ -56,11 +56,11 @@
       "mount": "FixedMount"
     },
     {
-      "kind": "Missile",
+      "kind": "Torpedo",
       "mount": "Barbette"
     },
     {
-      "kind": "Missile",
+      "kind": "Torpedo",
       "mount": "Barbette"
     }
   ],
