@@ -3,6 +3,7 @@ import * as React from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import { KernelSize } from "postprocessing";
 import { FlyControls } from "./lib/FlyControls";
 
 import { Authentication } from "components/scenarios/Authentication";
@@ -239,11 +240,18 @@ function Simulator() {
               re-bloomed the whole frame, for an identical picture at N times
               the cost. */}
           <EffectComposer>
+            {/* The frame buffer clamps colour at 1.0, so a threshold of 1
+                selects nothing and the pass contributes nothing — which is
+                what left ships as flat white discs. 0.9 is the value the old
+                per-planet composer used, and since that composer was
+                full-screen it was the one actually glowing the ships all
+                along; the per-ship pass at threshold 1 never did anything. */}
             <Bloom
               mipmapBlur
-              luminanceThreshold={1}
-              luminanceSmoothing={1}
-              intensity={1.0}
+              kernelSize={KernelSize.LARGE}
+              luminanceThreshold={0.9}
+              luminanceSmoothing={0.025}
+              intensity={0.8}
             />
           </EffectComposer>
         </Canvas>

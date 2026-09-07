@@ -93,12 +93,11 @@ function Ship(args: {
           onPointerLeave={() => dispatch(setEntityToShow(null))}
           onClick={handleShipClick}>
           <sphereGeometry ref={shipGeoRef} args={[0.2]} />
-          {/* Values above 1 are HDR: they exceed what the display can show,
-              which is how the bloom pass (threshold 1) picks a ship out as
-              something to glow.  Raising them makes ships glow harder without
-              touching anything else, whereas raising the pass's own intensity
-              would bloom the whole frame including the planet clouds. */}
-          <meshBasicMaterial color={[7, 7, 18.0]} />
+          {/* Above 1 so the bloom pass reads these pixels as bright.  How far
+              above makes no difference while the frame buffer clamps at 1.0 —
+              raising this to [7, 7, 18] was measurably inert.  What controls
+              the glow is the pass's luminanceThreshold in App.tsx. */}
+          <meshBasicMaterial color={[3, 3, 8.0]} />
         </mesh>
         {/* vector showing a ships's velocity (so distance next turn) */}
         <Line
