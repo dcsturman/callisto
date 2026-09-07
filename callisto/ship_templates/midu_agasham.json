@@ -137,6 +137,18 @@
       "mount": {
         "Turret": 3
       }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
     }
   ],
   "tl": 15,

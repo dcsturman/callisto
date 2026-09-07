@@ -263,6 +263,12 @@ pub struct Ship {
   pub attack_dm: i32,
   #[serde(skip)]
   pub point_defense_list: Vec<(usize, u16)>,
+  /// Missiles this ship's point-defence batteries will absorb this round,
+  /// rolled once at the start of resolution (High Guard p. 40).
+  ///
+  /// Per-round scratch like `point_defense_list`, so it is not persisted.
+  #[serde(skip)]
+  pub point_defense_pool: u32,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -339,6 +345,13 @@ pub enum WeaponMount {
   /// A single weapon bolted to the hull.  Unlike a turret it cannot traverse,
   /// so it fires along the thrust vector only and cannot serve as point defense.
   FixedMount,
+  /// A 20-ton point-defence battery consuming one Hardpoint.  The `u8` is the
+  /// book's Type -- 1, 2 or 3 (High Guard p. 40) -- which sets its Intercept.
+  ///
+  /// The grade lives here rather than on [`WeaponType`] so that a second family
+  /// of batteries (the book also sells gauss ones) is a single new `WeaponType`
+  /// reusing these same mounts.
+  Battery(u8),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -366,6 +379,10 @@ pub enum WeaponType {
   Meson,
   MassDriver,
   Repulsor,
+  /// A point-defence laser battery.  Never fires offensively and never takes an
+  /// attack roll: it is a passive sink that deletes incoming missiles.  Its
+  /// Intercept grade lives on [`WeaponMount::Battery`].
+  PointDefense,
 }
 
 /// A weapon mount with the turret count erased.
@@ -382,6 +399,10 @@ pub enum MountClass {
   SmallBay,
   MediumBay,
   LargeBay,
+  /// Point-defence batteries.  Unlike every other class this is not a size --
+  /// all batteries are 20 tons -- but it has to be distinct so the profile
+  /// table can refuse to put a gun in one.
+  Battery,
 }
 
 impl From<&WeaponMount> for MountClass {
@@ -393,6 +414,7 @@ impl From<&WeaponMount> for MountClass {
       WeaponMount::Bay(BaySize::Small) => MountClass::SmallBay,
       WeaponMount::Bay(BaySize::Medium) => MountClass::MediumBay,
       WeaponMount::Bay(BaySize::Large) => MountClass::LargeBay,
+      WeaponMount::Battery(_) => MountClass::Battery,
     }
   }
 }
@@ -601,6 +623,7 @@ impl Ship {
       leadership_points: 0,
       leadership_rolled: false,
       point_defense_list: vec![],
+      point_defense_pool: 0,
     }
   }
 
@@ -822,8 +845,22 @@ impl Ship {
     self.point_defense_list = list;
   }
 
+  pub fn set_point_defense_pool(&mut self, pool: u32) {
+    self.point_defense_pool = pool;
+  }
+
+  /// Take one missile's worth of battery interception, if any is left.
+  pub fn take_battery_interception(&mut self) -> bool {
+    if self.point_defense_pool == 0 {
+      return false;
+    }
+    self.point_defense_pool -= 1;
+    true
+  }
+
   pub fn clear_point_defense(&mut self) {
     self.point_defense_list.clear();
+    self.point_defense_pool = 0;
   }
 
   // Engineer action getters and setters
@@ -1245,6 +1282,12 @@ impl Ord for Weapon {
       (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.cmp(&other.kind),
       // A fixed mount is the least capable mount, so it sorts after everything else.
       (WeaponMount::Turret(_), WeaponMount::FixedMount) => std::cmp::Ordering::Less,
+      // A battery is real hardware but not a gun, so it sits between the
+      // turrets and the fixed mounts.
+      (WeaponMount::Turret(_), WeaponMount::Battery(_)) => std::cmp::Ordering::Less,
+      (WeaponMount::Battery(_), WeaponMount::Battery(_)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Battery(_), WeaponMount::FixedMount) => std::cmp::Ordering::Less,
+      (WeaponMount::Battery(_), _) => std::cmp::Ordering::Greater,
       (WeaponMount::FixedMount, WeaponMount::FixedMount) => self.kind.cmp(&other.kind),
       (WeaponMount::FixedMount, _) => std::cmp::Ordering::Greater,
     }
@@ -1344,6 +1387,7 @@ impl From<&WeaponType> for String {
       WeaponType::Meson => "meson gun".to_string(),
       WeaponType::MassDriver => "mass driver".to_string(),
       WeaponType::Repulsor => "repulsor".to_string(),
+      WeaponType::PointDefense => "point defence battery".to_string(),
     }
   }
 }
@@ -1364,6 +1408,17 @@ impl From<&Weapon> for String {
         format!("{} medium bay", String::from(kind))
       }
       (kind, WeaponMount::Bay(BaySize::Large)) => format!("{} large bay", String::from(kind)),
+      // The grade is the whole identity of a battery, so name it rather than
+      // falling back on the weapon kind.
+      (_, WeaponMount::Battery(grade)) => {
+        let numeral = match grade {
+          1 => "I",
+          2 => "II",
+          3 => "III",
+          _ => "?",
+        };
+        format!("point defence battery (Type {numeral})")
+      }
     }
   }
 }

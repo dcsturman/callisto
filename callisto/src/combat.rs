@@ -1068,6 +1068,10 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
                   error!("Bay sand mount not supported.");
                   None
                 }
+                WeaponMount::Battery(_) => {
+                  error!("A sandcaster cannot be a point defence battery.");
+                  None
+                }
               }
             } else {
               None
@@ -1077,6 +1081,40 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
       )
     })
     .collect()
+}
+
+/// Intercept dice for a point-defence battery: 2D / 4D / 6D for Type I / II / III
+/// (High Guard p. 40).  `None` for anything that is not a legal battery.
+///
+/// This is the single place allowed to interpret the (kind, mount) pair as a
+/// battery.  Everything else treats a nonsensical pair as inert.
+#[must_use]
+pub fn battery_intercept_dice(weapon: &Weapon) -> Option<u8> {
+  match (weapon.kind, &weapon.mount) {
+    (WeaponType::PointDefense, WeaponMount::Battery(grade @ 1..=3)) => Some(2 * grade),
+    _ => None,
+  }
+}
+
+/// How many missiles this ship's batteries will swat this round.
+///
+/// The book has a battery "automatically intercept" a number of missiles each
+/// turn, which the defender may spread across salvoes as they like.  Callisto
+/// has no salvoes -- missiles are individual entities -- so a per-round pool is
+/// the same thing expressed in the units we actually have.
+///
+/// Batteries are rolled separately and summed rather than pooled into one throw,
+/// so that a critical hit disabling one battery removes exactly its share.
+#[must_use]
+pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
+  ship
+    .weapons()
+    .iter()
+    .enumerate()
+    .filter(|(index, _)| ship.active_weapons[*index])
+    .filter_map(|(_, weapon)| battery_intercept_dice(weapon))
+    .map(|dice| u32::from(roll_dice(dice, rng)))
+    .sum()
 }
 
 // Helper function to determine which point defense weapon is most effective.
@@ -1096,11 +1134,15 @@ fn point_defense_score(weapon: &Weapon) -> u16 {
     | WeaponType::Railgun
     | WeaponType::Meson
     | WeaponType::MassDriver
-    | WeaponType::Repulsor => 0,
+    | WeaponType::Repulsor
+    // Batteries are automatic and never queue an action; they resolve through
+    // `roll_battery_pool` instead.  Scoring 0 here is what makes a stray
+    // PointDefenseAction naming a battery get dropped rather than honoured.
+    | WeaponType::PointDefense => 0,
   }) * match weapon.mount {
     WeaponMount::Turret(num) => u16::from(num),
     // Barbettes, bays and fixed mounts cannot track an incoming missile.
-    WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount => 0,
+    WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_) => 0,
   }
 }
 
@@ -1189,6 +1231,145 @@ pub fn use_next_point_defense(point_defense_list: &mut Vec<(usize, u16)>, rng: &
   } else {
     debug!("(Ship.use_next_point_defense) Point defense failed.");
     0
+  }
+}
+
+#[cfg(test)]
+mod battery_tests {
+  use super::*;
+  use crate::entity::Vec3;
+  use crate::ship::ShipDesignTemplate;
+  use cgmath::Zero;
+  use rand::rngs::SmallRng;
+  use rand::SeedableRng;
+  use std::sync::Arc;
+
+  fn battery(grade: u8) -> Weapon {
+    Weapon {
+      kind: WeaponType::PointDefense,
+      mount: WeaponMount::Battery(grade),
+    }
+  }
+
+  fn ship_with(weapons: Vec<Weapon>) -> Ship {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Batteries".to_string(),
+      weapons,
+      ..Default::default()
+    });
+    Ship::new("Batteries".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None)
+  }
+
+  /// Type I/II/III intercept 2D/4D/6D (High Guard p. 40).
+  #[test]
+  fn intercept_dice_follow_the_grade() {
+    assert_eq!(battery_intercept_dice(&battery(1)), Some(2));
+    assert_eq!(battery_intercept_dice(&battery(2)), Some(4));
+    assert_eq!(battery_intercept_dice(&battery(3)), Some(6));
+  }
+
+  /// The (kind, mount) pair is a cross-product, so nonsense pairs are
+  /// representable.  They must read as "not a battery" rather than as a battery
+  /// of some invented grade.
+  #[test]
+  fn nonsense_pairs_are_not_batteries() {
+    // A grade the book does not sell.
+    assert_eq!(battery_intercept_dice(&battery(0)), None);
+    assert_eq!(battery_intercept_dice(&battery(4)), None);
+    // A real weapon in a battery mount, and a battery in a real mount.
+    assert_eq!(
+      battery_intercept_dice(&Weapon {
+        kind: WeaponType::Beam,
+        mount: WeaponMount::Battery(2)
+      }),
+      None
+    );
+    assert_eq!(
+      battery_intercept_dice(&Weapon {
+        kind: WeaponType::PointDefense,
+        mount: WeaponMount::Turret(3)
+      }),
+      None
+    );
+  }
+
+  /// A battery takes no action and never enters the gunner-driven point defence
+  /// path, so a stray `PointDefenseAction` naming one is dropped.
+  #[test]
+  fn batteries_score_zero_in_the_action_path() {
+    for grade in 1..=3 {
+      assert_eq!(point_defense_score(&battery(grade)), 0);
+    }
+  }
+
+  #[test]
+  fn pool_is_zero_without_batteries() {
+    let ship = ship_with(vec![Weapon {
+      kind: WeaponType::Beam,
+      mount: WeaponMount::Turret(3),
+    }]);
+    let mut rng = SmallRng::seed_from_u64(0xD1CE);
+    assert_eq!(roll_battery_pool(&ship, &mut rng), 0);
+  }
+
+  /// A pool is a sum of dice, so it must land inside the range those dice can
+  /// produce.  Asserting bounds rather than an exact value keeps this from
+  /// being a change-detector for the RNG.
+  #[test]
+  fn pool_lands_within_the_dice_range() {
+    for (grade, dice) in [(1u8, 2u32), (2, 4), (3, 6)] {
+      let ship = ship_with(vec![battery(grade)]);
+      let mut rng = SmallRng::seed_from_u64(0xD1CE);
+      let pool = roll_battery_pool(&ship, &mut rng);
+      assert!(
+        (dice..=dice * 6).contains(&pool),
+        "Type {grade} rolled {pool}, outside {dice}D's range of {dice}..={}",
+        dice * 6
+      );
+    }
+  }
+
+  /// Batteries stack additively, and are rolled separately so that losing one
+  /// to a critical hit removes exactly its share.
+  #[test]
+  fn batteries_stack() {
+    let ship = ship_with(vec![battery(3), battery(3)]);
+    let mut rng = SmallRng::seed_from_u64(0xD1CE);
+    let pool = roll_battery_pool(&ship, &mut rng);
+    assert!(
+      (12..=72).contains(&pool),
+      "two Type III batteries rolled {pool}, outside 12..=72"
+    );
+  }
+
+  /// A battery knocked out by a critical hit stops contributing.
+  #[test]
+  fn disabled_batteries_contribute_nothing() {
+    let mut ship = ship_with(vec![battery(3), battery(3)]);
+    ship.active_weapons[0] = false;
+    let mut rng = SmallRng::seed_from_u64(0xD1CE);
+    let pool = roll_battery_pool(&ship, &mut rng);
+    assert!((6..=36).contains(&pool), "one live Type III rolled {pool}, outside 6..=36");
+  }
+
+  /// The pool is spent one missile at a time and cannot go negative.
+  #[test]
+  fn pool_drains_one_missile_at_a_time() {
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(2);
+    assert!(ship.take_battery_interception());
+    assert!(ship.take_battery_interception());
+    assert!(!ship.take_battery_interception());
+    assert_eq!(ship.point_defense_pool, 0);
+  }
+
+  /// The pool is per-round scratch and must not survive into the next round.
+  #[test]
+  fn clearing_point_defense_zeroes_the_pool() {
+    let mut ship = ship_with(vec![battery(3)]);
+    ship.set_point_defense_pool(19);
+    ship.clear_point_defense();
+    assert_eq!(ship.point_defense_pool, 0);
   }
 }
 

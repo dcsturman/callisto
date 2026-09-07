@@ -13,7 +13,8 @@ use tracing::{event, Level};
 
 use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList};
 use crate::combat::{
-  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, roll_dice, use_next_point_defense,
+  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, roll_battery_pool, roll_dice,
+  use_next_point_defense,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -660,6 +661,32 @@ impl Entities {
       ship.set_point_defense_list(tallies);
     }
 
+    // Point-defence batteries are automatic: they need no action, no gunner and
+    // no decision, so every ship that has one gets a pool whether or not its
+    // crew queued anything.  That is why this is a separate pass over all ships
+    // rather than part of the loop above.
+    //
+    // Iterate in name order.  `self.ships` is a HashMap, and rolling in map
+    // order would make the seeded integration tests non-reproducible -- the
+    // same reason missiles are sorted before resolution below.
+    let mut battery_ships: Vec<String> = self.ships.keys().cloned().collect();
+    battery_ships.sort_unstable();
+    let mut battery_effects = Vec::new();
+    for name in battery_ships {
+      let Some(ship) = self.ships.get(&name) else {
+        continue;
+      };
+      let mut ship = ship.write().unwrap();
+      let pool = roll_battery_pool(&ship, rng);
+      ship.set_point_defense_pool(pool);
+      if pool > 0 {
+        debug!("(Entities.fire_actions) {name}'s point defence batteries will intercept {pool} missile(s).");
+        battery_effects.push(EffectMsg::message(format!(
+          "{name}'s point defence batteries will intercept up to {pool} missile(s) this round."
+        )));
+      }
+    }
+
     let effects = fire_actions
       .iter()
       .flat_map(|(attacker, actions)| {
@@ -677,8 +704,9 @@ impl Entities {
         }
         effects
       })
-      .collect();
-    effects
+      .collect::<Vec<EffectMsg>>();
+    battery_effects.extend(effects);
+    battery_effects
   }
 
   /// Check which ships are jump enabled.  This is done at the end of each round.  It is done
@@ -809,10 +837,23 @@ impl Entities {
               );
               let mut target = target.write().unwrap();
 
+              // Batteries first.  They are automatic and free, so draining them
+              // before the gunners' queued point defence leaves the scarce
+              // resource available for whatever the batteries cannot absorb.
+              // The book lets the defender allocate their Intercept as they
+              // like, so taking the allocation that favours them is faithful.
+              let battery_stopped_it = target.take_battery_interception();
+
               // See if point defense works!
-              let available_point_defense = point_defense_memory
-                .remove(&target_name)
-                .unwrap_or_else(|| use_next_point_defense(&mut target.point_defense_list, rng));
+              let available_point_defense = if battery_stopped_it {
+                // A battery does not roll and banks no surplus -- the pool is
+                // itself the running total.
+                1
+              } else {
+                point_defense_memory
+                  .remove(&target_name)
+                  .unwrap_or_else(|| use_next_point_defense(&mut target.point_defense_list, rng))
+              };
 
               // This stops the attack
               if available_point_defense > 0 {
@@ -829,7 +870,12 @@ impl Entities {
                   missile, target_name
                 );
                 cleanup_missile_list.push(missile.clone());
-                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("Missile {missile} destroyed by {target_name}'s point defense"))])
+                let how = if battery_stopped_it {
+                  "point defence battery"
+                } else {
+                  "point defense"
+                };
+                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("Missile {missile} destroyed by {target_name}'s {how}"))])
               } else {
                 // The attack gets through point defense
                 let effects = attack(

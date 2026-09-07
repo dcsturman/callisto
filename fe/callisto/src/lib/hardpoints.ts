@@ -303,7 +303,8 @@ export type MountClass =
   | "Barbette"
   | "SmallBay"
   | "MediumBay"
-  | "LargeBay";
+  | "LargeBay"
+  | "Battery";
 
 /** The mount class of a concrete mount, matching Rust's `From<&WeaponMount>`. */
 export function mountClassOf(mount: WeaponMount): MountClass | null {
@@ -318,6 +319,9 @@ export function mountClassOf(mount: WeaponMount): MountClass | null {
   }
   if (typeof mount === "object" && "Bay" in mount) {
     return `${mount.Bay}Bay` as MountClass;
+  }
+  if (typeof mount === "object" && "Battery" in mount) {
+    return "Battery";
   }
   return null;
 }
@@ -353,6 +357,13 @@ export function weaponKindsForMount(mount: WeaponMount | null): string[] {
 
 const BAY_SIZES: BaySize[] = ["Small", "Medium", "Large"];
 
+// Point-defence batteries come in three grades and no others (High Guard p. 40).
+const BATTERY_TYPES = [
+  { grade: 1, numeral: "I" },
+  { grade: 2, numeral: "II" },
+  { grade: 3, numeral: "III" },
+];
+
 export const MOUNT_OPTIONS: MountOption[] = [
   { id: "none", label: "None", mount: null, mountClass: null },
   { id: "fixed", label: "Fixed Mount", mount: "FixedMount", mountClass: "Fixed" },
@@ -365,6 +376,12 @@ export const MOUNT_OPTIONS: MountOption[] = [
     label: `${size} Bay`,
     mount: { Bay: size } as WeaponMount,
     mountClass: `${size}Bay` as MountClass,
+  })),
+  ...BATTERY_TYPES.map(({ grade, numeral }) => ({
+    id: `battery-${grade}`,
+    label: `PD Battery (Type ${numeral})`,
+    mount: { Battery: grade } as WeaponMount,
+    mountClass: "Battery" as MountClass,
   })),
 ];
 
@@ -411,6 +428,9 @@ export function mountOptionId(mount: WeaponMount | null): string | null {
     }
     if ("Bay" in option.mount && "Bay" in mount) {
       return option.mount.Bay === mount.Bay;
+    }
+    if ("Battery" in option.mount && "Battery" in mount) {
+      return option.mount.Battery === mount.Battery;
     }
     return false;
   });

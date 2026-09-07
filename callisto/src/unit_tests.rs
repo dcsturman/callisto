@@ -716,13 +716,18 @@ async fn test_called_shot() {
       |e| matches!(e, EffectMsg::Message { content } if content.contains("critical") && !content.contains("caused")),
     )
     .collect::<Vec<_>>();
+  // Was 4 until the Midu Agasham gained the two point-defence batteries its
+  // book entry always listed.  Rolling their Intercept pool consumes part of
+  // the seeded stream before these attacks resolve, shifting every later roll.
+  // Nothing about called shots changed -- the assertion above still finds
+  // maneuver crits, which is what this test is actually about.
   assert_eq!(
     crits
       .iter()
       .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver")))
       .count(),
-    4,
-    "Expected 4 critical hits to maneuver: {crits:#?}"
+    3,
+    "Expected 3 critical hits to maneuver: {crits:#?}"
   );
 }
 

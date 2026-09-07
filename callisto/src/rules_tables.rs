@@ -9,11 +9,14 @@ use crate::ship::{Range, WeaponMount};
 #[must_use]
 pub const fn damage_multiple(mount: MountClass) -> u32 {
   match mount {
-    MountClass::Turret | MountClass::Fixed => 1,
     MountClass::Barbette => 3,
     MountClass::SmallBay => 10,
     MountClass::MediumBay => 20,
     MountClass::LargeBay => 100,
+    // Turrets and fixed mounts genuinely have no multiple.  A battery shares
+    // the identity value because it never rolls damage at all, so this is never
+    // consulted for one.
+    MountClass::Turret | MountClass::Fixed | MountClass::Battery => 1,
   }
 }
 
@@ -32,7 +35,7 @@ pub const fn damage_multiple(mount: MountClass) -> u32 {
 #[must_use]
 #[allow(clippy::match_same_arms)]
 pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfile> {
-  use MountClass::{Barbette, Fixed, LargeBay, MediumBay, SmallBay, Turret};
+  use MountClass::{Barbette, Battery, Fixed, LargeBay, MediumBay, SmallBay, Turret};
   type P = WeaponProfile;
 
   Some(match kind {
@@ -59,6 +62,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::launcher(7, 4, Salvo::Fixed(12)),
       MediumBay => P::launcher(7, 4, Salvo::Fixed(24)),
       LargeBay => P::launcher(7, 4, Salvo::Fixed(120)),
+      Battery => return None,
     },
     // Torpedoes are treated in every way like missiles but hit far harder, and
     // are too large to fit a turret.  The barbette holds three and fires one at
@@ -76,6 +80,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::gun(11, 6, Range::VeryLong).rad(),
       MediumBay => P::gun(12, 8, Range::VeryLong).rad(),
       LargeBay => P::gun(13, 10, Range::Distant).rad(),
+      Battery => return None,
     },
     WeaponType::Fusion => match mount {
       Turret | Fixed => P::gun(14, 4, Range::Medium).rad(),
@@ -83,6 +88,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::gun(12, 6, Range::Medium).ap(6).rad(),
       MediumBay => P::gun(12, 7, Range::Medium).ap(6).rad(),
       LargeBay => P::gun(12, 10, Range::Long).ap(8).rad(),
+      Battery => return None,
     },
     WeaponType::Plasma => match mount {
       Turret | Fixed => P::gun(11, 3, Range::Medium),
@@ -95,6 +101,7 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::gun(10, 3, Range::Short).ap(10),
       MediumBay => P::gun(10, 5, Range::Short).ap(10),
       LargeBay => P::gun(10, 6, Range::Medium).ap(10),
+      Battery => return None,
     },
     // Meson guns are bay-and-up weapons that ignore armour outright.
     WeaponType::Meson => match mount {
@@ -116,6 +123,15 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       SmallBay => P::special(15, Range::Short),
       MediumBay => P::special(14, Range::Short),
       LargeBay => P::special(13, Range::Short),
+      _ => return None,
+    },
+    // A battery is not a gun.  It has no attack roll, no damage and no range
+    // band; the profile exists only so that the legality matrix knows a
+    // point-defence battery goes in a Battery mount and nowhere else -- and,
+    // just as importantly, that nothing else goes in a Battery.  Its actual
+    // effect is `battery_intercept_dice` in combat.rs.
+    WeaponType::PointDefense => match mount {
+      Battery => P::special(10, Range::Short),
       _ => return None,
     },
   })
@@ -159,16 +175,17 @@ mod tests {
   use super::*;
   use crate::ship::BaySize;
 
-  const ALL_MOUNTS: [MountClass; 6] = [
+  const ALL_MOUNTS: [MountClass; 7] = [
     MountClass::Turret,
     MountClass::Fixed,
     MountClass::Barbette,
     MountClass::SmallBay,
     MountClass::MediumBay,
     MountClass::LargeBay,
+    MountClass::Battery,
   ];
 
-  const ALL_WEAPONS: [WeaponType; 12] = [
+  const ALL_WEAPONS: [WeaponType; 13] = [
     WeaponType::Beam,
     WeaponType::Pulse,
     WeaponType::Missile,
@@ -181,6 +198,7 @@ mod tests {
     WeaponType::Meson,
     WeaponType::MassDriver,
     WeaponType::Repulsor,
+    WeaponType::PointDefense,
   ];
 
   /// A weapon scales by damage multiple *or* by salvo size, never both and
@@ -321,6 +339,7 @@ mod tests {
       MountClass::SmallBay => "SmallBay",
       MountClass::MediumBay => "MediumBay",
       MountClass::LargeBay => "LargeBay",
+      MountClass::Battery => "Battery",
     };
 
     let mut generated = String::from("{\n");

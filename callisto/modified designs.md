@@ -28,8 +28,8 @@ reaches Short from a turret but Medium from a barbette), and **torpedo damage** 
 missiles now carry the weapon that launched them, so a torpedo resolves at its own 6D
 instead of being faked as a 4D missile.
 
-Still outstanding from this section: **Ion weapons (see TODO 7)** and **Point Defence
-Laser Batteries**, which are being designed separately. Not done, and deliberately so:
+Still outstanding from this section: **Ion weapons (see TODO 7)**. Point Defence Laser
+Batteries are done — see TODO 9. Not done, and deliberately so:
 Laser Drill (an Adjacent-range mining tool, not a warship weapon) and the Orbital
 Strike / Orbital Bombardment variants, which target planets — something combat has no
 notion of.
@@ -218,27 +218,48 @@ a different system from the ship-scale rule above and should not be conflated wi
 
 ---
 
-## TODO 9 — Point Defence Laser Batteries
+## ~~TODO 9 — Point Defence Laser Batteries~~ DONE (2026-09-07)
 
-Designed but not built. The full memo is `docs/pd_batteries_design.md`; the short of it:
+**Shipped.** Designed in `docs/pd_batteries_design.md`, built as described there.
 
-A point-defence battery is **not a weapon**. High Guard p. 40 makes it a passive,
-always-on sink that removes 2D/4D/6D missiles from an incoming salvo outright — no attack
-roll, no damage, no range band, no gunner, no offensive mode, and it costs no action.
+A point-defence battery is **not a weapon** (High Guard p. 40). It has no attack roll,
+no damage, no range band, no gunner and no offensive mode; it "automatically intercepts"
+a number of missiles each round, which the defender may spread across salvoes as they
+like. So it is modelled as `WeaponType::PointDefense` in a `WeaponMount::Battery(grade)`,
+where the grade is the book's Type and sets the Intercept: **2D / 4D / 6D for Type
+I / II / III**.
 
-That is why the current stopgap understates them so badly. Encoded as pulse laser
-turrets they resolve through the ordinary point-defence path, which rolls 2D vs 8 and
-removes *Effect* missiles. On the *Dragon* that is worth about **1.7 missiles per round**
-where the book says **14**.
+Resolution: every ship with a live battery rolls a pool at the start of the round
+(`combat.rs::roll_battery_pool`), and each incoming missile drains one point from it
+before the gunners' queued point defence is touched. Batteries are free and automatic
+while the gunners' list is scarce, so spending the free resource first is the allocation
+that favours the defender — which is the choice the book gives them.
 
-Affected designs, still carrying the stopgap:
+Batteries are rolled per mount rather than pooled into one throw, so a critical hit
+disabling one removes exactly its share. Because they sit in `Ship::weapons()` like
+anything else, `active_weapons` and the `ShipSystem::Weapon` crit already treat them as
+destructible hardware with no new code.
 
-| Design | Encoded as | Should be |
+Designs migrated (each re-verified against the book, not taken from the table above):
+
+| Design | Was | Now |
 |---|---|---|
-| System Defence Boat - Dragon (p193) | `Pulse` / `Turret(2)` | PD Laser Battery Type II |
-| Colonial Cruiser - Kinunir (p215) | `Pulse` / `Turret(3)` | PD Laser Battery Type III |
-| Fleet Escort - P.F. Sloan (p232, x2) | `Pulse` / `Turret(3)` | PD Laser Battery Type III |
-| Midu Agasham | *omitted entirely* | PD Laser Battery Type III x2 |
+| System Defence Boat - Dragon (p193) | `Pulse`/`Turret(2)` | `PointDefense`/`Battery(2)` |
+| Colonial Cruiser - Kinunir (p215) | `Pulse`/`Turret(3)` | `PointDefense`/`Battery(3)` |
+| Fleet Escort - P.F. Sloan (p232) | `Pulse`/`Turret(3)` x2 | `PointDefense`/`Battery(3)` x2 |
+| Midu Agasham | *omitted entirely* | `PointDefense`/`Battery(3)` x2 (appended) |
+
+No existing `weapon_id` moved: three were in-place field rewrites and the fourth was an
+append, so queued actions and per-ship armament overrides keep working.
+
+**How much this changed:** the stopgap resolved through the ordinary point-defence path,
+which rolls 2D vs 8 and removes *Effect* missiles. On the Dragon that was worth about
+1.7 missiles per round where the book says 14 — a factor of eight, and the reason this
+was worth doing before Ion.
+
+Still not built, and deliberately: **Point Defence Gauss Batteries** (p. 40). Same
+tonnage and same 2D/4D/6D, but tuned against torpedoes with DM penalties by target
+Thrust, plus ammunition. No design in the library carries one.
 
 ---
 
