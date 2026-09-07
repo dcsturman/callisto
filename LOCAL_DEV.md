@@ -28,7 +28,7 @@ Terminal A:
 ```bash
 scripts/dev-be.sh           # local scenario files (callisto/scenarios)
 # or
-scripts/dev-be.sh --gcs     # read scenarios from gs://callisto-scenarios
+scripts/dev-be.sh --gcs     # read scenarios from GCS (see "GCS buckets per environment")
 ```
 
 Terminal B:
@@ -47,7 +47,7 @@ so `scripts/dev-be.sh -- --port 31000` works.
 
 ```bash
 scripts/dev-up.sh             # local scenario files
-scripts/dev-up.sh --gcs       # GCS scenarios (gs://callisto-scenarios)
+scripts/dev-up.sh --gcs       # GCS scenarios (see "GCS buckets per environment")
 scripts/dev-up.sh --gcs --build
 ```
 
@@ -59,6 +59,45 @@ scripts/dev-fe.sh
 `dev-up.sh` layers compose files: `compose.yaml` is the base, your local
 `compose.override.yaml` (gitignored, optional) is auto-included, and
 `compose.gcs.yaml` is added when `--gcs` is passed.
+
+## GCS buckets per environment
+
+Prod and canary have separate scenario and ship-design buckets, so poking at
+canary can't corrupt the production library.
+
+| Content        | prod (`callisto-1731280702227`) | canary (`callisto-canary`)            |
+| -------------- | ------------------------------- | ------------------------------------- |
+| Scenarios      | `gs://callisto-scenarios`       | `gs://callisto-canary-scenarios`      |
+| Ship designs   | `gs://callisto-ship-templates`  | `gs://callisto-canary-ship-templates` |
+
+Which bucket each deployment reads is set by `--scenario-dir` / `--design-dir`
+in the `GENERAL_ARGS` / `APP_ARGS` env vars of
+`.github/workflows/{canary,prod}-be-merge.yml` — not in the Cloud Console.
+
+The canary Cloud Run runtime service account
+(`325308079155-compute@developer.gserviceaccount.com`) has
+`roles/storage.objectAdmin` on the two canary buckets only.
+
+Still shared between the two environments: `gs://callisto-be-user-profiles`
+(the authorized-users list).
+
+### Pushing local edits up
+
+```bash
+scripts/upload-scenarios.sh                  # -> canary (the default)
+scripts/upload-designs.sh                    # -> canary (the default)
+
+scripts/upload-designs.sh gazelle.json       # just one design, to canary
+scripts/upload-designs.sh --env prod gazelle.json   # production, explicitly
+scripts/upload-scenarios.sh --env both       # canary first, then prod
+```
+
+Both scripts default to **canary** — prod is only ever written when you pass
+`--env prod` (or `--env both`), and the confirmation prompt names every bucket
+it is about to write. `--dry-run` shows the resolved destination without
+copying, `--yes` skips the prompt, and `DEST_BUCKET=gs://…` overrides `--env`
+entirely for a one-off bucket. Files are JSON-validated with `jq` before any
+upload, and the running server picks up changes on its next 5s reload poll.
 
 ## Sentry
 

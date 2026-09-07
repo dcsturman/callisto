@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 use tracing::{event, Level};
 
-use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, ShipAction, ShipActionList};
+use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList};
 use crate::combat::{
   attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, roll_dice, use_next_point_defense,
 };
@@ -346,25 +346,72 @@ impl Entities {
   /// * `velocity` - The velocity of the ship.
   /// * `design` - The design of the ship.
   /// * `crew` - The crew of the ship.
+  /// * `weapons` - The ship's armament.  `None` means it uses its design's weapons.
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read an existing ship that is being modified.
   pub fn add_ship(
     &mut self, name: String, position: Vec3, velocity: Vec3, design: &Arc<ShipDesignTemplate>, crew: Option<Crew>,
+    weapons: Option<Vec<Weapon>>,
   ) {
-    if let Some(ship) = self.ships.get(&name) {
+    // Cloning the Arc (not the ship) releases the borrow on `self.ships`, which
+    // `clear_weapon_actions` needs back as `&mut self` below.
+    let Some(existing) = self.ships.get(&name).cloned() else {
+      // Create a new ship and add it to the ship table
+      let ship = Arc::new(RwLock::new(Ship::new(name.clone(), position, velocity, design, crew, weapons)));
+      self.ships.insert(name, ship);
+      return;
+    };
+
+    let armament_changed = {
       // If the ship already exists, then just update appropriate values.
-      let mut ship = ship.write().unwrap();
+      let mut ship = existing.write().unwrap();
       ship.set_position(position);
       ship.set_velocity(velocity);
       ship.design = design.clone();
       ship.crew = crew.unwrap_or_default();
+      // Owned because `set_weapons` is about to replace what `weapons()` borrows.
+      let before = ship.weapons().to_vec();
+      // Set the armament before the fixup so `active_weapons` is sized to it.
+      ship.set_weapons(weapons);
       ship.fixup_current_values();
-    } else {
-      // Create a new ship and add it to the ship table
-      let ship = Arc::new(RwLock::new(Ship::new(name.clone(), position, velocity, design, crew)));
-      self.ships.insert(name, ship);
+      ship.weapons() != before
+    };
+
+    // Queued actions address weapons by index, so re-arming a ship leaves any
+    // of its queued fire orders pointing at a different weapon — or past the
+    // end of the list.  Editing armament mid-turn should be rare (this is a
+    // design-phase dialog), but the stale ids are silently wrong when it
+    // happens, so drop them.
+    if armament_changed {
+      self.clear_weapon_actions(&name);
     }
+  }
+
+  /// Drop every queued action that addresses a weapon on `ship_name`.
+  ///
+  /// That is the ship's own fire and point-defense orders, plus any boost a
+  /// captain queued against one of its weapons — those live under the
+  /// *captain's* ship, so every action list has to be swept, not just this
+  /// ship's.  Non-weapon actions (pilot, sensor, engineer) are untouched.
+  fn clear_weapon_actions(&mut self, ship_name: &str) {
+    for (owner, actions) in &mut self.actions {
+      actions.retain_mut(|action| match action {
+        ShipAction::FireAction { .. } | ShipAction::PointDefenseAction { .. } | ShipAction::DeleteFireAction { .. } => {
+          owner != ship_name
+        }
+        ShipAction::LeadershipCheck { boosts } => {
+          boosts.retain(|boost| {
+            !matches!(boost,
+            BoostTarget::Fire { ship, .. } | BoostTarget::PointDefense { ship, .. } if ship == ship_name)
+          });
+          !boosts.is_empty()
+        }
+        _ => true,
+      });
+    }
+    // A ship with nothing left queued should not linger as an empty entry.
+    self.actions.retain(|(_, actions)| !actions.is_empty());
   }
 
   /// Add a planet to the entities.
@@ -1800,6 +1847,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     // Add another ship
@@ -1808,6 +1856,7 @@ mod tests {
       Vec3::new(4.0, 5.0, 6.0),
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
 
@@ -1857,9 +1906,30 @@ mod tests {
     let _ = pretty_env_logger::try_init();
     let mut entities = Entities::new();
     let design = Arc::new(ShipDesignTemplate::default());
-    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
-    entities.add_ship(String::from("Ship2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), &design, None);
-    entities.add_ship(String::from("Ship3"), Vec3::new(7.0, 8.0, 9.0), Vec3::zero(), &design, None);
+    entities.add_ship(
+      String::from("Ship1"),
+      Vec3::new(1.0, 2.0, 3.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities.add_ship(
+      String::from("Ship2"),
+      Vec3::new(4.0, 5.0, 6.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities.add_ship(
+      String::from("Ship3"),
+      Vec3::new(7.0, 8.0, 9.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
 
     assert_eq!(entities.ships.get("Ship1").unwrap().read().unwrap().get_name(), "Ship1");
     assert_eq!(entities.ships.get("Ship2").unwrap().read().unwrap().get_name(), "Ship2");
@@ -1871,8 +1941,22 @@ mod tests {
     let _ = pretty_env_logger::try_init();
     let mut entities = Entities::new();
     let design = Arc::new(ShipDesignTemplate::default());
-    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
-    entities.add_ship(String::from("Ship2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), &design, None);
+    entities.add_ship(
+      String::from("Ship1"),
+      Vec3::new(1.0, 2.0, 3.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities.add_ship(
+      String::from("Ship2"),
+      Vec3::new(4.0, 5.0, 6.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
     entities
       .add_planet(
         String::from("Star"),
@@ -1950,6 +2034,7 @@ mod tests {
       Vec3::zero(),
       &design,
       None,
+      None,
     );
     entities.add_ship(
       String::from("Ship2"),
@@ -1957,12 +2042,14 @@ mod tests {
       Vec3::zero(),
       &design,
       None,
+      None,
     );
     entities.add_ship(
       String::from("Ship3"),
       Vec3::new(7000.0, 8000.0, 9000.0),
       Vec3::zero(),
       &design,
+      None,
       None,
     );
 
@@ -2030,11 +2117,25 @@ mod tests {
     assert!(entities.validate(), "Entities with a single valid planet should be valid");
 
     // Test 3: Add a valid ship
-    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
+    entities.add_ship(
+      String::from("Ship1"),
+      Vec3::new(1.0, 2.0, 3.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
     assert!(entities.validate(), "Entities with a valid planet and ship should be valid");
 
     // Test 4: Add a second ship
-    entities.add_ship(String::from("Ship2"), Vec3::new(4.0, 5.0, 6.0), Vec3::zero(), &design, None);
+    entities.add_ship(
+      String::from("Ship2"),
+      Vec3::new(4.0, 5.0, 6.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
     assert!(
       entities.validate(),
       "Entities with a valid planet and two ships should be valid"
@@ -2095,6 +2196,7 @@ mod tests {
       Vec3::zero(),
       &design,
       None,
+      None,
     );
 
     entities.add_ship(
@@ -2102,6 +2204,7 @@ mod tests {
       Vec3::new(800.0, 500.0, 300.0),
       Vec3::zero(),
       &design,
+      None,
       None,
     );
     entities.launch_missile("Ship1", "Ship2").unwrap();
@@ -2369,6 +2472,7 @@ mod tests {
       Vec3::zero(),
       &design,
       None,
+      None,
     );
     entities.add_ship(
       String::from("Ship2"),
@@ -2376,12 +2480,14 @@ mod tests {
       Vec3::zero(),
       &design,
       None,
+      None,
     );
     entities.add_ship(
       String::from("Ship3"),
       Vec3::new(7000.0, 8000.0, 9000.0),
       Vec3::zero(),
       &design,
+      None,
       None,
     );
 
@@ -2555,12 +2661,14 @@ mod tests {
       Vec3::new(0.1, 0.2, 0.3),
       &design,
       None,
+      None,
     );
     entities2.add_ship(
       "Ship1".to_string(),
       Vec3::new(1.0, 2.0, 3.0),
       Vec3::new(0.1, 0.2, 0.3),
       &design,
+      None,
       None,
     );
 
@@ -2613,6 +2721,7 @@ mod tests {
       Vec3::new(1.0, 1.1, 1.2),
       &design,
       None,
+      None,
     );
     assert_ne!(
       entities1, entities2,
@@ -2625,6 +2734,7 @@ mod tests {
       Vec3::new(10.0, 11.0, 12.0),
       Vec3::new(1.0, 1.1, 1.2),
       &design,
+      None,
       None,
     );
     assert_eq!(entities1, entities2, "Entities should be equal again");
@@ -2703,6 +2813,7 @@ mod tests {
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
       None,
+      None,
     );
 
     // Test entities with one ship
@@ -2736,7 +2847,14 @@ mod tests {
     let mut entities = Entities::new();
     let design = Arc::new(ShipDesignTemplate::default());
 
-    entities.add_ship(String::from("Ship1"), Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), &design, None);
+    entities.add_ship(
+      String::from("Ship1"),
+      Vec3::new(1.0, 2.0, 3.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
 
     // Test launching a missile with an invalid target
     assert!(
@@ -2823,6 +2941,7 @@ mod tests {
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::zero(),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
 

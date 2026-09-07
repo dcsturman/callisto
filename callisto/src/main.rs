@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use futures::channel::mpsc::{channel, unbounded, UnboundedSender};
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::WebSocketStream;
 
@@ -40,7 +40,7 @@ use callisto::ship::DEFAULT_SHIP_TEMPLATES_DIR;
 use callisto::ship::{load_ship_templates_from_dir, merge_ship_templates};
 use callisto::{
   extract_scenario_owner, get_local_or_cloud_dir_fingerprint, read_local_or_cloud_file, replace_scenario_failures,
-  replace_scenarios, ScenarioFailure,
+  replace_scenarios, ScenarioFailure, MAX_CONCURRENT_DIR_FILE_READS,
 };
 
 const DEFAULT_AUTHORIZED_USERS_FILE: &str = "./config/authorized_users.json";
@@ -256,6 +256,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         process::exit(1);
       }
     }));
+  }
+
+  // Build the shared GCS client up front, before anything reads a directory.
+  //
+  // Every GCS read used to construct its own client, and each construction
+  // fetches an OAuth token from the instance metadata server. Loading a
+  // directory fans out over its files, so N designs meant N simultaneous token
+  // requests; the metadata server refuses that burst. At 19 designs it failed
+  // intermittently, at 79 it failed for over half of them every time.
+  //
+  // The client is now shared and cached, so warming it here means exactly one
+  // token request happens, while the instance still has its startup CPU boost,
+  // rather than racing a fan-out. Skipped entirely when no `gs://` path is
+  // configured - local dev and the test suite have no credentials and never
+  // touch GCS.
+  //
+  // A failure here is not fatal. It is retried on the lazy path, and the
+  // scenario/design loads below keep their own soft-fail, so a genuine GCS
+  // outage still cannot stop the instance coming up.
+  if args.design_dir.starts_with("gs://") || args.scenario_dir.starts_with("gs://") {
+    match retry_startup_load("GCS client", || Box::pin(callisto::ensure_gcs_client())).await {
+      Ok(()) => {
+        info!("(main) GCS client ready.");
+      }
+      Err(e) => {
+        warn!("(main) Could not pre-build the GCS client: {e}. Falling back to building it on demand.");
+      }
+    }
   }
 
   debug!("(main) Loading ship templates from {}...", &args.design_dir);
@@ -704,33 +732,47 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) -> Result<ScenarioLoadR
   // when the full parse fails — the parse error usually fires deep in ship
   // deserialization (e.g. "Could not find design X"), but `metadata.owner`
   // sits at the top of the JSON and is almost always still readable.
-  let results = join_all(scenarios_list.iter().map(async |scenario| {
-    let scenario_path = join_dir_entry_path(scenario_dir, scenario);
-    let bytes = match read_local_or_cloud_file(&scenario_path).await {
-      Ok(b) => b,
-      Err(e) => {
-        error!("ERROR: Failed to read scenario file '{scenario_path}': {e}");
-        return Err(ScenarioFailure {
-          filename: scenario.clone(),
-          owner: String::new(),
-          error: format!("Failed to read file: {e}"),
-        });
+  //
+  // Bounded fan-out: see `MAX_CONCURRENT_DIR_FILE_READS`. Reading all of them at
+  // once against GCS makes a handful fail at the transport layer every time.
+  // Completion order is not preserved, which is fine — nothing downstream
+  // depends on scenario ordering.
+  let results = stream::iter(scenarios_list)
+    .map(|scenario| {
+      // Everything the future needs is resolved to owned data here, outside the
+      // `async` block. A future that borrowed the closure's argument would make
+      // its type depend on that borrow's lifetime, which `buffer_unordered`
+      // cannot name.
+      let scenario_path = join_dir_entry_path(scenario_dir, &scenario);
+      async move {
+        let bytes = match read_local_or_cloud_file(&scenario_path).await {
+          Ok(b) => b,
+          Err(e) => {
+            error!("ERROR: Failed to read scenario file '{scenario_path}': {e}");
+            return Err(ScenarioFailure {
+              filename: scenario,
+              owner: String::new(),
+              error: format!("Failed to read file: {e}"),
+            });
+          }
+        };
+        match Entities::load_from_bytes(&bytes, &scenario_path) {
+          Ok(entities) => Ok((scenario, entities.metadata.clone())),
+          Err(e) => {
+            let owner = extract_scenario_owner(&bytes);
+            error!("ERROR: Failed to parse scenario file '{scenario_path}' (owner='{owner}'): {e}");
+            Err(ScenarioFailure {
+              filename: scenario,
+              owner,
+              error: e.to_string(),
+            })
+          }
+        }
       }
-    };
-    match Entities::load_from_bytes(&bytes, &scenario_path) {
-      Ok(entities) => Ok((scenario.clone(), entities.metadata.clone())),
-      Err(e) => {
-        let owner = extract_scenario_owner(&bytes);
-        error!("ERROR: Failed to parse scenario file '{scenario_path}' (owner='{owner}'): {e}");
-        Err(ScenarioFailure {
-          filename: scenario.clone(),
-          owner,
-          error: e.to_string(),
-        })
-      }
-    }
-  }))
-  .await;
+    })
+    .buffer_unordered(MAX_CONCURRENT_DIR_FILE_READS)
+    .collect::<Vec<_>>()
+    .await;
 
   let mut scenarios = callisto::ScenarioMetadataList::with_capacity(results.len());
   let mut failures = Vec::new();

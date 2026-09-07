@@ -3,10 +3,27 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { CrewBuilder, Crew, createCrew } from "components/controls/CrewBuilder";
 import { POSITION_SCALE } from "lib/universal";
 import {
+  ShipDesignTemplate,
   ShipDesignTemplates,
-  compressedWeaponsFromTemplate,
+  compressedWeapons,
+  shipWeapons,
 } from "lib/shipDesignTemplates";
-import { WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import { Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import {
+  DEFAULT_GUNNERY,
+  MOUNT_OPTIONS,
+  WEAPON_KINDS,
+  WeaponGroup,
+  checkAllowance,
+  commonGunnery,
+  emptyGroup,
+  expandGroups,
+  groupWeapons,
+  mountForOptionId,
+  mountOptionId,
+  mountOptionsFor,
+  setAllGunnery,
+} from "lib/hardpoints";
 import { Accordion } from "lib/Accordion";
 import { Tooltip } from "react-tooltip";
 import { CiCircleQuestion } from "react-icons/ci";
@@ -31,8 +48,24 @@ export const AddShip: React.FC<AddShipProps> = () => {
   const designRef = useRef<HTMLSelectElement>(null);
   const shipNameRef = useRef<HTMLInputElement>(null);
 
-  const initialTemplate = useMemo(
-    () => ({
+  // One editor row per *run* of identical weapons rather than one per
+  // hardpoint, so a ship with thirty matching turrets is one row and not
+  // thirty.  A trailing empty row is always present as the next slot to fill.
+  const buildWeaponRows = useCallback(
+    (designName: string, existing?: Weapon[], gunnery?: number[]) => {
+      const design = shipDesignTemplates[designName];
+      if (!design) {
+        return [];
+      }
+      const groups = groupWeapons(existing ?? design.weapons, gunnery ?? []);
+      return [...groups, emptyGroup(commonGunnery(groups) ?? DEFAULT_GUNNERY)];
+    },
+    [shipDesignTemplates],
+  );
+
+  const initialTemplate = useMemo(() => {
+    const firstDesign = Object.values(shipDesignTemplates)[0];
+    return {
       name: unique_ship_name(entities),
       xpos: "0",
       ypos: "0",
@@ -40,11 +73,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
       xvel: "0",
       yvel: "0",
       zvel: "0",
-      design: Object.values(shipDesignTemplates)[0].name,
-      crew: createCrew(Object.values(shipDesignTemplates)[0].weapons.length),
-    }),
-    [shipDesignTemplates, entities],
-  );
+      design: firstDesign.name,
+      crew: createCrew(),
+      armament: buildWeaponRows(firstDesign.name),
+    };
+  }, [shipDesignTemplates, entities, buildWeaponRows]);
 
   const [addShipData, setAddShipData] = useState(initialTemplate);
 
@@ -62,10 +95,17 @@ export const AddShip: React.FC<AddShipProps> = () => {
         zvel: current.velocity[2].toString(),
         design: current.design,
         crew: current.crew,
+        // An existing ship's own armament, which may differ from its design's,
+        // and the gunner skill already recorded against each of its weapons.
+        armament: buildWeaponRows(
+          current.design,
+          shipWeapons(current, shipDesignTemplates),
+          current.crew?.gunnery,
+        ),
       };
       setAddShipData(template);
     }
-  }, [addShipData.name, entities.ships]);
+  }, [addShipData.name, entities.ships, buildWeaponRows, shipDesignTemplates]);
 
   const handleChange = useMemo(
     () => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,6 +129,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
               zvel: ship.velocity[2].toString(),
               design: ship.design,
               crew: ship.crew,
+              armament: buildWeaponRows(
+                ship.design,
+                shipWeapons(ship, shipDesignTemplates),
+                ship.crew?.gunnery,
+              ),
             });
           }
         }
@@ -98,7 +143,15 @@ export const AddShip: React.FC<AddShipProps> = () => {
         [event.target.name]: event.target.value,
       });
     },
-    [designRef, shipNames, entities, setAddShipData, addShipData],
+    [
+      designRef,
+      shipNames,
+      entities,
+      setAddShipData,
+      addShipData,
+      buildWeaponRows,
+      shipDesignTemplates,
+    ],
   );
 
   const handleSubmit = useCallback(
@@ -119,20 +172,51 @@ export const AddShip: React.FC<AddShipProps> = () => {
       const design: string = addShipData.design;
       setAddShipData({ ...addShipData, design: design });
 
-      const crew = addShipData.crew;
       const ship = findShip(entities, name) || defaultShip();
 
-      const revision = { ...ship, name, position, velocity, design, crew };
+      // Groups flatten to a dense list here: `weapon_id` stays a 0-based index
+      // into the ship's weapons, exactly as FireAction and BoostTarget assume,
+      // and `gunnery` is emitted index-aligned with it so weapon N and the
+      // skill firing it always carry the same id.  Rows are a UI concept and
+      // never go over the wire.
+      const { weapons, gunnery } = expandGroups(addShipData.armament);
+      const crew = { ...addShipData.crew, gunnery };
+      const designWeapons = shipDesignTemplates[design]?.weapons ?? [];
+      // Send nothing when the armament is just the design's, so an unmodified
+      // ship keeps inheriting from its design rather than freezing a copy.
+      const armament = sameWeapons(weapons, designWeapons) ? undefined : weapons;
+
+      const revision = {
+        ...ship,
+        name,
+        position,
+        velocity,
+        design,
+        crew,
+        weapons: armament,
+      };
 
       addShip(revision);
       setAddShipData(initialTemplate);
       shipNameRef.current!.style.color = "black";
     },
-    [addShipData, entities, initialTemplate, shipNameRef],
+    [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates],
   );
 
+  // Changing the design changes the allowance and the default armament, so the
+  // rows are rebuilt from the new design rather than carried over.
   const handleDesignChange = useCallback(
-    (design: string) => setAddShipData({ ...addShipData, design: design }),
+    (design: string) =>
+      setAddShipData({
+        ...addShipData,
+        design: design,
+        armament: buildWeaponRows(design),
+      }),
+    [addShipData, setAddShipData, buildWeaponRows],
+  );
+
+  const handleWeaponsChange = useCallback(
+    (armament: WeaponGroup[]) => setAddShipData({ ...addShipData, armament }),
     [addShipData, setAddShipData],
   );
 
@@ -223,11 +307,16 @@ export const AddShip: React.FC<AddShipProps> = () => {
           />
         </div>
         <hr />
+        <HardpointList
+          design={shipDesignTemplates[addShipData.design]}
+          groups={addShipData.armament}
+          setGroups={handleWeaponsChange}
+        />
+        <hr />
         <CrewBuilder
           shipName={addShipData.name}
           currentCrew={addShipData.crew}
           updateCrew={handleCrewChange}
-          shipDesign={shipDesignTemplates[addShipData.design]}
         />
         <input
           className="control-input control-button blue-button"
@@ -238,6 +327,245 @@ export const AddShip: React.FC<AddShipProps> = () => {
     </Accordion>
   );
 };
+
+// Two armaments are the same when they are the same weapons in the same order.
+// Used to decide whether a ship needs its own weapon list at all.
+const sameWeapons = (a: Weapon[], b: Weapon[]) =>
+  a.length === b.length &&
+  a.every(
+    (weapon, index) =>
+      weapon.kind === b[index].kind &&
+      weaponToString(weapon) === weaponToString(b[index]),
+  );
+
+// One row per run of identical weapons — count, mount, weapon and the gunner
+// skill serving them — with a running total against what the hull allows.  The
+// allowance is advisory: the engine never validates armament, so an
+// over-allowance ship is flagged but still submittable.
+function HardpointList(args: {
+  design: ShipDesignTemplate | undefined;
+  groups: WeaponGroup[];
+  setGroups: (groups: WeaponGroup[]) => void;
+}) {
+  const displacement = args.design?.displacement ?? 0;
+
+  const report = useMemo(
+    () => checkAllowance(args.groups, displacement),
+    [args.groups, displacement],
+  );
+
+  const bulkGunnery = useMemo(() => commonGunnery(args.groups), [args.groups]);
+
+  // Small craft cannot carry a double or triple turret, or a bay at all, so
+  // those are not offered on a firmpoint hull.
+  const options = useMemo(
+    () => mountOptionsFor(report.allowance.kind),
+    [report.allowance.kind],
+  );
+
+  const replaceRow = useCallback(
+    (index: number, group: WeaponGroup) => {
+      const next = args.groups.slice();
+      next[index] = group;
+      // Filling the last row opens a fresh one beneath it, so there is always
+      // somewhere to add the next mount without hunting for a button.
+      if (group.mount !== null && index === next.length - 1) {
+        next.push(emptyGroup(group.gunnery));
+      }
+      args.setGroups(next);
+    },
+    [args],
+  );
+
+  const handleMountChange = useCallback(
+    (index: number, optionId: string) => {
+      const mount = mountForOptionId(optionId);
+      // Clearing a row removes it outright rather than leaving a hole; the
+      // trailing empty row is the only empty one the editor keeps.
+      if (mount === null && index < args.groups.length - 1) {
+        args.setGroups(args.groups.filter((_, i) => i !== index));
+        return;
+      }
+      replaceRow(index, { ...args.groups[index], mount });
+    },
+    [args, replaceRow],
+  );
+
+  const handleKindChange = useCallback(
+    (index: number, kind: string) =>
+      replaceRow(index, { ...args.groups[index], kind }),
+    [args.groups, replaceRow],
+  );
+
+  // Zero is allowed so the field can be cleared mid-edit; a zero-count row
+  // simply contributes no weapons.
+  const handleCountChange = useCallback(
+    (index: number, value: string) =>
+      replaceRow(index, {
+        ...args.groups[index],
+        count: Math.max(0, Math.floor(Number(value) || 0)),
+      }),
+    [args.groups, replaceRow],
+  );
+
+  const handleGunneryChange = useCallback(
+    (index: number, value: string) =>
+      replaceRow(index, {
+        ...args.groups[index],
+        gunnery: Math.max(0, Math.floor(Number(value) || 0)),
+      }),
+    [args.groups, replaceRow],
+  );
+
+  const handleBulkGunneryChange = useCallback(
+    (value: string) =>
+      args.setGroups(
+        setAllGunnery(args.groups, Math.max(0, Math.floor(Number(value) || 0))),
+      ),
+    [args],
+  );
+
+  if (!args.design) {
+    return <></>;
+  }
+
+  const { allowance } = report;
+  const allowanceLabel =
+    allowance.kind === "hardpoints" ? "Hardpoints" : "Firmpoints";
+
+  return (
+    <div className="hardpoint-list">
+      <div className="hardpoint-header">
+        <h3 className="hardpoint-title">{allowanceLabel}</h3>
+        <span
+          className={
+            report.overAllowance
+              ? "hardpoint-usage hardpoint-over"
+              : "hardpoint-usage"
+          }
+        >
+          {report.used} of {allowance.total} used
+        </span>
+      </div>
+      <label className="hardpoint-bulk-gunnery">
+        Gunner skill
+        <input
+          className="control-input hardpoint-gunnery"
+          name="hardpoint-bulk-gunnery"
+          type="number"
+          min={0}
+          /* Blank once any row is overridden, rather than implying agreement
+             the armament does not have. */
+          value={bulkGunnery ?? ""}
+          placeholder="mixed"
+          aria-label="Gunner skill for every weapon"
+          onChange={(event) => handleBulkGunneryChange(event.target.value)}
+        />
+      </label>
+      <div className="hardpoint-row hardpoint-column-labels">
+        <span>Qty</span>
+        <span>Mount</span>
+        <span>Weapon</span>
+        <span>Skill</span>
+      </div>
+      {args.groups.map((group, index) => {
+        const optionId = mountOptionId(group.mount);
+        const problem = report.rowProblems[index];
+        const empty = group.mount === null;
+        const rowOptions =
+          optionId != null && !options.some((option) => option.id === optionId)
+            ? [...options, ...MOUNT_OPTIONS.filter((o) => o.id === optionId)]
+            : options;
+        return (
+          <div
+            className="hardpoint-row"
+            key={"hardpoint-" + index}
+            title={problem ?? undefined}
+          >
+            <input
+              className={
+                problem
+                  ? "control-input hardpoint-count hardpoint-over"
+                  : "control-input hardpoint-count"
+              }
+              name={"hardpoint-count-" + index}
+              type="number"
+              min={0}
+              aria-label={"Number of mounts in group " + (index + 1)}
+              value={empty ? "" : group.count}
+              disabled={empty}
+              onChange={(event) => handleCountChange(index, event.target.value)}
+            />
+            <select
+              className={
+                empty
+                  ? "select-dropdown control-input hardpoint-mount hardpoint-mount-wide"
+                  : "select-dropdown control-input hardpoint-mount"
+              }
+              name={"hardpoint-mount-" + index}
+              aria-label={"Group " + (index + 1) + " mount"}
+              value={optionId ?? "unsupported"}
+              onChange={(event) => handleMountChange(index, event.target.value)}
+            >
+              {/* A mount no option covers (a mixed turret stored oddly, say)
+                  still has to be visible rather than silently rewritten. */}
+              {optionId === null && group.mount != null && (
+                <option value="unsupported">
+                  {weaponToString({ kind: group.kind, mount: group.mount })}
+                </option>
+              )}
+              {/* A design may already carry a mount this hull may not choose —
+                  an out-of-allowance turret, say.  Keep it listed so the row
+                  shows what the ship really has instead of blanking. */}
+              {rowOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {!empty && (
+              <select
+                className="select-dropdown control-input hardpoint-weapon"
+                name={"hardpoint-weapon-" + index}
+                aria-label={"Group " + (index + 1) + " weapon"}
+                value={group.kind}
+                onChange={(event) => handleKindChange(index, event.target.value)}
+              >
+                {/* A design may name a weapon kind this build does not list. */}
+                {!WEAPON_KINDS.includes(group.kind) && (
+                  <option value={group.kind}>{group.kind}</option>
+                )}
+                {WEAPON_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind}
+                  </option>
+                ))}
+              </select>
+            )}
+            {!empty && (
+              <input
+                className="control-input hardpoint-gunnery"
+                name={"hardpoint-gunnery-" + index}
+                type="number"
+                min={0}
+                aria-label={"Group " + (index + 1) + " gunner skill"}
+                value={group.gunnery}
+                onChange={(event) =>
+                  handleGunneryChange(index, event.target.value)
+                }
+              />
+            )}
+          </div>
+        );
+      })}
+      {report.problems.map((problem) => (
+        <div className="hardpoint-problem" key={problem}>
+          {problem}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const ShipDesignDetails = (render: {
   content: string | null;
@@ -251,7 +579,7 @@ const ShipDesignDetails = (render: {
     return designs[render.content];
   }, [designs, render.content]);
   const compressed = useMemo(
-    () => Object.values(compressedWeaponsFromTemplate(design)),
+    () => Object.values(compressedWeapons(design?.weapons ?? null)),
     [design],
   );
   const describeWeapon = useMemo(
@@ -302,11 +630,32 @@ const ShipDesignDetails = (render: {
   );
 };
 
+// Both `role` and `source` are optional and free-form on the server side, so
+// designs missing either still need a home in the picker.
+const UNSPECIFIED = "Other";
+const ALL_SOURCES = "All";
+
+const byDisplacementThenName = (
+  a: ShipDesignTemplate,
+  b: ShipDesignTemplate,
+) =>
+  a.displacement > b.displacement
+    ? 1
+    : a.displacement < b.displacement
+      ? -1
+      : a.name.localeCompare(b.name);
+
+// Alphabetical, with the catch-all bucket pinned last.
+const byGroupLabel = (a: string, b: string) =>
+  a === UNSPECIFIED ? 1 : b === UNSPECIFIED ? -1 : a.localeCompare(b);
+
 function ShipDesignList(args: {
   shipDesignName: string;
   setShipDesignName: (designName: string) => void;
   shipDesigns: ShipDesignTemplates;
 }) {
+  const [source, setSource] = useState(ALL_SOURCES);
+
   const selectRef = useRef<HTMLSelectElement>(null);
   useEffect(() => {
     if (selectRef.current != null) {
@@ -323,6 +672,69 @@ function ShipDesignList(args: {
     [args],
   );
 
+  const handleSourceChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) =>
+      setSource(event.target.value),
+    [setSource],
+  );
+
+  // Every distinct source in the library, derived from the data itself.
+  const sources = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(args.shipDesigns).map(
+            (design) => design.source || UNSPECIFIED,
+          ),
+        ),
+      ).sort(byGroupLabel),
+    [args.shipDesigns],
+  );
+
+  // Designs matching the source filter, bucketed by role for <optgroup>.
+  const groups = useMemo(() => {
+    const buckets = Object.values(args.shipDesigns)
+      .filter(
+        (design) =>
+          source === ALL_SOURCES || (design.source || UNSPECIFIED) === source,
+      )
+      .reduce(
+        (accumulator, design) => {
+          const role = design.role || UNSPECIFIED;
+          accumulator[role] = (accumulator[role] || []).concat(design);
+          return accumulator;
+        },
+        {} as { [role: string]: ShipDesignTemplate[] },
+      );
+
+    return Object.keys(buckets)
+      .sort(byGroupLabel)
+      .map((role) => ({
+        role,
+        designs: buckets[role].sort(byDisplacementThenName),
+      }));
+  }, [args.shipDesigns, source]);
+
+  const visible = useMemo(
+    () =>
+      groups.reduce<ShipDesignTemplate[]>(
+        (all, group) => all.concat(group.designs),
+        [],
+      ),
+    [groups],
+  );
+
+  // The filter can hide whatever is currently selected; move the selection to
+  // the first design still on offer so the form never submits a hidden design.
+  useEffect(() => {
+    if (
+      visible.length > 0 &&
+      !visible.some((design) => design.name === args.shipDesignName)
+    ) {
+      args.setShipDesignName(visible[0].name);
+    }
+  }, [visible, args]);
+
   const ciCircle = useMemo(
     () => <CiCircleQuestion className="info-icon" />,
     [],
@@ -330,12 +742,29 @@ function ShipDesignList(args: {
 
   return (
     <>
-      <div className="control-launch-div">
-        <div className="control-label">
-          <div className="control-label label-with-tooltip">
-            Design
-            {ciCircle}
-          </div>
+      {/* Source and Design share one grid so their dropdowns line up on the
+          same left edge; a per-row flex would size each label to its own text
+          and stagger them. */}
+      <div className="design-picker">
+        <div className="control-label">Source</div>
+        <select
+          className="select-dropdown control-name-input control-input"
+          name="ship_source_choice"
+          value={source}
+          onChange={handleSourceChange}
+        >
+          <option key="all-ship_source" value={ALL_SOURCES}>
+            {ALL_SOURCES}
+          </option>
+          {sources.map((name) => (
+            <option key={name + "-ship_source"} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <div className="control-label label-with-tooltip">
+          Design
+          {ciCircle}
         </div>
         <select
           className="select-dropdown control-name-input control-input"
@@ -347,27 +776,23 @@ function ShipDesignList(args: {
           data-tooltip-content={args.shipDesignName}
           data-tooltip-delay-show={700}
         >
-          {Object.values(args.shipDesigns)
-            .sort((a, b) =>
-              a.displacement > b.displacement
-                ? 1
-                : a.displacement < b.displacement
-                  ? -1
-                  : a.name.localeCompare(b.name),
-            )
-            .map((design) => (
-              <option
-                key={design.name + "-ship_list"}
-                value={design.name}
-              >{`${design.name} (${design.displacement})`}</option>
-            ))}
+          {groups.map((group) => (
+            <optgroup key={group.role + "-ship_role"} label={group.role}>
+              {group.designs.map((design) => (
+                <option
+                  key={design.name + "-ship_list"}
+                  value={design.name}
+                >{`${design.name} (${design.displacement})`}</option>
+              ))}
+            </optgroup>
+          ))}
         </select>
-        <Tooltip
-          id={args.shipDesignName + "ship-description-tip"}
-          className="tooltip-body"
-          render={ShipDesignDetails}
-        />
       </div>
+      <Tooltip
+        id={args.shipDesignName + "ship-description-tip"}
+        className="tooltip-body"
+        render={ShipDesignDetails}
+      />
       <Tooltip
         id="design-tooltip"
         anchorSelect=".info-icon"

@@ -305,14 +305,14 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
               continue;
             };
             let ship = ship_lock.read().expect("(Action.merge) Unable to read ship lock.");
-            let current_template = &ship.design;
-            let weapon = &current_template.weapons[weapon_id];
+            let current_weapons = ship.weapons();
+            let weapon = &current_weapons[weapon_id];
             // Find a _similar_ weapon to the one being deleted and delete the highest number of that (to avoid race conditions)
             let mut sorted_similar_weapon_id = current_actions
               .iter()
               .filter_map(|action| match action {
                 ShipAction::PointDefenseAction { weapon_id } | ShipAction::FireAction { weapon_id, .. } => {
-                  if current_template.weapons[*weapon_id] == *weapon {
+                  if current_weapons[*weapon_id] == *weapon {
                     Some(*weapon_id)
                   } else {
                     None
@@ -399,6 +399,7 @@ mod tests {
       Vec3::new(0.0, 0.0, 0.0),
       Vec3::new(0.0, 0.0, 0.0),
       &Arc::new(ShipDesignTemplate::default()),
+      None,
       None,
     );
     if dodge > 0 {

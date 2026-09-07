@@ -23,7 +23,7 @@ use crate::list_local_or_cloud_dir;
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::player::PlayerManager;
 use crate::server::Server;
-use crate::ship::{ShipDesignTemplate, ShipSystem};
+use crate::ship::{BaySize, ShipDesignTemplate, ShipSystem, Weapon, WeaponMount, WeaponType};
 
 fn setup_authenticator() -> Box<dyn Authenticator> {
   Box::new(MockAuthenticator::new("http://test.com"))
@@ -1054,6 +1054,7 @@ async fn test_get_entities() {
       velocity: ship_velocity,
       design: ShipDesignTemplate::default().name.clone(),
       crew: None,
+      weapons: None,
     })
     .unwrap();
 
@@ -1628,6 +1629,372 @@ async fn test_reset_actions_strips_leadership_check() {
     0,
     "reset_actions should have stripped LeadershipCheck after Phase 0 evaluation"
   );
+}
+
+/// A scenario with one stock ship and one ship carrying its own armament.  The
+/// Buccaneer design has four weapons; "Custom" below has two of its own.
+const WEAPONS_SCENARIO: &str = r#"{
+  "metadata": {"name": "Weapons", "description": "", "owner": "test@test.com"},
+  "ships": [
+    {"name":"Stock","position":[0,0,0],"velocity":[0,0,0],"plan":[[[0,0,0],50000]],"design":"Buccaneer"},
+    {"name":"Custom","position":[0,0,0],"velocity":[0,0,0],"plan":[[[0,0,0],50000]],"design":"Buccaneer",
+     "weapons":[{"kind":"Beam","mount":{"Turret":3}},{"kind":"Missile","mount":"FixedMount"}]}
+  ]
+}"#;
+
+fn custom_armament() -> Vec<Weapon> {
+  vec![
+    Weapon {
+      kind: WeaponType::Beam,
+      mount: WeaponMount::Turret(3),
+    },
+    Weapon {
+      kind: WeaponType::Missile,
+      mount: WeaponMount::FixedMount,
+    },
+  ]
+}
+
+/// An `AddShip` request may carry an explicit weapon list.  The ship then uses
+/// that list instead of its design's, including for `active_weapons`, and the
+/// list comes back out on the wire.
+#[test(tokio::test)]
+async fn test_add_ship_with_weapons() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let request = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer",
+        "weapons":[{"kind":"Beam","mount":{"Turret":3}},{"kind":"Missile","mount":"FixedMount"}]}"#;
+  let response = server.add_ship(serde_json::from_str(request).unwrap()).unwrap();
+  assert_eq!(response, "Add ship action executed");
+
+  let entities = server.get_entities().unwrap();
+  let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+  assert_eq!(ship.weapons(), custom_armament());
+  assert_eq!(
+    ship.active_weapons.len(),
+    2,
+    "active_weapons must be sized to the ship's armament, not the design's four weapons"
+  );
+  assert_eq!(
+    ship.design.weapons.len(),
+    4,
+    "the design itself must be untouched by a per-ship armament"
+  );
+  drop(ship);
+
+  // And it survives serialization out to a client.
+  let wire: serde_json::Value = serde_json::from_str(&server.get_entities_json()).unwrap();
+  assert_eq!(
+    wire["ships"][0]["weapons"],
+    json!([{"kind":"Beam","mount":{"Turret":3}},{"kind":"Missile","mount":"FixedMount"}])
+  );
+}
+
+/// Every mount the hardpoint editor can produce must survive the round trip.
+/// The editor offers bays and barbettes as well as turrets and fixed mounts, so
+/// a client can now send mount shapes no shipped design happens to use.
+#[test(tokio::test)]
+async fn test_add_ship_accepts_every_mount_shape() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let request = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer",
+        "weapons":[{"kind":"Particle","mount":"Barbette"},
+                   {"kind":"Missile","mount":{"Bay":"Small"}},
+                   {"kind":"Beam","mount":{"Bay":"Medium"}},
+                   {"kind":"Pulse","mount":{"Bay":"Large"}},
+                   {"kind":"Sand","mount":{"Turret":1}}]}"#;
+  server.add_ship(serde_json::from_str(request).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+  assert_eq!(
+    ship.weapons(),
+    vec![
+      Weapon {
+        kind: WeaponType::Particle,
+        mount: WeaponMount::Barbette
+      },
+      Weapon {
+        kind: WeaponType::Missile,
+        mount: WeaponMount::Bay(BaySize::Small)
+      },
+      Weapon {
+        kind: WeaponType::Beam,
+        mount: WeaponMount::Bay(BaySize::Medium)
+      },
+      Weapon {
+        kind: WeaponType::Pulse,
+        mount: WeaponMount::Bay(BaySize::Large)
+      },
+      Weapon {
+        kind: WeaponType::Sand,
+        mount: WeaponMount::Turret(1)
+      },
+    ]
+  );
+  assert_eq!(ship.active_weapons.len(), 5);
+  drop(ship);
+
+  // And it comes back out on the wire exactly as sent.
+  let wire: serde_json::Value = serde_json::from_str(&server.get_entities_json()).unwrap();
+  assert_eq!(
+    wire["ships"][0]["weapons"],
+    json!([{"kind":"Particle","mount":"Barbette"},
+           {"kind":"Missile","mount":{"Bay":"Small"}},
+           {"kind":"Beam","mount":{"Bay":"Medium"}},
+           {"kind":"Pulse","mount":{"Bay":"Large"}},
+           {"kind":"Sand","mount":{"Turret":1}}])
+  );
+}
+
+/// A ship added without a weapon list keeps inheriting its design's weapons,
+/// and emits no `weapons` key on the wire.
+#[test(tokio::test)]
+async fn test_add_ship_without_weapons_inherits_design() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let request = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(request).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let ship = entities.ships.get("ship1").unwrap().read().unwrap();
+  assert_eq!(ship.weapons(), ship.design.weapons.as_slice());
+  assert_eq!(ship.active_weapons.len(), 4);
+  drop(ship);
+
+  let wire: serde_json::Value = serde_json::from_str(&server.get_entities_json()).unwrap();
+  assert!(
+    wire["ships"][0].get("weapons").is_none(),
+    "a ship with no armament of its own must not emit a weapons key"
+  );
+}
+
+/// Client-supplied armament is validated: a turret that isn't single, double or
+/// triple would panic later in combat resolution when the weapon is named.
+#[test(tokio::test)]
+async fn test_add_ship_rejects_illegal_armament() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let quad_turret = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer",
+        "weapons":[{"kind":"Beam","mount":{"Turret":4}}]}"#;
+  let error = server.add_ship(serde_json::from_str(quad_turret).unwrap()).unwrap_err();
+  assert!(error.contains("Illegal turret size 4"), "unexpected error: {error}");
+
+  let many = (0..65)
+    .map(|_| json!({"kind": "Beam", "mount": {"Turret": 1}}))
+    .collect::<Vec<_>>();
+  let too_many = json!({"name":"ship2","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+        "design":"Buccaneer","weapons": many});
+  let error = server.add_ship(serde_json::from_value(too_many).unwrap()).unwrap_err();
+  assert!(error.contains("more than the limit"), "unexpected error: {error}");
+
+  assert!(
+    server.get_entities().unwrap().ships.is_empty(),
+    "a rejected request must not add a ship"
+  );
+}
+
+/// Queued actions address weapons by index, so re-arming a ship must drop its
+/// fire and point-defense orders.  Non-weapon actions are unrelated to the
+/// armament and stay queued.
+#[test(tokio::test)]
+async fn test_rearming_a_ship_clears_its_weapon_actions() {
+  use crate::action::ShipAction;
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
+  let target = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0],"design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(target).unwrap()).unwrap();
+
+  let actions = json!([["ship1", [
+      {"FireAction": {"weapon_id": 3, "target": "ship2"}},
+      {"PointDefenseAction": {"weapon_id": 2}},
+      {"SensorLock": {"target": "ship2"}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+
+  // Re-arm ship1 down to two weapons: weapon_id 3 and 2 no longer exist.
+  let rearmed = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer",
+        "weapons":[{"kind":"Beam","mount":{"Turret":3}},{"kind":"Missile","mount":"FixedMount"}]}"#;
+  server.add_ship(serde_json::from_str(rearmed).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let (_, remaining) = entities
+    .actions
+    .iter()
+    .find(|(name, _)| name == "ship1")
+    .expect("ship1 keeps its non-weapon actions");
+  assert_eq!(
+    remaining,
+    &vec![ShipAction::SensorLock {
+      target: "ship2".to_string()
+    }],
+    "only the weapon-bound actions should have been dropped"
+  );
+}
+
+/// A captain's boosts live under the *captain's* ship, so re-arming a ship has
+/// to sweep every action list — not just that ship's own.
+#[test(tokio::test)]
+async fn test_rearming_a_ship_clears_boosts_aimed_at_its_weapons() {
+  use crate::action::{BoostTarget, ShipAction};
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  for name in ["ship1", "ship2"] {
+    let ship = format!(r#"{{"name":"{name}","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer"}}"#);
+    server.add_ship(serde_json::from_str(&ship).unwrap()).unwrap();
+  }
+
+  // ship2's captain boosts one of ship1's weapons and one of its own.
+  let actions = json!([["ship2", [
+      {"LeadershipCheck": {"boosts": [
+          {"Fire": {"ship": "ship1", "weapon_id": 3}},
+          {"Fire": {"ship": "ship2", "weapon_id": 0}}
+      ]}}
+  ]]]);
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+
+  let rearmed = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer",
+        "weapons":[{"kind":"Beam","mount":{"Turret":3}}]}"#;
+  server.add_ship(serde_json::from_str(rearmed).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let (_, remaining) = entities
+    .actions
+    .iter()
+    .find(|(name, _)| name == "ship2")
+    .expect("ship2 keeps its own boost");
+  assert_eq!(
+    remaining,
+    &vec![ShipAction::LeadershipCheck {
+      boosts: vec![BoostTarget::Fire {
+        ship: "ship2".to_string(),
+        weapon_id: 0
+      }]
+    }],
+    "only the boost pointed at the re-armed ship should have been dropped"
+  );
+}
+
+/// Re-submitting a ship without changing its armament must not disturb the
+/// queue: the "Update" path is used for position edits too.
+#[test(tokio::test)]
+async fn test_updating_a_ship_without_rearming_keeps_fire_actions() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0],"design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
+  let target = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0],"design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(target).unwrap()).unwrap();
+
+  let actions = json!([["ship1", [{"FireAction": {"weapon_id": 1, "target": "ship2"}}]]]);
+  server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
+
+  // Same design, no explicit weapons: the armament is unchanged, only position.
+  let moved = r#"{"name":"ship1","position":[100,0,0],"velocity":[0,0,0],"design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(moved).unwrap()).unwrap();
+
+  let entities = server.get_entities().unwrap();
+  let (_, remaining) = entities
+    .actions
+    .iter()
+    .find(|(name, _)| name == "ship1")
+    .expect("ship1 keeps its fire action");
+  assert_eq!(remaining.len(), 1, "an unchanged armament must not clear the queue");
+}
+
+/// Scenario files round-trip: a ship with its own armament writes a `weapons`
+/// array back out, and a ship without one still writes no key at all.
+#[test(tokio::test)]
+async fn test_scenario_round_trip_with_and_without_weapons() {
+  // Seeds the global ship templates so "Buccaneer" resolves on load.
+  let _server = setup_test_with_server(setup_authenticator()).await;
+
+  let entities = Entities::load_from_bytes(WEAPONS_SCENARIO.as_bytes(), "weapons_test.json").unwrap();
+  {
+    let stock = entities.ships.get("Stock").unwrap().read().unwrap();
+    assert_eq!(stock.weapons(), stock.design.weapons.as_slice());
+    assert_eq!(stock.active_weapons.len(), 4);
+    let custom = entities.ships.get("Custom").unwrap().read().unwrap();
+    assert_eq!(custom.weapons(), custom_armament());
+    assert_eq!(custom.active_weapons.len(), 2);
+  }
+
+  let saved: serde_json::Value = serde_json::from_slice(&entities.to_scenario_file_json().unwrap()).unwrap();
+  let ships = saved["ships"].as_array().unwrap();
+  let stock = ships.iter().find(|s| s["name"] == "Stock").unwrap();
+  let custom = ships.iter().find(|s| s["name"] == "Custom").unwrap();
+  assert!(
+    stock.get("weapons").is_none(),
+    "a stock ship must save without a weapons key so old scenario files are unchanged"
+  );
+  assert_eq!(
+    custom["weapons"],
+    json!([{"kind":"Beam","mount":{"Turret":3}},{"kind":"Missile","mount":"FixedMount"}])
+  );
+
+  // And what we saved loads back to the same armament.
+  let reloaded = Entities::load_from_bytes(saved.to_string().as_bytes(), "weapons_test.json").unwrap();
+  assert_eq!(
+    reloaded.ships.get("Custom").unwrap().read().unwrap().weapons(),
+    custom_armament()
+  );
+}
+
+/// `Reset` restores each ship's own armament, not just its design's.
+#[test(tokio::test)]
+async fn test_reset_preserves_ship_weapons() {
+  crate::ship::config_test_ship_templates().await;
+
+  let path = std::env::temp_dir().join("callisto_test_reset_preserves_ship_weapons.json");
+  std::fs::write(&path, WEAPONS_SCENARIO).unwrap();
+  let server = Server::new("test", path.to_str().unwrap()).await;
+  let player = PlayerManager::new(Some(Arc::new(server)), setup_authenticator(), true);
+
+  assert_eq!(
+    player
+      .get_entities()
+      .unwrap()
+      .ships
+      .get("Custom")
+      .unwrap()
+      .read()
+      .unwrap()
+      .weapons(),
+    custom_armament()
+  );
+
+  // Re-adding an existing ship without a weapon list drops it back to the design.
+  let strip = r#"{"name":"Custom","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer"}"#;
+  player.add_ship(serde_json::from_str(strip).unwrap()).unwrap();
+  {
+    let entities = player.get_entities().unwrap();
+    let ship = entities.ships.get("Custom").unwrap().read().unwrap();
+    assert_eq!(ship.weapons(), ship.design.weapons.as_slice());
+    assert_eq!(ship.active_weapons.len(), 4);
+  }
+
+  player.reset().unwrap();
+
+  let entities = player.get_entities().unwrap();
+  let ship = entities.ships.get("Custom").unwrap().read().unwrap();
+  assert_eq!(ship.weapons(), custom_armament());
+  assert_eq!(ship.active_weapons.len(), 2);
+  assert_eq!(
+    entities.ships.get("Stock").unwrap().read().unwrap().weapons().len(),
+    4,
+    "a stock ship still inherits its design after a reset"
+  );
+
+  std::fs::remove_file(&path).ok();
 }
 
 #[test(tokio::test)]

@@ -17,8 +17,39 @@ use crate::payloads::{
   ShipDesignTemplateMsg,
 };
 use crate::server::Server;
-use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate};
+use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
 use crate::{debug, info, warn};
+
+/// Most weapons we will accept on a single ship.  Generous compared to any real
+/// design; it exists only so a client cannot ask us to allocate without bound.
+const MAX_SHIP_WEAPONS: usize = 64;
+
+/// Check client-supplied armament before it reaches the entity table.
+///
+/// # Errors
+/// Returns an error if the list is too long or holds a turret that isn't
+/// single, double or triple.  Anything else panics later in combat resolution
+/// when the weapon is named (see `impl From<&Weapon> for String`).
+fn validate_weapons(weapons: &[Weapon]) -> Result<(), String> {
+  if weapons.len() > MAX_SHIP_WEAPONS {
+    return Err(format!(
+      "(PlayerManager.add_ship) Ship has {} weapons, more than the limit of {MAX_SHIP_WEAPONS}.",
+      weapons.len()
+    ));
+  }
+
+  weapons
+    .iter()
+    .find_map(|weapon| match weapon.mount {
+      WeaponMount::Turret(size) if !(1..=3).contains(&size) => Some(size),
+      _ => None,
+    })
+    .map_or(Ok(()), |size| {
+      Err(format!(
+        "(PlayerManager.add_ship) Illegal turret size {size}; must be 1, 2 or 3."
+      ))
+    })
+}
 
 /// `PlayerManager` represents a distinct user connected to the server.
 /// It can belong to a single `Server` at a time, or to none.
@@ -212,7 +243,7 @@ impl PlayerManager {
   /// * `ship` - The message containing the parameters for the ship.
   ///
   /// # Errors
-  /// Returns an error if the ship design cannot be found.
+  /// Returns an error if the ship design cannot be found or if the requested armament is illegal.
   ///
   /// # Panics
   /// Panics if the ship templates are not loaded, if the ship design cannot be found, if the lock on entities cannot be obtained,
@@ -228,12 +259,17 @@ impl PlayerManager {
       .get_ship_template(&ship.design)
       .ok_or_else(|| format!("(PlayerManager.add_ship) Could not find design {}.", ship.design))?;
 
+    if let Some(weapons) = &ship.weapons {
+      validate_weapons(weapons)?;
+    }
+
     self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_ship(
       ship.name,
       ship.position,
       ship.velocity,
       &design,
       ship.crew,
+      ship.weapons,
     );
 
     Ok("Add ship action executed".to_string())

@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import * as React from "react";
-import { ShipDesignTemplate } from "lib/shipDesignTemplates";
 import { findShip } from "lib/entities";
 
 import { useAppSelector } from "state/hooks";
@@ -16,8 +15,8 @@ export interface Crew {
   leadership: number;
 }
 
-export const createCrew = (num_gunners: number) => {
-  let new_crew = {
+export const createCrew = (num_gunners: number = 0) => {
+  const new_crew = {
     pilot: 0,
     engineering_jump: 0,
     engineering_power: 0,
@@ -33,31 +32,28 @@ interface CrewBuilderProps {
   updateCrew: (crew: Crew) => void;
   currentCrew: Crew;
   shipName: string;
-  shipDesign: ShipDesignTemplate;
 }
 
 export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   updateCrew,
   currentCrew,
   shipName,
-  shipDesign,
 }) => {
   const entities = useAppSelector(entitiesSelector);
-  const num_gunners = shipDesign.weapons.length;
 
   const initialCrew = useMemo(() => {
-    return currentCrew ?? createCrew(num_gunners);
-  }, [num_gunners]);
+    // Seeded once: the crew panel owns its own edits from here, and gunnery
+    // no longer varies with the armament.
+    return currentCrew ?? createCrew();
+  }, []);
 
   const [customCrew, setCustomCrew] = useState(initialCrew);
-  const [currentGunId, setCurrentGunId] = useState(1);
   const [currentShipName, setCurrentShipName] = useState(shipName);
 
   // Update customCrew when initialCrew changes (e.g., when ship design changes)
   useEffect(() => {
     setCustomCrew(initialCrew);
     updateCrew(initialCrew);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCrew]);
 
   useEffect(() => {
@@ -81,22 +77,11 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;
 
-    if (name === "gunnery") {
-      // Update the current gunnery value
-      let gunneryValues = customCrew.gunnery;
-
-      // Use currentGunId - 1 as we show id's starting at 1, but for the
-      // array of course want to start at 0
-      gunneryValues[currentGunId - 1] = Number(value);
-      const new_crew = { ...customCrew, [name]: gunneryValues } as Crew;
-      setCustomCrew(new_crew);
-      updateCrew(new_crew);
-    } else {
-      // For other properties, convert to number
-      const new_crew = { ...customCrew, [name]: Number(value) } as Crew;
-      setCustomCrew(new_crew);
-      updateCrew(new_crew);
-    }
+    // Gunnery is not edited here: it is per-weapon, so it lives on the
+    // hardpoint rows above and is rebuilt from them on submit.
+    const new_crew = { ...customCrew, [name]: Number(value) } as Crew;
+    setCustomCrew(new_crew);
+    updateCrew(new_crew);
   }
 
   return (
@@ -162,31 +147,9 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
           onChange={handleChange}
         />
       </label>
-      {num_gunners > 0 && (
-        <label className="control-label crew-builder-input">
-          Gunnery
-          <span>
-            <select
-              className="select-dropdown control-name-input control-input crew-builder-gun-selector"
-              value={currentGunId}
-              onChange={(e) => setCurrentGunId(Number(e.target.value))}
-            >
-              {Array.from(Array(num_gunners).keys()).map((gun_id) => (
-                <option key={`${gun_id + 1}-gunner`} value={gun_id + 1}>
-                  {gun_id + 1}
-                </option>
-              ))}
-            </select>
-            <input
-              className="control-input"
-              name="gunnery"
-              type="text"
-              value={customCrew.gunnery[currentGunId - 1]}
-              onChange={handleChange}
-            />
-          </span>
-        </label>
-      )}
+      <p className="crew-builder-note">
+        Gunner skill is set per weapon under Hardpoints.
+      </p>
     </div>
   );
 };

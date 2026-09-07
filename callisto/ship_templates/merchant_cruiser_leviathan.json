@@ -49,15 +49,11 @@
     },
     {
       "kind": "Missile",
-      "mount": {
-        "Turret": 1
-      }
+      "mount": "FixedMount"
     },
     {
       "kind": "Missile",
-      "mount": {
-        "Turret": 1
-      }
+      "mount": "FixedMount"
     },
     {
       "kind": "Missile",

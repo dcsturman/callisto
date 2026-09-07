@@ -481,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "callisto"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "approx 0.5.1",
  "assert-json-diff",
@@ -513,6 +513,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "test-log",
+ "time",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
