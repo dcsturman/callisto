@@ -233,27 +233,27 @@ function Simulator() {
             <Missiles />
             {events && events.length > 0 && <Explosions />}
             {proposedPlan && <Route plan={proposedPlan} />}
+            {/* One composer for the whole scene.  Bloom is a full-screen
+                pass over the finished frame, so a composer per entity never
+                glowed "its" entity — each simply re-rendered the whole scene
+                and re-bloomed the whole frame.  Fourteen of them on a busy
+                scenario, for one frame's worth of picture. */}
+            <EffectComposer>
+              {/* Do NOT re-add mipmapBlur.  It silently produces nothing on
+                  three 0.182 — postprocessing 6.38 supports only "< 0.183.0"
+                  and that is its newest code path.  No error, no warning, just
+                  a pass that outputs zero, which is what made the ships flat
+                  white discs.  The classic kernel blur below works.  If three
+                  or postprocessing is upgraded, mipmapBlur is worth retrying:
+                  it is cheaper than a HUGE kernel. */}
+              <Bloom
+                kernelSize={KernelSize.HUGE}
+                luminanceThreshold={0.2}
+                luminanceSmoothing={0.05}
+                intensity={4.0}
+              />
+            </EffectComposer>
           </Suspense>
-          {/* One composer for the whole scene.  Bloom is a full-screen pass
-              keyed on framebuffer luminance, so a composer per entity did not
-              make that entity glow — each one re-rendered the entire scene and
-              re-bloomed the whole frame, for an identical picture at N times
-              the cost. */}
-          <EffectComposer>
-            {/* The frame buffer clamps colour at 1.0, so a threshold of 1
-                selects nothing and the pass contributes nothing — which is
-                what left ships as flat white discs. 0.9 is the value the old
-                per-planet composer used, and since that composer was
-                full-screen it was the one actually glowing the ships all
-                along; the per-ship pass at threshold 1 never did anything. */}
-            <Bloom
-              mipmapBlur
-              kernelSize={KernelSize.LARGE}
-              luminanceThreshold={0.9}
-              luminanceSmoothing={0.025}
-              intensity={0.8}
-            />
-          </EffectComposer>
         </Canvas>
       </div>
       {entityToShow && <EntityInfoWindow entity={entityToShow} />}
