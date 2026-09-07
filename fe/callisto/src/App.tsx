@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import * as React from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { FlyControls } from "./lib/FlyControls";
 
 import { Authentication } from "components/scenarios/Authentication";
@@ -232,6 +233,19 @@ function Simulator() {
             {events && events.length > 0 && <Explosions />}
             {proposedPlan && <Route plan={proposedPlan} />}
           </Suspense>
+          {/* One composer for the whole scene.  Bloom is a full-screen pass
+              keyed on framebuffer luminance, so a composer per entity did not
+              make that entity glow — each one re-rendered the entire scene and
+              re-bloomed the whole frame, for an identical picture at N times
+              the cost. */}
+          <EffectComposer>
+            <Bloom
+              mipmapBlur
+              luminanceThreshold={1}
+              luminanceSmoothing={1}
+              intensity={1.0}
+            />
+          </EffectComposer>
         </Canvas>
       </div>
       {entityToShow && <EntityInfoWindow entity={entityToShow} />}

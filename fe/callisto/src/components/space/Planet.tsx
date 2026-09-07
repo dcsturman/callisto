@@ -1,8 +1,6 @@
 import React, { useRef, useMemo } from "react";
 import * as THREE from "three";
 
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
-import { KernelSize, Resolution } from "postprocessing";
 import { TextureLoader } from "three/src/loaders/TextureLoader";
 import { useFrame } from "@react-three/fiber";
 
@@ -271,20 +269,6 @@ function ProceduralPlanet({
   return (
     <>
       {allViewChanges()}
-      {useAnimatedClouds && (
-        <EffectComposer>
-          <Bloom
-            intensity={0.8}
-            blurPass={undefined}
-            kernelSize={KernelSize.LARGE}
-            luminanceThreshold={0.9}
-            luminanceSmoothing={0.025}
-            mipmapBlur={true}
-            resolutionX={Resolution.AUTO_SIZE}
-            resolutionY={Resolution.AUTO_SIZE}
-          />
-        </EffectComposer>
-      )}
       <mesh
         position={pos}
         onPointerOver={() => dispatch(setEntityToShow(planet))}

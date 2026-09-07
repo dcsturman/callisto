@@ -12,7 +12,6 @@ import type { ThreeElement } from "@react-three/fiber";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry";
 import { FontLoader, Font } from "three/examples/jsm/loaders/FontLoader";
 
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Text } from "@react-three/drei";
 import { Line } from "lib/Util";
 
@@ -86,16 +85,6 @@ function Ship(args: {
               />
           )
         )}
-      {
-        <EffectComposer>
-          <Bloom
-            mipmapBlur
-            luminanceThreshold={1}
-            luminanceSmoothing={1}
-            intensity={1.0}
-          />
-        </EffectComposer>
-      }
       <group position={scaleVector(args.ship.position, SCALE) as Vector3}>
         <mesh
           ref={shipRef}
@@ -163,15 +152,6 @@ export function Missile(args: { missile: MissileType; index: number }) {
 
   return (
     <>
-      {/*
-      <EffectComposer>
-        <Bloom
-          mipmapBlur
-          luminanceThreshold={1}
-          luminanceSmoothing={1}
-          intensity={5.0}
-      </EffectComposer>
-      />*/}
       <group
         ref={labelRef}
         position={scaleVector(args.missile.position, SCALE) as Vector3}>
