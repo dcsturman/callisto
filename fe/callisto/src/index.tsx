@@ -8,6 +8,17 @@ import "./index.css";
 import { GOOGLE_OAUTH_CLIENT_ID, App } from "./App";
 import { PersistGate } from "redux-persist/integration/react";
 
+
+// Announce which build this is, so a stale bundle is something you can check
+// rather than infer from whether a change seems to have taken effect.
+// Readable three ways: the console on load, `window.callistoBuild` at any
+// time, and a data-build attribute on <html> that shows up in devtools and in
+// a plain `curl` of the page.
+const BUILD = { id: __BUILD_ID__, built: __BUILD_TIME__ };
+(window as unknown as { callistoBuild: typeof BUILD }).callistoBuild = BUILD;
+document.documentElement.setAttribute("data-build", BUILD.id);
+console.log(`Callisto build ${BUILD.id} (${BUILD.built})`);
+
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
 if (sentryDsn) {
   Sentry.init({
