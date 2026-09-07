@@ -1,0 +1,14 @@
+{
+  "Beam": ["Turret", "Fixed", "Barbette"],
+  "Pulse": ["Turret", "Fixed", "Barbette"],
+  "Missile": ["Turret", "Fixed", "Barbette", "SmallBay", "MediumBay", "LargeBay"],
+  "Sand": ["Turret", "Fixed"],
+  "Particle": ["Turret", "Fixed", "Barbette", "SmallBay", "MediumBay", "LargeBay"],
+  "Torpedo": ["Barbette", "SmallBay", "MediumBay", "LargeBay"],
+  "Fusion": ["Turret", "Fixed", "Barbette", "SmallBay", "MediumBay", "LargeBay"],
+  "Plasma": ["Turret", "Fixed", "Barbette"],
+  "Railgun": ["Turret", "Fixed", "Barbette", "SmallBay", "MediumBay", "LargeBay"],
+  "Meson": ["SmallBay", "MediumBay", "LargeBay"],
+  "MassDriver": ["SmallBay", "MediumBay", "LargeBay"],
+  "Repulsor": ["SmallBay", "MediumBay", "LargeBay"]
+}

@@ -10,11 +10,31 @@ errors — they are gaps in our model. **We need to go back and fix these ASAP.*
 
 ---
 
-## TODO 1 — Implement the missing weapon types (HIGH PRIORITY)
+## ~~TODO 1 — Implement the missing weapon types~~ MOSTLY DONE (2026-09-07)
 
-`WeaponType` is currently only `Beam | Pulse | Missile | Sand | Particle`, and
-`WeaponMount` only `Turret(n) | Barbette | Bay(Small|Medium|Large)`. The book uses many
-more. Weapons below were **substituted with the nearest analogue** to keep the ships armed:
+**Shipped.** `WeaponType` gained `Torpedo, Fusion, Plasma, Railgun, Meson, MassDriver,
+Repulsor`, and damage/range/hit-mod/armour-penetration became properties of the
+*weapon and its mount together* rather than of the weapon alone — see
+`rules_tables.rs::weapon_profile`, transcribed from the Turret Weapons (p. 28),
+Barbettes (p. 30) and Bay Weapons (pp. 32-33) tables.
+
+Because the book only lists a weapon against mounts it is actually sold in, a missing
+entry doubles as the legality rule: there is no torpedo turret and no laser bay, so
+those pairings return `None` and the editor refuses to offer them.
+
+Three things started working as a side effect: **AP** (nothing implemented it before, so
+meson's AP ∞ and railgun's AP 4/5/10 did nothing), **mount-dependent range** (a railgun
+reaches Short from a turret but Medium from a barbette), and **torpedo damage** —
+missiles now carry the weapon that launched them, so a torpedo resolves at its own 6D
+instead of being faked as a 4D missile.
+
+Still outstanding from this section: **Ion weapons (see TODO 7)** and **Point Defence
+Laser Batteries**, which are being designed separately. Not done, and deliberately so:
+Laser Drill (an Adjacent-range mining tool, not a warship weapon) and the Orbital
+Strike / Orbital Bombardment variants, which target planets — something combat has no
+notion of.
+
+The original substitution table, kept for the record:
 
 | Book weapon | Encoded as | Affected designs |
 |---|---|---|
@@ -35,6 +55,27 @@ Note: the pre-existing `midu_agasham.json` **omits** its two Point Defence Laser
 Weapon types NOT needed under 5,000 tons but required before we can support larger ships:
 meson guns (incl. spinal mounts), particle accelerator spinal mounts, railguns, repulsors,
 orbital strike mass drivers. **There is no spinal mount concept in `WeaponMount` at all.**
+
+## TODO 8 — Migrate the designs that still use substituted weapons
+
+The weapons in TODO 1's substitution table now exist, but the ship templates were never
+rewritten — they still carry the stand-ins, so they read as the wrong weapon and roll the
+wrong dice:
+
+| Design | Currently encoded as | Should become |
+|---|---|---|
+| Torpedo Boat (p152) | `Missile` / `Barbette` | `Torpedo` / `Barbette` |
+| Merchant Cruiser - Leviathan (p217, x2) | `Missile` / `Barbette` | `Torpedo` / `Barbette` |
+| Destroyer Escort - Chrysanthemum (p207) | `Particle` / `Barbette` | `Fusion` / `Barbette` |
+
+This is a data change only, and it is not cosmetic: a torpedo barbette fires one 6D
+torpedo where a missile barbette fires five 4D missiles, so these ships currently fight
+quite differently from the ships in the book.
+
+The Point Defence Laser Battery substitutions in that table should be left alone until
+the PD battery design lands — they are a separate mechanic.
+
+---
 
 ## TODO 2 — Weapon modifiers are silently dropped
 
@@ -124,13 +165,49 @@ submit.
 Blocking real capital ships, roughly in order:
 
 - **Batteries** — grouped turrets resolved as one attack, per above.
-- **Spinal mounts** — no `WeaponMount` variant exists at all (see TODO 1).
-- **Torpedoes** — currently substituted with `Missile` (see TODO 1).
-- **Meson guns, railguns, repulsors, mass drivers** — all unimplemented (see TODO 1).
+- **Spinal mounts** — no `WeaponMount` variant exists at all. This is now the only
+  *mount* still missing, and it needs more than a variant: spinal weapons carry a
+  ×1,000 Damage Multiple, scale their dice with tonnage, and take negative DMs at close
+  range (High Guard p. 36).
+- ~~Torpedoes~~, ~~meson guns, railguns, repulsors, mass drivers~~ — done, see TODO 1.
 - **Defensive screens** — meson screens, nuclear dampers, black globes (see TODO 4).
 
 **Current position: the 5,000-ton import limit stands and is fine.** None of the above is
 worth starting until we actually want ships above that.
+
+---
+
+## TODO 7 — Ion weapons (HIGH PRIORITY)
+
+Ion cannon is the one genuinely missing weapon after the profile work, and it matters:
+it is the standard way pirates and customs ships disable a target rather than destroy
+it, which is a scenario the tool should support.
+
+The mechanic is new but small (High Guard p. 30, *Weapon Trait: Ion*):
+
+- On a hit, roll damage **ignoring the target's armour entirely**.
+- Deduct that from the target's **Power**, not its hull. Nothing is permanently damaged.
+- The reduction lasts until the target finishes its next set of actions.
+- If the attack's Effect is **6 or more**, it lasts **D3 rounds** instead.
+- Hardened systems are immune: the crew may allocate Power to them before the deduction.
+
+**Most of the plumbing already exists.** `Ship` has `current_power`, and `best_thrust`
+already derives thrust from it, so a power deduction produces the right manoeuvre
+penalty without new code. What is missing is the temporary-deduction bookkeeping (a
+duration, and restoring power when it lapses) and the hardened-systems carve-out.
+
+Ion is sold as a barbette and as all three bay sizes, never a turret:
+
+| Mount | TL | Range | Damage |
+|---|---|---|---|
+| Ion Cannon (barbette) | 12 | Medium | 7D |
+| Small Ion Bay | 12 | Medium | 6D |
+| Medium Ion Bay | 12 | Medium | 8D |
+| Large Ion Bay | 12 | Long | 10D |
+
+Note the fleet-battle rules (p. 132) give ion weapons a *separate* damage track
+(Effect per Weapon: barbette 75, bays 200/500/3,500) used only at fleet scale. That is
+a different system from the ship-scale rule above and should not be conflated with it.
 
 ---
 

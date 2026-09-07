@@ -355,6 +355,155 @@ pub enum WeaponType {
   Missile,
   Sand,
   Particle,
+  // Everything below was added after the fact.  Variants are appended rather
+  // than sorted into place because scenario and design JSON round-trips these
+  // by name, and because the older entries above are load-bearing in saved
+  // games.  Order carries no meaning.
+  Torpedo,
+  Fusion,
+  Plasma,
+  Railgun,
+  Meson,
+  MassDriver,
+  Repulsor,
+}
+
+/// A weapon mount with the turret count erased.
+///
+/// Turret size scales the *number of guns*, never the damage multiple, so every
+/// `Turret(n)` shares one profile.  `FixedMount` is our own concept rather than
+/// the book's — High Guard treats a fixed mount as a turret that cannot
+/// traverse — so it resolves to the same profiles a turret gets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MountClass {
+  Turret,
+  Fixed,
+  Barbette,
+  SmallBay,
+  MediumBay,
+  LargeBay,
+}
+
+impl From<&WeaponMount> for MountClass {
+  fn from(mount: &WeaponMount) -> Self {
+    match mount {
+      WeaponMount::Turret(_) => MountClass::Turret,
+      WeaponMount::FixedMount => MountClass::Fixed,
+      WeaponMount::Barbette => MountClass::Barbette,
+      WeaponMount::Bay(BaySize::Small) => MountClass::SmallBay,
+      WeaponMount::Bay(BaySize::Medium) => MountClass::MediumBay,
+      WeaponMount::Bay(BaySize::Large) => MountClass::LargeBay,
+    }
+  }
+}
+
+/// How many objects a launcher throws per attack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Salvo {
+  /// One per gun in the mount, i.e. `Turret(n)` launches `n`.
+  PerGun,
+  /// A large missile bay throws 120, so this does not fit in a `u8`.
+  Fixed(u16),
+}
+
+/// Everything about a weapon that depends on how it is mounted.
+///
+/// A weapon scales its output in exactly one of two ways, never both: direct-fire
+/// weapons multiply damage by the mount's Damage Multiple (High Guard p. 29),
+/// while launchers throw a bigger salvo and take no multiple at all. That
+/// invariant is why `use_multiple` and `salvo` are always opposites in the
+/// table below.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WeaponProfile {
+  /// Tech level of the weapon itself, which drives the Smart DM.
+  pub tl: u8,
+  pub damage_dice: u8,
+  pub hit_mod: i32,
+  /// The longest band this reaches; `None` is the book's "Special", meaning
+  /// range never rules the shot out.
+  pub max_range: Option<Range>,
+  /// Armour ignored before damage is reduced. [`AP_INFINITE`] ignores all of it.
+  pub ap: u8,
+  pub radiation: bool,
+  /// Smart rounds add their TL minus the target's, clamped to +1..=+6
+  /// (Core Rulebook p. 79).
+  pub smart: bool,
+  pub use_multiple: bool,
+  /// `None` for direct-fire weapons.
+  pub salvo: Option<Salvo>,
+}
+
+/// Meson guns ignore armour entirely (the book writes this as "AP ∞").
+pub const AP_INFINITE: u8 = u8::MAX;
+
+impl WeaponProfile {
+  /// A direct-fire weapon: takes the mount's Damage Multiple, throws nothing.
+  #[must_use]
+  pub const fn gun(tl: u8, damage_dice: u8, max_range: Range) -> Self {
+    Self {
+      tl,
+      damage_dice,
+      hit_mod: 0,
+      max_range: Some(max_range),
+      ap: 0,
+      radiation: false,
+      smart: false,
+      use_multiple: true,
+      salvo: None,
+    }
+  }
+
+  /// A launcher: throws `salvo` objects that resolve on impact.  Range is
+  /// "Special" and the Damage Multiple never applies — salvo size is the
+  /// scaling instead.
+  #[must_use]
+  pub const fn launcher(tl: u8, damage_dice: u8, salvo: Salvo) -> Self {
+    Self {
+      tl,
+      damage_dice,
+      hit_mod: 0,
+      max_range: None,
+      ap: 0,
+      radiation: false,
+      smart: true,
+      use_multiple: false,
+      salvo: Some(salvo),
+    }
+  }
+
+  /// A weapon whose damage the rules leave as "Special", so it rolls nothing.
+  #[must_use]
+  pub const fn special(tl: u8, max_range: Range) -> Self {
+    Self {
+      damage_dice: 0,
+      use_multiple: false,
+      ..Self::gun(tl, 0, max_range)
+    }
+  }
+
+  #[must_use]
+  pub const fn hit(mut self, hit_mod: i32) -> Self {
+    self.hit_mod = hit_mod;
+    self
+  }
+
+  #[must_use]
+  pub const fn ap(mut self, ap: u8) -> Self {
+    self.ap = ap;
+    self
+  }
+
+  #[must_use]
+  pub const fn rad(mut self) -> Self {
+    self.radiation = true;
+    self
+  }
+
+  /// Whether this weapon may be fired at `range`.
+  #[must_use]
+  pub fn reaches(&self, range: Range) -> bool {
+    self.max_range.is_none_or(|max| range <= max)
+  }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
@@ -1188,6 +1337,13 @@ impl From<&WeaponType> for String {
       WeaponType::Missile => "missile".to_string(),
       WeaponType::Sand => "sand".to_string(),
       WeaponType::Particle => "particle beam".to_string(),
+      WeaponType::Torpedo => "torpedo".to_string(),
+      WeaponType::Fusion => "fusion gun".to_string(),
+      WeaponType::Plasma => "plasma gun".to_string(),
+      WeaponType::Railgun => "railgun".to_string(),
+      WeaponType::Meson => "meson gun".to_string(),
+      WeaponType::MassDriver => "mass driver".to_string(),
+      WeaponType::Repulsor => "repulsor".to_string(),
     }
   }
 }
@@ -1218,18 +1374,10 @@ impl WeaponType {
     matches!(self, WeaponType::Beam | WeaponType::Pulse)
   }
 
-  // Max ranges by weapon type.  Provide first range band
-  // 0 is short, 1 is medium, 2 is long, 3 is very long, 4 is distant
-  // Using a function as its just easier than a Lazy, etc.
-  #[must_use]
-  pub fn in_range(&self, range: Range) -> bool {
-    match self {
-      WeaponType::Beam => range <= Range::Medium,
-      WeaponType::Pulse => range <= Range::Long,
-      WeaponType::Missile | WeaponType::Sand => true,
-      WeaponType::Particle => range <= Range::VeryLong,
-    }
-  }
+  // Range used to be a property of the weapon alone, but it is not: a railgun
+  // reaches Short from a turret and Medium from a barbette, and a particle beam
+  // only reaches Distant out of a large bay.  Ask the profile instead —
+  // `WeaponProfile::reaches`.
 }
 
 impl From<ShipSystem> for String {
