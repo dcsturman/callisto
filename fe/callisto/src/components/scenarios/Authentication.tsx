@@ -52,10 +52,12 @@ export function Authentication() {
     state: secureState,
     // Redirect_uri should be the address of the Node.js server.
     redirect_uri: import.meta.env.VITE_NODE_SERVER || window.location.href,
-    accessType: "offline",
     isSignedIn: true,
     responseType: "code",
-    prompt: "consent",
+    // No accessType "offline" and no prompt "consent": we never use a Google
+    // refresh token, and asking for one forced a fresh grant on every login —
+    // which is what sent a "requested access to your account" mail each time.
+    // Omitting both lets Google reuse the grant the user already gave.
     ux_mode: "popup",
   });
 
