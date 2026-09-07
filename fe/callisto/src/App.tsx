@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import * as React from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import { KernelSize } from "postprocessing";
 import { FlyControls } from "./lib/FlyControls";
 
 import { Authentication } from "components/scenarios/Authentication";
@@ -214,7 +216,11 @@ function Simulator() {
             decay={0.01}
             color="#fff7cd"
           />
-          <ambientLight intensity={1.0} />
+          {/* Low: ambient multiplies a texture at full strength with no
+              shading falloff, so at 1.0 Jupiter's near-white cloud bands
+              clipped to featureless blocks — which then bloomed as one huge
+              bright area. */}
+          <ambientLight intensity={0.3} />
           <GrabCamera setCamera={setCamera} />
           <FlyControls
             containerName="main-canvas"
@@ -231,6 +237,30 @@ function Simulator() {
             <Missiles />
             {events && events.length > 0 && <Explosions />}
             {proposedPlan && <Route plan={proposedPlan} />}
+            {/* One composer for the whole scene.  Bloom is a full-screen
+                pass over the finished frame, so a composer per entity never
+                glowed "its" entity — each simply re-rendered the whole scene
+                and re-bloomed the whole frame.  Fourteen of them on a busy
+                scenario, for one frame's worth of picture. */}
+            <EffectComposer>
+              {/* Do NOT re-add mipmapBlur.  It silently produces nothing on
+                  three 0.182 — postprocessing 6.38 supports only "< 0.183.0"
+                  and that is its newest code path.  No error, no warning, just
+                  a pass that outputs zero, which is what made the ships flat
+                  white discs.  The classic kernel blur below works.  If three
+                  or postprocessing is upgraded, mipmapBlur is worth retrying:
+                  it is cheaper than a HUGE kernel. */}
+              {/* The threshold is high enough that lit planet surfaces stay
+                  out of it, while the ships — HDR well above 1.0 — still
+                  bloom.  Tuned against jupiter.json, where a planet filling
+                  the view is the worst case for an area-driven effect. */}
+              <Bloom
+                kernelSize={KernelSize.HUGE}
+                luminanceThreshold={0.9}
+                luminanceSmoothing={0.05}
+                intensity={4.0}
+              />
+            </EffectComposer>
           </Suspense>
         </Canvas>
       </div>

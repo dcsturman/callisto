@@ -406,7 +406,6 @@ impl GoogleAuthenticator {
       ("client_id", &self.credentials.client_id.clone()),
       ("client_secret", &self.credentials.client_secret.clone()),
       ("redirect_uri", &redirect_uri.clone()),
-      ("access_type", &"offline".to_string()),
       ("grant_type", &GRANT_TYPE.to_string()),
     ];
 
@@ -1073,7 +1072,11 @@ struct GoogleClaims {
 struct GoogleTokenResponse {
   access_token: String,
   expires_in: u32,
-  refresh_token: String,
+  /// Optional because we do not ask for offline access, and Google only
+  /// returns a refresh token when consent is freshly granted.  Nothing reads
+  /// it; requiring it was what forced `prompt: "consent"` on every login, and
+  /// with it a Google security email each time.
+  refresh_token: Option<String>,
   scope: String,
   token_type: String,
   id_token: String,

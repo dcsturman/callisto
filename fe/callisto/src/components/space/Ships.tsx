@@ -12,7 +12,6 @@ import type { ThreeElement } from "@react-three/fiber";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry";
 import { FontLoader, Font } from "three/examples/jsm/loaders/FontLoader";
 
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Text } from "@react-three/drei";
 import { Line } from "lib/Util";
 
@@ -86,16 +85,6 @@ function Ship(args: {
               />
           )
         )}
-      {
-        <EffectComposer>
-          <Bloom
-            mipmapBlur
-            luminanceThreshold={1}
-            luminanceSmoothing={1}
-            intensity={1.0}
-          />
-        </EffectComposer>
-      }
       <group position={scaleVector(args.ship.position, SCALE) as Vector3}>
         <mesh
           ref={shipRef}
@@ -104,7 +93,10 @@ function Ship(args: {
           onPointerLeave={() => dispatch(setEntityToShow(null))}
           onClick={handleShipClick}>
           <sphereGeometry ref={shipGeoRef} args={[0.2]} />
-          <meshBasicMaterial color={[3, 3, 8.0]} />
+          {/* HDR: the composer keeps a half-float buffer, so values above 1
+              survive and set how hard a ship blooms relative to dimmer things
+              like the labels. */}
+          <meshBasicMaterial color={[10, 10, 24.0]} />
         </mesh>
         {/* vector showing a ships's velocity (so distance next turn) */}
         <Line
@@ -163,15 +155,6 @@ export function Missile(args: { missile: MissileType; index: number }) {
 
   return (
     <>
-      {/*
-      <EffectComposer>
-        <Bloom
-          mipmapBlur
-          luminanceThreshold={1}
-          luminanceSmoothing={1}
-          intensity={5.0}
-      </EffectComposer>
-      />*/}
       <group
         ref={labelRef}
         position={scaleVector(args.missile.position, SCALE) as Vector3}>
