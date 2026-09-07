@@ -216,7 +216,11 @@ function Simulator() {
             decay={0.01}
             color="#fff7cd"
           />
-          <ambientLight intensity={1.0} />
+          {/* Low: ambient multiplies a texture at full strength with no
+              shading falloff, so at 1.0 Jupiter's near-white cloud bands
+              clipped to featureless blocks — which then bloomed as one huge
+              bright area. */}
+          <ambientLight intensity={0.3} />
           <GrabCamera setCamera={setCamera} />
           <FlyControls
             containerName="main-canvas"
@@ -246,9 +250,13 @@ function Simulator() {
                   white discs.  The classic kernel blur below works.  If three
                   or postprocessing is upgraded, mipmapBlur is worth retrying:
                   it is cheaper than a HUGE kernel. */}
+              {/* The threshold is high enough that lit planet surfaces stay
+                  out of it, while the ships — HDR well above 1.0 — still
+                  bloom.  Tuned against jupiter.json, where a planet filling
+                  the view is the worst case for an area-driven effect. */}
               <Bloom
                 kernelSize={KernelSize.HUGE}
-                luminanceThreshold={0.2}
+                luminanceThreshold={0.9}
                 luminanceSmoothing={0.05}
                 intensity={4.0}
               />
