@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - 'callisto/**'
+      # Docs live under callisto/ too, and a rebuild replaces the Cloud Run
+      # revision — which drops every live scenario, since Entities is only ever
+      # held in that process's RAM.  Exclusions are applied in order, so this
+      # carves the markdown back out of the pattern above.
+      - '!callisto/**.md'
       - '.github/workflows/prod-be-merge.yml'
   workflow_dispatch:
 
