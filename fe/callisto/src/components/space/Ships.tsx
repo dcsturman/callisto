@@ -93,7 +93,12 @@ function Ship(args: {
           onPointerLeave={() => dispatch(setEntityToShow(null))}
           onClick={handleShipClick}>
           <sphereGeometry ref={shipGeoRef} args={[0.2]} />
-          <meshBasicMaterial color={[3, 3, 8.0]} />
+          {/* Values above 1 are HDR: they exceed what the display can show,
+              which is how the bloom pass (threshold 1) picks a ship out as
+              something to glow.  Raising them makes ships glow harder without
+              touching anything else, whereas raising the pass's own intensity
+              would bloom the whole frame including the planet clouds. */}
+          <meshBasicMaterial color={[7, 7, 18.0]} />
         </mesh>
         {/* vector showing a ships's velocity (so distance next turn) */}
         <Line
