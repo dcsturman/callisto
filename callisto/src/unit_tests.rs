@@ -1721,10 +1721,12 @@ fn custom_armament() -> Vec<Weapon> {
     Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Turret(3),
+      modifiers: vec![],
     },
     Weapon {
       kind: WeaponType::Missile,
       mount: WeaponMount::FixedMount,
+      modifiers: vec![],
     },
   ]
 }
@@ -1788,23 +1790,28 @@ async fn test_add_ship_accepts_every_mount_shape() {
     vec![
       Weapon {
         kind: WeaponType::Particle,
-        mount: WeaponMount::Barbette
+        mount: WeaponMount::Barbette,
+        modifiers: vec![]
       },
       Weapon {
         kind: WeaponType::Missile,
-        mount: WeaponMount::Bay(BaySize::Small)
+        mount: WeaponMount::Bay(BaySize::Small),
+        modifiers: vec![]
       },
       Weapon {
         kind: WeaponType::Beam,
-        mount: WeaponMount::Bay(BaySize::Medium)
+        mount: WeaponMount::Bay(BaySize::Medium),
+        modifiers: vec![]
       },
       Weapon {
         kind: WeaponType::Pulse,
-        mount: WeaponMount::Bay(BaySize::Large)
+        mount: WeaponMount::Bay(BaySize::Large),
+        modifiers: vec![]
       },
       Weapon {
         kind: WeaponType::Sand,
-        mount: WeaponMount::Turret(1)
+        mount: WeaponMount::Turret(1),
+        modifiers: vec![]
       },
     ]
   );

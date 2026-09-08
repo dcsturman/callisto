@@ -31,35 +31,81 @@ const BATTERY_TYPES: {[grade: number]: string} = {1: "I", 2: "II", 3: "III"};
 export interface Weapon {
   kind: string;
   mount: WeaponMount;
+  /**
+   * High Guard weapon Advantages and Disadvantages. These ride on the weapon,
+   * not the mount: a triple turret can hold two long-range high-yield pulse
+   * lasers and an unmodified sandcaster. Omitted from the wire when empty.
+   */
+  modifiers?: string[];
 }
 
-
-export const createWeapon = (kind: string, mount: WeaponMount): Weapon => {
-  return {kind, mount};
+/** Readable names for modifiers, which travel the wire as Rust variant names. */
+const MODIFIER_LABELS: {[kind: string]: string} = {
+  Accurate: "accurate",
+  Inaccurate: "inaccurate",
+  HighYield: "high yield",
+  VeryHighYield: "very high yield",
+  IntenseFocus: "intense focus",
+  LongRange: "long range",
+  Resilient: "resilient",
+  EnergyEfficient: "energy efficient",
+  EnergyInefficient: "energy inefficient",
+  SizeReduction: "size reduction",
+  IncreasedSize: "increased size",
+  EasyToRepair: "easy to repair",
 };
+
+/**
+ * Modifiers as a readable list, collapsing repeats the way the book writes them
+ * ("energy efficient x3").
+ */
+export const describeModifiers = (modifiers: string[] | undefined): string => {
+  if (modifiers == null || modifiers.length === 0) {
+    return "";
+  }
+  const counts = new Map<string, number>();
+  modifiers.forEach((m) => counts.set(m, (counts.get(m) ?? 0) + 1));
+  return Array.from(counts.entries())
+    .map(([kind, total]) => {
+      const name = MODIFIER_LABELS[kind] ?? kind;
+      return total > 1 ? `${name} x${total}` : name;
+    })
+    .join(", ");
+};
+
+export const createWeapon = (
+  kind: string,
+  mount: WeaponMount,
+  modifiers?: string[],
+): Weapon =>
+  modifiers != null && modifiers.length > 0
+    ? {kind, mount, modifiers}
+    : {kind, mount};
 
 export const weaponToString = (weapon: Weapon): string => {
     const kind = weaponKindLabel(weapon.kind);
+    const mods = describeModifiers(weapon.modifiers);
+    const suffix = mods === "" ? "" : ` (${mods})`;
     if (weapon.mount === "FixedMount") {
-      return `${kind} Fixed Mount`;
+      return `${kind} Fixed Mount${suffix}`;
     } else if (typeof weapon.mount === "string") {
-      return `${kind} Barbette`;
+      return `${kind} Barbette${suffix}`;
     } else if ("Turret" in weapon.mount) {
       if (weapon.mount.Turret === 1) {
-        return `Single ${kind} Turret`;
+        return `Single ${kind} Turret${suffix}`;
       } else if (weapon.mount.Turret === 2) {
-        return `Double ${kind} Turret`;
+        return `Double ${kind} Turret${suffix}`;
       } else if (weapon.mount.Turret === 3) {
-        return `Triple ${kind} Turret`;
+        return `Triple ${kind} Turret${suffix}`;
       }
     } else if ("Bay" in weapon.mount) {
-      return `${weapon.mount.Bay} ${kind} Bay`;
+      return `${weapon.mount.Bay} ${kind} Bay${suffix}`;
     } else if ("Battery" in weapon.mount) {
       // The grade is the whole identity of a battery, so it is named instead of
       // the weapon kind -- "Point Defence Battery (Type III)", not
       // "PointDefense Battery".
       const grade = BATTERY_TYPES[weapon.mount.Battery] ?? weapon.mount.Battery;
-      return `Point Defence Battery (Type ${grade})`;
+      return `Point Defence Battery (Type ${grade})${suffix}`;
     }
     console.error("Unknown weapon mount type: " + weapon.mount);
     return "ERROR in weaponToString()";

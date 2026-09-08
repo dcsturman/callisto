@@ -34,6 +34,14 @@ export interface WeaponGroup {
   mount: WeaponMount | null;
   kind: string;
   gunnery: number;
+  /**
+   * Weapon Advantages and Disadvantages carried by every mount in this group.
+   *
+   * Part of the group's identity: the MK Mora fits long-range high-yield pulse
+   * turrets alongside plain sandcaster turrets, and merging across modifiers
+   * would spread them to weapons that never had them.
+   */
+  modifiers: string[];
 }
 
 export const DEFAULT_GUNNERY = 0;
@@ -169,11 +177,14 @@ export function checkAllowance(
 
 /** An empty trailing row, ready for the referee to fill in. */
 export function emptyGroup(gunnery: number = DEFAULT_GUNNERY): WeaponGroup {
-  return { count: 1, mount: null, kind: DEFAULT_WEAPON_KIND, gunnery };
+  return { count: 1, mount: null, kind: DEFAULT_WEAPON_KIND, gunnery, modifiers: [] };
 }
 
 function groupKey(weapon: Weapon, gunnery: number): string {
-  return `${JSON.stringify(weapon.mount)}|${weapon.kind}|${gunnery}`;
+  // Modifiers are part of the key for the same reason gunnery is: merging
+  // across them would silently give one weapon another's modifications.
+  const modifiers = (weapon.modifiers ?? []).join("+");
+  return `${JSON.stringify(weapon.mount)}|${weapon.kind}|${gunnery}|${modifiers}`;
 }
 
 /**
@@ -209,6 +220,7 @@ export function groupWeapons(
       mount: weapon.mount,
       kind: weapon.kind,
       gunnery: skill,
+      modifiers: weapon.modifiers ?? [],
     };
     byKey.set(key, group);
     groups.push(group);
@@ -236,7 +248,7 @@ export function expandGroups(groups: readonly WeaponGroup[]): {
       return;
     }
     for (let n = 0; n < group.count; n++) {
-      weapons.push(createWeapon(group.kind, group.mount));
+      weapons.push(createWeapon(group.kind, group.mount, group.modifiers));
       gunnery.push(group.gunnery);
     }
   });

@@ -25,7 +25,12 @@
       "kind": "Missile",
       "mount": {
         "Bay": "Small"
-      }
+      },
+      "modifiers": [
+        "SizeReduction",
+        "SizeReduction",
+        "SizeReduction"
+      ]
     },
     {
       "kind": "PointDefense",

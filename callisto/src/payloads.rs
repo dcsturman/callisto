@@ -112,6 +112,7 @@ fn default_launcher() -> Weapon {
   Weapon {
     kind: WeaponType::Missile,
     mount: WeaponMount::Turret(1),
+    modifiers: vec![],
   }
 }
 
