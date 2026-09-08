@@ -66,21 +66,31 @@ export const weaponToString = (weapon: Weapon): string => {
 }
 
 /**
- * Whether this weapon is something the crew can be ordered to use.
+ * Weapon kinds the crew never orders directly.
  *
- * Sandcasters are deployed by the combat engine rather than fired, and
- * point-defence batteries intercept automatically -- "needing only a command
- * from the bridge", High Guard p. 40 -- so neither gets an action button.
+ * Sandcasters are deployed by the combat engine rather than fired;
+ * point-defence batteries intercept automatically, "needing only a command from
+ * the bridge" (High Guard p. 40); and repulsors deflect incoming missiles rather
+ * than attacking, so there is no target to pick for any of them.
+ */
+const PASSIVE_WEAPON_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
+
+/**
+ * Whether this weapon is something the crew can be ordered to use.
  *
  * Tested on the weapon rather than its display name, so a design whose weapon
  * kind merely contains the word "Sand" keeps its buttons.
  */
 export const isActionableWeapon = (weapon: Weapon): boolean => {
-  if (weapon.kind === "Sand" || weapon.kind === "PointDefense") {
+  if (PASSIVE_WEAPON_KINDS.has(weapon.kind)) {
     return false;
   }
   return !(typeof weapon.mount === "object" && "Battery" in weapon.mount);
 };
+
+/** The complement of {@link isActionableWeapon}: defences that run themselves. */
+export const isPassiveWeapon = (weapon: Weapon): boolean =>
+  !isActionableWeapon(weapon);
 
 export interface CompressedWeapon {
   [weapon: string]: {

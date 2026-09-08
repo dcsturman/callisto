@@ -513,6 +513,9 @@ input {
 .weapon-list {
     display: flex;
     flex-direction: row;
+    /* Wrap, or a ship with more than about four kinds of weapon has the rest
+       run off the right-hand edge of the panel with no way to reach them. */
+    flex-wrap: wrap;
     justify-content: left;
     align-items: center;
 }
@@ -543,6 +546,20 @@ input {
 
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+.weapon-passive-list {
+    /* Defences with no button -- point defence, sand, repulsors.  Listed as
+       text so a referee can see a ship carries them. */
+    font-size: 9pt;
+    color: #b0b0b0;
+    padding: 2px 4px 4px 4px;
+    line-height: 1.3;
+}
+
+.weapon-passive-label {
+    font-weight: bold;
+    color: #d0d0d0;
 }
 
 .weapon-button-tooltip {

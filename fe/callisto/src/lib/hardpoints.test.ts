@@ -22,6 +22,7 @@ import {
   WeaponMount,
   createWeapon,
   isActionableWeapon,
+  isPassiveWeapon,
   weaponToString,
   weaponKindLabel,
 } from "lib/weapon";
@@ -488,5 +489,38 @@ describe("weapon kind labels", () => {
     expect(
       weaponToString({ kind: "MassDriver", mount: { Bay: "Large" } }),
     ).toBe("Large Mass Driver Bay");
+  });
+});
+
+describe("automatic defences get no fire-control button", () => {
+  // Repulsors deflect incoming missiles rather than attacking, so like
+  // sandcasters and point-defence batteries there is no target to pick.
+  it("treats repulsors as automatic", () => {
+    const repulsor: Weapon = { kind: "Repulsor", mount: { Bay: "Small" } };
+    expect(isActionableWeapon(repulsor)).toBe(false);
+    expect(isPassiveWeapon(repulsor)).toBe(true);
+  });
+
+  it("treats sandcasters and point defence batteries as automatic", () => {
+    expect(isPassiveWeapon({ kind: "Sand", mount: { Turret: 3 } })).toBe(true);
+    expect(
+      isPassiveWeapon({ kind: "PointDefense", mount: { Battery: 3 } }),
+    ).toBe(true);
+  });
+
+  // Everything that actually shoots at a target keeps its button, including the
+  // weapon types added most recently.
+  it("leaves real weapons actionable", () => {
+    const armed: Weapon[] = [
+      { kind: "Beam", mount: { Turret: 3 } },
+      { kind: "Torpedo", mount: "Barbette" },
+      { kind: "Meson", mount: { Bay: "Medium" } },
+      { kind: "Ion", mount: "Barbette" },
+      { kind: "MassDriver", mount: { Bay: "Large" } },
+    ];
+    armed.forEach((weapon) => {
+      expect(isActionableWeapon(weapon)).toBe(true);
+      expect(isPassiveWeapon(weapon)).toBe(false);
+    });
   });
 });

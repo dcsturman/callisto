@@ -9,7 +9,15 @@ import {
   findNthWeapon,
   shipWeapons,
 } from "lib/shipDesignTemplates";
-import { Weapon, WeaponMount, isActionableWeapon } from "lib/weapon";
+import {
+  Weapon,
+  WeaponMount,
+  isActionableWeapon,
+  isPassiveWeapon,
+  createWeapon,
+  weaponToString,
+  weaponKindLabel,
+} from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
   FireState,
@@ -104,6 +112,10 @@ export const WeaponButton = (props: {
   onClick: () => void;
   disabled: boolean;
 }) => {
+  // Tooltips name the weapon for a person, so they use the readable label
+  // rather than the wire identifier.  Colours are still keyed off the raw kind.
+  const label = weaponKindLabel(props.weapon);
+
   // FixedMount is a bare string like Barbette, so it has to be matched first or
   // it falls into the Barbette arm and draws the wrong weapon entirely.
   if (props.mount === "FixedMount") {
@@ -113,7 +125,7 @@ export const WeaponButton = (props: {
           id={props.weapon + "-fixed-mount-button"}
           className="weapon-button"
           data-tooltip-id={props.weapon + props.mount}
-          data-tooltip-content={`${props.weapon} Fixed Mount`}
+          data-tooltip-content={`${label} Fixed Mount`}
           data-tooltip-delay-show={700}
           onClick={props.onClick}
           disabled={props.disabled}
@@ -140,7 +152,7 @@ export const WeaponButton = (props: {
           id={props.weapon + "-barbette-button"}
           className="weapon-button"
           data-tooltip-id={props.weapon + props.mount}
-          data-tooltip-content={`${props.weapon} Barbette`}
+          data-tooltip-content={`${label} Barbette`}
           data-tooltip-delay-show={700}
           onClick={props.onClick}
           disabled={props.disabled}
@@ -170,7 +182,7 @@ export const WeaponButton = (props: {
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "small-bay"}
-            data-tooltip-content={`Small ${props.weapon} Bay`}
+            data-tooltip-content={`Small ${label} Bay`}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -196,7 +208,7 @@ export const WeaponButton = (props: {
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "med-bay"}
-            data-tooltip-content={`Medium ${props.weapon} Bay`}
+            data-tooltip-content={`Medium ${label} Bay`}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -222,7 +234,7 @@ export const WeaponButton = (props: {
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "large-bay"}
-            data-tooltip-content={`Large ${props.weapon} Bay`}
+            data-tooltip-content={`Large ${label} Bay`}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -251,7 +263,7 @@ export const WeaponButton = (props: {
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
-            data-tooltip-content={`Single ${props.weapon} Turret`}
+            data-tooltip-content={`Single ${label} Turret`}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -278,7 +290,7 @@ export const WeaponButton = (props: {
             className="weapon-button"
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
-            data-tooltip-content={`Double ${props.weapon} Turret`}
+            data-tooltip-content={`Double ${label} Turret`}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -304,7 +316,7 @@ export const WeaponButton = (props: {
           className="weapon-button"
           onClick={props.onClick}
           data-tooltip-id={props.weapon + num + "turret"}
-          data-tooltip-content={`Triple ${props.weapon} Turret`}
+          data-tooltip-content={`Triple ${label} Turret`}
           data-tooltip-delay-show={700}
           disabled={props.disabled}
         >
@@ -560,6 +572,19 @@ export const FireControl: React.FC<FireControlProps> = () => {
     ],
   );
 
+  // Defences that run themselves get no button, but a referee still needs to
+  // know the ship has them -- otherwise point defence is invisible everywhere
+  // once a ship is in play.
+  const passiveDefences = useMemo(() => {
+    const entries = Object.values(compressedWeapons(computerShipWeapons)).filter((weapon) =>
+      isPassiveWeapon(createWeapon(weapon.kind, weapon.mount)),
+    );
+    return entries.map((weapon) => {
+      const name = weaponToString(createWeapon(weapon.kind, weapon.mount));
+      return weapon.total > 1 ? `${name} x${weapon.total}` : name;
+    });
+  }, [computerShipWeapons]);
+
   return (
     <>
       <div className="control-launch-div">
@@ -575,6 +600,12 @@ export const FireControl: React.FC<FireControlProps> = () => {
         />
       </div>
       <div className="weapon-list">{weaponButtons}</div>
+      {passiveDefences.length > 0 && (
+        <div className="weapon-passive-list">
+          <span className="weapon-passive-label">Automatic:</span>{" "}
+          {passiveDefences.join(", ")}
+        </div>
+      )}
     </>
   );
 };
