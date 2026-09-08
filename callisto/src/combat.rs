@@ -167,6 +167,15 @@ pub fn attack(
 
   let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
 
+  // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
+  // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
+  // capital ships and struggle to connect with anything nimble.
+  let small_target_mod = if weapon.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
+    -2
+  } else {
+    0
+  };
+
   info!(
         "(Combat.attack) Ship {attacker_name} attacking with {weapon:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
         defender.get_name(),
@@ -178,7 +187,8 @@ pub fn attack(
   }
 
   let roll = i32::from(roll_dice(2, rng));
-  let hit_roll = roll + hit_mod + profile.hit_mod + range_mod + called_mod + lock_mod + defensive_modifier;
+  let hit_roll =
+    roll + hit_mod + profile.hit_mod + range_mod + called_mod + small_target_mod + lock_mod + defensive_modifier;
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(
@@ -1200,124 +1210,67 @@ pub fn build_point_defense_tallies(
     weapon_scores
   );
 
-  // Ascending, because `use_next_point_defense` pops from the *back* -- so the
-  // last element is the one that fires first, and that should be the best
-  // weapon available.
-  //
-  // This used to sort descending, which fired the worst weapon first.  That is
-  // harmless when a salvo is big enough to exhaust the list, since every weapon
-  // rolls either way and the total stopped is the sum of their individual
-  // contributions.  It costs real missiles whenever the salvo is smaller than
-  // the ship's capacity, because then only the front of the list ever rolls.
-  point_defense_list.sort_by_key(|(_, score)| *score);
+  // Deliberately unsorted: every weapon on this list rolls once per round, so
+  // there is no "first" weapon and nothing for an order to decide.
 
   point_defense_list
 }
 
-/// Check if point defense hits an incoming missile.
+/// Pool points needed to stop one incoming object.
 ///
-/// # Return
-/// The effect of the check if successful (so a minimum of 1). O if not successful.
-pub fn use_next_point_defense(point_defense_list: &mut Vec<(usize, u16)>, rng: &mut dyn RngCore) -> u32 {
-  let Some((next, bonus)) = point_defense_list.pop() else {
-    return 0;
-  };
-
-  let roll = roll_dice(2, rng);
-  debug!(
-    "(Ship.use_next_point_defense) Using point defense weapon {next} with roll {roll}, point defense bonus {bonus}."
-  );
-
-  // If the roll + the point defense score (minus 1) plus the gunnery skill is a successful check, then the missile is destroyed.
-  let effect = i32::from(roll) + i32::from(bonus) - STANDARD_ROLL_THRESHOLD;
-  if effect >= 0 {
-    debug!("(Ship.use_next_point_defense) Point defense successful.");
-
-    #[allow(clippy::cast_sign_loss)]
-    let result = effect.max(1) as u32;
-    result
+/// "A torpedo salvo halves the Effect of any successful point defence taken
+/// against it, rounding down" (High Guard p. 39).  We resolve point defence as
+/// one summed pool rather than per-check, because Callisto has no salvoes to
+/// halve against, so halving is expressed as a torpedo costing two points where
+/// a missile costs one -- `floor(pool / 2)` torpedoes stopped, which is the same
+/// arithmetic applied to the total.  The Fleet Battles rule prices it the same
+/// way ("double the amount taken from the pool", p. 113), which is a useful
+/// corroboration that the aggregate reading is the intended one.
+#[must_use]
+pub fn interception_cost(kind: WeaponType) -> u32 {
+  if kind == WeaponType::Torpedo {
+    2
   } else {
-    debug!("(Ship.use_next_point_defense) Point defense failed.");
-    0
+    1
   }
 }
 
-#[cfg(test)]
-mod point_defense_order_tests {
-  use super::*;
-  use crate::action::ShipAction;
-  use crate::entity::Vec3;
-  use crate::ship::ShipDesignTemplate;
-  use cgmath::Zero;
-  use rand::rngs::SmallRng;
-  use rand::SeedableRng;
-  use std::sync::Arc;
-
-  /// A triple turret scores 3 and a single scores 1, so the triple is strictly
-  /// the better point-defence weapon.
-  fn ship_with_two_turrets() -> Ship {
-    let design = Arc::new(ShipDesignTemplate {
-      name: "Defender".to_string(),
-      weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(1),
-        },
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(3),
-        },
-      ],
-      ..Default::default()
-    });
-    Ship::new("Defender".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None)
-  }
-
-  /// The best available weapon must fire first.
-  ///
-  /// `use_next_point_defense` pops from the back, so "first to fire" is the
-  /// last element.  Sorting the other way spends the weak turret on the opening
-  /// missile and leaves the good one unused whenever the salvo is smaller than
-  /// the ship's point-defence capacity.
-  #[test]
-  fn best_point_defense_weapon_fires_first() {
-    let ship = ship_with_two_turrets();
-    let actions = vec![
-      ShipAction::PointDefenseAction { weapon_id: 0 },
-      ShipAction::PointDefenseAction { weapon_id: 1 },
-    ];
-    let tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Defender");
-
-    assert_eq!(tallies.len(), 2, "both turrets should be usable: {tallies:?}");
-    let (first_id, first_bonus) = *tallies.last().expect("non-empty");
-    let (second_id, second_bonus) = tallies[0];
-    assert_eq!(first_id, 1, "the triple turret (weapon 1) should fire first: {tallies:?}");
-    assert_eq!(second_id, 0, "the single turret should be held back: {tallies:?}");
-    assert!(
-      first_bonus > second_bonus,
-      "the weapon that fires first should be the stronger one: {tallies:?}"
-    );
-  }
-
-  /// Draining the list must hand out the weapons strongest-first.
-  #[test]
-  fn draining_the_list_spends_the_strongest_first() {
-    let ship = ship_with_two_turrets();
-    let actions = vec![
-      ShipAction::PointDefenseAction { weapon_id: 0 },
-      ShipAction::PointDefenseAction { weapon_id: 1 },
-    ];
-    let mut tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Defender");
-    let mut rng = SmallRng::seed_from_u64(0x0D5);
-
-    let mut order = Vec::new();
-    while let Some((id, _)) = tallies.last().copied() {
-      order.push(id);
-      use_next_point_defense(&mut tallies, &mut rng);
-    }
-    assert_eq!(order, vec![1, 0], "weapons should be spent strongest-first");
-    assert!(tallies.is_empty());
-  }
+/// Roll every queued point-defence weapon and total the missiles they remove.
+///
+/// Each gunner makes one Gunner (turret) check per round and "the Effect of the
+/// check will remove that many missiles from the salvo" (Core Rulebook p. 171).
+/// So every weapon on the list rolls exactly once, whatever the salvo looks
+/// like, and their Effects add together.
+///
+/// This is a per-round total rather than a per-missile check because nothing in
+/// the rules pairs one gunner with one missile -- two gunners may perfectly well
+/// engage the same one, and a single good check can clear several. Callisto has
+/// no salvoes to allocate against, so the pool *is* the allocation.
+///
+/// # Return
+/// Total missiles this ship's gunners will remove this round.
+#[must_use]
+pub fn roll_point_defense_pool(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> u32 {
+  point_defense_list
+    .iter()
+    .map(|(weapon, bonus)| {
+      let roll = roll_dice(2, rng);
+      let effect = i32::from(roll) + i32::from(*bonus) - STANDARD_ROLL_THRESHOLD;
+      if effect >= 0 {
+        // A successful check always stops at least the missile it was made
+        // against, so a bare success is worth one.
+        #[allow(clippy::cast_sign_loss)]
+        let removed = effect.max(1) as u32;
+        debug!(
+          "(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
+        );
+        removed
+      } else {
+        debug!("(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: failed.");
+        0
+      }
+    })
+    .sum()
 }
 
 #[cfg(test)]
@@ -1443,10 +1396,88 @@ mod battery_tests {
   fn pool_drains_one_missile_at_a_time() {
     let mut ship = ship_with(vec![battery(1)]);
     ship.set_point_defense_pool(2);
-    assert!(ship.take_battery_interception());
-    assert!(ship.take_battery_interception());
-    assert!(!ship.take_battery_interception());
+    assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+    assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+    assert!(!ship.take_interception(interception_cost(WeaponType::Missile)));
     assert_eq!(ship.point_defense_pool, 0);
+  }
+
+  /// A torpedo costs two points where a missile costs one, so the same pool
+  /// stops half as many of them (High Guard p. 113).
+  #[test]
+  fn torpedoes_cost_double() {
+    assert_eq!(interception_cost(WeaponType::Torpedo), 2);
+    assert_eq!(interception_cost(WeaponType::Missile), 1);
+
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(4);
+    for _ in 0..2 {
+      assert!(ship.take_interception(interception_cost(WeaponType::Torpedo)));
+    }
+    assert!(!ship.take_interception(interception_cost(WeaponType::Torpedo)));
+    assert_eq!(ship.point_defense_pool, 0);
+  }
+
+  /// A pool too small for a torpedo stops nothing, and the leftover point stays
+  /// available for a missile rather than being wasted.
+  #[test]
+  fn a_partial_pool_cannot_half_stop_a_torpedo() {
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(1);
+    assert!(!ship.take_interception(interception_cost(WeaponType::Torpedo)));
+    assert_eq!(ship.point_defense_pool, 1, "the failed attempt must not spend anything");
+    assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+  }
+
+  /// A torpedo is DM-2 to hit anything under 2,000 tons (High Guard p. 39).
+  ///
+  /// Driven by rolling the same seeded attack at a small and a large target and
+  /// checking the small one is harder to hit across many trials, rather than by
+  /// asserting an exact roll -- the point is the direction of the modifier.
+  #[test]
+  fn torpedoes_struggle_against_small_ships() {
+    let small = Arc::new(ShipDesignTemplate {
+      name: "Small".to_string(),
+      displacement: 400,
+      hull: 1_000_000,
+      ..Default::default()
+    });
+    let large = Arc::new(ShipDesignTemplate {
+      name: "Large".to_string(),
+      displacement: 5_000,
+      hull: 1_000_000,
+      ..Default::default()
+    });
+    let attacker = ship_with(vec![]);
+    let torpedo = Weapon {
+      kind: WeaponType::Torpedo,
+      mount: WeaponMount::Barbette,
+    };
+
+    let mut hits = [0u32; 2];
+    for (slot, design) in [&small, &large].into_iter().enumerate() {
+      let mut rng = SmallRng::seed_from_u64(0x707D);
+      for _ in 0..400 {
+        let mut defender = Ship::new("D".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+        let effects = attack(0, 0, &attacker, &mut defender, &torpedo, None, &BoostMap::default(), &mut rng);
+        if effects.iter().any(|e| !matches!(e, EffectMsg::Message { .. })) {
+          hits[slot] += 1;
+        }
+      }
+    }
+    assert!(
+      hits[0] < hits[1],
+      "a torpedo should hit the 400-ton ship less often than the 5,000-ton one: {hits:?}"
+    );
+  }
+
+  /// Batteries and gunners feed one pool, as the book totals them.
+  #[test]
+  fn battery_and_gunner_contributions_add() {
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(3);
+    ship.add_point_defense_pool(4);
+    assert_eq!(ship.point_defense_pool, 7);
   }
 
   /// The pool is per-round scratch and must not survive into the next round.

@@ -753,13 +753,15 @@ async fn test_point_defense_battery_intercepts_missiles() {
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
-  let battery_kills = effects
+  let intercepted = effects
     .iter()
-    .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("point defence battery")))
+    .filter(
+      |e| matches!(e, EffectMsg::Message { content } if content.contains("destroyed by defender's point defence")),
+    )
     .count();
 
   assert!(
-    battery_kills > 0,
+    intercepted > 0,
     "the Dragon's battery should have intercepted at least one missile: {effects:#?}"
   );
   // Its pool comfortably exceeds a three-missile salvo, so nothing should get

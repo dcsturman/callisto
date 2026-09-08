@@ -229,11 +229,17 @@ like. So it is modelled as `WeaponType::PointDefense` in a `WeaponMount::Battery
 where the grade is the book's Type and sets the Intercept: **2D / 4D / 6D for Type
 I / II / III**.
 
-Resolution: every ship with a live battery rolls a pool at the start of the round
-(`combat.rs::roll_battery_pool`), and each incoming missile drains one point from it
-before the gunners' queued point defence is touched. Batteries are free and automatic
-while the gunners' list is scarce, so spending the free resource first is the allocation
-that favours the defender — which is the choice the book gives them.
+Resolution is a **single per-round pool** per ship, which is how the book totals it.
+Batteries contribute their Intercept, and every queued gunner contributes the Effect of
+one check — "a gunner may only attempt Point Defence once every round… the Effect of the
+check will remove that many missiles from the salvo" (Core Rulebook p. 171). Each
+incoming object then drains the pool.
+
+That replaced an earlier model which popped **one weapon per incoming missile**, so a
+gunner only ever rolled if enough missiles arrived to use up the previous weapon's
+surplus. That was wrong twice over: it silently capped a ship at one check per missile
+rather than one per gunner, and nothing in the rules stops two gunners engaging the same
+missile. It also made the order of the list matter, which it should not.
 
 Batteries are rolled per mount rather than pooled into one throw, so a critical hit
 disabling one removes exactly its share. Because they sit in `Ship::weapons()` like
@@ -256,6 +262,18 @@ append, so queued actions and per-ship armament overrides keep working.
 which rolls 2D vs 8 and removes *Effect* missiles. On the Dragon that was worth about
 1.7 missiles per round where the book says 14 — a factor of eight, and the reason this
 was worth doing before Ion.
+
+**Torpedoes** are half as easy to stop: "a torpedo salvo halves the Effect of any
+successful point defence taken against it, rounding down" (High Guard p. 39). Since we
+resolve against one summed pool rather than per-check, halving is expressed as a torpedo
+costing two pool points where a missile costs one — `floor(pool / 2)` torpedoes stopped,
+the same arithmetic applied to the total. The Fleet Battles rule prices it identically
+("double the amount taken from the pool", p. 113), which corroborates the aggregate
+reading. A pool too small for a torpedo stops nothing and keeps its leftover point for a
+missile.
+
+The same paragraph gives torpedoes **DM-2 on attack rolls against ships under 2,000
+tons**, since they are built to kill capital ships. That is now applied in `attack()`.
 
 Still not built, and deliberately: **Point Defence Gauss Batteries** (p. 40). Same
 tonnage and same 2D/4D/6D, but tuned against torpedoes with DM penalties by target

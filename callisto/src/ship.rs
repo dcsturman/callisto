@@ -263,8 +263,12 @@ pub struct Ship {
   pub attack_dm: i32,
   #[serde(skip)]
   pub point_defense_list: Vec<(usize, u16)>,
-  /// Missiles this ship's point-defence batteries will absorb this round,
-  /// rolled once at the start of resolution (High Guard p. 40).
+  /// Everything this ship can shoot down this round, in pool points.
+  ///
+  /// Batteries contribute their Intercept (High Guard p. 40) and each queued
+  /// gunner contributes the Effect of one check (Core Rulebook p. 171); the
+  /// book totals them into a single pool, so this does too.  A missile costs
+  /// one point and a torpedo two.
   ///
   /// Per-round scratch like `point_defense_list`, so it is not persisted.
   #[serde(skip)]
@@ -845,16 +849,23 @@ impl Ship {
     self.point_defense_list = list;
   }
 
+  pub fn add_point_defense_pool(&mut self, pool: u32) {
+    self.point_defense_pool += pool;
+  }
+
   pub fn set_point_defense_pool(&mut self, pool: u32) {
     self.point_defense_pool = pool;
   }
 
-  /// Take one missile's worth of battery interception, if any is left.
-  pub fn take_battery_interception(&mut self) -> bool {
-    if self.point_defense_pool == 0 {
+  /// Spend `cost` pool points to stop one incoming object, if enough remain.
+  ///
+  /// A partial pool stops nothing: one point left will not half-destroy a
+  /// torpedo, and that point stays available for a missile.
+  pub fn take_interception(&mut self, cost: u32) -> bool {
+    if self.point_defense_pool < cost {
       return false;
     }
-    self.point_defense_pool -= 1;
+    self.point_defense_pool -= cost;
     true
   }
 

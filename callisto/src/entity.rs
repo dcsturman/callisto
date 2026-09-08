@@ -13,8 +13,8 @@ use tracing::{event, Level};
 
 use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList};
 use crate::combat::{
-  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, roll_battery_pool, roll_dice,
-  use_next_point_defense,
+  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, interception_cost, roll_battery_pool,
+  roll_dice, roll_point_defense_pool,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -645,22 +645,6 @@ impl Entities {
     // Create a snapshot of all the sand capabilities of each ship.
     let mut sand_counts = create_sand_counts(ship_snapshot);
 
-    // From our list of point defense actions, go into each ship and build up a proper list of usable point defense actions.
-    // These then get used and cleared in `Entities::update_all` after all missiles have been updated.
-    for (defender, actions) in point_defense_actions {
-      let Some(ship) = self.ships.get(defender) else {
-        warn!(
-          "(Entities.fire_actions) Cannot find attacker {} for point defense actions.",
-          defender
-        );
-        continue;
-      };
-
-      let mut ship = ship.write().unwrap();
-      let tallies = build_point_defense_tallies(&ship, actions, boost_map, defender);
-      ship.set_point_defense_list(tallies);
-    }
-
     // Point-defence batteries are automatic: they need no action, no gunner and
     // no decision, so every ship that has one gets a pool whether or not its
     // crew queued anything.  That is why this is a separate pass over all ships
@@ -678,6 +662,8 @@ impl Entities {
       };
       let mut ship = ship.write().unwrap();
       let pool = roll_battery_pool(&ship, rng);
+      // A set rather than an add: this pass runs first, covers every ship, and
+      // so is also what clears any value left over from the previous round.
       ship.set_point_defense_pool(pool);
       if pool > 0 {
         debug!("(Entities.fire_actions) {name}'s point defence batteries will intercept {pool} missile(s).");
@@ -685,6 +671,30 @@ impl Entities {
           "{name}'s point defence batteries will intercept up to {pool} missile(s) this round."
         )));
       }
+    }
+
+    // From our list of point defense actions, go into each ship and build up a proper list of usable point defense actions.
+    // These then get used and cleared in `Entities::update_all` after all missiles have been updated.
+    for (defender, actions) in point_defense_actions {
+      let Some(ship) = self.ships.get(defender) else {
+        warn!(
+          "(Entities.fire_actions) Cannot find attacker {} for point defense actions.",
+          defender
+        );
+        continue;
+      };
+
+      let mut ship = ship.write().unwrap();
+      let tallies = build_point_defense_tallies(&ship, actions, boost_map, defender);
+
+      // Every gunner makes one check per round and their Effects add up
+      // (Core Rulebook p. 171), so roll the whole list now rather than one
+      // weapon per incoming missile.  Nothing pairs a gunner with a particular
+      // missile, so there is no reason to hold any of them back.
+      let pool = roll_point_defense_pool(&tallies, rng);
+      debug!("(Entities.fire_actions) {defender}'s gunners contribute {pool} point(s) of point defence this round.");
+      ship.add_point_defense_pool(pool);
+      ship.set_point_defense_list(tallies);
     }
 
     let effects = fire_actions
@@ -783,12 +793,6 @@ impl Entities {
       a_ent.get_name().partial_cmp(b_ent.get_name()).unwrap()
     });
 
-    // This "memory" structure compensates for the fact we don't have salvo's in our game (vs the rules)
-    // Point defense will be invoked if a missile is going to hit.  However, the effect of the point defense
-    // check should destroy that many missiles. So before we expend another weapon, we burn down that effect.
-    // This memory stores that value.
-    let mut point_defense_memory = HashMap::new();
-
     // Now update all (remaining) missiles.
     let mut effects = sorted_missiles
       .into_iter()
@@ -837,45 +841,20 @@ impl Entities {
               );
               let mut target = target.write().unwrap();
 
-              // Batteries first.  They are automatic and free, so draining them
-              // before the gunners' queued point defence leaves the scarce
-              // resource available for whatever the batteries cannot absorb.
-              // The book lets the defender allocate their Intercept as they
-              // like, so taking the allocation that favours them is faithful.
-              let battery_stopped_it = target.take_battery_interception();
-
-              // See if point defense works!
-              let available_point_defense = if battery_stopped_it {
-                // A battery does not roll and banks no surplus -- the pool is
-                // itself the running total.
-                1
-              } else {
-                point_defense_memory
-                  .remove(&target_name)
-                  .unwrap_or_else(|| use_next_point_defense(&mut target.point_defense_list, rng))
-              };
+              // A torpedo costs two points where a missile costs one, so a
+              // ship's point defence stops half as many of them.
+              let cost = interception_cost(launcher.kind);
+              let stopped = target.take_interception(cost);
 
               // This stops the attack
-              if available_point_defense > 0 {
-                // If there is still "juice" on the current point defense check, save it for next time.
-                if available_point_defense > 1 {
-                  debug!("(Entity.update_all) Saving point defense of {} for {target_name} for next time.", available_point_defense -1);
-                  point_defense_memory.insert(target_name.clone(), available_point_defense - 1);
-                } else {
-                  debug!("(Entity.update_all) Point defense effective for {} but used up.", target_name);
-                }
-
+              if stopped {
                 debug!(
                   "(Entity.update_all) Missile {} destroyed by point defense by {}.",
                   missile, target_name
                 );
                 cleanup_missile_list.push(missile.clone());
-                let how = if battery_stopped_it {
-                  "point defence battery"
-                } else {
-                  "point defense"
-                };
-                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("Missile {missile} destroyed by {target_name}'s {how}"))])
+                let what = String::from(&launcher.kind);
+                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("{what} {missile} destroyed by {target_name}'s point defence"))])
               } else {
                 // The attack gets through point defense
                 let effects = attack(
