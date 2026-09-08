@@ -161,10 +161,20 @@ damage = if damage > effective_armor { damage - effective_armor } else { ... };
 //  <-- screens apply exactly here, "after armour has been accounted for"
 ```
 
-**One screen reaction per ship per round**, mirroring the book's once-per-round
-limit, rolled the way point defence now is: one Gunner (screen) check per ship at
-the start of resolution, giving one Effect that every screen on that ship
-multiplies by.
+**One gunner, one check, per screen.** Each screen rolls its own Gunner (screen)
+check with its own skill, giving its own Effect; its reduction is
+`dice x Effect`.
+
+This is not the first thing I proposed. The earlier draft had one check per ship
+whose Effect every screen shared, which is what RAW describes for a *single*
+gunner. But that does not survive contact with the allocation rule below: if
+screens defend *different attacks*, then several gunners are each taking their
+own Angle Screens reaction, and several reactions cannot share one roll. The two
+halves have to agree, so the per-screen check is the consistent one.
+
+It also plays better. Under a shared check, one bad roll makes every screen on
+the ship useless at once; independent checks give partial protection instead of
+an all-or-nothing cliff.
 
 **Allocation is greedy, in resolution order** (decided 2026-09-08). Each screen
 is spent whole on the current attack; when that attack's damage reaches zero the
@@ -201,7 +211,39 @@ attacks against a defender before applying any damage — a real change to
 `attack()`, which today resolves one attack at a time. Not worth it for a case
 this narrow. Recorded here so the limitation is known rather than discovered.
 
-### 4.3 Repulsors — reuse the point-defence pool
+### 4.3 Gunner skill for screens
+
+Screens need a Gunner (screen) skill, and there is nowhere to put one today.
+`Crew::gunnery` is a `Vec<u8>` indexed by position in `Ship::weapons()`
+(`crew.rs:114`), reading out of range as 0 — so a screen would silently roll at
+skill 0 for ever, and no amount of editing the crew would fix it.
+
+Add a parallel array, index-aligned with `screens` exactly as `gunnery` is with
+`weapons`:
+
+```rust
+// Crew, beside `gunnery`
+#[serde(default, skip_serializing_if = "Vec::is_empty")]
+screen_gunnery: Vec<u8>,
+
+pub fn get_screen_gunnery(&self, screen: usize) -> u8 { /* out of range -> 0 */ }
+```
+
+Rejected: **a single `screen_skill: u8` for the whole ship.** It is one less
+field, but it only makes sense alongside a single per-ship check, which §4.2
+rules out. It would also be the one crew skill that is not per-installation,
+which is a wrinkle for no gain.
+
+**The frontend problem is one we have already solved.** Assigning a skill per
+screen is the same shape as assigning gunnery per weapon, which the Add Ship
+hardpoint editor does by grouping identical entries into a counted row with one
+skill field, plus a bulk field that sets them all
+(`fe/callisto/src/lib/hardpoints.ts`). Screens group even more readily — a ship
+has at most two kinds — so the same pattern gives "Meson Screen x2, skill 2" in
+a single row. No new interaction design is needed, just the same components
+pointed at a second list.
+
+### 4.4 Repulsors — reuse the point-defence pool
 
 Repulsors are not screens and should not use this machinery. *"Removes a number
 of missiles from any salvo within range equal to 1D × Effect"*, once per round,
@@ -233,7 +275,7 @@ checks to break free, and a held ship moving at the operator's Thrust 1 — that
 a manoeuvre subsystem touching flight plans, not a combat one. Worth its own
 design if wanted.
 
-### 4.4 Black globe generator — set aside (decided 2026-09-08)
+### 4.5 Black globe generator — set aside (decided 2026-09-08)
 
 It is a mode, not a modifier: while active the ship cannot manoeuvre, dodge,
 jump, shoot or use sensors, and it needs a capacitor model to decide when it
@@ -254,7 +296,7 @@ UI — there is no button, no target, no mount icon.
 | --- | --- |
 | `lib/shipDesignTemplates.ts` | Add `screens?: string[]` to the design type. |
 | Ship summary / design tooltip | List screens as text, e.g. "Meson Screen ×2". |
-| `components/controls/AddShip.tsx` | Only if the referee should be able to fit screens. Not required to render existing designs. |
+| `components/controls/AddShip.tsx` | A screen editor mirroring the hardpoint editor: grouped counted rows with a per-row skill and a bulk skill field. Needed as soon as screens roll checks, since otherwise every screen sits at skill 0. |
 
 The design tooltip is the one place a referee would notice their absence, so that
 is the minimum useful frontend change.
@@ -265,8 +307,9 @@ is the minimum useful frontend change.
 
 1. **Repulsors into the point-defence pool.** Self-contained, no schema, makes an
    existing weapon work. Do this first and separately.
-2. **`ScreenType` + design/ship plumbing + JSON migration** for the three ships,
-   with screens rendering as text. No combat effect yet — so nothing can regress.
+2. **`ScreenType` + design/ship plumbing + `Crew::screen_gunnery` + JSON
+   migration** for the three ships, with screens rendering as text. No combat
+   effect yet — so nothing can regress.
 3. **The Angle Screens reaction** in `attack()`, greedy in resolution order.
 
 Steps 1 and 2 are each small and independently useful. Step 3 is where the real
