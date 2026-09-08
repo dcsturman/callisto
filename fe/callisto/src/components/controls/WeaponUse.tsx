@@ -72,6 +72,7 @@ const WEAPON_COLORS: { [key: string]: string } = {
   Meson: "violet",
   MassDriver: "sienna",
   Repulsor: "cyan",
+  Ion: "deepskyblue",
   // Never rendered today -- batteries have no action button -- but present so
   // a future passive-defences readout does not fall through to undefined.
   PointDefense: "orange",

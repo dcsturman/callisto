@@ -11,5 +11,6 @@
   "Meson": ["SmallBay", "MediumBay", "LargeBay"],
   "MassDriver": ["SmallBay", "MediumBay", "LargeBay"],
   "Repulsor": ["SmallBay", "MediumBay", "LargeBay"],
+  "Ion": ["Barbette", "SmallBay", "MediumBay", "LargeBay"],
   "PointDefense": ["Battery"]
 }
