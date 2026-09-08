@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { describeScreens } from "lib/shipDesignTemplates";
 import {
   MOUNT_OPTIONS,
   WeaponGroup,
@@ -522,5 +523,24 @@ describe("automatic defences get no fire-control button", () => {
       expect(isActionableWeapon(weapon)).toBe(true);
       expect(isPassiveWeapon(weapon)).toBe(false);
     });
+  });
+});
+
+describe("describing a design's screens", () => {
+  it("names screens readably and counts repeats", () => {
+    // These travel the wire as Rust enum variant names.
+    expect(describeScreens(["Meson", "Meson", "NuclearDamper"])).toEqual([
+      "Meson Screen x2",
+      "Nuclear Damper",
+    ]);
+  });
+
+  it("says nothing for a design with no screens", () => {
+    expect(describeScreens(undefined)).toEqual([]);
+    expect(describeScreens([])).toEqual([]);
+  });
+
+  it("passes through a screen type this build does not know", () => {
+    expect(describeScreens(["Antimatter"])).toEqual(["Antimatter"]);
   });
 });

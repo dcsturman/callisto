@@ -38,6 +38,13 @@
       }
     }
   ],
+  "screens": [
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper"
+  ],
   "tl": 15,
   "role": "Cruiser",
   "source": "High Guard"

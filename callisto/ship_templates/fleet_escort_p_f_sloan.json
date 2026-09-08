@@ -217,6 +217,12 @@
       }
     }
   ],
+  "screens": [
+    "Meson",
+    "Meson",
+    "NuclearDamper",
+    "NuclearDamper"
+  ],
   "tl": 15,
   "role": "Escort",
   "source": "High Guard"

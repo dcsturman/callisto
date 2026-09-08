@@ -3,6 +3,28 @@ import {Weapon, CompressedWeapon, weaponToString} from "./weapon";
 // a value import from here would drag this module into it.
 import type {Ship} from "./entities";
 
+/**
+ * Readable names for screen types, which travel the wire as Rust enum variant
+ * names -- so without this a referee sees "NuclearDamper".
+ */
+const SCREEN_LABELS: {[kind: string]: string} = {
+  Meson: "Meson Screen",
+  NuclearDamper: "Nuclear Damper",
+};
+
+/** The name to show a referee for a screen, and its count if more than one. */
+export const describeScreens = (screens: string[] | undefined): string[] => {
+  if (screens == null || screens.length === 0) {
+    return [];
+  }
+  const counts = new Map<string, number>();
+  screens.forEach((screen) => counts.set(screen, (counts.get(screen) ?? 0) + 1));
+  return Array.from(counts.entries()).map(([kind, total]) => {
+    const name = SCREEN_LABELS[kind] ?? kind;
+    return total > 1 ? `${name} x${total}` : name;
+  });
+};
+
 export interface ShipDesignTemplate {
   name: string;
   displacement: number;
@@ -18,6 +40,8 @@ export interface ShipDesignTemplate {
   countermeasures: string | null;
   computer: number;
   weapons: Weapon[];
+  /** Directed defensive systems. Omitted from the wire when the design has none. */
+  screens?: string[];
   tl: number;
   // Both are free-form and optional on the Rust side (`Option<String>`, omitted
   // from the wire when unset).  Used only to organize the design picker.

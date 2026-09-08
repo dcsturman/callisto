@@ -273,6 +273,11 @@ pub struct Ship {
   /// Per-round scratch like `point_defense_list`, so it is not persisted.
   #[serde(skip)]
   pub point_defense_pool: u32,
+  /// Damage each of this ship's screens will absorb this round, index-aligned
+  /// with the design's `screens`.  Rolled once at the start of resolution and
+  /// spent as attacks arrive; per-round scratch, so not persisted.
+  #[serde(skip)]
+  pub screen_pool: Vec<u32>,
   /// Power currently suppressed by ion hits.
   ///
   /// Ion weapons deal no lasting harm -- the Power comes back when the effect
@@ -347,6 +352,10 @@ pub struct ShipDesignTemplate {
   pub countermeasures: Option<CounterMeasures>,
   pub computer: u32,
   pub weapons: Vec<Weapon>,
+  /// Directed defensive systems (High Guard pp. 40-41).  Omitted from the wire
+  /// when empty, so every design written before screens existed is unchanged.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub screens: Vec<ScreenType>,
   pub tl: u8,
   /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
   /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
@@ -489,6 +498,57 @@ pub struct WeaponProfile {
   /// Damage suppresses the target's Power instead of harming its hull
   /// (High Guard p. 30).  Nothing is permanently destroyed.
   pub ion: bool,
+}
+
+/// A directed defensive system that reduces the damage of a specific kind of
+/// attack (High Guard pp. 40-41).
+///
+/// Screens are not weapons: they have no mount, consume no Hardpoint, never
+/// fire, and cannot be aimed.  They live in their own list rather than in
+/// `Ship::weapons()` for exactly that reason.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+pub enum ScreenType {
+  /// Reduces meson weapon damage by 2D x 10.
+  Meson,
+  /// Reduces fusion and nuclear-warhead damage by 2D.
+  NuclearDamper,
+}
+
+impl ScreenType {
+  /// Damage dice this screen rolls, and the factor its roll is multiplied by.
+  ///
+  /// The meson screen's x10 is part of its stated reduction, not a separate
+  /// step: "a successful use of a meson screen reduces the damage of a meson
+  /// weapon by 2D x 10" (High Guard p. 41).
+  #[must_use]
+  pub const fn reduction_dice(self) -> (u8, u32) {
+    match self {
+      ScreenType::Meson => (2, 10),
+      ScreenType::NuclearDamper => (2, 1),
+    }
+  }
+
+  /// Whether this screen defends against a given weapon.
+  ///
+  /// Screens are strictly type-specific: a meson screen does nothing against a
+  /// fusion gun and a nuclear damper does nothing against a meson gun.
+  #[must_use]
+  pub fn defends_against(self, kind: WeaponType) -> bool {
+    match self {
+      ScreenType::Meson => kind == WeaponType::Meson,
+      // The book also covers nuclear warheads, which Callisto does not model.
+      ScreenType::NuclearDamper => kind == WeaponType::Fusion,
+    }
+  }
+}
+
+impl From<ScreenType> for String {
+  fn from(s: ScreenType) -> Self {
+    match s {
+      ScreenType::Meson => "meson screen".to_string(),
+      ScreenType::NuclearDamper => "nuclear damper".to_string(),
+    }
+  }
 }
 
 /// Meson guns ignore armour entirely (the book writes this as "AP ∞").
@@ -671,6 +731,7 @@ impl Ship {
       leadership_rolled: false,
       point_defense_list: vec![],
       point_defense_pool: 0,
+      screen_pool: vec![],
       ion_power_loss: 0,
       ion_rounds: 0,
     }
@@ -917,6 +978,48 @@ impl Ship {
   pub fn clear_point_defense(&mut self) {
     self.point_defense_list.clear();
     self.point_defense_pool = 0;
+    self.screen_pool.clear();
+  }
+
+  pub fn set_screen_pool(&mut self, pool: Vec<u32>) {
+    self.screen_pool = pool;
+  }
+
+  /// Spend screens against `damage` from a weapon of `kind`, returning what is
+  /// left of it.
+  ///
+  /// Screens are spent whole and greedily: each one that defends against this
+  /// weapon is applied in turn until the damage reaches zero, and whatever it
+  /// does not need is lost with it.  The next attack starts from the next
+  /// unspent screen.  The book instead lets a gunner pick their moment and
+  /// concentrate every screen on one attack; we resolve attacks in sequence
+  /// with nobody to ask, so this is the closest approximation available.
+  pub fn apply_screens(&mut self, kind: WeaponType, damage: u32) -> u32 {
+    if damage == 0 || self.screen_pool.is_empty() {
+      return damage;
+    }
+
+    let screens = self.design.screens.clone();
+    let mut remaining = damage;
+    for (index, screen) in screens.iter().enumerate() {
+      if remaining == 0 {
+        break;
+      }
+      if !screen.defends_against(kind) {
+        continue;
+      }
+      let Some(absorbed) = self.screen_pool.get_mut(index) else {
+        continue;
+      };
+      if *absorbed == 0 {
+        continue;
+      }
+      remaining = remaining.saturating_sub(*absorbed);
+      // Spent whole: any excess beyond what this attack needed is wasted, as it
+      // would be in the book where a screen is used against one attack.
+      *absorbed = 0;
+    }
+    remaining
   }
 
   // Engineer action getters and setters
@@ -1763,6 +1866,7 @@ impl Default for ShipDesignTemplate {
           mount: WeaponMount::Turret(2),
         },
       ],
+      screens: vec![],
       tl: 15,
       role: None,
       source: None,
@@ -2019,6 +2123,7 @@ mod tests {
       countermeasures: None,
       computer: 1,
       weapons: vec![],
+      screens: vec![],
       tl: 10,
       role: None,
       source: None,
@@ -2640,6 +2745,7 @@ mod tests {
           mount: WeaponMount::Bay(BaySize::Small),
         },
       ],
+      screens: vec![],
       tl: 12,
       role: None,
       source: None,
@@ -2775,6 +2881,7 @@ mod tests {
       countermeasures: None,
       computer: 10,
       weapons: vec![],
+      screens: vec![],
       tl: 12,
       role: None,
       source: None,
