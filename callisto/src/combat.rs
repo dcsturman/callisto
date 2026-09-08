@@ -1156,8 +1156,9 @@ fn point_defense_score(weapon: &Weapon) -> u16 {
   }
 }
 
-/// For a given ship, and a list of ``PointDefenseAction`` actions, build a list of the weapons to use for point defense.
-/// and sort them by effectiveness.  Each item in the list is a pair of (id of the weapon, bonus to the check)
+/// For a given ship, and a list of ``PointDefenseAction`` actions, build the list of weapons that will make a
+/// point-defence check this round.  Each item is a pair of (id of the weapon, bonus to the check), where the bonus is
+/// the turret's DM (+0/+1/+2 for single/double/triple, Core Rulebook p. 171) plus gunnery and any leadership boost.
 #[must_use]
 pub fn build_point_defense_tallies(
   ship: &Ship, actions: &[ShipAction], boost_map: &BoostMap, ship_name: &str,
@@ -1205,9 +1206,9 @@ pub fn build_point_defense_tallies(
   }
 
   debug!(
-    "(Ship.add_point_defense) Sorted point defense list for {} is {:?}",
+    "(Ship.add_point_defense) Point defense list for {} is {:?}",
     ship.get_name(),
-    weapon_scores
+    point_defense_list
   );
 
   // Deliberately unsorted: every weapon on this list rolls once per round, so
@@ -1276,6 +1277,7 @@ pub fn roll_point_defense_pool(point_defense_list: &[(usize, u16)], rng: &mut dy
 #[cfg(test)]
 mod battery_tests {
   use super::*;
+  use crate::action::ShipAction;
   use crate::entity::Vec3;
   use crate::ship::ShipDesignTemplate;
   use cgmath::Zero;
@@ -1427,6 +1429,45 @@ mod battery_tests {
     assert!(!ship.take_interception(interception_cost(WeaponType::Torpedo)));
     assert_eq!(ship.point_defense_pool, 1, "the failed attempt must not spend anything");
     assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+  }
+
+  /// The turret bonus must match the book: DM+0 single, DM+1 double, DM+2 triple
+  /// (Core Rulebook p. 171), plus the gunner's skill.
+  ///
+  /// `point_defense_score` returns one *more* than the bonus so that 0 can mean
+  /// "unusable for point defence"; `build_point_defense_tallies` takes that 1
+  /// back off.  This pins the round trip, because losing or double-applying that
+  /// conversion shifts every point-defence check by a full point.
+  #[test]
+  fn turret_point_defense_bonus_matches_the_book() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Gunners".to_string(),
+      weapons: vec![
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(1),
+        },
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(2),
+        },
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(3),
+        },
+      ],
+      ..Default::default()
+    });
+    // Gunnery 0 across the board, so the tally is the turret bonus alone.
+    let ship = Ship::new("Gunners".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let actions: Vec<ShipAction> = (0..3).map(|weapon_id| ShipAction::PointDefenseAction { weapon_id }).collect();
+
+    let tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Gunners");
+    let bonus = |id: usize| tallies.iter().find(|(w, _)| *w == id).map(|(_, b)| *b);
+
+    assert_eq!(bonus(0), Some(0), "a single turret is DM+0");
+    assert_eq!(bonus(1), Some(1), "a double turret is DM+1");
+    assert_eq!(bonus(2), Some(2), "a triple turret is DM+2");
   }
 
   /// A torpedo is DM-2 to hit anything under 2,000 tons (High Guard p. 39).
