@@ -78,11 +78,23 @@ is `2D × 10 × Effect`. **Reading adopted: yes, Effect multiplies.** The ×10 i
 part of the screen's stated dice, and meson bays deal 5D–6D against multiples of
 10–100, so a screen without the ×10 would be nearly useless.
 
-**(b) What happens on Effect 0?** A marginal success multiplies the dice by
-zero, reducing damage by nothing. That is literal but makes a successful check
-worthless. **Reading adopted: literal (a bare success reduces nothing).** Noted
-because our point-defence code takes the opposite choice (`max(effect, 1)`), and
-the inconsistency should be a deliberate decision rather than an accident.
+**(b) What happens on Effect 0?** A marginal success multiplies the dice by zero,
+reducing damage by nothing. **Decided (2026-09-08): Effect floors at 1 wherever
+it multiplies, so a bare success reduces `dice x 1`.**
+
+This is a house rule, and a general one rather than a patch for screens. Mongoose
+uses Effect both as a multiplier and as an addend without ever saying what a
+successful check with Effect 0 is worth, which reads as an oversight rather than
+an intent — a check that succeeded should accomplish something. So:
+
+- **Effect multiplies** (screens, repulsors) -> floor at 1.
+- **Effect is added** (attack damage, `roll + effect`) -> no floor; 0 is a real
+  and meaningful outcome there.
+
+The codebase already behaves this way where the case arises: `combat.rs` adds
+Effect raw for damage and floors it at 1 for the point-defence count. The rule is
+now recorded in `callisto/FAQ.md` so it does not have to be re-argued for every
+new mechanic.
 
 **(c) Which attack does a screen defend?** The rules assume a referee choosing in
 the moment. Callisto resolves attacks in sequence with nobody to ask.
@@ -319,18 +331,18 @@ Set aside for now: black globe generators, tractor beams, nuclear warheads.
 
 ---
 
-## 7. Open question
+## 7. Resolved questions
 
-**Should a bare success (Effect 0) reduce nothing?** The rule is an explicit
-multiplication — *"multiplied by the Effect"* — so Effect 0 literally reduces
-damage by zero, and a successful check accomplishes nothing.
+All open questions from the first draft have been settled.
 
-Our point-defence code takes the opposite view for its own checks
-(`effect.max(1)`), on the logic that a successful interception at least stops the
-missile it was aimed at.
+- **Effect 0 on a screen check** — floors at 1, because Effect is a multiplier
+  here. See §2(b); this is now a general project rule in `FAQ.md`, not a
+  screens-specific choice.
+- **Which attack a screen defends** — greedy in resolution order. See §2(c)
+  and §4.2, which works out what the deviation costs.
+- **One check per ship or per screen** — per screen, since the allocation rule
+  implies several gunners taking several reactions. See §4.2 and §4.3.
+- **Nuclear warheads, black globes, tractor beams** — set aside.
 
-**Recommendation: keep the literal reading for screens.** Point defence destroys
-a discrete object, so "at least one" has physical meaning; a screen only scales
-damage down, and scaling by zero is a coherent outcome the rule clearly permits.
-The inconsistency between the two is then deliberate rather than accidental —
-which is the part that matters.
+Nothing is blocking implementation. Suggested order is in §6, starting with
+repulsors, which need no new schema at all.
