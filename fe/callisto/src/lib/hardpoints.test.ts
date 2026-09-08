@@ -22,6 +22,7 @@ import {
   Weapon,
   WeaponMount,
   createWeapon,
+  describeModifiers,
   isActionableWeapon,
   isPassiveWeapon,
   weaponToString,
@@ -34,23 +35,26 @@ const turret = (size: number, kind = "Beam", count = 1): WeaponGroup => ({
   mount: { Turret: size },
   kind,
   gunnery: 0,
+  modifiers: [],
 });
 const bay = (
   size: "Small" | "Medium" | "Large",
   kind = "Missile",
   count = 1,
-): WeaponGroup => ({ count, mount: { Bay: size }, kind, gunnery: 0 });
+): WeaponGroup => ({ count, mount: { Bay: size }, kind, gunnery: 0, modifiers: [] });
 const barbette = (kind = "Particle", count = 1): WeaponGroup => ({
   count,
   mount: "Barbette",
   kind,
   gunnery: 0,
+  modifiers: [],
 });
 const fixed = (kind = "Missile", count = 1): WeaponGroup => ({
   count,
   mount: "FixedMount",
   kind,
   gunnery: 0,
+  modifiers: [],
 });
 
 // Flat weapons, as they arrive from a design or an existing ship.
@@ -292,8 +296,8 @@ describe("groupWeapons", () => {
 describe("expandGroups", () => {
   it("produces weapons and gunnery index-aligned, which is what weapon_id needs", () => {
     const { weapons, gunnery } = expandGroups([
-      { count: 2, mount: { Bay: "Small" }, kind: "Missile", gunnery: 3 },
-      { count: 3, mount: { Turret: 3 }, kind: "Beam", gunnery: 1 },
+      { count: 2, mount: { Bay: "Small" }, kind: "Missile", gunnery: 3, modifiers: [] },
+      { count: 3, mount: { Turret: 3 }, kind: "Beam", gunnery: 1, modifiers: [] },
     ]);
     expect(weapons).toHaveLength(5);
     expect(gunnery).toEqual([3, 3, 1, 1, 1]);
@@ -542,5 +546,63 @@ describe("describing a design's screens", () => {
 
   it("passes through a screen type this build does not know", () => {
     expect(describeScreens(["Antimatter"])).toEqual(["Antimatter"]);
+  });
+});
+
+describe("weapon modifiers", () => {
+  const modified = (kind: string, mods: string[]): Weapon => ({
+    kind,
+    mount: { Turret: 3 },
+    modifiers: mods,
+  });
+
+  // The hazard: a referee opening a modified design in the editor and saving it
+  // must not silently strip the modifiers off its weapons.
+  it("survives a group/expand round trip", () => {
+    const original: Weapon[] = [
+      modified("Pulse", ["LongRange", "HighYield"]),
+      modified("Pulse", ["LongRange", "HighYield"]),
+      createWeapon("Sand", { Turret: 3 }),
+    ];
+    const { weapons } = expandGroups(groupWeapons(original));
+    expect(weapons).toEqual(original);
+  });
+
+  // The MK Mora's case: same kind, same mount, different modifiers. Merging
+  // them would give the plain weapon modifications it never had.
+  it("does not merge weapons that differ only by modifier", () => {
+    const groups = groupWeapons([
+      modified("Pulse", ["HighYield"]),
+      createWeapon("Pulse", { Turret: 3 }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].modifiers).toEqual(["HighYield"]);
+    expect(groups[1].modifiers).toEqual([]);
+  });
+
+  it("still merges weapons that match in every respect", () => {
+    const groups = groupWeapons([
+      modified("Pulse", ["HighYield"]),
+      modified("Pulse", ["HighYield"]),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].count).toBe(2);
+  });
+
+  it("names modifiers readably, collapsing repeats as the book writes them", () => {
+    expect(describeModifiers(["EnergyEfficient", "EnergyEfficient", "EnergyEfficient"])).toBe(
+      "energy efficient x3",
+    );
+    expect(describeModifiers(["LongRange", "HighYield"])).toBe("long range, high yield");
+    expect(describeModifiers([])).toBe("");
+    expect(describeModifiers(undefined)).toBe("");
+  });
+
+  it("shows modifiers when naming a weapon", () => {
+    expect(weaponToString(modified("Pulse", ["LongRange", "HighYield"]))).toBe(
+      "Triple Pulse Turret (long range, high yield)",
+    );
+    // An unmodified weapon reads exactly as before.
+    expect(weaponToString(createWeapon("Pulse", { Turret: 3 }))).toBe("Triple Pulse Turret");
   });
 });

@@ -11,7 +11,9 @@ use crate::action::{
 use crate::entity::Entity;
 use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
-use crate::ship::{MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponType};
+use crate::ship::{
+  MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile, WeaponType,
+};
 use crate::{debug, error, info, warn};
 use tracing::event;
 use tracing::Level;
@@ -25,12 +27,22 @@ pub fn roll(rng: &mut dyn RngCore) -> u8 {
 }
 
 pub fn roll_dice(dice: u8, rng: &mut dyn RngCore) -> u8 {
+  roll_dice_min(dice, 1, rng)
+}
+
+/// Roll `dice` d6, counting any die below `min_die` as `min_die`.
+///
+/// This exists for High Yield, which counts every '1' as a '2' (and Very High
+/// Yield, every '1' and '2' as a '3').  That has to be decided per die rather
+/// than on the total, which is why the sum cannot simply be adjusted afterwards.
+#[must_use]
+pub fn roll_dice_min(dice: u8, min_die: u8, rng: &mut dyn RngCore) -> u8 {
   if u32::from(dice) * DIE_SIZE > u32::from(u8::MAX) {
     error!("(Combat.roll_dice) Too many dice to roll.");
     return 0;
   }
 
-  (0..dice).map(|_| roll(rng)).sum()
+  (0..dice).map(|_| roll(rng).max(min_die)).sum()
 }
 
 #[must_use]
@@ -76,7 +88,8 @@ pub fn attack(
   // Damage, range, hit modifier and armour penetration all depend on how the
   // weapon is mounted, so everything below reads from the profile rather than
   // from the weapon type alone.
-  let Some(profile) = profile_for(weapon.kind, &weapon.mount) else {
+  let Some(profile) = profile_for(weapon.kind, &weapon.mount).map(|p| p.with_modifiers(weapon.kind, &weapon.modifiers))
+  else {
     error!(
       "(Combat.attack) {} cannot be mounted as a {}, so {attacker_name} cannot fire it.",
       String::from(&weapon.kind),
@@ -212,7 +225,11 @@ pub fn attack(
 
   // Damage is compute as the weapon dice for the given weapon
   // + the effect of the hit roll
-  let roll = u32::from(roll_dice(profile.damage_dice, rng));
+  let roll = u32::from(roll_dice_min(
+    profile.damage_dice,
+    WeaponProfile::min_die(weapon.kind, &weapon.modifiers),
+    rng,
+  ));
   let mut damage = roll + effect;
 
   damage = if i64::from(damage) + i64::from(damage_mod) < 0 {
@@ -908,7 +925,9 @@ pub fn do_fire_actions<S: BuildHasher>(
       #[allow(clippy::cast_sign_loss)]
       #[allow(clippy::cast_possible_truncation)]
       let range_band = find_range_band((target.get_position() - attacker.get_position()).magnitude() as u32);
-      let Some(profile) = profile_for(weapon.kind, &weapon.mount) else {
+      let Some(profile) =
+        profile_for(weapon.kind, &weapon.mount).map(|p| p.with_modifiers(weapon.kind, &weapon.modifiers))
+      else {
         error!(
           "(Combat.do_fire_actions) {} cannot mount {} as a {}.",
           attacker.get_name(),
@@ -1405,7 +1424,7 @@ mod battery_tests {
   use crate::entity::Vec3;
   use crate::rules_tables::weapon_profile;
   use crate::ship::ShipDesignTemplate;
-  use crate::ship::{MountClass, ScreenType};
+  use crate::ship::{MountClass, ScreenType, WeaponModifier};
   use cgmath::Zero;
   use rand::rngs::SmallRng;
   use rand::SeedableRng;
@@ -1415,6 +1434,7 @@ mod battery_tests {
     Weapon {
       kind: WeaponType::PointDefense,
       mount: WeaponMount::Battery(grade),
+      modifiers: vec![],
     }
   }
 
@@ -1447,14 +1467,16 @@ mod battery_tests {
     assert_eq!(
       battery_intercept_dice(&Weapon {
         kind: WeaponType::Beam,
-        mount: WeaponMount::Battery(2)
+        mount: WeaponMount::Battery(2),
+        modifiers: vec![]
       }),
       None
     );
     assert_eq!(
       battery_intercept_dice(&Weapon {
         kind: WeaponType::PointDefense,
-        mount: WeaponMount::Turret(3)
+        mount: WeaponMount::Turret(3),
+        modifiers: vec![]
       }),
       None
     );
@@ -1474,6 +1496,7 @@ mod battery_tests {
     let ship = ship_with(vec![Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Turret(3),
+      modifiers: vec![],
     }]);
     let mut rng = SmallRng::seed_from_u64(0xD1CE);
     assert_eq!(roll_battery_pool(&ship, &mut rng), 0);
@@ -1572,14 +1595,17 @@ mod battery_tests {
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(1),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(3),
+          modifiers: vec![],
         },
       ],
       ..Default::default()
@@ -1619,6 +1645,7 @@ mod battery_tests {
     let torpedo = Weapon {
       kind: WeaponType::Torpedo,
       mount: WeaponMount::Barbette,
+      modifiers: vec![],
     };
 
     let mut hits = [0u32; 2];
@@ -1653,6 +1680,7 @@ mod battery_tests {
     let ion = Weapon {
       kind: WeaponType::Ion,
       mount: WeaponMount::Barbette,
+      modifiers: vec![],
     };
     let mut rng = SmallRng::seed_from_u64(0x10);
 
@@ -1856,6 +1884,110 @@ mod battery_tests {
     assert_eq!(ship.apply_screens(WeaponType::Meson, 40), 40);
   }
 
+  fn profile_with(kind: WeaponType, mount: MountClass, mods: &[WeaponModifier]) -> WeaponProfile {
+    weapon_profile(kind, mount).unwrap().with_modifiers(kind, mods)
+  }
+
+  /// Accurate is DM+1 to attack rolls, Inaccurate DM-1 (High Guard p. 71).
+  #[test]
+  fn accuracy_modifiers_shift_the_hit_roll() {
+    let plain = profile_with(WeaponType::Beam, MountClass::Turret, &[]);
+    let accurate = profile_with(WeaponType::Beam, MountClass::Turret, &[WeaponModifier::Accurate]);
+    let inaccurate = profile_with(WeaponType::Beam, MountClass::Turret, &[WeaponModifier::Inaccurate]);
+    assert_eq!(accurate.hit_mod, plain.hit_mod + 1);
+    assert_eq!(inaccurate.hit_mod, plain.hit_mod - 1);
+  }
+
+  /// "Intense Focus can only be applied to lasers and particle weapons."
+  #[test]
+  fn intense_focus_is_ap_and_only_for_lasers_and_particle() {
+    let focus = [WeaponModifier::IntenseFocus];
+    let beam = profile_with(WeaponType::Beam, MountClass::Turret, &focus);
+    assert_eq!(beam.ap, 2, "a laser gains AP+2");
+    let particle = profile_with(WeaponType::Particle, MountClass::Turret, &focus);
+    assert_eq!(particle.ap, 2);
+
+    // A railgun already has AP 4 and is not eligible, so it stays put.
+    let railgun = profile_with(WeaponType::Railgun, MountClass::Turret, &focus);
+    assert_eq!(railgun.ap, 4, "intense focus does not apply to a railgun");
+  }
+
+  /// "The range for the weapon is increased by one band, to a maximum of Very
+  /// Long."
+  #[test]
+  fn long_range_raises_the_band_and_stops_at_very_long() {
+    let long = [WeaponModifier::LongRange];
+    // A railgun turret is Short, so it becomes Medium.
+    assert_eq!(
+      profile_with(WeaponType::Railgun, MountClass::Turret, &long).max_range,
+      Some(Range::Medium)
+    );
+    // A particle beam is already Very Long and must not reach Distant.
+    assert_eq!(
+      profile_with(WeaponType::Particle, MountClass::Turret, &long).max_range,
+      Some(Range::VeryLong)
+    );
+    // A launcher has no band to raise.
+    assert_eq!(profile_with(WeaponType::Missile, MountClass::Turret, &long).max_range, None);
+  }
+
+  /// High Yield counts 1s as 2s; Very High Yield counts 1s and 2s as 3s.
+  /// Neither applies to missiles or torpedoes.
+  #[test]
+  fn yield_modifiers_set_the_die_floor() {
+    assert_eq!(WeaponProfile::min_die(WeaponType::Beam, &[]), 1);
+    assert_eq!(WeaponProfile::min_die(WeaponType::Beam, &[WeaponModifier::HighYield]), 2);
+    assert_eq!(WeaponProfile::min_die(WeaponType::Beam, &[WeaponModifier::VeryHighYield]), 3);
+    // The stronger wins when both are somehow present.
+    assert_eq!(
+      WeaponProfile::min_die(WeaponType::Beam, &[WeaponModifier::HighYield, WeaponModifier::VeryHighYield]),
+      3
+    );
+    // "Not applicable for missiles and torpedoes."
+    assert_eq!(WeaponProfile::min_die(WeaponType::Missile, &[WeaponModifier::HighYield]), 1);
+    assert_eq!(WeaponProfile::min_die(WeaponType::Torpedo, &[WeaponModifier::VeryHighYield]), 1);
+  }
+
+  /// The floor has to be applied per die, not to the total.
+  #[test]
+  fn the_die_floor_applies_to_each_die() {
+    let mut rng = SmallRng::seed_from_u64(0x41CE);
+    for _ in 0..200 {
+      let plain = roll_dice_min(6, 1, &mut rng);
+      assert!((6..=36).contains(&plain), "6D out of range: {plain}");
+      // With every 1 counted as 2, six dice cannot total less than 12.
+      let high = roll_dice_min(6, 2, &mut rng);
+      assert!((12..=36).contains(&high), "6D high yield out of range: {high}");
+      // And with 1s and 2s as 3s, not less than 18.
+      let very = roll_dice_min(6, 3, &mut rng);
+      assert!((18..=36).contains(&very), "6D very high yield out of range: {very}");
+    }
+  }
+
+  /// Modifiers ride on the weapon, so two weapons of the same kind and mount can
+  /// differ -- which is exactly the mixed turret the MK Mora carries.
+  #[test]
+  fn modifiers_belong_to_the_weapon_not_the_mount() {
+    let plain = Weapon {
+      kind: WeaponType::Pulse,
+      mount: WeaponMount::Turret(3),
+      modifiers: vec![],
+    };
+    let modified = Weapon {
+      kind: WeaponType::Pulse,
+      mount: WeaponMount::Turret(3),
+      modifiers: vec![WeaponModifier::LongRange, WeaponModifier::HighYield],
+    };
+    assert_ne!(plain, modified);
+
+    let plain_profile = profile_for(plain.kind, &plain.mount).unwrap();
+    let modified_profile = profile_for(modified.kind, &modified.mount)
+      .unwrap()
+      .with_modifiers(modified.kind, &modified.modifiers);
+    assert_eq!(plain_profile.max_range, Some(Range::Long));
+    assert_eq!(modified_profile.max_range, Some(Range::VeryLong));
+  }
+
   /// Batteries and gunners feed one pool, as the book totals them.
   #[test]
   fn battery_and_gunner_contributions_add() {
@@ -1901,26 +2033,32 @@ mod tests {
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(1),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Barbette,
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Small),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Medium),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Large),
+          modifiers: vec![],
         },
       ],
       ..ShipDesignTemplate::default()
@@ -2042,26 +2180,32 @@ mod tests {
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(1),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Barbette,
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Small),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Medium),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Large),
+          modifiers: vec![],
         },
       ],
       ..ShipDesignTemplate::default()
@@ -2237,26 +2381,32 @@ mod tests {
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(1),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Pulse,
           mount: WeaponMount::Barbette,
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Small),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Medium),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Missile,
           mount: WeaponMount::Bay(BaySize::Large),
+          modifiers: vec![],
         },
       ],
       hull: 100,
@@ -2314,6 +2464,7 @@ mod tests {
       let weapon = Weapon {
         kind: weapon_type,
         mount: weapon_mount.clone(),
+        modifiers: vec![],
       };
 
       let starting_hull = defender.get_current_hull_points();
@@ -2391,6 +2542,7 @@ mod tests {
       &Weapon {
         kind: WeaponType::Beam,
         mount: WeaponMount::Turret(1),
+        modifiers: vec![],
       },
       None,
       &BoostMap::default(),
@@ -2411,6 +2563,7 @@ mod tests {
       &Weapon {
         kind: WeaponType::Beam,
         mount: WeaponMount::Turret(1),
+        modifiers: vec![],
       },
       None,
       &BoostMap::default(),
@@ -2447,6 +2600,7 @@ mod tests {
           &Weapon {
             kind: WeaponType::Particle,
             mount: WeaponMount::Bay(size),
+            modifiers: vec![],
           },
           None,
           &BoostMap::default(),
@@ -2494,6 +2648,7 @@ mod tests {
     let in_range_weapon = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Turret(1),
+      modifiers: vec![],
     };
     defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
     let result = attack(
@@ -2512,6 +2667,7 @@ mod tests {
     let out_of_range_weapon = Weapon {
       kind: WeaponType::Pulse,
       mount: WeaponMount::Turret(1),
+      modifiers: vec![],
     };
     defender.set_position(Vec3::new(30_000_000.0, 0.0, 0.0)); // Assuming this is out of range
     let result = attack(
@@ -2530,6 +2686,7 @@ mod tests {
     let missile_weapon = Weapon {
       kind: WeaponType::Missile,
       mount: WeaponMount::Turret(1),
+      modifiers: vec![],
     };
     let result = attack(
       0,
@@ -2572,6 +2729,7 @@ mod tests {
     let weapon = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Turret(1),
+      modifiers: vec![],
     };
 
     #[allow(clippy::cast_sign_loss)]
@@ -2657,6 +2815,7 @@ mod tests {
     let weapon = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Turret(1),
+      modifiers: vec![],
     };
 
     // First attack: evade boost consumed, flag flips to true.
@@ -2727,6 +2886,7 @@ mod tests {
     let weapon = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Turret(1),
+      modifiers: vec![],
     };
 
     // Run a number of trials with the same seed schedule. With the same
@@ -2820,6 +2980,7 @@ mod tests {
       &Weapon {
         kind: WeaponType::Beam,
         mount: WeaponMount::Turret(1),
+        modifiers: vec![],
       },
       None,
       &boost_map,
@@ -2863,6 +3024,7 @@ mod tests {
       weapons: vec![Weapon {
         kind: WeaponType::Beam,
         mount: WeaponMount::Turret(1),
+        modifiers: vec![],
       }],
       ..ShipDesignTemplate::default()
     });
@@ -2997,10 +3159,12 @@ mod tests {
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(1),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(1),
+          modifiers: vec![],
         },
       ],
       ..ShipDesignTemplate::default()

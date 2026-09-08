@@ -15,25 +15,41 @@
       "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "LongRange",
+        "HighYield"
+      ]
     },
     {
       "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "LongRange",
+        "HighYield"
+      ]
     },
     {
       "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "LongRange",
+        "HighYield"
+      ]
     },
     {
       "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "LongRange",
+        "HighYield"
+      ]
     },
     {
       "kind": "Sand",
@@ -69,7 +85,11 @@
       "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "Accurate",
+        "HighYield"
+      ]
     }
   ],
   "tl": 15,

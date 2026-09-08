@@ -365,10 +365,69 @@ pub struct ShipDesignTemplate {
   pub source: Option<String>,
 }
 
+/// A High Guard weapon Advantage or Disadvantage (pp. 70-71).
+///
+/// These attach to the **weapon**, not the mount: the book fits a triple turret
+/// with "long range, high yield pulse lasers x2, sandcaster", where only the
+/// lasers are modified.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+pub enum WeaponModifier {
+  /// DM+1 to all attack rolls.
+  Accurate,
+  /// DM-1 to all attack rolls.
+  Inaccurate,
+  /// Rolling damage, every `1` counts as `2`.  Not applicable to missiles or
+  /// torpedoes.
+  HighYield,
+  /// Rolling damage, every `1` and `2` counts as `3`.  Not applicable to
+  /// missiles or torpedoes.
+  VeryHighYield,
+  /// AP+2.  Lasers and particle weapons only.
+  IntenseFocus,
+  /// Range increased by one band, to a maximum of Very Long.
+  LongRange,
+  /// Critical hits on this weapon are one Severity lower.
+  Resilient,
+  /// Consumes 25% less Power.  Recorded but inert: Callisto does not model a
+  /// weapon's power draw in play.
+  EnergyEfficient,
+  /// Consumes 30% more Power.  Recorded but inert, as above.
+  EnergyInefficient,
+  /// 10% less tonnage.  Recorded but inert: tonnage is not validated.
+  SizeReduction,
+  /// 25% more tonnage.  Recorded but inert, as above.
+  IncreasedSize,
+  /// DM+1 to repair attempts.  Recorded but inert.
+  EasyToRepair,
+}
+
+impl From<WeaponModifier> for String {
+  fn from(m: WeaponModifier) -> Self {
+    match m {
+      WeaponModifier::Accurate => "accurate".to_string(),
+      WeaponModifier::Inaccurate => "inaccurate".to_string(),
+      WeaponModifier::HighYield => "high yield".to_string(),
+      WeaponModifier::VeryHighYield => "very high yield".to_string(),
+      WeaponModifier::IntenseFocus => "intense focus".to_string(),
+      WeaponModifier::LongRange => "long range".to_string(),
+      WeaponModifier::Resilient => "resilient".to_string(),
+      WeaponModifier::EnergyEfficient => "energy efficient".to_string(),
+      WeaponModifier::EnergyInefficient => "energy inefficient".to_string(),
+      WeaponModifier::SizeReduction => "size reduction".to_string(),
+      WeaponModifier::IncreasedSize => "increased size".to_string(),
+      WeaponModifier::EasyToRepair => "easy to repair".to_string(),
+    }
+  }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Weapon {
   pub kind: WeaponType,
   pub mount: WeaponMount,
+  /// Advantages and Disadvantages fitted to this weapon.  Omitted from the wire
+  /// when empty, so every design written before modifiers existed is unchanged.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub modifiers: Vec<WeaponModifier>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -628,6 +687,55 @@ impl WeaponProfile {
     self
   }
 
+  /// Apply a weapon's Advantages and Disadvantages to its profile.
+  ///
+  /// Only the ones that change how a weapon *fires* are handled here; the rest
+  /// are recorded on the weapon but inert (power draw and tonnage are not
+  /// modelled).  Modifiers the rules forbid for this weapon are ignored rather
+  /// than rejected, so a hand-edited design still loads.
+  #[must_use]
+  pub fn with_modifiers(mut self, kind: WeaponType, modifiers: &[WeaponModifier]) -> Self {
+    for modifier in modifiers {
+      match modifier {
+        WeaponModifier::Accurate => self.hit_mod += 1,
+        WeaponModifier::Inaccurate => self.hit_mod -= 1,
+        // "Intense Focus can only be applied to lasers and particle weapons."
+        WeaponModifier::IntenseFocus if kind.is_laser() || kind == WeaponType::Particle => {
+          self.ap = self.ap.saturating_add(2);
+        }
+        // "The range for the weapon is increased by one band, to a maximum of
+        // Very Long."  A launcher has no range band to raise.
+        WeaponModifier::LongRange => {
+          self.max_range = self.max_range.map(Range::one_band_further);
+        }
+        // Yield changes the dice themselves; see `min_die`.
+        _ => {}
+      }
+    }
+    self
+  }
+
+  /// The lowest value any damage die may show, after High Yield.
+  ///
+  /// "When rolling damage for a High Yield weapon ... any '1's rolled are
+  /// counted as '2's", and Very High Yield counts '1's and '2's as '3's
+  /// (High Guard p. 71).  Neither applies to missiles or torpedoes.
+  #[must_use]
+  pub fn min_die(kind: WeaponType, modifiers: &[WeaponModifier]) -> u8 {
+    if matches!(kind, WeaponType::Missile | WeaponType::Torpedo) {
+      return 1;
+    }
+    modifiers
+      .iter()
+      .map(|modifier| match modifier {
+        WeaponModifier::VeryHighYield => 3,
+        WeaponModifier::HighYield => 2,
+        _ => 1,
+      })
+      .max()
+      .unwrap_or(1)
+  }
+
   /// Whether this weapon may be fired at `range`.
   #[must_use]
   pub fn reaches(&self, range: Range) -> bool {
@@ -652,6 +760,21 @@ pub enum Range {
   Long,
   VeryLong,
   Distant,
+}
+
+impl Range {
+  /// The next range band out, saturating at Very Long.
+  ///
+  /// Distant is deliberately not reachable: "the range for the weapon is
+  /// increased by one band, to a maximum of Very Long" (High Guard p. 71).
+  #[must_use]
+  pub const fn one_band_further(self) -> Self {
+    match self {
+      Range::Short => Range::Medium,
+      Range::Medium => Range::Long,
+      Range::Long | Range::VeryLong | Range::Distant => Range::VeryLong,
+    }
+  }
 }
 
 impl Display for Range {
@@ -1852,18 +1975,22 @@ impl Default for ShipDesignTemplate {
         Weapon {
           kind: WeaponType::Pulse,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Pulse,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Sand,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Sand,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
       ],
       screens: vec![],
@@ -2602,42 +2729,51 @@ mod tests {
     let large_bay_beam = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Bay(BaySize::Large),
+      modifiers: vec![],
     };
     let large_bay_pulse = Weapon {
       kind: WeaponType::Pulse,
       mount: WeaponMount::Bay(BaySize::Large),
+      modifiers: vec![],
     };
     let medium_bay = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Bay(BaySize::Medium),
+      modifiers: vec![],
     };
 
     let medium_bay_missile = Weapon {
       kind: WeaponType::Missile,
       mount: WeaponMount::Bay(BaySize::Medium),
+      modifiers: vec![],
     };
 
     let small_bay = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Bay(BaySize::Small),
+      modifiers: vec![],
     };
 
     let small_bay_pulse = Weapon {
       kind: WeaponType::Pulse,
       mount: WeaponMount::Bay(BaySize::Small),
+      modifiers: vec![],
     };
 
     let barbette = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Barbette,
+      modifiers: vec![],
     };
     let turret = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::Turret(2),
+      modifiers: vec![],
     };
     let turret_pulse = Weapon {
       kind: WeaponType::Pulse,
       mount: WeaponMount::Turret(2),
+      modifiers: vec![],
     };
 
     // Test ordering between same mount types
@@ -2671,10 +2807,12 @@ mod tests {
     let fixed = Weapon {
       kind: WeaponType::Beam,
       mount: WeaponMount::FixedMount,
+      modifiers: vec![],
     };
     let fixed_pulse = Weapon {
       kind: WeaponType::Pulse,
       mount: WeaponMount::FixedMount,
+      modifiers: vec![],
     };
     assert!(fixed > turret);
     assert!(turret < fixed);
@@ -2688,6 +2826,7 @@ mod tests {
     let fixed = Weapon {
       kind: WeaponType::Missile,
       mount: WeaponMount::FixedMount,
+      modifiers: vec![],
     };
     assert_eq!(String::from(&fixed), "missile fixed mount");
 
@@ -2739,10 +2878,12 @@ mod tests {
         Weapon {
           kind: WeaponType::Beam,
           mount: WeaponMount::Turret(2),
+          modifiers: vec![],
         },
         Weapon {
           kind: WeaponType::Pulse,
           mount: WeaponMount::Bay(BaySize::Small),
+          modifiers: vec![],
         },
       ],
       screens: vec![],

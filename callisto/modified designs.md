@@ -84,17 +84,61 @@ The Point Defence Laser Battery substitutions are deliberately left alone; see T
 
 ---
 
-## TODO 2 — Weapon modifiers are silently dropped
+## ~~TODO 2 — Weapon modifiers are silently dropped~~ DONE (2026-09-08)
 
-High Guard weapon modifications have nowhere to live in the schema. Dropped from:
+**Shipped.** `Weapon` gained `modifiers: Vec<WeaponModifier>`, omitted from the wire when
+empty so every design written before them is unchanged.
 
-| Design | Dropped modifiers |
+Modifiers ride on the **weapon**, not the mount — the book fits a triple turret with
+"long range, high yield pulse lasers x2, sandcaster", where only the lasers are modified.
+
+Implemented, because they change how a weapon fires:
+
+| Modifier | Effect |
 |---|---|
-| Military Gig - Close Escort Variant (p138) | intense focus, high yield |
-| System Defence Boat - Dragon (p193) | size reduction x3 (on the Small Missile Bay) |
-| Destroyer Escort - Fer-de-Lance (p211) | accurate, high yield |
-| Merchant Cruiser - Leviathan (p217) | energy efficient x3 |
-| Cargo Carrier - MK Mora (p223) | long range, high yield, accurate |
+| Accurate / Inaccurate | DM+1 / DM-1 to attack rolls |
+| High Yield | every damage die of `1` counts as `2` |
+| Very High Yield | every `1` and `2` counts as `3` |
+| Intense Focus | AP+2, lasers and particle weapons only |
+| Long Range | range up one band, capped at Very Long |
+
+Two of these only became meaningful because of earlier work in this file: **Intense Focus**
+is AP+2, and AP did nothing at all until TODO 1; **Long Range** shifts a range band, and
+range only became a real per-mount property then too.
+
+High Yield needed a per-die roll (`roll_dice_min`), since "any '1's rolled are counted as
+'2's" cannot be applied to a total. It correctly does nothing on missiles and torpedoes,
+which the book excludes.
+
+Recorded but **inert**, because Callisto models neither a weapon's power draw nor its
+tonnage: Energy Efficient, Energy Inefficient, Size Reduction, Increased Size, Easy to
+Repair. They are stored so designs stay faithful.
+
+**Not implemented: Resilient** (critical hits on the weapon are one Severity lower). The
+weapon a critical lands on is chosen *inside* `apply_crit`, so a per-weapon severity
+reduction is awkward there — and no design in the library carries it.
+
+Designs migrated:
+
+| Design | Weapons modified |
+|---|---|
+| Military Gig - Close Escort (p138) | fixed-mount pulse laser: intense focus, high yield |
+| Destroyer Escort - Fer-de-Lance (p211) | 4 missile barbettes: accurate; 6 beam triple turrets: accurate, high yield |
+| Cargo Carrier - MK Mora (p223) | 4 pulse triple turrets: long range, high yield; 1 beam triple turret: accurate, high yield |
+| System Defence Boat - Dragon (p193) | small missile bay: size reduction x3 *(inert)* |
+| Merchant Cruiser - Leviathan (p217) | 6 beam double turrets: energy efficient x3 *(inert)* |
+
+The MK Mora is the only one whose modifiers came from **mixed** turrets. Because the
+conversion had already split those into uniform turrets (see "Mixed-turret refactoring"),
+the modifiers land cleanly on the laser turrets and not on the sandcasters or missile racks
+that shared the original mount. If mixed turrets are ever implemented, that gets harder:
+modifiers would then need to apply per weapon *within* a turret.
+
+On the frontend, modifiers join the editor's grouping key alongside gunnery. Without that a
+modified and an unmodified pulse turret would collapse into one row, and saving the ship
+would spread the modifications to weapons that never had them.
+
+---
 
 ## ~~TODO 3 — `add ship` needs weapon customization~~ DONE (2026-09-06)
 
