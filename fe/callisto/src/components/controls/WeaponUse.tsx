@@ -9,7 +9,7 @@ import {
   findNthWeapon,
   shipWeapons,
 } from "lib/shipDesignTemplates";
-import { Weapon, WeaponMount } from "lib/weapon";
+import { Weapon, WeaponMount, isActionableWeapon } from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
   FireState,
@@ -72,6 +72,9 @@ const WEAPON_COLORS: { [key: string]: string } = {
   Meson: "violet",
   MassDriver: "sienna",
   Repulsor: "cyan",
+  // Never rendered today -- batteries have no action button -- but present so
+  // a future passive-defences readout does not fall through to undefined.
+  PointDefense: "orange",
 };
 
 const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
@@ -536,7 +539,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
       computerShipName &&
       Object.entries(compressedWeapons(computerShipWeapons)).map(
         ([weapon_name, weapon]) =>
-          !weapon_name.includes("Sand") && (
+          isActionableWeapon(weapon) && (
             <WeaponButton
               key={"weapon-" + computerShipName + "-" + weapon_name}
               weapon={weapon.kind}

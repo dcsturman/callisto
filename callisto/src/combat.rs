@@ -167,6 +167,15 @@ pub fn attack(
 
   let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
 
+  // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
+  // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
+  // capital ships and struggle to connect with anything nimble.
+  let small_target_mod = if weapon.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
+    -2
+  } else {
+    0
+  };
+
   info!(
         "(Combat.attack) Ship {attacker_name} attacking with {weapon:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
         defender.get_name(),
@@ -178,7 +187,8 @@ pub fn attack(
   }
 
   let roll = i32::from(roll_dice(2, rng));
-  let hit_roll = roll + hit_mod + profile.hit_mod + range_mod + called_mod + lock_mod + defensive_modifier;
+  let hit_roll =
+    roll + hit_mod + profile.hit_mod + range_mod + called_mod + small_target_mod + lock_mod + defensive_modifier;
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(
@@ -1068,6 +1078,10 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
                   error!("Bay sand mount not supported.");
                   None
                 }
+                WeaponMount::Battery(_) => {
+                  error!("A sandcaster cannot be a point defence battery.");
+                  None
+                }
               }
             } else {
               None
@@ -1077,6 +1091,40 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
       )
     })
     .collect()
+}
+
+/// Intercept dice for a point-defence battery: 2D / 4D / 6D for Type I / II / III
+/// (High Guard p. 40).  `None` for anything that is not a legal battery.
+///
+/// This is the single place allowed to interpret the (kind, mount) pair as a
+/// battery.  Everything else treats a nonsensical pair as inert.
+#[must_use]
+pub fn battery_intercept_dice(weapon: &Weapon) -> Option<u8> {
+  match (weapon.kind, &weapon.mount) {
+    (WeaponType::PointDefense, WeaponMount::Battery(grade @ 1..=3)) => Some(2 * grade),
+    _ => None,
+  }
+}
+
+/// How many missiles this ship's batteries will swat this round.
+///
+/// The book has a battery "automatically intercept" a number of missiles each
+/// turn, which the defender may spread across salvoes as they like.  Callisto
+/// has no salvoes -- missiles are individual entities -- so a per-round pool is
+/// the same thing expressed in the units we actually have.
+///
+/// Batteries are rolled separately and summed rather than pooled into one throw,
+/// so that a critical hit disabling one battery removes exactly its share.
+#[must_use]
+pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
+  ship
+    .weapons()
+    .iter()
+    .enumerate()
+    .filter(|(index, _)| ship.active_weapons[*index])
+    .filter_map(|(_, weapon)| battery_intercept_dice(weapon))
+    .map(|dice| u32::from(roll_dice(dice, rng)))
+    .sum()
 }
 
 // Helper function to determine which point defense weapon is most effective.
@@ -1096,16 +1144,21 @@ fn point_defense_score(weapon: &Weapon) -> u16 {
     | WeaponType::Railgun
     | WeaponType::Meson
     | WeaponType::MassDriver
-    | WeaponType::Repulsor => 0,
+    | WeaponType::Repulsor
+    // Batteries are automatic and never queue an action; they resolve through
+    // `roll_battery_pool` instead.  Scoring 0 here is what makes a stray
+    // PointDefenseAction naming a battery get dropped rather than honoured.
+    | WeaponType::PointDefense => 0,
   }) * match weapon.mount {
     WeaponMount::Turret(num) => u16::from(num),
     // Barbettes, bays and fixed mounts cannot track an incoming missile.
-    WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount => 0,
+    WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_) => 0,
   }
 }
 
-/// For a given ship, and a list of ``PointDefenseAction`` actions, build a list of the weapons to use for point defense.
-/// and sort them by effectiveness.  Each item in the list is a pair of (id of the weapon, bonus to the check)
+/// For a given ship, and a list of ``PointDefenseAction`` actions, build the list of weapons that will make a
+/// point-defence check this round.  Each item is a pair of (id of the weapon, bonus to the check), where the bonus is
+/// the turret's DM (+0/+1/+2 for single/double/triple, Core Rulebook p. 171) plus gunnery and any leadership boost.
 #[must_use]
 pub fn build_point_defense_tallies(
   ship: &Ship, actions: &[ShipAction], boost_map: &BoostMap, ship_name: &str,
@@ -1153,42 +1206,328 @@ pub fn build_point_defense_tallies(
   }
 
   debug!(
-    "(Ship.add_point_defense) Sorted point defense list for {} is {:?}",
+    "(Ship.add_point_defense) Point defense list for {} is {:?}",
     ship.get_name(),
-    weapon_scores
+    point_defense_list
   );
 
-  // Do second.cmp(first) as we want this sorted in descending order
-  point_defense_list.sort_by(|(_, first_score), (_, second_score)| second_score.cmp(first_score));
+  // Deliberately unsorted: every weapon on this list rolls once per round, so
+  // there is no "first" weapon and nothing for an order to decide.
 
   point_defense_list
 }
 
-/// Check if point defense hits an incoming missile.
+/// Pool points needed to stop one incoming object.
+///
+/// "A torpedo salvo halves the Effect of any successful point defence taken
+/// against it, rounding down" (High Guard p. 39).  We resolve point defence as
+/// one summed pool rather than per-check, because Callisto has no salvoes to
+/// halve against, so halving is expressed as a torpedo costing two points where
+/// a missile costs one -- `floor(pool / 2)` torpedoes stopped, which is the same
+/// arithmetic applied to the total.  The Fleet Battles rule prices it the same
+/// way ("double the amount taken from the pool", p. 113), which is a useful
+/// corroboration that the aggregate reading is the intended one.
+#[must_use]
+pub fn interception_cost(kind: WeaponType) -> u32 {
+  if kind == WeaponType::Torpedo {
+    2
+  } else {
+    1
+  }
+}
+
+/// Roll every queued point-defence weapon and total the missiles they remove.
+///
+/// Each gunner makes one Gunner (turret) check per round and "the Effect of the
+/// check will remove that many missiles from the salvo" (Core Rulebook p. 171).
+/// So every weapon on the list rolls exactly once, whatever the salvo looks
+/// like, and their Effects add together.
+///
+/// This is a per-round total rather than a per-missile check because nothing in
+/// the rules pairs one gunner with one missile -- two gunners may perfectly well
+/// engage the same one, and a single good check can clear several. Callisto has
+/// no salvoes to allocate against, so the pool *is* the allocation.
 ///
 /// # Return
-/// The effect of the check if successful (so a minimum of 1). O if not successful.
-pub fn use_next_point_defense(point_defense_list: &mut Vec<(usize, u16)>, rng: &mut dyn RngCore) -> u32 {
-  let Some((next, bonus)) = point_defense_list.pop() else {
-    return 0;
-  };
+/// Total missiles this ship's gunners will remove this round.
+#[must_use]
+pub fn roll_point_defense_pool(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> u32 {
+  point_defense_list
+    .iter()
+    .map(|(weapon, bonus)| {
+      let roll = roll_dice(2, rng);
+      let effect = i32::from(roll) + i32::from(*bonus) - STANDARD_ROLL_THRESHOLD;
+      if effect >= 0 {
+        // A successful check always stops at least the missile it was made
+        // against, so a bare success is worth one.
+        #[allow(clippy::cast_sign_loss)]
+        let removed = effect.max(1) as u32;
+        debug!(
+          "(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
+        );
+        removed
+      } else {
+        debug!("(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: failed.");
+        0
+      }
+    })
+    .sum()
+}
 
-  let roll = roll_dice(2, rng);
-  debug!(
-    "(Ship.use_next_point_defense) Using point defense weapon {next} with roll {roll}, point defense bonus {bonus}."
-  );
+#[cfg(test)]
+mod battery_tests {
+  use super::*;
+  use crate::action::ShipAction;
+  use crate::entity::Vec3;
+  use crate::ship::ShipDesignTemplate;
+  use cgmath::Zero;
+  use rand::rngs::SmallRng;
+  use rand::SeedableRng;
+  use std::sync::Arc;
 
-  // If the roll + the point defense score (minus 1) plus the gunnery skill is a successful check, then the missile is destroyed.
-  let effect = i32::from(roll) + i32::from(bonus) - STANDARD_ROLL_THRESHOLD;
-  if effect >= 0 {
-    debug!("(Ship.use_next_point_defense) Point defense successful.");
+  fn battery(grade: u8) -> Weapon {
+    Weapon {
+      kind: WeaponType::PointDefense,
+      mount: WeaponMount::Battery(grade),
+    }
+  }
 
-    #[allow(clippy::cast_sign_loss)]
-    let result = effect.max(1) as u32;
-    result
-  } else {
-    debug!("(Ship.use_next_point_defense) Point defense failed.");
-    0
+  fn ship_with(weapons: Vec<Weapon>) -> Ship {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Batteries".to_string(),
+      weapons,
+      ..Default::default()
+    });
+    Ship::new("Batteries".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None)
+  }
+
+  /// Type I/II/III intercept 2D/4D/6D (High Guard p. 40).
+  #[test]
+  fn intercept_dice_follow_the_grade() {
+    assert_eq!(battery_intercept_dice(&battery(1)), Some(2));
+    assert_eq!(battery_intercept_dice(&battery(2)), Some(4));
+    assert_eq!(battery_intercept_dice(&battery(3)), Some(6));
+  }
+
+  /// The (kind, mount) pair is a cross-product, so nonsense pairs are
+  /// representable.  They must read as "not a battery" rather than as a battery
+  /// of some invented grade.
+  #[test]
+  fn nonsense_pairs_are_not_batteries() {
+    // A grade the book does not sell.
+    assert_eq!(battery_intercept_dice(&battery(0)), None);
+    assert_eq!(battery_intercept_dice(&battery(4)), None);
+    // A real weapon in a battery mount, and a battery in a real mount.
+    assert_eq!(
+      battery_intercept_dice(&Weapon {
+        kind: WeaponType::Beam,
+        mount: WeaponMount::Battery(2)
+      }),
+      None
+    );
+    assert_eq!(
+      battery_intercept_dice(&Weapon {
+        kind: WeaponType::PointDefense,
+        mount: WeaponMount::Turret(3)
+      }),
+      None
+    );
+  }
+
+  /// A battery takes no action and never enters the gunner-driven point defence
+  /// path, so a stray `PointDefenseAction` naming one is dropped.
+  #[test]
+  fn batteries_score_zero_in_the_action_path() {
+    for grade in 1..=3 {
+      assert_eq!(point_defense_score(&battery(grade)), 0);
+    }
+  }
+
+  #[test]
+  fn pool_is_zero_without_batteries() {
+    let ship = ship_with(vec![Weapon {
+      kind: WeaponType::Beam,
+      mount: WeaponMount::Turret(3),
+    }]);
+    let mut rng = SmallRng::seed_from_u64(0xD1CE);
+    assert_eq!(roll_battery_pool(&ship, &mut rng), 0);
+  }
+
+  /// A pool is a sum of dice, so it must land inside the range those dice can
+  /// produce.  Asserting bounds rather than an exact value keeps this from
+  /// being a change-detector for the RNG.
+  #[test]
+  fn pool_lands_within_the_dice_range() {
+    for (grade, dice) in [(1u8, 2u32), (2, 4), (3, 6)] {
+      let ship = ship_with(vec![battery(grade)]);
+      let mut rng = SmallRng::seed_from_u64(0xD1CE);
+      let pool = roll_battery_pool(&ship, &mut rng);
+      assert!(
+        (dice..=dice * 6).contains(&pool),
+        "Type {grade} rolled {pool}, outside {dice}D's range of {dice}..={}",
+        dice * 6
+      );
+    }
+  }
+
+  /// Batteries stack additively, and are rolled separately so that losing one
+  /// to a critical hit removes exactly its share.
+  #[test]
+  fn batteries_stack() {
+    let ship = ship_with(vec![battery(3), battery(3)]);
+    let mut rng = SmallRng::seed_from_u64(0xD1CE);
+    let pool = roll_battery_pool(&ship, &mut rng);
+    assert!(
+      (12..=72).contains(&pool),
+      "two Type III batteries rolled {pool}, outside 12..=72"
+    );
+  }
+
+  /// A battery knocked out by a critical hit stops contributing.
+  #[test]
+  fn disabled_batteries_contribute_nothing() {
+    let mut ship = ship_with(vec![battery(3), battery(3)]);
+    ship.active_weapons[0] = false;
+    let mut rng = SmallRng::seed_from_u64(0xD1CE);
+    let pool = roll_battery_pool(&ship, &mut rng);
+    assert!((6..=36).contains(&pool), "one live Type III rolled {pool}, outside 6..=36");
+  }
+
+  /// The pool is spent one missile at a time and cannot go negative.
+  #[test]
+  fn pool_drains_one_missile_at_a_time() {
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(2);
+    assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+    assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+    assert!(!ship.take_interception(interception_cost(WeaponType::Missile)));
+    assert_eq!(ship.point_defense_pool, 0);
+  }
+
+  /// A torpedo costs two points where a missile costs one, so the same pool
+  /// stops half as many of them (High Guard p. 113).
+  #[test]
+  fn torpedoes_cost_double() {
+    assert_eq!(interception_cost(WeaponType::Torpedo), 2);
+    assert_eq!(interception_cost(WeaponType::Missile), 1);
+
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(4);
+    for _ in 0..2 {
+      assert!(ship.take_interception(interception_cost(WeaponType::Torpedo)));
+    }
+    assert!(!ship.take_interception(interception_cost(WeaponType::Torpedo)));
+    assert_eq!(ship.point_defense_pool, 0);
+  }
+
+  /// A pool too small for a torpedo stops nothing, and the leftover point stays
+  /// available for a missile rather than being wasted.
+  #[test]
+  fn a_partial_pool_cannot_half_stop_a_torpedo() {
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(1);
+    assert!(!ship.take_interception(interception_cost(WeaponType::Torpedo)));
+    assert_eq!(ship.point_defense_pool, 1, "the failed attempt must not spend anything");
+    assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+  }
+
+  /// The turret bonus must match the book: DM+0 single, DM+1 double, DM+2 triple
+  /// (Core Rulebook p. 171), plus the gunner's skill.
+  ///
+  /// `point_defense_score` returns one *more* than the bonus so that 0 can mean
+  /// "unusable for point defence"; `build_point_defense_tallies` takes that 1
+  /// back off.  This pins the round trip, because losing or double-applying that
+  /// conversion shifts every point-defence check by a full point.
+  #[test]
+  fn turret_point_defense_bonus_matches_the_book() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Gunners".to_string(),
+      weapons: vec![
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(1),
+        },
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(2),
+        },
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(3),
+        },
+      ],
+      ..Default::default()
+    });
+    // Gunnery 0 across the board, so the tally is the turret bonus alone.
+    let ship = Ship::new("Gunners".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let actions: Vec<ShipAction> = (0..3).map(|weapon_id| ShipAction::PointDefenseAction { weapon_id }).collect();
+
+    let tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Gunners");
+    let bonus = |id: usize| tallies.iter().find(|(w, _)| *w == id).map(|(_, b)| *b);
+
+    assert_eq!(bonus(0), Some(0), "a single turret is DM+0");
+    assert_eq!(bonus(1), Some(1), "a double turret is DM+1");
+    assert_eq!(bonus(2), Some(2), "a triple turret is DM+2");
+  }
+
+  /// A torpedo is DM-2 to hit anything under 2,000 tons (High Guard p. 39).
+  ///
+  /// Driven by rolling the same seeded attack at a small and a large target and
+  /// checking the small one is harder to hit across many trials, rather than by
+  /// asserting an exact roll -- the point is the direction of the modifier.
+  #[test]
+  fn torpedoes_struggle_against_small_ships() {
+    let small = Arc::new(ShipDesignTemplate {
+      name: "Small".to_string(),
+      displacement: 400,
+      hull: 1_000_000,
+      ..Default::default()
+    });
+    let large = Arc::new(ShipDesignTemplate {
+      name: "Large".to_string(),
+      displacement: 5_000,
+      hull: 1_000_000,
+      ..Default::default()
+    });
+    let attacker = ship_with(vec![]);
+    let torpedo = Weapon {
+      kind: WeaponType::Torpedo,
+      mount: WeaponMount::Barbette,
+    };
+
+    let mut hits = [0u32; 2];
+    for (slot, design) in [&small, &large].into_iter().enumerate() {
+      let mut rng = SmallRng::seed_from_u64(0x707D);
+      for _ in 0..400 {
+        let mut defender = Ship::new("D".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
+        let effects = attack(0, 0, &attacker, &mut defender, &torpedo, None, &BoostMap::default(), &mut rng);
+        if effects.iter().any(|e| !matches!(e, EffectMsg::Message { .. })) {
+          hits[slot] += 1;
+        }
+      }
+    }
+    assert!(
+      hits[0] < hits[1],
+      "a torpedo should hit the 400-ton ship less often than the 5,000-ton one: {hits:?}"
+    );
+  }
+
+  /// Batteries and gunners feed one pool, as the book totals them.
+  #[test]
+  fn battery_and_gunner_contributions_add() {
+    let mut ship = ship_with(vec![battery(1)]);
+    ship.set_point_defense_pool(3);
+    ship.add_point_defense_pool(4);
+    assert_eq!(ship.point_defense_pool, 7);
+  }
+
+  /// The pool is per-round scratch and must not survive into the next round.
+  #[test]
+  fn clearing_point_defense_zeroes_the_pool() {
+    let mut ship = ship_with(vec![battery(3)]);
+    ship.set_point_defense_pool(19);
+    ship.clear_point_defense();
+    assert_eq!(ship.point_defense_pool, 0);
   }
 }
 

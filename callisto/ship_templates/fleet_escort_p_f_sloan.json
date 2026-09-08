@@ -205,15 +205,15 @@
       }
     },
     {
-      "kind": "Pulse",
+      "kind": "PointDefense",
       "mount": {
-        "Turret": 3
+        "Battery": 3
       }
     },
     {
-      "kind": "Pulse",
+      "kind": "PointDefense",
       "mount": {
-        "Turret": 3
+        "Battery": 3
       }
     }
   ],

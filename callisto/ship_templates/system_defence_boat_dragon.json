@@ -28,9 +28,9 @@
       }
     },
     {
-      "kind": "Pulse",
+      "kind": "PointDefense",
       "mount": {
-        "Turret": 2
+        "Battery": 2
       }
     }
   ],

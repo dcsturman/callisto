@@ -10,5 +10,6 @@
   "Railgun": ["Turret", "Fixed", "Barbette", "SmallBay", "MediumBay", "LargeBay"],
   "Meson": ["SmallBay", "MediumBay", "LargeBay"],
   "MassDriver": ["SmallBay", "MediumBay", "LargeBay"],
-  "Repulsor": ["SmallBay", "MediumBay", "LargeBay"]
+  "Repulsor": ["SmallBay", "MediumBay", "LargeBay"],
+  "PointDefense": ["Battery"]
 }

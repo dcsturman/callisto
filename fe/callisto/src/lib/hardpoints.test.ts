@@ -14,8 +14,16 @@ import {
   mountOptionsFor,
   setAllGunnery,
   totalMounts,
+  isLegalPairing,
+  weaponKindsForMount,
 } from "lib/hardpoints";
-import { Weapon, WeaponMount, createWeapon } from "lib/weapon";
+import {
+  Weapon,
+  WeaponMount,
+  createWeapon,
+  isActionableWeapon,
+  weaponToString,
+} from "lib/weapon";
 
 // Editor rows.
 const turret = (size: number, kind = "Beam", count = 1): WeaponGroup => ({
@@ -388,7 +396,17 @@ describe("mount dropdown options", () => {
       "Small Bay",
       "Medium Bay",
       "Large Bay",
+      "PD Battery (Type I)",
+      "PD Battery (Type II)",
+      "PD Battery (Type III)",
     ]);
+  });
+
+  it("does not offer a battery on a firmpoint hull", () => {
+    // A point-defence battery is 20 tons and consumes a Hardpoint, which a hull
+    // under 100 tons does not have.
+    const ids = mountOptionsFor("firmpoints").map((option) => option.id);
+    expect(ids.some((id) => id.startsWith("battery-"))).toBe(false);
   });
 
   it("round-trips every option between id and mount", () => {
@@ -406,5 +424,47 @@ describe("mount dropdown options", () => {
   it("returns null for a mount it cannot represent", () => {
     expect(mountOptionId({ Turret: 4 } as WeaponMount)).toBeNull();
     expect(mountOptionId("Spinal" as WeaponMount)).toBeNull();
+  });
+});
+
+describe("point defence batteries", () => {
+  it("only allows point defence in a battery mount", () => {
+    expect(isLegalPairing("PointDefense", { Battery: 3 })).toBe(true);
+    expect(isLegalPairing("PointDefense", { Turret: 3 })).toBe(false);
+    expect(isLegalPairing("PointDefense", "Barbette")).toBe(false);
+  });
+
+  it("only allows a battery mount to hold point defence", () => {
+    expect(isLegalPairing("Beam", { Battery: 2 })).toBe(false);
+    expect(isLegalPairing("Missile", { Battery: 2 })).toBe(false);
+    expect(weaponKindsForMount({ Battery: 3 })).toEqual(["PointDefense"]);
+  });
+
+  it("names a battery by its grade rather than its weapon kind", () => {
+    expect(weaponToString({ kind: "PointDefense", mount: { Battery: 3 } })).toBe(
+      "Point Defence Battery (Type III)",
+    );
+    expect(weaponToString({ kind: "PointDefense", mount: { Battery: 1 } })).toBe(
+      "Point Defence Battery (Type I)",
+    );
+  });
+
+  it("gives a battery no action button", () => {
+    // It intercepts automatically, so there is nothing for the crew to order.
+    expect(
+      isActionableWeapon({ kind: "PointDefense", mount: { Battery: 3 } }),
+    ).toBe(false);
+    // Sandcasters are excluded by kind, not by their display name -- so a
+    // weapon merely containing "Sand" in its name keeps its button.
+    expect(isActionableWeapon({ kind: "Sand", mount: { Turret: 3 } })).toBe(
+      false,
+    );
+    expect(isActionableWeapon({ kind: "Beam", mount: { Turret: 3 } })).toBe(
+      true,
+    );
+  });
+
+  it("charges a battery one hardpoint", () => {
+    expect(mountCost({ Battery: 3 }, "hardpoints")).toBe(1);
   });
 });
