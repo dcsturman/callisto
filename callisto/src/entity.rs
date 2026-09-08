@@ -14,7 +14,7 @@ use tracing::{event, Level};
 use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList};
 use crate::combat::{
   attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, interception_cost, roll_battery_pool,
-  roll_dice, roll_point_defense_pool,
+  roll_dice, roll_point_defense_pool, roll_screen_pool,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -661,6 +661,11 @@ impl Entities {
         continue;
       };
       let mut ship = ship.write().unwrap();
+      // Screens are rolled in the same pass and for the same reason: they are
+      // per-round, need no queued action, and every ship that has one gets them.
+      let screens = roll_screen_pool(&ship, rng);
+      ship.set_screen_pool(screens);
+
       let pool = roll_battery_pool(&ship, rng);
       // A set rather than an add: this pass runs first, covers every ship, and
       // so is also what clears any value left over from the previous round.
@@ -2638,6 +2643,7 @@ mod tests {
       countermeasures: None,
       computer: 1,
       weapons: vec![],
+      screens: vec![],
       tl: 10,
       role: None,
       source: None,

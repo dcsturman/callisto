@@ -5,6 +5,7 @@ import { SHIP_SYSTEMS } from "lib/universal";
 import { Ship, Entity, findShip, stringToShipSystem } from "lib/entities";
 import {
   compressedWeapons,
+  describeScreens,
   getWeaponName,
   findNthWeapon,
   shipWeapons,
@@ -579,11 +580,17 @@ export const FireControl: React.FC<FireControlProps> = () => {
     const entries = Object.values(compressedWeapons(computerShipWeapons)).filter((weapon) =>
       isPassiveWeapon(createWeapon(weapon.kind, weapon.mount)),
     );
-    return entries.map((weapon) => {
+    const weapons = entries.map((weapon) => {
       const name = weaponToString(createWeapon(weapon.kind, weapon.mount));
       return weapon.total > 1 ? `${name} x${weapon.total}` : name;
     });
-  }, [computerShipWeapons]);
+    // Screens are not weapons and live on the design rather than the ship, but
+    // they are automatic defences and belong in the same readout.
+    const design = computerShip?.design
+      ? shipTemplates[computerShip.design]
+      : undefined;
+    return [...weapons, ...describeScreens(design?.screens)];
+  }, [computerShipWeapons, computerShip, shipTemplates]);
 
   return (
     <>

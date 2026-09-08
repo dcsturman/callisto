@@ -255,6 +255,27 @@ pub fn attack(
         defender.get_current_armor()
     );
 
+  // Screens deflect "after armour has been accounted for" (High Guard p. 40).
+  // The order matters beyond arithmetic: applied before armour, a screen would
+  // be spent cancelling damage the armour was going to stop anyway.
+  let before_screens = damage;
+  damage = defender.apply_screens(weapon.kind, damage);
+  let screened = before_screens - damage;
+  if screened > 0 {
+    debug!(
+      "(Combat.attack) {}'s screens absorb {screened} of {before_screens} damage.",
+      defender.get_name()
+    );
+  }
+  if damage == 0 {
+    return vec![EffectMsg::message(format!(
+      "{} hit by {}'s {} but the damage is absorbed by its screens.",
+      defender.get_name(),
+      attacker_name,
+      String::from(&weapon.kind)
+    ))];
+  }
+
   // Calculate additional damage multipliers and effects for non-crits now.
   // This runs on the impact of a single object for launched weapons, so a
   // salvo resolves once per missile or torpedo rather than once per launcher.
@@ -1134,6 +1155,68 @@ pub fn battery_intercept_dice(weapon: &Weapon) -> Option<u8> {
   }
 }
 
+/// Missiles a repulsor bay deflects this round, or 0 if it is not a repulsor or
+/// its check failed.
+///
+/// "When used as a repulsor, a successful Gunner (capital) check removes a
+/// number of missiles from any salvo within range equal to 1D x Effect. Medium
+/// repulsor bays multiply the result by two and large repulsor bays multiply it
+/// by five" (High Guard p. 33).  A repulsor may only be used once per round,
+/// which is what makes it belong in this per-round pool alongside the batteries.
+fn roll_repulsor(weapon: &Weapon, skill: u8, rng: &mut dyn RngCore) -> u32 {
+  if weapon.kind != WeaponType::Repulsor {
+    return 0;
+  }
+  let multiplier = match MountClass::from(&weapon.mount) {
+    MountClass::SmallBay => 1,
+    MountClass::MediumBay => 2,
+    MountClass::LargeBay => 5,
+    // The book sells repulsors only as bays.
+    _ => return 0,
+  };
+
+  let effect = i32::from(roll_dice(2, rng)) + i32::from(skill) - STANDARD_ROLL_THRESHOLD;
+  if effect < 0 {
+    return 0;
+  }
+  // Effect floors at 1 wherever it multiplies -- see FAQ.md.  A check that
+  // succeeded should deflect something.
+  #[allow(clippy::cast_sign_loss)]
+  let effect = (effect as u32).max(1);
+  u32::from(roll_dice(1, rng)) * effect * multiplier
+}
+
+/// Roll each of this ship's screens, giving the damage each will absorb.
+///
+/// Every screen makes its own Gunner (screen) check.  The book has one gunner
+/// concentrate every screen on a single attack, but we spread them across
+/// attacks -- which is several gunners each taking their own Angle Screens
+/// reaction, and several reactions cannot share one roll.
+///
+/// A screen reduces damage "by the number of dice rolled by the screen ...
+/// multiplied by the Effect of the gunner's check" (High Guard p. 40).  Effect
+/// floors at 1 because it multiplies here; see FAQ.md.
+#[must_use]
+pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
+  ship
+    .design
+    .screens
+    .iter()
+    .enumerate()
+    .map(|(index, screen)| {
+      let skill = ship.get_crew().get_screen_gunnery(index);
+      let effect = i32::from(roll_dice(2, rng)) + i32::from(skill) - STANDARD_ROLL_THRESHOLD;
+      if effect < 0 {
+        return 0;
+      }
+      #[allow(clippy::cast_sign_loss)]
+      let effect = (effect as u32).max(1);
+      let (dice, factor) = screen.reduction_dice();
+      u32::from(roll_dice(dice, rng)) * factor * effect
+    })
+    .collect()
+}
+
 /// How many missiles this ship's batteries will swat this round.
 ///
 /// The book has a battery "automatically intercept" a number of missiles each
@@ -1150,8 +1233,15 @@ pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
     .iter()
     .enumerate()
     .filter(|(index, _)| ship.active_weapons[*index])
-    .filter_map(|(_, weapon)| battery_intercept_dice(weapon))
-    .map(|dice| u32::from(roll_dice(dice, rng)))
+    .map(|(index, weapon)| {
+      // Batteries intercept automatically and roll no check; repulsors deflect
+      // on a Gunner (capital) check.  Both are once-per-round and neither costs
+      // the crew an action, so both belong in this pass.
+      match battery_intercept_dice(weapon) {
+        Some(dice) => u32::from(roll_dice(dice, rng)),
+        None => roll_repulsor(weapon, ship.get_crew().get_gunnery(index), rng),
+      }
+    })
     .sum()
 }
 
@@ -1314,8 +1404,8 @@ mod battery_tests {
   use crate::action::ShipAction;
   use crate::entity::Vec3;
   use crate::rules_tables::weapon_profile;
-  use crate::ship::MountClass;
   use crate::ship::ShipDesignTemplate;
+  use crate::ship::{MountClass, ScreenType};
   use cgmath::Zero;
   use rand::rngs::SmallRng;
   use rand::SeedableRng;
@@ -1657,6 +1747,113 @@ mod battery_tests {
     ship.apply_ion_damage(350, 1);
     let after = ship.max_acceleration();
     assert!(after < before, "losing power should cost thrust: {before} -> {after}");
+  }
+
+  fn ship_with_screens(screens: Vec<ScreenType>, skills: &[u8]) -> Ship {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Screened".to_string(),
+      displacement: 5_000,
+      hull: 1_000_000,
+      screens,
+      ..Default::default()
+    });
+    let mut crew = crate::crew::Crew::new();
+    for skill in skills {
+      crew.add_screen_gunnery(*skill);
+    }
+    Ship::new("Screened".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None)
+  }
+
+  /// Screens are strictly type-specific.
+  #[test]
+  fn screens_only_defend_their_own_weapon() {
+    assert!(ScreenType::Meson.defends_against(WeaponType::Meson));
+    assert!(!ScreenType::Meson.defends_against(WeaponType::Fusion));
+    assert!(ScreenType::NuclearDamper.defends_against(WeaponType::Fusion));
+    assert!(!ScreenType::NuclearDamper.defends_against(WeaponType::Meson));
+    // And neither touches an ordinary laser.
+    assert!(!ScreenType::Meson.defends_against(WeaponType::Beam));
+    assert!(!ScreenType::NuclearDamper.defends_against(WeaponType::Beam));
+  }
+
+  /// A meson screen reduces by 2D x 10; a damper by 2D.
+  #[test]
+  fn screen_reduction_matches_the_book() {
+    assert_eq!(ScreenType::Meson.reduction_dice(), (2, 10));
+    assert_eq!(ScreenType::NuclearDamper.reduction_dice(), (2, 1));
+  }
+
+  /// The roll must land inside what the dice, the factor and the Effect allow.
+  #[test]
+  fn screen_pool_lands_in_range() {
+    let ship = ship_with_screens(vec![ScreenType::Meson], &[2]);
+    let mut rng = SmallRng::seed_from_u64(0x5C4E);
+    for _ in 0..50 {
+      let pool = roll_screen_pool(&ship, &mut rng);
+      assert_eq!(pool.len(), 1);
+      // Either the check failed (0), or 2D x 10 x at least 1.
+      assert!(pool[0] == 0 || (20..=12 * 10 * 7).contains(&pool[0]), "got {}", pool[0]);
+    }
+  }
+
+  /// A screen absorbs damage from the weapon it defends against, and is then
+  /// spent -- excess and all.
+  #[test]
+  fn a_screen_is_spent_whole() {
+    let mut ship = ship_with_screens(vec![ScreenType::NuclearDamper], &[0]);
+    ship.set_screen_pool(vec![50]);
+
+    // A 20-damage fusion hit is fully absorbed...
+    assert_eq!(ship.apply_screens(WeaponType::Fusion, 20), 0);
+    // ...and the remaining 30 is gone with it, so the next hit lands in full.
+    assert_eq!(ship.apply_screens(WeaponType::Fusion, 20), 20);
+  }
+
+  /// Screens carry to the next attack once the current one is stopped.
+  #[test]
+  fn screens_spread_across_attacks() {
+    let mut ship = ship_with_screens(vec![ScreenType::NuclearDamper, ScreenType::NuclearDamper], &[0, 0]);
+    ship.set_screen_pool(vec![10, 10]);
+
+    // First attack takes the first screen only, since 10 zeroes it.
+    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 0);
+    // Second attack gets the second screen, still unspent.
+    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 0);
+    // Third has nothing left.
+    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 10);
+  }
+
+  /// Several screens stack on one attack when one is not enough.
+  #[test]
+  fn screens_stack_until_the_damage_is_gone() {
+    let mut ship = ship_with_screens(vec![ScreenType::NuclearDamper, ScreenType::NuclearDamper], &[0, 0]);
+    ship.set_screen_pool(vec![10, 10]);
+    assert_eq!(ship.apply_screens(WeaponType::Fusion, 25), 5, "both screens should be spent");
+    assert_eq!(ship.apply_screens(WeaponType::Fusion, 10), 10, "and nothing is left");
+  }
+
+  /// A screen is never spent on a weapon it does not defend against.
+  #[test]
+  fn screens_ignore_the_wrong_weapon() {
+    let mut ship = ship_with_screens(vec![ScreenType::Meson], &[0]);
+    ship.set_screen_pool(vec![500]);
+    assert_eq!(
+      ship.apply_screens(WeaponType::Fusion, 40),
+      40,
+      "a meson screen must not stop a fusion gun"
+    );
+    // Still available for what it is for.
+    assert_eq!(ship.apply_screens(WeaponType::Meson, 40), 0);
+  }
+
+  /// Screens are per-round scratch and must not survive the round.
+  #[test]
+  fn clearing_point_defense_clears_screens() {
+    let mut ship = ship_with_screens(vec![ScreenType::Meson], &[0]);
+    ship.set_screen_pool(vec![100]);
+    ship.clear_point_defense();
+    assert!(ship.screen_pool.is_empty());
+    assert_eq!(ship.apply_screens(WeaponType::Meson, 40), 40);
   }
 
   /// Batteries and gunners feed one pool, as the book totals them.

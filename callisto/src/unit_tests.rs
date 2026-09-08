@@ -7,6 +7,7 @@
  */
 
 use pretty_env_logger;
+use std::collections::HashMap;
 
 use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
 use std::sync::Arc;
@@ -697,37 +698,64 @@ async fn test_called_shot() {
   ]]])
   .to_string();
 
-  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
-  let effects = server.update();
+  // Fire the same called shots over several rounds and pool the results.
+  //
+  // This used to assert an exact crit count from a single round, which made it
+  // a tripwire for the seeded RNG rather than a test of called shots: it broke
+  // twice from unrelated changes -- point-defence batteries, then screens --
+  // simply because those roll dice before these attacks resolve and shift the
+  // stream.  Aggregating over rounds tests the property the feature actually
+  // promises, which is that called shots concentrate criticals on the system
+  // that was named.
+  // Keep firing until the target dies, which it does after a handful of rounds
+  // -- that is what caps the sample size here, not the loop bound.
+  let mut by_system: HashMap<String, u32> = HashMap::new();
+  let mut destroyed = false;
+  for _ in 0..30 {
+    if destroyed {
+      break;
+    }
+    server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
+    let effects = server.update();
+    destroyed = effects
+      .iter()
+      .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("destroyed")));
 
-  // First ensure there is at least one critical hit that matches.
+    for effect in &effects {
+      // "caused" messages are damage effects rather than crits.
+      let EffectMsg::Message { content } = effect else {
+        continue;
+      };
+      if !content.contains("critical") || content.contains("caused") {
+        continue;
+      }
+      // Messages read "ship2's maneuver critical hit (level 1) and ...".
+      let Some(system) = content.split("'s ").nth(1).and_then(|rest| rest.split(" critical").next()) else {
+        continue;
+      };
+      *by_system.entry(system.to_string()).or_default() += 1;
+    }
+  }
+
+  let maneuver = by_system.get("maneuver").copied().unwrap_or(0);
   assert!(
-    effects.iter().any(
-      |e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver") && content.contains("critical"))
-    ),
-    "No critical hits to called shot area: maneuver"
+    maneuver > 0,
+    "called shots at the maneuver drive produced no maneuver criticals before the target died: {by_system:?}"
   );
 
-  // Second ensure 6 critical hits to maneuver and the rest to hull.
-  // This means we find all messages with the word "critical" but not the word "caused" (the latter are damage effects)
-  let crits = effects
+  // Only the *primary* critical follows the called shot; criticals from
+  // sustained damage are rolled against a random system, so other systems will
+  // pick some up.  What the feature promises is that the named system takes
+  // more than any other single one.
+  let worst_other = by_system
     .iter()
-    .filter(
-      |e| matches!(e, EffectMsg::Message { content } if content.contains("critical") && !content.contains("caused")),
-    )
-    .collect::<Vec<_>>();
-  // Was 4 until the Midu Agasham gained the two point-defence batteries its
-  // book entry always listed.  Rolling their Intercept pool consumes part of
-  // the seeded stream before these attacks resolve, shifting every later roll.
-  // Nothing about called shots changed -- the assertion above still finds
-  // maneuver crits, which is what this test is actually about.
-  assert_eq!(
-    crits
-      .iter()
-      .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver")))
-      .count(),
-    3,
-    "Expected 3 critical hits to maneuver: {crits:#?}"
+    .filter(|(system, _)| system.as_str() != "maneuver")
+    .map(|(_, count)| *count)
+    .max()
+    .unwrap_or(0);
+  assert!(
+    maneuver > worst_other,
+    "called shots should make maneuver the most-hit system, but got {by_system:?}"
   );
 }
 
