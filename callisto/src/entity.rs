@@ -906,6 +906,10 @@ impl Entities {
           let update = ship.update();
           // Missile attacks are done by this point so clear this up for the next round.
           ship.clear_point_defense();
+          // Ion suppression is measured in rounds and the ship has now had its
+          // actions, so run the clock down and give the Power back when it
+          // lapses (High Guard p. 30).
+          ship.tick_ion_recovery();
           let name = ship.get_name();
           let pos = ship.get_position();
 

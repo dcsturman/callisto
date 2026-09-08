@@ -12,7 +12,7 @@ use derivative::Derivative;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-use strum_macros::FromRepr;
+use strum_macros::{EnumIter, FromRepr};
 
 use futures::stream::{self, StreamExt};
 
@@ -273,6 +273,20 @@ pub struct Ship {
   /// Per-round scratch like `point_defense_list`, so it is not persisted.
   #[serde(skip)]
   pub point_defense_pool: u32,
+  /// Power currently suppressed by ion hits.
+  ///
+  /// Ion weapons deal no lasting harm -- the Power comes back when the effect
+  /// lapses -- so this is tracked apart from `current_power` rather than
+  /// subtracted from it.  Keeping them separate means a repair cannot
+  /// accidentally "fix" an ion hit, and an ion hit cannot mask real damage.
+  ///
+  /// Omitted from the wire when zero, so a ship nobody has shot with an ion
+  /// cannon serializes exactly as it did before ion existed.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub ion_power_loss: u32,
+  /// Rounds of ion suppression still to run.  Zero means none.
+  #[serde(default, skip_serializing_if = "is_zero_u8")]
+  pub ion_rounds: u8,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -290,6 +304,13 @@ fn is_default_power_multiplier(value: &f32) -> bool {
 /// the use of a reference a bit funny, but necessary.
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u8(value: &u8) -> bool {
+  *value == 0
+}
+
+/// A helper function to avoid serializing when zero.  It makes
+/// the use of a reference a bit funny, but necessary.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u32(value: &u32) -> bool {
   *value == 0
 }
 
@@ -365,7 +386,7 @@ pub enum BaySize {
   Large,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
 pub enum WeaponType {
   Beam = 0,
   Pulse,
@@ -383,6 +404,9 @@ pub enum WeaponType {
   Meson,
   MassDriver,
   Repulsor,
+  /// An ion cannon.  Instead of damaging the hull it temporarily drains the
+  /// target's Power, disabling rather than destroying (High Guard p. 30).
+  Ion,
   /// A point-defence laser battery.  Never fires offensively and never takes an
   /// attack roll: it is a passive sink that deletes incoming missiles.  Its
   /// Intercept grade lives on [`WeaponMount::Battery`].
@@ -395,7 +419,7 @@ pub enum WeaponType {
 /// `Turret(n)` shares one profile.  `FixedMount` is our own concept rather than
 /// the book's — High Guard treats a fixed mount as a turret that cannot
 /// traverse — so it resolves to the same profiles a turret gets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
 pub enum MountClass {
   Turret,
   Fixed,
@@ -439,6 +463,11 @@ pub enum Salvo {
 /// while launchers throw a bigger salvo and take no multiple at all. That
 /// invariant is why `use_multiple` and `salvo` are always opposites in the
 /// table below.
+// The bools are the book's weapon traits, which are genuinely independent of
+// one another -- a weapon can be any combination of them.  Bundling them into
+// a flags type would obscure the mapping to the printed tables without making
+// any illegal state unrepresentable.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WeaponProfile {
   /// Tech level of the weapon itself, which drives the Smart DM.
@@ -457,6 +486,9 @@ pub struct WeaponProfile {
   pub use_multiple: bool,
   /// `None` for direct-fire weapons.
   pub salvo: Option<Salvo>,
+  /// Damage suppresses the target's Power instead of harming its hull
+  /// (High Guard p. 30).  Nothing is permanently destroyed.
+  pub ion: bool,
 }
 
 /// Meson guns ignore armour entirely (the book writes this as "AP ∞").
@@ -476,6 +508,7 @@ impl WeaponProfile {
       smart: false,
       use_multiple: true,
       salvo: None,
+      ion: false,
     }
   }
 
@@ -494,6 +527,7 @@ impl WeaponProfile {
       smart: true,
       use_multiple: false,
       salvo: Some(salvo),
+      ion: false,
     }
   }
 
@@ -522,6 +556,15 @@ impl WeaponProfile {
   #[must_use]
   pub const fn rad(mut self) -> Self {
     self.radiation = true;
+    self
+  }
+
+  /// Mark this as an ion weapon: it drains Power rather than damaging the hull,
+  /// and ignores armour entirely while doing so.
+  #[must_use]
+  pub const fn ion(mut self) -> Self {
+    self.ion = true;
+    self.ap = AP_INFINITE;
     self
   }
 
@@ -628,6 +671,8 @@ impl Ship {
       leadership_rolled: false,
       point_defense_list: vec![],
       point_defense_pool: 0,
+      ion_power_loss: 0,
+      ion_rounds: 0,
     }
   }
 
@@ -690,7 +735,7 @@ impl Ship {
 
   #[must_use]
   pub fn max_acceleration(&self) -> u8 {
-    let power_limit = self.design.best_thrust(self.current_power);
+    let power_limit = self.design.best_thrust(self.available_power());
     let maneuver_limit = self.current_maneuver;
 
     // TODO: Remove this once using a match doesn't trigger the warning about attributes on expressions being experimental.
@@ -960,6 +1005,37 @@ impl Ship {
     self.evade_boost_used = value;
   }
 
+  /// Power actually available to run the ship, after any ion suppression.
+  ///
+  /// Everything that asks what the ship can currently do should read this
+  /// rather than `current_power`, which is the undamaged-by-ion figure.
+  #[must_use]
+  pub fn available_power(&self) -> u32 {
+    self.current_power.saturating_sub(self.ion_power_loss)
+  }
+
+  /// Suppress `amount` Power for `rounds` rounds.
+  ///
+  /// Hits stack: a ship caught by two ion cannons loses both, and the longer
+  /// duration wins so the second hit cannot cut the first one short.
+  pub fn apply_ion_damage(&mut self, amount: u32, rounds: u8) {
+    self.ion_power_loss = self.ion_power_loss.saturating_add(amount);
+    self.ion_rounds = self.ion_rounds.max(rounds);
+  }
+
+  /// Run the ion suppression down by one round, restoring the Power when it
+  /// lapses.  Called once per round after actions resolve.
+  pub fn tick_ion_recovery(&mut self) {
+    if self.ion_rounds == 0 {
+      self.ion_power_loss = 0;
+      return;
+    }
+    self.ion_rounds -= 1;
+    if self.ion_rounds == 0 {
+      self.ion_power_loss = 0;
+    }
+  }
+
   /// Returns the effective power including temporary multiplier.
   #[must_use]
   #[allow(
@@ -968,7 +1044,7 @@ impl Ship {
     clippy::cast_precision_loss
   )]
   pub fn get_effective_power(&self) -> u32 {
-    (self.current_power as f32 * self.temporary_power_multiplier) as u32
+    (self.available_power() as f32 * self.temporary_power_multiplier) as u32
   }
 }
 
@@ -1398,6 +1474,7 @@ impl From<&WeaponType> for String {
       WeaponType::Meson => "meson gun".to_string(),
       WeaponType::MassDriver => "mass driver".to_string(),
       WeaponType::Repulsor => "repulsor".to_string(),
+      WeaponType::Ion => "ion cannon".to_string(),
       WeaponType::PointDefense => "point defence battery".to_string(),
     }
   }

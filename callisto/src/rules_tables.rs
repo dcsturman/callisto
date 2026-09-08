@@ -125,6 +125,17 @@ pub fn weapon_profile(kind: WeaponType, mount: MountClass) -> Option<WeaponProfi
       LargeBay => P::special(13, Range::Short),
       _ => return None,
     },
+    // Ion cannons are barbette-and-bay weapons.  They take the ordinary Damage
+    // Multiple -- the book's fleet-scale Ion table (p. 132) lists 75 / 200 /
+    // 500 / 3,500 for barbette / small / medium / large, which is exactly these
+    // dice times the multiples, so the two scales agree.
+    WeaponType::Ion => match mount {
+      Barbette => P::gun(12, 7, Range::Medium).ion(),
+      SmallBay => P::gun(12, 6, Range::Medium).ion(),
+      MediumBay => P::gun(12, 8, Range::Medium).ion(),
+      LargeBay => P::gun(12, 10, Range::Long).ion(),
+      _ => return None,
+    },
     // A battery is not a gun.  It has no attack roll, no damage and no range
     // band; the profile exists only so that the legality matrix knows a
     // point-defence battery goes in a Battery mount and nowhere else -- and,
@@ -174,40 +185,29 @@ pub fn countermeasures_mod(countermeasures: Option<CounterMeasures>) -> i16 {
 mod tests {
   use super::*;
   use crate::ship::BaySize;
+  use strum::IntoEnumIterator;
 
-  const ALL_MOUNTS: [MountClass; 7] = [
-    MountClass::Turret,
-    MountClass::Fixed,
-    MountClass::Barbette,
-    MountClass::SmallBay,
-    MountClass::MediumBay,
-    MountClass::LargeBay,
-    MountClass::Battery,
-  ];
+  // Derived from the enums rather than written out, so a new weapon or mount
+  // cannot quietly escape the checks below.  These arrays used to be
+  // hand-maintained, and an ion cannon added to `weapon_profile` went missing
+  // from the generated frontend matrix without a single test noticing --
+  // because the generator and the checked-in file were both walking the same
+  // incomplete list.
+  fn all_weapons() -> impl Iterator<Item = WeaponType> {
+    WeaponType::iter()
+  }
 
-  const ALL_WEAPONS: [WeaponType; 13] = [
-    WeaponType::Beam,
-    WeaponType::Pulse,
-    WeaponType::Missile,
-    WeaponType::Sand,
-    WeaponType::Particle,
-    WeaponType::Torpedo,
-    WeaponType::Fusion,
-    WeaponType::Plasma,
-    WeaponType::Railgun,
-    WeaponType::Meson,
-    WeaponType::MassDriver,
-    WeaponType::Repulsor,
-    WeaponType::PointDefense,
-  ];
+  fn all_mounts() -> impl Iterator<Item = MountClass> {
+    MountClass::iter()
+  }
 
   /// A weapon scales by damage multiple *or* by salvo size, never both and
   /// never neither-when-it-should.  This is the invariant that keeps bay
   /// missiles from being counted twice.
   #[test]
   fn multiple_and_salvo_are_mutually_exclusive() {
-    for kind in ALL_WEAPONS {
-      for mount in ALL_MOUNTS {
+    for kind in all_weapons() {
+      for mount in all_mounts() {
         let Some(profile) = weapon_profile(kind, mount) else {
           continue;
         };
@@ -223,8 +223,8 @@ mod tests {
   /// weapons have a range band.
   #[test]
   fn launchers_are_smart_and_unlimited_in_range() {
-    for kind in ALL_WEAPONS {
-      for mount in ALL_MOUNTS {
+    for kind in all_weapons() {
+      for mount in all_mounts() {
         let Some(profile) = weapon_profile(kind, mount) else {
           continue;
         };
@@ -343,14 +343,14 @@ mod tests {
     };
 
     let mut generated = String::from("{\n");
-    for (index, kind) in ALL_WEAPONS.iter().enumerate() {
-      let legal = ALL_MOUNTS
-        .iter()
-        .filter(|mount| weapon_profile(*kind, **mount).is_some())
-        .map(|mount| format!("\"{}\"", name(*mount)))
+    let weapons: Vec<WeaponType> = all_weapons().collect();
+    for (index, kind) in weapons.iter().enumerate() {
+      let legal = all_mounts()
+        .filter(|mount| weapon_profile(*kind, *mount).is_some())
+        .map(|mount| format!("\"{}\"", name(mount)))
         .collect::<Vec<_>>()
         .join(", ");
-      let comma = if index + 1 == ALL_WEAPONS.len() { "" } else { "," };
+      let comma = if index + 1 == weapons.len() { "" } else { "," };
       writeln!(generated, "  \"{kind:?}\": [{legal}]{comma}").unwrap();
     }
     generated.push_str("}\n");
