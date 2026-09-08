@@ -732,6 +732,45 @@ async fn test_called_shot() {
 }
 
 #[test(tokio::test)]
+async fn test_point_defense_battery_intercepts_missiles() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  // The Midu Agasham's weapon 1 is a triple missile turret, so it launches
+  // three missiles in one action.
+  let attacker =
+    r#"{"name":"attacker","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham"}"#;
+  server.add_ship(serde_json::from_str(attacker).unwrap()).unwrap();
+
+  // The Dragon carries a Type II point-defence battery (4D Intercept), which is
+  // far more than three missiles on any roll.
+  let defender = r#"{"name":"defender","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defence Boat - Dragon"}"#;
+  server.add_ship(serde_json::from_str(defender).unwrap()).unwrap();
+
+  // Note the defender queues no actions at all.  A battery is automatic, so it
+  // must still defend in a round where its crew does nothing.
+  let fire_actions = json!([["attacker", [{"FireAction" : {"weapon_id": 1, "target": "defender"}}]]]).to_string();
+  server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
+  let effects = server.update();
+
+  let battery_kills = effects
+    .iter()
+    .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("point defence battery")))
+    .count();
+
+  assert!(
+    battery_kills > 0,
+    "the Dragon's battery should have intercepted at least one missile: {effects:#?}"
+  );
+  // Its pool comfortably exceeds a three-missile salvo, so nothing should get
+  // through to the hull.
+  assert!(
+    !effects.iter().any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
+    "no missile should have reached the defender: {effects:#?}"
+  );
+}
+
+#[test(tokio::test)]
 async fn test_big_fight() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;

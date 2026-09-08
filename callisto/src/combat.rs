@@ -1200,8 +1200,16 @@ pub fn build_point_defense_tallies(
     weapon_scores
   );
 
-  // Do second.cmp(first) as we want this sorted in descending order
-  point_defense_list.sort_by(|(_, first_score), (_, second_score)| second_score.cmp(first_score));
+  // Ascending, because `use_next_point_defense` pops from the *back* -- so the
+  // last element is the one that fires first, and that should be the best
+  // weapon available.
+  //
+  // This used to sort descending, which fired the worst weapon first.  That is
+  // harmless when a salvo is big enough to exhaust the list, since every weapon
+  // rolls either way and the total stopped is the sum of their individual
+  // contributions.  It costs real missiles whenever the salvo is smaller than
+  // the ship's capacity, because then only the front of the list ever rolls.
+  point_defense_list.sort_by_key(|(_, score)| *score);
 
   point_defense_list
 }
@@ -1231,6 +1239,84 @@ pub fn use_next_point_defense(point_defense_list: &mut Vec<(usize, u16)>, rng: &
   } else {
     debug!("(Ship.use_next_point_defense) Point defense failed.");
     0
+  }
+}
+
+#[cfg(test)]
+mod point_defense_order_tests {
+  use super::*;
+  use crate::action::ShipAction;
+  use crate::entity::Vec3;
+  use crate::ship::ShipDesignTemplate;
+  use cgmath::Zero;
+  use rand::rngs::SmallRng;
+  use rand::SeedableRng;
+  use std::sync::Arc;
+
+  /// A triple turret scores 3 and a single scores 1, so the triple is strictly
+  /// the better point-defence weapon.
+  fn ship_with_two_turrets() -> Ship {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Defender".to_string(),
+      weapons: vec![
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(1),
+        },
+        Weapon {
+          kind: WeaponType::Beam,
+          mount: WeaponMount::Turret(3),
+        },
+      ],
+      ..Default::default()
+    });
+    Ship::new("Defender".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None)
+  }
+
+  /// The best available weapon must fire first.
+  ///
+  /// `use_next_point_defense` pops from the back, so "first to fire" is the
+  /// last element.  Sorting the other way spends the weak turret on the opening
+  /// missile and leaves the good one unused whenever the salvo is smaller than
+  /// the ship's point-defence capacity.
+  #[test]
+  fn best_point_defense_weapon_fires_first() {
+    let ship = ship_with_two_turrets();
+    let actions = vec![
+      ShipAction::PointDefenseAction { weapon_id: 0 },
+      ShipAction::PointDefenseAction { weapon_id: 1 },
+    ];
+    let tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Defender");
+
+    assert_eq!(tallies.len(), 2, "both turrets should be usable: {tallies:?}");
+    let (first_id, first_bonus) = *tallies.last().expect("non-empty");
+    let (second_id, second_bonus) = tallies[0];
+    assert_eq!(first_id, 1, "the triple turret (weapon 1) should fire first: {tallies:?}");
+    assert_eq!(second_id, 0, "the single turret should be held back: {tallies:?}");
+    assert!(
+      first_bonus > second_bonus,
+      "the weapon that fires first should be the stronger one: {tallies:?}"
+    );
+  }
+
+  /// Draining the list must hand out the weapons strongest-first.
+  #[test]
+  fn draining_the_list_spends_the_strongest_first() {
+    let ship = ship_with_two_turrets();
+    let actions = vec![
+      ShipAction::PointDefenseAction { weapon_id: 0 },
+      ShipAction::PointDefenseAction { weapon_id: 1 },
+    ];
+    let mut tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Defender");
+    let mut rng = SmallRng::seed_from_u64(0x0D5);
+
+    let mut order = Vec::new();
+    while let Some((id, _)) = tallies.last().copied() {
+      order.push(id);
+      use_next_point_defense(&mut tallies, &mut rng);
+    }
+    assert_eq!(order, vec![1, 0], "weapons should be spent strongest-first");
+    assert!(tallies.is_empty());
   }
 }
 
