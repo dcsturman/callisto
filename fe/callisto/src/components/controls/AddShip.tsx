@@ -13,6 +13,7 @@ import {
   DEFAULT_GUNNERY,
   MOUNT_OPTIONS,
   weaponKindsForMount,
+  weaponKindLabel,
   isLegalPairing,
   WeaponGroup,
   checkAllowance,
@@ -543,11 +544,11 @@ function HardpointList(args: {
                     or one the rules do not allow in this mount.  Either way it
                     stays selectable so existing data is never silently rewritten. */}
                 {!weaponKindsForMount(group.mount).includes(group.kind) && (
-                  <option value={group.kind}>{group.kind}</option>
+                  <option value={group.kind}>{weaponKindLabel(group.kind)}</option>
                 )}
                 {weaponKindsForMount(group.mount).map((kind) => (
                   <option key={kind} value={kind}>
-                    {kind}
+                    {weaponKindLabel(kind)}
                   </option>
                 ))}
               </select>

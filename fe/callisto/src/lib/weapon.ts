@@ -8,6 +8,23 @@ export type WeaponMount =
   | {Bay: BaySize}
   | {Battery: number};
 
+/**
+ * Human-readable names for the weapon kinds.
+ *
+ * Weapon kinds travel the wire as Rust enum variant names, so without this a
+ * referee sees "PointDefense" and "MassDriver" in the design summary and the
+ * Add Ship editor. Only kinds whose identifier differs from their name need an
+ * entry; the rest are already words.
+ */
+const WEAPON_LABELS: {[kind: string]: string} = {
+  PointDefense: "Point Defence",
+  MassDriver: "Mass Driver",
+};
+
+/** The name to show a referee for a weapon kind. */
+export const weaponKindLabel = (kind: string): string =>
+  WEAPON_LABELS[kind] ?? kind;
+
 /** Roman numerals for point-defence battery grades, which only run I to III. */
 const BATTERY_TYPES: {[grade: number]: string} = {1: "I", 2: "II", 3: "III"};
 
@@ -22,20 +39,21 @@ export const createWeapon = (kind: string, mount: WeaponMount): Weapon => {
 };
 
 export const weaponToString = (weapon: Weapon): string => {
+    const kind = weaponKindLabel(weapon.kind);
     if (weapon.mount === "FixedMount") {
-      return `${weapon.kind} Fixed Mount`;
+      return `${kind} Fixed Mount`;
     } else if (typeof weapon.mount === "string") {
-      return `${weapon.kind} Barbette`;
+      return `${kind} Barbette`;
     } else if ("Turret" in weapon.mount) {
       if (weapon.mount.Turret === 1) {
-        return `Single ${weapon.kind} Turret`;
+        return `Single ${kind} Turret`;
       } else if (weapon.mount.Turret === 2) {
-        return `Double ${weapon.kind} Turret`;
+        return `Double ${kind} Turret`;
       } else if (weapon.mount.Turret === 3) {
-        return `Triple ${weapon.kind} Turret`;
+        return `Triple ${kind} Turret`;
       }
     } else if ("Bay" in weapon.mount) {
-      return `${weapon.mount.Bay} ${weapon.kind} Bay`;
+      return `${weapon.mount.Bay} ${kind} Bay`;
     } else if ("Battery" in weapon.mount) {
       // The grade is the whole identity of a battery, so it is named instead of
       // the weapon kind -- "Point Defence Battery (Type III)", not
