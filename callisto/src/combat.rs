@@ -311,6 +311,34 @@ pub fn attack(
     defender.get_name()
   );
 
+  // Ion weapons stop here.  "Instead of applying damage to the target's hull, it
+  // is instead temporarily deducted from the target's Power" (High Guard p. 30),
+  // so nothing is destroyed: no hull loss, no crits, and the Power returns when
+  // the effect lapses.
+  if profile.ion {
+    // "This reduction in Power lasts until the target completes its next set of
+    // actions... If the Effect of the attack roll is 6 or more, the reduction in
+    // Power lasts for D3 rounds."
+    let rounds = if effect >= 6 { roll_dice_d3(rng) } else { 1 };
+    let before = defender.available_power();
+    defender.apply_ion_damage(damage, rounds);
+    let drained = before - defender.available_power();
+
+    debug!(
+      "(Combat.attack) {attacker_name} drains {drained} power from {} for {rounds} round(s).",
+      defender.get_name()
+    );
+
+    effects.push(EffectMsg::message(format!(
+      "{} loses {} power to {}'s ion cannon for {} round(s).",
+      defender.get_name(),
+      drained,
+      attacker_name,
+      rounds
+    )));
+    return effects;
+  }
+
   // The primary crit (if any) is a single crit at a level determined by the success of the hit.
   let primary_crit = hit_roll - CRITICAL_THRESHOLD > 0;
 
@@ -1145,6 +1173,7 @@ fn point_defense_score(weapon: &Weapon) -> u16 {
     | WeaponType::Meson
     | WeaponType::MassDriver
     | WeaponType::Repulsor
+    | WeaponType::Ion
     // Batteries are automatic and never queue an action; they resolve through
     // `roll_battery_pool` instead.  Scoring 0 here is what makes a stray
     // PointDefenseAction naming a battery get dropped rather than honoured.
@@ -1217,6 +1246,11 @@ pub fn build_point_defense_tallies(
   point_defense_list
 }
 
+/// Roll a D3, as High Guard writes it: a d6 halved and rounded up.
+fn roll_dice_d3(rng: &mut dyn RngCore) -> u8 {
+  roll_dice(1, rng).div_ceil(2).clamp(1, 3)
+}
+
 /// Pool points needed to stop one incoming object.
 ///
 /// "A torpedo salvo halves the Effect of any successful point defence taken
@@ -1279,6 +1313,8 @@ mod battery_tests {
   use super::*;
   use crate::action::ShipAction;
   use crate::entity::Vec3;
+  use crate::rules_tables::weapon_profile;
+  use crate::ship::MountClass;
   use crate::ship::ShipDesignTemplate;
   use cgmath::Zero;
   use rand::rngs::SmallRng;
@@ -1510,6 +1546,117 @@ mod battery_tests {
       hits[0] < hits[1],
       "a torpedo should hit the 400-ton ship less often than the 5,000-ton one: {hits:?}"
     );
+  }
+
+  /// An ion hit drains Power and leaves the hull untouched (High Guard p. 30).
+  #[test]
+  fn ion_drains_power_not_hull() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Target".to_string(),
+      displacement: 5_000,
+      power: 500,
+      hull: 1_000,
+      armor: 10,
+      ..Default::default()
+    });
+    let attacker = ship_with(vec![]);
+    let ion = Weapon {
+      kind: WeaponType::Ion,
+      mount: WeaponMount::Barbette,
+    };
+    let mut rng = SmallRng::seed_from_u64(0x10);
+
+    // Loop until a hit lands, so the test is about what a hit does rather than
+    // about whether this particular seed connects.
+    let mut defender = Ship::new("Target".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let hull_before = defender.get_current_hull_points();
+    for _ in 0..50 {
+      attack(8, 0, &attacker, &mut defender, &ion, None, &BoostMap::default(), &mut rng);
+      if defender.ion_power_loss > 0 {
+        break;
+      }
+    }
+
+    assert!(defender.ion_power_loss > 0, "an ion cannon should eventually connect");
+    assert_eq!(
+      defender.get_current_hull_points(),
+      hull_before,
+      "an ion cannon must not damage the hull"
+    );
+    assert_eq!(defender.current_power, 500, "current_power is the undamaged figure");
+    assert!(
+      defender.available_power() < 500,
+      "available power should be suppressed while the ion effect runs"
+    );
+    assert!(defender.ion_rounds >= 1);
+  }
+
+  /// Ion ignores armour outright, so a heavily armoured ship is no better off.
+  #[test]
+  fn ion_ignores_armour() {
+    let profile = weapon_profile(WeaponType::Ion, MountClass::Barbette).unwrap();
+    assert_eq!(profile.ap, crate::ship::AP_INFINITE);
+    assert!(profile.ion);
+    // It is still a direct-fire weapon, so it takes the mount's multiple.
+    assert!(profile.use_multiple);
+    assert!(profile.salvo.is_none());
+  }
+
+  /// Ion is a barbette-and-bay weapon; the book sells no ion turret.
+  #[test]
+  fn ion_has_no_turret() {
+    assert!(weapon_profile(WeaponType::Ion, MountClass::Turret).is_none());
+    assert!(weapon_profile(WeaponType::Ion, MountClass::Fixed).is_none());
+    assert!(weapon_profile(WeaponType::Ion, MountClass::Barbette).is_some());
+    assert!(weapon_profile(WeaponType::Ion, MountClass::LargeBay).is_some());
+  }
+
+  /// Suppression lapses on its own, handing the Power back.
+  #[test]
+  fn ion_suppression_expires() {
+    let mut ship = ship_with(vec![]);
+    ship.current_power = 100;
+    ship.apply_ion_damage(40, 1);
+    assert_eq!(ship.available_power(), 60);
+
+    ship.tick_ion_recovery();
+    assert_eq!(ship.available_power(), 100, "power returns once the effect lapses");
+    assert_eq!(ship.ion_rounds, 0);
+  }
+
+  /// Two hits stack, and the longer duration wins so a second hit cannot cut
+  /// the first one short.
+  #[test]
+  fn ion_hits_stack_and_take_the_longer_duration() {
+    let mut ship = ship_with(vec![]);
+    ship.current_power = 100;
+    ship.apply_ion_damage(30, 3);
+    ship.apply_ion_damage(20, 1);
+    assert_eq!(ship.available_power(), 50, "both hits should be suppressing power");
+    assert_eq!(ship.ion_rounds, 3, "the longer duration wins");
+
+    ship.tick_ion_recovery();
+    assert_eq!(ship.available_power(), 50, "still suppressed after one round");
+    ship.tick_ion_recovery();
+    ship.tick_ion_recovery();
+    assert_eq!(ship.available_power(), 100);
+  }
+
+  /// Draining power throttles thrust, which is the point of an ion cannon.
+  #[test]
+  fn ion_suppression_limits_thrust() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Runner".to_string(),
+      displacement: 400,
+      power: 400,
+      maneuver: 6,
+      ..Default::default()
+    });
+    let mut ship = Ship::new("Runner".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let before = ship.max_acceleration();
+    ship.apply_ion_damage(350, 1);
+    let after = ship.max_acceleration();
+    assert!(after < before, "losing power should cost thrust: {before} -> {after}");
   }
 
   /// Batteries and gunners feed one pool, as the book totals them.

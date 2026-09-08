@@ -1,4 +1,4 @@
-import { BaySize, Weapon, WeaponMount, createWeapon } from "./weapon";
+import { BaySize, Weapon, WeaponMount, createWeapon, weaponKindLabel } from "./weapon";
 import WEAPON_MOUNTS from "./weaponMounts.json";
 
 // Hardpoint and Firmpoint accounting, per High Guard pp. 26 and 31.
@@ -450,3 +450,5 @@ export function mountForOptionId(id: string): WeaponMount | null {
 export const WEAPON_KINDS: string[] = Object.keys(WEAPON_MOUNTS);
 
 export const DEFAULT_WEAPON_KIND = WEAPON_KINDS[0];
+
+export { weaponKindLabel };

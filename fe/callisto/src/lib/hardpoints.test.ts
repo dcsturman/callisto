@@ -23,6 +23,7 @@ import {
   createWeapon,
   isActionableWeapon,
   weaponToString,
+  weaponKindLabel,
 } from "lib/weapon";
 
 // Editor rows.
@@ -466,5 +467,26 @@ describe("point defence batteries", () => {
 
   it("charges a battery one hardpoint", () => {
     expect(mountCost({ Battery: 3 }, "hardpoints")).toBe(1);
+  });
+});
+
+describe("weapon kind labels", () => {
+  it("shows readable names instead of wire identifiers", () => {
+    // These travel the wire as Rust enum variant names.
+    expect(weaponKindLabel("PointDefense")).toBe("Point Defence");
+    expect(weaponKindLabel("MassDriver")).toBe("Mass Driver");
+  });
+
+  it("leaves kinds that are already words alone", () => {
+    expect(weaponKindLabel("Beam")).toBe("Beam");
+    expect(weaponKindLabel("Torpedo")).toBe("Torpedo");
+    // Including one this build has never heard of.
+    expect(weaponKindLabel("Antimatter")).toBe("Antimatter");
+  });
+
+  it("uses the readable name when naming a mounted weapon", () => {
+    expect(
+      weaponToString({ kind: "MassDriver", mount: { Bay: "Large" } }),
+    ).toBe("Large Mass Driver Bay");
   });
 });
