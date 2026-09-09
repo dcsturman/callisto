@@ -1718,16 +1718,8 @@ const WEAPONS_SCENARIO: &str = r#"{
 
 fn custom_armament() -> Vec<Weapon> {
   vec![
-    Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(3),
-      modifiers: vec![],
-    },
-    Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::FixedMount,
-      modifiers: vec![],
-    },
+    Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+    Weapon::single(WeaponType::Missile, WeaponMount::FixedMount),
   ]
 }
 
@@ -1788,31 +1780,11 @@ async fn test_add_ship_accepts_every_mount_shape() {
   assert_eq!(
     ship.weapons(),
     vec![
-      Weapon {
-        kind: WeaponType::Particle,
-        mount: WeaponMount::Barbette,
-        modifiers: vec![]
-      },
-      Weapon {
-        kind: WeaponType::Missile,
-        mount: WeaponMount::Bay(BaySize::Small),
-        modifiers: vec![]
-      },
-      Weapon {
-        kind: WeaponType::Beam,
-        mount: WeaponMount::Bay(BaySize::Medium),
-        modifiers: vec![]
-      },
-      Weapon {
-        kind: WeaponType::Pulse,
-        mount: WeaponMount::Bay(BaySize::Large),
-        modifiers: vec![]
-      },
-      Weapon {
-        kind: WeaponType::Sand,
-        mount: WeaponMount::Turret(1),
-        modifiers: vec![]
-      },
+      Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
+      Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Small)),
+      Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Medium)),
+      Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Large)),
+      Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 1),
     ]
   );
   assert_eq!(ship.active_weapons.len(), 5);
@@ -1863,7 +1835,9 @@ async fn test_add_ship_rejects_illegal_armament() {
   let quad_turret = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer",
         "weapons":[{"kind":"Beam","mount":{"Turret":4}}]}"#;
   let error = server.add_ship(serde_json::from_str(quad_turret).unwrap()).unwrap_err();
-  assert!(error.contains("Illegal turret size 4"), "unexpected error: {error}");
+  // The message now covers every mount, since a bay or barbette holding more
+  // than one gun is equally illegal.
+  assert!(error.contains("Illegal mount holding 4 weapons"), "unexpected error: {error}");
 
   let many = (0..65)
     .map(|_| json!({"kind": "Beam", "mount": {"Turret": 1}}))
