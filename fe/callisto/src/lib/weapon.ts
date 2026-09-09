@@ -94,6 +94,59 @@ const MODIFIER_LABELS: {[kind: string]: string} = {
 };
 
 /**
+ * Weapons that throw an object at the target rather than firing at it.
+ *
+ * Only these two launch: everything else -- lasers, particle beams, fusion,
+ * meson, plasma, railguns, mass drivers, ion -- is direct fire, and should be
+ * drawn and treated as a beam.
+ */
+const LAUNCHER_KINDS = new Set(["Missile", "Torpedo"]);
+
+/** Whether this weapon launches an object that travels to its target. */
+export const isLauncherKind = (kind: string): boolean =>
+  LAUNCHER_KINDS.has(kind);
+
+/** Whether this weapon is a laser, which is what point defence requires. */
+export const isLaserKind = (kind: string): boolean =>
+  kind === "Beam" || kind === "Pulse";
+
+/**
+ * The weapon type an action is using.
+ *
+ * A mixed turret fires one of its guns, named on the action; a uniform mount
+ * has only one kind to use.
+ */
+export const actionWeaponKind = (
+  weapon: Weapon,
+  firingKind?: string,
+): string => firingKind ?? weapon.kind ?? weaponGuns(weapon)[0]?.kind ?? "";
+
+/**
+ * The weapon Advantages and Disadvantages a referee can fit, in the order they
+ * should be offered.
+ *
+ * `inert` marks the ones Callisto records but does not simulate: it models
+ * neither a weapon's power draw nor its tonnage, so those change nothing in
+ * play. They are still offered, because a design should be able to say what it
+ * really carries, but they are worth showing as secondary.
+ */
+export const WEAPON_MODIFIERS: {kind: string; label: string; inert?: boolean}[] =
+  [
+    {kind: "Accurate", label: "accurate (DM+1 to hit)"},
+    {kind: "HighYield", label: "high yield (1s count as 2s)"},
+    {kind: "VeryHighYield", label: "very high yield (1s and 2s count as 3s)"},
+    {kind: "IntenseFocus", label: "intense focus (AP+2, lasers and particle)"},
+    {kind: "LongRange", label: "long range (+1 range band)"},
+    {kind: "Inaccurate", label: "inaccurate (DM-1 to hit)"},
+    {kind: "Resilient", label: "resilient (not yet simulated)", inert: true},
+    {kind: "EnergyEfficient", label: "energy efficient (not simulated)", inert: true},
+    {kind: "EnergyInefficient", label: "energy inefficient (not simulated)", inert: true},
+    {kind: "SizeReduction", label: "size reduction (not simulated)", inert: true},
+    {kind: "IncreasedSize", label: "increased size (not simulated)", inert: true},
+    {kind: "EasyToRepair", label: "easy to repair (not simulated)", inert: true},
+  ];
+
+/**
  * Modifiers as a readable list, collapsing repeats the way the book writes them
  * ("energy efficient x3").
  */
