@@ -41,12 +41,19 @@ fn validate_weapons(weapons: &[Weapon]) -> Result<(), String> {
   weapons
     .iter()
     .find_map(|weapon| match weapon.mount {
-      WeaponMount::Turret(size) if !(1..=3).contains(&size) => Some(size),
+      // A turret's size is now the number of guns in it.
+      WeaponMount::Turret if !(1..=3).contains(&weapon.guns.len()) => Some(weapon.guns.len()),
+      // Every other mount holds exactly one weapon.
+      WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_)
+        if weapon.guns.len() != 1 =>
+      {
+        Some(weapon.guns.len())
+      }
       _ => None,
     })
     .map_or(Ok(()), |size| {
       Err(format!(
-        "(PlayerManager.add_ship) Illegal turret size {size}; must be 1, 2 or 3."
+        "(PlayerManager.add_ship) Illegal mount holding {size} weapons; a turret holds 1 to 3 and every other mount exactly 1."
       ))
     })
 }

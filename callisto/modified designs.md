@@ -380,11 +380,20 @@ Thrust, plus ammunition. No design in the library carries one.
 
 ---
 
-## Mixed-turret refactoring
+## ~~Mixed-turret refactoring~~ REVERSED (2026-09-08)
 
-Per the Core Rulebook ("Double and Triple Turrets"), a turret holding *different* weapon
-types may only fire one type per round, while same-type weapons fire together for bonus
-damage. Mixed turrets were therefore regrouped into uniform ones, conserving gun count.
+Mixed turrets are now supported, so the split recorded below has been undone for the one
+design it distorted.  Kept as a record of what the library looked like before.
+
+**Cargo Carrier - MK Mora (p223) — restored to its book armament.** It now carries six
+triple turrets of two long-range high-yield pulse lasers plus a sandcaster, and four of two
+missile racks plus an accurate high-yield beam laser: ten mounts, thirty guns, exactly as
+printed.  The deliberate +1 missile / -1 beam rounding recorded below is gone with it.
+
+That also closes a real divergence.  Split into uniform turrets, the MK Mora could fire
+twelve pulse lasers **and** six sandcasters every round; the book makes each turret choose.
+
+The original conversion notes follow.
 
 **Cargo Carrier - MK Mora (p223)**
 

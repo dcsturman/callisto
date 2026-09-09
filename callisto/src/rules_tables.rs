@@ -312,9 +312,7 @@ mod tests {
   /// `MountClass` must agree with the real mount it came from.
   #[test]
   fn mount_class_collapses_turret_size() {
-    for size in 1..=3 {
-      assert_eq!(MountClass::from(&WeaponMount::Turret(size)), MountClass::Turret);
-    }
+    assert_eq!(MountClass::from(&WeaponMount::Turret), MountClass::Turret);
     assert_eq!(MountClass::from(&WeaponMount::Bay(BaySize::Large)), MountClass::LargeBay);
     assert_eq!(MountClass::from(&WeaponMount::FixedMount), MountClass::Fixed);
   }
@@ -367,6 +365,43 @@ mod tests {
     );
   }
 
+  /// Every shipped design must survive a load/save round trip byte-for-byte.
+  ///
+  /// `Weapon` became a mount holding a list of guns so that a turret can hold
+  /// different ones, but it still *writes* the older `{kind, mount, modifiers}`
+  /// shape whenever every gun matches.  Every design in the library is uniform,
+  /// so all 79 files must be untouched by that change -- if this fails, the
+  /// compatibility layer has regressed and the library is about to be rewritten.
+  #[test]
+  fn shipped_designs_round_trip_unchanged() {
+    let mut checked = 0;
+    for entry in std::fs::read_dir("ship_templates").expect("ship_templates should be readable") {
+      let path = entry.expect("readable directory entry").path();
+      if path.extension().is_none_or(|ext| ext != "json") {
+        continue;
+      }
+      let body = std::fs::read_to_string(&path).expect("design should be readable");
+      let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
+
+      // Round trip only the weapons, which is what this change touches.
+      let Some(weapons) = parsed.get("weapons") else {
+        continue;
+      };
+      let loaded: Vec<crate::ship::Weapon> =
+        serde_json::from_value(weapons.clone()).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+      let written = serde_json::to_value(&loaded).expect("weapons should serialize");
+      assert_eq!(
+        &written,
+        weapons,
+        "{} does not round trip; the weapon compatibility layer has regressed",
+        path.display()
+      );
+      checked += 1;
+    }
+    assert!(checked > 0, "no designs were checked, so this test proves nothing");
+  }
+
   /// Every weapon in the shipped design library must be one the rules allow.
   ///
   /// Designs are hand-edited JSON, so this is the guard against a typo or a
@@ -395,8 +430,11 @@ mod tests {
         serde_json::from_str(&body).unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
       for weapon in &design.weapons {
         checked += 1;
-        if profile_for(weapon.kind, &weapon.mount).is_none() {
-          problems.push(format!("{}: {}", path.display(), String::from(weapon)));
+        // Every gun in the mount has to be one the rules allow there.
+        for gun in &weapon.guns {
+          if profile_for(gun.kind, &weapon.mount).is_none() {
+            problems.push(format!("{}: {}", path.display(), String::from(weapon)));
+          }
         }
       }
     }

@@ -643,7 +643,7 @@ impl Entities {
     ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Create a snapshot of all the sand capabilities of each ship.
-    let mut sand_counts = create_sand_counts(ship_snapshot);
+    let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions);
 
     // Point-defence batteries are automatic: they need no action, no gunner and
     // no decision, so every ship that has one gets a pool whether or not its
@@ -848,7 +848,7 @@ impl Entities {
 
               // A torpedo costs two points where a missile costs one, so a
               // ship's point defence stops half as many of them.
-              let cost = interception_cost(launcher.kind);
+              let cost = interception_cost(launcher.primary_kind());
               let stopped = target.take_interception(cost);
 
               // This stops the attack
@@ -858,16 +858,21 @@ impl Entities {
                   missile, target_name
                 );
                 cleanup_missile_list.push(missile.clone());
-                let what = String::from(&launcher.kind);
+                let what = String::from(&launcher.primary_kind());
                 Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("{what} {missile} destroyed by {target_name}'s point defence"))])
               } else {
                 // The attack gets through point defense
+                // A launched object resolves as the gun that threw it.
+                let Some(firing) = launcher.firing_default() else {
+                  warn!("(Entity.update_all) Missile {missile} has no launching gun.");
+                  return None;
+                };
                 let effects = attack(
                   smart_missile_bonus,
                   0,
                   missile_source,
                   &mut target,
-                  &launcher,
+                  &firing,
                   // Missiles cannot do called shots
                   None,
                   boost_map,
@@ -1850,11 +1855,7 @@ mod tests {
 
   /// The launcher every pre-torpedo test implicitly assumed: a single missile rack.
   fn test_missile_weapon() -> Weapon {
-    Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::Turret(1),
-      modifiers: vec![],
-    }
+    Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)
   }
 
   use super::*;

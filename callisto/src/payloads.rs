@@ -109,11 +109,7 @@ pub struct LaunchMissileMsg {
 /// A single missile rack, matching how every launch behaved before the
 /// launching weapon was recorded.
 fn default_launcher() -> Weapon {
-  Weapon {
-    kind: WeaponType::Missile,
-    mount: WeaponMount::Turret(1),
-    modifiers: vec![],
-  }
+  Weapon::single(WeaponType::Missile, WeaponMount::Turret)
 }
 
 #[serde_as]
@@ -649,6 +645,7 @@ mod tests {
           weapon_id: 0,
           target: "ship2".to_string(),
           called_shot_system: None,
+          firing_kind: None,
         }],
       ),
       (
@@ -657,6 +654,7 @@ mod tests {
           weapon_id: 1,
           target: "ship1".to_string(),
           called_shot_system: None,
+          firing_kind: None,
         }],
       ),
     ];

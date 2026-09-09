@@ -1,4 +1,4 @@
-import { BaySize, Weapon, WeaponMount, createWeapon, weaponKindLabel } from "./weapon";
+import { BaySize, Weapon, WeaponMount, createWeapon, weaponKindLabel, weaponKinds } from "./weapon";
 import WEAPON_MOUNTS from "./weaponMounts.json";
 
 // Hardpoint and Firmpoint accounting, per High Guard pp. 26 and 31.
@@ -218,7 +218,7 @@ export function groupWeapons(
     const group: WeaponGroup = {
       count: 1,
       mount: weapon.mount,
-      kind: weapon.kind,
+      kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
       gunnery: skill,
       modifiers: weapon.modifiers ?? [],
     };

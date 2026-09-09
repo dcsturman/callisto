@@ -49,7 +49,15 @@ Everything below is a smaller deviation within the tonnage we do support.
     or two.  Hardened systems, which the book lets a crew shield from ion damage, are not modelled.
   * **Weapon modifications** -- accurate, high yield, long range, energy efficient and so on -- have nowhere to
     live in a design and are silently dropped.
-  * No mixed turrets, though you could design a ship with extra turrets to get near the same result.
+  * **Mixed turrets** are supported: a turret may hold different weapons, and "only one type may be used in a
+    single combat round" (Core Rulebook p. 166).  Two deviations, both deliberate:
+    * A mount gets **one attack and one reaction** per round.  The book caps the action but leaves reactions
+      to each reaction's own rule; capping at one keeps a mount from both dispersing sand and running point
+      defence in the same round.
+    * The one-type restriction is read as governing **attacks**.  A mount may attack with one gun and still
+      disperse sand with another -- otherwise a sandcaster in a mixed turret could never be used without
+      giving up the turret's attack, which no one would choose.  Point defence is *not* allowed alongside an
+      attack, since that would be a second active use of the mount rather than a defensive add-on.
   * Ammunition is not tracked.  Missile racks, torpedo tubes and railguns never run dry or reload.
   * Fixed mounts exist and fire, but ships have no facing, so a fixed mount is just a single-weapon mount that
     cannot serve as point defence.

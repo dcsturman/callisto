@@ -45,11 +45,7 @@ pub struct Missile {
 /// A single missile rack, matching how every launch behaved before the
 /// launching weapon was recorded.
 fn default_launcher() -> Weapon {
-  Weapon {
-    kind: WeaponType::Missile,
-    mount: WeaponMount::Turret(1),
-    modifiers: vec![],
-  }
+  Weapon::single(WeaponType::Missile, WeaponMount::Turret)
 }
 
 impl Missile {

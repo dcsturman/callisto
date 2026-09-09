@@ -420,19 +420,164 @@ impl From<WeaponModifier> for String {
   }
 }
 
+/// One gun inside a mount.
+///
+/// Modifiers live here rather than on the mount because the book fits a triple
+/// turret with "long range, high yield pulse lasers x2, sandcaster" -- only the
+/// lasers are modified.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct Weapon {
+pub struct Gun {
   pub kind: WeaponType,
-  pub mount: WeaponMount,
-  /// Advantages and Disadvantages fitted to this weapon.  Omitted from the wire
-  /// when empty, so every design written before modifiers existed is unchanged.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub modifiers: Vec<WeaponModifier>,
 }
 
+impl Gun {
+  #[must_use]
+  pub fn new(kind: WeaponType) -> Self {
+    Gun {
+      kind,
+      modifiers: vec![],
+    }
+  }
+
+  #[must_use]
+  pub fn with_modifiers(kind: WeaponType, modifiers: Vec<WeaponModifier>) -> Self {
+    Gun { kind, modifiers }
+  }
+}
+
+/// A mount resolved down to the one weapon type it is firing.
+///
+/// A mixed turret may only use one type per round (Core Rulebook p. 166), so
+/// everything downstream of that choice works on this rather than on the mount.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Firing<'a> {
+  pub kind: WeaponType,
+  pub mount: &'a WeaponMount,
+  pub modifiers: &'a [WeaponModifier],
+  /// Guns of this type in the mount, for the same-type damage bonus.
+  pub count: u8,
+}
+
+/// One weapon mount and everything bolted into it.
+///
+/// This is the unit `weapon_id` addresses and the unit a gunner is assigned to,
+/// which is why a mixed turret is one `Weapon` with several `Gun`s rather than
+/// several `Weapon`s.  A turret holds one to three guns; every other mount holds
+/// exactly one.
+///
+/// See `docs/mixed_turrets_design.md`.  The wire format still writes the older
+/// `{kind, mount, modifiers}` shape whenever every gun matches, so existing
+/// designs are unchanged -- see the `Serialize`/`Deserialize` impls below.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Weapon {
+  pub mount: WeaponMount,
+  pub guns: Vec<Gun>,
+}
+
+impl Weapon {
+  /// A mount holding `count` identical guns.
+  #[must_use]
+  pub fn uniform(kind: WeaponType, mount: WeaponMount, count: u8) -> Self {
+    Weapon {
+      mount,
+      guns: (0..count.max(1)).map(|_| Gun::new(kind)).collect(),
+    }
+  }
+
+  /// A mount holding a single gun, for barbettes, bays and fixed mounts.
+  #[must_use]
+  pub fn single(kind: WeaponType, mount: WeaponMount) -> Self {
+    Weapon {
+      mount,
+      guns: vec![Gun::new(kind)],
+    }
+  }
+
+  /// True when every gun in this mount is the same type.
+  ///
+  /// A uniform mount fires all its guns together; a mixed one must choose a
+  /// type each round (Core Rulebook p. 166).
+  #[must_use]
+  pub fn is_uniform(&self) -> bool {
+    self.guns.windows(2).all(|pair| pair[0].kind == pair[1].kind)
+  }
+
+  /// The distinct weapon types in this mount, in first-appearance order.
+  #[must_use]
+  pub fn kinds(&self) -> Vec<WeaponType> {
+    let mut seen: Vec<WeaponType> = Vec::new();
+    for gun in &self.guns {
+      if !seen.contains(&gun.kind) {
+        seen.push(gun.kind);
+      }
+    }
+    seen
+  }
+
+  /// How many guns of `kind` this mount holds.
+  ///
+  /// This is the count the same-type damage bonus and the sandcaster and
+  /// point-defence tallies all want -- not the size of the turret, which in a
+  /// mixed mount overstates every one of them.
+  #[must_use]
+  pub fn count_of(&self, kind: WeaponType) -> u8 {
+    u8::try_from(self.guns.iter().filter(|gun| gun.kind == kind).count()).unwrap_or(u8::MAX)
+  }
+
+  /// Whether this mount carries any gun of `kind`.
+  #[must_use]
+  pub fn has_kind(&self, kind: WeaponType) -> bool {
+    self.guns.iter().any(|gun| gun.kind == kind)
+  }
+
+  /// Resolve this mount for firing a particular weapon type.
+  ///
+  /// `None` when the mount carries no gun of that type.  The `count` is the
+  /// number of guns of that type -- not the size of the turret -- which is what
+  /// the same-type damage bonus wants, and the distinction only matters once a
+  /// turret can hold different weapons.
+  #[must_use]
+  pub fn firing(&self, kind: WeaponType) -> Option<Firing<'_>> {
+    let count = self.count_of(kind);
+    if count == 0 {
+      return None;
+    }
+    let modifiers = self
+      .guns
+      .iter()
+      .find(|gun| gun.kind == kind)
+      .map_or(&[] as &[WeaponModifier], |gun| gun.modifiers.as_slice());
+    Some(Firing {
+      kind,
+      mount: &self.mount,
+      modifiers,
+      count,
+    })
+  }
+
+  /// Resolve a uniform mount, or the first gun of a mixed one.
+  #[must_use]
+  pub fn firing_default(&self) -> Option<Firing<'_>> {
+    self.guns.first().and_then(|gun| self.firing(gun.kind))
+  }
+
+  /// The type a uniform mount fires, or the first gun's type otherwise.
+  ///
+  /// Callers that must handle a mixed mount correctly should use [`kinds`] or
+  /// [`count_of`]; this exists for logging and display.
+  #[must_use]
+  pub fn primary_kind(&self) -> WeaponType {
+    self.guns.first().map_or(WeaponType::Beam, |gun| gun.kind)
+  }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum WeaponMount {
-  Turret(u8),
+  /// A turret holds one to three guns; the count lives in `Weapon::guns`
+  /// rather than here, so the two cannot disagree.
+  Turret,
   Barbette,
   Bay(BaySize),
   /// A single weapon bolted to the hull.  Unlike a turret it cannot traverse,
@@ -504,7 +649,7 @@ pub enum MountClass {
 impl From<&WeaponMount> for MountClass {
   fn from(mount: &WeaponMount) -> Self {
     match mount {
-      WeaponMount::Turret(_) => MountClass::Turret,
+      WeaponMount::Turret => MountClass::Turret,
       WeaponMount::FixedMount => MountClass::Fixed,
       WeaponMount::Barbette => MountClass::Barbette,
       WeaponMount::Bay(BaySize::Small) => MountClass::SmallBay,
@@ -557,6 +702,126 @@ pub struct WeaponProfile {
   /// Damage suppresses the target's Power instead of harming its hull
   /// (High Guard p. 30).  Nothing is permanently destroyed.
   pub ion: bool,
+}
+
+// --- Weapon wire format ---------------------------------------------------
+//
+// A `Weapon` used to be one gun that knew its mount: `{kind, mount: {Turret: 3},
+// modifiers}` meant a triple turret of three identical guns.  It is now a mount
+// holding a list of guns, so that a turret can hold different ones.
+//
+// Both spellings are read.  The old one is still *written* whenever every gun in
+// a mount matches, which is every design in the library, so this change leaves
+// those files byte-identical and only a genuinely mixed turret gets new syntax.
+
+/// The mount as it appears on the wire, where a turret still carries its size.
+#[derive(Serialize, Deserialize)]
+enum MountWire {
+  Turret(u8),
+  Barbette,
+  Bay(BaySize),
+  FixedMount,
+  Battery(u8),
+}
+
+impl MountWire {
+  fn to_mount(&self) -> WeaponMount {
+    match self {
+      MountWire::Turret(_) => WeaponMount::Turret,
+      MountWire::Barbette => WeaponMount::Barbette,
+      MountWire::Bay(size) => WeaponMount::Bay(*size),
+      MountWire::FixedMount => WeaponMount::FixedMount,
+      MountWire::Battery(grade) => WeaponMount::Battery(*grade),
+    }
+  }
+
+  fn from_mount(mount: &WeaponMount, guns: usize) -> Self {
+    match mount {
+      WeaponMount::Turret => MountWire::Turret(u8::try_from(guns).unwrap_or(1)),
+      WeaponMount::Barbette => MountWire::Barbette,
+      WeaponMount::Bay(size) => MountWire::Bay(*size),
+      WeaponMount::FixedMount => MountWire::FixedMount,
+      WeaponMount::Battery(grade) => MountWire::Battery(*grade),
+    }
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WeaponWire {
+  /// The shape every existing design file uses: one kind, and a turret size.
+  Uniform {
+    kind: WeaponType,
+    mount: MountWire,
+    #[serde(default)]
+    modifiers: Vec<WeaponModifier>,
+  },
+  /// A mount listing its guns, needed only when they differ.
+  Guns { mount: MountWire, guns: Vec<Gun> },
+}
+
+impl<'de> Deserialize<'de> for Weapon {
+  fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    Ok(match WeaponWire::deserialize(deserializer)? {
+      WeaponWire::Uniform { kind, mount, modifiers } => {
+        // A turret's size becomes that many identical guns; everything else
+        // holds exactly one.
+        let count = match mount {
+          MountWire::Turret(size) => size.max(1),
+          _ => 1,
+        };
+        Weapon {
+          mount: mount.to_mount(),
+          guns: (0..count)
+            .map(|_| Gun {
+              kind,
+              modifiers: modifiers.clone(),
+            })
+            .collect(),
+        }
+      }
+      WeaponWire::Guns { mount, guns } => Weapon {
+        mount: mount.to_mount(),
+        guns,
+      },
+    })
+  }
+}
+
+impl Serialize for Weapon {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    let mount = MountWire::from_mount(&self.mount, self.guns.len());
+    if self.is_uniform() {
+      // Write the older shape so existing designs round-trip unchanged.
+      let first = self.guns.first();
+      WeaponUniformOut {
+        kind: first.map_or(WeaponType::Beam, |gun| gun.kind),
+        mount,
+        modifiers: first.map(|gun| gun.modifiers.clone()).unwrap_or_default(),
+      }
+      .serialize(serializer)
+    } else {
+      WeaponGunsOut {
+        mount,
+        guns: &self.guns,
+      }
+      .serialize(serializer)
+    }
+  }
+}
+
+#[derive(Serialize)]
+struct WeaponUniformOut {
+  kind: WeaponType,
+  mount: MountWire,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  modifiers: Vec<WeaponModifier>,
+}
+
+#[derive(Serialize)]
+struct WeaponGunsOut<'a> {
+  mount: MountWire,
+  guns: &'a Vec<Gun>,
 }
 
 /// A directed defensive system that reduces the damage of a specific kind of
@@ -1580,28 +1845,28 @@ impl Ord for Weapon {
     // but seems more readable when expanded.
     #[allow(clippy::match_same_arms)]
     match (&self.mount, &other.mount) {
-      (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Large), _) => std::cmp::Ordering::Less,
       (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => std::cmp::Ordering::Greater,
-      (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Medium), _) => std::cmp::Ordering::Less,
       (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Large)) => std::cmp::Ordering::Greater,
       (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Medium)) => std::cmp::Ordering::Greater,
-      (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Small), _) => std::cmp::Ordering::Less,
       (WeaponMount::Barbette, _) => std::cmp::Ordering::Less,
-      (WeaponMount::Turret(_), WeaponMount::Bay(_)) => std::cmp::Ordering::Greater,
-      (WeaponMount::Turret(_), WeaponMount::Barbette) => std::cmp::Ordering::Greater,
-      (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Turret, WeaponMount::Bay(_)) => std::cmp::Ordering::Greater,
+      (WeaponMount::Turret, WeaponMount::Barbette) => std::cmp::Ordering::Greater,
+      (WeaponMount::Turret, WeaponMount::Turret) => self.kinds().cmp(&other.kinds()),
       // A fixed mount is the least capable mount, so it sorts after everything else.
-      (WeaponMount::Turret(_), WeaponMount::FixedMount) => std::cmp::Ordering::Less,
+      (WeaponMount::Turret, WeaponMount::FixedMount) => std::cmp::Ordering::Less,
       // A battery is real hardware but not a gun, so it sits between the
       // turrets and the fixed mounts.
-      (WeaponMount::Turret(_), WeaponMount::Battery(_)) => std::cmp::Ordering::Less,
-      (WeaponMount::Battery(_), WeaponMount::Battery(_)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Turret, WeaponMount::Battery(_)) => std::cmp::Ordering::Less,
+      (WeaponMount::Battery(_), WeaponMount::Battery(_)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Battery(_), WeaponMount::FixedMount) => std::cmp::Ordering::Less,
       (WeaponMount::Battery(_), _) => std::cmp::Ordering::Greater,
-      (WeaponMount::FixedMount, WeaponMount::FixedMount) => self.kind.cmp(&other.kind),
+      (WeaponMount::FixedMount, WeaponMount::FixedMount) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::FixedMount, _) => std::cmp::Ordering::Greater,
     }
   }
@@ -1708,23 +1973,40 @@ impl From<&WeaponType> for String {
 
 impl From<&Weapon> for String {
   fn from(w: &Weapon) -> Self {
-    match (&w.kind, &w.mount) {
-      (kind, WeaponMount::Turret(1)) => format!("{} single turret", String::from(kind)),
-      (kind, WeaponMount::Turret(2)) => format!("{} double turret", String::from(kind)),
-      (kind, WeaponMount::Turret(3)) => format!("{} triple turret", String::from(kind)),
-      (_, WeaponMount::Turret(size)) => {
-        panic!("(From<Weapon> for String) illegal turret size {size}.")
-      }
-      (kind, WeaponMount::FixedMount) => format!("{} fixed mount", String::from(kind)),
-      (kind, WeaponMount::Barbette) => format!("{} barbette", String::from(kind)),
-      (kind, WeaponMount::Bay(BaySize::Small)) => format!("{} small bay", String::from(kind)),
-      (kind, WeaponMount::Bay(BaySize::Medium)) => {
-        format!("{} medium bay", String::from(kind))
-      }
-      (kind, WeaponMount::Bay(BaySize::Large)) => format!("{} large bay", String::from(kind)),
+    // A mixed turret is named by its contents rather than by a single kind:
+    // "pulse laser x2, sandcaster triple turret".
+    let contents = if w.is_uniform() {
+      String::from(&w.primary_kind())
+    } else {
+      w.kinds()
+        .iter()
+        .map(|kind| {
+          let count = w.count_of(*kind);
+          if count > 1 {
+            format!("{} x{count}", String::from(kind))
+          } else {
+            String::from(kind)
+          }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+    };
+
+    match &w.mount {
+      WeaponMount::Turret => match w.guns.len() {
+        1 => format!("{contents} single turret"),
+        2 => format!("{contents} double turret"),
+        3 => format!("{contents} triple turret"),
+        size => format!("{contents} turret of {size}"),
+      },
+      WeaponMount::FixedMount => format!("{contents} fixed mount"),
+      WeaponMount::Barbette => format!("{contents} barbette"),
+      WeaponMount::Bay(BaySize::Small) => format!("{contents} small bay"),
+      WeaponMount::Bay(BaySize::Medium) => format!("{contents} medium bay"),
+      WeaponMount::Bay(BaySize::Large) => format!("{contents} large bay"),
       // The grade is the whole identity of a battery, so name it rather than
       // falling back on the weapon kind.
-      (_, WeaponMount::Battery(grade)) => {
+      WeaponMount::Battery(grade) => {
         let numeral = match grade {
           1 => "I",
           2 => "II",
@@ -1972,26 +2254,10 @@ impl Default for ShipDesignTemplate {
       countermeasures: None,
       computer: 5,
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Pulse,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Pulse,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Sand,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Sand,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
+        Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
       ],
       screens: vec![],
       tl: 15,
@@ -2726,55 +2992,19 @@ mod tests {
   #[test_log::test]
   fn test_weapon_ordering() {
     // Create test weapons with different mounts and types
-    let large_bay_beam = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Bay(BaySize::Large),
-      modifiers: vec![],
-    };
-    let large_bay_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Bay(BaySize::Large),
-      modifiers: vec![],
-    };
-    let medium_bay = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Bay(BaySize::Medium),
-      modifiers: vec![],
-    };
+    let large_bay_beam = Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Large));
+    let large_bay_pulse = Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Large));
+    let medium_bay = Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Medium));
 
-    let medium_bay_missile = Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::Bay(BaySize::Medium),
-      modifiers: vec![],
-    };
+    let medium_bay_missile = Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Medium));
 
-    let small_bay = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Bay(BaySize::Small),
-      modifiers: vec![],
-    };
+    let small_bay = Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Small));
 
-    let small_bay_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Bay(BaySize::Small),
-      modifiers: vec![],
-    };
+    let small_bay_pulse = Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small));
 
-    let barbette = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Barbette,
-      modifiers: vec![],
-    };
-    let turret = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(2),
-      modifiers: vec![],
-    };
-    let turret_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Turret(2),
-      modifiers: vec![],
-    };
+    let barbette = Weapon::single(WeaponType::Beam, WeaponMount::Barbette);
+    let turret = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2);
+    let turret_pulse = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2);
 
     // Test ordering between same mount types
     assert!(large_bay_beam < large_bay_pulse); // Same mount, different types
@@ -2804,16 +3034,8 @@ mod tests {
     assert!(turret > small_bay); // Turret > Small bay
 
     // A fixed mount is the least capable mount, so it sorts after everything.
-    let fixed = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::FixedMount,
-      modifiers: vec![],
-    };
-    let fixed_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::FixedMount,
-      modifiers: vec![],
-    };
+    let fixed = Weapon::single(WeaponType::Beam, WeaponMount::FixedMount);
+    let fixed_pulse = Weapon::single(WeaponType::Pulse, WeaponMount::FixedMount);
     assert!(fixed > turret);
     assert!(turret < fixed);
     assert!(fixed > barbette);
@@ -2823,11 +3045,7 @@ mod tests {
 
   #[test_log::test]
   fn test_fixed_mount_naming_and_serde() {
-    let fixed = Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::FixedMount,
-      modifiers: vec![],
-    };
+    let fixed = Weapon::single(WeaponType::Missile, WeaponMount::FixedMount);
     assert_eq!(String::from(&fixed), "missile fixed mount");
 
     // The wire form is a bare string, like the other unit variant (Barbette).
@@ -2875,16 +3093,8 @@ mod tests {
       countermeasures: None,
       computer: 10,
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Pulse,
-          mount: WeaponMount::Bay(BaySize::Small),
-          modifiers: vec![],
-        },
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2),
+        Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small)),
       ],
       screens: vec![],
       tl: 12,

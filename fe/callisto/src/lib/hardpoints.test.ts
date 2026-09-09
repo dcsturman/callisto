@@ -27,6 +27,10 @@ import {
   isPassiveWeapon,
   weaponToString,
   weaponKindLabel,
+  weaponGuns,
+  weaponKinds,
+  countOfKind,
+  isUniformWeapon,
 } from "lib/weapon";
 
 // Editor rows.
@@ -604,5 +608,58 @@ describe("weapon modifiers", () => {
     );
     // An unmodified weapon reads exactly as before.
     expect(weaponToString(createWeapon("Pulse", { Turret: 3 }))).toBe("Triple Pulse Turret");
+  });
+});
+
+describe("mixed turrets", () => {
+  // The MK Mora's turret: two long-range high-yield pulse lasers and a plain
+  // sandcaster, in the wire shape the server sends for a mixed mount.
+  const moraTurret: Weapon = {
+    mount: { Turret: 3 },
+    guns: [
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Sand" },
+    ],
+  };
+
+  it("reads the guns out of a mixed mount", () => {
+    expect(weaponGuns(moraTurret)).toHaveLength(3);
+    expect(weaponKinds(moraTurret)).toEqual(["Pulse", "Sand"]);
+    expect(countOfKind(moraTurret, "Pulse")).toBe(2);
+    expect(countOfKind(moraTurret, "Sand")).toBe(1);
+    expect(isUniformWeapon(moraTurret)).toBe(false);
+  });
+
+  // A uniform mount still arrives in the old shape, with a kind and a turret
+  // size rather than a gun list.
+  it("expands a uniform mount from its turret size", () => {
+    const triple: Weapon = { kind: "Beam", mount: { Turret: 3 } };
+    expect(weaponGuns(triple)).toHaveLength(3);
+    expect(weaponKinds(triple)).toEqual(["Beam"]);
+    expect(isUniformWeapon(triple)).toBe(true);
+    // And a mount that holds one weapon expands to one gun.
+    expect(weaponGuns({ kind: "Torpedo", mount: "Barbette" })).toHaveLength(1);
+  });
+
+  it("names a mixed mount by its contents", () => {
+    expect(weaponToString(moraTurret)).toBe("Triple Turret (Pulse x2, Sand)");
+    // A uniform mount is unchanged.
+    expect(weaponToString({ kind: "Beam", mount: { Turret: 3 } })).toBe(
+      "Triple Beam Turret",
+    );
+  });
+
+  // A turret of lasers and sand is still orderable -- the lasers can fire even
+  // though the sandcaster cannot be ordered.
+  it("keeps a mixed turret actionable if any gun in it can be ordered", () => {
+    expect(isActionableWeapon(moraTurret)).toBe(true);
+    // But a mount whose every gun is automatic is not.
+    expect(
+      isActionableWeapon({
+        mount: { Turret: 2 },
+        guns: [{ kind: "Sand" }, { kind: "Sand" }],
+      }),
+    ).toBe(false);
   });
 });

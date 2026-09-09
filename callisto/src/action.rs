@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::debug;
 use crate::entity::Entities;
-use crate::ship::{Ship, ShipSystem};
+use crate::ship::{Ship, ShipSystem, WeaponType};
 
 /// Identifies a specific queued action that a captain can boost. Mirrors the
 /// shape of the underlying `ShipAction` for the kinds that are eligible to
@@ -195,6 +195,14 @@ pub enum ShipAction {
       //with = "::serde_with::rust::unwrap_or_skip"
   )]
     called_shot_system: Option<ShipSystem>,
+    /// Which weapon type in the mount is firing.
+    ///
+    /// A mixed turret "may only use one type in a single combat round" (Core
+    /// Rulebook p. 166), so it has to be told which.  `None` for a uniform
+    /// mount, which has no choice to make -- and for every action written
+    /// before mixed turrets existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    firing_kind: Option<WeaponType>,
   },
   PointDefenseAction {
     weapon_id: usize,

@@ -12,7 +12,7 @@ use crate::entity::Entity;
 use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{
-  MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile, WeaponType,
+  Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile, WeaponType,
 };
 use crate::{debug, error, info, warn};
 use tracing::event;
@@ -80,7 +80,7 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 // Splitting them into a struct would not improve clarity here.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub fn attack(
-  hit_mod: i32, damage_mod: i32, attacker: &Ship, defender: &mut Ship, weapon: &Weapon,
+  hit_mod: i32, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
   called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let attacker_name = attacker.get_name();
@@ -88,17 +88,17 @@ pub fn attack(
   // Damage, range, hit modifier and armour penetration all depend on how the
   // weapon is mounted, so everything below reads from the profile rather than
   // from the weapon type alone.
-  let Some(profile) = profile_for(weapon.kind, &weapon.mount).map(|p| p.with_modifiers(weapon.kind, &weapon.modifiers))
+  let Some(profile) = profile_for(firing.kind, firing.mount).map(|p| p.with_modifiers(firing.kind, firing.modifiers))
   else {
     error!(
       "(Combat.attack) {} cannot be mounted as a {}, so {attacker_name} cannot fire it.",
-      String::from(&weapon.kind),
-      String::from(weapon)
+      String::from(&firing.kind),
+      String::from(&firing.kind)
     );
     return vec![EffectMsg::message(format!(
       "{}'s {} is not a mount this weapon can be fired from.",
       attacker_name,
-      String::from(&weapon.kind)
+      String::from(&firing.kind)
     ))];
   };
 
@@ -162,13 +162,13 @@ pub fn attack(
       "(Combat.attack) {} is out of range of {}'s {}.",
       defender.get_name(),
       attacker.get_name(),
-      String::from(&weapon.kind)
+      String::from(&firing.kind)
     );
     return vec![EffectMsg::message(format!(
       "{} is out of range of {}'s {}.",
       defender.get_name(),
       attacker.get_name(),
-      String::from(&weapon.kind)
+      String::from(&firing.kind)
     ))];
   };
 
@@ -183,14 +183,14 @@ pub fn attack(
   // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
   // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
   // capital ships and struggle to connect with anything nimble.
-  let small_target_mod = if weapon.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
+  let small_target_mod = if firing.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
     -2
   } else {
     0
   };
 
   info!(
-        "(Combat.attack) Ship {attacker_name} attacking with {weapon:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
+        "(Combat.attack) Ship {attacker_name} attacking with {firing:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
         defender.get_name(),
         profile.hit_mod
     );
@@ -211,7 +211,7 @@ pub fn attack(
     return vec![EffectMsg::message(format!(
       "{}'s {} attack misses {}.",
       attacker_name,
-      String::from(&weapon.kind),
+      String::from(&firing.kind),
       defender.get_name()
     ))];
   }
@@ -227,7 +227,7 @@ pub fn attack(
   // + the effect of the hit roll
   let roll = u32::from(roll_dice_min(
     profile.damage_dice,
-    WeaponProfile::min_die(weapon.kind, &weapon.modifiers),
+    WeaponProfile::min_die(firing.kind, firing.modifiers),
     rng,
   ));
   let mut damage = roll + effect;
@@ -259,7 +259,7 @@ pub fn attack(
       "{} hit by {}'s {} but damage absorbed by armor.",
       defender.get_name(),
       attacker.get_name(),
-      String::from(weapon.kind)
+      String::from(firing.kind)
     ))];
   };
 
@@ -276,7 +276,7 @@ pub fn attack(
   // The order matters beyond arithmetic: applied before armour, a screen would
   // be spent cancelling damage the armour was going to stop anyway.
   let before_screens = damage;
-  damage = defender.apply_screens(weapon.kind, damage);
+  damage = defender.apply_screens(firing.kind, damage);
   let screened = before_screens - damage;
   if screened > 0 {
     debug!(
@@ -289,7 +289,7 @@ pub fn attack(
       "{} hit by {}'s {} but the damage is absorbed by its screens.",
       defender.get_name(),
       attacker_name,
-      String::from(&weapon.kind)
+      String::from(&firing.kind)
     ))];
   }
 
@@ -303,7 +303,7 @@ pub fn attack(
         content: format!(
           "{} hit by a {} for {} damage.",
           defender.get_name(),
-          String::from(&weapon.kind),
+          String::from(&firing.kind),
           damage
         ),
       },
@@ -316,14 +316,17 @@ pub fn attack(
     // Guns in a multi-weapon turret fire together, adding their dice to the
     // one roll.  This is a bonus for filling the turret, not a Damage
     // Multiple, so it applies before (and independently of) the multiple.
-    if let WeaponMount::Turret(num) = weapon.mount {
-      damage += (u32::from(num) - 1) * u32::from(profile.damage_dice);
+    // "Each additional weapon adds +1 per damage dice" (Core Rulebook p. 166).
+    // Counted over guns of the firing type, so a mixed turret gets the bonus
+    // for the two lasers in it and not for the sandcaster beside them.
+    if matches!(*firing.mount, WeaponMount::Turret) {
+      damage += (u32::from(firing.count) - 1) * u32::from(profile.damage_dice);
     }
 
     // Damage Multiples (High Guard p. 29).  Launchers never reach here; their
     // scaling is salvo size, which is why the two are mutually exclusive.
     if profile.use_multiple {
-      damage *= damage_multiple(MountClass::from(&weapon.mount));
+      damage *= damage_multiple(MountClass::from(firing.mount));
     }
 
     vec![
@@ -331,7 +334,7 @@ pub fn attack(
         content: format!(
           "{} hit by {} for {} damage.",
           defender.get_name(),
-          String::from(&weapon.kind),
+          String::from(&firing.kind),
           damage
         ),
       },
@@ -876,6 +879,7 @@ pub fn do_fire_actions<S: BuildHasher>(
         weapon_id,
         target,
         called_shot_system,
+        firing_kind,
       } = action
       else {
         error!("(Combat.do_fire_actions) Expected FireAction but got {:?}.", action);
@@ -894,6 +898,22 @@ pub fn do_fire_actions<S: BuildHasher>(
       }
 
       let weapon = attacker.get_weapon(*weapon_id);
+      // Which gun in the mount is firing.  A mixed turret may only use one type
+      // per round (Core Rulebook p. 166), so the action names it; a uniform
+      // mount has no choice to make and does not have to.
+      let firing = match firing_kind {
+        Some(kind) => weapon.firing(*kind),
+        None => weapon.firing_default(),
+      };
+      let Some(firing) = firing else {
+        debug!(
+          "(Combat.do_fire_actions) Weapon {} cannot fire {:?}; it holds {:?}.",
+          weapon_id,
+          firing_kind,
+          weapon.kinds()
+        );
+        return vec![];
+      };
       let gunnery_skill = i32::from(attacker.get_crew().get_gunnery(*weapon_id));
       // Captain leadership boost for this specific (ship, weapon) fire action.
       let leadership_boost = i32::from(boost_for_fire(boost_map, attacker.get_name(), *weapon_id));
@@ -926,18 +946,18 @@ pub fn do_fire_actions<S: BuildHasher>(
       #[allow(clippy::cast_possible_truncation)]
       let range_band = find_range_band((target.get_position() - attacker.get_position()).magnitude() as u32);
       let Some(profile) =
-        profile_for(weapon.kind, &weapon.mount).map(|p| p.with_modifiers(weapon.kind, &weapon.modifiers))
+        profile_for(firing.kind, firing.mount).map(|p| p.with_modifiers(firing.kind, firing.modifiers))
       else {
         error!(
           "(Combat.do_fire_actions) {} cannot mount {} as a {}.",
           attacker.get_name(),
-          String::from(&weapon.kind),
-          String::from(weapon)
+          String::from(&firing.kind),
+          String::from(&firing.kind)
         );
         return vec![EffectMsg::message(format!(
           "{}'s {} cannot be fired from that mount.",
           attacker.get_name(),
-          String::from(&weapon.kind)
+          String::from(&firing.kind)
         ))];
       };
 
@@ -948,13 +968,13 @@ pub fn do_fire_actions<S: BuildHasher>(
           "(Combat.attack) {} is out of range of {}'s {}.",
           target.get_name(),
           attacker.get_name(),
-          String::from(&weapon.kind)
+          String::from(&firing.kind)
         );
         return vec![EffectMsg::message(format!(
           "{} is out of range of {}'s {}.",
           target.get_name(),
           attacker.get_name(),
-          String::from(&weapon.kind)
+          String::from(&firing.kind)
         ))];
       }
 
@@ -964,10 +984,9 @@ pub fn do_fire_actions<S: BuildHasher>(
         // calls attack() on impact, carrying the weapon that threw it so a
         // torpedo resolves as a torpedo rather than as a missile.
         let count = match salvo {
-          Salvo::PerGun => match weapon.mount {
-            WeaponMount::Turret(num) => u16::from(num),
-            _ => 1,
-          },
+          // One object per launcher gun, which in a mixed turret is the number
+          // of racks in it rather than the size of the turret.
+          Salvo::PerGun => u16::from(firing.count),
           Salvo::Fixed(n) => n,
         };
         for _ in 0..count {
@@ -982,7 +1001,7 @@ pub fn do_fire_actions<S: BuildHasher>(
           "(Combat.do_fire_actions) {} launches {} {} at {}.",
           attacker.get_name(),
           count,
-          String::from(&weapon.kind),
+          String::from(&firing.kind),
           target.get_name()
         );
 
@@ -990,18 +1009,18 @@ pub fn do_fire_actions<S: BuildHasher>(
           "{} launches {} {}(s) at {}.",
           attacker.get_name(),
           count,
-          String::from(&weapon.kind),
+          String::from(&firing.kind),
           target.get_name()
         ))];
       }
 
-      match weapon.kind {
+      match firing.kind {
         WeaponType::Beam | WeaponType::Pulse => {
           // Lasers are special as sand can be used against them.
           debug!(
             "(Combat.do_fire_actions) {} fires {} at {} with lasers.",
             attacker.get_name(),
-            String::from(&weapon.kind),
+            String::from(&firing.kind),
             target.get_name()
           );
 
@@ -1076,7 +1095,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             -sand_mod,
             attacker,
             &mut target,
-            weapon,
+            &firing,
             called_shot_system.as_ref(),
             boost_map,
             rng,
@@ -1087,7 +1106,7 @@ pub fn do_fire_actions<S: BuildHasher>(
           debug!(
             "(Combat.do_fire_actions) {} fires {} at {}.",
             attacker.get_name(),
-            String::from(&weapon.kind),
+            String::from(&firing.kind),
             target.get_name()
           );
 
@@ -1109,7 +1128,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             0,
             attacker,
             &mut target,
-            weapon,
+            &firing,
             called_shot_system.as_ref(),
             boost_map,
             rng,
@@ -1123,10 +1142,25 @@ pub fn do_fire_actions<S: BuildHasher>(
 }
 
 #[must_use]
-pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, S>) -> HashMap<String, Vec<i32>> {
+pub fn create_sand_counts<S: BuildHasher>(
+  ship_snapshot: &HashMap<String, Ship, S>, point_defense_actions: &[(String, Vec<ShipAction>)],
+) -> HashMap<String, Vec<i32>> {
   ship_snapshot
     .iter()
     .map(|(name, ship)| {
+      // A mount gets one reaction a round.  Dispersing sand and running point
+      // defence are both reactions, so a mount that queued point defence has
+      // already spent its own and cannot also throw sand.
+      let reacting: Vec<usize> = point_defense_actions
+        .iter()
+        .filter(|(ship_name, _)| ship_name == name)
+        .flat_map(|(_, actions)| actions.iter())
+        .filter_map(|action| match action {
+          ShipAction::PointDefenseAction { weapon_id } => Some(*weapon_id),
+          _ => None,
+        })
+        .collect();
+
       (
         name.clone(),
         ship
@@ -1134,9 +1168,19 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
           .iter()
           .enumerate()
           .filter_map(|(index, weapon)| {
-            if weapon.kind == WeaponType::Sand && ship.active_weapons[index] {
+            if reacting.contains(&index) {
+              debug!("(Combat.create_sand_counts) Mount {index} on {name} is on point defence, so it cannot also disperse sand.");
+              return None;
+            }
+            if weapon.has_kind(WeaponType::Sand) && ship.active_weapons[index] {
               match weapon.mount {
-                WeaponMount::Turret(n) => Some(i32::from(n) - 1 + i32::from(ship.get_crew().get_gunnery(index))),
+                // "+1 to the damage negated ... for each additional sandcaster"
+                // (Core Rulebook p. 166), counted over the sandcasters in the
+                // mount rather than its size -- a turret holding one sandcaster
+                // and two lasers negates as one sandcaster, not three.
+                WeaponMount::Turret => {
+                  Some(i32::from(weapon.count_of(WeaponType::Sand)) - 1 + i32::from(ship.get_crew().get_gunnery(index)))
+                }
                 WeaponMount::FixedMount => Some(i32::from(ship.get_crew().get_gunnery(index))),
                 WeaponMount::Barbette => {
                   error!("Barbette sand mount not supported.");
@@ -1168,7 +1212,7 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
 /// battery.  Everything else treats a nonsensical pair as inert.
 #[must_use]
 pub fn battery_intercept_dice(weapon: &Weapon) -> Option<u8> {
-  match (weapon.kind, &weapon.mount) {
+  match (weapon.primary_kind(), &weapon.mount) {
     (WeaponType::PointDefense, WeaponMount::Battery(grade @ 1..=3)) => Some(2 * grade),
     _ => None,
   }
@@ -1183,7 +1227,7 @@ pub fn battery_intercept_dice(weapon: &Weapon) -> Option<u8> {
 /// by five" (High Guard p. 33).  A repulsor may only be used once per round,
 /// which is what makes it belong in this per-round pool alongside the batteries.
 fn roll_repulsor(weapon: &Weapon, skill: u8, rng: &mut dyn RngCore) -> u32 {
-  if weapon.kind != WeaponType::Repulsor {
+  if !weapon.has_kind(WeaponType::Repulsor) {
     return 0;
   }
   let multiplier = match MountClass::from(&weapon.mount) {
@@ -1270,25 +1314,16 @@ pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
 fn point_defense_score(weapon: &Weapon) -> u16 {
   // Only lasers track a missile well enough to swat it (High Guard p. 30 notes
   // barbettes explicitly cannot, which the mount term below already enforces).
-  (match weapon.kind {
-    WeaponType::Beam | WeaponType::Pulse => 1,
-    WeaponType::Missile
-    | WeaponType::Sand
-    | WeaponType::Particle
-    | WeaponType::Torpedo
-    | WeaponType::Fusion
-    | WeaponType::Plasma
-    | WeaponType::Railgun
-    | WeaponType::Meson
-    | WeaponType::MassDriver
-    | WeaponType::Repulsor
-    | WeaponType::Ion
-    // Batteries are automatic and never queue an action; they resolve through
-    // `roll_battery_pool` instead.  Scoring 0 here is what makes a stray
-    // PointDefenseAction naming a battery get dropped rather than honoured.
-    | WeaponType::PointDefense => 0,
-  }) * match weapon.mount {
-    WeaponMount::Turret(num) => u16::from(num),
+  //
+  // Counted over the laser guns in the mount: a triple turret holding one pulse
+  // laser and two sandcasters is a weak point-defence mount, not a strong one.
+  let lasers = weapon.guns.iter().filter(|gun| gun.kind.is_laser()).count();
+  if lasers == 0 {
+    return 0;
+  }
+
+  match weapon.mount {
+    WeaponMount::Turret => u16::try_from(lasers).unwrap_or(u16::MAX),
     // Barbettes, bays and fixed mounts cannot track an incoming missile.
     WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_) => 0,
   }
@@ -1424,18 +1459,15 @@ mod battery_tests {
   use crate::entity::Vec3;
   use crate::rules_tables::weapon_profile;
   use crate::ship::ShipDesignTemplate;
-  use crate::ship::{MountClass, ScreenType, WeaponModifier};
+  use crate::ship::{Gun, MountClass, ScreenType, WeaponModifier};
   use cgmath::Zero;
   use rand::rngs::SmallRng;
   use rand::SeedableRng;
+  use std::collections::HashMap;
   use std::sync::Arc;
 
   fn battery(grade: u8) -> Weapon {
-    Weapon {
-      kind: WeaponType::PointDefense,
-      mount: WeaponMount::Battery(grade),
-      modifiers: vec![],
-    }
+    Weapon::single(WeaponType::PointDefense, WeaponMount::Battery(grade))
   }
 
   fn ship_with(weapons: Vec<Weapon>) -> Ship {
@@ -1465,19 +1497,11 @@ mod battery_tests {
     assert_eq!(battery_intercept_dice(&battery(4)), None);
     // A real weapon in a battery mount, and a battery in a real mount.
     assert_eq!(
-      battery_intercept_dice(&Weapon {
-        kind: WeaponType::Beam,
-        mount: WeaponMount::Battery(2),
-        modifiers: vec![]
-      }),
+      battery_intercept_dice(&Weapon::single(WeaponType::Beam, WeaponMount::Battery(2))),
       None
     );
     assert_eq!(
-      battery_intercept_dice(&Weapon {
-        kind: WeaponType::PointDefense,
-        mount: WeaponMount::Turret(3),
-        modifiers: vec![]
-      }),
+      battery_intercept_dice(&Weapon::uniform(WeaponType::PointDefense, WeaponMount::Turret, 3)),
       None
     );
   }
@@ -1493,11 +1517,7 @@ mod battery_tests {
 
   #[test]
   fn pool_is_zero_without_batteries() {
-    let ship = ship_with(vec![Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(3),
-      modifiers: vec![],
-    }]);
+    let ship = ship_with(vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3)]);
     let mut rng = SmallRng::seed_from_u64(0xD1CE);
     assert_eq!(roll_battery_pool(&ship, &mut rng), 0);
   }
@@ -1592,21 +1612,9 @@ mod battery_tests {
     let design = Arc::new(ShipDesignTemplate {
       name: "Gunners".to_string(),
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(1),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(3),
-          modifiers: vec![],
-        },
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
       ],
       ..Default::default()
     });
@@ -1642,18 +1650,23 @@ mod battery_tests {
       ..Default::default()
     });
     let attacker = ship_with(vec![]);
-    let torpedo = Weapon {
-      kind: WeaponType::Torpedo,
-      mount: WeaponMount::Barbette,
-      modifiers: vec![],
-    };
+    let torpedo = Weapon::single(WeaponType::Torpedo, WeaponMount::Barbette);
 
     let mut hits = [0u32; 2];
     for (slot, design) in [&small, &large].into_iter().enumerate() {
       let mut rng = SmallRng::seed_from_u64(0x707D);
       for _ in 0..400 {
         let mut defender = Ship::new("D".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
-        let effects = attack(0, 0, &attacker, &mut defender, &torpedo, None, &BoostMap::default(), &mut rng);
+        let effects = attack(
+          0,
+          0,
+          &attacker,
+          &mut defender,
+          &torpedo.firing_default().unwrap(),
+          None,
+          &BoostMap::default(),
+          &mut rng,
+        );
         if effects.iter().any(|e| !matches!(e, EffectMsg::Message { .. })) {
           hits[slot] += 1;
         }
@@ -1677,11 +1690,7 @@ mod battery_tests {
       ..Default::default()
     });
     let attacker = ship_with(vec![]);
-    let ion = Weapon {
-      kind: WeaponType::Ion,
-      mount: WeaponMount::Barbette,
-      modifiers: vec![],
-    };
+    let ion = Weapon::single(WeaponType::Ion, WeaponMount::Barbette);
     let mut rng = SmallRng::seed_from_u64(0x10);
 
     // Loop until a hit lands, so the test is about what a hit does rather than
@@ -1689,7 +1698,16 @@ mod battery_tests {
     let mut defender = Ship::new("Target".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     let hull_before = defender.get_current_hull_points();
     for _ in 0..50 {
-      attack(8, 0, &attacker, &mut defender, &ion, None, &BoostMap::default(), &mut rng);
+      attack(
+        8,
+        0,
+        &attacker,
+        &mut defender,
+        &ion.firing_default().unwrap(),
+        None,
+        &BoostMap::default(),
+        &mut rng,
+      );
       if defender.ion_power_loss > 0 {
         break;
       }
@@ -1968,24 +1986,161 @@ mod battery_tests {
   /// differ -- which is exactly the mixed turret the MK Mora carries.
   #[test]
   fn modifiers_belong_to_the_weapon_not_the_mount() {
-    let plain = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Turret(3),
-      modifiers: vec![],
-    };
+    let plain = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 3);
     let modified = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Turret(3),
-      modifiers: vec![WeaponModifier::LongRange, WeaponModifier::HighYield],
+      mount: WeaponMount::Turret,
+      guns: (0..3)
+        .map(|_| Gun::with_modifiers(WeaponType::Pulse, vec![WeaponModifier::LongRange, WeaponModifier::HighYield]))
+        .collect(),
     };
     assert_ne!(plain, modified);
 
-    let plain_profile = profile_for(plain.kind, &plain.mount).unwrap();
-    let modified_profile = profile_for(modified.kind, &modified.mount)
+    let plain_firing = plain.firing_default().unwrap();
+    let modified_firing = modified.firing_default().unwrap();
+    let plain_profile = profile_for(plain_firing.kind, plain_firing.mount).unwrap();
+    let modified_profile = profile_for(modified_firing.kind, modified_firing.mount)
       .unwrap()
-      .with_modifiers(modified.kind, &modified.modifiers);
+      .with_modifiers(modified_firing.kind, modified_firing.modifiers);
     assert_eq!(plain_profile.max_range, Some(Range::Long));
     assert_eq!(modified_profile.max_range, Some(Range::VeryLong));
+  }
+
+  /// The MK Mora's turret: two long-range high-yield pulse lasers beside a
+  /// plain sandcaster.
+  fn mora_turret() -> Weapon {
+    Weapon {
+      mount: WeaponMount::Turret,
+      guns: vec![
+        Gun::with_modifiers(WeaponType::Pulse, vec![WeaponModifier::LongRange, WeaponModifier::HighYield]),
+        Gun::with_modifiers(WeaponType::Pulse, vec![WeaponModifier::LongRange, WeaponModifier::HighYield]),
+        Gun::new(WeaponType::Sand),
+      ],
+    }
+  }
+
+  #[test]
+  fn a_mixed_mount_knows_it_is_mixed() {
+    assert!(!mora_turret().is_uniform());
+    assert!(Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3).is_uniform());
+    // A single-gun mount is trivially uniform.
+    assert!(Weapon::single(WeaponType::Torpedo, WeaponMount::Barbette).is_uniform());
+  }
+
+  /// Counting is by gun type, not by turret size.  This is the whole point: a
+  /// turret with two lasers and a sandcaster is a two-laser mount, not a three.
+  #[test]
+  fn a_mixed_mount_counts_by_type() {
+    let turret = mora_turret();
+    assert_eq!(turret.count_of(WeaponType::Pulse), 2);
+    assert_eq!(turret.count_of(WeaponType::Sand), 1);
+    assert_eq!(turret.count_of(WeaponType::Beam), 0);
+    assert_eq!(turret.kinds(), vec![WeaponType::Pulse, WeaponType::Sand]);
+    assert!(turret.has_kind(WeaponType::Sand));
+  }
+
+  /// Firing resolves to the guns of one type, carrying their modifiers -- and
+  /// not the modifiers of the other guns beside them.
+  #[test]
+  fn firing_picks_one_type_and_its_modifiers() {
+    let turret = mora_turret();
+
+    let lasers = turret.firing(WeaponType::Pulse).expect("has pulse lasers");
+    assert_eq!(lasers.count, 2, "the same-type bonus counts two lasers, not three guns");
+    assert_eq!(lasers.modifiers, &[WeaponModifier::LongRange, WeaponModifier::HighYield]);
+
+    let sand = turret.firing(WeaponType::Sand).expect("has a sandcaster");
+    assert_eq!(sand.count, 1);
+    assert!(sand.modifiers.is_empty(), "the sandcaster is not long range or high yield");
+
+    assert!(turret.firing(WeaponType::Beam).is_none(), "it carries no beam laser");
+  }
+
+  /// Point defence scores the lasers in a mount, not its size.
+  #[test]
+  fn point_defense_counts_lasers_only() {
+    // Two lasers beside a sandcaster scores as two, not three.
+    assert_eq!(point_defense_score(&mora_turret()), 2);
+    // A full triple laser turret still scores three.
+    assert_eq!(
+      point_defense_score(&Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 3)),
+      3
+    );
+    // And a turret with no laser at all scores nothing.
+    assert_eq!(
+      point_defense_score(&Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 3)),
+      0
+    );
+  }
+
+  /// A mixed mount is named by its contents.
+  #[test]
+  fn a_mixed_mount_is_named_by_its_contents() {
+    assert_eq!(String::from(&mora_turret()), "pulse laser x2, sand triple turret");
+    assert_eq!(
+      String::from(&Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3)),
+      "beam laser triple turret"
+    );
+  }
+
+  /// The old wire shape still reads, and a uniform mount still writes it.
+  #[test]
+  fn the_old_wire_shape_survives() {
+    let json = r#"{"kind":"Beam","mount":{"Turret":3}}"#;
+    let weapon: Weapon = serde_json::from_str(json).expect("old shape should parse");
+    assert_eq!(weapon.guns.len(), 3, "a turret of 3 becomes three guns");
+    assert!(weapon.is_uniform());
+    assert_eq!(serde_json::to_string(&weapon).unwrap(), json, "and writes back unchanged");
+  }
+
+  /// A genuinely mixed mount needs the new shape, and round trips in it.
+  #[test]
+  fn a_mixed_mount_uses_the_new_wire_shape() {
+    let turret = mora_turret();
+    let json = serde_json::to_string(&turret).unwrap();
+    assert!(json.contains("\"guns\""), "a mixed turret must list its guns: {json}");
+    let back: Weapon = serde_json::from_str(&json).expect("new shape should parse");
+    assert_eq!(back, turret);
+  }
+
+  /// A mount gets one reaction a round, so a mount on point defence cannot also
+  /// throw sand.
+  #[test]
+  fn a_mount_on_point_defense_cannot_also_disperse_sand() {
+    // A turret holding a laser and a sandcaster: it could do either.
+    let turret = Weapon {
+      mount: WeaponMount::Turret,
+      guns: vec![Gun::new(WeaponType::Pulse), Gun::new(WeaponType::Sand)],
+    };
+    let ship = ship_with(vec![turret]);
+    let ships: HashMap<String, Ship> = [(ship.get_name().to_string(), ship)].into_iter().collect();
+
+    // With no point-defence order, the sandcaster is available.
+    let free = create_sand_counts(&ships, &[]);
+    assert_eq!(free["Batteries"].len(), 1, "the sandcaster should be ready: {free:?}");
+
+    // Ordering point defence on that mount spends its reaction.
+    let pd = vec![("Batteries".to_string(), vec![ShipAction::PointDefenseAction { weapon_id: 0 }])];
+    let spent = create_sand_counts(&ships, &pd);
+    assert!(
+      spent["Batteries"].is_empty(),
+      "a mount on point defence has no reaction left for sand: {spent:?}"
+    );
+  }
+
+  /// Attacking does *not* spend the sandcaster, which is the whole reason to put
+  /// one in a mixed turret.
+  #[test]
+  fn attacking_leaves_the_sandcaster_available() {
+    let ship = ship_with(vec![Weapon {
+      mount: WeaponMount::Turret,
+      guns: vec![Gun::new(WeaponType::Pulse), Gun::new(WeaponType::Sand)],
+    }]);
+    let ships: HashMap<String, Ship> = [(ship.get_name().to_string(), ship)].into_iter().collect();
+
+    // A fire action is not a point-defence action, so sand is untouched.  The
+    // gunner attacks with the laser and still reacts with the sandcaster.
+    let counts = create_sand_counts(&ships, &[]);
+    assert_eq!(counts["Batteries"].len(), 1);
   }
 
   /// Batteries and gunners feed one pool, as the book totals them.
@@ -2030,36 +2185,12 @@ mod tests {
     let attacker_design = ShipDesignTemplate {
       name: "TestShip".to_string(),
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(1),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Barbette,
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Small),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Medium),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Large),
-          modifiers: vec![],
-        },
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 2),
+        Weapon::single(WeaponType::Missile, WeaponMount::Barbette),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Small)),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Medium)),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Large)),
       ],
       ..ShipDesignTemplate::default()
     };
@@ -2093,38 +2224,44 @@ mod tests {
     // Create sand counts
     let mut sand_ships = HashMap::with_capacity(1);
     sand_ships.insert("Target".to_string(), target.clone());
-    let mut sand_counts = create_sand_counts(&sand_ships);
+    let mut sand_counts = create_sand_counts(&sand_ships, &[]);
 
     let actions = vec![
       ShipAction::FireAction {
         weapon_id: 0,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Beam Turret
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Turret
       ShipAction::FireAction {
         weapon_id: 2,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Barbette
       ShipAction::FireAction {
         weapon_id: 3,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Bay (Small)
       ShipAction::FireAction {
         weapon_id: 4,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Bay (Medium)
       ShipAction::FireAction {
         weapon_id: 5,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Bay (Large)
     ];
 
@@ -2177,36 +2314,12 @@ mod tests {
       fuel: 100,  // Makes math easier to check tests
       // Ensure enough weapons in this design so we can do all weapon crits
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(1),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Barbette,
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Small),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Medium),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Large),
-          modifiers: vec![],
-        },
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 2),
+        Weapon::single(WeaponType::Missile, WeaponMount::Barbette),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Small)),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Medium)),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Large)),
       ],
       ..ShipDesignTemplate::default()
     };
@@ -2378,36 +2491,12 @@ mod tests {
     let attacker_design = Arc::new(ShipDesignTemplate {
       name: "Attacker".to_string(),
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(1),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Turret(2),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Pulse,
-          mount: WeaponMount::Barbette,
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Small),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Medium),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Missile,
-          mount: WeaponMount::Bay(BaySize::Large),
-          modifiers: vec![],
-        },
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1),
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 2),
+        Weapon::single(WeaponType::Pulse, WeaponMount::Barbette),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Small)),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Medium)),
+        Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Large)),
       ],
       hull: 100,
       armor: 10,
@@ -2441,31 +2530,27 @@ mod tests {
 
     // Test cases
     let test_cases = vec![
-      (4, 0, WeaponType::Beam, WeaponMount::Turret(1), true),
-      (0, 0, WeaponType::Missile, WeaponMount::Turret(2), false),
-      (0, 0, WeaponType::Missile, WeaponMount::Turret(2), false),
-      (0, 0, WeaponType::Pulse, WeaponMount::Barbette, true),
-      (6, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Small), true),
-      (2, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Medium), false),
+      (4, 0, WeaponType::Beam, WeaponMount::Turret, 1, true),
+      (0, 0, WeaponType::Missile, WeaponMount::Turret, 2, false),
+      (0, 0, WeaponType::Missile, WeaponMount::Turret, 2, false),
+      (0, 0, WeaponType::Pulse, WeaponMount::Barbette, 1, true),
+      (6, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Small), 1, true),
+      (2, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Medium), 1, false),
       // Flipped from miss to hit when pulse barbettes started rolling their
       // correct 3D (High Guard p. 30) rather than a turret's 2D, which consumes
       // a different amount of the seeded stream and shifts every later roll.
-      (1, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Large), true),
-      (10, 0, WeaponType::Beam, WeaponMount::Turret(1), true), // High hit mod
-      (0, 10, WeaponType::Beam, WeaponMount::Turret(1), true), // High damage mod
+      (1, 0, WeaponType::Missile, WeaponMount::Bay(BaySize::Large), 1, true),
+      (10, 0, WeaponType::Beam, WeaponMount::Turret, 1, true), // High hit mod
+      (0, 10, WeaponType::Beam, WeaponMount::Turret, 1, true), // High damage mod
     ];
 
-    for (hit_mod, damage_mod, weapon_type, weapon_mount, should_hit) in test_cases {
+    for (hit_mod, damage_mod, weapon_type, weapon_mount, gun_count, should_hit) in test_cases {
       debug!("\n\n");
       info!(
         "(test.test_attack) Test case: hit_mod {}, damage_mod {}, weapon_type {:?}, weapon_mount {:?}",
         hit_mod, damage_mod, weapon_type, weapon_mount
       );
-      let weapon = Weapon {
-        kind: weapon_type,
-        mount: weapon_mount.clone(),
-        modifiers: vec![],
-      };
+      let weapon = Weapon::uniform(weapon_type, weapon_mount.clone(), gun_count);
 
       let starting_hull = defender.get_current_hull_points();
 
@@ -2474,7 +2559,7 @@ mod tests {
         damage_mod,
         &attacker,
         &mut defender,
-        &weapon,
+        &weapon.firing_default().unwrap(),
         None,
         &BoostMap::default(),
         &mut rng,
@@ -2539,11 +2624,9 @@ mod tests {
       0,
       &attacker,
       &mut defender,
-      &Weapon {
-        kind: WeaponType::Beam,
-        mount: WeaponMount::Turret(1),
-        modifiers: vec![],
-      },
+      &Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)
+        .firing_default()
+        .unwrap(),
       None,
       &BoostMap::default(),
       &mut rng,
@@ -2560,11 +2643,9 @@ mod tests {
       0,
       &attacker,
       &mut defender,
-      &Weapon {
-        kind: WeaponType::Beam,
-        mount: WeaponMount::Turret(1),
-        modifiers: vec![],
-      },
+      &Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)
+        .firing_default()
+        .unwrap(),
       None,
       &BoostMap::default(),
       &mut rng,
@@ -2597,11 +2678,9 @@ mod tests {
           0,
           &attacker,
           &mut defender,
-          &Weapon {
-            kind: WeaponType::Particle,
-            mount: WeaponMount::Bay(size),
-            modifiers: vec![],
-          },
+          &Weapon::single(WeaponType::Particle, WeaponMount::Bay(size))
+            .firing_default()
+            .unwrap(),
           None,
           &BoostMap::default(),
           &mut rng,
@@ -2645,18 +2724,14 @@ mod tests {
     );
 
     // Test in-range attack
-    let in_range_weapon = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(1),
-      modifiers: vec![],
-    };
+    let in_range_weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
     defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
     let result = attack(
       0,
       0,
       &attacker,
       &mut defender,
-      &in_range_weapon,
+      &in_range_weapon.firing_default().unwrap(),
       None,
       &BoostMap::default(),
       &mut rng,
@@ -2664,18 +2739,14 @@ mod tests {
     assert!(result.iter().all(|msg| !msg.to_string().contains("out of range")));
 
     // Test out-of-range attack
-    let out_of_range_weapon = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Turret(1),
-      modifiers: vec![],
-    };
+    let out_of_range_weapon = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 1);
     defender.set_position(Vec3::new(30_000_000.0, 0.0, 0.0)); // Assuming this is out of range
     let result = attack(
       0,
       0,
       &attacker,
       &mut defender,
-      &out_of_range_weapon,
+      &out_of_range_weapon.firing_default().unwrap(),
       None,
       &BoostMap::default(),
       &mut rng,
@@ -2683,17 +2754,13 @@ mod tests {
     assert!(result.iter().any(|msg| msg.to_string().contains("out of range")));
 
     // Test missile which should never be out of range
-    let missile_weapon = Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::Turret(1),
-      modifiers: vec![],
-    };
+    let missile_weapon = Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1);
     let result = attack(
       0,
       0,
       &attacker,
       &mut defender,
-      &missile_weapon,
+      &missile_weapon.firing_default().unwrap(),
       None,
       &BoostMap::default(),
       &mut rng,
@@ -2726,11 +2793,7 @@ mod tests {
     );
 
     // Create a beam weapon (which has limited range unlike missiles)
-    let weapon = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(1),
-      modifiers: vec![],
-    };
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
 
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_possible_truncation)]
@@ -2738,7 +2801,16 @@ mod tests {
 
     assert_eq!(range_band, Range::Long);
 
-    let result = attack(0, 0, &attacker, &mut defender, &weapon, None, &BoostMap::default(), &mut rng);
+    let result = attack(
+      0,
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
 
     assert_eq!(result.len(), 1);
     assert!(
@@ -2764,7 +2836,16 @@ mod tests {
 
     assert_eq!(range_band, Range::Medium);
 
-    let result = attack(0, 0, &attacker, &mut defender, &weapon, None, &BoostMap::default(), &mut rng);
+    let result = attack(
+      0,
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
     assert!(
       result.iter().all(|msg| !msg.to_string().contains("out of range")),
       "Expected no out of range message"
@@ -2812,14 +2893,19 @@ mod tests {
       ship: defender.get_name().to_string(),
     });
 
-    let weapon = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(1),
-      modifiers: vec![],
-    };
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
 
     // First attack: evade boost consumed, flag flips to true.
-    let _ = attack(0, 0, &attacker, &mut defender, &weapon, None, &boost_map, &mut rng);
+    let _ = attack(
+      0,
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &boost_map,
+      &mut rng,
+    );
     assert!(
       defender.has_evade_boost_used(),
       "First attack should have consumed the evade boost"
@@ -2831,7 +2917,16 @@ mod tests {
     );
 
     // Second attack: flag stays true (already consumed); dodge thrust decrements again.
-    let _ = attack(0, 0, &attacker, &mut defender, &weapon, None, &boost_map, &mut rng);
+    let _ = attack(
+      0,
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &boost_map,
+      &mut rng,
+    );
     assert!(
       defender.has_evade_boost_used(),
       "Evade boost should remain consumed after second attack"
@@ -2883,11 +2978,7 @@ mod tests {
       d
     };
 
-    let weapon = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(1),
-      modifiers: vec![],
-    };
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
 
     // Run a number of trials with the same seed schedule. With the same
     // seed each trial, the only difference between the boost-on and
@@ -2909,7 +3000,7 @@ mod tests {
         0,
         &attacker,
         &mut d_unboosted,
-        &weapon,
+        &weapon.firing_default().unwrap(),
         None,
         &BoostMap::default(),
         &mut rng_unboosted,
@@ -2919,7 +3010,16 @@ mod tests {
       boost_map.insert(BoostTarget::Evade {
         ship: "Defender".to_string(),
       });
-      let _ = attack(0, 0, &attacker, &mut d_boosted, &weapon, None, &boost_map, &mut rng_boosted);
+      let _ = attack(
+        0,
+        0,
+        &attacker,
+        &mut d_boosted,
+        &weapon.firing_default().unwrap(),
+        None,
+        &boost_map,
+        &mut rng_boosted,
+      );
 
       let unboosted_damage = ShipDesignTemplate::default().hull - d_unboosted.get_current_hull_points();
       let boosted_damage = ShipDesignTemplate::default().hull - d_boosted.get_current_hull_points();
@@ -2977,11 +3077,9 @@ mod tests {
       0,
       &attacker,
       &mut defender,
-      &Weapon {
-        kind: WeaponType::Beam,
-        mount: WeaponMount::Turret(1),
-        modifiers: vec![],
-      },
+      &Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)
+        .firing_default()
+        .unwrap(),
       None,
       &boost_map,
       &mut rng,
@@ -3021,11 +3119,7 @@ mod tests {
 
     let attacker_design = Arc::new(ShipDesignTemplate {
       name: "Attacker".to_string(),
-      weapons: vec![Weapon {
-        kind: WeaponType::Beam,
-        mount: WeaponMount::Turret(1),
-        modifiers: vec![],
-      }],
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
       ..ShipDesignTemplate::default()
     });
     let target_design = Arc::new(ShipDesignTemplate {
@@ -3054,6 +3148,7 @@ mod tests {
       weapon_id: 0,
       target: "Target".to_string(),
       called_shot_system: None,
+      firing_kind: None,
     }];
 
     let mut total_unboosted: u64 = 0;
@@ -3076,7 +3171,7 @@ mod tests {
       ships_unboosted.insert("Target".to_string(), Arc::new(RwLock::new(target_unboosted.clone())));
       let mut sand_unboosted: HashMap<String, Ship> = HashMap::new();
       sand_unboosted.insert("Target".to_string(), target_unboosted.clone());
-      let mut sand_counts_unboosted = create_sand_counts(&sand_unboosted);
+      let mut sand_counts_unboosted = create_sand_counts(&sand_unboosted, &[]);
       let mut rng_unboosted = StdRng::seed_from_u64(seed);
 
       do_fire_actions(
@@ -3104,7 +3199,7 @@ mod tests {
       ships_boosted.insert("Target".to_string(), Arc::new(RwLock::new(target_boosted.clone())));
       let mut sand_boosted: HashMap<String, Ship> = HashMap::new();
       sand_boosted.insert("Target".to_string(), target_boosted.clone());
-      let mut sand_counts_boosted = create_sand_counts(&sand_boosted);
+      let mut sand_counts_boosted = create_sand_counts(&sand_boosted, &[]);
       let mut boost_map = BoostMap::default();
       boost_map.insert(BoostTarget::AssistGunner {
         ship: "Attacker".to_string(),
@@ -3156,16 +3251,8 @@ mod tests {
     let attacker_design = Arc::new(ShipDesignTemplate {
       name: "Attacker".to_string(),
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(1),
-          modifiers: vec![],
-        },
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(1),
-          modifiers: vec![],
-        },
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1),
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1),
       ],
       ..ShipDesignTemplate::default()
     });
@@ -3198,18 +3285,20 @@ mod tests {
     ships.insert("Target".to_string(), Arc::new(RwLock::new(target.clone())));
     let mut sand_input: HashMap<String, Ship> = HashMap::new();
     sand_input.insert("Target".to_string(), target);
-    let mut sand_counts = create_sand_counts(&sand_input);
+    let mut sand_counts = create_sand_counts(&sand_input, &[]);
 
     let actions = vec![
       ShipAction::FireAction {
         weapon_id: 0,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       },
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       },
     ];
 
