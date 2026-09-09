@@ -1,4 +1,4 @@
-import {Weapon, CompressedWeapon, weaponToString} from "./weapon";
+import {Weapon, CompressedWeapon, weaponToString, weaponKinds} from "./weapon";
 // Type-only: `lib/entities` sits in an import cycle with the Redux slices, and
 // a value import from here would drag this module into it.
 import type {Ship} from "./entities";
@@ -82,7 +82,7 @@ export const compressedWeapons = (weapons: Weapon[] | null) => {
       accumulator[weapon_name].total += 1;
     } else {
       accumulator[weapon_name] = {
-        kind: weapon.kind,
+        kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
         mount: weapon.mount,
         total: 1,
       };

@@ -137,6 +137,12 @@ export const actionsSlice = createSlice({
         target: string;
         entities: EntityList;
         called_shot?: string;
+        /**
+         * Which weapon type in the mount is firing. A mixed turret may only use
+         * one type per round, so it has to be named; omitted for a uniform
+         * mount, which has no choice to make.
+         */
+        firing_kind?: string;
       }>
     ) => {
       const entities = item.payload.entities;
@@ -156,6 +162,9 @@ export const actionsSlice = createSlice({
         weapon_id: item.payload.weapon_id,
         called_shot_system: item.payload.called_shot ?? null,
       };
+      if (item.payload.firing_kind != null) {
+        new_action.firing_kind = item.payload.firing_kind;
+      }
       state[item.payload.shipName] ??= newShipAction();
       state[item.payload.shipName].fire.push(new_action);
       updateActions(state);

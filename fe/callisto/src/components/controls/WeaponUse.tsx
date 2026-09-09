@@ -15,6 +15,7 @@ import {
   WeaponMount,
   isActionableWeapon,
   isPassiveWeapon,
+  weaponKinds,
   createWeapon,
   weaponToString,
   weaponKindLabel,
@@ -66,6 +67,9 @@ import {
 import { entitiesSelector } from "state/serverSlice";
 
 // Consistent set of colors for both type of weapons and fire states.
+/** Kinds the crew never orders, so they never get a fire button of their own. */
+const PASSIVE_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
+
 const WEAPON_COLORS: { [key: string]: string } = {
   Beam: "red",
   Pulse: "blue",
@@ -458,7 +462,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
   );
 
   const handleFireCommand = useCallback(
-    (attacker: string, target: string, weapon_name: string) => {
+    (attacker: string, target: string, weapon_name: string, firingKind?: string) => {
       if (computerShipWeapons.length === 0) {
         console.error(
           "(Controls.handleFireCommand) No weapons known for " + attacker + ".",
@@ -493,6 +497,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
             weapon_id: weapon_id,
             target: target,
             entities: entities,
+            firing_kind: firingKind,
           }),
         );
       }
@@ -521,7 +526,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
   const filter = useMemo(() => [EntitySelectorType.Ship], []);
 
   const handleWeaponClick = useCallback(
-    (weapon_name: string) => {
+    (weapon_name: string, firingKind?: string) => {
       if (!computerShipName) {
         return;
       }
@@ -529,6 +534,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
         computerShipName,
         fireTarget ? fireTarget.name : "",
         weapon_name,
+        firingKind,
       );
     },
     [handleFireCommand, computerShipName, fireTarget],
@@ -551,18 +557,32 @@ export const FireControl: React.FC<FireControlProps> = () => {
   const weaponButtons = useMemo(
     () =>
       computerShipName &&
-      Object.entries(compressedWeapons(computerShipWeapons)).map(
-        ([weapon_name, weapon]) =>
-          isActionableWeapon(weapon) && (
+      Object.entries(compressedWeapons(computerShipWeapons)).flatMap(
+        ([weapon_name, weapon]) => {
+          if (!isActionableWeapon(weapon)) {
+            return [];
+          }
+          // A mixed turret may only use one type per round, so it gets a button
+          // per orderable type rather than one for the mount.  A uniform mount
+          // has a single kind and so still renders exactly one button.
+          const kinds = weaponKinds(weapon).filter(
+            (kind) => !PASSIVE_KINDS.has(kind),
+          );
+          const choices = kinds.length > 0 ? kinds : [weapon.kind];
+          const mixed = choices.length > 1;
+          return choices.map((kind) => (
             <WeaponButton
-              key={"weapon-" + computerShipName + "-" + weapon_name}
-              weapon={weapon.kind}
+              key={"weapon-" + computerShipName + "-" + weapon_name + "-" + kind}
+              weapon={kind}
               mount={weapon.mount}
               count={availableCounts[weapon_name]}
-              onClick={() => handleWeaponClick(weapon_name)}
-              disabled={isWeaponDisabled(weapon)}
+              onClick={() =>
+                handleWeaponClick(weapon_name, mixed ? kind : undefined)
+              }
+              disabled={isWeaponDisabled({ kind, mount: weapon.mount })}
             />
-          ),
+          ));
+        },
       ),
     [
       computerShipName,

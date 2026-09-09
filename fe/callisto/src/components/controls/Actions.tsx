@@ -38,6 +38,14 @@ export type FireAction = {
   target: string;
   weapon_id: number;
   called_shot_system: string | null;
+  /**
+   * Which weapon type in the mount is firing.
+   *
+   * A mixed turret may only use one type per round (Core Rulebook p. 166), so
+   * it has to be told which. Omitted for a uniform mount, which has no choice
+   * to make.
+   */
+  firing_kind?: string;
 };
 
 export type FireState = FireAction[];

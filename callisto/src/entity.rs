@@ -643,7 +643,7 @@ impl Entities {
     ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Create a snapshot of all the sand capabilities of each ship.
-    let mut sand_counts = create_sand_counts(ship_snapshot);
+    let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions);
 
     // Point-defence batteries are automatic: they need no action, no gunner and
     // no decision, so every ship that has one gets a pool whether or not its

@@ -21,6 +21,30 @@ const WEAPON_LABELS: {[kind: string]: string} = {
   MassDriver: "Mass Driver",
 };
 
+/** The mount on its own, with no weapon named. */
+export const mountToString = (mount: WeaponMount): string => {
+  if (mount === "FixedMount") {
+    return "Fixed Mount";
+  }
+  if (typeof mount === "string") {
+    return "Barbette";
+  }
+  if ("Turret" in mount) {
+    return (
+      {1: "Single Turret", 2: "Double Turret", 3: "Triple Turret"}[
+        mount.Turret
+      ] ?? `Turret of ${mount.Turret}`
+    );
+  }
+  if ("Bay" in mount) {
+    return `${mount.Bay} Bay`;
+  }
+  if ("Battery" in mount) {
+    return `Point Defence Battery (Type ${mount.Battery})`;
+  }
+  return "Unknown Mount";
+};
+
 /** The name to show a referee for a weapon kind. */
 export const weaponKindLabel = (kind: string): string =>
   WEAPON_LABELS[kind] ?? kind;
@@ -28,8 +52,22 @@ export const weaponKindLabel = (kind: string): string =>
 /** Roman numerals for point-defence battery grades, which only run I to III. */
 const BATTERY_TYPES: {[grade: number]: string} = {1: "I", 2: "II", 3: "III"};
 
-export interface Weapon {
+/** One gun inside a mount. */
+export interface Gun {
   kind: string;
+  modifiers?: string[];
+}
+
+/**
+ * One weapon mount and its contents.
+ *
+ * The server writes the older single-kind shape whenever every gun in a mount
+ * matches, which is almost always, so `kind` is present on all but genuinely
+ * mixed turrets. Use {@link weaponGuns} rather than reading `kind` directly.
+ */
+export interface Weapon {
+  kind?: string;
+  guns?: Gun[];
   mount: WeaponMount;
   /**
    * High Guard weapon Advantages and Disadvantages. These ride on the weapon,
@@ -73,6 +111,44 @@ export const describeModifiers = (modifiers: string[] | undefined): string => {
     .join(", ");
 };
 
+/**
+ * The guns in a mount, whichever shape it arrived in.
+ *
+ * A uniform mount sends one `kind` and a turret size; a mixed one sends `guns`.
+ */
+export const weaponGuns = (weapon: Weapon): Gun[] => {
+  if (weapon.guns != null) {
+    return weapon.guns;
+  }
+  const size =
+    typeof weapon.mount === "object" && "Turret" in weapon.mount
+      ? weapon.mount.Turret
+      : 1;
+  return Array.from({length: size}, () => ({
+    kind: weapon.kind ?? "",
+    modifiers: weapon.modifiers,
+  }));
+};
+
+/** The distinct weapon types in a mount, in first-appearance order. */
+export const weaponKinds = (weapon: Weapon): string[] => {
+  const seen: string[] = [];
+  weaponGuns(weapon).forEach((gun) => {
+    if (!seen.includes(gun.kind)) {
+      seen.push(gun.kind);
+    }
+  });
+  return seen;
+};
+
+/** True when every gun in the mount is the same type. */
+export const isUniformWeapon = (weapon: Weapon): boolean =>
+  weaponKinds(weapon).length <= 1;
+
+/** How many guns of `kind` the mount holds. */
+export const countOfKind = (weapon: Weapon, kind: string): number =>
+  weaponGuns(weapon).filter((gun) => gun.kind === kind).length;
+
 export const createWeapon = (
   kind: string,
   mount: WeaponMount,
@@ -83,8 +159,25 @@ export const createWeapon = (
     : {kind, mount};
 
 export const weaponToString = (weapon: Weapon): string => {
-    const kind = weaponKindLabel(weapon.kind);
-    const mods = describeModifiers(weapon.modifiers);
+    const kinds = weaponKinds(weapon);
+    const mods = describeModifiers(
+      weapon.modifiers ?? weaponGuns(weapon)[0]?.modifiers,
+    );
+
+    // A mixed mount cannot be named "Triple <kind> Turret", because it has no
+    // single kind. Name the mount and list what is in it.
+    if (kinds.length > 1) {
+      const contents = kinds
+        .map((k) => {
+          const count = countOfKind(weapon, k);
+          const label = weaponKindLabel(k);
+          return count > 1 ? `${label} x${count}` : label;
+        })
+        .join(", ");
+      return `${mountToString(weapon.mount)} (${contents})`;
+    }
+
+    const kind = weaponKindLabel(kinds[0] ?? weapon.kind ?? "");
     const suffix = mods === "" ? "" : ` (${mods})`;
     if (weapon.mount === "FixedMount") {
       return `${kind} Fixed Mount${suffix}`;
@@ -128,7 +221,9 @@ const PASSIVE_WEAPON_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
  * kind merely contains the word "Sand" keeps its buttons.
  */
 export const isActionableWeapon = (weapon: Weapon): boolean => {
-  if (PASSIVE_WEAPON_KINDS.has(weapon.kind)) {
+  // A mount is actionable if any gun in it is something the crew can order.
+  // A mixed turret of lasers and sand still gets a button for the lasers.
+  if (weaponKinds(weapon).every((kind) => PASSIVE_WEAPON_KINDS.has(kind))) {
     return false;
   }
   return !(typeof weapon.mount === "object" && "Battery" in weapon.mount);

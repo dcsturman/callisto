@@ -645,6 +645,7 @@ mod tests {
           weapon_id: 0,
           target: "ship2".to_string(),
           called_shot_system: None,
+          firing_kind: None,
         }],
       ),
       (
@@ -653,6 +654,7 @@ mod tests {
           weapon_id: 1,
           target: "ship1".to_string(),
           called_shot_system: None,
+          firing_kind: None,
         }],
       ),
     ];

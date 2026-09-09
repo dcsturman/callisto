@@ -879,6 +879,7 @@ pub fn do_fire_actions<S: BuildHasher>(
         weapon_id,
         target,
         called_shot_system,
+        firing_kind,
       } = action
       else {
         error!("(Combat.do_fire_actions) Expected FireAction but got {:?}.", action);
@@ -897,11 +898,20 @@ pub fn do_fire_actions<S: BuildHasher>(
       }
 
       let weapon = attacker.get_weapon(*weapon_id);
-      // Which gun in the mount is firing.  Every mount in the library is
-      // uniform, so this is unambiguous today; when a FireAction can name a
-      // type, that choice arrives here instead.
-      let Some(firing) = weapon.firing_default() else {
-        debug!("(Combat.do_fire_actions) Weapon {} has no guns.", weapon_id);
+      // Which gun in the mount is firing.  A mixed turret may only use one type
+      // per round (Core Rulebook p. 166), so the action names it; a uniform
+      // mount has no choice to make and does not have to.
+      let firing = match firing_kind {
+        Some(kind) => weapon.firing(*kind),
+        None => weapon.firing_default(),
+      };
+      let Some(firing) = firing else {
+        debug!(
+          "(Combat.do_fire_actions) Weapon {} cannot fire {:?}; it holds {:?}.",
+          weapon_id,
+          firing_kind,
+          weapon.kinds()
+        );
         return vec![];
       };
       let gunnery_skill = i32::from(attacker.get_crew().get_gunnery(*weapon_id));
@@ -1132,10 +1142,25 @@ pub fn do_fire_actions<S: BuildHasher>(
 }
 
 #[must_use]
-pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, S>) -> HashMap<String, Vec<i32>> {
+pub fn create_sand_counts<S: BuildHasher>(
+  ship_snapshot: &HashMap<String, Ship, S>, point_defense_actions: &[(String, Vec<ShipAction>)],
+) -> HashMap<String, Vec<i32>> {
   ship_snapshot
     .iter()
     .map(|(name, ship)| {
+      // A mount gets one reaction a round.  Dispersing sand and running point
+      // defence are both reactions, so a mount that queued point defence has
+      // already spent its own and cannot also throw sand.
+      let reacting: Vec<usize> = point_defense_actions
+        .iter()
+        .filter(|(ship_name, _)| ship_name == name)
+        .flat_map(|(_, actions)| actions.iter())
+        .filter_map(|action| match action {
+          ShipAction::PointDefenseAction { weapon_id } => Some(*weapon_id),
+          _ => None,
+        })
+        .collect();
+
       (
         name.clone(),
         ship
@@ -1143,6 +1168,10 @@ pub fn create_sand_counts<S: BuildHasher>(ship_snapshot: &HashMap<String, Ship, 
           .iter()
           .enumerate()
           .filter_map(|(index, weapon)| {
+            if reacting.contains(&index) {
+              debug!("(Combat.create_sand_counts) Mount {index} on {name} is on point defence, so it cannot also disperse sand.");
+              return None;
+            }
             if weapon.has_kind(WeaponType::Sand) && ship.active_weapons[index] {
               match weapon.mount {
                 // "+1 to the damage negated ... for each additional sandcaster"
@@ -1434,6 +1463,7 @@ mod battery_tests {
   use cgmath::Zero;
   use rand::rngs::SmallRng;
   use rand::SeedableRng;
+  use std::collections::HashMap;
   use std::sync::Arc;
 
   fn battery(grade: u8) -> Weapon {
@@ -2072,6 +2102,47 @@ mod battery_tests {
     assert_eq!(back, turret);
   }
 
+  /// A mount gets one reaction a round, so a mount on point defence cannot also
+  /// throw sand.
+  #[test]
+  fn a_mount_on_point_defense_cannot_also_disperse_sand() {
+    // A turret holding a laser and a sandcaster: it could do either.
+    let turret = Weapon {
+      mount: WeaponMount::Turret,
+      guns: vec![Gun::new(WeaponType::Pulse), Gun::new(WeaponType::Sand)],
+    };
+    let ship = ship_with(vec![turret]);
+    let ships: HashMap<String, Ship> = [(ship.get_name().to_string(), ship)].into_iter().collect();
+
+    // With no point-defence order, the sandcaster is available.
+    let free = create_sand_counts(&ships, &[]);
+    assert_eq!(free["Batteries"].len(), 1, "the sandcaster should be ready: {free:?}");
+
+    // Ordering point defence on that mount spends its reaction.
+    let pd = vec![("Batteries".to_string(), vec![ShipAction::PointDefenseAction { weapon_id: 0 }])];
+    let spent = create_sand_counts(&ships, &pd);
+    assert!(
+      spent["Batteries"].is_empty(),
+      "a mount on point defence has no reaction left for sand: {spent:?}"
+    );
+  }
+
+  /// Attacking does *not* spend the sandcaster, which is the whole reason to put
+  /// one in a mixed turret.
+  #[test]
+  fn attacking_leaves_the_sandcaster_available() {
+    let ship = ship_with(vec![Weapon {
+      mount: WeaponMount::Turret,
+      guns: vec![Gun::new(WeaponType::Pulse), Gun::new(WeaponType::Sand)],
+    }]);
+    let ships: HashMap<String, Ship> = [(ship.get_name().to_string(), ship)].into_iter().collect();
+
+    // A fire action is not a point-defence action, so sand is untouched.  The
+    // gunner attacks with the laser and still reacts with the sandcaster.
+    let counts = create_sand_counts(&ships, &[]);
+    assert_eq!(counts["Batteries"].len(), 1);
+  }
+
   /// Batteries and gunners feed one pool, as the book totals them.
   #[test]
   fn battery_and_gunner_contributions_add() {
@@ -2153,38 +2224,44 @@ mod tests {
     // Create sand counts
     let mut sand_ships = HashMap::with_capacity(1);
     sand_ships.insert("Target".to_string(), target.clone());
-    let mut sand_counts = create_sand_counts(&sand_ships);
+    let mut sand_counts = create_sand_counts(&sand_ships, &[]);
 
     let actions = vec![
       ShipAction::FireAction {
         weapon_id: 0,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Beam Turret
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Turret
       ShipAction::FireAction {
         weapon_id: 2,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Barbette
       ShipAction::FireAction {
         weapon_id: 3,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Bay (Small)
       ShipAction::FireAction {
         weapon_id: 4,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Bay (Medium)
       ShipAction::FireAction {
         weapon_id: 5,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }, // Missile Bay (Large)
     ];
 
@@ -3071,6 +3148,7 @@ mod tests {
       weapon_id: 0,
       target: "Target".to_string(),
       called_shot_system: None,
+      firing_kind: None,
     }];
 
     let mut total_unboosted: u64 = 0;
@@ -3093,7 +3171,7 @@ mod tests {
       ships_unboosted.insert("Target".to_string(), Arc::new(RwLock::new(target_unboosted.clone())));
       let mut sand_unboosted: HashMap<String, Ship> = HashMap::new();
       sand_unboosted.insert("Target".to_string(), target_unboosted.clone());
-      let mut sand_counts_unboosted = create_sand_counts(&sand_unboosted);
+      let mut sand_counts_unboosted = create_sand_counts(&sand_unboosted, &[]);
       let mut rng_unboosted = StdRng::seed_from_u64(seed);
 
       do_fire_actions(
@@ -3121,7 +3199,7 @@ mod tests {
       ships_boosted.insert("Target".to_string(), Arc::new(RwLock::new(target_boosted.clone())));
       let mut sand_boosted: HashMap<String, Ship> = HashMap::new();
       sand_boosted.insert("Target".to_string(), target_boosted.clone());
-      let mut sand_counts_boosted = create_sand_counts(&sand_boosted);
+      let mut sand_counts_boosted = create_sand_counts(&sand_boosted, &[]);
       let mut boost_map = BoostMap::default();
       boost_map.insert(BoostTarget::AssistGunner {
         ship: "Attacker".to_string(),
@@ -3207,18 +3285,20 @@ mod tests {
     ships.insert("Target".to_string(), Arc::new(RwLock::new(target.clone())));
     let mut sand_input: HashMap<String, Ship> = HashMap::new();
     sand_input.insert("Target".to_string(), target);
-    let mut sand_counts = create_sand_counts(&sand_input);
+    let mut sand_counts = create_sand_counts(&sand_input, &[]);
 
     let actions = vec![
       ShipAction::FireAction {
         weapon_id: 0,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       },
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       },
     ];
 
