@@ -8,7 +8,7 @@ import {
   compressedWeapons,
   shipWeapons,
 } from "lib/shipDesignTemplates";
-import { Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import { Gun, Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
 import {
   DEFAULT_GUNNERY,
   MOUNT_OPTIONS,
@@ -594,9 +594,11 @@ const ShipDesignDetails = (render: {
     [design],
   );
   const describeWeapon = useMemo(
-    () => (weapon: { kind: string; mount: WeaponMount; total: number }) => {
+    () => (weapon: { kind: string; mount: WeaponMount; total: number; guns?: Gun[] }) => {
       const weapon_name = weaponToString(
-        createWeapon(weapon.kind, weapon.mount),
+        weapon.guns != null
+          ? { mount: weapon.mount, guns: weapon.guns }
+          : createWeapon(weapon.kind, weapon.mount),
       );
 
       const [quant, suffix] =

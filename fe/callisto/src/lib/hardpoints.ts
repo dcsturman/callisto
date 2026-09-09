@@ -1,4 +1,14 @@
-import { BaySize, Weapon, WeaponMount, createWeapon, weaponKindLabel, weaponKinds } from "./weapon";
+import {
+  BaySize,
+  Gun,
+  Weapon,
+  WeaponMount,
+  createWeapon,
+  isUniformWeapon,
+  weaponGuns,
+  weaponKindLabel,
+  weaponKinds,
+} from "./weapon";
 import WEAPON_MOUNTS from "./weaponMounts.json";
 
 // Hardpoint and Firmpoint accounting, per High Guard pp. 26 and 31.
@@ -42,6 +52,15 @@ export interface WeaponGroup {
    * would spread them to weapons that never had them.
    */
   modifiers: string[];
+  /**
+   * The guns in each mount of this group, when it holds more than one type.
+   *
+   * `undefined` for a uniform mount, which `kind` and the turret size already
+   * describe. A mixed mount cannot be reduced to a single kind, so the editor
+   * carries its gun list verbatim and writes it back untouched -- without this
+   * a mixed turret would be saved as a uniform one and lose its other weapons.
+   */
+  guns?: Gun[];
 }
 
 export const DEFAULT_GUNNERY = 0;
@@ -181,10 +200,12 @@ export function emptyGroup(gunnery: number = DEFAULT_GUNNERY): WeaponGroup {
 }
 
 function groupKey(weapon: Weapon, gunnery: number): string {
-  // Modifiers are part of the key for the same reason gunnery is: merging
-  // across them would silently give one weapon another's modifications.
-  const modifiers = (weapon.modifiers ?? []).join("+");
-  return `${JSON.stringify(weapon.mount)}|${weapon.kind}|${gunnery}|${modifiers}`;
+  // The whole gun list is part of the key.  `kind` and `modifiers` are
+  // undefined on a mixed mount -- they live on the guns -- so keying on them
+  // alone collapsed every mixed turret on a ship into one group regardless of
+  // what was in it, and saving then rewrote them all as the first gun's type.
+  const guns = JSON.stringify(weaponGuns(weapon));
+  return `${JSON.stringify(weapon.mount)}|${gunnery}|${guns}`;
 }
 
 /**
@@ -215,12 +236,16 @@ export function groupWeapons(
       existing.count += 1;
       return;
     }
+    const uniform = isUniformWeapon(weapon);
     const group: WeaponGroup = {
       count: 1,
       mount: weapon.mount,
       kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
       gunnery: skill,
-      modifiers: weapon.modifiers ?? [],
+      modifiers: weapon.modifiers ?? weaponGuns(weapon)[0]?.modifiers ?? [],
+      // Only a mixed mount needs its guns kept; a uniform one is fully
+      // described by its kind and the mount's size.
+      guns: uniform ? undefined : weaponGuns(weapon),
     };
     byKey.set(key, group);
     groups.push(group);
@@ -248,7 +273,12 @@ export function expandGroups(groups: readonly WeaponGroup[]): {
       return;
     }
     for (let n = 0; n < group.count; n++) {
-      weapons.push(createWeapon(group.kind, group.mount, group.modifiers));
+      // A mixed mount is written back exactly as it came in.
+      weapons.push(
+        group.guns != null
+          ? { mount: group.mount, guns: group.guns }
+          : createWeapon(group.kind, group.mount, group.modifiers),
+      );
       gunnery.push(group.gunnery);
     }
   });

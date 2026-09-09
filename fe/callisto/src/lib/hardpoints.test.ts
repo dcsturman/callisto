@@ -663,3 +663,77 @@ describe("mixed turrets", () => {
     ).toBe(false);
   });
 });
+
+describe("the editor must not destroy a mixed-turret ship", () => {
+  // The MK Mora as the server sends it: six turrets of two long-range
+  // high-yield pulse lasers plus a sandcaster, and four of two missile racks
+  // plus an accurate high-yield beam laser.
+  const laserSand = (): Weapon => ({
+    mount: { Turret: 3 },
+    guns: [
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Sand" },
+    ],
+  });
+  const missileBeam = (): Weapon => ({
+    mount: { Turret: 3 },
+    guns: [
+      { kind: "Missile" },
+      { kind: "Missile" },
+      { kind: "Beam", modifiers: ["Accurate", "HighYield"] },
+    ],
+  });
+  const mkMora = (): Weapon[] => [
+    ...Array.from({ length: 6 }, laserSand),
+    ...Array.from({ length: 4 }, missileBeam),
+  ];
+
+  // The bug this guards: `kind` and `modifiers` are undefined on a mixed mount
+  // because they live on the guns, so keying the editor rows on them collapsed
+  // all ten of the MK Mora's turrets into a single group -- and saving wrote
+  // them back as ten uniform pulse turrets, destroying the ship's armament.
+  it("keeps mixed turrets in separate groups", () => {
+    const groups = groupWeapons(mkMora());
+    expect(groups).toHaveLength(2);
+    expect(groups[0].count).toBe(6);
+    expect(groups[1].count).toBe(4);
+  });
+
+  it("writes a mixed-turret ship back exactly as it came in", () => {
+    const original = mkMora();
+    const { weapons } = expandGroups(groupWeapons(original));
+    expect(weapons).toEqual(original);
+  });
+
+  it("still merges mixed turrets that are genuinely identical", () => {
+    const groups = groupWeapons([laserSand(), laserSand()]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].count).toBe(2);
+  });
+
+  // Two mounts of the same size and the same kinds but different arrangements
+  // are different ships and must not merge.
+  it("does not merge mounts whose guns differ in proportion", () => {
+    const twoLasers = laserSand();
+    const oneLaser: Weapon = {
+      mount: { Turret: 3 },
+      guns: [
+        { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+        { kind: "Sand" },
+        { kind: "Sand" },
+      ],
+    };
+    expect(groupWeapons([twoLasers, oneLaser])).toHaveLength(2);
+  });
+
+  it("leaves uniform mounts round-tripping as before", () => {
+    const uniform: Weapon[] = [
+      createWeapon("Beam", { Turret: 3 }),
+      createWeapon("Beam", { Turret: 3 }),
+      createWeapon("Torpedo", "Barbette"),
+    ];
+    const { weapons } = expandGroups(groupWeapons(uniform));
+    expect(weapons).toEqual(uniform);
+  });
+});

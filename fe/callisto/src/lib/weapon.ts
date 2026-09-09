@@ -238,5 +238,7 @@ export interface CompressedWeapon {
     kind: string;
     mount: WeaponMount;
     total: number;
+    /** Present when the mount holds more than one weapon type. */
+    guns?: Gun[];
   };
 };
