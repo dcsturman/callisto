@@ -1102,6 +1102,21 @@ input {
 /* Full-width bands between the rows. */
 .hardpoint-header,
 .hardpoint-bulk-gunnery,
+.hardpoint-guns {
+    /* The per-gun editors for a mixed mount, sitting under its row and
+       spanning the whole grid so each gun gets usable width. */
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 4px;
+    padding: 0 0 2px 34px;
+}
+
+.hardpoint-guns .hardpoint-gun {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 9pt;
+}
+
 .hardpoint-problem {
     grid-column: 1 / -1;
 }
@@ -1193,6 +1208,21 @@ input {
    space they would have used. */
 .hardpoint-mount-wide {
     grid-column: 2 / -1;
+}
+
+.hardpoint-guns {
+    /* The per-gun editors for a mixed mount, sitting under its row and
+       spanning the whole grid so each gun gets usable width. */
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 4px;
+    padding: 0 0 2px 34px;
+}
+
+.hardpoint-guns .hardpoint-gun {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 9pt;
 }
 
 .hardpoint-problem {

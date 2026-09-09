@@ -13,6 +13,8 @@ import {
   mountForOptionId,
   mountOptionId,
   mountOptionsFor,
+  describeGroupGuns,
+  gunCapacity,
   setAllGunnery,
   totalMounts,
   isLegalPairing,
@@ -735,5 +737,52 @@ describe("the editor must not destroy a mixed-turret ship", () => {
     ];
     const { weapons } = expandGroups(groupWeapons(uniform));
     expect(weapons).toEqual(uniform);
+  });
+});
+
+describe("editing a mixed mount", () => {
+  const mixedGroup = (): WeaponGroup => ({
+    count: 6,
+    mount: { Turret: 3 },
+    kind: "Pulse",
+    gunnery: 0,
+    modifiers: [],
+    guns: [{ kind: "Pulse" }, { kind: "Pulse" }, { kind: "Sand" }],
+  });
+
+  it("names a mixed group by what is in the mount", () => {
+    expect(describeGroupGuns(mixedGroup())).toBe("Pulse x2, Sand");
+    // A uniform group is still named by its kind.
+    expect(
+      describeGroupGuns({
+        count: 1,
+        mount: { Turret: 3 },
+        kind: "Beam",
+        gunnery: 0,
+        modifiers: [],
+      }),
+    ).toBe("Beam");
+  });
+
+  it("knows how many guns a mount holds", () => {
+    expect(gunCapacity({ Turret: 3 })).toBe(3);
+    expect(gunCapacity({ Turret: 1 })).toBe(1);
+    // Everything that is not a turret holds exactly one.
+    expect(gunCapacity("Barbette")).toBe(1);
+    expect(gunCapacity({ Bay: "Large" })).toBe(1);
+    expect(gunCapacity(null)).toBe(1);
+  });
+
+  it("expands a mixed group into the guns it lists", () => {
+    const { weapons } = expandGroups([mixedGroup()]);
+    expect(weapons).toHaveLength(6);
+    // Every mount carries the same three guns, in order.
+    weapons.forEach((weapon) => {
+      expect(weapon.guns).toEqual([
+        { kind: "Pulse" },
+        { kind: "Pulse" },
+        { kind: "Sand" },
+      ]);
+    });
   });
 });

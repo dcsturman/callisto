@@ -15,6 +15,8 @@ import {
   weaponKindsForMount,
   weaponKindLabel,
   isLegalPairing,
+  gunCapacity,
+  describeGroupGuns,
   WeaponGroup,
   checkAllowance,
   commonGunnery,
@@ -395,14 +397,60 @@ function HardpointList(args: {
       const kind = isLegalPairing(group.kind, mount)
         ? group.kind
         : (weaponKindsForMount(mount)[0] ?? group.kind);
-      replaceRow(index, { ...group, mount, kind });
+      // A mount holds a fixed number of guns, so changing it resizes the list.
+      // Dropping to a single-gun mount makes the row uniform again.
+      const size = gunCapacity(mount);
+      const guns =
+        group.guns == null || size < 2
+          ? undefined
+          : Array.from({ length: size }, (_unused, n) => group.guns![n] ?? { kind });
+      replaceRow(index, { ...group, mount, kind, guns });
     },
     [args, replaceRow],
   );
 
   const handleKindChange = useCallback(
-    (index: number, kind: string) =>
-      replaceRow(index, { ...args.groups[index], kind }),
+    (index: number, kind: string) => {
+      const group = args.groups[index];
+      if (kind === MIXED_OPTION) {
+        // Start a mixed mount from what the row already holds, so the referee
+        // edits guns rather than starting from nothing.
+        const size = gunCapacity(group.mount);
+        replaceRow(index, {
+          ...group,
+          guns: Array.from({ length: size }, () => ({
+            kind: group.kind,
+            modifiers: group.modifiers,
+          })),
+        });
+        return;
+      }
+      // Choosing a single weapon makes the mount uniform again.  Clearing the
+      // gun list matters: leaving it would show the new kind while still
+      // writing the old guns.
+      replaceRow(index, { ...group, kind, guns: undefined });
+    },
+    [args.groups, replaceRow],
+  );
+
+  const handleGunChange = useCallback(
+    (index: number, gunIndex: number, kind: string) => {
+      const group = args.groups[index];
+      if (group.guns == null) {
+        return;
+      }
+      const guns = group.guns.map((gun, n) =>
+        n === gunIndex ? { ...gun, kind } : gun,
+      );
+      // Back to one kind throughout: drop to a plain uniform mount so the row
+      // stops claiming to be mixed.
+      const uniform = guns.every((gun) => gun.kind === guns[0].kind);
+      replaceRow(index, {
+        ...group,
+        kind: guns[0].kind,
+        guns: uniform ? undefined : guns,
+      });
+    },
     [args.groups, replaceRow],
   );
 
@@ -537,20 +585,31 @@ function HardpointList(args: {
                 className="select-dropdown control-input hardpoint-weapon"
                 name={"hardpoint-weapon-" + index}
                 aria-label={"Group " + (index + 1) + " weapon"}
-                value={group.kind}
+                value={group.guns != null ? MIXED_OPTION : group.kind}
                 onChange={(event) => handleKindChange(index, event.target.value)}
               >
                 {/* A design may name a weapon kind this build does not list,
                     or one the rules do not allow in this mount.  Either way it
                     stays selectable so existing data is never silently rewritten. */}
-                {!weaponKindsForMount(group.mount).includes(group.kind) && (
-                  <option value={group.kind}>{weaponKindLabel(group.kind)}</option>
-                )}
+                {group.guns == null &&
+                  !weaponKindsForMount(group.mount).includes(group.kind) && (
+                    <option value={group.kind}>{weaponKindLabel(group.kind)}</option>
+                  )}
                 {weaponKindsForMount(group.mount).map((kind) => (
                   <option key={kind} value={kind}>
                     {weaponKindLabel(kind)}
                   </option>
                 ))}
+                {/* Only a turret holds more than one gun, so only a turret can
+                    be mixed.  Named for its contents when it already is, so the
+                    cell says what the mount actually carries. */}
+                {gunCapacity(group.mount) > 1 && (
+                  <option value={MIXED_OPTION}>
+                    {group.guns != null
+                      ? describeGroupGuns(group)
+                      : "Mixed\u2026"}
+                  </option>
+                )}
               </select>
             )}
             {!empty && (
@@ -566,6 +625,37 @@ function HardpointList(args: {
                 }
               />
             )}
+            {/* A mixed mount has no single weapon to name, so its guns are
+                edited one at a time.  Setting them all to the same weapon
+                collapses the row back to an ordinary uniform mount. */}
+            {!empty && group.guns != null && (
+              <div className="hardpoint-guns">
+                {group.guns.map((gun, gunIndex) => (
+                  <select
+                    key={"gun-" + index + "-" + gunIndex}
+                    className="select-dropdown control-input hardpoint-gun"
+                    aria-label={
+                      "Group " + (index + 1) + " gun " + (gunIndex + 1)
+                    }
+                    value={gun.kind}
+                    onChange={(event) =>
+                      handleGunChange(index, gunIndex, event.target.value)
+                    }
+                  >
+                    {!weaponKindsForMount(group.mount).includes(gun.kind) && (
+                      <option value={gun.kind}>
+                        {weaponKindLabel(gun.kind)}
+                      </option>
+                    )}
+                    {weaponKindsForMount(group.mount).map((kind) => (
+                      <option key={kind} value={kind}>
+                        {weaponKindLabel(kind)}
+                      </option>
+                    ))}
+                  </select>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
@@ -577,6 +667,9 @@ function HardpointList(args: {
     </div>
   );
 }
+
+/** Sentinel value for the weapon dropdown's "Mixed" entry. */
+const MIXED_OPTION = "__mixed__";
 
 const ShipDesignDetails = (render: {
   content: string | null;

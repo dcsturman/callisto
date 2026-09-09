@@ -286,6 +286,33 @@ export function expandGroups(groups: readonly WeaponGroup[]): {
   return { weapons, gunnery };
 }
 
+/** How many guns a mount of this kind holds. */
+export function gunCapacity(mount: WeaponMount | null): number {
+  if (mount != null && typeof mount === "object" && "Turret" in mount) {
+    return mount.Turret;
+  }
+  return 1;
+}
+
+/**
+ * A short description of a group's guns, for the editor's weapon cell.
+ *
+ * A uniform group is named by its kind; a mixed one has no single kind, so it
+ * lists what is actually in the mount.
+ */
+export function describeGroupGuns(group: WeaponGroup): string {
+  if (group.guns == null) {
+    return weaponKindLabel(group.kind);
+  }
+  const counts = new Map<string, number>();
+  group.guns.forEach((gun) => counts.set(gun.kind, (counts.get(gun.kind) ?? 0) + 1));
+  return Array.from(counts.entries())
+    .map(([kind, total]) =>
+      total > 1 ? `${weaponKindLabel(kind)} x${total}` : weaponKindLabel(kind),
+    )
+    .join(", ");
+}
+
 /** Total mounts across all rows — the number of weapons the ship will have. */
 export function totalMounts(groups: readonly WeaponGroup[]): number {
   return groups.reduce(
