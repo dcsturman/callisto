@@ -8,7 +8,15 @@ import {
   compressedWeapons,
   shipWeapons,
 } from "lib/shipDesignTemplates";
-import { Gun, Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import {
+  Gun,
+  Weapon,
+  WeaponMount,
+  createWeapon,
+  weaponToString,
+  mountToString,
+  WEAPON_MODIFIERS,
+} from "lib/weapon";
 import {
   DEFAULT_GUNNERY,
   MOUNT_OPTIONS,
@@ -18,6 +26,7 @@ import {
   gunCapacity,
   describeGroupGuns,
   legalMountsLabel,
+  needsDetailEditor,
   WEAPON_KINDS,
   WeaponGroup,
   checkAllowance,
@@ -362,6 +371,9 @@ function HardpointList(args: {
 
   const bulkGunnery = useMemo(() => commonGunnery(args.groups), [args.groups]);
 
+  // Which row is open in the detail editor, if any.
+  const [detailRow, setDetailRow] = useState<number | null>(null);
+
   // Small craft cannot carry a double or triple turret, or a bay at all, so
   // those are not offered on a firmpoint hull.
   const options = useMemo(
@@ -414,17 +426,8 @@ function HardpointList(args: {
   const handleKindChange = useCallback(
     (index: number, kind: string) => {
       const group = args.groups[index];
-      if (kind === MIXED_OPTION) {
-        // Start a mixed mount from what the row already holds, so the referee
-        // edits guns rather than starting from nothing.
-        const size = gunCapacity(group.mount);
-        replaceRow(index, {
-          ...group,
-          guns: Array.from({ length: size }, () => ({
-            kind: group.kind,
-            modifiers: group.modifiers,
-          })),
-        });
+      if (kind === CUSTOMIZE_OPTION) {
+        setDetailRow(index);
         return;
       }
       // Choosing a single weapon makes the mount uniform again.  Clearing the
@@ -435,26 +438,6 @@ function HardpointList(args: {
     [args.groups, replaceRow],
   );
 
-  const handleGunChange = useCallback(
-    (index: number, gunIndex: number, kind: string) => {
-      const group = args.groups[index];
-      if (group.guns == null) {
-        return;
-      }
-      const guns = group.guns.map((gun, n) =>
-        n === gunIndex ? { ...gun, kind } : gun,
-      );
-      // Back to one kind throughout: drop to a plain uniform mount so the row
-      // stops claiming to be mixed.
-      const uniform = guns.every((gun) => gun.kind === guns[0].kind);
-      replaceRow(index, {
-        ...group,
-        kind: guns[0].kind,
-        guns: uniform ? undefined : guns,
-      });
-    },
-    [args.groups, replaceRow],
-  );
 
   // Zero is allowed so the field can be cleared mid-edit; a zero-count row
   // simply contributes no weapons.
@@ -587,13 +570,13 @@ function HardpointList(args: {
                 className="select-dropdown control-input hardpoint-weapon"
                 name={"hardpoint-weapon-" + index}
                 aria-label={"Group " + (index + 1) + " weapon"}
-                value={group.guns != null ? MIXED_OPTION : group.kind}
+                value={needsDetailEditor(group) ? CUSTOMIZE_OPTION : group.kind}
                 onChange={(event) => handleKindChange(index, event.target.value)}
               >
                 {/* A design may name a weapon kind this build does not list.
                     Keep it selectable so existing data is never silently
                     rewritten. */}
-                {group.guns == null && !WEAPON_KINDS.includes(group.kind) && (
+                {!needsDetailEditor(group) && !WEAPON_KINDS.includes(group.kind) && (
                   <option value={group.kind}>{weaponKindLabel(group.kind)}</option>
                 )}
                 {/* Every weapon is listed, with the ones this mount cannot hold
@@ -619,16 +602,16 @@ function HardpointList(args: {
                     </option>
                   );
                 })}
-                {/* Only a turret holds more than one gun, so only a turret can
-                    be mixed.  Named for its contents when it already is, so the
-                    cell says what the mount actually carries. */}
-                {gunCapacity(group.mount) > 1 && (
-                  <option value={MIXED_OPTION}>
-                    {group.guns != null
-                      ? describeGroupGuns(group)
-                      : "Mixed\u2026"}
-                  </option>
-                )}
+                {/* Anything the four columns cannot express -- a turret of
+                    different weapons, or any Advantage fitted to a gun -- opens
+                    the detail editor.  When the row already is one of those,
+                    this entry is what the cell shows, naming the real contents
+                    rather than pretending a single weapon is selected. */}
+                <option value={CUSTOMIZE_OPTION}>
+                  {needsDetailEditor(group)
+                    ? describeGroupGuns(group)
+                    : "Customize\u2026"}
+                </option>
               </select>
             )}
             {!empty && (
@@ -644,41 +627,6 @@ function HardpointList(args: {
                 }
               />
             )}
-            {/* A mixed mount has no single weapon to name, so its guns are
-                edited one at a time.  Setting them all to the same weapon
-                collapses the row back to an ordinary uniform mount. */}
-            {!empty && group.guns != null && (
-              <div className="hardpoint-guns">
-                {group.guns.map((gun, gunIndex) => (
-                  <select
-                    key={"gun-" + index + "-" + gunIndex}
-                    className="select-dropdown control-input hardpoint-gun"
-                    aria-label={
-                      "Group " + (index + 1) + " gun " + (gunIndex + 1)
-                    }
-                    value={gun.kind}
-                    onChange={(event) =>
-                      handleGunChange(index, gunIndex, event.target.value)
-                    }
-                  >
-                    {!WEAPON_KINDS.includes(gun.kind) && (
-                      <option value={gun.kind}>
-                        {weaponKindLabel(gun.kind)}
-                      </option>
-                    )}
-                    {WEAPON_KINDS.map((kind) => (
-                      <option
-                        key={kind}
-                        value={kind}
-                        disabled={!isLegalPairing(kind, group.mount)}
-                      >
-                        {weaponKindLabel(kind)}
-                      </option>
-                    ))}
-                  </select>
-                ))}
-              </div>
-            )}
           </div>
         );
       })}
@@ -687,12 +635,160 @@ function HardpointList(args: {
           {problem}
         </div>
       ))}
+      {detailRow != null && args.groups[detailRow] != null && (
+        <WeaponDetailDialog
+          group={args.groups[detailRow]}
+          index={detailRow}
+          onChange={(group) => replaceRow(detailRow, group)}
+          onClose={() => setDetailRow(null)}
+        />
+      )}
     </div>
   );
 }
 
-/** Sentinel value for the weapon dropdown's "Mixed" entry. */
-const MIXED_OPTION = "__mixed__";
+/**
+ * Detail editor for one hardpoint row.
+ *
+ * The inline row handles the common case -- a mount of identical, unmodified
+ * weapons -- in four columns.  Anything past that (a turret holding different
+ * weapons, or any Advantage fitted to a gun) needs more room than a side panel
+ * has, so it moves here.  Both kind and modifiers are per-gun properties, which
+ * is why this lists guns rather than hanging anything off the mount.
+ */
+const WeaponDetailDialog = (props: {
+  group: WeaponGroup;
+  index: number;
+  onChange: (group: WeaponGroup) => void;
+  onClose: () => void;
+}) => {
+  const { group, onChange, onClose } = props;
+  const mount = group.mount;
+  const size = gunCapacity(mount);
+
+  // Editing always works on an explicit gun list, even for a uniform mount, so
+  // the dialog has one shape.  It collapses back on close if nothing differs.
+  const guns: Gun[] =
+    group.guns ??
+    Array.from({ length: size }, () => ({
+      kind: group.kind,
+      modifiers: group.modifiers,
+    }));
+
+  const commit = (next: Gun[]) => {
+    const uniformKind = next.every((gun) => gun.kind === next[0].kind);
+    const sameMods = next.every(
+      (gun) =>
+        JSON.stringify(gun.modifiers ?? []) ===
+        JSON.stringify(next[0].modifiers ?? []),
+    );
+    // A mount whose guns all match is an ordinary uniform one again, and is
+    // stored that way so the row and the wire stay simple.
+    if (uniformKind && sameMods) {
+      onChange({
+        ...group,
+        kind: next[0].kind,
+        modifiers: next[0].modifiers ?? [],
+        guns: undefined,
+      });
+    } else {
+      onChange({ ...group, kind: next[0].kind, guns: next });
+    }
+  };
+
+  const setGunKind = (gunIndex: number, kind: string) =>
+    commit(guns.map((gun, n) => (n === gunIndex ? { ...gun, kind } : gun)));
+
+  const toggleModifier = (gunIndex: number, modifier: string) =>
+    commit(
+      guns.map((gun, n) => {
+        if (n !== gunIndex) {
+          return gun;
+        }
+        const current = gun.modifiers ?? [];
+        return {
+          ...gun,
+          modifiers: current.includes(modifier)
+            ? current.filter((m) => m !== modifier)
+            : [...current, modifier],
+        };
+      }),
+    );
+
+  return (
+    <div className="weapon-detail-backdrop" onClick={onClose}>
+      <div
+        className="weapon-detail-dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2>{mount == null ? "Weapon" : mountToString(mount)}</h2>
+        <div className="weapon-detail-summary">
+          {group.count} x {describeGroupGuns({ ...group, guns })}
+        </div>
+
+        {guns.map((gun, gunIndex) => (
+          <div className="weapon-detail-gun" key={"detail-gun-" + gunIndex}>
+            <div className="weapon-detail-gun-head">
+              {size > 1 && (
+                <span className="weapon-detail-gun-label">
+                  Gun {gunIndex + 1}
+                </span>
+              )}
+              <select
+                className="select-dropdown control-input"
+                aria-label={"Gun " + (gunIndex + 1) + " weapon"}
+                value={gun.kind}
+                onChange={(event) => setGunKind(gunIndex, event.target.value)}
+              >
+                {!WEAPON_KINDS.includes(gun.kind) && (
+                  <option value={gun.kind}>{weaponKindLabel(gun.kind)}</option>
+                )}
+                {WEAPON_KINDS.map((kind) => {
+                  const legal = isLegalPairing(kind, mount);
+                  return (
+                    <option key={kind} value={kind} disabled={!legal}>
+                      {legal
+                        ? weaponKindLabel(kind)
+                        : `${weaponKindLabel(kind)} — needs ${legalMountsLabel(kind)}`}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="weapon-detail-modifiers">
+              {WEAPON_MODIFIERS.map((modifier) => (
+                <label
+                  className={
+                    "weapon-detail-modifier" +
+                    (modifier.inert ? " weapon-detail-modifier-inert" : "")
+                  }
+                  key={"mod-" + gunIndex + "-" + modifier.kind}
+                >
+                  <input
+                    type="checkbox"
+                    checked={(gun.modifiers ?? []).includes(modifier.kind)}
+                    onChange={() => toggleModifier(gunIndex, modifier.kind)}
+                  />
+                  {modifier.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <button
+          className="control-input control-button blue-button"
+          onClick={onClose}
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/** Sentinel value for the weapon dropdown's entry that opens the detail editor. */
+const CUSTOMIZE_OPTION = "__customize__";
 
 const ShipDesignDetails = (render: {
   content: string | null;

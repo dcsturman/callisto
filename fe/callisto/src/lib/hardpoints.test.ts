@@ -26,7 +26,10 @@ import {
   WeaponMount,
   createWeapon,
   describeModifiers,
+  actionWeaponKind,
   isActionableWeapon,
+  isLaserKind,
+  isLauncherKind,
   isPassiveWeapon,
   weaponToString,
   weaponKindLabel,
@@ -805,5 +808,52 @@ describe("explaining why a weapon is barred from a mount", () => {
 
   it("copes with a weapon this build has never heard of", () => {
     expect(legalMountsLabel("Antimatter")).toBe("no mount this build knows");
+  });
+});
+
+describe("which icon an action draws", () => {
+  it("treats only missiles and torpedoes as launchers", () => {
+    expect(isLauncherKind("Missile")).toBe(true);
+    expect(isLauncherKind("Torpedo")).toBe(true);
+    // Everything else is direct fire and draws as a beam.  These are the ones
+    // that were falling through to the missile icon.
+    ["Beam", "Pulse", "Particle", "Fusion", "Meson", "Plasma", "Railgun", "MassDriver", "Ion"].forEach(
+      (kind) => expect(isLauncherKind(kind)).toBe(false),
+    );
+  });
+
+  it("knows which weapons can run point defence", () => {
+    expect(isLaserKind("Beam")).toBe(true);
+    expect(isLaserKind("Pulse")).toBe(true);
+    expect(isLaserKind("Fusion")).toBe(false);
+    expect(isLaserKind("Particle")).toBe(false);
+  });
+
+  it("reads the kind off a uniform mount", () => {
+    expect(actionWeaponKind({ kind: "Meson", mount: { Bay: "Medium" } })).toBe(
+      "Meson",
+    );
+  });
+
+  // The second half of the bug: a mixed turret has no `kind` at all, so a
+  // pulse laser in one was reported as undefined and fell through to the
+  // missile icon exactly like meson and fusion did.
+  it("falls back to the first gun on a mixed mount", () => {
+    const mixed: Weapon = {
+      mount: { Turret: 3 },
+      guns: [{ kind: "Pulse" }, { kind: "Pulse" }, { kind: "Sand" }],
+    };
+    expect(actionWeaponKind(mixed)).toBe("Pulse");
+    expect(isLauncherKind(actionWeaponKind(mixed))).toBe(false);
+  });
+
+  it("prefers the type the action says it is firing", () => {
+    const mixed: Weapon = {
+      mount: { Turret: 3 },
+      guns: [{ kind: "Missile" }, { kind: "Missile" }, { kind: "Beam" }],
+    };
+    // Firing the beam laser out of a mostly-missile turret draws a beam.
+    expect(actionWeaponKind(mixed, "Beam")).toBe("Beam");
+    expect(actionWeaponKind(mixed)).toBe("Missile");
   });
 });

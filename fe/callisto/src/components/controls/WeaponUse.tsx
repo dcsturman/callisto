@@ -13,7 +13,10 @@ import {
 import {
   Weapon,
   WeaponMount,
+  actionWeaponKind,
   isActionableWeapon,
+  isLaserKind,
+  isLauncherKind,
   isPassiveWeapon,
   weaponKinds,
   createWeapon,
@@ -546,7 +549,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
         !fireTarget ||
         (fireTarget.name === POINT_DEFENSE_NAME &&
           !(
-            (weapon.kind.includes("Beam") || weapon.kind.includes("Pulse")) &&
+            isLaserKind(weapon.kind ?? "") &&
             weapon.mount !== "Turret"
           ))
       );
@@ -805,16 +808,14 @@ export function Actions(args: {
         </div>
       )}
       {args.fireActions.map((action, index) => {
-        let kind = null;
-        if (args.weapons[action.weapon_id].kind === "Beam") {
-          kind = "Beam";
-        } else if (args.weapons[action.weapon_id].kind === "Pulse") {
-          kind = "Pulse";
-        } else if (args.weapons[action.weapon_id].kind === "Particle") {
-          kind = "Particle";
-        } else {
-          kind = "Missile";
-        }
+        // The weapon's own type.  This used to be a chain that mapped anything
+        // other than Beam, Pulse or Particle to the literal string "Missile",
+        // so every weapon added since -- fusion, meson, plasma, railgun, mass
+        // driver, ion -- was drawn and coloured as a missile.
+        const kind = actionWeaponKind(
+          args.weapons[action.weapon_id],
+          action.firing_kind,
+        );
 
         const fireBoostTarget: BoostTarget = {
           kind: "Fire",
@@ -822,7 +823,11 @@ export function Actions(args: {
           weapon_id: action.weapon_id,
         };
 
-        return ["Beam", "Pulse", "Particle"].includes(kind) ? (
+        // Anything that is not a launcher is direct fire and draws as a beam.
+        // This used to be a hardcoded list of Beam, Pulse and Particle, so every
+        // weapon added since -- fusion, meson, plasma, railgun, mass driver,
+        // ion -- fell through and drew a missile.
+        return !isLauncherKind(kind) ? (
           <div className="fire-actions-div" key={index + "_fire_img"}>
             <div onClick={() => onClick(action.weapon_id)}>
               <p>
@@ -873,12 +878,9 @@ export function Actions(args: {
       })}
 
       {args.pointDefenseActions.map((action, index) => {
-        let kind = null;
-        if (args.weapons[action.weapon_id].kind === "Beam") {
-          kind = "Beam";
-        } else if (args.weapons[action.weapon_id].kind === "Pulse") {
-          kind = "Pulse";
-        } else {
+        // A mixed turret has no single kind, so ask which gun is on duty.
+        const kind = actionWeaponKind(args.weapons[action.weapon_id]);
+        if (!isLaserKind(kind)) {
           console.error(
             "(Actions) Illegal weapon kind for point defense: " +
               args.weapons[action.weapon_id].kind,
@@ -896,7 +898,8 @@ export function Actions(args: {
           weapon_id: action.weapon_id,
         };
 
-        return ["Beam", "Pulse"].includes(kind) ? (
+        // Point defence is lasers only (High Guard p. 30).
+        return isLaserKind(kind) ? (
           <div className="fire-actions-div" key={index + "_pd_img"}>
             <div onClick={() => onClick(action.weapon_id)}>
               <p>

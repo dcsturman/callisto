@@ -286,6 +286,16 @@ export function expandGroups(groups: readonly WeaponGroup[]): {
   return { weapons, gunnery };
 }
 
+/**
+ * Whether a group needs more than the inline row can express.
+ *
+ * A uniform mount with no modifications is fully described by its kind, so it
+ * stays editable in place; anything else is edited in the detail dialog.
+ */
+export function needsDetailEditor(group: WeaponGroup): boolean {
+  return group.guns != null || group.modifiers.length > 0;
+}
+
 /** Readable names for the mount classes, for explaining why a weapon is barred. */
 const MOUNT_CLASS_LABELS: Record<MountClass, string> = {
   Turret: "turret",

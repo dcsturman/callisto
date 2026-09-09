@@ -1117,6 +1117,74 @@ input {
     font-size: 9pt;
 }
 
+.weapon-detail-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 40;
+}
+
+.weapon-detail-dialog {
+    background: #1b1b1b;
+    border: 1px solid #545454;
+    border-radius: 6px;
+    padding: 12px 16px;
+    max-width: 460px;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: #e0e0e0;
+}
+
+.weapon-detail-dialog h2 {
+    margin: 0 0 4px 0;
+    font-size: 13pt;
+}
+
+.weapon-detail-summary {
+    color: #b0b0b0;
+    font-size: 9pt;
+    margin-bottom: 10px;
+}
+
+.weapon-detail-gun {
+    border-top: 1px solid #3a3a3a;
+    padding: 8px 0;
+}
+
+.weapon-detail-gun-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.weapon-detail-gun-label {
+    font-size: 9pt;
+    color: #b0b0b0;
+    min-width: 44px;
+}
+
+.weapon-detail-modifiers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px 8px;
+    padding: 6px 0 0 44px;
+}
+
+.weapon-detail-modifier {
+    font-size: 8.5pt;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Recorded on the design but not simulated in play, so shown as secondary. */
+.weapon-detail-modifier-inert {
+    color: #8a8a8a;
+}
+
 .hardpoint-problem {
     grid-column: 1 / -1;
 }
@@ -1223,6 +1291,74 @@ input {
     flex: 1 1 0;
     min-width: 0;
     font-size: 9pt;
+}
+
+.weapon-detail-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 40;
+}
+
+.weapon-detail-dialog {
+    background: #1b1b1b;
+    border: 1px solid #545454;
+    border-radius: 6px;
+    padding: 12px 16px;
+    max-width: 460px;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: #e0e0e0;
+}
+
+.weapon-detail-dialog h2 {
+    margin: 0 0 4px 0;
+    font-size: 13pt;
+}
+
+.weapon-detail-summary {
+    color: #b0b0b0;
+    font-size: 9pt;
+    margin-bottom: 10px;
+}
+
+.weapon-detail-gun {
+    border-top: 1px solid #3a3a3a;
+    padding: 8px 0;
+}
+
+.weapon-detail-gun-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.weapon-detail-gun-label {
+    font-size: 9pt;
+    color: #b0b0b0;
+    min-width: 44px;
+}
+
+.weapon-detail-modifiers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px 8px;
+    padding: 6px 0 0 44px;
+}
+
+.weapon-detail-modifier {
+    font-size: 8.5pt;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Recorded on the design but not simulated in play, so shown as secondary. */
+.weapon-detail-modifier-inert {
+    color: #8a8a8a;
 }
 
 .hardpoint-problem {
