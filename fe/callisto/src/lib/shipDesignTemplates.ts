@@ -85,6 +85,9 @@ export const compressedWeapons = (weapons: Weapon[] | null) => {
         kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
         mount: weapon.mount,
         total: 1,
+        // Carried so callers can rebuild the mount faithfully; without it a
+        // mixed turret reads back as whatever its first gun happens to be.
+        guns: weapon.guns,
       };
     }
     return accumulator;

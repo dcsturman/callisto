@@ -565,9 +565,11 @@ export const FireControl: React.FC<FireControlProps> = () => {
           // A mixed turret may only use one type per round, so it gets a button
           // per orderable type rather than one for the mount.  A uniform mount
           // has a single kind and so still renders exactly one button.
-          const kinds = weaponKinds(weapon).filter(
-            (kind) => !PASSIVE_KINDS.has(kind),
-          );
+          const kinds = weaponKinds(
+            weapon.guns != null
+              ? { mount: weapon.mount, guns: weapon.guns }
+              : { kind: weapon.kind, mount: weapon.mount },
+          ).filter((kind) => !PASSIVE_KINDS.has(kind));
           const choices = kinds.length > 0 ? kinds : [weapon.kind];
           const mixed = choices.length > 1;
           return choices.map((kind) => (
@@ -598,10 +600,18 @@ export const FireControl: React.FC<FireControlProps> = () => {
   // once a ship is in play.
   const passiveDefences = useMemo(() => {
     const entries = Object.values(compressedWeapons(computerShipWeapons)).filter((weapon) =>
-      isPassiveWeapon(createWeapon(weapon.kind, weapon.mount)),
+      isPassiveWeapon(
+        weapon.guns != null
+          ? { mount: weapon.mount, guns: weapon.guns }
+          : createWeapon(weapon.kind, weapon.mount),
+      ),
     );
     const weapons = entries.map((weapon) => {
-      const name = weaponToString(createWeapon(weapon.kind, weapon.mount));
+      const name = weaponToString(
+        weapon.guns != null
+          ? { mount: weapon.mount, guns: weapon.guns }
+          : createWeapon(weapon.kind, weapon.mount),
+      );
       return weapon.total > 1 ? `${name} x${weapon.total}` : name;
     });
     // Screens are not weapons and live on the design rather than the ship, but
