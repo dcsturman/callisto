@@ -17,6 +17,8 @@ import {
   isLegalPairing,
   gunCapacity,
   describeGroupGuns,
+  legalMountsLabel,
+  WEAPON_KINDS,
   WeaponGroup,
   checkAllowance,
   commonGunnery,
@@ -588,18 +590,35 @@ function HardpointList(args: {
                 value={group.guns != null ? MIXED_OPTION : group.kind}
                 onChange={(event) => handleKindChange(index, event.target.value)}
               >
-                {/* A design may name a weapon kind this build does not list,
-                    or one the rules do not allow in this mount.  Either way it
-                    stays selectable so existing data is never silently rewritten. */}
-                {group.guns == null &&
-                  !weaponKindsForMount(group.mount).includes(group.kind) && (
-                    <option value={group.kind}>{weaponKindLabel(group.kind)}</option>
-                  )}
-                {weaponKindsForMount(group.mount).map((kind) => (
-                  <option key={kind} value={kind}>
-                    {weaponKindLabel(kind)}
-                  </option>
-                ))}
+                {/* A design may name a weapon kind this build does not list.
+                    Keep it selectable so existing data is never silently
+                    rewritten. */}
+                {group.guns == null && !WEAPON_KINDS.includes(group.kind) && (
+                  <option value={group.kind}>{weaponKindLabel(group.kind)}</option>
+                )}
+                {/* Every weapon is listed, with the ones this mount cannot hold
+                    greyed out rather than hidden.  Omitting them made a missing
+                    weapon look like a broken list instead of a rule -- there is
+                    no ion turret, and that is worth showing rather than hiding. */}
+                {WEAPON_KINDS.map((kind) => {
+                  const legal = isLegalPairing(kind, group.mount);
+                  return (
+                    <option
+                      key={kind}
+                      value={kind}
+                      disabled={!legal}
+                      title={
+                        legal
+                          ? undefined
+                          : `${weaponKindLabel(kind)} needs ${legalMountsLabel(kind)}`
+                      }
+                    >
+                      {legal
+                        ? weaponKindLabel(kind)
+                        : `${weaponKindLabel(kind)} — needs ${legalMountsLabel(kind)}`}
+                    </option>
+                  );
+                })}
                 {/* Only a turret holds more than one gun, so only a turret can
                     be mixed.  Named for its contents when it already is, so the
                     cell says what the mount actually carries. */}
@@ -642,13 +661,17 @@ function HardpointList(args: {
                       handleGunChange(index, gunIndex, event.target.value)
                     }
                   >
-                    {!weaponKindsForMount(group.mount).includes(gun.kind) && (
+                    {!WEAPON_KINDS.includes(gun.kind) && (
                       <option value={gun.kind}>
                         {weaponKindLabel(gun.kind)}
                       </option>
                     )}
-                    {weaponKindsForMount(group.mount).map((kind) => (
-                      <option key={kind} value={kind}>
+                    {WEAPON_KINDS.map((kind) => (
+                      <option
+                        key={kind}
+                        value={kind}
+                        disabled={!isLegalPairing(kind, group.mount)}
+                      >
                         {weaponKindLabel(kind)}
                       </option>
                     ))}

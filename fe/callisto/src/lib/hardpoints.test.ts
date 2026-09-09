@@ -15,6 +15,7 @@ import {
   mountOptionsFor,
   describeGroupGuns,
   gunCapacity,
+  legalMountsLabel,
   setAllGunnery,
   totalMounts,
   isLegalPairing,
@@ -784,5 +785,25 @@ describe("editing a mixed mount", () => {
         { kind: "Sand" },
       ]);
     });
+  });
+});
+
+describe("explaining why a weapon is barred from a mount", () => {
+  it("names where a weapon may go", () => {
+    // There is no ion turret, which is exactly the case that read as a broken
+    // list when the option was simply omitted.
+    expect(legalMountsLabel("Ion")).toBe("a barbette or bay");
+    expect(legalMountsLabel("Torpedo")).toBe("a barbette or bay");
+    // Bay-only weapons collapse the three bay sizes into one word.
+    expect(legalMountsLabel("Meson")).toBe("a bay");
+    expect(legalMountsLabel("PointDefense")).toBe("a battery");
+  });
+
+  it("lists several mounts readably", () => {
+    expect(legalMountsLabel("Sand")).toBe("a turret or fixed mount");
+  });
+
+  it("copes with a weapon this build has never heard of", () => {
+    expect(legalMountsLabel("Antimatter")).toBe("no mount this build knows");
   });
 });

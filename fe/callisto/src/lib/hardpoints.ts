@@ -286,6 +286,45 @@ export function expandGroups(groups: readonly WeaponGroup[]): {
   return { weapons, gunnery };
 }
 
+/** Readable names for the mount classes, for explaining why a weapon is barred. */
+const MOUNT_CLASS_LABELS: Record<MountClass, string> = {
+  Turret: "turret",
+  Fixed: "fixed mount",
+  Barbette: "barbette",
+  SmallBay: "small bay",
+  MediumBay: "medium bay",
+  LargeBay: "large bay",
+  Battery: "battery",
+};
+
+/**
+ * Where the rules allow this weapon, phrased for a person.
+ *
+ * Used to explain why a weapon is greyed out rather than leaving its absence
+ * unexplained -- "no ion turret exists" is a rule worth teaching, and silently
+ * omitting the option reads as a broken list instead.
+ */
+export function legalMountsLabel(kind: string): string {
+  const classes = ((WEAPON_MOUNTS as Record<string, string[]>)[kind] ??
+    []) as MountClass[];
+  if (classes.length === 0) {
+    return "no mount this build knows";
+  }
+  // The three bays read better collapsed than listed one by one.
+  const bays = ["SmallBay", "MediumBay", "LargeBay"] as MountClass[];
+  const hasAllBays = bays.every((bay) => classes.includes(bay));
+  const parts = classes
+    .filter((mountClass) => !(hasAllBays && bays.includes(mountClass)))
+    .map((mountClass) => MOUNT_CLASS_LABELS[mountClass]);
+  if (hasAllBays) {
+    parts.push("bay");
+  }
+  if (parts.length === 1) {
+    return `a ${parts[0]}`;
+  }
+  return `a ${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
+}
+
 /** How many guns a mount of this kind holds. */
 export function gunCapacity(mount: WeaponMount | null): number {
   if (mount != null && typeof mount === "object" && "Turret" in mount) {
