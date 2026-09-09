@@ -202,9 +202,14 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
     handler: () => void;
   } | null>(null);
 
-  // Initialize template to the first builder template if not already set
+  // Initialize template to the first builder template if not already set.
+  //
+  // The test is `== null`, not `!template`: the empty string is a real choice
+  // meaning "<no scenario>", and treating it as unset re-selected the first
+  // template the moment it was picked, making a blank scenario impossible to
+  // start.
   useEffect(() => {
-    if (!template && builderTemplates.length > 0) {
+    if (template == null && builderTemplates.length > 0) {
       setTemplate(builderTemplates[0][0]);
     }
   }, [builderTemplates, template]);
@@ -279,9 +284,13 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
 
   function handleCreateScenario(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (template === null) {
+    // Both null (nothing chosen yet) and the empty string ("<no scenario>")
+    // mean "start blank".  Without the empty-string case this fell through to
+    // the lookup below, failed to find a template named "", and logged an
+    // error before doing the right thing anyway.
+    if (template == null || template === "") {
       prepareScenarioLaunch(AppMode.Game);
-      createScenario(scenarioName, template ?? "");
+      createScenario(scenarioName, "");
       return;
     }
 
