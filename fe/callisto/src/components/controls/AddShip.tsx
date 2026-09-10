@@ -93,7 +93,6 @@ export const AddShip: React.FC<AddShipProps> = () => {
       armament: buildWeaponRows(firstDesign.name),
       // Ships are built running normally; the referee can start one dark.
       activeSensors: true,
-      transponder: true,
     };
   }, [shipDesignTemplates, entities, buildWeaponRows]);
 
@@ -122,7 +121,6 @@ export const AddShip: React.FC<AddShipProps> = () => {
         ),
         // Absent on the wire means running normally.
         activeSensors: current.active_sensors !== false,
-        transponder: current.transponder !== false,
       };
       setAddShipData(template);
     }
@@ -157,7 +155,6 @@ export const AddShip: React.FC<AddShipProps> = () => {
               ),
               // Absent on the wire means running normally.
               activeSensors: ship.active_sensors !== false,
-              transponder: ship.transponder !== false,
             });
           }
         }
@@ -219,7 +216,6 @@ export const AddShip: React.FC<AddShipProps> = () => {
         crew,
         weapons: armament,
         active_sensors: addShipData.activeSensors,
-        transponder: addShipData.transponder,
       };
 
       addShip(revision);
@@ -346,21 +342,6 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 }
               />
               Active sensors
-            </label>
-            <label
-              className="emissions-toggle"
-              title="Transponder and radio comms. DM+6 to anyone trying to detect this ship.">
-              <input
-                type="checkbox"
-                checked={addShipData.transponder}
-                onChange={(event) =>
-                  setAddShipData({
-                    ...addShipData,
-                    transponder: event.target.checked,
-                  })
-                }
-              />
-              Transponder
             </label>
           </div>
         </div>

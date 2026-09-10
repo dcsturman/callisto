@@ -531,7 +531,6 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
   // Absent means running normally, which is how ships built before emissions
   // existed arrive.
   const activeSensors = ship.active_sensors !== false;
-  const transponder = ship.transponder !== false;
 
   return (
     <div className="control-label">
@@ -541,21 +540,9 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
           <input
             type="checkbox"
             checked={activeSensors}
-            onChange={(event) =>
-              setShipEmissions(ship.name, event.target.checked, undefined)
-            }
+            onChange={(event) => setShipEmissions(ship.name, event.target.checked)}
           />
           Active
-        </label>
-        <label className="emissions-toggle" title="Transponder and radio comms. The loudest thing a ship can do: DM+6 to anyone trying to detect it.">
-          <input
-            type="checkbox"
-            checked={transponder}
-            onChange={(event) =>
-              setShipEmissions(ship.name, undefined, event.target.checked)
-            }
-          />
-          Squawk
         </label>
       </div>
       <select

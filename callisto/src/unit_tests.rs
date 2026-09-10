@@ -1142,7 +1142,6 @@ async fn test_get_entities() {
       crew: None,
       weapons: None,
       active_sensors: None,
-      transponder: None,
     })
     .unwrap();
 

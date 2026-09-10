@@ -3468,7 +3468,7 @@ mod tests {
     let alpha = entities.ships.get("Alpha").unwrap();
     alpha.write().unwrap().sensor_locks.push("Bravo".to_string());
 
-    let dropped = alpha.write().unwrap().set_emissions(Some(false), None);
+    let dropped = alpha.write().unwrap().set_active_sensors(false);
 
     assert!(dropped, "going dark should report that locks were dropped");
     let alpha = alpha.read().unwrap();
@@ -3477,30 +3477,21 @@ mod tests {
     assert_eq!(alpha.contacts, vec!["Bravo".to_string()], "contacts should survive going dark");
   }
 
-  /// Coming back up, or changing only the transponder, must not disturb locks.
+  /// Only the transition to dark drops locks; coming back up, or setting the
+  /// state it already had, leaves them alone.
   #[test]
   fn only_going_dark_drops_locks() {
     let design = Arc::new(ShipDesignTemplate::default());
     let mut ship = Ship::new("Alpha".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     ship.sensor_locks.push("Bravo".to_string());
 
-    assert!(
-      !ship.set_emissions(None, Some(false)),
-      "transponder alone should not drop locks"
-    );
-    assert!(!ship.transponder);
+    assert!(!ship.set_active_sensors(true), "already-lit sensors should not drop locks");
     assert_eq!(ship.sensor_locks.len(), 1);
 
-    assert!(
-      !ship.set_emissions(Some(true), None),
-      "already-lit sensors should not drop locks"
-    );
-    assert_eq!(ship.sensor_locks.len(), 1);
-
-    assert!(ship.set_emissions(Some(false), None), "going dark should drop them");
+    assert!(ship.set_active_sensors(false), "going dark should drop them");
     assert!(ship.sensor_locks.is_empty());
     // Already dark: nothing left to drop, so no second report.
-    assert!(!ship.set_emissions(Some(false), None));
+    assert!(!ship.set_active_sensors(false));
   }
 
   /// A ship running dark cannot take a new lock, contact or no contact.
@@ -3523,7 +3514,7 @@ mod tests {
       .unwrap()
       .write()
       .unwrap()
-      .set_emissions(Some(false), None);
+      .set_active_sensors(false);
 
     let actions = vec![(
       "attacker".to_string(),

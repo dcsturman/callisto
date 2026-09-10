@@ -211,15 +211,6 @@ pub struct Ship {
   #[serde(default = "default_true", skip_serializing_if = "is_true")]
   pub active_sensors: bool,
 
-  /// Whether the ship is squawking its transponder.
-  ///
-  /// The single loudest thing a ship can do: DM+6 to anyone trying to detect
-  /// it, on both the Initial Detection and Stealthed Ships tables. In RAW its
-  /// cost is legal rather than tactical (fines, boarding, being shot at), which
-  /// is why switching it off is free here and left to the referee.
-  #[serde(default = "default_true", skip_serializing_if = "is_true")]
-  pub transponder: bool,
-
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   pub crew: Crew,
@@ -347,8 +338,8 @@ fn is_zero_u8(value: &u8) -> bool {
   *value == 0
 }
 
-/// Emissions default to on: a ship in civilised space runs its transponder and
-/// its active sensors unless the crew decides otherwise.
+/// Active sensors default to on: a ship runs them unless the crew decides to
+/// go quiet.
 fn default_true() -> bool {
   true
 }
@@ -1156,7 +1147,6 @@ impl Ship {
       sensor_locks: vec![],
       contacts: vec![],
       active_sensors: true,
-      transponder: true,
       crit_level: [0; 11],
       attack_dm: 0,
       crew: crew.unwrap_or_default(),
@@ -1321,27 +1311,17 @@ impl Ship {
     self.can_jump
   }
 
-  /// Set the ship's emissions, returning whether going dark dropped any locks.
+  /// Set whether the ship runs active sensors, returning whether going dark
+  /// dropped any locks.
   ///
-  /// `None` leaves a setting alone, so the caller can change one without
-  /// knowing the other.
-  ///
-  /// Shutting down active sensors drops every sensor lock this ship holds.
-  /// A lock is deliberate, continuous illumination of a target - the Stealthed
-  /// Ships table charges DM+2 for "sensor locks, electronic warfare or other
+  /// Shutting them down drops every sensor lock this ship holds. A lock is
+  /// deliberate, continuous illumination of a target - the Stealthed Ships
+  /// table charges DM+2 for "sensor locks, electronic warfare or other
   /// deliberate use of active sensors" - so it cannot survive going quiet.
   /// Contacts are kept: High Guard p. 77 has detection "maintained under most
   /// circumstances" once established, and it is that asymmetry that makes going
   /// dark a real choice rather than a free one. House rule; RAW does not say.
-  pub fn set_emissions(&mut self, active_sensors: Option<bool>, transponder: Option<bool>) -> bool {
-    if let Some(transponder) = transponder {
-      self.transponder = transponder;
-    }
-
-    let Some(active_sensors) = active_sensors else {
-      return false;
-    };
-
+  pub fn set_active_sensors(&mut self, active_sensors: bool) -> bool {
     let going_dark = self.active_sensors && !active_sensors;
     self.active_sensors = active_sensors;
 

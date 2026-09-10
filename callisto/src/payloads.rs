@@ -73,13 +73,10 @@ pub struct AddShipMsg {
   pub crew: Option<Crew>,
   /// The ship's armament.  Absent (or null) means it uses its design's weapons.
   pub weapons: Option<Vec<Weapon>>,
-  /// Emissions the ship starts with. Absent means the normal running state -
-  /// active sensors up and transponder squawking - so a client that predates
-  /// these fields builds ships exactly as it always did.
+  /// Whether the ship starts with its active sensors up. Absent means yes, so
+  /// a client that predates this field builds ships exactly as it always did.
   #[serde(default)]
   pub active_sensors: Option<bool>,
-  #[serde(default)]
-  pub transponder: Option<bool>,
 }
 
 #[skip_serializing_none]
@@ -101,15 +98,16 @@ impl SetPilotActions {
   }
 }
 
-/// Set a ship's emissions: whether it runs active sensors and its transponder.
+/// Set whether a ship runs its active sensors.
 ///
-/// Both are `Option` so the client can toggle one without having to restate
-/// the other.
+/// Transponders are deliberately not modelled: nothing sensible goes into
+/// combat squawking one, so it would be a control every player switches off
+/// once and never touches again. Detection therefore assumes it is off, and
+/// the DM+6 the Initial Detection table charges for it never applies.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetShipEmissions {
   pub ship_name: String,
-  pub active_sensors: Option<bool>,
-  pub transponder: Option<bool>,
+  pub active_sensors: bool,
 }
 
 #[serde_as]
@@ -457,7 +455,6 @@ mod tests {
       crew: None,
       weapons: None,
       active_sensors: None,
-      transponder: None,
     };
     let json = json!({
         "name": "ship1",
@@ -484,7 +481,6 @@ mod tests {
       crew: Some(crew),
       weapons: None,
       active_sensors: None,
-      transponder: None,
     };
     let json = json!({
         "name": "ship1",

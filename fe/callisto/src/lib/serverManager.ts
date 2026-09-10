@@ -321,10 +321,9 @@ export function addShip(ship: Ship) {
       // reads an absent `weapons` as "inherit from the design", so leaving it
       // out is what keeps old behaviour for unmodified ships.
       ...(ship.weapons ? { weapons: ship.weapons } : {}),
-      // Only sent when the referee turned something off; absent means the
+      // Only sent when the referee started the ship dark; absent means the
       // normal running state.
       ...(ship.active_sensors === false ? { active_sensors: false } : {}),
-      ...(ship.transponder === false ? { transponder: false } : {}),
     },
   };
 
@@ -358,24 +357,15 @@ export function addPlanet(planet: Planet) {
 }
 
 /**
- * Set a ship's emissions.
+ * Set whether a ship runs its active sensors.
  *
- * Either field may be omitted to change one without restating the other.
- * Shutting down active sensors drops the ship's sensor locks server-side --
- * a lock is deliberate illumination, which a ship running dark is not doing --
- * while its existing contacts are kept.
+ * Going dark drops the ship's sensor locks server-side -- a lock is deliberate
+ * illumination, which a ship running quiet is not doing -- while its existing
+ * contacts are kept.
  */
-export function setShipEmissions(
-  shipName: string,
-  activeSensors?: boolean,
-  transponder?: boolean,
-) {
+export function setShipEmissions(shipName: string, activeSensors: boolean) {
   const payload = {
-    SetShipEmissions: {
-      ship_name: shipName,
-      ...(activeSensors === undefined ? {} : { active_sensors: activeSensors }),
-      ...(transponder === undefined ? {} : { transponder }),
-    },
+    SetShipEmissions: { ship_name: shipName, active_sensors: activeSensors },
   };
   socket.send(JSON.stringify(payload));
 }

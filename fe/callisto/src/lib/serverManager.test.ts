@@ -112,9 +112,9 @@ describe("ScenarioLoadErrors inbound handling", () => {
 });
 
 describe("setShipEmissions", () => {
-  it("sends only the field that changed", async () => {
+  it("sends a request to go dark", async () => {
     const sm = await import("lib/serverManager");
-    sm.setShipEmissions("Harrier", false, undefined);
+    sm.setShipEmissions("Harrier", false);
     expect(mockSocket.sent).toEqual([
       JSON.stringify({
         SetShipEmissions: { ship_name: "Harrier", active_sensors: false },
@@ -122,25 +122,13 @@ describe("setShipEmissions", () => {
     ]);
   });
 
-  it("can set both at once", async () => {
+  it("sends a request to bring sensors back up", async () => {
     const sm = await import("lib/serverManager");
-    sm.setShipEmissions("Harrier", false, false);
+    sm.setShipEmissions("Harrier", true);
     expect(mockSocket.sent).toEqual([
       JSON.stringify({
-        SetShipEmissions: {
-          ship_name: "Harrier",
-          active_sensors: false,
-          transponder: false,
-        },
+        SetShipEmissions: { ship_name: "Harrier", active_sensors: true },
       }),
-    ]);
-  });
-
-  it("omits both when neither is given, leaving the ship as it is", async () => {
-    const sm = await import("lib/serverManager");
-    sm.setShipEmissions("Harrier");
-    expect(mockSocket.sent).toEqual([
-      JSON.stringify({ SetShipEmissions: { ship_name: "Harrier" } }),
     ]);
   });
 });

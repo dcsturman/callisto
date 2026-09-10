@@ -95,8 +95,6 @@ export interface Ship extends Entity {
    * as it did before emissions existed.
    */
   active_sensors?: boolean;
-  /** Whether the ship squawks its transponder. Absent means yes. */
-  transponder?: boolean;
   crew: Crew;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   repair_bonus?: number;

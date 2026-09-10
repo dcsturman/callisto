@@ -62,7 +62,7 @@ non-stealthed low-TL ship. These should be two separate terms.
 | Target running passive sensors only | +0 | Same flag |
 | Target operating manoeuvre drive | +1 per Thrust | Yes — from the ship's plan |
 | Target operating power plant | +1 | Yes — effectively always true |
-| Transponder or radio comms | +6 | **Needs new flag** |
+| Transponder or radio comms | +6 | **Not modelled — see §3** |
 | Extended sensor array deployed | +2 | Not modelled — out of scope |
 | Stealth | −2 / −4 / −6 | Yes — `stealth_mod` |
 
@@ -85,7 +85,7 @@ range between ships extends by one or more bands during an encounter."*
 | Stealthed target damaged, emits heat | +1 per Severity | **Needs a severity accumulator** |
 | Stealthed target uses active sensors | +2 | Needs the new flag |
 | Stealthed target operating manoeuvre drive | +1 per Thrust | Yes |
-| Stealthed target uses transponder or comms | +6 | Needs the new flag |
+| Stealthed target uses transponder or comms | +6 | **Not modelled — see §3** |
 
 The stealth coating DM itself also applies here — the Stealth Types text says it
 applies to checks "to detect **or lock onto**" the ship, so it is not limited to
@@ -144,16 +144,13 @@ precondition, and dropping a contact drops any lock on that target. Today
 
 ---
 
-## 3. Going dark: active sensors and transponder
+## 3. Going dark: active sensors
 
-Two new booleans on `Ship`, both defaulting to **on** (civilised-space normal):
+One new boolean on `Ship`, defaulting to **on**:
 
 ```rust
 #[serde(default = "default_true", skip_serializing_if = "is_true")]
 pub active_sensors: bool,
-
-#[serde(default = "default_true", skip_serializing_if = "is_true")]
-pub transponder: bool,
 ```
 
 `skip_serializing_if` keeps existing scenario JSON byte-identical, the same
@@ -169,13 +166,25 @@ discipline the weapon refactor used for the 79 design files.
 | You using SensorLock | allowed | **forbidden** |
 | Your existing sensor locks | kept | **dropped** (see open question D) |
 
-| | Transponder ON | Transponder OFF |
-|---|---|---|
-| Enemy detecting you | gives them **DM+6** | DM+0 |
+### Transponders are deliberately not modelled
 
-Transponder is the single biggest DM on either table, so it is the primary
-"go dark" lever, and it costs nothing mechanically — which is exactly right,
-because in RAW its cost is legal, not tactical (fines, boarding, being shot at).
+The transponder carries the single biggest DM on either table at +6, and it was
+built in the first cut of this phase. It has since been removed.
+
+Nothing sensible goes into combat squawking its transponder, so the control
+would be one every player switches off once and never touches again — a
+permanent checkbox for a decision nobody actually makes. Detection therefore
+assumes it is off and the +6 never applies.
+
+The cost of leaving it out is that an ordinary ship is detected on DM+3 rather
+than DM+9: **83% in the first round** instead of 100%. Since acquisition is
+retried every round, a pair that misses is almost certain to have found each
+other by the second or third, so ordinary engagements still open with mutual
+awareness. Contrast the stealthed cases in §8, which stay in the single digits.
+
+Should this ever be wanted back — a customs or piracy scenario where squawking
+matters — it is a field, a wire field and a checkbox, and the DM row is already
+written down above.
 
 This gives the stealth captain the RAW playbook: *"Savvy stealth ship captains
 know how to 'go dark' after distancing themselves from an opponent, shutting
@@ -183,14 +192,14 @@ down most or all systems that allow them to be detected."*
 
 ### Where the toggles live
 
-**Add Ship** (`AddShip.tsx`) gets both as checkboxes, defaulting to on, so a
-scenario can be built with a ship already running dark.
+**Add Ship** (`AddShip.tsx`) gets a checkbox, defaulting to on, so a scenario
+can be built with a ship already running dark.
 
-In play they are not `ShipAction`s. These are persistent ship state, not once-per-round actions,
-and the sensor action slot is already contended
-(SensorLock / BreakSensorLock / JamComms / JamMissiles). Two checkboxes in the
-sensor panel, sent as a new `RequestMsg::SetShipEmissions { ship, active_sensors,
-transponder }`.
+In play it is not a `ShipAction`. This is persistent ship state, not a
+once-per-round action, and the sensor action slot is already contended
+(SensorLock / BreakSensorLock / JamComms / JamMissiles). A checkbox in the
+sensor panel, sent as a new `RequestMsg::SetShipEmissions { ship_name,
+active_sensors }`.
 
 ---
 
@@ -291,7 +300,7 @@ exists in both contexts.
 `ShipComputer.tsx:535-566` already renders the sensor action dropdown and a
 "Locks: …" line. Add:
 
-- Two checkboxes: **Active sensors**, **Transponder**
+- A checkbox: **Active sensors**
 - A "Contacts: …" line beside the existing "Locks: …" line
 - Filter the `Sensor Lock: X` options to ships in `contacts` (you cannot lock
   what you have not detected)
@@ -340,8 +349,8 @@ rule.
 | Direction | Change |
 |---|---|
 | → client | `Ship.contacts: string[]` (omitted when empty) |
-| → client | `Ship.active_sensors: bool`, `Ship.transponder: bool` (omitted when true) |
-| ← client | `RequestMsg::SetShipEmissions { ship, active_sensors, transponder }` |
+| → client | `Ship.active_sensors: bool` (omitted when true) |
+| ← client | `RequestMsg::SetShipEmissions { ship_name, active_sensors }` |
 | → client | `EffectMsg::SensorContact { observer, target, acquired: bool }` |
 
 `EffectMsg` (`payloads.rs`) currently has ShipImpact, ExhaustedMissile,
@@ -447,18 +456,19 @@ flag, which is why the earlier A1/A3 proposal is dropped:
 
 | Situation | DM | Detected |
 |---|---|---|
-| Ordinary ship (transponder +6, plant +1, active +2), Military sensors | +9 | **100%** |
-| Same, detector has Basic sensors (−4) | +5 | 97% |
+| Ordinary ship (plant +1, active sensors +2), Military sensors | +3 | **83%** |
+| Same, detector has Basic sensors (−4) | −1 | 28% |
 | Stealth Basic/Improved, gone dark, coasting | −1 | 28% |
 | Stealth Enhanced, gone dark, coasting | −3 | 8% |
 | Stealth Advanced, gone dark, coasting | −5 | 0% |
 | Stealth Enhanced, gone dark but thrusting 3G | +0 | 42% |
 | Stealth Advanced, gone dark but thrusting 3G | −2 | 17% |
 
-Ordinary combat is unchanged because a transponder-running ship is detected
-automatically. Stealth works because going dark removes +8 of DMs. And the
-manoeuvre-drive DM creates the central tension: running away is exactly what
-makes you visible.
+Ordinary ships are found quickly rather than automatically, and since
+acquisition is retried every round a pair that misses will almost certainly
+have found each other by the second or third. Stealth works because going dark
+removes the +2 and the coating subtracts up to another 6. And the manoeuvre-drive
+DM creates the central tension: running away is exactly what makes you visible.
 
 **B. Thrust DM — RESOLVED:** `floor(|acceleration| / G)` using the existing
 `entity.rs:37 G = 9.807`. Ships store acceleration in m/s² in
@@ -529,7 +539,7 @@ Each phase is independently shippable and testable, in canary→main order.
 |---|---|---|
 | **1** | Split the TL bonus from the stealth TL penalty; fix the `.min(0)` clamp bug. Pure rules fix with tests. | Low, but it *does* change existing to-hit maths |
 | **2** | `contacts` on `Ship`; wire serialization; no-contact-no-interaction invariant across all ship-targeting actions; server-side enforcement. No UI yet. | Medium — touches sensor_lock, fire, JamComms |
-| **3** | `active_sensors` + `transponder` flags, `SetShipEmissions` request, sensor-panel checkboxes. | Low, additive |
+| **3** | `active_sensors` flag, `SetShipEmissions` request, sensor-panel and Add Ship checkboxes. | Low, additive |
 | **4** | `detection_pass` as round step 7: acquisition + reacquisition + range-band escape. | Highest — the real new mechanic |
 | **5** | FE visibility: `EntitySelector` gating, 3D dimming, contacts readout, `ShipSummary` redaction. | Low, additive |
 | **6** | `FAQ.md` entries for every house rule chosen above. | Low |
