@@ -110,3 +110,57 @@ describe("ScenarioLoadErrors inbound handling", () => {
     expect(errors[1].error).toBe("bad json");
   });
 });
+
+describe("scenario dirty tracking", () => {
+  async function dirty() {
+    const { store } = await import("state/store");
+    return store.getState().ui.scenarioDirty;
+  }
+
+  it("starts clean", async () => {
+    expect(await dirty()).toBe(false);
+  });
+
+  it.each([
+    ["removeEntity", (sm: typeof import("lib/serverManager")) => sm.removeEntity("Flayer")],
+    [
+      "renameEntity",
+      (sm: typeof import("lib/serverManager")) => sm.renameEntity("Flayer", "Thrasher"),
+    ],
+  ])("marks the scenario dirty after %s", async (_name, mutate) => {
+    const sm = await import("lib/serverManager");
+    mutate(sm);
+    expect(await dirty()).toBe(true);
+  });
+
+  it("clears the flag when the server confirms a save", async () => {
+    const sm = await import("lib/serverManager");
+    sm.removeEntity("Flayer");
+    expect(await dirty()).toBe(true);
+
+    mockSocket.onmessage!(
+      new MessageEvent("message", {
+        data: JSON.stringify({ ScenarioSaved: "mine.json" }),
+      }),
+    );
+    expect(await dirty()).toBe(false);
+  });
+
+  it("clears the flag on leaving the scenario", async () => {
+    const sm = await import("lib/serverManager");
+    sm.removeEntity("Flayer");
+    expect(await dirty()).toBe(true);
+
+    sm.exit_scenario();
+    expect(await dirty()).toBe(false);
+  });
+
+  it("clears the flag when a different scenario is joined", async () => {
+    const sm = await import("lib/serverManager");
+    sm.removeEntity("Flayer");
+    expect(await dirty()).toBe(true);
+
+    sm.joinScenario("sol.json");
+    expect(await dirty()).toBe(false);
+  });
+});
