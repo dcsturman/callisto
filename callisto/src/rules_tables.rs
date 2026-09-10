@@ -173,6 +173,42 @@ pub fn stealth_mod(stealth: Option<Stealth>) -> i16 {
 // Use this locally only.
 const STEALTH_MOD: [i16; 4] = [-2, -2, -4, -6];
 
+/// Total DM applied to an Electronics (sensors) check made by an observer at
+/// `observer_tl` against a target at `target_tl` carrying `target_stealth`.
+///
+/// This combines two rules that High Guard keeps separate, and that were
+/// previously conflated into a single clamped term:
+///
+/// * **Initial Detection (p. 76) and Stealthed Ships (p. 77):** "TL difference
+///   between ships: +1 per higher TL", with the worked example "A TL15 ship
+///   receives DM+3 to detect a TL12 ship". This is a bonus for the
+///   better-teched *observer*, and it applies whether or not the target has
+///   stealth. Facing a higher-TL ship carries no matching penalty here.
+/// * **Stealth Types (p. 14):** the coating's own DM-2/-4/-6, plus "an
+///   additional DM-1 for every Tech Level the ship is higher than the sensors
+///   trying to locate it". Both are penalties, and both apply only to a target
+///   that actually has stealth.
+///
+/// The two TL terms are mutually exclusive: at most one of them is non-zero for
+/// any given pair, so a stealthed target reduces to `delta + grade` while a
+/// plain target reduces to `max(0, delta)`.
+#[must_use]
+pub fn detection_modifiers(observer_tl: u8, target_tl: u8, target_stealth: Option<Stealth>) -> i16 {
+  let delta = i16::from(observer_tl) - i16::from(target_tl);
+
+  // "+1 per higher TL" - observer only, never a penalty.
+  let tl_bonus = delta.max(0);
+
+  // Stealth grade, plus DM-1 per TL the target is above the observer.
+  let stealth = if target_stealth.is_some() {
+    stealth_mod(target_stealth) + delta.min(0)
+  } else {
+    0
+  };
+
+  tl_bonus + stealth
+}
+
 pub fn countermeasures_mod(countermeasures: Option<CounterMeasures>) -> i16 {
   match countermeasures {
     None => 0,
@@ -445,5 +481,55 @@ mod tests {
       problems.join("\n  ")
     );
     assert!(checked > 0, "no weapons were checked, so this test proves nothing");
+  }
+
+  /// The TL bonus is awarded to the better-teched observer only, and never
+  /// turns into a penalty when facing a higher-TL ship without stealth.
+  #[test]
+  fn tl_bonus_favours_the_observer_and_never_penalises() {
+    // High Guard's worked example: a TL15 ship detecting a TL12 ship.
+    assert_eq!(detection_modifiers(15, 12, None), 3);
+    // Equal tech, nothing to award.
+    assert_eq!(detection_modifiers(12, 12, None), 0);
+    // Observer is three TLs behind, but a plain hull carries no TL penalty.
+    assert_eq!(detection_modifiers(12, 15, None), 0);
+  }
+
+  /// Stealth grades come straight off the Stealth Types table (High Guard
+  /// p. 14): Basic and Improved both -2, Enhanced -4, Advanced -6.
+  #[test]
+  fn stealth_grades_match_the_table() {
+    for (grade, expected) in [
+      (Stealth::Basic, -2),
+      (Stealth::Improved, -2),
+      (Stealth::Enhanced, -4),
+      (Stealth::Advanced, -6),
+    ] {
+      assert_eq!(
+        detection_modifiers(12, 12, Some(grade)),
+        expected,
+        "grade {grade:?} should apply DM{expected}"
+      );
+    }
+  }
+
+  /// "An additional DM-1 for every Tech Level the ship is higher than the
+  /// sensors trying to locate it" - stealth only, and only in that direction.
+  #[test]
+  fn stealth_adds_a_tl_penalty_only_when_the_target_is_ahead() {
+    // Target three TLs ahead: -6 grade, -3 TL.
+    assert_eq!(detection_modifiers(12, 15, Some(Stealth::Advanced)), -9);
+    // Level pegging: grade only.
+    assert_eq!(detection_modifiers(15, 15, Some(Stealth::Advanced)), -6);
+  }
+
+  /// The old implementation clamped the whole term with `.min(0)`, so a big
+  /// tech advantage could never overcome a stealth coating. It should.
+  #[test]
+  fn a_large_tl_advantage_can_beat_stealth() {
+    // TL15 observer against a TL8 Basic-stealth hull: +7 TL, -2 grade.
+    assert_eq!(detection_modifiers(15, 8, Some(Stealth::Basic)), 5);
+    // The two TL terms never both fire, so this stays a plain sum.
+    assert_eq!(detection_modifiers(14, 12, Some(Stealth::Enhanced)), -2);
   }
 }
