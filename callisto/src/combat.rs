@@ -8,7 +8,7 @@ use rand::RngCore;
 use crate::action::{
   boost_for_assist_gunner, boost_for_evade, boost_for_fire, boost_for_point_defense, BoostMap, ShipAction,
 };
-use crate::entity::Entity;
+use crate::entity::{no_contact_effect, Entity};
 use crate::payloads::{EffectMsg, LaunchMissileMsg};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{
@@ -891,6 +891,18 @@ pub fn do_fire_actions<S: BuildHasher>(
         attacker.get_name(),
         action
       );
+
+      // Nothing can be done to a ship that is not detected. Read off the
+      // attacker's start-of-round snapshot, so a shot is judged against what
+      // the crew knew when the order was given.
+      if !attacker.contacts.iter().any(|name| name == target) {
+        debug!(
+          "(Combat.do_fire_actions) {} has no contact on {}; fire action dropped.",
+          attacker.get_name(),
+          target
+        );
+        return vec![no_contact_effect(attacker.get_name(), target, "fire on")];
+      }
 
       if !attacker.active_weapons[*weapon_id] {
         debug!("(Combat.do_fire_actions) Weapon {} is disabled.", weapon_id);
@@ -2201,7 +2213,7 @@ mod tests {
       ..ShipDesignTemplate::default()
     };
 
-    let attacker = Ship::new(
+    let mut attacker = Ship::new(
       "Attacker".to_string(),
       Vec3::new(-1000.0, 1000.0, 0.0),
       Vec3::zero(),
@@ -2209,6 +2221,9 @@ mod tests {
       None,
       None,
     );
+    // Built directly rather than through a scenario, so seed the contact the
+    // fire action needs.
+    attacker.contacts.push("Target".to_string());
     let target = Ship::new(
       "Target".to_string(),
       Vec3::new(1000.0, 0.0, 0.0),
@@ -3091,6 +3106,63 @@ mod tests {
     );
   }
 
+  /// A ship cannot shoot what it has not detected. The order is accepted but
+  /// resolves to a refusal rather than an attack, and no damage is dealt.
+  #[test]
+  fn firing_at_an_undetected_ship_is_refused() {
+    let mut rng = StdRng::seed_from_u64(7);
+    let design = Arc::new(ShipDesignTemplate {
+      name: "TestShip".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      ..ShipDesignTemplate::default()
+    });
+
+    // No contacts are seeded, so the attacker has no idea the target is there.
+    let attacker = Ship::new(
+      "Attacker".to_string(),
+      Vec3::new(-1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let target = Ship::new("Target".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let starting_hull = target.current_hull;
+
+    let mut ships = HashMap::new();
+    ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+    let mut sand_counts = HashMap::new();
+
+    let actions = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Target".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+    }];
+
+    let (missiles, effects) = do_fire_actions(
+      &attacker,
+      &mut ships,
+      &mut sand_counts,
+      &actions,
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    assert!(missiles.is_empty(), "no missile should launch at an undetected ship");
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("cannot fire on"))),
+      "expected a refusal effect, got {effects:?}"
+    );
+    assert_eq!(
+      ships.get("Target").unwrap().read().unwrap().current_hull,
+      starting_hull,
+      "an undetected target should take no damage"
+    );
+  }
+
   #[test_log::test]
   fn test_do_fire_actions_assist_gunner_first_only() {
     // The AssistGunner boost should add +1 to the FIRST fire-action's
@@ -3141,6 +3213,9 @@ mod tests {
       );
       a.set_pilot_actions(None, Some(true)).expect("(test) set assist gunners");
       assert!(a.get_assist_gunners());
+      // Built directly rather than through a scenario, so it has no contacts
+      // and every shot would be refused for want of one.
+      a.contacts.push("Target".to_string());
       a
     };
 

@@ -185,6 +185,20 @@ pub struct Ship {
   #[serde(default)]
   pub sensor_locks: Vec<String>,
 
+  /// The ships this one currently detects.
+  ///
+  /// Directional: A having a contact on B says nothing about whether B has one
+  /// on A, which is what lets stealth work at all. Sticky once established -
+  /// High Guard p. 77, "after initial contact, sensor detection is maintained
+  /// under most circumstances" - so it is dropped only by losing a stealthed
+  /// target across a range band or by the range opening past Distant.
+  ///
+  /// A sensor lock requires a contact, and more broadly nothing can be done to
+  /// a ship that is not detected. Omitted from the wire when empty.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub contacts: Vec<String>,
+
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   pub crew: Crew,
@@ -1103,6 +1117,7 @@ impl Ship {
       current_computer: design.computer,
       active_weapons: vec![true; num_weapons],
       sensor_locks: vec![],
+      contacts: vec![],
       crit_level: [0; 11],
       attack_dm: 0,
       crew: crew.unwrap_or_default(),

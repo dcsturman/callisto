@@ -114,6 +114,16 @@ impl PartialEq for Entities {
   }
 }
 
+/// The effect reported when a ship is ordered to act on something it cannot see.
+///
+/// Phrased for the referee log rather than as an error: the order was given,
+/// the crew simply has nothing to aim at.
+pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> EffectMsg {
+  EffectMsg::Message {
+    content: format!("{ship_name} has no sensor contact on {target} and cannot {verb} it."),
+  }
+}
+
 impl Entities {
   #[must_use]
   pub fn new() -> Self {
@@ -361,6 +371,10 @@ impl Entities {
       // Create a new ship and add it to the ship table
       let ship = Arc::new(RwLock::new(Ship::new(name.clone(), position, velocity, design, crew, weapons)));
       self.ships.insert(name, ship);
+      // A ship joining the scenario is mutually detected, matching how a
+      // loaded scenario opens. The Initial Detection pass will make this a
+      // roll rather than a given.
+      self.establish_initial_contacts();
       return;
     };
 
@@ -526,6 +540,9 @@ impl Entities {
     if let Some(ship_arc) = self.ships.remove(current) {
       ship_arc.write().unwrap().set_name(trimmed.to_string());
       self.ships.insert(trimmed.to_string(), ship_arc);
+      // Everyone tracking the old name has to follow it, or the rename
+      // silently drops their contact and sensor lock.
+      self.rename_ship_references(current, trimmed);
       return Ok(format!("Renamed ship {current} to {trimmed}."));
     }
     if let Some(planet_arc) = self.planets.remove(current) {
@@ -950,6 +967,9 @@ impl Entities {
       debug!("(Entity.update_all) Removing ship {}", name);
       self.ships.remove(name);
     }
+    if !cleanup_ships_list.is_empty() {
+      self.prune_ship_references();
+    }
 
     // Update which ships are jump enabled
     self.check_jump_enabled();
@@ -999,14 +1019,22 @@ impl Entities {
           ShipAction::SensorLock { target } => {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for sensor lock.", target);
-              return Vec::default();
+              continue;
+            }
+            if !self.has_contact(ship_name, target) {
+              effects.push(no_contact_effect(ship_name, target, "lock onto"));
+              continue;
             }
             self.sensor_lock(ship_name, target, boost, rng)
           }
           ShipAction::JamComms { target } => {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for jamming comms.", target);
-              return Vec::default();
+              continue;
+            }
+            if !self.has_contact(ship_name, target) {
+              effects.push(no_contact_effect(ship_name, target, "jam"));
+              continue;
             }
             self.jam_comms(ship_name, target, boost, rng)
           }
@@ -1279,7 +1307,88 @@ impl Entities {
         .ok_or_else(|| format!("Unable to find entity named {} as target for {name}", missile.target))?;
       missile.target_ptr.replace(looked_up.clone());
     }
+
+    // Post-load normalisation: a scenario on disk carries no contact state, so
+    // seed it here rather than at each call site, which would be easy to miss.
+    self.establish_initial_contacts();
+
     Ok(())
+  }
+
+  /// Give every ship a contact on every other ship.
+  ///
+  /// Detection is not rolled yet; that arrives with the Initial Detection pass.
+  /// Until then scenarios open with the mutual awareness they have always had,
+  /// so nothing in play changes. What this does buy is a real relation to
+  /// enforce against, letting "no contact, no interaction" be wired up and
+  /// tested now rather than landing all at once alongside the dice.
+  ///
+  /// Takes `&self` because the ships are behind `RwLock`s; the map itself is
+  /// only read.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  pub fn establish_initial_contacts(&self) {
+    for (name, ship) in &self.ships {
+      let mut ship = ship.write().unwrap();
+      // Sorted so the wire payload and the test fixtures do not depend on the
+      // map's iteration order.
+      let mut contacts: Vec<String> = self.ships.keys().filter(|other| *other != name).cloned().collect();
+      contacts.sort();
+      ship.contacts = contacts;
+    }
+  }
+
+  /// Whether `observer` currently detects `target`.
+  ///
+  /// The gate on every action one ship takes against another: an undetected
+  /// ship is not there as far as the observer is concerned, so it cannot be
+  /// fired at, locked or jammed.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  #[must_use]
+  pub fn has_contact(&self, observer: &str, target: &str) -> bool {
+    self
+      .ships
+      .get(observer)
+      .is_some_and(|ship| ship.read().unwrap().contacts.iter().any(|name| name == target))
+  }
+
+  /// Drop contacts and sensor locks naming ships that no longer exist.
+  ///
+  /// Called after ships leave play - destroyed, jumped out or removed by the
+  /// referee - so nothing keeps tracking a name that is gone.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  pub fn prune_ship_references(&self) {
+    for ship in self.ships.values() {
+      let mut ship = ship.write().unwrap();
+      ship.contacts.retain(|other| self.ships.contains_key(other));
+      ship.sensor_locks.retain(|other| self.ships.contains_key(other));
+    }
+  }
+
+  /// Rewrite contacts and sensor locks that name `from` to name `to`.
+  ///
+  /// Renaming used to leave `sensor_locks` pointing at the old name, silently
+  /// dropping the lock; contacts would have inherited the same bug.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  fn rename_ship_references(&self, from: &str, to: &str) {
+    for ship in self.ships.values() {
+      let mut guard = ship.write().unwrap();
+      // Reborrow through the guard once so the two field borrows below are
+      // seen as disjoint rather than as two borrows of the guard itself.
+      let ship = &mut *guard;
+      for name in ship.contacts.iter_mut().chain(ship.sensor_locks.iter_mut()) {
+        if name == from {
+          to.clone_into(name);
+        }
+      }
+    }
   }
 
   /// Reset the gravity wells for all planets.
@@ -1436,8 +1545,12 @@ impl Entities {
       }
     }
 
+    let jumped_any = !jumped_ships.is_empty();
     for ship_name in jumped_ships {
       self.ships.remove(&ship_name);
+    }
+    if jumped_any {
+      self.prune_ship_references();
     }
 
     effects
@@ -2558,6 +2671,7 @@ mod tests {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
+        "contacts": ["Ship2", "Ship3"],
         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -2576,6 +2690,7 @@ mod tests {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
+        "contacts": ["Ship1", "Ship3"],
         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -2594,6 +2709,7 @@ mod tests {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
+        "contacts": ["Ship1", "Ship2"],
         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
     "missiles":[],
@@ -3162,6 +3278,10 @@ mod tests {
     )];
     entities.ships.insert("attacker".to_string(), Arc::new(RwLock::new(ship1)));
     entities.ships.insert("target".to_string(), Arc::new(RwLock::new(ship2)));
+    // Inserting straight into the map bypasses add_ship, so seed the contacts a
+    // loaded scenario would already have. Without them the action is refused
+    // for want of a sensor contact rather than resolved.
+    entities.establish_initial_contacts();
 
     let boost_map = BoostMap::default();
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
@@ -3255,6 +3375,8 @@ mod tests {
 
     entities.ships.insert("jammer".to_string(), Arc::new(RwLock::new(ship1)));
     entities.ships.insert("target".to_string(), Arc::new(RwLock::new(ship2)));
+    // Bypassing add_ship means no contacts; seed them as a scenario load would.
+    entities.establish_initial_contacts();
 
     let boost_map = BoostMap::default();
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
@@ -3310,6 +3432,123 @@ mod tests {
       .insert(target_name.to_string(), Arc::new(RwLock::new(target_ship)));
 
     entities
+  }
+
+  /// A loaded scenario opens with everyone aware of everyone, and the list is
+  /// sorted so the wire payload does not inherit the ship map's ordering.
+  #[test]
+  fn initial_contacts_are_mutual_and_sorted() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for name in ["Charlie", "Alpha", "Bravo"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+
+    for (name, ship) in &entities.ships {
+      let contacts = &ship.read().unwrap().contacts;
+      let expected: Vec<String> = ["Alpha", "Bravo", "Charlie"]
+        .iter()
+        .filter(|other| *other != name)
+        .map(ToString::to_string)
+        .collect();
+      assert_eq!(*contacts, expected, "{name} should detect the other two, in sorted order");
+    }
+  }
+
+  /// Losing a ship must not leave everyone else tracking a name that is gone.
+  #[test]
+  fn pruning_drops_references_to_departed_ships() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for name in ["Alpha", "Bravo"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+    entities
+      .ships
+      .get("Alpha")
+      .unwrap()
+      .write()
+      .unwrap()
+      .sensor_locks
+      .push("Bravo".to_string());
+
+    entities.ships.remove("Bravo");
+    entities.prune_ship_references();
+
+    let alpha = entities.ships.get("Alpha").unwrap().read().unwrap();
+    assert!(alpha.contacts.is_empty(), "contact on a departed ship should be dropped");
+    assert!(alpha.sensor_locks.is_empty(), "lock on a departed ship should be dropped");
+  }
+
+  /// Renaming used to leave watchers pointing at the old name, silently losing
+  /// both the contact and the lock.
+  #[test]
+  fn renaming_a_ship_follows_contacts_and_locks() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for name in ["Alpha", "Bravo"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+    entities
+      .ships
+      .get("Alpha")
+      .unwrap()
+      .write()
+      .unwrap()
+      .sensor_locks
+      .push("Bravo".to_string());
+
+    entities.rename("Bravo", "Zulu").expect("(test) rename should succeed");
+
+    let alpha = entities.ships.get("Alpha").unwrap().read().unwrap();
+    assert_eq!(alpha.contacts, vec!["Zulu".to_string()], "contact should follow the rename");
+    assert_eq!(alpha.sensor_locks, vec!["Zulu".to_string()], "lock should follow the rename");
+  }
+
+  /// Nothing can be done to a ship that is not detected.
+  #[test]
+  fn actions_against_an_undetected_ship_are_refused() {
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(5, 0);
+    entities.ships.insert(
+      "attacker".to_string(),
+      Arc::new(RwLock::new(create_test_ship_sensors("attacker", 2))),
+    );
+    entities.ships.insert(
+      "target".to_string(),
+      Arc::new(RwLock::new(create_test_ship_sensors("target", 2))),
+    );
+    // Deliberately no contacts: the attacker cannot see the target at all.
+
+    let boost_map = BoostMap::default();
+    for (action, wording) in [
+      (
+        ShipAction::SensorLock {
+          target: "target".to_string(),
+        },
+        "cannot lock onto",
+      ),
+      (
+        ShipAction::JamComms {
+          target: "target".to_string(),
+        },
+        "cannot jam",
+      ),
+    ] {
+      let actions = vec![("attacker".to_string(), vec![action])];
+      let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
+      assert!(
+        effects
+          .iter()
+          .any(|e| matches!(e, EffectMsg::Message { content } if content.contains(wording))),
+        "expected a refusal containing {wording:?}, got {effects:?}"
+      );
+    }
+
+    assert!(
+      entities.ships.get("attacker").unwrap().read().unwrap().sensor_locks.is_empty(),
+      "no lock should have been established on an undetected ship"
+    );
   }
 
   #[test_log::test(tokio::test)]
