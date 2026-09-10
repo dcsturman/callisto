@@ -10,7 +10,7 @@ import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
 import { EntityList } from "./EntityList";
 import { POSITION_SCALE, SCALE } from "lib/universal";
-import { Ship, Entity, Planet, findShip } from "lib/entities";
+import { Ship, Entity, Planet, findShip, availablePower } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { ViewMode } from "lib/view";
 import { nextRound } from "lib/serverManager";
@@ -307,7 +307,7 @@ export function Controls() {
               </div>
               <div className="stats-bloc-entry">
                 <h2>Power</h2>
-                <pre className="plan-accel-text">{`${computerShip.current_power}(${computerShipDesign.power})`}</pre>
+                <pre className="plan-accel-text">{`${availablePower(computerShip)}(${computerShipDesign.power})`}</pre>
               </div>
               {!computerShipDesign.countermeasures &&
                 !computerShipDesign.stealth && (

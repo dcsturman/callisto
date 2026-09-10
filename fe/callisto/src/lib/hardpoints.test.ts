@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { describeScreens } from "lib/shipDesignTemplates";
+import { availablePower } from "lib/power";
 import {
   MOUNT_OPTIONS,
   WeaponGroup,
@@ -878,5 +879,28 @@ describe("which icon an action draws", () => {
     // Firing the beam laser out of a mostly-missile turret draws a beam.
     expect(actionWeaponKind(mixed, "Beam")).toBe("Beam");
     expect(actionWeaponKind(mixed)).toBe("Missile");
+  });
+});
+
+describe("power after an ion hit", () => {
+  const ship = (power: number, ionLoss?: number) => ({
+    current_power: power,
+    ion_power_loss: ionLoss,
+  });
+
+  it("subtracts what an ion cannon is suppressing", () => {
+    // The server keeps the two apart so a repair cannot undo an ion hit, which
+    // means the display has to do the subtraction itself -- without this a ship
+    // read as fully powered in the same round its power was drained.
+    expect(availablePower(ship(1520, 220))).toBe(1300);
+  });
+
+  it("reads full power when nothing is suppressed", () => {
+    expect(availablePower(ship(1520))).toBe(1520);
+    expect(availablePower(ship(1520, 0))).toBe(1520);
+  });
+
+  it("never goes negative", () => {
+    expect(availablePower(ship(100, 400))).toBe(0);
   });
 });

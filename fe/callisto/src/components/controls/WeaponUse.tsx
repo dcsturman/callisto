@@ -869,6 +869,9 @@ export function Actions(args: {
                     fill: WEAPON_COLORS[kind],
                   }}
                 />{" "}
+                <span className="fire-action-weapon">
+                  {weaponKindLabel(kind)}
+                </span>{" "}
                 to {action.target}
               </p>
             </div>

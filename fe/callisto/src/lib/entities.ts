@@ -1,5 +1,6 @@
 import { Crew, createCrew } from "components/controls/CrewBuilder";
 import { Weapon } from "lib/weapon";
+export { availablePower } from "lib/power";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -59,6 +60,16 @@ export interface Ship extends Entity {
   current_hull: number;
   current_armor: number;
   current_power: number;
+  /**
+   * Power an ion hit is currently suppressing. Absent when none is.
+   *
+   * Tracked apart from `current_power` on the server so a repair cannot undo an
+   * ion hit -- which means anything asking what the ship can actually do has to
+   * subtract it. Use {@link availablePower} rather than `current_power`.
+   */
+  ion_power_loss?: number;
+  /** Rounds of ion suppression still to run. Absent when none is. */
+  ion_rounds?: number;
   current_maneuver: number;
   current_jump: number;
   current_fuel: number;
@@ -369,4 +380,3 @@ export const findPlanet = (entities: EntityList, name: string | null) => {
   }
   return entities.planets.find((planet) => planet.name === name) || null;
 };
-
