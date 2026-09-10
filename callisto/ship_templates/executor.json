@@ -1,5 +1,5 @@
 {
-  "name": "HMS Excelsior",
+  "name": "HMS Executor",
   "displacement": 200,
   "hull": 80,
   "armor": 4,
@@ -18,16 +18,20 @@
       "mount": "Barbette"
     },
     {
-      "kind": "Missile",
       "mount": {
-        "Turret": 2
-      }
-    },
-    {
-      "kind": "Sand",
-      "mount": {
-        "Turret": 1
-      }
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     }
   ],
   "tl": 15,

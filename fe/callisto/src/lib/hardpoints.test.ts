@@ -185,10 +185,33 @@ describe("checkAllowance on ships of 100 tons or more", () => {
     expect(report.overAllowance).toBe(false);
   });
 
-  // `excelsior` is really a barbette plus one mixed triple turret (2
-  // hardpoints), but WeaponMount cannot express a mixed turret so it is stored
-  // as three mounts. It must render and report, not crash or lose a mount.
-  it("reports the excelsior over-allowance without dropping any mount", () => {
+  // The Executor is a particle barbette plus one triple turret of two missile
+  // racks and a sandcaster: two mounts on a 200-ton hull, which is exactly its
+  // two Hardpoints.  It used to be stored as three separate mounts because a
+  // turret could not hold different weapons, which made a legal ship read as
+  // over its allowance.
+  it("fits the Executor in its two hardpoints", () => {
+    const groups: WeaponGroup[] = [
+      barbette(),
+      {
+        count: 1,
+        mount: { Turret: 3 },
+        kind: "Missile",
+        gunnery: 0,
+        modifiers: [],
+        guns: [{ kind: "Missile" }, { kind: "Missile" }, { kind: "Sand" }],
+      },
+    ];
+    const report = checkAllowance(groups, 200);
+    expect(report.used).toBe(2);
+    expect(report.overAllowance).toBe(false);
+    expect(report.problems).toEqual([]);
+  });
+
+  // Splitting that same armament across three mounts is what the old encoding
+  // did, and it really is over the allowance -- the report must still say so
+  // rather than quietly dropping a mount.
+  it("still reports a genuine over-allowance without dropping a mount", () => {
     const groups = [barbette(), turret(2, "Missile"), turret(1, "Sand")];
     const report = checkAllowance(groups, 200);
     expect(report.used).toBe(3);

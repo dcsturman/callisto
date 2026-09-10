@@ -97,7 +97,7 @@ role filter can be written.
 (`action.rs:21-22`). `crew.gunnery` is a `Vec<u8>` indexed by the same number
 (`callisto/src/crew.rs:37`, `get_gunnery` at `crew.rs:114-119` — returns 0 when the index
 is out of range, so a short or long array is harmless). Real scenario data already has
-oversized arrays: `callisto/scenarios/Marduk Encounter.json` gives *HMS Excelsior* a
+oversized arrays: `callisto/scenarios/Marduk Encounter.json` gives *HMS Executor* a
 21-entry `gunnery` array for a 3-weapon design.
 
 ---
