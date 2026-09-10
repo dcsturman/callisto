@@ -178,12 +178,7 @@ function Simulator() {
           <div className="reset-and-logout-buttons">
             <Exit email={email} />
             {role === ViewMode.General && shipName == null && (
-              <button
-                className="blue-button"
-                onClick={() => resetServer(appMode)}
-              >
-                Reset
-              </button>
+              <ResetButton appMode={appMode} />
             )}
           </div>
         </div>
@@ -274,6 +269,52 @@ function GrabCamera(args: { setCamera: (camera: THREE.Camera) => void }) {
   }, [camera, args, args.setCamera]);
 
   return null;
+}
+
+/**
+ * Reset the scenario to its loaded state.
+ *
+ * Reset is reachable from the Scenario Builder and throws away everything added
+ * since load, exactly as Exit did. The generic "reset the server?" prompt never
+ * said so, so a builder session with unsaved edits gets the same dialog Exit
+ * uses; everywhere else keeps the original confirm.
+ */
+export function ResetButton(args: { appMode: AppMode }) {
+  const [confirming, setConfirming] = useState(false);
+  const unsavedEdits = useAppSelector(
+    (state) =>
+      state.tutorial.appMode === AppMode.ScenarioBuilder &&
+      state.ui.scenarioDirty,
+  );
+
+  return (
+    <>
+      <button
+        className="blue-button"
+        onClick={() =>
+          unsavedEdits ? setConfirming(true) : resetServer(args.appMode)
+        }
+      >
+        Reset
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title="Unsaved changes"
+          message={
+            "Resetting returns the scenario to the state it was loaded in. " +
+            "Changes that have not been saved will be lost."
+          }
+          confirmLabel="Discard and reset"
+          cancelLabel="Keep editing"
+          onConfirm={() => {
+            setConfirming(false);
+            resetServer(args.appMode, true);
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </>
+  );
 }
 
 export function Exit(args: { email: string | null }) {

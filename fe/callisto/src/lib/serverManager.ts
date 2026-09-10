@@ -571,8 +571,18 @@ export function getTemplates() {
   socket.send(DESIGN_TEMPLATE_REQUEST);
 }
 
-export function resetServer(appMode: AppMode) {
-  if (window.confirm("Are you sure you want to reset the server?")) {
+/**
+ * Reset the scenario to the state it was loaded in.
+ *
+ * Pass `skipConfirm` when the caller has already asked — the Scenario Builder
+ * puts up its own dialog, which can say what is actually at stake ("this
+ * discards unsaved edits") rather than the generic prompt used everywhere else.
+ */
+export function resetServer(appMode: AppMode, skipConfirm = false) {
+  if (
+    skipConfirm ||
+    window.confirm("Are you sure you want to reset the server?")
+  ) {
     store.dispatch(resetServerState());
     store.dispatch(setAppMode(appMode));
     socket.send(RESET_REQUEST);
