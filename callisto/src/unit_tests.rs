@@ -1141,6 +1141,8 @@ async fn test_get_entities() {
       design: ShipDesignTemplate::default().name.clone(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transponder: None,
     })
     .unwrap();
 

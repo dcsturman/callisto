@@ -110,3 +110,37 @@ describe("ScenarioLoadErrors inbound handling", () => {
     expect(errors[1].error).toBe("bad json");
   });
 });
+
+describe("setShipEmissions", () => {
+  it("sends only the field that changed", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", false, undefined);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Harrier", active_sensors: false },
+      }),
+    ]);
+  });
+
+  it("can set both at once", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", false, false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: {
+          ship_name: "Harrier",
+          active_sensors: false,
+          transponder: false,
+        },
+      }),
+    ]);
+  });
+
+  it("omits both when neither is given, leaving the ship as it is", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetShipEmissions: { ship_name: "Harrier" } }),
+    ]);
+  });
+});

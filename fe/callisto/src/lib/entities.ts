@@ -80,6 +80,23 @@ export interface Ship extends Entity {
   assist_gunners: boolean;
   can_jump: boolean;
   sensor_locks: string[];
+  /**
+   * Ships this one currently detects.
+   *
+   * Directional: a contact here says nothing about whether that ship sees this
+   * one. Absent means none, and nothing can be done to a ship that is not on
+   * this list.
+   */
+  contacts?: string[];
+  /**
+   * Whether the ship runs active radar/lidar. Absent means yes.
+   *
+   * Omitted from the wire when true, so a ship running normally looks exactly
+   * as it did before emissions existed.
+   */
+  active_sensors?: boolean;
+  /** Whether the ship squawks its transponder. Absent means yes. */
+  transponder?: boolean;
   crew: Crew;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   repair_bonus?: number;

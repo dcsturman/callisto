@@ -1021,6 +1021,15 @@ impl Entities {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for sensor lock.", target);
               continue;
             }
+            // A lock is deliberate, continuous illumination, which a ship
+            // running dark is by definition not doing. High Guard p. 76:
+            // pinpointing a ship "requires the use of active sensors".
+            if !self.has_active_sensors(ship_name) {
+              effects.push(EffectMsg::Message {
+                content: format!("{ship_name} is running dark and cannot lock onto {target}."),
+              });
+              continue;
+            }
             if !self.has_contact(ship_name, target) {
               effects.push(no_contact_effect(ship_name, target, "lock onto"));
               continue;
@@ -1353,6 +1362,18 @@ impl Entities {
       .ships
       .get(observer)
       .is_some_and(|ship| ship.read().unwrap().contacts.iter().any(|name| name == target))
+  }
+
+  /// Whether `ship_name` is running its active sensors.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  #[must_use]
+  pub fn has_active_sensors(&self, ship_name: &str) -> bool {
+    self
+      .ships
+      .get(ship_name)
+      .is_some_and(|ship| ship.read().unwrap().active_sensors)
   }
 
   /// Drop contacts and sensor locks naming ships that no longer exist.
@@ -3432,6 +3453,96 @@ mod tests {
       .insert(target_name.to_string(), Arc::new(RwLock::new(target_ship)));
 
     entities
+  }
+
+  /// Going dark drops locks but keeps contacts. High Guard p. 77 keeps
+  /// detection "maintained under most circumstances", while a lock is
+  /// deliberate illumination that a quiet ship is not performing.
+  #[test]
+  fn going_dark_drops_locks_but_keeps_contacts() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for name in ["Alpha", "Bravo"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+    let alpha = entities.ships.get("Alpha").unwrap();
+    alpha.write().unwrap().sensor_locks.push("Bravo".to_string());
+
+    let dropped = alpha.write().unwrap().set_emissions(Some(false), None);
+
+    assert!(dropped, "going dark should report that locks were dropped");
+    let alpha = alpha.read().unwrap();
+    assert!(!alpha.active_sensors);
+    assert!(alpha.sensor_locks.is_empty(), "locks should not survive going dark");
+    assert_eq!(alpha.contacts, vec!["Bravo".to_string()], "contacts should survive going dark");
+  }
+
+  /// Coming back up, or changing only the transponder, must not disturb locks.
+  #[test]
+  fn only_going_dark_drops_locks() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Alpha".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.sensor_locks.push("Bravo".to_string());
+
+    assert!(
+      !ship.set_emissions(None, Some(false)),
+      "transponder alone should not drop locks"
+    );
+    assert!(!ship.transponder);
+    assert_eq!(ship.sensor_locks.len(), 1);
+
+    assert!(
+      !ship.set_emissions(Some(true), None),
+      "already-lit sensors should not drop locks"
+    );
+    assert_eq!(ship.sensor_locks.len(), 1);
+
+    assert!(ship.set_emissions(Some(false), None), "going dark should drop them");
+    assert!(ship.sensor_locks.is_empty());
+    // Already dark: nothing left to drop, so no second report.
+    assert!(!ship.set_emissions(Some(false), None));
+  }
+
+  /// A ship running dark cannot take a new lock, contact or no contact.
+  #[test]
+  fn a_dark_ship_cannot_sensor_lock() {
+    let mut entities = Entities::default();
+    let mut rng = StepRng::new(5, 0);
+    entities.ships.insert(
+      "attacker".to_string(),
+      Arc::new(RwLock::new(create_test_ship_sensors("attacker", 2))),
+    );
+    entities.ships.insert(
+      "target".to_string(),
+      Arc::new(RwLock::new(create_test_ship_sensors("target", 2))),
+    );
+    entities.establish_initial_contacts();
+    entities
+      .ships
+      .get("attacker")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_emissions(Some(false), None);
+
+    let actions = vec![(
+      "attacker".to_string(),
+      vec![ShipAction::SensorLock {
+        target: "target".to_string(),
+      }],
+    )];
+    let effects = entities.sensor_actions(&actions, &BoostMap::default(), &mut rng);
+
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("running dark"))),
+      "expected a running-dark refusal, got {effects:?}"
+    );
+    assert!(
+      entities.ships.get("attacker").unwrap().read().unwrap().sensor_locks.is_empty(),
+      "a dark ship should not acquire a lock"
+    );
   }
 
   /// A loaded scenario opens with everyone aware of everyone, and the list is

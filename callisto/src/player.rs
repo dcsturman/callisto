@@ -13,8 +13,8 @@ use crate::computer::FlightParams;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg,
-  ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
+  ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
@@ -270,14 +270,18 @@ impl PlayerManager {
       validate_weapons(weapons)?;
     }
 
-    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_ship(
-      ship.name,
-      ship.position,
-      ship.velocity,
-      &design,
-      ship.crew,
-      ship.weapons,
-    );
+    let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    let name = ship.name.clone();
+    entities.add_ship(ship.name, ship.position, ship.velocity, &design, ship.crew, ship.weapons);
+
+    // Applied after creation rather than threaded through `add_ship`, which
+    // already carries six arguments. Absent values leave the normal running
+    // state a new ship is built with.
+    if ship.active_sensors.is_some() || ship.transponder.is_some() {
+      if let Some(added) = entities.ships.get(&name) {
+        added.write().unwrap().set_emissions(ship.active_sensors, ship.transponder);
+      }
+    }
 
     Ok("Add ship action executed".to_string())
   }
@@ -316,6 +320,43 @@ impl PlayerManager {
     }
 
     Ok("Set crew action executed".to_string())
+  }
+
+  /// Set a ship's emissions: active sensors and transponder.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_emissions(&self, request: &SetShipEmissions) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to set emissions for.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    let locks_dropped = ship.set_emissions(request.active_sensors, request.transponder);
+
+    info!(
+      "(PlayerManager.set_ship_emissions) {} now has active sensors {} and transponder {}.",
+      request.ship_name, ship.active_sensors, ship.transponder
+    );
+
+    if locks_dropped {
+      Ok(format!("{} went dark; its sensor locks were dropped.", request.ship_name))
+    } else {
+      Ok("Set ship emissions executed".to_string())
+    }
   }
 
   /// Gets the current entities and returns them in a `Result`.

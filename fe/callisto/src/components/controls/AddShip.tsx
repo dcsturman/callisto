@@ -91,6 +91,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
       design: firstDesign.name,
       crew: createCrew(),
       armament: buildWeaponRows(firstDesign.name),
+      // Ships are built running normally; the referee can start one dark.
+      activeSensors: true,
+      transponder: true,
     };
   }, [shipDesignTemplates, entities, buildWeaponRows]);
 
@@ -117,6 +120,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
           shipWeapons(current, shipDesignTemplates),
           current.crew?.gunnery,
         ),
+        // Absent on the wire means running normally.
+        activeSensors: current.active_sensors !== false,
+        transponder: current.transponder !== false,
       };
       setAddShipData(template);
     }
@@ -149,6 +155,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 shipWeapons(ship, shipDesignTemplates),
                 ship.crew?.gunnery,
               ),
+              // Absent on the wire means running normally.
+              activeSensors: ship.active_sensors !== false,
+              transponder: ship.transponder !== false,
             });
           }
         }
@@ -209,6 +218,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
         design,
         crew,
         weapons: armament,
+        active_sensors: addShipData.activeSensors,
+        transponder: addShipData.transponder,
       };
 
       addShip(revision);
@@ -320,6 +331,38 @@ export const AddShip: React.FC<AddShipProps> = () => {
             setShipDesignName={handleDesignChange}
             shipDesigns={shipDesignTemplates}
           />
+          <div className="emissions-row">
+            <label
+              className="emissions-toggle"
+              title="Active radar/lidar. A ship running dark acquires no new contacts and cannot sensor lock, but stops handing opponents DM+2 to find it.">
+              <input
+                type="checkbox"
+                checked={addShipData.activeSensors}
+                onChange={(event) =>
+                  setAddShipData({
+                    ...addShipData,
+                    activeSensors: event.target.checked,
+                  })
+                }
+              />
+              Active sensors
+            </label>
+            <label
+              className="emissions-toggle"
+              title="Transponder and radio comms. DM+6 to anyone trying to detect this ship.">
+              <input
+                type="checkbox"
+                checked={addShipData.transponder}
+                onChange={(event) =>
+                  setAddShipData({
+                    ...addShipData,
+                    transponder: event.target.checked,
+                  })
+                }
+              />
+              Transponder
+            </label>
+          </div>
         </div>
         <hr />
         <HardpointList

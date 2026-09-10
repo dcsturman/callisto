@@ -199,6 +199,27 @@ pub struct Ship {
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub contacts: Vec<String>,
 
+  /// Whether the ship is running active radar/lidar.
+  ///
+  /// Active sensors are what let a sensop pinpoint another ship at all: High
+  /// Guard p. 76, "attempting to locate a ship with this level of accuracy
+  /// requires the use of active sensors". They also announce the ship, handing
+  /// anyone looking for it DM+2 on the Initial Detection table.
+  ///
+  /// Running dark keeps the contacts already held - detection "is maintained
+  /// under most circumstances" - but acquires nothing new and cannot lock.
+  #[serde(default = "default_true", skip_serializing_if = "is_true")]
+  pub active_sensors: bool,
+
+  /// Whether the ship is squawking its transponder.
+  ///
+  /// The single loudest thing a ship can do: DM+6 to anyone trying to detect
+  /// it, on both the Initial Detection and Stealthed Ships tables. In RAW its
+  /// cost is legal rather than tactical (fines, boarding, being shot at), which
+  /// is why switching it off is free here and left to the referee.
+  #[serde(default = "default_true", skip_serializing_if = "is_true")]
+  pub transponder: bool,
+
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   pub crew: Crew,
@@ -324,6 +345,22 @@ fn is_default_power_multiplier(value: &f32) -> bool {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u8(value: &u8) -> bool {
   *value == 0
+}
+
+/// Emissions default to on: a ship in civilised space runs its transponder and
+/// its active sensors unless the crew decides otherwise.
+fn default_true() -> bool {
+  true
+}
+
+/// Paired with `default_true` so a ship running normally adds nothing to the
+/// wire or to a saved scenario.
+///
+/// Takes a reference because that is what `skip_serializing_if` hands it, the
+/// same wrinkle as the other helpers here.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_true(value: &bool) -> bool {
+  *value
 }
 
 /// A helper function to avoid serializing when zero.  It makes
@@ -1118,6 +1155,8 @@ impl Ship {
       active_weapons: vec![true; num_weapons],
       sensor_locks: vec![],
       contacts: vec![],
+      active_sensors: true,
+      transponder: true,
       crit_level: [0; 11],
       attack_dm: 0,
       crew: crew.unwrap_or_default(),
@@ -1280,6 +1319,37 @@ impl Ship {
   #[must_use]
   pub fn can_jump(&self) -> bool {
     self.can_jump
+  }
+
+  /// Set the ship's emissions, returning whether going dark dropped any locks.
+  ///
+  /// `None` leaves a setting alone, so the caller can change one without
+  /// knowing the other.
+  ///
+  /// Shutting down active sensors drops every sensor lock this ship holds.
+  /// A lock is deliberate, continuous illumination of a target - the Stealthed
+  /// Ships table charges DM+2 for "sensor locks, electronic warfare or other
+  /// deliberate use of active sensors" - so it cannot survive going quiet.
+  /// Contacts are kept: High Guard p. 77 has detection "maintained under most
+  /// circumstances" once established, and it is that asymmetry that makes going
+  /// dark a real choice rather than a free one. House rule; RAW does not say.
+  pub fn set_emissions(&mut self, active_sensors: Option<bool>, transponder: Option<bool>) -> bool {
+    if let Some(transponder) = transponder {
+      self.transponder = transponder;
+    }
+
+    let Some(active_sensors) = active_sensors else {
+      return false;
+    };
+
+    let going_dark = self.active_sensors && !active_sensors;
+    self.active_sensors = active_sensors;
+
+    if going_dark && !self.sensor_locks.is_empty() {
+      self.sensor_locks.clear();
+      return true;
+    }
+    false
   }
 
   /// Set possible pilot actions for the next round. These include allocating thrust to dodging as
