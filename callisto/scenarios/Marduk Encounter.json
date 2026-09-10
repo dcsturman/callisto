@@ -6,11 +6,11 @@
   },
   "ships": [
     {
-      "name": "HMS Excelsior",
+      "name": "HMS Executor",
       "position": [801000000.0, 0.0, 0.0],
       "velocity": [0.0, 0.0, 0.0],
       "plan": [[[0.0, 0.0, 0.0], 50000]],
-      "design": "HMS Excelsior",
+      "design": "HMS Executor",
       "current_hull": 80,
       "current_armor": 4,
       "current_power": 260,

@@ -385,6 +385,12 @@ Thrust, plus ammunition. No design in the library carries one.
 Mixed turrets are now supported, so the split recorded below has been undone for the one
 design it distorted.  Kept as a record of what the library looked like before.
 
+**HMS Executor — restored and renamed (2026-09-09).** Formerly *HMS Excelsior*, a custom
+design. Its armament is a particle barbette plus one triple turret of two missile racks and
+a sandcaster, which the old encoding had to split into a double missile turret and a single
+sand turret — three mounts on a hull with two Hardpoints, so a legal ship read as over its
+allowance. It is now two mounts and fits.
+
 **Cargo Carrier - MK Mora (p223) — restored to its book armament.** It now carries six
 triple turrets of two long-range high-yield pulse lasers plus a sandcaster, and four of two
 missile racks plus an accurate high-yield beam laser: ten mounts, thirty guns, exactly as

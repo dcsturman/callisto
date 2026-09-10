@@ -519,7 +519,7 @@ index. Three are in-place field rewrites; the fourth is an append.
 - **Scenarios reference designs by `name`** — none of the four names change.
 - **No scenario uses any of the four designs.** `callisto/scenarios/*.json`
   reference Light Fighter ×11, Gazelle ×4, Threshing Oar ×2, Harrier ×2, and one
-  each of Void Trader, McClellan Trader, HMS Excelsior, Far Trader, Ekawsiykua
+  each of Void Trader, McClellan Trader, HMS Executor, Far Trader, Ekawsiykua
   Escort. So no live scenario changes behaviour at all on migration day.
 - **Hardpoint allowance stays legal.** Dragon: 400 t → 4 Hardpoints; 2 barbettes +
   1 small bay + 1 battery = 4, unchanged from the stopgap. Midu Agasham: 3000 t →
