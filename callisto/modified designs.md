@@ -385,6 +385,29 @@ Thrust, plus ammunition. No design in the library carries one.
 Mixed turrets are now supported, so the split recorded below has been undone for the one
 design it distorted.  Kept as a record of what the library looked like before.
 
+**Threshing Oar Raider — armament corrected (2026-09-09).** Checked against *Reach
+Adventure 8* p. 36. Two of its three turrets are mixed: the book gives it one
+`Double Turret (pulse lasers)` and two `Double Turrets (pulse laser, sandcaster)`. Those
+were previously split into two pulse doubles and one sand double, which conserved the gun
+count -- four pulse, two sand -- but let the ship fire all four lasers *and* both
+sandcasters every round, where the book makes each mixed turret choose. Also gained the
+`Stealth (basic)` coating the text calls universal, and its source corrected to *Ships of
+the Reach*.
+
+Three divergences from that stat block are deliberate and remain:
+
+- **Power 210, where the book says 120.** The book gives the ship M-Drive Thrust 1 plus an
+  R-Drive Thrust 3; Callisto has no reaction drive, so the two are combined into
+  `maneuver: 4`. Power 120 would cap thrust at 2 under `best_thrust`, so the ship could not
+  reach the speed the book gives it. The inflated figure is what makes the combined thrust
+  work and should stay until reaction drives are modelled.
+- **Crew 6, where the book lists 22.** The extra sixteen are Marines, counted as troops
+  rather than operating crew -- the same treatment the Kinunir's and the Mercenary
+  Cruiser's give theirs.
+- **Two `Fixed Mounts (light autocannon)` are dropped.** Small weapons under 250kg
+  "consume neither hardpoints nor firmpoints" and draw no Power (High Guard p. 40); they
+  are a different class of thing from ship weapons and Callisto models none of them.
+
 **HMS Executor — restored and renamed (2026-09-09).** Formerly *HMS Excelsior*, a custom
 design. Its armament is a particle barbette plus one triple turret of two missile racks and
 a sandcaster, which the old encoding had to split into a double missile turret and a single

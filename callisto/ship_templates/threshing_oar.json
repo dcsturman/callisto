@@ -9,6 +9,7 @@
   "fuel": 61,
   "crew": 6,
   "sensors": "Civilian",
+  "stealth": "Basic",
   "computer": 10,
   "weapons": [
     {
@@ -18,19 +19,33 @@
       }
     },
     {
-      "kind": "Pulse",
       "mount": {
         "Turret": 2
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     },
     {
-      "kind": "Sand",
       "mount": {
         "Turret": 2
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     }
   ],
   "tl": 9,
   "role": "Raider",
-  "source": "Custom"
+  "source": "Ships of the Reach"
 }
