@@ -613,12 +613,27 @@ async fn test_exhausted_missile() {
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let response = server.update();
 
-  // First round 3 missiles are launched due to triple turret
-  assert_eq!(response.len(), 1);
+  // First round 3 missiles are launched due to triple turret.
+  //
+  // The two ships are 1e10 m apart, far beyond Distant, so the detection pass
+  // at the end of this round also reports each losing contact with the other.
+  // The launch still happens: fire actions resolve against the contacts held at
+  // the start of the round, and detection runs after movement.
   assert!(
-    matches!(&response[0], EffectMsg::Message { content } if content == "ship1 launches 3 missile(s) at ship2."),
-    "Round 0"
+    response
+      .iter()
+      .any(|e| matches!(e, EffectMsg::Message { content } if content == "ship1 launches 3 missile(s) at ship2.")),
+    "Round 0 should launch missiles"
   );
+  assert_eq!(
+    response
+      .iter()
+      .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("lost sensor contact")))
+      .count(),
+    2,
+    "Round 0: both ships should lose contact at this range"
+  );
+  assert_eq!(response.len(), 3, "Round 0");
 
   // Then undo those fire actions as we only want to do that in the first round.
   let fire_actions = json!([["ship1", [{"DeleteFireAction" : {"weapon_id": 1}}]]]).to_string();
@@ -782,6 +797,30 @@ async fn test_point_defense_battery_intercepts_missiles() {
   // far more than three missiles on any roll.
   let defender = r#"{"name":"defender","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defence Boat - Dragon"}"#;
   server.add_ship(serde_json::from_str(defender).unwrap()).unwrap();
+
+  // The Dragon carries Improved stealth, so it starts undetected and cannot be
+  // fired on until someone finds it. Run one round to let the attacker's
+  // detection pass acquire the contact; the fire action below then has
+  // something to aim at.
+  let mut found = false;
+  for _ in 0..20 {
+    let _ = server.update();
+    found = server
+      .get_entities()
+      .unwrap()
+      .ships
+      .get("attacker")
+      .unwrap()
+      .read()
+      .unwrap()
+      .contacts
+      .iter()
+      .any(|name| name == "defender");
+    if found {
+      break;
+    }
+  }
+  assert!(found, "attacker should have found the stealthed Dragon within 20 rounds");
 
   // Note the defender queues no actions at all.  A battery is automatic, so it
   // must still defend in a round where its crew does nothing.
@@ -1103,19 +1142,33 @@ async fn test_slugfest() {
   ]);
 
   server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
-  let _response = server.update();
+  let response = server.update();
 
-  let response = server.get_entities_json();
-  let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
+  // The Harrier carries Advanced stealth, so it starts undetected and the
+  // destroyer's opening salvo at it is refused for want of a contact. Before
+  // detection existed this alpha strike destroyed it outright; now a stealth
+  // hull gets a free opening round, which is the whole point of carrying one.
+  assert!(
+    response.iter().any(|e| matches!(e, EffectMsg::Message { content }
+        if content.contains("no sensor contact on Harrier"))),
+    "the destroyer should not be able to fire on an undetected Harrier: {response:#?}"
+  );
 
-  // Should only have 3 ships now as the Harrier should have been destroyed
+  let entities = serde_json::from_str::<Entities>(server.get_entities_json().as_str()).unwrap();
+
+  assert!(
+    entities.ships.contains_key("Harrier"),
+    "the Harrier should survive a salvo nobody could aim at it"
+  );
+
+  // The rest of the fight is unaffected: the Buccaneers are ordinary hulls,
+  // detected from the start, and take the destroyer's fire as they always did.
   assert_eq!(
     entities.ships.len(),
-    3,
-    "Was expecting only 3 ships to survive instead of {}",
+    4,
+    "Was expecting 4 ships to survive instead of {}",
     entities.ships.len()
   );
-  assert!(!entities.ships.contains_key("Harrier"), "Harrier should have been destroyed.");
 }
 
 #[test(tokio::test)]

@@ -531,6 +531,30 @@ implied.
 
 ---
 
+## 8c. Refinements made during implementation
+
+Two things the design did not pin down, settled while building phase 4.
+
+**The opening contact state is seeded, not rolled.** Decision F called for "an
+initial pass at scenario load", but `Server::new` has no `test_mode` and so no
+seeded RNG, and rolling dice inside a scenario load would make the opening of
+every scenario non-reproducible. Instead the load seeds deterministically:
+**every ship gets a contact on every non-stealthed ship.** Ordinary hulls would
+be found on DM+3 within a round or two anyway, and opening a fight with a
+coin-flip over whether the two sides can see each other is worse than opening it
+resolved. A stealthed hull is the case actually worth playing out, so it starts
+undetected and has to be acquired by the pass.
+
+**Seeding does not check range.** A scenario that places two ships beyond
+Distant seeds them as mutual contacts, and the first detection pass then drops
+them with a "lost sensor contact" message. The alternative — a range-aware seed
+— is arguably more correct, but it would make any ship starting beyond 50,000 km
+permanently unengageable, since acquisition is also barred at that range. Taking
+the referee's placement as the known situation and letting physics prune it on
+the first pass costs one message and keeps such setups playable.
+
+---
+
 ## 9. Implementation phases
 
 Each phase is independently shippable and testable, in canary→main order.
@@ -540,7 +564,7 @@ Each phase is independently shippable and testable, in canary→main order.
 | **1** | Split the TL bonus from the stealth TL penalty; fix the `.min(0)` clamp bug. Pure rules fix with tests. | Low, but it *does* change existing to-hit maths |
 | **2** | `contacts` on `Ship`; wire serialization; no-contact-no-interaction invariant across all ship-targeting actions; server-side enforcement. No UI yet. | Medium — touches sensor_lock, fire, JamComms |
 | **3** | `active_sensors` flag, `SetShipEmissions` request, sensor-panel and Add Ship checkboxes. | Low, additive |
-| **4** | `detection_pass` as round step 7: acquisition + reacquisition + range-band escape. | Highest — the real new mechanic |
+| **4** | ✅ `detection_pass` as the last round step: acquisition + reacquisition + range-band escape. | Highest — the real new mechanic |
 | **5** | FE visibility: `EntitySelector` gating, 3D dimming, contacts readout, `ShipSummary` redaction. | Low, additive |
 | **6** | `FAQ.md` entries for every house rule chosen above. | Low |
 

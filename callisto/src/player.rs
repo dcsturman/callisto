@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 
@@ -794,6 +794,18 @@ impl PlayerManager {
     // Evaluate queued engineer actions at end-of-turn. Effects ride the
     // existing Effects channel.
     effects.append(&mut entities.engineer_actions(&engineer_actions, &boost_map, &mut rng));
+
+    // Detection runs last, after movement and after any ship has jumped out.
+    // The trigger for losing a stealthed ship is the range opening, which needs
+    // both the start-of-round positions in `ship_snapshot` and the end-of-round
+    // ones; running here also means a player sees a new contact before queueing
+    // the orders that would use it.
+    let fired: HashSet<String> = fire_actions
+      .iter()
+      .filter(|(_, actions)| actions.iter().any(|a| matches!(a, ShipAction::FireAction { .. })))
+      .map(|(ship_name, _)| ship_name.clone())
+      .collect();
+    effects.append(&mut entities.detection_pass(&ship_snapshot, &fired, &mut rng));
 
     entities.reset_actions();
 

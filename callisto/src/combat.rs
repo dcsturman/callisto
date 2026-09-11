@@ -821,7 +821,11 @@ fn apply_crit(crit_level: u8, location: ShipSystem, defender: &mut Ship, rng: &m
   }
 }
 
-fn find_range_band(distance: u32) -> Range {
+/// The range band a distance in metres falls into.
+///
+/// Beyond the last band (50,000 km) everything is `Distant`, which High Guard
+/// p. 76 describes as the point where contacts are just undifferentiated blips.
+pub(crate) fn find_range_band(distance: u32) -> Range {
   RANGE_BANDS
     .iter()
     .position(|&x| x >= distance)

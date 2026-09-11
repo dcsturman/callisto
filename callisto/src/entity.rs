@@ -6,24 +6,26 @@ use rand::seq::SliceRandom;
 use rand::RngCore;
 
 use serde_with::serde_as;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 use tracing::{event, Level};
 
 use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList};
 use crate::combat::{
-  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, interception_cost, roll_battery_pool,
-  roll_dice, roll_point_defense_pool, roll_screen_pool,
+  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band, interception_cost,
+  roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
-use crate::rules_tables::{countermeasures_mod, detection_modifiers, SENSOR_QUALITY_MOD};
+use crate::rules_tables::{
+  countermeasures_mod, detection_modifiers, initial_detection_mod, reacquisition_mod, SENSOR_QUALITY_MOD,
+};
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
-use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Ship, ShipDesignTemplate, ShipSystem};
+use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn, LOG_FILE_USE};
@@ -281,6 +283,11 @@ impl Entities {
 
     entities.fixup_pointers()?;
     entities.reset_gravity_wells();
+
+    // Seed the opening contact state. Only here, on the load path: doing it in
+    // `fixup_pointers` would re-run on every deep copy and wipe contacts the
+    // detection pass had acquired in play.
+    entities.establish_initial_contacts();
 
     // Fix all the initial current values in the ship based on the design.
     // This does limit our ability to load wounded ships into a scenario.  If we need
@@ -1317,20 +1324,21 @@ impl Entities {
       missile.target_ptr.replace(looked_up.clone());
     }
 
-    // Post-load normalisation: a scenario on disk carries no contact state, so
-    // seed it here rather than at each call site, which would be easy to miss.
-    self.establish_initial_contacts();
-
     Ok(())
   }
 
-  /// Give every ship a contact on every other ship.
+  /// Give every ship a contact on every other ship that is not stealthed.
   ///
-  /// Detection is not rolled yet; that arrives with the Initial Detection pass.
-  /// Until then scenarios open with the mutual awareness they have always had,
-  /// so nothing in play changes. What this does buy is a real relation to
-  /// enforce against, letting "no contact, no interaction" be wired up and
-  /// tested now rather than landing all at once alongside the dice.
+  /// The opening state of a scenario, and of any ship added to one. Ordinary
+  /// hulls are taken as already seen - they would be found on DM+3 within a
+  /// round or two anyway, and starting a fight with a coin-flip over whether
+  /// the two sides can see each other is worse than starting it resolved.
+  /// A stealthed hull is the case worth playing out, so it starts undetected
+  /// and has to be acquired by [`Self::detection_pass`].
+  ///
+  /// Deliberately deterministic: this runs at scenario load, where there is no
+  /// seeded RNG to hand and where a reproducible opening is worth more than a
+  /// roll.
   ///
   /// Takes `&self` because the ships are behind `RwLock`s; the map itself is
   /// only read.
@@ -1338,13 +1346,21 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to write to a ship.
   pub fn establish_initial_contacts(&self) {
+    // Which ships are loud enough to be taken as already seen. A stealthed hull
+    // is not: it has to be found by a detection pass like anything else.
+    let mut visible: Vec<String> = self
+      .ships
+      .iter()
+      .filter(|(_, ship)| ship.read().unwrap().design.stealth.is_none())
+      .map(|(name, _)| name.clone())
+      .collect();
+    // Sorted so the wire payload and the test fixtures do not depend on the
+    // map's iteration order.
+    visible.sort();
+
     for (name, ship) in &self.ships {
       let mut ship = ship.write().unwrap();
-      // Sorted so the wire payload and the test fixtures do not depend on the
-      // map's iteration order.
-      let mut contacts: Vec<String> = self.ships.keys().filter(|other| *other != name).cloned().collect();
-      contacts.sort();
-      ship.contacts = contacts;
+      ship.contacts = visible.iter().filter(|other| *other != name).cloned().collect();
     }
   }
 
@@ -1374,6 +1390,135 @@ impl Entities {
       .ships
       .get(ship_name)
       .is_some_and(|ship| ship.read().unwrap().active_sensors)
+  }
+
+  /// Resolve detection for every pair of ships.
+  ///
+  /// Runs once at the end of each round, after movement, because the trigger
+  /// for losing a stealthed ship is the range opening — which needs both the
+  /// start-of-round positions (from `ship_snapshot`) and the end-of-round ones.
+  /// Placing it here rather than at the top of the round also means a player
+  /// sees a new contact before queueing the orders that would use it.
+  ///
+  /// Each ordered pair gets **at most one roll**: a stealthed ship that shakes
+  /// off its pursuer does not then get reacquired by an acquisition roll in the
+  /// same round.
+  ///
+  /// `fired` names the ships that took a fire action this round, which is worth
+  /// DM+2 to anyone hunting a stealthed one.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write a ship.
+  pub fn detection_pass(
+    &mut self, ship_snapshot: &HashMap<String, Ship>, fired: &HashSet<String>, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
+    let mut effects = Vec::new();
+    // Sorted so a seeded run is reproducible; `ships` is a HashMap.
+    let mut names: Vec<&String> = self.ships.keys().collect();
+    names.sort();
+
+    // Decisions are collected first and applied after, so no ship is being
+    // written while another pair is still reading it.
+    let mut acquired = Vec::<(String, String)>::new();
+    let mut lost = Vec::<(String, String)>::new();
+
+    for observer_name in &names {
+      for target_name in &names {
+        if observer_name == target_name {
+          continue;
+        }
+
+        let observer = self.ships.get(*observer_name).unwrap().read().unwrap();
+        let target = self.ships.get(*target_name).unwrap().read().unwrap();
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let band_now = find_range_band((target.get_position() - observer.get_position()).magnitude() as u32);
+
+        let holds_contact = observer.contacts.iter().any(|name| name == *target_name);
+
+        if holds_contact {
+          // Beyond Distant everything is an undifferentiated blip (p. 76), so
+          // contact cannot be held at all.
+          if band_now == Range::Distant {
+            lost.push(((*observer_name).clone(), (*target_name).clone()));
+            continue;
+          }
+
+          // Only a stealthed ship can be lost, and only by opening the range:
+          // "sensor contact ... may be lost if the range between ships extends
+          // by one or more bands during an encounter" (p. 77).
+          if target.design.stealth.is_none() {
+            continue;
+          }
+          let Some(band_start) = Self::snapshot_band(ship_snapshot, observer_name, target_name) else {
+            continue;
+          };
+          if band_now <= band_start {
+            continue;
+          }
+
+          let dm = self.sensor_quality_modifiers(observer_name)
+            + self.sensor_detection_modifiers(observer_name, target_name)
+            + reacquisition_mod(
+              fired.contains(*target_name),
+              target.total_crit_severity(),
+              target.active_sensors,
+              target.thrust_in_g(),
+            );
+
+          if i32::from(roll_dice(2, rng)) + i32::from(dm) < STANDARD_ROLL_THRESHOLD {
+            lost.push(((*observer_name).clone(), (*target_name).clone()));
+          }
+        } else {
+          // Acquisition needs active sensors: pinpointing a ship "requires the
+          // use of active sensors" (p. 76).
+          if !observer.active_sensors || band_now == Range::Distant {
+            continue;
+          }
+
+          let dm = self.sensor_quality_modifiers(observer_name)
+            + self.sensor_detection_modifiers(observer_name, target_name)
+            + initial_detection_mod(target.active_sensors, target.thrust_in_g(), target.current_power > 0);
+
+          if i32::from(roll_dice(2, rng)) + i32::from(dm) >= STANDARD_ROLL_THRESHOLD {
+            acquired.push(((*observer_name).clone(), (*target_name).clone()));
+          }
+        }
+      }
+    }
+
+    for (observer_name, target_name) in lost {
+      let mut observer = self.ships.get(&observer_name).unwrap().write().unwrap();
+      observer.contacts.retain(|name| *name != target_name);
+      // A lock cannot outlive the contact it was built on.
+      observer.sensor_locks.retain(|name| *name != target_name);
+      effects.push(EffectMsg::Message {
+        content: format!("{observer_name} has lost sensor contact with {target_name}."),
+      });
+    }
+
+    for (observer_name, target_name) in acquired {
+      let mut observer = self.ships.get(&observer_name).unwrap().write().unwrap();
+      observer.contacts.push(target_name.clone());
+      observer.contacts.sort();
+      effects.push(EffectMsg::Message {
+        content: format!("{observer_name} has acquired sensor contact with {target_name}."),
+      });
+    }
+
+    effects
+  }
+
+  /// The range band between two ships as it was at the start of the round.
+  ///
+  /// `None` when either ship was not in the snapshot, which means it joined
+  /// mid-round and so cannot have opened the range during it.
+  fn snapshot_band(snapshot: &HashMap<String, Ship>, observer: &str, target: &str) -> Option<Range> {
+    let observer = snapshot.get(observer)?;
+    let target = snapshot.get(target)?;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let distance = (target.get_position() - observer.get_position()).magnitude() as u32;
+    Some(find_range_band(distance))
   }
 
   /// Drop contacts and sensor locks naming ships that no longer exist.
@@ -3453,6 +3598,199 @@ mod tests {
       .insert(target_name.to_string(), Arc::new(RwLock::new(target_ship)));
 
     entities
+  }
+
+  /// Build two ships a fixed distance apart, with an optional stealth grade on
+  /// the second, for the detection-pass tests below.
+  fn detection_pair(stealth: Option<crate::ship::Stealth>, separation: f64) -> Entities {
+    let mut entities = Entities::default();
+    let plain = Arc::new(ShipDesignTemplate::default());
+    let hidden = Arc::new(ShipDesignTemplate {
+      stealth,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Seeker".to_string(), Vec3::zero(), Vec3::zero(), &plain, None, None);
+    entities.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(separation, 0.0, 0.0),
+      Vec3::zero(),
+      &hidden,
+      None,
+      None,
+    );
+    entities
+  }
+
+  fn holds_contact(entities: &Entities, observer: &str, target: &str) -> bool {
+    entities
+      .ships
+      .get(observer)
+      .unwrap()
+      .read()
+      .unwrap()
+      .contacts
+      .iter()
+      .any(|name| name == target)
+  }
+
+  /// A stealthed hull is not handed to the enemy at scenario load; an ordinary
+  /// one is, because it would be found within a round or two regardless.
+  #[test]
+  fn stealthed_ships_start_undetected() {
+    let entities = detection_pair(Some(crate::ship::Stealth::Advanced), 10_000.0);
+    assert!(!holds_contact(&entities, "Seeker", "Quarry"), "stealth should start hidden");
+    assert!(
+      holds_contact(&entities, "Quarry", "Seeker"),
+      "the plain hull should still be visible to the stealth ship"
+    );
+
+    let entities = detection_pair(None, 10_000.0);
+    assert!(
+      holds_contact(&entities, "Seeker", "Quarry"),
+      "an ordinary hull should start detected"
+    );
+  }
+
+  /// Acquisition needs active sensors: "attempting to locate a ship with this
+  /// level of accuracy requires the use of active sensors" (High Guard p. 76).
+  #[test]
+  fn a_dark_ship_acquires_nothing() {
+    let mut entities = detection_pair(Some(crate::ship::Stealth::Basic), 10_000.0);
+    entities.ships.get("Seeker").unwrap().write().unwrap().set_active_sensors(false);
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(4);
+
+    for _ in 0..30 {
+      entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+    }
+
+    assert!(
+      !holds_contact(&entities, "Seeker", "Quarry"),
+      "a ship running dark should never acquire a contact, however long it looks"
+    );
+  }
+
+  /// With sensors up, a merely Basic-stealth hull is found before long.
+  #[test]
+  fn an_active_ship_eventually_finds_a_stealthed_one() {
+    let mut entities = detection_pair(Some(crate::ship::Stealth::Basic), 10_000.0);
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(4);
+
+    let mut found = false;
+    for _ in 0..30 {
+      entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+      if holds_contact(&entities, "Seeker", "Quarry") {
+        found = true;
+        break;
+      }
+    }
+    assert!(found, "30 rounds should be more than enough to find a Basic-stealth hull");
+  }
+
+  /// Beyond Distant everything is an undifferentiated blip, so contact cannot
+  /// be held at all (High Guard p. 76, and decision E of the design).
+  #[test]
+  fn contact_is_lost_beyond_distant() {
+    // 60,000 km, past the 50,000 km edge of Distant.
+    let mut entities = detection_pair(None, 6.0e7);
+    assert!(holds_contact(&entities, "Seeker", "Quarry"), "seeded at load");
+
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(1);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+    assert!(!holds_contact(&entities, "Seeker", "Quarry"), "too far to hold contact");
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("lost sensor contact"))),
+      "the loss should be reported"
+    );
+  }
+
+  /// The reacquisition check fires only when the range opens, and only for a
+  /// stealthed target. An ordinary hull is never lost this way.
+  #[test]
+  fn only_stealth_is_lost_when_the_range_opens() {
+    // Start at Short (under 1,250 km) and end at Medium.
+    let start = 1.0e6;
+    let end = 5.0e6;
+
+    for (stealth, should_keep) in [(None, true), (Some(crate::ship::Stealth::Advanced), false)] {
+      let mut entities = detection_pair(stealth, start);
+      // Give the seeker the contact either way, so the only variable is stealth.
+      {
+        let mut seeker = entities.ships.get("Seeker").unwrap().write().unwrap();
+        if !seeker.contacts.iter().any(|n| n == "Quarry") {
+          seeker.contacts.push("Quarry".to_string());
+        }
+      }
+      let snapshot = entities.ship_deep_copy();
+      // Now open the range to the next band.
+      entities
+        .ships
+        .get("Quarry")
+        .unwrap()
+        .write()
+        .unwrap()
+        .set_position(Vec3::new(end, 0.0, 0.0));
+
+      // A roll of 2 fails any check, so a stealthed target is certainly lost.
+      let mut rng = StepRng::new(0, 0);
+      entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+      assert_eq!(
+        holds_contact(&entities, "Seeker", "Quarry"),
+        should_keep,
+        "stealth={stealth:?} should {} contact when the range opens",
+        if should_keep { "keep" } else { "lose" }
+      );
+    }
+  }
+
+  /// Closing the range is not a trigger: only an opening one is.
+  #[test]
+  fn closing_the_range_never_costs_contact() {
+    let mut entities = detection_pair(Some(crate::ship::Stealth::Advanced), 5.0e6);
+    {
+      let mut seeker = entities.ships.get("Seeker").unwrap().write().unwrap();
+      seeker.contacts.push("Quarry".to_string());
+    }
+    let snapshot = entities.ship_deep_copy();
+    entities
+      .ships
+      .get("Quarry")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(1.0e6, 0.0, 0.0));
+
+    let mut rng = StepRng::new(0, 0);
+    entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+    assert!(
+      holds_contact(&entities, "Seeker", "Quarry"),
+      "closing the range should never trigger a reacquisition check"
+    );
+  }
+
+  /// Losing contact takes the sensor lock with it: a lock cannot outlive the
+  /// contact it was built on.
+  #[test]
+  fn losing_contact_drops_the_lock() {
+    let mut entities = detection_pair(None, 6.0e7);
+    {
+      let mut seeker = entities.ships.get("Seeker").unwrap().write().unwrap();
+      seeker.sensor_locks.push("Quarry".to_string());
+    }
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(1);
+    entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+    let seeker = entities.ships.get("Seeker").unwrap().read().unwrap();
+    assert!(seeker.contacts.is_empty());
+    assert!(seeker.sensor_locks.is_empty(), "the lock should go with the contact");
   }
 
   /// Going dark drops locks but keeps contacts. High Guard p. 77 keeps

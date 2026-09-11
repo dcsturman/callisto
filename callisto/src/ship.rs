@@ -1311,6 +1311,33 @@ impl Ship {
     self.can_jump
   }
 
+  /// The thrust this ship is applying, in whole G, for the detection tables.
+  ///
+  /// "Target is operating manoeuvre drive: +1 per Thrust". A flight plan may
+  /// carry two accelerations with separate durations; the louder of the two is
+  /// what a sensop notices, so the maximum magnitude is used rather than an
+  /// average. Rounded down, so a ship drifting under 1G contributes nothing.
+  #[must_use]
+  pub fn thrust_in_g(&self) -> u8 {
+    let first = self.plan.0 .0.magnitude();
+    let second = self.plan.1.as_ref().map_or(0.0, |accel| accel.0.magnitude());
+    let loudest = first.max(second);
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let g = (loudest / crate::entity::G).floor().clamp(0.0, f64::from(u8::MAX)) as u8;
+    g
+  }
+
+  /// Total severity of the critical hits this ship has taken.
+  ///
+  /// "Stealthed target has been damaged and emits heat: +1 per Severity".
+  /// Summed across every system, and cleared with the rest of `crit_level` on
+  /// repair or reset.
+  #[must_use]
+  pub fn total_crit_severity(&self) -> u16 {
+    self.crit_level.iter().map(|level| u16::from(*level)).sum()
+  }
+
   /// Set whether the ship runs active sensors, returning whether going dark
   /// dropped any locks.
   ///
@@ -3373,5 +3400,50 @@ mod tests {
 
     assert!(!ship.has_engineer_action_taken());
     assert!(!ship.has_evade_boost_used());
+  }
+
+  /// "+1 per Thrust" reads the loudest burn of the round and rounds down.
+  #[test]
+  fn thrust_in_g_takes_the_loudest_segment() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Test".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Drifting.
+    ship.plan = FlightPlan::acceleration(Vec3::zero());
+    assert_eq!(ship.thrust_in_g(), 0);
+
+    // Just under 1G rounds down to nothing.
+    ship.plan = FlightPlan::acceleration(Vec3::new(9.0, 0.0, 0.0));
+    assert_eq!(ship.thrust_in_g(), 0);
+
+    // Exactly 3G.
+    ship.plan = FlightPlan::acceleration(Vec3::new(3.0 * crate::entity::G, 0.0, 0.0));
+    assert_eq!(ship.thrust_in_g(), 3);
+
+    // Two segments: the louder one is what a sensop notices, whichever order
+    // they come in.
+    ship.plan = FlightPlan::new(
+      (Vec3::new(crate::entity::G, 0.0, 0.0), 100).into(),
+      Some((Vec3::new(4.0 * crate::entity::G, 0.0, 0.0), 100).into()),
+    );
+    assert_eq!(ship.thrust_in_g(), 4);
+
+    ship.plan = FlightPlan::new(
+      (Vec3::new(4.0 * crate::entity::G, 0.0, 0.0), 100).into(),
+      Some((Vec3::new(crate::entity::G, 0.0, 0.0), 100).into()),
+    );
+    assert_eq!(ship.thrust_in_g(), 4);
+  }
+
+  /// Heat is the sum of every critical the ship is carrying.
+  #[test]
+  fn crit_severity_sums_across_systems() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Test".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.total_crit_severity(), 0);
+
+    ship.crit_level[0] = 2;
+    ship.crit_level[5] = 3;
+    assert_eq!(ship.total_crit_severity(), 5);
   }
 }

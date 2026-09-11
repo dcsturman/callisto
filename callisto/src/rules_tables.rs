@@ -209,6 +209,42 @@ pub fn detection_modifiers(observer_tl: u8, target_tl: u8, target_stealth: Optio
   tl_bonus + stealth
 }
 
+/// Target-side DMs from the Initial Detection table (High Guard p. 76).
+///
+/// These describe how loud the target is, and are read off the ship being
+/// looked for rather than the one looking:
+///
+/// * running active sensors, +2 (passive only is +0)
+/// * operating its manoeuvre drive, +1 per G of thrust
+/// * operating its power plant, +1
+///
+/// The transponder row (+6) is deliberately absent - see `SENSORS_DESIGN.md`.
+/// The tech-level and stealth rows live in [`detection_modifiers`], because
+/// they depend on both ships rather than just the target.
+#[must_use]
+pub fn initial_detection_mod(active_sensors: bool, thrust_g: u8, power_plant_running: bool) -> i16 {
+  i16::from(active_sensors) * 2 + i16::from(thrust_g) + i16::from(power_plant_running)
+}
+
+/// Target-side DMs from the Stealthed Ships table (High Guard p. 77), used when
+/// reacquiring a stealthed ship that has opened the range.
+///
+/// * fired weapons this round, +2
+/// * damaged and emitting heat, +1 per Severity
+/// * using active sensors, +2
+/// * operating its manoeuvre drive, +1 per G of thrust
+///
+/// Note this table has no power-plant row, unlike Initial Detection: a ship
+/// being hunted after contact was lost is assumed to be running quiet already,
+/// and what gives it away is what it *does*.
+#[must_use]
+pub fn reacquisition_mod(fired_weapons: bool, crit_severity: u16, active_sensors: bool, thrust_g: u8) -> i16 {
+  i16::from(fired_weapons) * 2
+    + i16::try_from(crit_severity).unwrap_or(i16::MAX)
+    + i16::from(active_sensors) * 2
+    + i16::from(thrust_g)
+}
+
 pub fn countermeasures_mod(countermeasures: Option<CounterMeasures>) -> i16 {
   match countermeasures {
     None => 0,
@@ -531,5 +567,35 @@ mod tests {
     assert_eq!(detection_modifiers(15, 8, Some(Stealth::Basic)), 5);
     // The two TL terms never both fire, so this stays a plain sum.
     assert_eq!(detection_modifiers(14, 12, Some(Stealth::Enhanced)), -2);
+  }
+
+  /// Initial Detection, High Guard p. 76: active sensors +2, +1 per Thrust,
+  /// power plant +1.
+  #[test]
+  fn initial_detection_rows_match_the_table() {
+    // Silent and drifting with the plant down: nothing to notice.
+    assert_eq!(initial_detection_mod(false, 0, false), 0);
+    // Running active sensors only.
+    assert_eq!(initial_detection_mod(true, 0, false), 2);
+    // The book's example: "A target ship applying Thrust 3 provides DM+3".
+    assert_eq!(initial_detection_mod(false, 3, false), 3);
+    // Power plant at minimum or higher.
+    assert_eq!(initial_detection_mod(false, 0, true), 1);
+    // An ordinary ship going about its business, which is the common case now
+    // that the transponder row is not modelled.
+    assert_eq!(initial_detection_mod(true, 0, true), 3);
+  }
+
+  /// Stealthed Ships, High Guard p. 77: firing +2, +1 per Severity of damage,
+  /// active sensors +2, +1 per Thrust. Note there is no power-plant row here.
+  #[test]
+  fn reacquisition_rows_match_the_table() {
+    assert_eq!(reacquisition_mod(false, 0, false, 0), 0);
+    assert_eq!(reacquisition_mod(true, 0, false, 0), 2, "firing gives you away");
+    assert_eq!(reacquisition_mod(false, 3, false, 0), 3, "+1 per Severity");
+    assert_eq!(reacquisition_mod(false, 0, true, 0), 2, "active sensors");
+    assert_eq!(reacquisition_mod(false, 0, false, 4), 4, "+1 per Thrust");
+    // A stealth ship that fires, is hurt, lights up and runs is trivial to find.
+    assert_eq!(reacquisition_mod(true, 2, true, 3), 9);
   }
 }
