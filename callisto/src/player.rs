@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 
@@ -13,8 +13,8 @@ use crate::computer::FlightParams;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg,
-  ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
+  SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
@@ -270,14 +270,22 @@ impl PlayerManager {
       validate_weapons(weapons)?;
     }
 
-    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_ship(
-      ship.name,
-      ship.position,
-      ship.velocity,
-      &design,
-      ship.crew,
-      ship.weapons,
-    );
+    let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    let name = ship.name.clone();
+    entities.add_ship(ship.name, ship.position, ship.velocity, &design, ship.crew, ship.weapons);
+
+    // Applied after creation rather than threaded through `add_ship`, which
+    // already carries six arguments. Absent leaves the normal running state a
+    // new ship is built with.
+    if ship.active_sensors.is_some() || ship.transmitting.is_some() || ship.team.is_some() {
+      if let Some(added) = entities.ships.get(&name) {
+        let mut added = added.write().unwrap();
+        added.set_emissions(ship.active_sensors, ship.transmitting);
+        if ship.team.is_some() {
+          added.team = ship.team;
+        }
+      }
+    }
 
     Ok("Add ship action executed".to_string())
   }
@@ -316,6 +324,80 @@ impl PlayerManager {
     }
 
     Ok("Set crew action executed".to_string())
+  }
+
+  /// Set whether a ship runs its active sensors.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_emissions(&self, request: &SetShipEmissions) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to set emissions for.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    // Hand-off first: it can force transmitting on, and set_emissions honours
+    // that, so applying them the other way round would let a request turn
+    // hand-off on and transmitting off in the same breath.
+    if let Some(handoff) = request.handoff_sensors {
+      ship.set_handoff_sensors(handoff);
+    }
+    let locks_dropped = ship.set_emissions(request.active_sensors, request.transmitting);
+
+    info!(
+      "(PlayerManager.set_ship_emissions) {} now has active sensors {}, transmitting {}, hand-off {}.",
+      request.ship_name, ship.active_sensors, ship.transmitting, ship.handoff_sensors
+    );
+
+    if locks_dropped {
+      Ok(format!("{} went dark; its sensor locks were dropped.", request.ship_name))
+    } else {
+      Ok("Set ship emissions executed".to_string())
+    }
+  }
+
+  /// Set which side a ship is on.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_team(&self, request: &SetShipTeam) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to set team for.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.team = request.team;
+    info!(
+      "(PlayerManager.set_ship_team) {} is now on team {:?}.",
+      request.ship_name, request.team
+    );
+    Ok("Set ship team executed".to_string())
   }
 
   /// Gets the current entities and returns them in a `Result`.
@@ -753,6 +835,25 @@ impl PlayerManager {
     // Evaluate queued engineer actions at end-of-turn. Effects ride the
     // existing Effects channel.
     effects.append(&mut entities.engineer_actions(&engineer_actions, &boost_map, &mut rng));
+
+    // Detection runs last, after movement and after any ship has jumped out.
+    // The trigger for losing a stealthed ship is the range opening, which needs
+    // both the start-of-round positions in `ship_snapshot` and the end-of-round
+    // ones; running here also means a player sees a new contact before queueing
+    // the orders that would use it.
+    let fired: HashSet<String> = fire_actions
+      .iter()
+      .filter(|(_, actions)| actions.iter().any(|a| matches!(a, ShipAction::FireAction { .. })))
+      .map(|(ship_name, _)| ship_name.clone())
+      .collect();
+    effects.append(&mut entities.detection_pass(&ship_snapshot, &fired, &mut rng));
+
+    // Hand-offs run immediately after, so a contact acquired this round is
+    // shared this round. Automatic in RAW — no check, no action, only Bandwidth.
+    effects.append(&mut entities.sensor_handoff_pass());
+
+    // Jamming lasts the round it was made in.
+    entities.clear_comms_jamming();
 
     entities.reset_actions();
 

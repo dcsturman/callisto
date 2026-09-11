@@ -1,10 +1,11 @@
 import * as React from "react";
 import {useState, useEffect, useMemo} from "react";
 import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
-import {Ship, Acceleration} from "lib/entities";
+import {Ship, Acceleration, Entity} from "lib/entities";
 import {ViewMode} from "lib/view";
 
-import {setPlan, setCrewActions} from "lib/serverManager";
+import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
+import {Team, TEAMS, TEAM_CSS} from "lib/teams";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
@@ -337,8 +338,11 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
               <EntitySelector
                 filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
                 current={currentNavTarget}
-                setChoice={(entity: any) => setCurrentNavTarget(entity?.name ?? null)}
+                setChoice={(entity: Entity | null) =>
+                  setCurrentNavTarget(entity?.name ?? null)
+                }
                 exclude={ship.name}
+                observer={ship}
               />
             </label>
             <div className="target-details-div">
@@ -526,9 +530,81 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
     }
   }
 
+  // Absent means running normally, which is how ships built before emissions
+  // existed arrive.
+  const activeSensors = ship.active_sensors !== false;
+  // Defaults off, so absent means silent.
+  const transmitting = ship.transmitting === true;
+  const handoff = ship.handoff_sensors === true;
+
   return (
     <div className="control-label">
       <div className="section-tag">Sensors</div>
+      <div className="emissions-row">
+        <label className="emissions-toggle" title="Active radar/lidar. Running dark keeps the contacts you already hold but acquires nothing new, drops your sensor locks, and stops handing opponents DM+2 to find you.">
+          <input
+            type="checkbox"
+            checked={activeSensors}
+            onChange={(event) =>
+              setShipEmissions(ship.name, event.target.checked, undefined)
+            }
+          />
+          Active
+        </label>
+        <label
+          className={
+            handoff ? "emissions-toggle emissions-toggle-locked" : "emissions-toggle"
+          }
+          title={
+            handoff
+              ? "Held on while sensor hand-off is running: a ship cannot share its contacts in silence."
+              : "Transponder and radio comms. The largest signal a ship gives off: DM+6 to anyone hunting it. A ship meant to be lurking runs silent."
+          }>
+          <input
+            type="checkbox"
+            checked={transmitting}
+            disabled={handoff}
+            onChange={(event) =>
+              setShipEmissions(ship.name, undefined, event.target.checked)
+            }
+          />
+          Transmit
+        </label>
+        <label
+          className="emissions-toggle"
+          title="Share sensor contacts with the rest of this ship's team. Automatic once on -- it needs no action -- but it costs a point of computer Bandwidth at each end, breaks beyond Distant, and forces the transponder on.">
+          <input
+            type="checkbox"
+            checked={handoff}
+            onChange={(event) =>
+              setShipEmissions(
+                ship.name,
+                undefined,
+                undefined,
+                event.target.checked,
+              )
+            }
+          />
+          Hand-off
+        </label>
+        <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
+          Team
+          <select
+            className="team-select"
+            value={ship.team ?? ""}
+            style={{color: ship.team ? TEAM_CSS[ship.team] : undefined}}
+            onChange={(event) =>
+              setShipTeam(ship.name, (event.target.value || null) as Team | null)
+            }>
+            <option value="">None</option>
+            {TEAMS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <select
         className="sensor-action-select control-input "
         value={sensorActionToString(currentSensor)}

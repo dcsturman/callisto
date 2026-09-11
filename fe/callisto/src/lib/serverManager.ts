@@ -39,6 +39,7 @@ import { ViewMode, stringToViewMode } from "lib/view";
 import { Acceleration } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
+import { Team } from "lib/teams";
 import { resetState as resetServerState } from "state/store";
 
 export const CALLISTO_BACKEND =
@@ -321,6 +322,13 @@ export function addShip(ship: Ship) {
       // reads an absent `weapons` as "inherit from the design", so leaving it
       // out is what keeps old behaviour for unmodified ships.
       ...(ship.weapons ? { weapons: ship.weapons } : {}),
+      // Only sent when the referee started the ship dark; absent means the
+      // normal running state.
+      ...(ship.active_sensors === false ? { active_sensors: false } : {}),
+      // Inverted relative to active_sensors: transmitting defaults off, so only
+      // a ship deliberately switched on says anything.
+      ...(ship.transmitting === true ? { transmitting: true } : {}),
+      ...(ship.team ? { team: ship.team } : {}),
     },
   };
 
@@ -350,6 +358,41 @@ export function addPlanet(planet: Planet) {
     },
   };
 
+  socket.send(JSON.stringify(payload));
+}
+
+/**
+ * Set a ship's emissions: active sensors, and whether it is radiating on RF.
+ *
+ * Either may be omitted to change one without restating the other. Shutting
+ * down active sensors drops the ship's sensor locks server-side -- a lock is
+ * deliberate illumination, which a ship running quiet is not doing -- while its
+ * existing contacts are kept.
+ */
+export function setShipEmissions(
+  shipName: string,
+  activeSensors?: boolean,
+  transmitting?: boolean,
+  handoffSensors?: boolean,
+) {
+  const payload = {
+    SetShipEmissions: {
+      ship_name: shipName,
+      ...(activeSensors === undefined ? {} : { active_sensors: activeSensors }),
+      ...(transmitting === undefined ? {} : { transmitting }),
+      ...(handoffSensors === undefined
+        ? {}
+        : { handoff_sensors: handoffSensors }),
+    },
+  };
+  socket.send(JSON.stringify(payload));
+}
+
+/** Set which side a ship is on. `null` makes it unaligned. */
+export function setShipTeam(shipName: string, team: Team | null) {
+  const payload = {
+    SetShipTeam: { ship_name: shipName, ...(team == null ? {} : { team }) },
+  };
   socket.send(JSON.stringify(payload));
 }
 
