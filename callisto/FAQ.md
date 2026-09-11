@@ -83,6 +83,48 @@ Everything below is a smaller deviation within the tonnage we do support.
 * Planets currently do not support gravity.  Currently we found the movement of ships near planets was just difficult hard to get right and there'd often be collisions.  This may be addressed in a future release.
 * _Astrogation_ checks for jump are considered to automatically succeed.  _Engineering (Jump)_ skill is used for the check to see if the jump is successful.  
 
+## Sensors, detection and stealth
+
+Callisto implements initial detection (High Guard p. 76) and the loss of contact
+with stealthed ships (p. 77). A few points where it makes a ruling the book does
+not, or deliberately leaves something out.
+
+* **Nothing can be done to a ship you have not detected.** An undetected ship is
+  not there as far as you are concerned: it cannot be fired on, sensor locked,
+  jammed or set as a navigation target. Point defence is the exception -- it
+  engages missiles, which are objects arriving at you, not the ship that fired
+  them, so a battery defends against a launcher you have never seen.
+* **Ordinary ships start a scenario detected; stealthed ships do not.** An
+  ordinary hull would be found within a round or two anyway, and opening a fight
+  with a coin flip over whether the two sides can see each other is worse than
+  opening it resolved. A stealthed hull is the case worth playing out, so it has
+  to be found. This means a stealth ship reliably gets a free opening round.
+* **Detection is re-rolled every round**, for each pair of ships that is not
+  already in contact, and only by ships running active sensors.
+* **Going dark drops your sensor locks but keeps your contacts.** RAW does not
+  settle this. A lock is deliberate, continuous illumination -- the Stealthed
+  Ships table charges DM+2 for "sensor locks, electronic warfare or other
+  deliberate use of active sensors" -- so it cannot survive going quiet, while
+  detection is "maintained under most circumstances" once established. Keeping
+  both would make going dark free; dropping both would make it useless.
+* **Contact is lost beyond Distant** (50,000 km) and cannot be acquired there,
+  since past that range everything is an undifferentiated blip. This is what
+  makes running away work.
+* **Only stealthed ships can be lost by opening the range**, and only when the
+  range actually opens a band. Closing it is never a trigger.
+* **Transponders are not modelled.** Nothing sensible goes into combat squawking
+  one, so it would be a control every player switches off once and never touches
+  again. Detection assumes it is off, and the DM+6 for it never applies.
+* **Sensor hand-offs are not implemented.** Squadrons sharing contacts over
+  comms needs a concept of sides, which Callisto does not yet have.
+* **Detecting missile launch is not modelled** as a check. The Core Rulebook has
+  the target roll to notice an incoming salvo, harder if the firing ship was
+  itself undetected. Callisto shows every launch to everyone, as noted under
+  missiles above.
+* **Electronic warfare against detection** (jamming a sensop rather than
+  missiles) is not modelled; there is no RAW for it, and `Jam Comms` is a comms
+  action rather than a sensors one.
+
 ## Known gaps being considered for future versions
 
 * **Capital ships**: hulls above 5,000 tons, which needs spinal mounts and weapon batteries before anything

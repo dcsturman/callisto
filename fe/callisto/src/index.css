@@ -1398,3 +1398,18 @@ input {
     cursor: pointer;
     margin: 0;
 }
+
+/* A ship with no sensor contact: present in the roster, but its hull and thrust
+   are exactly what a contact would have told you, so they are withheld. Grey
+   rather than hidden, so the referee's board still shows what is out there. */
+.ship-summary-row-undetected {
+    color: #6f6f6f;
+    font-style: italic;
+}
+
+/* Target options for ships that cannot be seen. Listed, so it is clear why the
+   ship is not available, but not selectable. */
+.no-contact-option {
+    color: #777;
+    font-style: italic;
+}

@@ -341,6 +341,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
                   setCurrentNavTarget(entity?.name ?? null)
                 }
                 exclude={ship.name}
+                observer={ship}
               />
             </label>
             <div className="target-details-div">

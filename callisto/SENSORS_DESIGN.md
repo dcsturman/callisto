@@ -561,12 +561,12 @@ Each phase is independently shippable and testable, in canary→main order.
 
 | Phase | Content | Risk |
 |---|---|---|
-| **1** | Split the TL bonus from the stealth TL penalty; fix the `.min(0)` clamp bug. Pure rules fix with tests. | Low, but it *does* change existing to-hit maths |
-| **2** | `contacts` on `Ship`; wire serialization; no-contact-no-interaction invariant across all ship-targeting actions; server-side enforcement. No UI yet. | Medium — touches sensor_lock, fire, JamComms |
-| **3** | `active_sensors` flag, `SetShipEmissions` request, sensor-panel and Add Ship checkboxes. | Low, additive |
+| **1** | ✅ Split the TL bonus from the stealth TL penalty; fix the `.min(0)` clamp bug. Pure rules fix with tests. | Low, but it *does* change existing to-hit maths |
+| **2** | ✅ `contacts` on `Ship`; wire serialization; no-contact-no-interaction invariant across all ship-targeting actions; server-side enforcement. No UI yet. | Medium — touches sensor_lock, fire, JamComms |
+| **3** | ✅ `active_sensors` flag, `SetShipEmissions` request, sensor-panel and Add Ship checkboxes. | Low, additive |
 | **4** | ✅ `detection_pass` as the last round step: acquisition + reacquisition + range-band escape. | Highest — the real new mechanic |
-| **5** | FE visibility: `EntitySelector` gating, 3D dimming, contacts readout, `ShipSummary` redaction. | Low, additive |
-| **6** | `FAQ.md` entries for every house rule chosen above. | Low |
+| **5** | ✅ FE visibility: `EntitySelector` gating, 3D dimming, contacts readout, `ShipSummary` redaction. | Low, additive |
+| **6** | ✅ `FAQ.md` entries for every house rule chosen above. | Low |
 
 Phase 1 is worth doing first and alone, because it changes numbers in existing
 combat and should not be tangled up with the new mechanic when we are reading
