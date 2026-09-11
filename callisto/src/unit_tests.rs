@@ -132,6 +132,7 @@ async fn test_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
+         "contacts": ["ship2"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -151,6 +152,7 @@ async fn test_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
+         "contacts": ["ship1"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
           "missiles":[],
@@ -193,6 +195,7 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
+       "contacts": ["ship2"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -212,6 +215,7 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
+       "contacts": ["ship1"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }]});
 
@@ -255,6 +259,7 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
+       "contacts": ["ship2"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -274,6 +279,7 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
+       "contacts": ["ship1"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }]});
 
@@ -380,6 +386,7 @@ async fn test_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -399,6 +406,7 @@ async fn test_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship1"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
              "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]});
@@ -594,9 +602,11 @@ async fn test_exhausted_missile() {
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  // Put second ship far way (out of range of a missile)
+  // Second ship starts just inside Distant: close enough to be detected, so the
+  // salvo can be aimed at it, but far enough that the missiles cannot arrive in
+  // the round they launch.
   let ship2 =
-    r#"{"name":"ship2","position":[1e10,0,1e10],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    r#"{"name":"ship2","position":[4.9e7,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -616,8 +626,37 @@ async fn test_exhausted_missile() {
   let fire_actions = json!([["ship1", [{"DeleteFireAction" : {"weapon_id": 1}}]]]).to_string();
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
 
-  // Second to 8th round nothing happens.
-  for round in 0..9 {
+  // Now put ship2 out of reach so the salvo can never catch it and has to burn
+  // out. Re-adding under the same name moves the existing ship.
+  //
+  // This also covers a rule in its own right: the missiles keep flying even
+  // though ship1 immediately loses sensor contact at that range. Every missile
+  // in Callisto is smart and guides itself, so contact belongs to the ship that
+  // fired, not to what it fired.
+  let ship2_far =
+    r#"{"name":"ship2","position":[1e10,0,1e10],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship2_far).unwrap()).unwrap();
+
+  // The end of the next round is when the detection pass notices the range,
+  // so that round reports the lost contact and nothing else. The missiles are
+  // untouched by it.
+  let response = server.update();
+  assert!(
+    response
+      .iter()
+      .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("lost sensor contact"))),
+    "ship1 should lose contact once ship2 is beyond Distant: {response:#?}"
+  );
+  assert!(
+    response
+      .iter()
+      .all(|e| matches!(e, EffectMsg::Message { content } if content.contains("lost sensor contact"))),
+    "nothing else should happen this round: {response:#?}"
+  );
+  server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
+
+  // Rounds 3 to 9: the missiles are still chasing a target they cannot reach.
+  for round in 0..8 {
     let response = server.update();
     assert_eq!(response, Vec::new(), "Round {round}");
     server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
@@ -775,6 +814,30 @@ async fn test_point_defense_battery_intercepts_missiles() {
   let defender = r#"{"name":"defender","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defence Boat - Dragon"}"#;
   server.add_ship(serde_json::from_str(defender).unwrap()).unwrap();
 
+  // The Dragon carries Improved stealth, so it starts undetected and cannot be
+  // fired on until someone finds it. Run one round to let the attacker's
+  // detection pass acquire the contact; the fire action below then has
+  // something to aim at.
+  let mut found = false;
+  for _ in 0..20 {
+    let _ = server.update();
+    found = server
+      .get_entities()
+      .unwrap()
+      .ships
+      .get("attacker")
+      .unwrap()
+      .read()
+      .unwrap()
+      .contacts
+      .iter()
+      .any(|name| name == "defender");
+    if found {
+      break;
+    }
+  }
+  assert!(found, "attacker should have found the stealthed Dragon within 20 rounds");
+
   // Note the defender queues no actions at all.  A battery is automatic, so it
   // must still defend in a round where its crew does nothing.
   let fire_actions = json!([["attacker", [{"FireAction" : {"weapon_id": 1, "target": "defender"}}]]]).to_string();
@@ -874,6 +937,7 @@ async fn test_big_fight() {
    "assist_gunners":false,
    "can_jump":true,
    "sensor_locks": [],
+   "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -888,6 +952,7 @@ async fn test_big_fight() {
    "assist_gunners":false,
    "can_jump":true,
    "sensor_locks": [],
+   "contacts": ["ship1"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
@@ -990,6 +1055,7 @@ async fn test_fight_with_crew() {
    "assist_gunners":true,
    "can_jump":true,
    "sensor_locks": [],
+   "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -1004,6 +1070,7 @@ async fn test_fight_with_crew() {
    "assist_gunners":false,
    "can_jump":false,
    "sensor_locks": [],
+   "contacts": ["ship1"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
@@ -1041,9 +1108,13 @@ async fn test_slugfest() {
   let response = server.set_pilot_actions(&serde_json::from_str(crew_actions).unwrap()).unwrap();
   assert_eq!(response, "Set crew action executed");
 
-  let harrier =
-    r#"{"name":"Harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
-  let response = server.add_ship(serde_json::from_str(harrier).unwrap()).unwrap();
+  // A Star Ray Interceptor rather than a Harrier: same 200-ton hull, same
+  // armour, and two weapons in the same slots, but no stealth. This test is
+  // about massed fire destroying a ship, and a stealth hull would start
+  // undetected and simply never be shot at -- which the detection tests cover
+  // in their own right.
+  let interceptor = r#"{"name":"Interceptor","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Star Ray Interceptor"}"#;
+  let response = server.add_ship(serde_json::from_str(interceptor).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
   let buc1 =
@@ -1057,8 +1128,8 @@ async fn test_slugfest() {
   assert_eq!(response, "Add ship action executed");
 
   let fire_actions = json!([["Evil Destroyer", [
-      {"FireAction" : {"weapon_id": 0, "target": "Harrier"}},
-      {"FireAction" : {"weapon_id": 1, "target": "Harrier"}},
+      {"FireAction" : {"weapon_id": 0, "target": "Interceptor"}},
+      {"FireAction" : {"weapon_id": 1, "target": "Interceptor"}},
       {"FireAction" : {"weapon_id": 2, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 3, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 4, "target": "Buc2"}},
@@ -1067,13 +1138,13 @@ async fn test_slugfest() {
       {"FireAction" : {"weapon_id": 7, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 8, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 9, "target": "Buc1"}},
-      {"FireAction" : {"weapon_id": 10, "target": "Harrier"}},
+      {"FireAction" : {"weapon_id": 10, "target": "Interceptor"}},
       {"FireAction" : {"weapon_id": 11, "target": "Buc2"}},
       {"FireAction" : {"weapon_id": 12, "target": "Buc2"}},
       {"FireAction" : {"weapon_id": 13, "target": "Buc2"}},
-      {"FireAction" : {"weapon_id": 14, "target": "Harrier"}},
+      {"FireAction" : {"weapon_id": 14, "target": "Interceptor"}},
       ]],
-  ["Harrier", [
+  ["Interceptor", [
       {"FireAction" : {"weapon_id": 0, "target": "Evil Destroyer"}},
       {"FireAction" : {"weapon_id": 1, "target": "Evil Destroyer"}}]],
   ["Buc1", [
@@ -1096,14 +1167,17 @@ async fn test_slugfest() {
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-  // Should only have 3 ships now as the Harrier should have been destroyed
+  // Should only have 3 ships now as the Interceptor should have been destroyed
   assert_eq!(
     entities.ships.len(),
     3,
     "Was expecting only 3 ships to survive instead of {}",
     entities.ships.len()
   );
-  assert!(!entities.ships.contains_key("Harrier"), "Harrier should have been destroyed.");
+  assert!(
+    !entities.ships.contains_key("Interceptor"),
+    "Interceptor should have been destroyed."
+  );
 }
 
 #[test(tokio::test)]
@@ -1129,6 +1203,9 @@ async fn test_get_entities() {
       design: ShipDesignTemplate::default().name.clone(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     })
     .unwrap();
 

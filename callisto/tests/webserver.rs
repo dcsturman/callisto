@@ -622,6 +622,9 @@ async fn integration_add_ship() {
     design: "Buccaneer".to_string(),
     crew: None,
     weapons: None,
+    active_sensors: None,
+    transmitting: None,
+    team: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -693,6 +696,9 @@ async fn integration_add_planet_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -709,6 +715,9 @@ async fn integration_add_planet_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -735,6 +744,7 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
+         "contacts": ["ship2"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -754,6 +764,7 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
+         "contacts": ["ship1"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
           "missiles":[],
@@ -811,6 +822,7 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
+         "contacts": ["ship2"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -830,6 +842,7 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
+         "contacts": ["ship1"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }]});
 
@@ -886,6 +899,7 @@ async fn integration_add_planet_ship() {
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
+     "contacts": ["ship2"],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -905,6 +919,7 @@ async fn integration_add_planet_ship() {
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
+     "contacts": ["ship1"],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     }]});
 
@@ -939,6 +954,9 @@ async fn integration_update_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -992,6 +1010,9 @@ async fn integration_update_missile() {
       design: "System Defense Boat".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1007,6 +1028,9 @@ async fn integration_update_missile() {
       design: "System Defense Boat".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1067,6 +1091,7 @@ async fn integration_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -1086,6 +1111,7 @@ async fn integration_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship1"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
@@ -1121,6 +1147,9 @@ async fn integration_remove_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1252,6 +1281,9 @@ async fn integration_set_acceleration() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1311,6 +1343,9 @@ async fn integration_compute_path_basic() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1405,6 +1440,9 @@ async fn integration_compute_path_with_standoff() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1499,6 +1537,9 @@ async fn integration_malformed_requests() {
       design: "NonexistentDesign".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1718,6 +1759,9 @@ async fn integration_set_crew_actions() {
       design: "Buccaneer".to_string(),
       crew: Some(crew),
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1797,6 +1841,9 @@ async fn integration_multi_client_test() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1810,6 +1857,9 @@ async fn integration_multi_client_test() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1829,6 +1879,9 @@ async fn integration_multi_client_test() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
