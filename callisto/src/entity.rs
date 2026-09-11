@@ -1141,6 +1141,12 @@ impl Entities {
       - countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures);
 
     if check >= 0 {
+      // Jamming stops communication, and a sensor hand-off is communication:
+      // for the rest of the round this ship can neither share its contacts with
+      // its team nor receive theirs.
+      if let Some(target_ship) = self.ships.get(target) {
+        target_ship.write().unwrap().comms_jammed = true;
+      }
       vec![EffectMsg::Message {
         content: format!("{ship_name} is jamming comms on {target}."),
       }]
@@ -1539,6 +1545,19 @@ impl Entities {
       .detection_dm()
   }
 
+  /// Clear the per-round comms jamming flags.
+  ///
+  /// Called at the end of the round, after hand-offs have been resolved, so a
+  /// jam lasts exactly the round it was made in.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  pub fn clear_comms_jamming(&self) {
+    for ship in self.ships.values() {
+      ship.write().unwrap().comms_jammed = false;
+    }
+  }
+
   /// Share contacts along the team's hand-off links.
   ///
   /// High Guard p. 77: ships in a squadron can pass their sensor picture to
@@ -1574,7 +1593,9 @@ impl Entities {
       .filter_map(|(name, ship)| {
         let ship = ship.read().unwrap();
         let has_bandwidth = ship.current_computer > 0;
-        (ship.handoff_sensors && ship.team.is_some() && has_bandwidth)
+        // A jammed ship cannot send: jamming stops communication, and a
+        // hand-off is communication.
+        (ship.handoff_sensors && ship.team.is_some() && has_bandwidth && !ship.comms_jammed)
           .then(|| (name.clone(), ship.get_position(), ship.contacts.clone()))
       })
       .collect();
@@ -1586,7 +1607,7 @@ impl Entities {
     for (recipient_name, recipient) in &self.ships {
       let recipient_guard = recipient.read().unwrap();
       let Some(team) = recipient_guard.team else { continue };
-      if recipient_guard.current_computer == 0 {
+      if recipient_guard.current_computer == 0 || recipient_guard.comms_jammed {
         continue;
       }
       let here = recipient_guard.get_position();
@@ -3921,6 +3942,78 @@ mod tests {
     assert!(
       !holds_contact(&entities, "Mate", "Bogey"),
       "the link should not reach past Distant"
+    );
+  }
+
+  /// Jamming stops communication, and a hand-off is communication. Jamming the
+  /// picket cuts the whole squadron off from what it can see.
+  #[test]
+  fn jamming_the_host_breaks_the_handoff() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities.ships.get("Picket").unwrap().write().unwrap().comms_jammed = true;
+
+    entities.sensor_handoff_pass();
+
+    assert!(!holds_contact(&entities, "Mate", "Bogey"), "a jammed picket cannot share");
+  }
+
+  /// Jamming one recipient cuts off that ship alone, not the rest of the team.
+  #[test]
+  fn jamming_a_recipient_cuts_off_only_that_ship() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    // A second quiet team-mate, not jammed.
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Wingman".to_string(),
+      Vec3::new(1.5e6, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    {
+      let mut wingman = entities.ships.get("Wingman").unwrap().write().unwrap();
+      wingman.team = Some(crate::ship::Team::Red);
+    }
+    // add_ship re-seeds every ship's contacts, so blind the two quiet ships
+    // again afterwards: the point of the test is what the hand-off gives them.
+    for quiet in ["Mate", "Wingman"] {
+      entities.ships.get(quiet).unwrap().write().unwrap().contacts.clear();
+    }
+    entities.ships.get("Mate").unwrap().write().unwrap().comms_jammed = true;
+
+    entities.sensor_handoff_pass();
+
+    assert!(!holds_contact(&entities, "Mate", "Bogey"), "the jammed ship receives nothing");
+    assert!(holds_contact(&entities, "Wingman", "Bogey"), "its team-mate is unaffected");
+  }
+
+  /// A jam lasts the round it was made in and no longer.
+  #[test]
+  fn comms_jamming_is_cleared_at_the_end_of_the_round() {
+    let entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities.ships.get("Picket").unwrap().write().unwrap().comms_jammed = true;
+
+    entities.clear_comms_jamming();
+
+    assert!(!entities.ships.get("Picket").unwrap().read().unwrap().comms_jammed);
+  }
+
+  /// A contact once shared belongs to the receiver outright. Losing the picket,
+  /// or being jammed afterwards, does not take it back.
+  #[test]
+  fn shared_contacts_survive_losing_the_link() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities.sensor_handoff_pass();
+    assert!(holds_contact(&entities, "Mate", "Bogey"), "shared in the first place");
+
+    // The picket is destroyed and its references pruned.
+    entities.ships.remove("Picket");
+    entities.prune_ship_references();
+
+    assert!(
+      holds_contact(&entities, "Mate", "Bogey"),
+      "an inherited contact is the receiver's own; it does not depend on the host"
     );
   }
 

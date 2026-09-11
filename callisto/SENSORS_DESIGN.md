@@ -506,15 +506,16 @@ That combination gives the mechanic its shape — the picket is loud, valuable a
 a target, the quiet ships are dangerous only while it survives, and cutting the
 hand-off is worth as much as killing a ship.
 
-Open questions for that work:
+All resolved and built:
 
-* Is transmitting driven per-round by sending a hand-off, or is the standing
-  crew toggle enough? A picket is presumably transmitting continuously anyway.
-* Does a receiver need to transmit to *request* a hand-off, or can the host push
-  it blind?
-* What happens to inherited contacts when the hand-off breaks — do they persist
-  as ordinary sticky contacts, or lapse immediately? Persisting is friendlier;
-  lapsing makes electronic warfare against the picket far more valuable.
+* **Hand-off is automatic, not an action.** The only thing the text says a
+  hand-off "requires" is a point of Bandwidth at each end — no check, no step.
+  So it is a standing setting in the sensor panel rather than a sensop action.
+* **Turning it on forces transmitting on** and holds it there, enforced on the
+  server rather than only greyed in the client.
+* **Inherited contacts persist.** Once shared, the contact is the receiver's
+  own; losing the link or the host does not take it back.
+* **Jam Comms breaks hand-offs**, in both directions, for the round.
 
 ---
 

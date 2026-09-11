@@ -852,6 +852,9 @@ impl PlayerManager {
     // shared this round. Automatic in RAW — no check, no action, only Bandwidth.
     effects.append(&mut entities.sensor_handoff_pass());
 
+    // Jamming lasts the round it was made in.
+    entities.clear_comms_jamming();
+
     entities.reset_actions();
 
     effects

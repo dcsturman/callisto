@@ -165,6 +165,14 @@ Ships can be assigned to one of four colour-coded teams, or left unaligned.
 * **Receiving does not light you up.** Listening is passive.
 * Hand-offs **break beyond Distant**, and are a single hop: a ship that receives
   shared data cannot pass it on again.
+* **Jam Comms breaks hand-offs.** A ship whose comms are jammed can neither send
+  nor receive for that round, so jamming the picket cuts its whole squadron off
+  from what it can see. This is the first thing Jam Comms actually does --
+  before hand-offs existed it rolled a check and reported the result without
+  affecting anything.
+* **A contact once shared belongs to the receiver.** It does not lapse if the
+  link breaks or the host is destroyed: the crew has the plot, and killing the
+  ship that gave it to them does not take it back.
 
 ## Known gaps being considered for future versions
 

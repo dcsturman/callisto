@@ -245,6 +245,16 @@ pub struct Ship {
   #[serde(default, skip_serializing_if = "is_false")]
   pub handoff_sensors: bool,
 
+  /// Whether this ship's comms are being jammed this round.
+  ///
+  /// Transient: set by a successful `JamComms` and cleared at the end of the
+  /// round, so it never reaches the wire or a saved scenario. While it is set
+  /// the ship can neither send nor receive a sensor hand-off — jamming stops
+  /// communication, and a hand-off is communication.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  pub comms_jammed: bool,
+
   /// Which side this ship is on, if any.
   ///
   /// Unaligned by default, and omitted from the wire when unset, so nothing
@@ -1206,6 +1216,7 @@ impl Ship {
       active_sensors: true,
       transmitting: false,
       handoff_sensors: false,
+      comms_jammed: false,
       team: None,
       crit_level: [0; 11],
       attack_dm: 0,
