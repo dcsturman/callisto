@@ -545,13 +545,19 @@ coin-flip over whether the two sides can see each other is worse than opening it
 resolved. A stealthed hull is the case actually worth playing out, so it starts
 undetected and has to be acquired by the pass.
 
-**Seeding does not check range.** A scenario that places two ships beyond
-Distant seeds them as mutual contacts, and the first detection pass then drops
-them with a "lost sensor contact" message. The alternative — a range-aware seed
-— is arguably more correct, but it would make any ship starting beyond 50,000 km
-permanently unengageable, since acquisition is also barred at that range. Taking
-the referee's placement as the known situation and letting physics prune it on
-the first pass costs one message and keeps such setups playable.
+**Seeding checks range.** Contacts are only seeded within Distant, so a scenario
+that opens with ships more than 50,000 km apart opens with them unaware of each
+other, and they acquire normally once they close.
+
+An earlier cut seeded regardless of range and let the first detection pass drop
+the far pairs, on the theory that a range-aware seed would leave such ships
+permanently unengageable. That was wrong twice over: it is not permanent — they
+acquire as soon as they are inside Distant — and handing out a contact only to
+retract it a round later is worse than never granting it. The one test that
+relied on firing at a target 10 million km away (missile burn-out) now launches
+at a target inside Distant and moves it out of reach afterwards, which
+incidentally covers decision G: missiles in flight are unaffected by their
+launcher losing contact.
 
 ---
 

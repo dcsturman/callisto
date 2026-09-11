@@ -1336,6 +1336,11 @@ impl Entities {
   /// A stealthed hull is the case worth playing out, so it starts undetected
   /// and has to be acquired by [`Self::detection_pass`].
   ///
+  /// Contacts are only seeded within Distant: past 50,000 km everything is an
+  /// undifferentiated blip, so a scenario that opens with ships further apart
+  /// than that opens with them unaware of each other, and they acquire normally
+  /// once they close.
+  ///
   /// Deliberately deterministic: this runs at scenario load, where there is no
   /// seeded RNG to hand and where a reproducible opening is worth more than a
   /// roll.
@@ -1348,19 +1353,32 @@ impl Entities {
   pub fn establish_initial_contacts(&self) {
     // Which ships are loud enough to be taken as already seen. A stealthed hull
     // is not: it has to be found by a detection pass like anything else.
-    let mut visible: Vec<String> = self
+    let mut visible: Vec<(String, Vec3)> = self
       .ships
       .iter()
       .filter(|(_, ship)| ship.read().unwrap().design.stealth.is_none())
-      .map(|(name, _)| name.clone())
+      .map(|(name, ship)| (name.clone(), ship.read().unwrap().get_position()))
       .collect();
     // Sorted so the wire payload and the test fixtures do not depend on the
     // map's iteration order.
-    visible.sort();
+    visible.sort_by(|a, b| a.0.cmp(&b.0));
 
     for (name, ship) in &self.ships {
       let mut ship = ship.write().unwrap();
-      ship.contacts = visible.iter().filter(|other| *other != name).cloned().collect();
+      let here = ship.get_position();
+      ship.contacts = visible
+        .iter()
+        .filter(|(other, _)| other != name)
+        .filter(|(_, there)| {
+          // Nothing is in contact across more than Distant, so a scenario that
+          // opens with ships that far apart opens with them unaware of each
+          // other. They acquire normally once they close.
+          #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+          let distance = (*there - here).magnitude() as u32;
+          find_range_band(distance) != Range::Distant
+        })
+        .map(|(other, _)| other.clone())
+        .collect();
     }
   }
 
@@ -3651,6 +3669,23 @@ mod tests {
     );
   }
 
+  /// A scenario that opens with ships beyond Distant opens with them unaware
+  /// of each other: past 50,000 km everything is an undifferentiated blip, so
+  /// there is nothing to seed.
+  #[test]
+  fn ships_beyond_distant_are_not_seeded() {
+    let entities = detection_pair(None, 6.0e7);
+    assert!(
+      !holds_contact(&entities, "Seeker", "Quarry"),
+      "nothing should be in contact across more than Distant"
+    );
+    assert!(!holds_contact(&entities, "Quarry", "Seeker"));
+
+    // Just inside the edge, they are.
+    let entities = detection_pair(None, 4.9e7);
+    assert!(holds_contact(&entities, "Seeker", "Quarry"), "inside Distant is seeded");
+  }
+
   /// Acquisition needs active sensors: "attempting to locate a ship with this
   /// level of accuracy requires the use of active sensors" (High Guard p. 76).
   #[test]
@@ -3692,11 +3727,20 @@ mod tests {
   /// be held at all (High Guard p. 76, and decision E of the design).
   #[test]
   fn contact_is_lost_beyond_distant() {
-    // 60,000 km, past the 50,000 km edge of Distant.
-    let mut entities = detection_pair(None, 6.0e7);
+    // Start in contact at Short range, then open the range past the 50,000 km
+    // edge of Distant.
+    let mut entities = detection_pair(None, 1.0e6);
     assert!(holds_contact(&entities, "Seeker", "Quarry"), "seeded at load");
 
     let snapshot = entities.ship_deep_copy();
+    entities
+      .ships
+      .get("Quarry")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(6.0e7, 0.0, 0.0));
+
     let mut rng = SmallRng::seed_from_u64(1);
     let effects = entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
 
@@ -3779,12 +3823,19 @@ mod tests {
   /// contact it was built on.
   #[test]
   fn losing_contact_drops_the_lock() {
-    let mut entities = detection_pair(None, 6.0e7);
+    let mut entities = detection_pair(None, 1.0e6);
     {
       let mut seeker = entities.ships.get("Seeker").unwrap().write().unwrap();
       seeker.sensor_locks.push("Quarry".to_string());
     }
     let snapshot = entities.ship_deep_copy();
+    entities
+      .ships
+      .get("Quarry")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(6.0e7, 0.0, 0.0));
     let mut rng = SmallRng::seed_from_u64(1);
     entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
 
