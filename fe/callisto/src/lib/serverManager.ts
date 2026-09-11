@@ -22,7 +22,12 @@ import {
   AuthBanner,
   ScenarioLoadError,
 } from "state/serverSlice";
-import { setEvents, setProposedPlan, setShowResults } from "state/uiSlice";
+import {
+  setEvents,
+  setProposedPlan,
+  setShowResults,
+  setScenarioDirty,
+} from "state/uiSlice";
 import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
 import { AppMode, setAppMode } from "state/tutorialSlice";
 import { setActions } from "state/actionsSlice";
@@ -248,6 +253,7 @@ const handleMessage = (event: MessageEvent) => {
   if ("ScenarioSaved" in json) {
     const cb = pendingSaveCallback;
     pendingSaveCallback = null;
+    store.dispatch(setScenarioDirty(false));
     if (cb) cb({ ok: true, filename: json.ScenarioSaved });
     return;
   }
@@ -310,6 +316,18 @@ export function register(code: string) {
   socket.send(JSON.stringify(payload));
 }
 
+/**
+ * Flag the Scenario Builder as holding unsaved edits.
+ *
+ * Called by every request that changes what a save would write. The flag is
+ * only read in AppMode.ScenarioBuilder, so setting it during a normal game is
+ * harmless — a running game has no save to be out of date with, and joining or
+ * leaving any scenario clears it again.
+ */
+function markScenarioDirty() {
+  store.dispatch(setScenarioDirty(true));
+}
+
 export function addShip(ship: Ship) {
   const payload = {
     AddShip: {
@@ -333,6 +351,7 @@ export function addShip(ship: Ship) {
   };
 
   socket.send(JSON.stringify(payload));
+  markScenarioDirty();
 }
 
 interface AddPlanetMsg {
@@ -359,6 +378,7 @@ export function addPlanet(planet: Planet) {
   };
 
   socket.send(JSON.stringify(payload));
+  markScenarioDirty();
 }
 
 /**
@@ -415,6 +435,7 @@ export function setCrewActions(
 export function removeEntity(target: string) {
   // Backend variant is `Remove(String)` — wire shape is `{"Remove": "name"}`.
   socket.send(JSON.stringify({ Remove: target }));
+  markScenarioDirty();
 }
 
 export function renameEntity(current: string, newName: string) {
@@ -423,6 +444,7 @@ export function renameEntity(current: string, newName: string) {
       RenameEntity: { current, new_name: newName },
     }),
   );
+  markScenarioDirty();
 }
 
 export async function setPlan(
@@ -544,11 +566,13 @@ export function requestRoleChoice(role: ViewMode, ship: string | null) {
 export function joinScenario(scenario_name: string) {
   const payload = { JoinScenario: { scenario_name: scenario_name } };
   socket.send(JSON.stringify(payload));
+  store.dispatch(setScenarioDirty(false));
 }
 
 export function createScenario(name: string, scenario: string) {
   const payload = { CreateScenario: { name: name, scenario: scenario } };
   socket.send(JSON.stringify(payload));
+  store.dispatch(setScenarioDirty(false));
 }
 
 // Save the current scenario to disk / GCS. The callback fires when the server
@@ -590,8 +614,18 @@ export function getTemplates() {
   socket.send(DESIGN_TEMPLATE_REQUEST);
 }
 
-export function resetServer(appMode: AppMode) {
-  if (window.confirm("Are you sure you want to reset the server?")) {
+/**
+ * Reset the scenario to the state it was loaded in.
+ *
+ * Pass `skipConfirm` when the caller has already asked — the Scenario Builder
+ * puts up its own dialog, which can say what is actually at stake ("this
+ * discards unsaved edits") rather than the generic prompt used everywhere else.
+ */
+export function resetServer(appMode: AppMode, skipConfirm = false) {
+  if (
+    skipConfirm ||
+    window.confirm("Are you sure you want to reset the server?")
+  ) {
     store.dispatch(resetServerState());
     store.dispatch(setAppMode(appMode));
     socket.send(RESET_REQUEST);
@@ -600,6 +634,7 @@ export function resetServer(appMode: AppMode) {
 
 export function exit_scenario() {
   socket.send(EXIT_REQUEST);
+  store.dispatch(setScenarioDirty(false));
 }
 
 export function logout() {
