@@ -20,7 +20,7 @@ use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
-use crate::rules_tables::{countermeasures_mod, stealth_mod, SENSOR_QUALITY_MOD};
+use crate::rules_tables::{countermeasures_mod, detection_modifiers, SENSOR_QUALITY_MOD};
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Ship, ShipDesignTemplate, ShipSystem};
@@ -1030,17 +1030,15 @@ impl Entities {
     effects
   }
 
-  fn sensor_stealth_modifiers(&self, attack_ship_name: &str, target_ship_name: &str) -> i16 {
-    let attack_ship = self.ships.get(attack_ship_name).unwrap().read().unwrap();
-    let target_ship = self.ships.get(target_ship_name).unwrap().read().unwrap();
+  /// DM applied to a sensor check made by `observer_name` against `target_name`.
+  ///
+  /// Covers both the tech-level difference and the target's stealth; see
+  /// `rules_tables::detection_modifiers` for how High Guard separates them.
+  fn sensor_detection_modifiers(&self, observer_name: &str, target_name: &str) -> i16 {
+    let observer = self.ships.get(observer_name).unwrap().read().unwrap();
+    let target = self.ships.get(target_name).unwrap().read().unwrap();
 
-    // The result has to be negative.  You never get a bonus for "bad" stealth.
-    if target_ship.design.stealth.is_some() {
-      let delta_tl = i16::from(attack_ship.design.tl) - i16::from(target_ship.design.tl);
-      (stealth_mod(target_ship.design.stealth) + delta_tl).min(0)
-    } else {
-      0
-    }
+    detection_modifiers(observer.design.tl, target.design.tl, target.design.stealth)
   }
 
   // Quality modifiers are the level of sensors as well as skill of the crew
@@ -1062,7 +1060,7 @@ impl Entities {
     // Check if sensor lock is achieved.
     let check = i16::from(roll_dice(2, rng))
       + self.sensor_quality_modifiers(ship_name)
-      + self.sensor_stealth_modifiers(ship_name, target)
+      + self.sensor_detection_modifiers(ship_name, target)
       + boost
       - 8;
 
@@ -1186,8 +1184,11 @@ impl Entities {
         + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
         + boost
         - self.sensor_quality_modifiers(target)
-        // In this case the steal modifiers (which will be negative or 0) are a bonus.
-        - self.sensor_stealth_modifiers(ship_name, target)
+        // The ship shaking off the lock benefits from ITS OWN stealth, so the
+        // observer here is `target` (which holds the lock) and the quarry is
+        // `ship_name`. Negating turns the detection penalty into a bonus for
+        // the ship breaking free.
+        - self.sensor_detection_modifiers(target, ship_name)
         - countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures)
         - i16::from(roll_dice(2, rng));
       if check >= 0 {
@@ -3312,25 +3313,43 @@ mod tests {
   }
 
   #[test_log::test(tokio::test)]
-  async fn test_sensor_stealth_modifiers() {
+  async fn test_sensor_detection_modifiers() {
+    // Designs used here: Free Trader/Far Trader/Light Fighter are TL12 with no
+    // stealth, Buccaneer is TL15 with no stealth, Harrier is TL15 with Advanced
+    // stealth (DM-6).
     let test_cases = [
-      // (attack_design, target_design, skill(ignored), skill (ignored), expected_modifier)
-      ("Free Trader", "Far Trader", 0, 0, 0),  // No stealth - should be 0
-      ("Light Fighter", "Buccaneer", 3, 0, 0), // No stealth - should be 0
-      ("Harrier", "Free Trader", 2, 0, 0),
+      // (observer_design, target_design, skill(ignored), skill(ignored), expected_modifier)
+      // Same TL, no stealth: nothing applies.
+      ("Free Trader", "Far Trader", 0, 0, 0),
+      // Observer is LOWER TL with a plain target: no bonus, and no penalty
+      // either - the TL penalty is a stealth-only rule.
+      ("Light Fighter", "Buccaneer", 3, 0, 0),
+      // High Guard's own worked example: "A TL15 ship receives DM+3 to detect a
+      // TL12 ship." This returned 0 before the TL bonus was split out.
+      ("Harrier", "Free Trader", 2, 0, 3),
+      // TL12 observer vs TL15 Advanced-stealth target: -6 grade, -3 for the
+      // three TLs the target has on it.
       ("Free Trader", "Harrier", 0, 0, -9),
+      // Same TL as the stealthed target, so only the grade applies.
+      ("Buccaneer", "Harrier", 0, 0, -6),
     ];
 
-    for (attack_design, target_design, attack_skill, target_skill, expected) in test_cases {
-      let entities =
-        setup_sensor_test_ships("attacker", attack_skill, "target", target_skill, attack_design, target_design).await;
+    for (observer_design, target_design, observer_skill, target_skill, expected) in test_cases {
+      let entities = setup_sensor_test_ships(
+        "attacker",
+        observer_skill,
+        "target",
+        target_skill,
+        observer_design,
+        target_design,
+      )
+      .await;
 
-      let result = entities.sensor_stealth_modifiers("attacker", "target");
+      let result = entities.sensor_detection_modifiers("attacker", "target");
       assert_eq!(
-            result,
-            expected,
-            "Failed with attack_design={attack_design}, target_design={target_design}, attack_skill={attack_skill},target_skill={target_skill}, expected={expected}",
-        );
+        result, expected,
+        "Failed with observer_design={observer_design}, target_design={target_design}, expected={expected}",
+      );
     }
   }
 
@@ -3367,8 +3386,8 @@ mod tests {
 
   #[test]
   #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
-  fn test_sensor_stealth_modifiers_invalid_ships() {
+  fn test_sensor_detection_modifiers_invalid_ships() {
     let entities = Entities::new();
-    entities.sensor_stealth_modifiers("nonexistent_attacker", "nonexistent_target");
+    entities.sensor_detection_modifiers("nonexistent_attacker", "nonexistent_target");
   }
 }
