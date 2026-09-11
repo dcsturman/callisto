@@ -202,7 +202,7 @@ pub struct Ship {
   /// Whether the ship is running active radar/lidar.
   ///
   /// Active sensors are what let a sensop pinpoint another ship at all: High
-  /// Guard p. 76, "attempting to locate a ship with this level of accuracy
+  /// Guard p. 77, "attempting to locate a ship with this level of accuracy
   /// requires the use of active sensors". They also announce the ship, handing
   /// anyone looking for it DM+2 on the Initial Detection table.
   ///

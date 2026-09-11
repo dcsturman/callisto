@@ -85,8 +85,8 @@ Everything below is a smaller deviation within the tonnage we do support.
 
 ## Sensors, detection and stealth
 
-Callisto implements initial detection (High Guard p. 76) and the loss of contact
-with stealthed ships (p. 77). A few points where it makes a ruling the book does
+Callisto implements initial detection (High Guard pp. 76-77) and the loss of
+contact with stealthed ships (p. 77). A few points where it makes a ruling the book does
 not, or deliberately leaves something out.
 
 * **Nothing can be done to a ship you have not detected.** An undetected ship is

@@ -1029,7 +1029,7 @@ impl Entities {
               continue;
             }
             // A lock is deliberate, continuous illumination, which a ship
-            // running dark is by definition not doing. High Guard p. 76:
+            // running dark is by definition not doing. High Guard p. 77:
             // pinpointing a ship "requires the use of active sensors".
             if !self.has_active_sensors(ship_name) {
               effects.push(EffectMsg::Message {
@@ -1489,7 +1489,7 @@ impl Entities {
           }
         } else {
           // Acquisition needs active sensors: pinpointing a ship "requires the
-          // use of active sensors" (p. 76).
+          // use of active sensors" (p. 77).
           if !observer.active_sensors || band_now == Range::Distant {
             continue;
           }
@@ -3687,7 +3687,7 @@ mod tests {
   }
 
   /// Acquisition needs active sensors: "attempting to locate a ship with this
-  /// level of accuracy requires the use of active sensors" (High Guard p. 76).
+  /// level of accuracy requires the use of active sensors" (High Guard p. 77).
   #[test]
   fn a_dark_ship_acquires_nothing() {
     let mut entities = detection_pair(Some(crate::ship::Stealth::Basic), 10_000.0);

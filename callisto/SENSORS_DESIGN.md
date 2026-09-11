@@ -53,7 +53,7 @@ non-stealthed low-TL ship. These should be two separate terms.
 
 ## 1. The rules we are implementing
 
-### Initial Detection (p. 76) — Average (8+) Electronics (sensors)
+### Initial Detection (table on p. 76, rules text p. 77) — Average (8+) Electronics (sensors)
 
 | Factor | DM | Computable today? |
 |---|---|---|
@@ -69,7 +69,8 @@ non-stealthed low-TL ship. These should be two separate terms.
 Plus the detector's own sensor-package DM (p. 21) and sensop skill, which
 `sensor_quality_modifiers` already supplies.
 
-RAW note that matters: *"attempting to locate a ship with this level of accuracy
+RAW note that matters, from the tail of the Initial Detection discussion where it
+runs over onto p. 77: *"attempting to locate a ship with this level of accuracy
 requires the use of active sensors."* This is the hinge that makes your item 2
 mechanically meaningful rather than cosmetic.
 
