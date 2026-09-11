@@ -101,6 +101,14 @@ not, or deliberately leaves something out.
   to be found. This means a stealth ship reliably gets a free opening round.
 * **Detection is re-rolled every round**, for each pair of ships that is not
   already in contact, and only by ships running active sensors.
+* **The two High Guard detection tables are treated as one, and the rows stack.**
+  Initial Detection (p. 76) and Stealthed Ships (p. 77) share four identical
+  rows; the rest differ only because of when each table is used. A ship is as
+  loud as the sum of what it is doing -- running active sensors, thrusting,
+  running its power plant, firing, and leaking heat from criticals -- whether or
+  not anyone has seen it before. Firing therefore helps someone find you even if
+  they never had contact, which is what stops a stealth ship shooting from total
+  concealment indefinitely.
 * **Going dark drops your sensor locks but keeps your contacts.** RAW does not
   settle this. A lock is deliberate, continuous illumination -- the Stealthed
   Ships table charges DM+2 for "sensor locks, electronic warfare or other

@@ -521,6 +521,22 @@ for observer O, target T:
 A pair that failed reacquisition does not also get an acquisition roll that
 round.
 
+**I. RESOLVED — the two tables are one table, and the rows stack.** High Guard
+prints Initial Detection (p. 76) and Stealthed Ships (p. 77) separately, but four
+rows are word-for-word identical including the worked example, and the rows that
+differ do so only because of *when* each table is used: the first describes an
+approach, where nothing is shooting and nothing has taken a critical; the second
+describes a ship that has already gone dark, so its power plant is off by
+assumption. The book collapses them itself when describing the same situation in
+prose, listing the giveaways as one set — "use of active sensors, transponder,
+manoeuvre drives or firing a weapon, just to name a few."
+
+Callisto uses the union for every check, acquisition or reacquisition, and the
+rows stack. That closes a hole the split created: firing appeared only on the
+reacquisition table, so a stealth ship could run dark and fire every round at a
+contact it already held with the hunter having no chance at all — not a poor
+chance, but a DM low enough that the best possible roll could not reach 8.
+
 **G. RESOLVED — missiles in flight are unaffected by contact loss.** Every
 missile is smart (`entity.rs:837`) and guides itself. Revisit if dumb missiles
 are ever added; noted in `FAQ.md` so the assumption is written down rather than

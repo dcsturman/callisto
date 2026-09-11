@@ -20,9 +20,7 @@ use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
-use crate::rules_tables::{
-  countermeasures_mod, detection_modifiers, initial_detection_mod, reacquisition_mod, SENSOR_QUALITY_MOD,
-};
+use crate::rules_tables::{countermeasures_mod, detection_modifiers, emissions_mod, SENSOR_QUALITY_MOD};
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem};
@@ -1475,14 +1473,7 @@ impl Entities {
             continue;
           }
 
-          let dm = self.sensor_quality_modifiers(observer_name)
-            + self.sensor_detection_modifiers(observer_name, target_name)
-            + reacquisition_mod(
-              fired.contains(*target_name),
-              target.total_crit_severity(),
-              target.active_sensors,
-              target.thrust_in_g(),
-            );
+          let dm = self.detection_dm(observer_name, target_name, &target, fired);
 
           if i32::from(roll_dice(2, rng)) + i32::from(dm) < STANDARD_ROLL_THRESHOLD {
             lost.push(((*observer_name).clone(), (*target_name).clone()));
@@ -1494,9 +1485,7 @@ impl Entities {
             continue;
           }
 
-          let dm = self.sensor_quality_modifiers(observer_name)
-            + self.sensor_detection_modifiers(observer_name, target_name)
-            + initial_detection_mod(target.active_sensors, target.thrust_in_g(), target.current_power > 0);
+          let dm = self.detection_dm(observer_name, target_name, &target, fired);
 
           if i32::from(roll_dice(2, rng)) + i32::from(dm) >= STANDARD_ROLL_THRESHOLD {
             acquired.push(((*observer_name).clone(), (*target_name).clone()));
@@ -1525,6 +1514,27 @@ impl Entities {
     }
 
     effects
+  }
+
+  /// The DM on `observer`'s sensor check against `target`.
+  ///
+  /// The same sum whether this is a first acquisition or a reacquisition after
+  /// the range opened: how hard a ship is to see does not depend on whether the
+  /// looker has seen it before. See `rules_tables::emissions_mod` for why High
+  /// Guard's two tables are treated as one.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  fn detection_dm(&self, observer_name: &str, target_name: &str, target: &Ship, fired: &HashSet<String>) -> i16 {
+    self.sensor_quality_modifiers(observer_name)
+      + self.sensor_detection_modifiers(observer_name, target_name)
+      + emissions_mod(
+        target.active_sensors,
+        target.thrust_in_g(),
+        target.current_power > 0,
+        fired.contains(target_name),
+        target.total_crit_severity(),
+      )
   }
 
   /// The range band between two ships as it was at the start of the round.
@@ -3721,6 +3731,62 @@ mod tests {
       }
     }
     assert!(found, "30 rounds should be more than enough to find a Basic-stealth hull");
+  }
+
+  /// A stealthed ship that shoots from concealment can be found.
+  ///
+  /// Before the two High Guard tables were unified, firing only counted when
+  /// reacquiring a ship whose contact had already been lost, so a stealth hull
+  /// could run dark and fire every round at a target it already held with the
+  /// hunter having no chance whatsoever -- not merely a poor one, but a DM low
+  /// enough that the best possible roll could not reach 8. Firing now counts
+  /// towards acquisition too, and stacks with the rest.
+  #[test]
+  fn firing_from_concealment_can_be_detected() {
+    let quiet = {
+      let entities = detection_pair(Some(crate::ship::Stealth::Advanced), 1.0e6);
+      let target = entities.ships.get("Quarry").unwrap().read().unwrap().clone();
+      entities.detection_dm("Seeker", "Quarry", &target, &HashSet::new())
+    };
+
+    let firing = {
+      let entities = detection_pair(Some(crate::ship::Stealth::Advanced), 1.0e6);
+      let target = entities.ships.get("Quarry").unwrap().read().unwrap().clone();
+      let fired: HashSet<String> = ["Quarry".to_string()].into_iter().collect();
+      entities.detection_dm("Seeker", "Quarry", &target, &fired)
+    };
+
+    assert_eq!(
+      firing,
+      quiet + 2,
+      "firing is worth DM+2 towards acquisition, not just reacquisition"
+    );
+  }
+
+  /// The emission rows stack: doing two loud things is worse than one.
+  #[test]
+  fn emission_rows_stack() {
+    let entities = detection_pair(Some(crate::ship::Stealth::Basic), 1.0e6);
+    let fired: HashSet<String> = ["Quarry".to_string()].into_iter().collect();
+
+    let dark_quiet = {
+      let mut t = entities.ships.get("Quarry").unwrap().read().unwrap().clone();
+      t.set_active_sensors(false);
+      entities.detection_dm("Seeker", "Quarry", &t, &HashSet::new())
+    };
+    let dark_firing = {
+      let mut t = entities.ships.get("Quarry").unwrap().read().unwrap().clone();
+      t.set_active_sensors(false);
+      entities.detection_dm("Seeker", "Quarry", &t, &fired)
+    };
+    let lit_firing = {
+      let t = entities.ships.get("Quarry").unwrap().read().unwrap().clone();
+      entities.detection_dm("Seeker", "Quarry", &t, &fired)
+    };
+
+    assert_eq!(dark_firing, dark_quiet + 2, "firing alone is +2");
+    assert_eq!(lit_firing, dark_firing + 2, "active sensors stack on top of firing");
+    assert_eq!(lit_firing, dark_quiet + 4, "both together are +4, not +2");
   }
 
   /// Beyond Distant everything is an undifferentiated blip, so contact cannot
