@@ -156,3 +156,43 @@ describe("setShipEmissions", () => {
     ]);
   });
 });
+
+describe("setShipTeam", () => {
+  it("assigns a team", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipTeam("Harrier", "Red");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetShipTeam: { ship_name: "Harrier", team: "Red" } }),
+    ]);
+  });
+
+  it("omits the team to make a ship unaligned", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipTeam("Harrier", null);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetShipTeam: { ship_name: "Harrier" } }),
+    ]);
+  });
+});
+
+describe("sensor hand-off", () => {
+  it("turns hand-off on without restating the other emissions", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Picket", undefined, undefined, true);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Picket", handoff_sensors: true },
+      }),
+    ]);
+  });
+
+  it("can turn it off again", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Picket", undefined, undefined, false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Picket", handoff_sensors: false },
+      }),
+    ]);
+  });
+});

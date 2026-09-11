@@ -120,9 +120,14 @@ not, or deliberately leaves something out.
   makes running away work.
 * **Only stealthed ships can be lost by opening the range**, and only when the
   range actually opens a band. Closing it is never a trigger.
-* **Transponders are not modelled.** Nothing sensible goes into combat squawking
-  one, so it would be a control every player switches off once and never touches
-  again. Detection assumes it is off, and the DM+6 for it never applies.
+* **Transponder and radio comms are one flag, and it defaults to off.** High
+  Guard prints them as a single row at +6 -- the largest on the table -- and
+  they are the same emission to anyone listening. It defaults off rather than
+  on: RAW expects transponders lit in civilised space, but a ship left
+  transmitting by accident is simply found, which would quietly undo stealth for
+  any scenario whose author had not thought about it. A scenario opts into the
+  noise deliberately, per ship, when the ship is added. Receiving a transmission
+  does not count -- listening is passive, only sending gives you away.
 * **Sensor hand-offs are not implemented.** Squadrons sharing contacts over
   comms needs a concept of sides, which Callisto does not yet have. When they
   arrive they will also need a way to record that a ship is *transmitting*:
@@ -136,6 +141,30 @@ not, or deliberately leaves something out.
 * **Electronic warfare against detection** (jamming a sensop rather than
   missiles) is not modelled; there is no RAW for it, and `Jam Comms` is a comms
   action rather than a sensors one.
+
+## Teams and sensor hand-offs
+
+Ships can be assigned to one of four colour-coded teams, or left unaligned.
+
+* **Ships will not fire on their own side.** Only attacks are blocked. Plotting
+  a course to a team-mate, sensor locking one or jamming one are all still
+  possible -- there are legitimate reasons to want each, and the referee is
+  better placed than the engine to judge them.
+* **Sensor hand-offs** (High Guard p. 77) let a team share its sensor picture.
+  Turn on *Hand-off* in the sensor panel and that ship's contacts pass to every
+  team-mate automatically. It is automatic in the book too: no check, no action,
+  only a point of computer Bandwidth at each end.
+* A hand-off **conveys contacts the recipient could never have acquired alone**.
+  That is the point: a squadron can post one picket with excellent sensors
+  running fully active while everyone else stays quiet and still shoots at what
+  the picket sees.
+* **Sharing means broadcasting.** Turning hand-off on forces the transponder and
+  comms flag on and holds it there -- a ship cannot pass its contacts in
+  silence, and the picket pays DM+6 to everyone hunting it. Turning hand-off off
+  releases the hold but does not switch the ship to silent on its own.
+* **Receiving does not light you up.** Listening is passive.
+* Hand-offs **break beyond Distant**, and are a single hop: a ship that receives
+  shared data cannot pass it on again.
 
 ## Known gaps being considered for future versions
 

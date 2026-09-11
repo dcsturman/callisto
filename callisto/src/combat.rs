@@ -908,6 +908,24 @@ pub fn do_fire_actions<S: BuildHasher>(
         return vec![no_contact_effect(attacker.get_name(), target, "fire on")];
       }
 
+      // Ships do not shoot their own side. Only attacks are blocked: plotting a
+      // course to a team-mate, or sensor locking one, are perfectly reasonable
+      // things to want to do.
+      if let Some(attacker_team) = attacker.team {
+        let same_side = ships.get(target).is_some_and(|t| t.read().unwrap().team == Some(attacker_team));
+        if same_side {
+          debug!(
+            "(Combat.do_fire_actions) {} and {} are both on team {:?}; fire action dropped.",
+            attacker.get_name(),
+            target,
+            attacker_team
+          );
+          return vec![EffectMsg::Message {
+            content: format!("{} will not fire on {target}: same side.", attacker.get_name()),
+          }];
+        }
+      }
+
       if !attacker.active_weapons[*weapon_id] {
         debug!("(Combat.do_fire_actions) Weapon {} is disabled.", weapon_id);
         return vec![];
@@ -3108,6 +3126,120 @@ mod tests {
       !defender.has_evade_boost_used(),
       "Evade boost flag should NOT flip when dodge_thrust is 0"
     );
+  }
+
+  /// Ships do not shoot their own side.
+  #[test]
+  fn a_ship_will_not_fire_on_its_own_team() {
+    use crate::ship::Team;
+    let mut rng = StdRng::seed_from_u64(11);
+    let design = Arc::new(ShipDesignTemplate {
+      name: "TestShip".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      ..ShipDesignTemplate::default()
+    });
+
+    let mut attacker = Ship::new(
+      "Attacker".to_string(),
+      Vec3::new(-1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    attacker.team = Some(Team::Red);
+    attacker.contacts.push("Target".to_string());
+
+    let mut target = Ship::new("Target".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    target.team = Some(Team::Red);
+    let starting_hull = target.current_hull;
+
+    let mut ships = HashMap::new();
+    ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+    let mut sand_counts = HashMap::new();
+    let actions = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Target".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+    }];
+
+    let (missiles, effects) = do_fire_actions(
+      &attacker,
+      &mut ships,
+      &mut sand_counts,
+      &actions,
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    assert!(missiles.is_empty());
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("same side"))),
+      "expected a same-side refusal, got {effects:?}"
+    );
+    assert_eq!(
+      ships.get("Target").unwrap().read().unwrap().current_hull,
+      starting_hull,
+      "a team-mate should take no damage"
+    );
+  }
+
+  /// Being on opposite sides, or unaligned, is no bar to shooting.
+  #[test]
+  fn teams_only_block_their_own() {
+    use crate::ship::Team;
+    for (attacker_team, target_team) in [
+      (Some(Team::Red), Some(Team::Blue)),
+      (Some(Team::Red), None),
+      (None, Some(Team::Red)),
+      (None, None),
+    ] {
+      let mut rng = StdRng::seed_from_u64(11);
+      let design = Arc::new(ShipDesignTemplate {
+        name: "TestShip".to_string(),
+        weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+        ..ShipDesignTemplate::default()
+      });
+      let mut attacker = Ship::new(
+        "Attacker".to_string(),
+        Vec3::new(-1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      attacker.team = attacker_team;
+      attacker.contacts.push("Target".to_string());
+      let mut target = Ship::new("Target".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+      target.team = target_team;
+
+      let mut ships = HashMap::new();
+      ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+      let mut sand_counts = HashMap::new();
+      let actions = vec![ShipAction::FireAction {
+        weapon_id: 0,
+        target: "Target".to_string(),
+        called_shot_system: None,
+        firing_kind: None,
+      }];
+      let (_, effects) = do_fire_actions(
+        &attacker,
+        &mut ships,
+        &mut sand_counts,
+        &actions,
+        &BoostMap::default(),
+        &mut rng,
+      );
+      assert!(
+        !effects
+          .iter()
+          .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("same side"))),
+        "{attacker_team:?} firing on {target_team:?} should be allowed"
+      );
+    }
   }
 
   /// A ship cannot shoot what it has not detected. The order is accepted but

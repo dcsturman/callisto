@@ -22,6 +22,7 @@ import {
 } from "lib/universal";
 import { Ship as ShipType, Missile as MissileType} from "lib/entities";
 import { isUndetected } from "lib/contacts";
+import { teamBodyColor, TEAM_CSS } from "lib/teams";
 import { FlightPath } from "lib/flightPath";
 
 import { addVector, scaleVector, RangeSphere } from "lib/Util";
@@ -74,16 +75,24 @@ function Ship(args: {
 
   const isOwnShip = viewingShipName === args.ship.name;
   const undetected = isUndetected(observer, args.ship.name);
-  // Three states, per the design: your own ship reads normally, another ship
-  // you can see is dimmed with a grey label, and one you cannot see is dimmer
-  // still -- present, because the referee's table can see the board, but
-  // clearly not something this ship knows about.
-  const bodyColor: [number, number, number] = isOwnShip || observer == null
-    ? [10, 10, 24.0]
-    : undetected
-      ? [0.6, 0.6, 0.9]
-      : [2.0, 2.0, 4.0];
-  const labelColor = isOwnShip || observer == null ? "#3dfc32" : undetected ? "#5a5a5a" : "#9a9a9a";
+  // Two axes, deliberately kept separate: hue says which side a ship is on,
+  // brightness says how well this console can see it. Scaling the team colour
+  // rather than replacing it keeps both readable at once -- a dimmed red ship
+  // still reads as team red, not currently detected.
+  //
+  // Your own ship, and every ship in the GM's all-ships view, is at full
+  // brightness; a ship you merely detect is dimmed; one you cannot see is
+  // dimmer still, present only because the referee's table can see the board.
+  const brightness = isOwnShip || observer == null ? 1 : undetected ? 0.06 : 0.2;
+  const bodyColor = teamBodyColor(args.ship.team, brightness);
+  const labelColor =
+    isOwnShip || observer == null
+      ? args.ship.team
+        ? TEAM_CSS[args.ship.team]
+        : "#3dfc32"
+      : undetected
+        ? "#5a5a5a"
+        : "#9a9a9a";
 
   const { camera } = useThree();
   const textRef = useRef<Mesh>(null);

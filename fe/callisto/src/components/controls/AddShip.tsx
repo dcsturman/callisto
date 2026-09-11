@@ -44,6 +44,7 @@ import { Tooltip } from "react-tooltip";
 import { CiCircleQuestion } from "react-icons/ci";
 import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
+import { Team, TEAMS, TEAM_CSS } from "lib/teams";
 
 import { addShip } from "lib/serverManager";
 import { useAppSelector } from "state/hooks";
@@ -91,10 +92,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
       design: firstDesign.name,
       crew: createCrew(),
       armament: buildWeaponRows(firstDesign.name),
-      // Ships are built running normally; the referee can start one dark or
-      // silent.
+      // Ships are built with sensors up but silent: transmitting is the loudest
+      // thing a ship can do, so a scenario opts into it deliberately.
       activeSensors: true,
-      transmitting: true,
+      transmitting: false,
+      team: null as Team | null,
     };
   }, [shipDesignTemplates, entities, buildWeaponRows]);
 
@@ -123,7 +125,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
         ),
         // Absent on the wire means running normally.
         activeSensors: current.active_sensors !== false,
-        transmitting: current.transmitting !== false,
+        transmitting: current.transmitting === true,
+        team: current.team ?? null,
       };
       setAddShipData(template);
     }
@@ -158,7 +161,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
               ),
               // Absent on the wire means running normally.
               activeSensors: ship.active_sensors !== false,
-              transmitting: ship.transmitting !== false,
+              transmitting: ship.transmitting === true,
+              team: ship.team ?? null,
             });
           }
         }
@@ -221,6 +225,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         weapons: armament,
         active_sensors: addShipData.activeSensors,
         transmitting: addShipData.transmitting,
+        team: addShipData.team ?? undefined,
       };
 
       addShip(revision);
@@ -362,6 +367,31 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 }
               />
               Transmit
+            </label>
+            <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
+              Team
+              <select
+                className="team-select"
+                value={addShipData.team ?? ""}
+                style={{
+                  color: addShipData.team
+                    ? TEAM_CSS[addShipData.team]
+                    : undefined,
+                }}
+                onChange={(event) =>
+                  setAddShipData({
+                    ...addShipData,
+                    team: (event.target.value || null) as Team | null,
+                  })
+                }
+              >
+                <option value="">None</option>
+                {TEAMS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
         </div>

@@ -28,6 +28,14 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
    * Only ships are gated. Planets do not hide.
    */
   observer?: Ship | null;
+  /**
+   * Also bar ships on the observer's own side.
+   *
+   * Set on the firing menu only. A ship will not shoot its own team, but
+   * plotting a course to a team-mate -- or sensor locking one -- is perfectly
+   * reasonable, so the navigation computer leaves them selectable.
+   */
+  excludeSameTeam?: boolean;
 }
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
@@ -38,6 +46,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   extra,
   formatter,
   observer,
+  excludeSameTeam,
   ...props
 }) => {
   const entities = useAppSelector(entitiesSelector);
@@ -96,6 +105,13 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         if (isUndetected(observer, shipTarget.name)) {
           return;
         }
+        if (
+          excludeSameTeam === true &&
+          observer?.team != null &&
+          shipTarget.team === observer.team
+        ) {
+          return;
+        }
         setChoice(shipTarget);
         return;
       }
@@ -143,15 +159,22 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
             .filter((candidate) => candidate.name !== exclude)
             .map((notMeShip) => {
               const undetected = isUndetected(observer, notMeShip.name);
+              const sameTeam =
+                excludeSameTeam === true &&
+                observer?.team != null &&
+                notMeShip.team === observer.team;
+              const barred = undetected || sameTeam;
               return (
                 <option
                   key={"els" + notMeShip.name}
                   value={notMeShip.name}
-                  disabled={undetected}
-                  className={undetected ? "no-contact-option" : undefined}>
+                  disabled={barred}
+                  className={barred ? "no-contact-option" : undefined}>
                   {undetected
                     ? `${notMeShip.name} (no contact)`
-                    : nf(notMeShip.name, notMeShip)}
+                    : sameTeam
+                      ? `${notMeShip.name} (same side)`
+                      : nf(notMeShip.name, notMeShip)}
                 </option>
               );
             })}

@@ -1413,3 +1413,27 @@ input {
     color: #777;
     font-style: italic;
 }
+
+/* Team dropdown, shown inline with the emissions toggles. Sized to sit on the
+   same row rather than pushing them onto a second line. */
+.team-select {
+    background-color: #1a1a1a;
+    color: inherit;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-family: "Sono", monospace;
+    font-size: 9pt;
+    padding: 0 2px;
+}
+
+/* A toggle the server is holding for us -- currently Transmit while sensor
+   hand-off is on. Shown rather than hidden, so it is clear the setting exists
+   and why it cannot be changed. */
+.emissions-toggle-locked {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.emissions-toggle-locked input {
+    cursor: not-allowed;
+}

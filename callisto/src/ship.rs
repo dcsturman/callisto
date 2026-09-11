@@ -219,15 +219,40 @@ pub struct Ship {
   /// stealth ship breaking silence to warn a team-mate, are the same emission
   /// as far as anyone hunting them is concerned.
   ///
-  /// Defaults to on: civilised space expects transponders, and switching one
-  /// off carries legal rather than tactical consequences (fines, boarding,
-  /// being shot at) that are the referee's business, not the engine's. A ship
-  /// meant to be lurking should have this turned off in the scenario.
+  /// Defaults to **off**. RAW expects transponders on in civilised space, but
+  /// this is the largest row on the detection table by some margin, and a ship
+  /// left transmitting by accident is simply found — which would quietly undo
+  /// stealth for any scenario whose author did not think about it. Defaulting
+  /// off means a scenario opts into the noise deliberately, which is the safer
+  /// direction for a switch this loud. Scenario builders can turn it on per
+  /// ship when adding one.
   ///
   /// Receiving a transmission does not set this. Listening is passive; only
   /// sending gives you away.
-  #[serde(default = "default_true", skip_serializing_if = "is_true")]
+  #[serde(default, skip_serializing_if = "is_false")]
   pub transmitting: bool,
+
+  /// Whether this ship is sharing its sensor picture with its team.
+  ///
+  /// A hand-off is automatic in RAW — it needs no check and no action, only a
+  /// point of computer Bandwidth at each end — so this is a standing setting
+  /// rather than something the sensop does each round.
+  ///
+  /// Sharing means transmitting, so turning this on forces `transmitting` on
+  /// and holds it there: a ship cannot pass its contacts to anyone while
+  /// running silent. Turning it off releases the flag but does not switch it
+  /// back off, since the crew may want to stay lit for other reasons.
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub handoff_sensors: bool,
+
+  /// Which side this ship is on, if any.
+  ///
+  /// Unaligned by default, and omitted from the wire when unset, so nothing
+  /// built before teams existed changes. Nothing enforces it yet — it colours
+  /// the display and will be what sensor hand-offs are shared along.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub team: Option<Team>,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -1116,6 +1141,20 @@ pub enum Stealth {
   Advanced,
 }
 
+/// Which side a ship is on.
+///
+/// Capped at four, and named for colours rather than numbers because the whole
+/// point is that the display codes them: a referee reading "Red" on a dropdown
+/// and seeing a red ship in the view needs no translation step. `None` means
+/// unaligned, which is how every ship built before teams existed arrives.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Team {
+  Red,
+  Blue,
+  Green,
+  Gold,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum CounterMeasures {
   Standard,
@@ -1165,7 +1204,9 @@ impl Ship {
       sensor_locks: vec![],
       contacts: vec![],
       active_sensors: true,
-      transmitting: true,
+      transmitting: false,
+      handoff_sensors: false,
+      team: None,
       crit_level: [0; 11],
       attack_dm: 0,
       crew: crew.unwrap_or_default(),
@@ -1357,6 +1398,19 @@ impl Ship {
     self.crit_level.iter().map(|level| u16::from(*level)).sum()
   }
 
+  /// Turn sensor hand-off on or off.
+  ///
+  /// Switching it on also switches transmitting on, because sharing contacts
+  /// means broadcasting them. Switching it off leaves transmitting where it is:
+  /// the crew may have wanted to be lit up anyway, and silently going quiet
+  /// would be a surprise.
+  pub fn set_handoff_sensors(&mut self, handoff: bool) {
+    self.handoff_sensors = handoff;
+    if handoff {
+      self.transmitting = true;
+    }
+  }
+
   /// Set the ship's emissions, returning whether shutting down active sensors
   /// dropped any locks.
   ///
@@ -1372,7 +1426,10 @@ impl Ship {
   /// dark a real choice rather than a free one. House rule; RAW does not say.
   pub fn set_emissions(&mut self, active_sensors: Option<bool>, transmitting: Option<bool>) -> bool {
     if let Some(transmitting) = transmitting {
-      self.transmitting = transmitting;
+      // Sharing a sensor picture means transmitting one. The client greys the
+      // control out while hand-off is on, but the rule is enforced here so a
+      // hand-crafted request cannot produce a ship sharing contacts in silence.
+      self.transmitting = transmitting || self.handoff_sensors;
     }
 
     let Some(active_sensors) = active_sensors else {

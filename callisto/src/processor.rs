@@ -628,6 +628,7 @@ impl Processor {
       RequestMsg::AddShip(ship) => response_with_update(player, player.add_ship(ship)),
       RequestMsg::SetPilotActions(request) => response_with_update(player, player.set_pilot_actions(&request)),
       RequestMsg::SetShipEmissions(request) => response_with_update(player, player.set_ship_emissions(&request)),
+      RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
       RequestMsg::RenameEntity(msg) => response_with_update(player, player.rename(&msg)),

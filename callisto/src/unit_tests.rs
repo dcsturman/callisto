@@ -1205,6 +1205,7 @@ async fn test_get_entities() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     })
     .unwrap();
 

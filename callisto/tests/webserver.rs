@@ -561,6 +561,7 @@ async fn integration_add_ship() {
     weapons: None,
     active_sensors: None,
     transmitting: None,
+    team: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -634,6 +635,7 @@ async fn integration_add_planet_ship() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -652,6 +654,7 @@ async fn integration_add_planet_ship() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -890,6 +893,7 @@ async fn integration_update_ship() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -945,6 +949,7 @@ async fn integration_update_missile() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -962,6 +967,7 @@ async fn integration_update_missile() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1080,6 +1086,7 @@ async fn integration_remove_ship() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1213,6 +1220,7 @@ async fn integration_set_acceleration() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1274,6 +1282,7 @@ async fn integration_compute_path_basic() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1370,6 +1379,7 @@ async fn integration_compute_path_with_standoff() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1466,6 +1476,7 @@ async fn integration_malformed_requests() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1678,6 +1689,7 @@ async fn integration_set_crew_actions() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1759,6 +1771,7 @@ async fn integration_multi_client_test() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1774,6 +1787,7 @@ async fn integration_multi_client_test() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1795,6 +1809,7 @@ async fn integration_multi_client_test() {
       weapons: None,
       active_sensors: None,
       transmitting: None,
+      team: None,
     }),
   )
   .await;

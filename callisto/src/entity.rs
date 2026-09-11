@@ -1539,6 +1539,95 @@ impl Entities {
       .detection_dm()
   }
 
+  /// Share contacts along the team's hand-off links.
+  ///
+  /// High Guard p. 77: ships in a squadron can pass their sensor picture to
+  /// each other over comms, so a sensop that succeeds covers those that failed.
+  /// It needs no check and no action — only a point of computer Bandwidth at
+  /// each end — so this runs automatically after the detection pass for any
+  /// ship whose crew has switched hand-off on.
+  ///
+  /// Three limits from the text:
+  ///
+  /// * the link costs one Bandwidth from **both** host and recipient, so a
+  ///   ship with none available can neither send nor receive;
+  /// * it breaks beyond Distant, which is why the range is checked per pair;
+  /// * "ships that receive hand-off sensory data cannot then hand-off that data
+  ///   to additional ships", so this is a single hop — sharing reads from the
+  ///   picture each host acquired itself, not from what it was given.
+  ///
+  /// A hand-off can convey a contact the recipient could never have acquired
+  /// alone, which is the whole point: a squadron can post one picket with
+  /// excellent sensors running fully active while everyone else stays quiet and
+  /// still shoots at what the picket sees.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write a ship.
+  pub fn sensor_handoff_pass(&mut self) -> Vec<EffectMsg> {
+    let mut effects = Vec::new();
+
+    // Snapshot what each host acquired on its own, before anything is shared,
+    // so a hand-off cannot be relayed onward within the same pass.
+    let hosts: Vec<(String, Vec3, Vec<String>)> = self
+      .ships
+      .iter()
+      .filter_map(|(name, ship)| {
+        let ship = ship.read().unwrap();
+        let has_bandwidth = ship.current_computer > 0;
+        (ship.handoff_sensors && ship.team.is_some() && has_bandwidth)
+          .then(|| (name.clone(), ship.get_position(), ship.contacts.clone()))
+      })
+      .collect();
+    if hosts.is_empty() {
+      return effects;
+    }
+
+    let mut shared = Vec::<(String, String, String)>::new();
+    for (recipient_name, recipient) in &self.ships {
+      let recipient_guard = recipient.read().unwrap();
+      let Some(team) = recipient_guard.team else { continue };
+      if recipient_guard.current_computer == 0 {
+        continue;
+      }
+      let here = recipient_guard.get_position();
+
+      for (host_name, host_pos, host_contacts) in &hosts {
+        if host_name == recipient_name {
+          continue;
+        }
+        // Same side, and close enough for the link to hold.
+        if self.ships.get(host_name).unwrap().read().unwrap().team != Some(team) {
+          continue;
+        }
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let distance = (*host_pos - here).magnitude() as u32;
+        if find_range_band(distance) == Range::Distant {
+          continue;
+        }
+
+        for contact in host_contacts {
+          if contact != recipient_name && !recipient_guard.contacts.contains(contact) {
+            shared.push((recipient_name.clone(), contact.clone(), host_name.clone()));
+          }
+        }
+      }
+    }
+
+    for (recipient_name, contact, host_name) in shared {
+      let mut recipient = self.ships.get(&recipient_name).unwrap().write().unwrap();
+      if recipient.contacts.contains(&contact) {
+        continue;
+      }
+      recipient.contacts.push(contact.clone());
+      recipient.contacts.sort();
+      effects.push(EffectMsg::Message {
+        content: format!("{recipient_name} receives contact on {contact} from {host_name}."),
+      });
+    }
+
+    effects
+  }
+
   /// The range band between two ships as it was at the start of the round.
   ///
   /// `None` when either ship was not in the snapshot, which means it joined
@@ -3739,6 +3828,122 @@ mod tests {
       }
     }
     assert!(found, "30 rounds should be more than enough to find a Basic-stealth hull");
+  }
+
+  /// Build a picket with a contact nobody else has, plus a quiet team-mate.
+  fn handoff_pair(picket_team: Option<crate::ship::Team>, mate_team: Option<crate::ship::Team>) -> Entities {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    for (name, pos) in [("Picket", 0.0), ("Mate", 1.0e6), ("Bogey", 2.0e6)] {
+      entities.add_ship(name.to_string(), Vec3::new(pos, 0.0, 0.0), Vec3::zero(), &design, None, None);
+    }
+    {
+      let mut picket = entities.ships.get("Picket").unwrap().write().unwrap();
+      picket.team = picket_team;
+      picket.set_handoff_sensors(true);
+    }
+    {
+      let mut mate = entities.ships.get("Mate").unwrap().write().unwrap();
+      mate.team = mate_team;
+      // The quiet ship sees nothing at all on its own.
+      mate.contacts.clear();
+    }
+    entities
+  }
+
+  /// The point of the mechanic: a quiet ship inherits what the picket can see.
+  #[test]
+  fn handoff_shares_contacts_within_a_team() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    let effects = entities.sensor_handoff_pass();
+
+    assert!(
+      holds_contact(&entities, "Mate", "Bogey"),
+      "the quiet ship should inherit the picket's contact"
+    );
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("receives contact on Bogey"))),
+      "the hand-off should be reported"
+    );
+  }
+
+  /// Nothing is shared across sides, or with an unaligned ship.
+  #[test]
+  fn handoff_does_not_cross_teams() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Blue));
+    entities.sensor_handoff_pass();
+    assert!(!holds_contact(&entities, "Mate", "Bogey"), "the other side should get nothing");
+
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), None);
+    entities.sensor_handoff_pass();
+    assert!(
+      !holds_contact(&entities, "Mate", "Bogey"),
+      "an unaligned ship should get nothing"
+    );
+  }
+
+  /// "A hand-off requires one point of available computer Bandwidth from both
+  /// the host and recipient ship" (High Guard p. 78).
+  #[test]
+  fn handoff_needs_bandwidth_at_both_ends() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities.ships.get("Mate").unwrap().write().unwrap().current_computer = 0;
+    entities.sensor_handoff_pass();
+    assert!(
+      !holds_contact(&entities, "Mate", "Bogey"),
+      "a recipient with no Bandwidth cannot receive"
+    );
+
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities.ships.get("Picket").unwrap().write().unwrap().current_computer = 0;
+    entities.sensor_handoff_pass();
+    assert!(
+      !holds_contact(&entities, "Mate", "Bogey"),
+      "a host with no Bandwidth cannot send"
+    );
+  }
+
+  /// "If one or more of the ships in a hand-off strays beyond Distant range,
+  /// the connection is lost."
+  #[test]
+  fn handoff_breaks_beyond_distant() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities
+      .ships
+      .get("Mate")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(6.0e7, 0.0, 0.0));
+    entities.sensor_handoff_pass();
+    assert!(
+      !holds_contact(&entities, "Mate", "Bogey"),
+      "the link should not reach past Distant"
+    );
+  }
+
+  /// Sharing means broadcasting: hand-off forces transmitting on and holds it
+  /// there, so a ship cannot pass contacts while running silent.
+  #[test]
+  fn handoff_forces_transmitting() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Picket".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert!(!ship.transmitting, "ships start silent");
+
+    ship.set_handoff_sensors(true);
+    assert!(ship.transmitting, "turning hand-off on lights the ship up");
+
+    // And it cannot be switched back off underneath the hand-off.
+    ship.set_emissions(None, Some(false));
+    assert!(ship.transmitting, "transmitting is held on while hand-off is on");
+
+    // Turning hand-off off releases it, but does not go quiet on its own.
+    ship.set_handoff_sensors(false);
+    assert!(ship.transmitting, "releasing the hold should not surprise the crew");
+    ship.set_emissions(None, Some(false));
+    assert!(!ship.transmitting, "now it can go quiet");
   }
 
   /// A stealthed ship that shoots from concealment can be found.
