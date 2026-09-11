@@ -3,6 +3,7 @@ import { useAppSelector } from "state/hooks";
 import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
 import { isUndetected } from "lib/contacts";
+import { teamLabelColor } from "lib/teams";
 
 /**
  * Compact at-a-glance roster of every ship in the current scenario. Lives
@@ -17,11 +18,19 @@ import { isUndetected } from "lib/contacts";
 export function ShipSummary() {
   const entities = useAppSelector(entitiesSelector);
   const templates = useAppSelector(templatesSelector);
-  // Gated against the ship whose console is open, matching the target
-  // selectors. With none open -- the GM's all-ships view -- nothing is hidden.
-  const computerShipName = useAppSelector((state) => state.ui.computerShipName);
+  // Gated against the ship the player has actually been given, not whichever
+  // ship they happen to have open. A referee in the all-ships view clicks
+  // through every ship in turn to give orders, and that should not keep
+  // re-blinding the roster; they can see the whole board, so the roster shows
+  // it, coloured by team.
+  //
+  // This is the same rule the 3D view uses, deliberately: the two displays
+  // should agree about what this player can see.
+  const viewingShipName = useAppSelector((state) => state.user.shipName);
   const observer =
-    entities.ships.find((s) => s.name === computerShipName) ?? null;
+    viewingShipName == null
+      ? null
+      : entities.ships.find((s) => s.name === viewingShipName) ?? null;
 
   if (!entities.ships.length) {
     return null;
@@ -43,6 +52,7 @@ export function ShipSummary() {
         // thrust in G is the manoeuvre-drive DM on the detection table -- so a
         // ship you have no contact on shows its presence and nothing else.
         undetected: isUndetected(observer, ship.name),
+        team: ship.team,
       };
     });
 
@@ -58,7 +68,11 @@ export function ShipSummary() {
                 ? "ship-summary-row ship-summary-row-undetected"
                 : "ship-summary-row"
             }>
-            <span className="ship-summary-name">{row.name}</span>
+            <span
+              className="ship-summary-name"
+              style={{color: teamLabelColor(row.team, {undetected: row.undetected})}}>
+              {row.name}
+            </span>
             <span className="ship-summary-hull">
               {row.undetected
                 ? "\u2014"

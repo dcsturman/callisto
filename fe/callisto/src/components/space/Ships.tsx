@@ -22,7 +22,7 @@ import {
 } from "lib/universal";
 import { Ship as ShipType, Missile as MissileType} from "lib/entities";
 import { isUndetected } from "lib/contacts";
-import { teamBodyColor, TEAM_CSS } from "lib/teams";
+import { teamBodyColor, teamLabelColor } from "lib/teams";
 import { FlightPath } from "lib/flightPath";
 
 import { addVector, scaleVector, RangeSphere } from "lib/Util";
@@ -85,14 +85,13 @@ function Ship(args: {
   // dimmer still, present only because the referee's table can see the board.
   const brightness = isOwnShip || observer == null ? 1 : undetected ? 0.06 : 0.2;
   const bodyColor = teamBodyColor(args.ship.team, brightness);
-  const labelColor =
-    isOwnShip || observer == null
-      ? args.ship.team
-        ? TEAM_CSS[args.ship.team]
-        : "#3dfc32"
-      : undetected
-        ? "#5a5a5a"
-        : "#9a9a9a";
+  // Detection wins over team: a ship you cannot see reads grey whatever side it
+  // is on. Once detected the team colour comes through, dimmed for anything
+  // that is not the ship whose console is open.
+  const labelColor = teamLabelColor(args.ship.team, {
+    undetected,
+    dim: !(isOwnShip || observer == null),
+  });
 
   const { camera } = useThree();
   const textRef = useRef<Mesh>(null);

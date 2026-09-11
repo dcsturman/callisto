@@ -54,3 +54,37 @@ export const teamBodyColor = (
   const base = team == null ? UNALIGNED_HDR : TEAM_HDR[team];
   return [base[0] * scale, base[1] * scale, base[2] * scale];
 };
+
+/** The green a ship's label has always used when it is on no team. */
+const UNALIGNED_LABEL = "#3dfc32";
+
+/** Grey for a ship this console has no sensor contact on. */
+export const NO_CONTACT_LABEL = "#5a5a5a";
+
+/**
+ * The label colour for a ship, in 2D chrome or as a 3D text colour.
+ *
+ * Detection wins over team: a ship you cannot see reads grey whatever side it
+ * is on, because "can I act on this" is the more urgent question. Once it is
+ * detected the team colour comes through, dimmed for a ship that is not the one
+ * whose console is open so your own ship still stands out.
+ */
+export const teamLabelColor = (
+  team: Team | null | undefined,
+  opts: { undetected?: boolean; dim?: boolean } = {},
+): string => {
+  if (opts.undetected === true) {
+    return NO_CONTACT_LABEL;
+  }
+  const base = team == null ? UNALIGNED_LABEL : TEAM_CSS[team];
+  return opts.dim === true ? dim(base) : base;
+};
+
+/** Pull a hex colour towards black, for "detected, but not your ship". */
+const dim = (hex: string): string => {
+  const n = parseInt(hex.slice(1), 16);
+  const scaled = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) =>
+    Math.round(c * 0.55),
+  );
+  return `#${scaled.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+};

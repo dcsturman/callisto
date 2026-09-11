@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { TEAMS, TEAM_CSS, teamBodyColor } from "lib/teams";
+import {
+  TEAMS,
+  TEAM_CSS,
+  teamBodyColor,
+  teamLabelColor,
+  NO_CONTACT_LABEL,
+} from "lib/teams";
 
 describe("teams", () => {
   it("caps at four", () => {
@@ -28,5 +34,34 @@ describe("teams", () => {
   it("keeps teams distinguishable from one another", () => {
     const seen = TEAMS.map((t) => teamBodyColor(t, 1).join(","));
     expect(new Set(seen).size).toBe(TEAMS.length);
+  });
+});
+
+describe("teamLabelColor", () => {
+  it("shows the team colour for a detected ship", () => {
+    expect(teamLabelColor("Red", {})).toBe(TEAM_CSS.Red);
+  });
+
+  it("greys a ship with no sensor contact, whatever side it is on", () => {
+    // Detection wins over team: "can I act on this" is the more urgent
+    // question than "whose is it".
+    expect(teamLabelColor("Red", {undetected: true})).toBe(NO_CONTACT_LABEL);
+    expect(teamLabelColor(null, {undetected: true})).toBe(NO_CONTACT_LABEL);
+  });
+
+  it("dims a detected ship that is not the one being flown", () => {
+    const full = teamLabelColor("Blue", {});
+    const dimmed = teamLabelColor("Blue", {dim: true});
+    expect(dimmed).not.toBe(full);
+    expect(dimmed).toMatch(/^#[0-9a-f]{6}$/i);
+    // Same hue, lower value: every channel pulled towards black.
+    const chan = (h: string) =>
+      [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    chan(dimmed).forEach((c, i) => expect(c).toBeLessThanOrEqual(chan(full)[i]));
+  });
+
+  it("keeps the old green for an unaligned ship", () => {
+    expect(teamLabelColor(null, {})).toBe("#3dfc32");
+    expect(teamLabelColor(undefined, {})).toBe("#3dfc32");
   });
 });
