@@ -185,6 +185,85 @@ pub struct Ship {
   #[serde(default)]
   pub sensor_locks: Vec<String>,
 
+  /// The ships this one currently detects.
+  ///
+  /// Directional: A having a contact on B says nothing about whether B has one
+  /// on A, which is what lets stealth work at all. Sticky once established -
+  /// High Guard p. 77, "after initial contact, sensor detection is maintained
+  /// under most circumstances" - so it is dropped only by losing a stealthed
+  /// target across a range band or by the range opening past Distant.
+  ///
+  /// A sensor lock requires a contact, and more broadly nothing can be done to
+  /// a ship that is not detected. Omitted from the wire when empty.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub contacts: Vec<String>,
+
+  /// Whether the ship is running active radar/lidar.
+  ///
+  /// Active sensors are what let a sensop pinpoint another ship at all: High
+  /// Guard p. 77, "attempting to locate a ship with this level of accuracy
+  /// requires the use of active sensors". They also announce the ship, handing
+  /// anyone looking for it DM+2 on the Initial Detection table.
+  ///
+  /// Running dark keeps the contacts already held - detection "is maintained
+  /// under most circumstances" - but acquires nothing new and cannot lock.
+  #[serde(default = "default_true", skip_serializing_if = "is_true")]
+  pub active_sensors: bool,
+
+  /// Whether the ship is radiating on RF: transponder, radio comms, or both.
+  ///
+  /// High Guard's row is "transponder **or** radio comms" at +6 — the single
+  /// largest modifier on the detection table — so the two are one flag. A
+  /// merchant squawking its transponder because it believes all is well, and a
+  /// stealth ship breaking silence to warn a team-mate, are the same emission
+  /// as far as anyone hunting them is concerned.
+  ///
+  /// Defaults to **off**. RAW expects transponders on in civilised space, but
+  /// this is the largest row on the detection table by some margin, and a ship
+  /// left transmitting by accident is simply found — which would quietly undo
+  /// stealth for any scenario whose author did not think about it. Defaulting
+  /// off means a scenario opts into the noise deliberately, which is the safer
+  /// direction for a switch this loud. Scenario builders can turn it on per
+  /// ship when adding one.
+  ///
+  /// Receiving a transmission does not set this. Listening is passive; only
+  /// sending gives you away.
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub transmitting: bool,
+
+  /// Whether this ship is sharing its sensor picture with its team.
+  ///
+  /// A hand-off is automatic in RAW — it needs no check and no action, only a
+  /// point of computer Bandwidth at each end — so this is a standing setting
+  /// rather than something the sensop does each round.
+  ///
+  /// Sharing means transmitting, so turning this on forces `transmitting` on
+  /// and holds it there: a ship cannot pass its contacts to anyone while
+  /// running silent. Turning it off releases the flag but does not switch it
+  /// back off, since the crew may want to stay lit for other reasons.
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub handoff_sensors: bool,
+
+  /// Whether this ship's comms are being jammed this round.
+  ///
+  /// Transient: set by a successful `JamComms` and cleared at the end of the
+  /// round, so it never reaches the wire or a saved scenario. While it is set
+  /// the ship can neither send nor receive a sensor hand-off — jamming stops
+  /// communication, and a hand-off is communication.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  pub comms_jammed: bool,
+
+  /// Which side this ship is on, if any.
+  ///
+  /// Unaligned by default, and omitted from the wire when unset, so nothing
+  /// built before teams existed changes. Nothing enforces it yet — it colours
+  /// the display and will be what sensor hand-offs are shared along.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub team: Option<Team>,
+
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   pub crew: Crew,
@@ -310,6 +389,22 @@ fn is_default_power_multiplier(value: &f32) -> bool {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u8(value: &u8) -> bool {
   *value == 0
+}
+
+/// Active sensors default to on: a ship runs them unless the crew decides to
+/// go quiet.
+fn default_true() -> bool {
+  true
+}
+
+/// Paired with `default_true` so a ship running normally adds nothing to the
+/// wire or to a saved scenario.
+///
+/// Takes a reference because that is what `skip_serializing_if` hands it, the
+/// same wrinkle as the other helpers here.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_true(value: &bool) -> bool {
+  *value
 }
 
 /// A helper function to avoid serializing when zero.  It makes
@@ -1056,6 +1151,20 @@ pub enum Stealth {
   Advanced,
 }
 
+/// Which side a ship is on.
+///
+/// Capped at four, and named for colours rather than numbers because the whole
+/// point is that the display codes them: a referee reading "Red" on a dropdown
+/// and seeing a red ship in the view needs no translation step. `None` means
+/// unaligned, which is how every ship built before teams existed arrives.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Team {
+  Red,
+  Blue,
+  Green,
+  Gold,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum CounterMeasures {
   Standard,
@@ -1103,6 +1212,12 @@ impl Ship {
       current_computer: design.computer,
       active_weapons: vec![true; num_weapons],
       sensor_locks: vec![],
+      contacts: vec![],
+      active_sensors: true,
+      transmitting: false,
+      handoff_sensors: false,
+      comms_jammed: false,
+      team: None,
       crit_level: [0; 11],
       attack_dm: 0,
       crew: crew.unwrap_or_default(),
@@ -1265,6 +1380,81 @@ impl Ship {
   #[must_use]
   pub fn can_jump(&self) -> bool {
     self.can_jump
+  }
+
+  /// The thrust this ship is applying, in whole G, for the detection tables.
+  ///
+  /// "Target is operating manoeuvre drive: +1 per Thrust". A flight plan may
+  /// carry two accelerations with separate durations; the louder of the two is
+  /// what a sensop notices, so the maximum magnitude is used rather than an
+  /// average. Rounded down, so a ship drifting under 1G contributes nothing.
+  #[must_use]
+  pub fn thrust_in_g(&self) -> u8 {
+    let first = self.plan.0 .0.magnitude();
+    let second = self.plan.1.as_ref().map_or(0.0, |accel| accel.0.magnitude());
+    let loudest = first.max(second);
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let g = (loudest / crate::entity::G).floor().clamp(0.0, f64::from(u8::MAX)) as u8;
+    g
+  }
+
+  /// Total severity of the critical hits this ship has taken.
+  ///
+  /// "Stealthed target has been damaged and emits heat: +1 per Severity".
+  /// Summed across every system, and cleared with the rest of `crit_level` on
+  /// repair or reset.
+  #[must_use]
+  pub fn total_crit_severity(&self) -> u16 {
+    self.crit_level.iter().map(|level| u16::from(*level)).sum()
+  }
+
+  /// Turn sensor hand-off on or off.
+  ///
+  /// Switching it on also switches transmitting on, because sharing contacts
+  /// means broadcasting them. Switching it off leaves transmitting where it is:
+  /// the crew may have wanted to be lit up anyway, and silently going quiet
+  /// would be a surprise.
+  pub fn set_handoff_sensors(&mut self, handoff: bool) {
+    self.handoff_sensors = handoff;
+    if handoff {
+      self.transmitting = true;
+    }
+  }
+
+  /// Set the ship's emissions, returning whether shutting down active sensors
+  /// dropped any locks.
+  ///
+  /// `None` leaves a setting alone, so a caller can change one without knowing
+  /// the other.
+  ///
+  /// Shutting them down drops every sensor lock this ship holds. A lock is
+  /// deliberate, continuous illumination of a target - the Stealthed Ships
+  /// table charges DM+2 for "sensor locks, electronic warfare or other
+  /// deliberate use of active sensors" - so it cannot survive going quiet.
+  /// Contacts are kept: High Guard p. 77 has detection "maintained under most
+  /// circumstances" once established, and it is that asymmetry that makes going
+  /// dark a real choice rather than a free one. House rule; RAW does not say.
+  pub fn set_emissions(&mut self, active_sensors: Option<bool>, transmitting: Option<bool>) -> bool {
+    if let Some(transmitting) = transmitting {
+      // Sharing a sensor picture means transmitting one. The client greys the
+      // control out while hand-off is on, but the rule is enforced here so a
+      // hand-crafted request cannot produce a ship sharing contacts in silence.
+      self.transmitting = transmitting || self.handoff_sensors;
+    }
+
+    let Some(active_sensors) = active_sensors else {
+      return false;
+    };
+
+    let going_dark = self.active_sensors && !active_sensors;
+    self.active_sensors = active_sensors;
+
+    if going_dark && !self.sensor_locks.is_empty() {
+      self.sensor_locks.clear();
+      return true;
+    }
+    false
   }
 
   /// Set possible pilot actions for the next round. These include allocating thrust to dodging as
@@ -3308,5 +3498,50 @@ mod tests {
 
     assert!(!ship.has_engineer_action_taken());
     assert!(!ship.has_evade_boost_used());
+  }
+
+  /// "+1 per Thrust" reads the loudest burn of the round and rounds down.
+  #[test]
+  fn thrust_in_g_takes_the_loudest_segment() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Test".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Drifting.
+    ship.plan = FlightPlan::acceleration(Vec3::zero());
+    assert_eq!(ship.thrust_in_g(), 0);
+
+    // Just under 1G rounds down to nothing.
+    ship.plan = FlightPlan::acceleration(Vec3::new(9.0, 0.0, 0.0));
+    assert_eq!(ship.thrust_in_g(), 0);
+
+    // Exactly 3G.
+    ship.plan = FlightPlan::acceleration(Vec3::new(3.0 * crate::entity::G, 0.0, 0.0));
+    assert_eq!(ship.thrust_in_g(), 3);
+
+    // Two segments: the louder one is what a sensop notices, whichever order
+    // they come in.
+    ship.plan = FlightPlan::new(
+      (Vec3::new(crate::entity::G, 0.0, 0.0), 100).into(),
+      Some((Vec3::new(4.0 * crate::entity::G, 0.0, 0.0), 100).into()),
+    );
+    assert_eq!(ship.thrust_in_g(), 4);
+
+    ship.plan = FlightPlan::new(
+      (Vec3::new(4.0 * crate::entity::G, 0.0, 0.0), 100).into(),
+      Some((Vec3::new(crate::entity::G, 0.0, 0.0), 100).into()),
+    );
+    assert_eq!(ship.thrust_in_g(), 4);
+  }
+
+  /// Heat is the sum of every critical the ship is carrying.
+  #[test]
+  fn crit_severity_sums_across_systems() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Test".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.total_crit_severity(), 0);
+
+    ship.crit_level[0] = 2;
+    ship.crit_level[5] = 3;
+    assert_eq!(ship.total_crit_severity(), 5);
   }
 }

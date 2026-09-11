@@ -83,6 +83,97 @@ Everything below is a smaller deviation within the tonnage we do support.
 * Planets currently do not support gravity.  Currently we found the movement of ships near planets was just difficult hard to get right and there'd often be collisions.  This may be addressed in a future release.
 * _Astrogation_ checks for jump are considered to automatically succeed.  _Engineering (Jump)_ skill is used for the check to see if the jump is successful.  
 
+## Sensors, detection and stealth
+
+Callisto implements initial detection (High Guard pp. 76-77) and the loss of
+contact with stealthed ships (p. 77). A few points where it makes a ruling the book does
+not, or deliberately leaves something out.
+
+* **Nothing can be done to a ship you have not detected.** An undetected ship is
+  not there as far as you are concerned: it cannot be fired on, sensor locked,
+  jammed or set as a navigation target. Point defence is the exception -- it
+  engages missiles, which are objects arriving at you, not the ship that fired
+  them, so a battery defends against a launcher you have never seen.
+* **Ordinary ships start a scenario detected; stealthed ships do not.** An
+  ordinary hull would be found within a round or two anyway, and opening a fight
+  with a coin flip over whether the two sides can see each other is worse than
+  opening it resolved. A stealthed hull is the case worth playing out, so it has
+  to be found. This means a stealth ship reliably gets a free opening round.
+* **Detection is re-rolled every round**, for each pair of ships that is not
+  already in contact, and only by ships running active sensors.
+* **The two High Guard detection tables are treated as one, and the rows stack.**
+  Initial Detection (p. 76) and Stealthed Ships (p. 77) share four identical
+  rows; the rest differ only because of when each table is used. A ship is as
+  loud as the sum of what it is doing -- running active sensors, thrusting,
+  running its power plant, firing, and leaking heat from criticals -- whether or
+  not anyone has seen it before. Firing therefore helps someone find you even if
+  they never had contact, which is what stops a stealth ship shooting from total
+  concealment indefinitely.
+* **Going dark drops your sensor locks but keeps your contacts.** RAW does not
+  settle this. A lock is deliberate, continuous illumination -- the Stealthed
+  Ships table charges DM+2 for "sensor locks, electronic warfare or other
+  deliberate use of active sensors" -- so it cannot survive going quiet, while
+  detection is "maintained under most circumstances" once established. Keeping
+  both would make going dark free; dropping both would make it useless.
+* **Contact is lost beyond Distant** (50,000 km) and cannot be acquired there,
+  since past that range everything is an undifferentiated blip. This is what
+  makes running away work.
+* **Only stealthed ships can be lost by opening the range**, and only when the
+  range actually opens a band. Closing it is never a trigger.
+* **Transponder and radio comms are one flag, and it defaults to off.** High
+  Guard prints them as a single row at +6 -- the largest on the table -- and
+  they are the same emission to anyone listening. It defaults off rather than
+  on: RAW expects transponders lit in civilised space, but a ship left
+  transmitting by accident is simply found, which would quietly undo stealth for
+  any scenario whose author had not thought about it. A scenario opts into the
+  noise deliberately, per ship, when the ship is added. Receiving a transmission
+  does not count -- listening is passive, only sending gives you away.
+* **Sensor hand-offs are not implemented.** Squadrons sharing contacts over
+  comms needs a concept of sides, which Callisto does not yet have. When they
+  arrive they will also need a way to record that a ship is *transmitting*:
+  High Guard's +6 row is "transponder **or radio comms**", so a stealth ship
+  that radios a team-mate -- or receives a hand-off -- gives away its position
+  while it does. That tension is the point of the rule.
+* **Detecting missile launch is not modelled** as a check. The Core Rulebook has
+  the target roll to notice an incoming salvo, harder if the firing ship was
+  itself undetected. Callisto shows every launch to everyone, as noted under
+  missiles above.
+* **Electronic warfare against detection** (jamming a sensop rather than
+  missiles) is not modelled; there is no RAW for it, and `Jam Comms` is a comms
+  action rather than a sensors one.
+
+## Teams and sensor hand-offs
+
+Ships can be assigned to one of four colour-coded teams, or left unaligned.
+
+* **Ships will not fire on their own side.** Only attacks are blocked. Plotting
+  a course to a team-mate, sensor locking one or jamming one are all still
+  possible -- there are legitimate reasons to want each, and the referee is
+  better placed than the engine to judge them.
+* **Sensor hand-offs** (High Guard p. 77) let a team share its sensor picture.
+  Turn on *Hand-off* in the sensor panel and that ship's contacts pass to every
+  team-mate automatically. It is automatic in the book too: no check, no action,
+  only a point of computer Bandwidth at each end.
+* A hand-off **conveys contacts the recipient could never have acquired alone**.
+  That is the point: a squadron can post one picket with excellent sensors
+  running fully active while everyone else stays quiet and still shoots at what
+  the picket sees.
+* **Sharing means broadcasting.** Turning hand-off on forces the transponder and
+  comms flag on and holds it there -- a ship cannot pass its contacts in
+  silence, and the picket pays DM+6 to everyone hunting it. Turning hand-off off
+  releases the hold but does not switch the ship to silent on its own.
+* **Receiving does not light you up.** Listening is passive.
+* Hand-offs **break beyond Distant**, and are a single hop: a ship that receives
+  shared data cannot pass it on again.
+* **Jam Comms breaks hand-offs.** A ship whose comms are jammed can neither send
+  nor receive for that round, so jamming the picket cuts its whole squadron off
+  from what it can see. This is the first thing Jam Comms actually does --
+  before hand-offs existed it rolled a check and reported the result without
+  affecting anything.
+* **A contact once shared belongs to the receiver.** It does not lapse if the
+  link breaks or the host is destroyed: the crew has the plot, and killing the
+  ship that gave it to them does not take it back.
+
 ## Known gaps being considered for future versions
 
 * **Capital ships**: hulls above 5,000 tons, which needs spinal mounts and weapon batteries before anything

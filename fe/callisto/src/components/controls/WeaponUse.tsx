@@ -637,6 +637,8 @@ export const FireControl: React.FC<FireControlProps> = () => {
           exclude={computerShipName!}
           extra={POINT_DEFENSE_PHANTOM}
           formatter={formatter}
+          observer={computerShip}
+          excludeSameTeam
         />
       </div>
       <div className="weapon-list">{weaponButtons}</div>

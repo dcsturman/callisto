@@ -2,6 +2,7 @@ import * as React from "react";
 import { useAppSelector } from "state/hooks";
 import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
+import { isUndetected } from "lib/contacts";
 
 /**
  * Compact at-a-glance roster of every ship in the current scenario. Lives
@@ -16,6 +17,11 @@ import { Ship } from "lib/entities";
 export function ShipSummary() {
   const entities = useAppSelector(entitiesSelector);
   const templates = useAppSelector(templatesSelector);
+  // Gated against the ship whose console is open, matching the target
+  // selectors. With none open -- the GM's all-ships view -- nothing is hidden.
+  const computerShipName = useAppSelector((state) => state.ui.computerShipName);
+  const observer =
+    entities.ships.find((s) => s.name === computerShipName) ?? null;
 
   if (!entities.ships.length) {
     return null;
@@ -33,6 +39,10 @@ export function ShipSummary() {
         current: ship.current_hull,
         max: maxHull,
         thrust,
+        // Hull and thrust are exactly what a sensor contact would tell you --
+        // thrust in G is the manoeuvre-drive DM on the detection table -- so a
+        // ship you have no contact on shows its presence and nothing else.
+        undetected: isUndetected(observer, ship.name),
       };
     });
 
@@ -41,13 +51,22 @@ export function ShipSummary() {
       <h2 className="ship-summary-title">Ships</h2>
       <ul className="ship-summary-rows">
         {rows.map((row) => (
-          <li key={row.name} className="ship-summary-row">
+          <li
+            key={row.name}
+            className={
+              row.undetected
+                ? "ship-summary-row ship-summary-row-undetected"
+                : "ship-summary-row"
+            }>
             <span className="ship-summary-name">{row.name}</span>
             <span className="ship-summary-hull">
-              {row.current}
-              {row.max !== null ? `(${row.max})` : ""}
+              {row.undetected
+                ? "\u2014"
+                : `${row.current}${row.max !== null ? `(${row.max})` : ""}`}
             </span>
-            <span className="ship-summary-thrust">{row.thrust.toFixed(1)} G</span>
+            <span className="ship-summary-thrust">
+              {row.undetected ? "\u2014" : `${row.thrust.toFixed(1)} G`}
+            </span>
           </li>
         ))}
       </ul>
