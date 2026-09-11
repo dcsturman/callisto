@@ -532,6 +532,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
   // Absent means running normally, which is how ships built before emissions
   // existed arrive.
   const activeSensors = ship.active_sensors !== false;
+  const transmitting = ship.transmitting !== false;
 
   return (
     <div className="control-label">
@@ -541,9 +542,23 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
           <input
             type="checkbox"
             checked={activeSensors}
-            onChange={(event) => setShipEmissions(ship.name, event.target.checked)}
+            onChange={(event) =>
+              setShipEmissions(ship.name, event.target.checked, undefined)
+            }
           />
           Active
+        </label>
+        <label
+          className="emissions-toggle"
+          title="Transponder and radio comms. The largest signal a ship gives off: DM+6 to anyone hunting it. A ship meant to be lurking runs silent.">
+          <input
+            type="checkbox"
+            checked={transmitting}
+            onChange={(event) =>
+              setShipEmissions(ship.name, undefined, event.target.checked)
+            }
+          />
+          Transmit
         </label>
       </div>
       <select

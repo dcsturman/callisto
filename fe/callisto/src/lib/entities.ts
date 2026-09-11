@@ -95,6 +95,15 @@ export interface Ship extends Entity {
    * as it did before emissions existed.
    */
   active_sensors?: boolean;
+  /**
+   * Whether the ship is radiating on RF -- transponder, radio comms or both.
+   * Absent means yes.
+   *
+   * High Guard prints transponder and comms as one row at +6, the largest
+   * modifier on the detection table, so they are one flag here. A ship meant to
+   * be lurking wants this off.
+   */
+  transmitting?: boolean;
   crew: Crew;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   repair_bonus?: number;

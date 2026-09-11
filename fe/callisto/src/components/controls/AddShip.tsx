@@ -91,8 +91,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
       design: firstDesign.name,
       crew: createCrew(),
       armament: buildWeaponRows(firstDesign.name),
-      // Ships are built running normally; the referee can start one dark.
+      // Ships are built running normally; the referee can start one dark or
+      // silent.
       activeSensors: true,
+      transmitting: true,
     };
   }, [shipDesignTemplates, entities, buildWeaponRows]);
 
@@ -121,6 +123,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         ),
         // Absent on the wire means running normally.
         activeSensors: current.active_sensors !== false,
+        transmitting: current.transmitting !== false,
       };
       setAddShipData(template);
     }
@@ -155,6 +158,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
               ),
               // Absent on the wire means running normally.
               activeSensors: ship.active_sensors !== false,
+              transmitting: ship.transmitting !== false,
             });
           }
         }
@@ -216,6 +220,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         crew,
         weapons: armament,
         active_sensors: addShipData.activeSensors,
+        transmitting: addShipData.transmitting,
       };
 
       addShip(revision);
@@ -342,6 +347,21 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 }
               />
               Active sensors
+            </label>
+            <label
+              className="emissions-toggle"
+              title="Transponder and radio comms. DM+6 to anyone hunting this ship. Turn off for a ship that is meant to be lurking.">
+              <input
+                type="checkbox"
+                checked={addShipData.transmitting}
+                onChange={(event) =>
+                  setAddShipData({
+                    ...addShipData,
+                    transmitting: event.target.checked,
+                  })
+                }
+              />
+              Transmit
             </label>
           </div>
         </div>

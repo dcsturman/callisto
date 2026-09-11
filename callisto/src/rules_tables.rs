@@ -211,6 +211,8 @@ pub fn detection_modifiers(observer_tl: u8, target_tl: u8, target_stealth: Optio
 
 /// Target-side DMs for a sensor check: how loud the ship being looked for is.
 ///
+/// See [`Emissions`] for the fields; [`Emissions::detection_dm`] sums them.
+///
 /// High Guard prints these as two tables — Initial Detection (p. 76) and
 /// Stealthed Ships (p. 77) — but they are one model written twice. Four rows
 /// are word-for-word identical between them, including the same worked example.
@@ -233,19 +235,48 @@ pub fn detection_modifiers(observer_tl: u8, target_tl: u8, target_stealth: Optio
 /// * operating its power plant, +1
 /// * fired weapons this round, +2
 /// * damaged and emitting heat, +1 per Severity
+/// * transmitting — transponder or radio comms — +6
 ///
-/// The transponder row (+6) is deliberately absent — see `SENSORS_DESIGN.md`.
+/// The transponder and comms rows are one flag: the book prints them as a
+/// single row, and they are the same emission to anyone listening.
 /// The tech-level and stealth rows live in [`detection_modifiers`], because
 /// they depend on both ships rather than just the target.
-#[must_use]
-pub fn emissions_mod(
-  active_sensors: bool, thrust_g: u8, power_plant_running: bool, fired_weapons: bool, crit_severity: u16,
-) -> i16 {
-  i16::from(active_sensors) * 2
-    + i16::from(thrust_g)
-    + i16::from(power_plant_running)
-    + i16::from(fired_weapons) * 2
-    + i16::try_from(crit_severity).unwrap_or(i16::MAX)
+/// What a ship is doing that someone hunting it could notice.
+///
+/// Grouped rather than passed as a row of loose booleans, which is both easier
+/// to read at the call site and keeps the fields named where they are set.
+/// The bools are genuinely independent rows of a rules table rather than a
+/// state machine wanting an enum, so the lint against several of them does not
+/// apply here.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy)]
+pub struct Emissions {
+  /// Running active radar/lidar.
+  pub active_sensors: bool,
+  /// Thrust being applied, in whole G.
+  pub thrust_g: u8,
+  /// Power plant at minimum level or higher, which is any functioning ship.
+  pub power_plant: bool,
+  /// Fired any weapon this round.
+  pub fired_weapons: bool,
+  /// Total severity of criticals taken, which shows up as heat.
+  pub crit_severity: u16,
+  /// Radiating on RF: transponder, radio comms, or both.
+  pub transmitting: bool,
+}
+
+impl Emissions {
+  /// The DM this ship's behaviour gives to anyone making a sensor check
+  /// against it. Rows stack.
+  #[must_use]
+  pub fn detection_dm(self) -> i16 {
+    i16::from(self.active_sensors) * 2
+      + i16::from(self.thrust_g)
+      + i16::from(self.power_plant)
+      + i16::from(self.fired_weapons) * 2
+      + i16::try_from(self.crit_severity).unwrap_or(i16::MAX)
+      + i16::from(self.transmitting) * 6
+  }
 }
 
 pub fn countermeasures_mod(countermeasures: Option<CounterMeasures>) -> i16 {
@@ -572,34 +603,118 @@ mod tests {
     assert_eq!(detection_modifiers(14, 12, Some(Stealth::Enhanced)), -2);
   }
 
-  /// The unified emissions table: active sensors +2, +1 per Thrust, power plant
-  /// +1, firing +2, +1 per Severity of damage. Rows stack.
+  /// A silent, drifting, undamaged ship with its plant down: the baseline every
+  /// row below is measured against.
+  fn silent() -> Emissions {
+    Emissions {
+      active_sensors: false,
+      thrust_g: 0,
+      power_plant: false,
+      fired_weapons: false,
+      crit_severity: 0,
+      transmitting: false,
+    }
+  }
+
+  /// The unified emissions table. Each row on its own, then stacking.
   #[test]
   fn emissions_rows_match_the_tables() {
-    // Silent, drifting, plant down, not firing, undamaged: nothing to notice.
-    assert_eq!(emissions_mod(false, 0, false, false, 0), 0);
+    assert_eq!(silent().detection_dm(), 0, "nothing to notice");
 
-    // Each row on its own.
-    assert_eq!(emissions_mod(true, 0, false, false, 0), 2, "active sensors");
-    // The book's example: "A target ship applying Thrust 3 provides DM+3".
-    assert_eq!(emissions_mod(false, 3, false, false, 0), 3, "+1 per Thrust");
-    assert_eq!(emissions_mod(false, 0, true, false, 0), 1, "power plant");
-    assert_eq!(emissions_mod(false, 0, false, true, 0), 2, "firing gives you away");
-    assert_eq!(emissions_mod(false, 0, false, false, 3), 3, "+1 per Severity");
+    for (label, e, expected) in [
+      (
+        "active sensors",
+        Emissions {
+          active_sensors: true,
+          ..silent()
+        },
+        2,
+      ),
+      // The book's example: "A target ship applying Thrust 3 provides DM+3".
+      (
+        "+1 per Thrust",
+        Emissions {
+          thrust_g: 3,
+          ..silent()
+        },
+        3,
+      ),
+      (
+        "power plant",
+        Emissions {
+          power_plant: true,
+          ..silent()
+        },
+        1,
+      ),
+      (
+        "firing gives you away",
+        Emissions {
+          fired_weapons: true,
+          ..silent()
+        },
+        2,
+      ),
+      (
+        "+1 per Severity",
+        Emissions {
+          crit_severity: 3,
+          ..silent()
+        },
+        3,
+      ),
+      (
+        "transponder or comms",
+        Emissions {
+          transmitting: true,
+          ..silent()
+        },
+        6,
+      ),
+    ] {
+      assert_eq!(e.detection_dm(), expected, "{label}");
+    }
+  }
 
-    // An ordinary ship going about its business.
-    assert_eq!(emissions_mod(true, 0, true, false, 0), 3);
-
-    // Rows stack: a ship that is lit up AND shooting is easier to find than one
-    // doing only one of those. This is the case the two-table split obscured,
-    // because firing only ever appeared on the reacquisition table.
-    assert_eq!(emissions_mod(true, 0, true, true, 0), 5);
+  /// Rows stack: a ship doing two loud things is easier to find than one doing
+  /// a single loud thing. This is the case the two-table split obscured, since
+  /// firing only ever appeared on the reacquisition table.
+  #[test]
+  fn emission_rows_stack() {
+    let lit_and_firing = Emissions {
+      active_sensors: true,
+      fired_weapons: true,
+      ..silent()
+    };
+    assert_eq!(lit_and_firing.detection_dm(), 4, "+2 and +2, not +2");
 
     // Running dark while shooting still gives something away, which is what
     // stops a stealth ship firing from total concealment indefinitely.
-    assert_eq!(emissions_mod(false, 3, true, true, 0), 6);
+    let dark_firing_running = Emissions {
+      thrust_g: 3,
+      power_plant: true,
+      fired_weapons: true,
+      ..silent()
+    };
+    assert_eq!(dark_firing_running.detection_dm(), 6);
 
-    // Everything at once.
-    assert_eq!(emissions_mod(true, 6, true, true, 2), 13);
+    // Everything at once, with and without the comms row.
+    let loud = Emissions {
+      active_sensors: true,
+      thrust_g: 6,
+      power_plant: true,
+      fired_weapons: true,
+      crit_severity: 2,
+      transmitting: true,
+    };
+    assert_eq!(loud.detection_dm(), 19);
+    assert_eq!(
+      Emissions {
+        transmitting: false,
+        ..loud
+      }
+      .detection_dm(),
+      13
+    );
   }
 }

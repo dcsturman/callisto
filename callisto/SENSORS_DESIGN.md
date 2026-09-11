@@ -452,6 +452,24 @@ sensop that succeeds can pass the picture to those that failed. Callisto cannot
 implement this yet because it has no concept of **sides**: nothing says which
 ships would share with each other. Teams come first, then hand-offs.
 
+### Teams: the shape agreed
+
+* **Four teams maximum**, colour-coded.
+* Ships render in their team's colour rather than the current uniform
+  blue-white.
+* A **dropdown on the ship controls** sets a ship's team.
+
+One interaction to design around: colour is *already* carrying information after
+phase 5. The 3D view uses brightness and label colour for three detection states
+(your own ship, a ship you can see, a ship you cannot). Team colour has to
+compose with that rather than fight it — the obvious split is **hue for team,
+brightness and label for detection**, so a dimmed red ship still reads as "team
+red, not currently detected". Worth checking against the bloom pass, which is
+what makes the current palette legible at all.
+
+Teams are also what `no contact, no interaction` will need to be checked
+against eventually: right now nothing stops a ship firing on its own side.
+
 ### Comms revives the row we deleted
 
 Section 3 drops the transponder, on the grounds that nothing sensible goes into
@@ -474,15 +492,29 @@ Deliberately not built now. A `transmitting` flag with nothing driving it would
 be the same mistake as the transponder checkbox: a control nobody ever touches.
 It should land with teams and hand-offs, where something actually sets it.
 
+Settled already:
+
+* **Only transmitting lights you up; receiving does not.** Listening is passive.
+  The Bandwidth cost at both ends is a computer-capacity limit, not an emission.
+* **A hand-off conveys contacts the receiver could never have acquired itself.**
+  That is the whole point: it lets a squadron post one picket with excellent
+  sensors running fully active, while everyone else runs quiet and still shoots
+  at what the picket can see. It is also the fix for the Marduk matchup, where a
+  TL9 raider cannot see a TL15 stealth hull at any DM it can reach.
+
+That combination gives the mechanic its shape — the picket is loud, valuable and
+a target, the quiet ships are dangerous only while it survives, and cutting the
+hand-off is worth as much as killing a ship.
+
 Open questions for that work:
 
-* Is transmitting a per-round state (set by sending or receiving a hand-off) or
-  a standing toggle the crew controls?
-* Does receiving a hand-off light you up, or only sending one? The book says the
-  connection costs Bandwidth at both ends, which hints at both.
-* Does a hand-off convey contacts a ship could not have acquired itself — a
-  TL9 raider seeing a TL15 stealth hull because a team-mate did? That is the
-  whole point of the mechanic, and it is also the fix for the Marduk matchup.
+* Is transmitting driven per-round by sending a hand-off, or is the standing
+  crew toggle enough? A picket is presumably transmitting continuously anyway.
+* Does a receiver need to transmit to *request* a hand-off, or can the host push
+  it blind?
+* What happens to inherited contacts when the hand-off breaks — do they persist
+  as ordinary sticky contacts, or lapse immediately? Persisting is friendlier;
+  lapsing makes electronic warfare against the picket far more valuable.
 
 ---
 

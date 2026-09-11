@@ -131,4 +131,28 @@ describe("setShipEmissions", () => {
       }),
     ]);
   });
+
+  it("can go silent without restating the sensor setting", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", undefined, false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Harrier", transmitting: false },
+      }),
+    ]);
+  });
+
+  it("can set both at once", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", false, false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: {
+          ship_name: "Harrier",
+          active_sensors: false,
+          transmitting: false,
+        },
+      }),
+    ]);
+  });
 });

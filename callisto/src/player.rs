@@ -277,9 +277,9 @@ impl PlayerManager {
     // Applied after creation rather than threaded through `add_ship`, which
     // already carries six arguments. Absent leaves the normal running state a
     // new ship is built with.
-    if let Some(active_sensors) = ship.active_sensors {
+    if ship.active_sensors.is_some() || ship.transmitting.is_some() {
       if let Some(added) = entities.ships.get(&name) {
-        added.write().unwrap().set_active_sensors(active_sensors);
+        added.write().unwrap().set_emissions(ship.active_sensors, ship.transmitting);
       }
     }
 
@@ -345,11 +345,11 @@ impl PlayerManager {
       .write()
       .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
-    let locks_dropped = ship.set_active_sensors(request.active_sensors);
+    let locks_dropped = ship.set_emissions(request.active_sensors, request.transmitting);
 
     info!(
-      "(PlayerManager.set_ship_emissions) {} now has active sensors {}.",
-      request.ship_name, ship.active_sensors
+      "(PlayerManager.set_ship_emissions) {} now has active sensors {} and transmitting {}.",
+      request.ship_name, ship.active_sensors, ship.transmitting
     );
 
     if locks_dropped {

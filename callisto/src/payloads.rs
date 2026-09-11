@@ -73,10 +73,14 @@ pub struct AddShipMsg {
   pub crew: Option<Crew>,
   /// The ship's armament.  Absent (or null) means it uses its design's weapons.
   pub weapons: Option<Vec<Weapon>>,
-  /// Whether the ship starts with its active sensors up. Absent means yes, so
-  /// a client that predates this field builds ships exactly as it always did.
+  /// Emissions the ship starts with: active sensors up, and transponder or
+  /// comms radiating. Absent means yes to both, so a client that predates these
+  /// fields builds ships exactly as it always did. A ship meant to be lurking
+  /// wants `transmitting` off.
   #[serde(default)]
   pub active_sensors: Option<bool>,
+  #[serde(default)]
+  pub transmitting: Option<bool>,
 }
 
 #[skip_serializing_none]
@@ -98,16 +102,18 @@ impl SetPilotActions {
   }
 }
 
-/// Set whether a ship runs its active sensors.
+/// Set a ship's emissions: whether it runs active sensors, and whether it is
+/// radiating on RF (transponder or radio comms).
 ///
-/// Transponders are deliberately not modelled: nothing sensible goes into
-/// combat squawking one, so it would be a control every player switches off
-/// once and never touches again. Detection therefore assumes it is off, and
-/// the DM+6 the Initial Detection table charges for it never applies.
+/// Both are `Option` so a client can change one without restating the other.
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetShipEmissions {
   pub ship_name: String,
-  pub active_sensors: bool,
+  #[serde(default)]
+  pub active_sensors: Option<bool>,
+  #[serde(default)]
+  pub transmitting: Option<bool>,
 }
 
 #[serde_as]
@@ -455,6 +461,7 @@ mod tests {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
     };
     let json = json!({
         "name": "ship1",
@@ -481,6 +488,7 @@ mod tests {
       crew: Some(crew),
       weapons: None,
       active_sensors: None,
+      transmitting: None,
     };
     let json = json!({
         "name": "ship1",

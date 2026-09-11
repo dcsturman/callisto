@@ -20,7 +20,7 @@ use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
-use crate::rules_tables::{countermeasures_mod, detection_modifiers, emissions_mod, SENSOR_QUALITY_MOD};
+use crate::rules_tables::{countermeasures_mod, detection_modifiers, Emissions, SENSOR_QUALITY_MOD};
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem};
@@ -1528,13 +1528,15 @@ impl Entities {
   fn detection_dm(&self, observer_name: &str, target_name: &str, target: &Ship, fired: &HashSet<String>) -> i16 {
     self.sensor_quality_modifiers(observer_name)
       + self.sensor_detection_modifiers(observer_name, target_name)
-      + emissions_mod(
-        target.active_sensors,
-        target.thrust_in_g(),
-        target.current_power > 0,
-        fired.contains(target_name),
-        target.total_crit_severity(),
-      )
+      + Emissions {
+        active_sensors: target.active_sensors,
+        thrust_g: target.thrust_in_g(),
+        power_plant: target.current_power > 0,
+        fired_weapons: fired.contains(target_name),
+        crit_severity: target.total_crit_severity(),
+        transmitting: target.transmitting,
+      }
+      .detection_dm()
   }
 
   /// The range band between two ships as it was at the start of the round.
@@ -3701,7 +3703,13 @@ mod tests {
   #[test]
   fn a_dark_ship_acquires_nothing() {
     let mut entities = detection_pair(Some(crate::ship::Stealth::Basic), 10_000.0);
-    entities.ships.get("Seeker").unwrap().write().unwrap().set_active_sensors(false);
+    entities
+      .ships
+      .get("Seeker")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_emissions(Some(false), None);
     let snapshot = entities.ship_deep_copy();
     let mut rng = SmallRng::seed_from_u64(4);
 
@@ -3771,12 +3779,12 @@ mod tests {
 
     let dark_quiet = {
       let mut t = entities.ships.get("Quarry").unwrap().read().unwrap().clone();
-      t.set_active_sensors(false);
+      t.set_emissions(Some(false), None);
       entities.detection_dm("Seeker", "Quarry", &t, &HashSet::new())
     };
     let dark_firing = {
       let mut t = entities.ships.get("Quarry").unwrap().read().unwrap().clone();
-      t.set_active_sensors(false);
+      t.set_emissions(Some(false), None);
       entities.detection_dm("Seeker", "Quarry", &t, &fired)
     };
     let lit_firing = {
@@ -3923,7 +3931,7 @@ mod tests {
     let alpha = entities.ships.get("Alpha").unwrap();
     alpha.write().unwrap().sensor_locks.push("Bravo".to_string());
 
-    let dropped = alpha.write().unwrap().set_active_sensors(false);
+    let dropped = alpha.write().unwrap().set_emissions(Some(false), None);
 
     assert!(dropped, "going dark should report that locks were dropped");
     let alpha = alpha.read().unwrap();
@@ -3940,13 +3948,16 @@ mod tests {
     let mut ship = Ship::new("Alpha".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     ship.sensor_locks.push("Bravo".to_string());
 
-    assert!(!ship.set_active_sensors(true), "already-lit sensors should not drop locks");
+    assert!(
+      !ship.set_emissions(Some(true), None),
+      "already-lit sensors should not drop locks"
+    );
     assert_eq!(ship.sensor_locks.len(), 1);
 
-    assert!(ship.set_active_sensors(false), "going dark should drop them");
+    assert!(ship.set_emissions(Some(false), None), "going dark should drop them");
     assert!(ship.sensor_locks.is_empty());
     // Already dark: nothing left to drop, so no second report.
-    assert!(!ship.set_active_sensors(false));
+    assert!(!ship.set_emissions(Some(false), None));
   }
 
   /// A ship running dark cannot take a new lock, contact or no contact.
@@ -3969,7 +3980,7 @@ mod tests {
       .unwrap()
       .write()
       .unwrap()
-      .set_active_sensors(false);
+      .set_emissions(Some(false), None);
 
     let actions = vec![(
       "attacker".to_string(),
