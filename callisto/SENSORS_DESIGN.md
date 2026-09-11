@@ -445,6 +445,47 @@ Deferred; revisit after the ship-level model is in.
 
 ---
 
+## 7c. Teams, sensor hand-offs, and the comms problem (deferred)
+
+Hand-offs (High Guard p. 77) let ships in a squadron share contacts, so a
+sensop that succeeds can pass the picture to those that failed. Callisto cannot
+implement this yet because it has no concept of **sides**: nothing says which
+ships would share with each other. Teams come first, then hand-offs.
+
+### Comms revives the row we deleted
+
+Section 3 drops the transponder, on the grounds that nothing sensible goes into
+combat squawking one. But the High Guard row is "**Transponder or radio
+comms** +6", and radio comms is a different proposition: a stealth ship on a
+team has a real reason to transmit, and a hand-off is *impossible* without it.
+
+So the deferred work needs a flag for **transmitting**, not just for the
+transponder, and the +6 applies to whoever is listening for it. That produces
+exactly the tension the row exists to create:
+
+* a lone stealth ship stays quiet and stays hidden, but is on its own;
+* a stealth ship in a squadron can receive a team-mate's sensor picture, or warn
+  them, but pays +6 to everyone hunting it while it does;
+* the squadron's own hand-off chain is therefore a liability as well as an asset,
+  which is presumably why the book bothers to cost hand-offs in Bandwidth and
+  break them on electronic warfare.
+
+Deliberately not built now. A `transmitting` flag with nothing driving it would
+be the same mistake as the transponder checkbox: a control nobody ever touches.
+It should land with teams and hand-offs, where something actually sets it.
+
+Open questions for that work:
+
+* Is transmitting a per-round state (set by sending or receiving a hand-off) or
+  a standing toggle the crew controls?
+* Does receiving a hand-off light you up, or only sending one? The book says the
+  connection costs Bandwidth at both ends, which hints at both.
+* Does a hand-off convey contacts a ship could not have acquired itself — a
+  TL9 raider seeing a TL15 stealth hull because a team-mate did? That is the
+  whole point of the mechanic, and it is also the fix for the Marduk matchup.
+
+---
+
 ## 8. Decisions (resolved)
 
 **A. Contact state — RESOLVED: no special-casing, no compatibility flag.**

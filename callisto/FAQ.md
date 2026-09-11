@@ -124,7 +124,11 @@ not, or deliberately leaves something out.
   one, so it would be a control every player switches off once and never touches
   again. Detection assumes it is off, and the DM+6 for it never applies.
 * **Sensor hand-offs are not implemented.** Squadrons sharing contacts over
-  comms needs a concept of sides, which Callisto does not yet have.
+  comms needs a concept of sides, which Callisto does not yet have. When they
+  arrive they will also need a way to record that a ship is *transmitting*:
+  High Guard's +6 row is "transponder **or radio comms**", so a stealth ship
+  that radios a team-mate -- or receives a hand-off -- gives away its position
+  while it does. That tension is the point of the rule.
 * **Detecting missile launch is not modelled** as a check. The Core Rulebook has
   the target roll to notice an incoming salvo, harder if the firing ship was
   itself undetected. Callisto shows every launch to everyone, as noted under
