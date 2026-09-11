@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useRef } from "react";
+import { useRef, useMemo } from "react";
 
 import { Group, Mesh, SphereGeometry } from "three";
 import {
@@ -21,6 +21,8 @@ import {
   RANGE_BANDS
 } from "lib/universal";
 import { Ship as ShipType, Missile as MissileType} from "lib/entities";
+import { isUndetected } from "lib/contacts";
+import { teamBodyColor, TEAM_CSS } from "lib/teams";
 import { FlightPath } from "lib/flightPath";
 
 import { addVector, scaleVector, RangeSphere } from "lib/Util";
@@ -57,6 +59,40 @@ function Ship(args: {
   const computerShipName = useAppSelector(state => state.ui.computerShipName);
   const showRange = useAppSelector(state => state.ui.showRange) === computerShipName;
   const dispatch = useAppDispatch();
+
+  // The ship whose console is open is the one doing the looking. In the GM's
+  // all-ships view no ship is being flown, so nothing is dimmed and everything
+  // shows as it always did.
+  const viewingShipName = useAppSelector((state) => state.user.shipName);
+  const entities = useAppSelector(entitiesSelector);
+  const observer = useMemo(
+    () =>
+      viewingShipName == null
+        ? null
+        : entities.ships.find((s) => s.name === viewingShipName) ?? null,
+    [entities.ships, viewingShipName],
+  );
+
+  const isOwnShip = viewingShipName === args.ship.name;
+  const undetected = isUndetected(observer, args.ship.name);
+  // Two axes, deliberately kept separate: hue says which side a ship is on,
+  // brightness says how well this console can see it. Scaling the team colour
+  // rather than replacing it keeps both readable at once -- a dimmed red ship
+  // still reads as team red, not currently detected.
+  //
+  // Your own ship, and every ship in the GM's all-ships view, is at full
+  // brightness; a ship you merely detect is dimmed; one you cannot see is
+  // dimmer still, present only because the referee's table can see the board.
+  const brightness = isOwnShip || observer == null ? 1 : undetected ? 0.06 : 0.2;
+  const bodyColor = teamBodyColor(args.ship.team, brightness);
+  const labelColor =
+    isOwnShip || observer == null
+      ? args.ship.team
+        ? TEAM_CSS[args.ship.team]
+        : "#3dfc32"
+      : undetected
+        ? "#5a5a5a"
+        : "#9a9a9a";
 
   const { camera } = useThree();
   const textRef = useRef<Mesh>(null);
@@ -96,7 +132,7 @@ function Ship(args: {
           {/* HDR: the composer keeps a half-float buffer, so values above 1
               survive and set how hard a ship blooms relative to dimmer things
               like the labels. */}
-          <meshBasicMaterial color={[10, 10, 24.0]} />
+          <meshBasicMaterial color={bodyColor} />
         </mesh>
         {/* vector showing a ships's velocity (so distance next turn) */}
         <Line
@@ -125,7 +161,7 @@ function Ship(args: {
                 { font: labelFont, size: 0.7, depth: 0.05 },
               ]}
             />
-            <meshBasicMaterial attach="material" color="#3dfc32" />
+            <meshBasicMaterial attach="material" color={labelColor} />
           </mesh>
         )}
       </group>

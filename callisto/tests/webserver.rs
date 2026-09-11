@@ -560,6 +560,8 @@ async fn integration_add_ship() {
     crew: None,
     weapons: None,
     active_sensors: None,
+    transmitting: None,
+    team: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -632,6 +634,8 @@ async fn integration_add_planet_ship() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -649,6 +653,8 @@ async fn integration_add_planet_ship() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -886,6 +892,8 @@ async fn integration_update_ship() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -940,6 +948,8 @@ async fn integration_update_missile() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -956,6 +966,8 @@ async fn integration_update_missile() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1073,6 +1085,8 @@ async fn integration_remove_ship() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1205,6 +1219,8 @@ async fn integration_set_acceleration() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1265,6 +1281,8 @@ async fn integration_compute_path_basic() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1360,6 +1378,8 @@ async fn integration_compute_path_with_standoff() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1455,6 +1475,8 @@ async fn integration_malformed_requests() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1666,6 +1688,8 @@ async fn integration_set_crew_actions() {
       crew: Some(crew),
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1746,6 +1770,8 @@ async fn integration_multi_client_test() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1760,6 +1786,8 @@ async fn integration_multi_client_test() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;
@@ -1780,6 +1808,8 @@ async fn integration_multi_client_test() {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     }),
   )
   .await;

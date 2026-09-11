@@ -1398,3 +1398,42 @@ input {
     cursor: pointer;
     margin: 0;
 }
+
+/* A ship with no sensor contact: present in the roster, but its hull and thrust
+   are exactly what a contact would have told you, so they are withheld. Grey
+   rather than hidden, so the referee's board still shows what is out there. */
+.ship-summary-row-undetected {
+    color: #6f6f6f;
+    font-style: italic;
+}
+
+/* Target options for ships that cannot be seen. Listed, so it is clear why the
+   ship is not available, but not selectable. */
+.no-contact-option {
+    color: #777;
+    font-style: italic;
+}
+
+/* Team dropdown, shown inline with the emissions toggles. Sized to sit on the
+   same row rather than pushing them onto a second line. */
+.team-select {
+    background-color: #1a1a1a;
+    color: inherit;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-family: "Sono", monospace;
+    font-size: 9pt;
+    padding: 0 2px;
+}
+
+/* A toggle the server is holding for us -- currently Transmit while sensor
+   hand-off is on. Shown rather than hidden, so it is clear the setting exists
+   and why it cannot be changed. */
+.emissions-toggle-locked {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.emissions-toggle-locked input {
+    cursor: not-allowed;
+}

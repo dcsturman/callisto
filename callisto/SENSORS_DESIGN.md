@@ -53,7 +53,7 @@ non-stealthed low-TL ship. These should be two separate terms.
 
 ## 1. The rules we are implementing
 
-### Initial Detection (p. 76) — Average (8+) Electronics (sensors)
+### Initial Detection (table on p. 76, rules text p. 77) — Average (8+) Electronics (sensors)
 
 | Factor | DM | Computable today? |
 |---|---|---|
@@ -69,7 +69,8 @@ non-stealthed low-TL ship. These should be two separate terms.
 Plus the detector's own sensor-package DM (p. 21) and sensop skill, which
 `sensor_quality_modifiers` already supplies.
 
-RAW note that matters: *"attempting to locate a ship with this level of accuracy
+RAW note that matters, from the tail of the Initial Detection discussion where it
+runs over onto p. 77: *"attempting to locate a ship with this level of accuracy
 requires the use of active sensors."* This is the hinge that makes your item 2
 mechanically meaningful rather than cosmetic.
 
@@ -444,6 +445,80 @@ Deferred; revisit after the ship-level model is in.
 
 ---
 
+## 7c. Teams, sensor hand-offs, and the comms problem (deferred)
+
+Hand-offs (High Guard p. 77) let ships in a squadron share contacts, so a
+sensop that succeeds can pass the picture to those that failed. Callisto cannot
+implement this yet because it has no concept of **sides**: nothing says which
+ships would share with each other. Teams come first, then hand-offs.
+
+### Teams: the shape agreed
+
+* **Four teams maximum**, colour-coded.
+* Ships render in their team's colour rather than the current uniform
+  blue-white.
+* A **dropdown on the ship controls** sets a ship's team.
+
+One interaction to design around: colour is *already* carrying information after
+phase 5. The 3D view uses brightness and label colour for three detection states
+(your own ship, a ship you can see, a ship you cannot). Team colour has to
+compose with that rather than fight it — the obvious split is **hue for team,
+brightness and label for detection**, so a dimmed red ship still reads as "team
+red, not currently detected". Worth checking against the bloom pass, which is
+what makes the current palette legible at all.
+
+Teams are also what `no contact, no interaction` will need to be checked
+against eventually: right now nothing stops a ship firing on its own side.
+
+### Comms revives the row we deleted
+
+Section 3 drops the transponder, on the grounds that nothing sensible goes into
+combat squawking one. But the High Guard row is "**Transponder or radio
+comms** +6", and radio comms is a different proposition: a stealth ship on a
+team has a real reason to transmit, and a hand-off is *impossible* without it.
+
+So the deferred work needs a flag for **transmitting**, not just for the
+transponder, and the +6 applies to whoever is listening for it. That produces
+exactly the tension the row exists to create:
+
+* a lone stealth ship stays quiet and stays hidden, but is on its own;
+* a stealth ship in a squadron can receive a team-mate's sensor picture, or warn
+  them, but pays +6 to everyone hunting it while it does;
+* the squadron's own hand-off chain is therefore a liability as well as an asset,
+  which is presumably why the book bothers to cost hand-offs in Bandwidth and
+  break them on electronic warfare.
+
+Deliberately not built now. A `transmitting` flag with nothing driving it would
+be the same mistake as the transponder checkbox: a control nobody ever touches.
+It should land with teams and hand-offs, where something actually sets it.
+
+Settled already:
+
+* **Only transmitting lights you up; receiving does not.** Listening is passive.
+  The Bandwidth cost at both ends is a computer-capacity limit, not an emission.
+* **A hand-off conveys contacts the receiver could never have acquired itself.**
+  That is the whole point: it lets a squadron post one picket with excellent
+  sensors running fully active, while everyone else runs quiet and still shoots
+  at what the picket can see. It is also the fix for the Marduk matchup, where a
+  TL9 raider cannot see a TL15 stealth hull at any DM it can reach.
+
+That combination gives the mechanic its shape — the picket is loud, valuable and
+a target, the quiet ships are dangerous only while it survives, and cutting the
+hand-off is worth as much as killing a ship.
+
+All resolved and built:
+
+* **Hand-off is automatic, not an action.** The only thing the text says a
+  hand-off "requires" is a point of Bandwidth at each end — no check, no step.
+  So it is a standing setting in the sensor panel rather than a sensop action.
+* **Turning it on forces transmitting on** and holds it there, enforced on the
+  server rather than only greyed in the client.
+* **Inherited contacts persist.** Once shared, the contact is the receiver's
+  own; losing the link or the host does not take it back.
+* **Jam Comms breaks hand-offs**, in both directions, for the round.
+
+---
+
 ## 8. Decisions (resolved)
 
 **A. Contact state — RESOLVED: no special-casing, no compatibility flag.**
@@ -520,6 +595,22 @@ for observer O, target T:
 A pair that failed reacquisition does not also get an acquisition roll that
 round.
 
+**I. RESOLVED — the two tables are one table, and the rows stack.** High Guard
+prints Initial Detection (p. 76) and Stealthed Ships (p. 77) separately, but four
+rows are word-for-word identical including the worked example, and the rows that
+differ do so only because of *when* each table is used: the first describes an
+approach, where nothing is shooting and nothing has taken a critical; the second
+describes a ship that has already gone dark, so its power plant is off by
+assumption. The book collapses them itself when describing the same situation in
+prose, listing the giveaways as one set — "use of active sensors, transponder,
+manoeuvre drives or firing a weapon, just to name a few."
+
+Callisto uses the union for every check, acquisition or reacquisition, and the
+rows stack. That closes a hole the split created: firing appeared only on the
+reacquisition table, so a stealth ship could run dark and fire every round at a
+contact it already held with the hunter having no chance at all — not a poor
+chance, but a DM low enough that the best possible roll could not reach 8.
+
 **G. RESOLVED — missiles in flight are unaffected by contact loss.** Every
 missile is smart (`entity.rs:837`) and guides itself. Revisit if dumb missiles
 are ever added; noted in `FAQ.md` so the assumption is written down rather than
@@ -531,18 +622,48 @@ implied.
 
 ---
 
+## 8c. Refinements made during implementation
+
+Two things the design did not pin down, settled while building phase 4.
+
+**The opening contact state is seeded, not rolled.** Decision F called for "an
+initial pass at scenario load", but `Server::new` has no `test_mode` and so no
+seeded RNG, and rolling dice inside a scenario load would make the opening of
+every scenario non-reproducible. Instead the load seeds deterministically:
+**every ship gets a contact on every non-stealthed ship.** Ordinary hulls would
+be found on DM+3 within a round or two anyway, and opening a fight with a
+coin-flip over whether the two sides can see each other is worse than opening it
+resolved. A stealthed hull is the case actually worth playing out, so it starts
+undetected and has to be acquired by the pass.
+
+**Seeding checks range.** Contacts are only seeded within Distant, so a scenario
+that opens with ships more than 50,000 km apart opens with them unaware of each
+other, and they acquire normally once they close.
+
+An earlier cut seeded regardless of range and let the first detection pass drop
+the far pairs, on the theory that a range-aware seed would leave such ships
+permanently unengageable. That was wrong twice over: it is not permanent — they
+acquire as soon as they are inside Distant — and handing out a contact only to
+retract it a round later is worse than never granting it. The one test that
+relied on firing at a target 10 million km away (missile burn-out) now launches
+at a target inside Distant and moves it out of reach afterwards, which
+incidentally covers decision G: missiles in flight are unaffected by their
+launcher losing contact.
+
+---
+
 ## 9. Implementation phases
 
 Each phase is independently shippable and testable, in canary→main order.
 
 | Phase | Content | Risk |
 |---|---|---|
-| **1** | Split the TL bonus from the stealth TL penalty; fix the `.min(0)` clamp bug. Pure rules fix with tests. | Low, but it *does* change existing to-hit maths |
-| **2** | `contacts` on `Ship`; wire serialization; no-contact-no-interaction invariant across all ship-targeting actions; server-side enforcement. No UI yet. | Medium — touches sensor_lock, fire, JamComms |
-| **3** | `active_sensors` flag, `SetShipEmissions` request, sensor-panel and Add Ship checkboxes. | Low, additive |
-| **4** | `detection_pass` as round step 7: acquisition + reacquisition + range-band escape. | Highest — the real new mechanic |
-| **5** | FE visibility: `EntitySelector` gating, 3D dimming, contacts readout, `ShipSummary` redaction. | Low, additive |
-| **6** | `FAQ.md` entries for every house rule chosen above. | Low |
+| **1** | ✅ Split the TL bonus from the stealth TL penalty; fix the `.min(0)` clamp bug. Pure rules fix with tests. | Low, but it *does* change existing to-hit maths |
+| **2** | ✅ `contacts` on `Ship`; wire serialization; no-contact-no-interaction invariant across all ship-targeting actions; server-side enforcement. No UI yet. | Medium — touches sensor_lock, fire, JamComms |
+| **3** | ✅ `active_sensors` flag, `SetShipEmissions` request, sensor-panel and Add Ship checkboxes. | Low, additive |
+| **4** | ✅ `detection_pass` as the last round step: acquisition + reacquisition + range-band escape. | Highest — the real new mechanic |
+| **5** | ✅ FE visibility: `EntitySelector` gating, 3D dimming, contacts readout, `ShipSummary` redaction. | Low, additive |
+| **6** | ✅ `FAQ.md` entries for every house rule chosen above. | Low |
 
 Phase 1 is worth doing first and alone, because it changes numbers in existing
 combat and should not be tangled up with the new mechanic when we are reading

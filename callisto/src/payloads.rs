@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{ShipDesignTemplate, Weapon, WeaponMount, WeaponType};
+use super::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -73,10 +73,16 @@ pub struct AddShipMsg {
   pub crew: Option<Crew>,
   /// The ship's armament.  Absent (or null) means it uses its design's weapons.
   pub weapons: Option<Vec<Weapon>>,
-  /// Whether the ship starts with its active sensors up. Absent means yes, so
-  /// a client that predates this field builds ships exactly as it always did.
+  /// Emissions the ship starts with. Absent means the defaults: active sensors
+  /// up, and not transmitting. A scenario that wants a ship squawking — a
+  /// merchant that believes all is well, say — sets `transmitting` explicitly.
   #[serde(default)]
   pub active_sensors: Option<bool>,
+  #[serde(default)]
+  pub transmitting: Option<bool>,
+  /// Which side the ship is on. Absent leaves it unaligned.
+  #[serde(default)]
+  pub team: Option<Team>,
 }
 
 #[skip_serializing_none]
@@ -98,16 +104,30 @@ impl SetPilotActions {
   }
 }
 
-/// Set whether a ship runs its active sensors.
+/// Set which side a ship is on. `None` makes it unaligned.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetShipTeam {
+  pub ship_name: String,
+  pub team: Option<Team>,
+}
+
+/// Set a ship's emissions: whether it runs active sensors, and whether it is
+/// radiating on RF (transponder or radio comms).
 ///
-/// Transponders are deliberately not modelled: nothing sensible goes into
-/// combat squawking one, so it would be a control every player switches off
-/// once and never touches again. Detection therefore assumes it is off, and
-/// the DM+6 the Initial Detection table charges for it never applies.
+/// Both are `Option` so a client can change one without restating the other.
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetShipEmissions {
   pub ship_name: String,
-  pub active_sensors: bool,
+  #[serde(default)]
+  pub active_sensors: Option<bool>,
+  #[serde(default)]
+  pub transmitting: Option<bool>,
+  /// Whether the ship shares its sensor picture with its team. Turning it on
+  /// forces `transmitting` on, since sharing means broadcasting.
+  #[serde(default)]
+  pub handoff_sensors: Option<bool>,
 }
 
 #[serde_as]
@@ -382,6 +402,7 @@ pub enum RequestMsg {
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),
   SetShipEmissions(SetShipEmissions),
+  SetShipTeam(SetShipTeam),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
@@ -455,6 +476,8 @@ mod tests {
       crew: None,
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     };
     let json = json!({
         "name": "ship1",
@@ -481,6 +504,8 @@ mod tests {
       crew: Some(crew),
       weapons: None,
       active_sensors: None,
+      transmitting: None,
+      team: None,
     };
     let json = json!({
         "name": "ship1",
