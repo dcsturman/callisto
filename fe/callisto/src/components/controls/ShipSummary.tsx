@@ -3,6 +3,7 @@ import { useAppSelector } from "state/hooks";
 import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
 import { isUndetected } from "lib/contacts";
+import { teamLabelColor } from "lib/teams";
 
 /**
  * Compact at-a-glance roster of every ship in the current scenario. Lives
@@ -43,6 +44,7 @@ export function ShipSummary() {
         // thrust in G is the manoeuvre-drive DM on the detection table -- so a
         // ship you have no contact on shows its presence and nothing else.
         undetected: isUndetected(observer, ship.name),
+        team: ship.team,
       };
     });
 
@@ -58,7 +60,11 @@ export function ShipSummary() {
                 ? "ship-summary-row ship-summary-row-undetected"
                 : "ship-summary-row"
             }>
-            <span className="ship-summary-name">{row.name}</span>
+            <span
+              className="ship-summary-name"
+              style={{color: teamLabelColor(row.team, {undetected: row.undetected})}}>
+              {row.name}
+            </span>
             <span className="ship-summary-hull">
               {row.undetected
                 ? "\u2014"
