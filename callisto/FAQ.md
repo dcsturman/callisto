@@ -179,6 +179,204 @@ Ships can be assigned to one of four colour-coded teams, or left unaligned.
   link breaks or the host is destroyed: the crew has the plot, and killing the
   ship that gave it to them does not take it back.
 
+## Rules decisions and assumptions
+
+The sections above describe *what* Callisto does. This one records *why*, with
+the citation and the reasoning, so a call can be revisited later without having
+to re-derive it. Three kinds of entry:
+
+- **Change** — we do something the book does not say, or contradicts.
+- **Assumption** — the book is silent or ambiguous and we had to pick.
+- **Omission** — a rule exists and we have not implemented it.
+
+Add to this whenever a rules call is made. Citations are Mongoose Traveller 2nd
+edition: **HG** = High Guard (Apr 2024), **CRB** = Core Rulebook (2022 update).
+
+### Combat structure
+
+#### Change — no initiative, so Tactics (Ship) does nothing
+Moves and attacks resolve simultaneously for every ship, so there is no turn
+order to influence. *Tactics (Ship)* therefore has no effect in Callisto, and
+neither does the initiative-related use of *Leadership*. Leadership is still
+used for its other purpose, granting boosts.
+
+#### Assumption — Effect floors at 1 where it multiplies, and is used as rolled where it adds
+Mongoose uses *Effect* both as a multiplier and as an addend, and a negative or
+zero multiplier is nonsense. Callisto floors Effect at 1 wherever it multiplies
+and uses it as rolled wherever it is added.
+
+#### Change — a reaction may use a sandcaster in the same turret that attacked
+The action economy is one attack and one reaction per mount. Strictly read, a
+mixed turret that fires its laser could not then disperse sand. We allow it.
+Sand is far less valuable than an attack, and a great many published designs
+carry mixed laser/sand turrets that would otherwise be half dead weight. Using a
+*laser* for point defence alongside an attack is **not** allowed, which is the
+case where the exemption would actually matter.
+
+#### Change — no reaction penalty
+An earlier version applied DM-1 to reactions. That rule is from personal combat
+(CRB p. 75) and does not apply to ship combat. Removed.
+
+---
+
+### Sensors and detection
+
+#### Change — the two detection tables are treated as one, and the rows stack
+HG prints **Initial Detection** (p. 76) and **Stealthed Ships** (p. 77) as
+separate tables. Four rows are word-for-word identical between them, including
+the same worked example, and the rows that differ do so only because of *when*
+each table is used: the first describes an approach, where nothing is shooting
+and nothing has taken a critical; the second describes a ship that has already
+gone dark, so its power plant is off by assumption.
+
+The book collapses them itself in prose, listing the giveaways as one set: a
+powered-down ship stays hidden *"until they reveal themselves with a tell-tale
+sign: use of active sensors, transponder, manoeuvre drives or firing a weapon,
+just to name a few."*
+
+Callisto uses the union for every check. Precisely what each table gained:
+
+| Row | Initial Detection | Stealthed Ships |
+|---|---|---|
+| TL difference, +1 per higher TL | had it | had it |
+| Active sensors, +2 | had it | had it |
+| Manoeuvre drive, +1 per Thrust | had it | had it |
+| Transponder or comms, +6 | had it | had it |
+| Power plant, +1 | had it | **gained** |
+| Fires weapons, +2 | **gained** | had it |
+| Damaged, +1 per Severity | **gained** | had it |
+| Stealth coating, −2/−4/−6 | had it | applied to both already |
+
+Rows stack, since the book lists them separately.
+
+The firing row is the one that matters. While it appeared only on the
+reacquisition table, a stealthed ship could run dark and fire every round at a
+contact it already held with its target having *no chance at all* — not a poor
+chance, but a DM low enough that the best possible 2D roll could not reach 8.
+
+Two rows are still unmodelled: **extended sensor array, +2** (arrays are not
+built), and *"passive sensors only, +0"*, which is a no-op by definition.
+
+#### Assumption — active sensors are needed to acquire a contact, not to keep one
+HG p. 77 is explicit that *"attempting to locate a ship with this level of
+accuracy requires the use of active sensors"* — that sentence is the tail of the
+Initial Detection discussion, which runs over from p. 76. Nothing says what is
+needed to *maintain* a contact; p. 77 only offers *"after initial contact,
+sensor detection is maintained under most circumstances."*
+
+We rule that maintaining needs nothing. A ship that goes dark keeps every
+contact it holds and acquires no new ones. The exception is the one the book
+does give: a **stealthed** target whose range opens by a band must be
+reacquired.
+
+#### Assumption — going dark drops sensor locks but keeps contacts
+RAW does not say. A lock is deliberate, continuous illumination — the Stealthed
+Ships table charges DM+2 for *"sensor locks, electronic warfare or other
+deliberate use of active sensors"* — so it cannot survive going quiet, while
+detection is *"maintained under most circumstances"*. Keeping both would make
+going dark free; dropping both would make it useless.
+
+#### Change — transponder and radio comms are one flag, defaulting to off
+HG prints them as a single row at +6, and they are the same emission to anyone
+listening, so Callisto has one `transmitting` flag. RAW expects transponders lit
+in civilised space; we default it **off** anyway. It is the largest row on the
+table by some margin, and a ship left transmitting by accident is simply found —
+a default that quietly undoes stealth for any scenario whose author had not
+thought about it. Scenarios opt into the noise per ship.
+
+#### Assumption — contact cannot be held beyond Distant
+HG p. 76 says that beyond Distant range (50,000 km) objects *"simply appear as
+blips on a display, difficult to differentiate from each other."* We take that
+as a hard limit: no acquisition past Distant, and existing contacts drop. It is
+also what makes running away work.
+
+#### Assumption — ordinary ships start a scenario detected, stealthed ships do not
+Pragmatic rather than derived. An ordinary hull would be found within a round or
+two anyway, and opening a fight with a coin flip over whether the two sides can
+see each other is worse than opening it resolved. A stealthed hull is the case
+worth playing out. Contacts are only seeded within Distant.
+
+#### Change — the detection check is made once per round
+CRB gives the check a duration of 1D minutes. Callisto rolls it once per combat
+round for every pair not already in contact.
+
+---
+
+### Teams
+
+Teams are not a Mongoose concept at all; they exist so hand-offs have something
+to be shared along. Everything here is invention.
+
+#### Change — team-mates always know where each other are
+No sensor check is needed to find your own wingman, even when both ships are
+stealthed and running silent. A squadron launched together, is in comms, and is
+not hunting itself. This is deliberately *not* a hand-off: hand-offs share
+contacts on third parties and cost Bandwidth and an emission.
+
+#### Change — ships will not fire on their own side
+Only attacks are blocked. Plotting a course to a team-mate, sensor locking one
+or jamming one all remain possible; there are legitimate reasons to want each,
+and the referee is better placed than the engine to judge them.
+
+---
+
+### Sensor hand-offs
+
+#### Assumption — hand-offs are automatic, not an action
+The only thing HG says a hand-off *requires* is a point of computer Bandwidth at
+each end. There is no check and no step, so it is a standing setting rather than
+something the sensop spends an action on.
+
+#### Assumption — only transmitting lights you up; receiving does not
+Listening is passive. The Bandwidth cost at both ends is a computer-capacity
+limit, not an emission. Turning hand-off on therefore forces `transmitting` on
+and holds it there: a ship cannot share its contacts in silence.
+
+#### Assumption — an inherited contact belongs to the receiver outright
+It does not lapse when the link breaks or the host is destroyed. The crew has
+the plot, and killing the ship that gave it to them does not take it back.
+
+#### Change — Jam Comms breaks hand-offs
+RAW lets a target break a squadron's link with an electronic warfare check. We
+attach that to the existing *Jam Comms* action: a jammed ship can neither send
+nor receive for that round. Before this, Jam Comms rolled a check and affected
+nothing at all.
+
+---
+
+### Weapons
+
+#### Assumption — a torpedo barbette holds three and fires one at a time
+Keeps it below a small bay, which is the intent of the progression. Worth
+revisiting.
+
+#### Change — no missile salvoes
+Each launcher fires its own missiles, each guiding and rolling to hit
+individually, rather than salvoes tracked as units. Point defence and the
+torpedo halving are re-expressed to match; see `FAQ.md`.
+
+#### Omission — detecting missile launch
+CRB has the target roll to notice an incoming salvo — Routine (6+), or Average
+(8+) if the firing ship was itself undetected, with DM+1 per full 10 missiles.
+Callisto shows every launch to everyone. Implementing it needs salvo grouping,
+which does not exist.
+
+---
+
+### Not implemented
+
+Recorded so nobody assumes they were considered and rejected.
+
+- **Extended sensor arrays** (+2 to be detected, and longer detail range).
+- **Electronic warfare against a sensop** as distinct from jamming comms. There
+  is no RAW for it, and *Jam Comms* is a comms action.
+- **Squadron hand-off limits by Bandwidth count** — the cost of one point at each
+  end is enforced, but a host is not capped at the number of recipients its
+  spare Bandwidth allows.
+- **Sensor hand-off relaying.** The single-hop rule *is* enforced.
+
+---
+
 ## Known gaps being considered for future versions
 
 * **Capital ships**: hulls above 5,000 tons, which needs spinal mounts and weapon batteries before anything

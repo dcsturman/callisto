@@ -118,6 +118,19 @@ impl PartialEq for Entities {
 ///
 /// Phrased for the referee log rather than as an error: the order was given,
 /// the crew simply has nothing to aim at.
+/// One line describing a sensor check: what was rolled, what modified it, and
+/// how it came out.
+///
+/// Emitted for every check actually made, hit or miss. A referee watching a
+/// stealth ship stay hidden for six rounds wants to know whether the rolls were
+/// close or whether the target was never findable at all, and that is not
+/// something you can infer from silence.
+fn detection_roll_effect(observer: &str, target: &str, roll: u8, dm: i16, total: i32, outcome: &str) -> EffectMsg {
+  EffectMsg::Message {
+    content: format!("{observer} sensor check vs {target}: 2D {roll} {dm:+} = {total} vs 8+, {outcome}."),
+  }
+}
+
 pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> EffectMsg {
   EffectMsg::Message {
     content: format!("{ship_name} has no sensor contact on {target} and cannot {verb} it."),
@@ -1455,6 +1468,9 @@ impl Entities {
     // written while another pair is still reading it.
     let mut acquired = Vec::<(String, String)>::new();
     let mut lost = Vec::<(String, String)>::new();
+    // Every check that was actually rolled, reported so a referee can see why
+    // a ship stayed hidden rather than having to infer it.
+    let mut rolls = Vec::<EffectMsg>::new();
 
     for observer_name in &names {
       for target_name in &names {
@@ -1498,10 +1514,23 @@ impl Entities {
           }
 
           let dm = self.detection_dm(observer_name, target_name, &target, fired);
-
-          if i32::from(roll_dice(2, rng)) + i32::from(dm) < STANDARD_ROLL_THRESHOLD {
+          let roll = roll_dice(2, rng);
+          let total = i32::from(roll) + i32::from(dm);
+          if total < STANDARD_ROLL_THRESHOLD {
             lost.push(((*observer_name).clone(), (*target_name).clone()));
           }
+          rolls.push(detection_roll_effect(
+            observer_name,
+            target_name,
+            roll,
+            dm,
+            total,
+            if total < STANDARD_ROLL_THRESHOLD {
+              "contact lost"
+            } else {
+              "contact held"
+            },
+          ));
         } else {
           // Acquisition needs active sensors: pinpointing a ship "requires the
           // use of active sensors" (p. 77).
@@ -1510,13 +1539,28 @@ impl Entities {
           }
 
           let dm = self.detection_dm(observer_name, target_name, &target, fired);
-
-          if i32::from(roll_dice(2, rng)) + i32::from(dm) >= STANDARD_ROLL_THRESHOLD {
+          let roll = roll_dice(2, rng);
+          let total = i32::from(roll) + i32::from(dm);
+          if total >= STANDARD_ROLL_THRESHOLD {
             acquired.push(((*observer_name).clone(), (*target_name).clone()));
           }
+          rolls.push(detection_roll_effect(
+            observer_name,
+            target_name,
+            roll,
+            dm,
+            total,
+            if total >= STANDARD_ROLL_THRESHOLD {
+              "contact"
+            } else {
+              "no contact"
+            },
+          ));
         }
       }
     }
+
+    effects.append(&mut rolls);
 
     for (observer_name, target_name) in lost {
       let mut observer = self.ships.get(&observer_name).unwrap().write().unwrap();
@@ -4012,6 +4056,60 @@ mod tests {
     assert!(
       !holds_contact(&entities, "Mate", "Bogey"),
       "the link should not reach past Distant"
+    );
+  }
+
+  /// Every check actually rolled is reported, hit or miss, with the arithmetic
+  /// shown. A referee watching a ship stay hidden needs to know whether the
+  /// rolls were close or whether it was never findable.
+  #[test]
+  fn detection_reports_the_roll_and_the_result() {
+    let mut entities = detection_pair(Some(crate::ship::Stealth::Advanced), 1.0e6);
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(3);
+
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+    let check = effects
+      .iter()
+      .find_map(|e| match e {
+        EffectMsg::Message { content } if content.contains("sensor check vs") => Some(content.clone()),
+        _ => None,
+      })
+      .expect("the attempt should be reported");
+
+    assert!(check.contains("Seeker sensor check vs Quarry"), "{check}");
+    assert!(check.contains("2D "), "the roll should be shown: {check}");
+    assert!(check.contains("vs 8+"), "the target number should be shown: {check}");
+    assert!(
+      check.contains("no contact") || check.contains("contact."),
+      "the outcome should be shown: {check}"
+    );
+  }
+
+  /// Nothing is reported for a check that was never made — out of range, or the
+  /// observer running dark — so the log does not fill with non-events.
+  #[test]
+  fn no_roll_is_reported_when_no_check_is_made() {
+    // Observer dark: it cannot acquire, so there is nothing to roll.
+    let mut entities = detection_pair(Some(crate::ship::Stealth::Basic), 1.0e6);
+    entities
+      .ships
+      .get("Seeker")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_emissions(Some(false), None);
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(3);
+
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+    assert!(
+      !effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("sensor check vs"))),
+      "a ship running dark makes no check, so it should report none: {effects:#?}"
     );
   }
 
