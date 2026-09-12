@@ -6,6 +6,7 @@ import {ViewMode} from "lib/view";
 
 import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
 import {Team, TEAMS, teamLabelColor} from "lib/teams";
+import {isUndetected} from "lib/contacts";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
@@ -620,23 +621,29 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             {"Break Sensor Lock: " + s}
           </option>
         ))}
+        {/* Both lists are limited to ships this one has a sensor contact on.
+            Nothing can be done to a ship that has not been detected, so
+            offering it and having the order refused later is just a trap. */}
         {entities.ships
           .filter(
-            (s) =>
-              s.name !== ship.name &&
-              !entities.ships.find((s) => ship.name === s.name)?.sensor_locks.includes(s.name)
+            (target) =>
+              target.name !== ship.name &&
+              !isUndetected(ship, target) &&
+              !ship.sensor_locks.includes(target.name),
           )
-          .map((s) => (
-            <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
-              {"Sensor Lock: " + s.name}
+          .map((target) => (
+            <option key={target.name + "-sensor-lock"} value={"sl-" + target.name}>
+              {"Sensor Lock: " + target.name}
             </option>
           ))}
 
         {entities.ships
-          .filter((s) => s.name !== ship.name)
-          .map((s) => (
-            <option key={s.name + "-jam-comms"} value={"jc-" + s.name}>
-              {"Jam Sensors: " + s.name}
+          .filter(
+            (target) => target.name !== ship.name && !isUndetected(ship, target),
+          )
+          .map((target) => (
+            <option key={target.name + "-jam-comms"} value={"jc-" + target.name}>
+              {"Jam Comms: " + target.name}
             </option>
           ))}
       </select>
