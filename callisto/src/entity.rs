@@ -302,11 +302,6 @@ impl Entities {
     entities.fixup_pointers()?;
     entities.reset_gravity_wells();
 
-    // Seed the opening contact state. Only here, on the load path: doing it in
-    // `fixup_pointers` would re-run on every deep copy and wipe contacts the
-    // detection pass had acquired in play.
-    entities.establish_initial_contacts();
-
     // Fix all the initial current values in the ship based on the design.
     // This does limit our ability to load wounded ships into a scenario.  If we need
     // that we can add it later.
@@ -396,10 +391,6 @@ impl Entities {
       // Create a new ship and add it to the ship table
       let ship = Arc::new(RwLock::new(Ship::new(name.clone(), position, velocity, design, crew, weapons)));
       self.ships.insert(name, ship);
-      // A ship joining the scenario is mutually detected, matching how a
-      // loaded scenario opens. The Initial Detection pass will make this a
-      // roll rather than a given.
-      self.establish_initial_contacts();
       return;
     };
 
@@ -1353,23 +1344,18 @@ impl Entities {
     Ok(())
   }
 
-  /// Give every ship a contact on every other ship that is not stealthed.
+  /// Give every ship a contact on every other ship that is not stealthed and is
+  /// within Distant.
   ///
-  /// The opening state of a scenario, and of any ship added to one. Ordinary
-  /// hulls are taken as already seen - they would be found on DM+3 within a
-  /// round or two anyway, and starting a fight with a coin-flip over whether
-  /// the two sides can see each other is worse than starting it resolved.
-  /// A stealthed hull is the case worth playing out, so it starts undetected
-  /// and has to be acquired by [`Self::detection_pass`].
+  /// **Not** the default opening state. Scenarios start with whatever contacts
+  /// their file specifies, which is normally none: ships have to find each
+  /// other, and the first detection pass runs at the end of the opening round.
+  /// This exists so a scenario can be *authored* as already-engaged rather than
+  /// as an approach, and for tests that are about something other than
+  /// acquisition.
   ///
-  /// Contacts are only seeded within Distant: past 50,000 km everything is an
-  /// undifferentiated blip, so a scenario that opens with ships further apart
-  /// than that opens with them unaware of each other, and they acquire normally
-  /// once they close.
-  ///
-  /// Deliberately deterministic: this runs at scenario load, where there is no
-  /// seeded RNG to hand and where a reproducible opening is worth more than a
-  /// roll.
+  /// Stealthed hulls are excluded even here, and nothing is seeded past
+  /// Distant, where everything is an undifferentiated blip regardless.
   ///
   /// Takes `&self` because the ships are behind `RwLock`s; the map itself is
   /// only read.
@@ -3091,7 +3077,6 @@ mod tests {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
-        "contacts": ["Ship2", "Ship3"],
         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"Ship2","position":[4000.0,5000.0,6000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -3110,7 +3095,6 @@ mod tests {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
-        "contacts": ["Ship1", "Ship3"],
         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"Ship3","position":[7000.0,8000.0,9000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -3129,7 +3113,6 @@ mod tests {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
-        "contacts": ["Ship1", "Ship2"],
         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
     "missiles":[],
@@ -3872,6 +3855,9 @@ mod tests {
       None,
       None,
     );
+    // Scenarios no longer open with contacts; these tests are about what
+    // happens once there is one, so seed explicitly.
+    entities.establish_initial_contacts();
     entities
   }
 
@@ -3977,10 +3963,12 @@ mod tests {
       picket.team = picket_team;
       picket.set_handoff_sensors(true);
     }
+    // The picket has found everything; the quiet ship has found nothing, which
+    // is what the hand-off is for.
+    entities.establish_initial_contacts();
     {
       let mut mate = entities.ships.get("Mate").unwrap().write().unwrap();
       mate.team = mate_team;
-      // The quiet ship sees nothing at all on its own.
       mate.contacts.clear();
     }
     entities
@@ -4550,6 +4538,7 @@ mod tests {
     for name in ["Alpha", "Bravo"] {
       entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     }
+    entities.establish_initial_contacts();
     let alpha = entities.ships.get("Alpha").unwrap();
     alpha.write().unwrap().sensor_locks.push("Bravo".to_string());
 
@@ -4633,6 +4622,7 @@ mod tests {
     for name in ["Charlie", "Alpha", "Bravo"] {
       entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     }
+    entities.establish_initial_contacts();
 
     for (name, ship) in &entities.ships {
       let contacts = &ship.read().unwrap().contacts;
@@ -4679,6 +4669,8 @@ mod tests {
     for name in ["Alpha", "Bravo"] {
       entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     }
+    // This test is about the rename following references, so give it some.
+    entities.establish_initial_contacts();
     entities
       .ships
       .get("Alpha")

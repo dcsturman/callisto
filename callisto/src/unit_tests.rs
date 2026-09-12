@@ -132,7 +132,6 @@ async fn test_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "contacts": ["ship2"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -152,7 +151,6 @@ async fn test_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "contacts": ["ship1"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
           "missiles":[],
@@ -195,7 +193,6 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "contacts": ["ship2"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -215,7 +212,6 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "contacts": ["ship1"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }]});
 
@@ -259,7 +255,6 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "contacts": ["ship2"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -279,7 +274,6 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "contacts": ["ship1"],
        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       }]});
 
@@ -322,6 +316,10 @@ async fn test_update_ship() {
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
   let response = server.update();
   assert_eq!(response, Vec::new());
@@ -351,6 +349,10 @@ async fn test_update_missile() {
   assert_eq!(response, "Add ship action executed");
 
   let fire_missile = json!([["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]).to_string();
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
   let response = server.update();
 
@@ -612,6 +614,10 @@ async fn test_exhausted_missile() {
 
   // Fire a missile
   let fire_actions = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}] ]]).to_string();
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let response = server.update();
 
@@ -698,6 +704,10 @@ async fn test_destroy_ship() {
   ]]])
   .to_string();
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
@@ -754,6 +764,10 @@ async fn test_called_shot() {
     if destroyed {
       break;
     }
+    // Scenarios open with no contacts. This test is about combat, not
+    // acquisition, so give every ship the contacts it needs to act.
+    server.establish_initial_contacts();
+
     server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
     let effects = server.update();
     destroyed = effects
@@ -890,6 +904,10 @@ async fn test_big_fight() {
       {"FireAction" :{"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let mut effects = server.update();
 
@@ -1008,6 +1026,10 @@ async fn test_fight_with_crew() {
       {"FireAction" : {"weapon_id": 2, "target": "ship1"}},
       {"FireAction" : {"weapon_id": 3, "target": "ship1"}},
   ]]]);
+
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
 
   server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let mut effects = server.update();
@@ -1161,6 +1183,10 @@ async fn test_slugfest() {
       ]]
   ]);
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let _response = server.update();
 
@@ -1206,6 +1232,7 @@ async fn test_get_entities() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     })
     .unwrap();
 
@@ -1275,6 +1302,10 @@ async fn test_missile_impact_close() {
 
   // Fire a missile within impact range.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
   let effects = server.update();
 
