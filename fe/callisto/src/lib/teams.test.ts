@@ -60,8 +60,14 @@ describe("teamLabelColor", () => {
     chan(dimmed).forEach((c, i) => expect(c).toBeLessThanOrEqual(chan(full)[i]));
   });
 
-  it("keeps the old green for an unaligned ship", () => {
-    expect(teamLabelColor(null, {})).toBe("#3dfc32");
-    expect(teamLabelColor(undefined, {})).toBe("#3dfc32");
+  it("uses white for an unaligned ship, not a green that clashes with team Green", () => {
+    const unaligned = teamLabelColor(null, {});
+    expect(unaligned).toBe(teamLabelColor(undefined, {}));
+    expect(unaligned).not.toBe(TEAM_CSS.Green);
+    // Neutral: all three channels equal, so it reads as the absence of a team
+    // colour rather than as one of them.
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(unaligned.slice(i, i + 2), 16));
+    expect(r).toBe(g);
+    expect(g).toBe(b);
   });
 });

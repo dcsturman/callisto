@@ -55,8 +55,15 @@ export const teamBodyColor = (
   return [base[0] * scale, base[1] * scale, base[2] * scale];
 };
 
-/** The green a ship's label has always used when it is on no team. */
-const UNALIGNED_LABEL = "#3dfc32";
+/**
+ * The label colour for a ship on no team.
+ *
+ * White rather than the green labels used before teams existed: that green sat
+ * close enough to team Green to be indistinguishable, so a ship assigned to
+ * Green looked exactly like one assigned to nothing. Unaligned should read as
+ * the absence of a colour, not as one of them.
+ */
+const UNALIGNED_LABEL = "#e8e8e8";
 
 /** Grey for a ship this console has no sensor contact on. */
 export const NO_CONTACT_LABEL = "#5a5a5a";

@@ -5,7 +5,7 @@ import {Ship, Acceleration, Entity} from "lib/entities";
 import {ViewMode} from "lib/view";
 
 import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
-import {Team, TEAMS, TEAM_CSS} from "lib/teams";
+import {Team, TEAMS, teamLabelColor} from "lib/teams";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
@@ -290,6 +290,27 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     <div id="computer-window" className="computer-window">
       <div id="crew-actions-window">
         {role === ViewMode.General && <h1>{title}</h1>}
+        {/* Which side the ship is on belongs to the ship, not to any one crew
+            station, so it sits at the top of the computer rather than under
+            sensors. Every role sees it. */}
+        <div className="ship-team-row">
+          <span className="ship-team-label">Team</span>
+          <select
+            className="team-select"
+            value={ship.team ?? ""}
+            style={{color: teamLabelColor(ship.team, {})}}
+            title="Which side this ship is on. Teams are colour-coded in the view, always know where each other are, and will not fire on one another."
+            onChange={(event) =>
+              setShipTeam(ship.name, (event.target.value || null) as Team | null)
+            }>
+            <option value="">Unaligned</option>
+            {TEAMS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
         {/* Captain only sees the panel on their own ship. General sees it on
             their assigned ship if any; if General has no ship (GM-style),
             panel renders on whichever ship's popup they're viewing so they
@@ -586,23 +607,6 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             }
           />
           Hand-off
-        </label>
-        <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
-          Team
-          <select
-            className="team-select"
-            value={ship.team ?? ""}
-            style={{color: ship.team ? TEAM_CSS[ship.team] : undefined}}
-            onChange={(event) =>
-              setShipTeam(ship.name, (event.target.value || null) as Team | null)
-            }>
-            <option value="">None</option>
-            {TEAMS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
         </label>
       </div>
       <select

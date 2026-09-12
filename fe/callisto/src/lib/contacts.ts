@@ -9,15 +9,21 @@ import { Ship } from "./entities";
  */
 export const hasContact = (
   observer: Ship | null | undefined,
-  targetName: string,
+  target: Ship,
 ): boolean => {
   if (observer == null) {
     return true;
   }
-  if (observer.name === targetName) {
+  if (observer.name === target.name) {
     return true;
   }
-  return (observer.contacts ?? []).includes(targetName);
+  // A squadron shares a plot as a matter of course, so team-mates never have to
+  // be found. Mirrors `Ship::detects` on the server -- if these two disagree,
+  // the display says one thing and the rules do another.
+  if (observer.team != null && observer.team === target.team) {
+    return true;
+  }
+  return (observer.contacts ?? []).includes(target.name);
 };
 
 /**
@@ -33,5 +39,5 @@ export const hasContact = (
  */
 export const isUndetected = (
   observer: Ship | null | undefined,
-  targetName: string,
-): boolean => observer != null && !hasContact(observer, targetName);
+  target: Ship,
+): boolean => observer != null && !hasContact(observer, target);

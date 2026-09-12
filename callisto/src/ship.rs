@@ -1422,6 +1422,25 @@ impl Ship {
     }
   }
 
+  /// Whether this ship knows where `target` is.
+  ///
+  /// Ships on the same side always do. A squadron shares a plot as a matter of
+  /// course — they launched together, they are in comms, and they are not
+  /// hunting each other — so making a sensop roll to find your own wingman
+  /// would be strange. This is not a sensor hand-off: hand-offs share contacts
+  /// on *third parties*, and cost Bandwidth and an emission to do it.
+  ///
+  /// Otherwise it is a question of what the sensors have found.
+  #[must_use]
+  pub fn detects(&self, target: &Ship) -> bool {
+    if let (Some(mine), Some(theirs)) = (self.team, target.team) {
+      if mine == theirs {
+        return true;
+      }
+    }
+    self.contacts.iter().any(|name| name == target.get_name())
+  }
+
   /// Set the ship's emissions, returning whether shutting down active sensors
   /// dropped any locks.
   ///

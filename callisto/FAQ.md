@@ -146,6 +146,11 @@ not, or deliberately leaves something out.
 
 Ships can be assigned to one of four colour-coded teams, or left unaligned.
 
+* **Team-mates always know where each other are.** A squadron shares a plot as
+  a matter of course, so no sensor check is needed to find your own wingman --
+  even when both ships are stealthed and running silent. This is not a hand-off:
+  hand-offs share contacts on *third parties*, and cost Bandwidth and an
+  emission to do.
 * **Ships will not fire on their own side.** Only attacks are blocked. Plotting
   a course to a team-mate, sensor locking one or jamming one are all still
   possible -- there are legitimate reasons to want each, and the referee is

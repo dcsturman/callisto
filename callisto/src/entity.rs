@@ -1396,10 +1396,13 @@ impl Entities {
   /// Panics if the lock cannot be obtained to read a ship.
   #[must_use]
   pub fn has_contact(&self, observer: &str, target: &str) -> bool {
-    self
-      .ships
-      .get(observer)
-      .is_some_and(|ship| ship.read().unwrap().contacts.iter().any(|name| name == target))
+    let Some(observer) = self.ships.get(observer) else {
+      return false;
+    };
+    let Some(target) = self.ships.get(target) else {
+      return false;
+    };
+    observer.read().unwrap().detects(&target.read().unwrap())
   }
 
   /// Whether `ship_name` is running its active sensors.
@@ -1452,6 +1455,12 @@ impl Entities {
 
         let observer = self.ships.get(*observer_name).unwrap().read().unwrap();
         let target = self.ships.get(*target_name).unwrap().read().unwrap();
+
+        // Team-mates always know where each other are, so there is nothing to
+        // acquire and nothing that can be lost.
+        if observer.team.is_some() && observer.team == target.team {
+          continue;
+        }
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let band_now = find_range_band((target.get_position() - observer.get_position()).magnitude() as u32);
@@ -3943,6 +3952,62 @@ mod tests {
       !holds_contact(&entities, "Mate", "Bogey"),
       "the link should not reach past Distant"
     );
+  }
+
+  /// A squadron knows its own formation. Team-mates never have to find each
+  /// other, even when both are stealthed and running silent.
+  #[test]
+  fn teammates_always_detect_each_other() {
+    use crate::ship::{Stealth, Team};
+    let mut entities = Entities::default();
+    let hidden = Arc::new(ShipDesignTemplate {
+      stealth: Some(Stealth::Advanced),
+      ..ShipDesignTemplate::default()
+    });
+    for name in ["Flayer", "Thrasher"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &hidden, None, None);
+    }
+    // Both stealthed, so neither is seeded as a contact for the other.
+    assert!(!holds_contact(&entities, "Flayer", "Thrasher"), "not seeded");
+
+    for name in ["Flayer", "Thrasher"] {
+      entities.ships.get(name).unwrap().write().unwrap().team = Some(Team::Green);
+      entities
+        .ships
+        .get(name)
+        .unwrap()
+        .write()
+        .unwrap()
+        .set_emissions(Some(false), Some(false));
+    }
+
+    assert!(
+      entities.has_contact("Flayer", "Thrasher"),
+      "team-mates know where each other are"
+    );
+    assert!(entities.has_contact("Thrasher", "Flayer"));
+  }
+
+  /// Being on a team says nothing about ships that are not on it.
+  #[test]
+  fn a_team_does_not_reveal_outsiders() {
+    use crate::ship::{Stealth, Team};
+    let mut entities = Entities::default();
+    let hidden = Arc::new(ShipDesignTemplate {
+      stealth: Some(Stealth::Advanced),
+      ..ShipDesignTemplate::default()
+    });
+    for name in ["Flayer", "Thrasher", "Stranger"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &hidden, None, None);
+    }
+    for name in ["Flayer", "Thrasher"] {
+      entities.ships.get(name).unwrap().write().unwrap().team = Some(Team::Green);
+    }
+    entities.ships.get("Stranger").unwrap().write().unwrap().team = Some(Team::Red);
+
+    assert!(entities.has_contact("Flayer", "Thrasher"));
+    assert!(!entities.has_contact("Flayer", "Stranger"), "the other side is still hidden");
+    assert!(!entities.has_contact("Stranger", "Flayer"));
   }
 
   /// Jamming stops communication, and a hand-off is communication. Jamming the
