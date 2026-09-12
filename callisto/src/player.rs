@@ -525,8 +525,9 @@ impl PlayerManager {
 
     if entities.ships.remove(name).is_some() {
       // Drop any missile that was targeting this ship — its target_ptr
-      // would otherwise be unresolvable on next deep-clone.
-      entities.missiles.retain(|_, missile| missile.read().unwrap().target != *name);
+      // would otherwise be unresolvable on next deep-clone. Shared with the
+      // combat and jump paths, which used to miss this.
+      entities.prune_orphaned_missiles();
       // Nobody keeps a contact or a lock on a ship that is no longer here.
       entities.prune_ship_references();
       return Ok("Remove action executed".to_string());

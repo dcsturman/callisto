@@ -1,15 +1,99 @@
 {
   "metadata": {
     "name": "Marduk Encounter",
-    "description": "The party encounters a fat merchant!  But is it easy prey?",
+    "description": "Raiders over Marduk! Can our heroes save the day?",
     "owner": "dcsturman@gmail.com"
   },
   "ships": [
     {
+      "name": "Flayer",
+      "position": [
+        30000000.0,
+        0.0,
+        10000000.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Threshing Oar",
+      "current_hull": 120,
+      "current_armor": 2,
+      "current_power": 210,
+      "current_maneuver": 4,
+      "current_jump": 1,
+      "current_fuel": 61,
+      "current_crew": 6,
+      "current_sensors": "Civilian",
+      "current_computer": 10,
+      "active_weapons": [
+        true,
+        true,
+        true
+      ],
+      "sensor_locks": [],
+      "crew": {
+        "pilot": 0,
+        "engineering_jump": 0,
+        "engineering_power": 0,
+        "engineering_maneuver": 0,
+        "sensors": 0,
+        "gunnery": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
       "name": "HMS Executor",
-      "position": [801000000.0, 0.0, 0.0],
-      "velocity": [0.0, 0.0, 0.0],
-      "plan": [[[0.0, 0.0, 0.0], 50000]],
+      "position": [
+        801000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
       "design": "HMS Executor",
       "current_hull": 80,
       "current_armor": 4,
@@ -20,66 +104,214 @@
       "current_crew": 11,
       "current_sensors": "Advanced",
       "current_computer": 20,
-      "active_weapons": [true, true, true],
+      "active_weapons": [
+        true,
+        true
+      ],
+      "sensor_locks": [],
+      "crew": {
+        "pilot": 3,
+        "engineering_jump": 3,
+        "engineering_power": 3,
+        "engineering_maneuver": 3,
+        "sensors": 3,
+        "gunnery": [
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "leadership": 4
+      },
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Thrasher",
+      "position": [
+        30000000.0,
+        0.0,
+        5000000.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Threshing Oar",
+      "current_hull": 120,
+      "current_armor": 2,
+      "current_power": 210,
+      "current_maneuver": 4,
+      "current_jump": 1,
+      "current_fuel": 61,
+      "current_crew": 6,
+      "current_sensors": "Civilian",
+      "current_computer": 10,
+      "active_weapons": [
+        true,
+        true,
+        true
+      ],
+      "sensor_locks": [],
+      "crew": {
+        "pilot": 0,
+        "engineering_jump": 0,
+        "engineering_power": 0,
+        "engineering_maneuver": 0,
+        "sensors": 0,
+        "gunnery": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Dragon",
+      "position": [
+        25000000.0,
+        0.0,
+        7500000.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Scout/Courier",
+      "current_hull": 120,
+      "current_armor": 2,
+      "current_power": 210,
+      "current_maneuver": 4,
+      "current_jump": 1,
+      "current_fuel": 61,
+      "current_crew": 6,
+      "current_sensors": "Civilian",
+      "current_computer": 10,
+      "active_weapons": [
+        true,
+        true,
+        true
+      ],
       "sensor_locks": [],
       "crew": {
         "pilot": 2,
-        "engineering_jump": 2,
-        "engineering_power": 2,
-        "engineering_maneuver": 2,
+        "engineering_jump": 1,
+        "engineering_power": 1,
+        "engineering_maneuver": 1,
         "sensors": 4,
         "gunnery": [
-          2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+          3
         ],
         "leadership": 3
       },
       "dodge_thrust": 0,
       "assist_gunners": false,
       "can_jump": false,
-      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    },
-    {
-      "name": "Tobia",
-      "position": [700000000.0, 0.0, 0.0],
-      "velocity": [0.0, 0.0, 0.0],
-      "plan": [[[0.0, 0.0, 0.0], 50000]],
-      "design": "McClellan Trader",
-      "current_hull": 160,
-      "current_armor": 0,
-      "current_power": 160,
-      "current_maneuver": 1,
-      "current_jump": 2,
-      "current_fuel": 78,
-      "current_crew": 7,
-      "current_sensors": "Civilian",
-      "current_computer": 10,
-      "active_weapons": [true, true, true, true],
-      "sensor_locks": [],
-      "crew": {
-        "pilot": 2,
-        "engineering_jump": 1,
-        "engineering_power": 0,
-        "engineering_maneuver": 2,
-        "sensors": 2,
-        "gunnery": [1, 1, 1, 1],
-        "leadership": 2
-      },
-      "dodge_thrust": 0,
-      "assist_gunners": false,
-      "can_jump": false,
-      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      "crit_level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
     }
   ],
   "planets": [
     {
       "name": "Marduk",
-      "position": [0.0, 0.0, 0.0],
-      "velocity": [0.0, 0.0, 0.0],
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "color": "lightblue",
       "radius": 4000000.0,
-      "mass": 1e24,
+      "mass": 1e+24,
       "gravity_radius_025": 5217410.515671394,
-      "visual_effects": ["Continents", "AnimatedClouds"]
+      "visual_effects": [
+        "Continents",
+        "AnimatedClouds"
+      ]
     }
   ]
 }

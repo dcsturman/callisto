@@ -74,7 +74,7 @@ function Ship(args: {
   );
 
   const isOwnShip = viewingShipName === args.ship.name;
-  const undetected = isUndetected(observer, args.ship.name);
+  const undetected = isUndetected(observer, args.ship);
   // Two axes, deliberately kept separate: hue says which side a ship is on,
   // brightness says how well this console can see it. Scaling the team colour
   // rather than replacing it keeps both readable at once -- a dimmed red ship

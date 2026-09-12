@@ -102,7 +102,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         // Belt and braces: `disabled` should stop this, but contact can be lost
         // between render and click, and acting on an invisible ship is exactly
         // what the server would reject anyway.
-        if (isUndetected(observer, shipTarget.name)) {
+        if (isUndetected(observer, shipTarget)) {
           return;
         }
         if (
@@ -158,7 +158,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
           entities.ships
             .filter((candidate) => candidate.name !== exclude)
             .map((notMeShip) => {
-              const undetected = isUndetected(observer, notMeShip.name);
+              const undetected = isUndetected(observer, notMeShip);
               const sameTeam =
                 excludeSameTeam === true &&
                 observer?.team != null &&

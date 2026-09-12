@@ -118,6 +118,19 @@ impl PartialEq for Entities {
 ///
 /// Phrased for the referee log rather than as an error: the order was given,
 /// the crew simply has nothing to aim at.
+/// One line describing a sensor check: what was rolled, what modified it, and
+/// how it came out.
+///
+/// Emitted for every check actually made, hit or miss. A referee watching a
+/// stealth ship stay hidden for six rounds wants to know whether the rolls were
+/// close or whether the target was never findable at all, and that is not
+/// something you can infer from silence.
+fn detection_roll_effect(observer: &str, target: &str, roll: u8, dm: i16, total: i32, outcome: &str) -> EffectMsg {
+  EffectMsg::Message {
+    content: format!("{observer} sensor check vs {target}: 2D {roll} {dm:+} = {total} vs 8+, {outcome}."),
+  }
+}
+
 pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> EffectMsg {
   EffectMsg::Message {
     content: format!("{ship_name} has no sensor contact on {target} and cannot {verb} it."),
@@ -203,6 +216,13 @@ impl Entities {
     dest.next_missile_id = self.next_missile_id;
     dest.actions.clone_from(&self.actions);
 
+    // Drop anything whose target has left play before resolving pointers. The
+    // live state should never contain an orphan, but if it does, failing here
+    // makes every request for entities fail with it: the client stops getting
+    // updates entirely and sits on stale state, still showing ships that are
+    // gone. Losing a missile is a far better outcome than losing the session.
+    // Scenario *files* are still validated strictly, in `parse_bytes_...`.
+    dest.prune_orphaned_missiles();
     dest.fixup_pointers()?;
     dest.reset_gravity_wells();
     Ok(())
@@ -974,6 +994,8 @@ impl Entities {
     }
     if !cleanup_ships_list.is_empty() {
       self.prune_ship_references();
+      // Anything still flying at a ship that just died has nothing to hit.
+      effects.append(&mut self.prune_orphaned_missiles());
     }
 
     // Update which ships are jump enabled
@@ -1396,10 +1418,13 @@ impl Entities {
   /// Panics if the lock cannot be obtained to read a ship.
   #[must_use]
   pub fn has_contact(&self, observer: &str, target: &str) -> bool {
-    self
-      .ships
-      .get(observer)
-      .is_some_and(|ship| ship.read().unwrap().contacts.iter().any(|name| name == target))
+    let Some(observer) = self.ships.get(observer) else {
+      return false;
+    };
+    let Some(target) = self.ships.get(target) else {
+      return false;
+    };
+    observer.read().unwrap().detects(&target.read().unwrap())
   }
 
   /// Whether `ship_name` is running its active sensors.
@@ -1443,6 +1468,9 @@ impl Entities {
     // written while another pair is still reading it.
     let mut acquired = Vec::<(String, String)>::new();
     let mut lost = Vec::<(String, String)>::new();
+    // Every check that was actually rolled, reported so a referee can see why
+    // a ship stayed hidden rather than having to infer it.
+    let mut rolls = Vec::<EffectMsg>::new();
 
     for observer_name in &names {
       for target_name in &names {
@@ -1452,6 +1480,12 @@ impl Entities {
 
         let observer = self.ships.get(*observer_name).unwrap().read().unwrap();
         let target = self.ships.get(*target_name).unwrap().read().unwrap();
+
+        // Team-mates always know where each other are, so there is nothing to
+        // acquire and nothing that can be lost.
+        if observer.team.is_some() && observer.team == target.team {
+          continue;
+        }
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let band_now = find_range_band((target.get_position() - observer.get_position()).magnitude() as u32);
@@ -1480,10 +1514,23 @@ impl Entities {
           }
 
           let dm = self.detection_dm(observer_name, target_name, &target, fired);
-
-          if i32::from(roll_dice(2, rng)) + i32::from(dm) < STANDARD_ROLL_THRESHOLD {
+          let roll = roll_dice(2, rng);
+          let total = i32::from(roll) + i32::from(dm);
+          if total < STANDARD_ROLL_THRESHOLD {
             lost.push(((*observer_name).clone(), (*target_name).clone()));
           }
+          rolls.push(detection_roll_effect(
+            observer_name,
+            target_name,
+            roll,
+            dm,
+            total,
+            if total < STANDARD_ROLL_THRESHOLD {
+              "contact lost"
+            } else {
+              "contact held"
+            },
+          ));
         } else {
           // Acquisition needs active sensors: pinpointing a ship "requires the
           // use of active sensors" (p. 77).
@@ -1492,13 +1539,28 @@ impl Entities {
           }
 
           let dm = self.detection_dm(observer_name, target_name, &target, fired);
-
-          if i32::from(roll_dice(2, rng)) + i32::from(dm) >= STANDARD_ROLL_THRESHOLD {
+          let roll = roll_dice(2, rng);
+          let total = i32::from(roll) + i32::from(dm);
+          if total >= STANDARD_ROLL_THRESHOLD {
             acquired.push(((*observer_name).clone(), (*target_name).clone()));
           }
+          rolls.push(detection_roll_effect(
+            observer_name,
+            target_name,
+            roll,
+            dm,
+            total,
+            if total >= STANDARD_ROLL_THRESHOLD {
+              "contact"
+            } else {
+              "no contact"
+            },
+          ));
         }
       }
     }
+
+    effects.append(&mut rolls);
 
     for (observer_name, target_name) in lost {
       let mut observer = self.ships.get(&observer_name).unwrap().write().unwrap();
@@ -1661,6 +1723,44 @@ impl Entities {
     Some(find_range_band(distance))
   }
 
+  /// Drop missiles whose target no longer exists, reporting each as exhausted.
+  ///
+  /// A missile holds a resolved pointer to its target, rebuilt by
+  /// `fixup_pointers` on every deep copy. If the target has left play the
+  /// rebuild fails, and because the live state is deep-copied to answer any
+  /// request for entities, one orphaned missile makes the whole scenario
+  /// unreadable: the client stops receiving updates and sits on stale state,
+  /// still offering the dead ship as a target.
+  ///
+  /// The referee's Remove already dropped them. Ships destroyed in combat and
+  /// ships that jumped out did not, which is the more common way for a target
+  /// to disappear while something is still flying at it.
+  ///
+  /// Reported as exhausted rather than deleted silently, so the salvo visibly
+  /// goes away instead of vanishing between frames.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a missile.
+  pub fn prune_orphaned_missiles(&mut self) -> Vec<EffectMsg> {
+    let orphaned: Vec<(String, Vec3)> = self
+      .missiles
+      .iter()
+      .filter_map(|(name, missile)| {
+        let missile = missile.read().unwrap();
+        (!self.ships.contains_key(&missile.target)).then(|| (name.clone(), missile.get_position()))
+      })
+      .collect();
+
+    orphaned
+      .into_iter()
+      .map(|(name, position)| {
+        debug!("(Entity.prune_orphaned_missiles) Missile {name} lost its target.");
+        self.missiles.remove(&name);
+        EffectMsg::ExhaustedMissile { position }
+      })
+      .collect()
+  }
+
   /// Drop contacts and sensor locks naming ships that no longer exist.
   ///
   /// Called after ships leave play - destroyed, jumped out or removed by the
@@ -1676,14 +1776,27 @@ impl Entities {
     }
   }
 
-  /// Rewrite contacts and sensor locks that name `from` to name `to`.
+  /// Rewrite everything that names `from` to name `to`: contacts, sensor locks
+  /// and missile targets.
   ///
   /// Renaming used to leave `sensor_locks` pointing at the old name, silently
-  /// dropping the lock; contacts would have inherited the same bug.
+  /// dropping the lock, and missiles pointing at a target that no longer
+  /// existed — which is worse than silent, because an unresolvable missile
+  /// target makes the whole scenario fail to serialize.
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to write to a ship.
   fn rename_ship_references(&self, from: &str, to: &str) {
+    // A missile holds its target by name and resolves it on every deep copy,
+    // so a rename that does not follow leaves the missile pointing at a ship
+    // that no longer exists under that name.
+    for missile in self.missiles.values() {
+      let mut missile = missile.write().unwrap();
+      if missile.target == from {
+        missile.target = to.to_string();
+      }
+    }
+
     for ship in self.ships.values() {
       let mut guard = ship.write().unwrap();
       // Reborrow through the guard once so the two field borrows below are
@@ -1857,6 +1970,7 @@ impl Entities {
     }
     if jumped_any {
       self.prune_ship_references();
+      effects.append(&mut self.prune_orphaned_missiles());
     }
 
     effects
@@ -3943,6 +4057,216 @@ mod tests {
       !holds_contact(&entities, "Mate", "Bogey"),
       "the link should not reach past Distant"
     );
+  }
+
+  /// Every check actually rolled is reported, hit or miss, with the arithmetic
+  /// shown. A referee watching a ship stay hidden needs to know whether the
+  /// rolls were close or whether it was never findable.
+  #[test]
+  fn detection_reports_the_roll_and_the_result() {
+    let mut entities = detection_pair(Some(crate::ship::Stealth::Advanced), 1.0e6);
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(3);
+
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+    let check = effects
+      .iter()
+      .find_map(|e| match e {
+        EffectMsg::Message { content } if content.contains("sensor check vs") => Some(content.clone()),
+        _ => None,
+      })
+      .expect("the attempt should be reported");
+
+    assert!(check.contains("Seeker sensor check vs Quarry"), "{check}");
+    assert!(check.contains("2D "), "the roll should be shown: {check}");
+    assert!(check.contains("vs 8+"), "the target number should be shown: {check}");
+    assert!(
+      check.contains("no contact") || check.contains("contact."),
+      "the outcome should be shown: {check}"
+    );
+  }
+
+  /// Nothing is reported for a check that was never made — out of range, or the
+  /// observer running dark — so the log does not fill with non-events.
+  #[test]
+  fn no_roll_is_reported_when_no_check_is_made() {
+    // Observer dark: it cannot acquire, so there is nothing to roll.
+    let mut entities = detection_pair(Some(crate::ship::Stealth::Basic), 1.0e6);
+    entities
+      .ships
+      .get("Seeker")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_emissions(Some(false), None);
+    let snapshot = entities.ship_deep_copy();
+    let mut rng = SmallRng::seed_from_u64(3);
+
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &mut rng);
+
+    assert!(
+      !effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("sensor check vs"))),
+      "a ship running dark makes no check, so it should report none: {effects:#?}"
+    );
+  }
+
+  /// A missile outliving its target must not take the scenario down with it.
+  ///
+  /// The missile resolves its target by name on every deep copy, and the live
+  /// state is deep-copied to answer any request for entities — so one orphan
+  /// made every request fail. The client stopped receiving updates and sat on
+  /// stale state, still showing the destroyed ship as alive and targetable.
+  #[test]
+  fn a_missile_outliving_its_target_does_not_break_the_scenario() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship("Shooter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Doomed".to_string(),
+      Vec3::new(1.0e6, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+      .launch_missile(
+        "Shooter",
+        "Doomed",
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+      )
+      .expect("(test) launch");
+    assert_eq!(entities.missiles.len(), 1);
+
+    // The target dies with the missile still in flight.
+    entities.ships.remove("Doomed");
+
+    let effects = entities.prune_orphaned_missiles();
+    assert!(entities.missiles.is_empty(), "the orphan should be dropped");
+    assert_eq!(effects.len(), 1, "and reported, not silently vanished");
+    assert!(matches!(effects[0], EffectMsg::ExhaustedMissile { .. }));
+
+    entities.deep_copy().expect("entities must still be readable");
+  }
+
+  /// Belt and braces: even if an orphan does reach the live state, copying it
+  /// heals rather than fails. Losing a missile beats losing the session.
+  #[test]
+  fn deep_copy_heals_an_orphaned_missile() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship("Shooter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Doomed".to_string(),
+      Vec3::new(1.0e6, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+      .launch_missile(
+        "Shooter",
+        "Doomed",
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+      )
+      .expect("(test) launch");
+    entities.ships.remove("Doomed");
+
+    // No pruning first: this is the path that used to return Err and take every
+    // request for entities down with it.
+    let copy = entities.deep_copy().expect("a stray missile must not break the copy");
+    assert!(copy.missiles.is_empty());
+    assert!(copy.ships.contains_key("Shooter"));
+  }
+
+  /// Renaming a ship has to follow the missiles flying at it, or they are left
+  /// pointing at a name nothing answers to.
+  #[test]
+  fn renaming_a_ship_follows_missiles_targeting_it() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship("Shooter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(1.0e6, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+      .launch_missile(
+        "Shooter",
+        "Quarry",
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1),
+      )
+      .expect("(test) launch");
+
+    entities.rename("Quarry", "Zulu").expect("(test) rename");
+
+    let target = entities.missiles.values().next().unwrap().read().unwrap().target.clone();
+    assert_eq!(target, "Zulu", "the missile should follow the rename");
+    entities.deep_copy().expect("and the scenario stays readable");
+  }
+
+  /// A squadron knows its own formation. Team-mates never have to find each
+  /// other, even when both are stealthed and running silent.
+  #[test]
+  fn teammates_always_detect_each_other() {
+    use crate::ship::{Stealth, Team};
+    let mut entities = Entities::default();
+    let hidden = Arc::new(ShipDesignTemplate {
+      stealth: Some(Stealth::Advanced),
+      ..ShipDesignTemplate::default()
+    });
+    for name in ["Flayer", "Thrasher"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &hidden, None, None);
+    }
+    // Both stealthed, so neither is seeded as a contact for the other.
+    assert!(!holds_contact(&entities, "Flayer", "Thrasher"), "not seeded");
+
+    for name in ["Flayer", "Thrasher"] {
+      entities.ships.get(name).unwrap().write().unwrap().team = Some(Team::Green);
+      entities
+        .ships
+        .get(name)
+        .unwrap()
+        .write()
+        .unwrap()
+        .set_emissions(Some(false), Some(false));
+    }
+
+    assert!(
+      entities.has_contact("Flayer", "Thrasher"),
+      "team-mates know where each other are"
+    );
+    assert!(entities.has_contact("Thrasher", "Flayer"));
+  }
+
+  /// Being on a team says nothing about ships that are not on it.
+  #[test]
+  fn a_team_does_not_reveal_outsiders() {
+    use crate::ship::{Stealth, Team};
+    let mut entities = Entities::default();
+    let hidden = Arc::new(ShipDesignTemplate {
+      stealth: Some(Stealth::Advanced),
+      ..ShipDesignTemplate::default()
+    });
+    for name in ["Flayer", "Thrasher", "Stranger"] {
+      entities.add_ship(name.to_string(), Vec3::zero(), Vec3::zero(), &hidden, None, None);
+    }
+    for name in ["Flayer", "Thrasher"] {
+      entities.ships.get(name).unwrap().write().unwrap().team = Some(Team::Green);
+    }
+    entities.ships.get("Stranger").unwrap().write().unwrap().team = Some(Team::Red);
+
+    assert!(entities.has_contact("Flayer", "Thrasher"));
+    assert!(!entities.has_contact("Flayer", "Stranger"), "the other side is still hidden");
+    assert!(!entities.has_contact("Stranger", "Flayer"));
   }
 
   /// Jamming stops communication, and a hand-off is communication. Jamming the

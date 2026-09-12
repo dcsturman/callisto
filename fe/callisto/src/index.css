@@ -1462,3 +1462,17 @@ input {
 .emissions-toggle-locked input {
     cursor: not-allowed;
 }
+
+/* Team selector at the top of the Ship's Computer. It belongs to the ship
+   rather than to a crew station, so it sits above the role panels. */
+.ship-team-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.ship-team-label {
+    font-family: "Orbitron", sans-serif;
+    font-size: 9pt;
+}

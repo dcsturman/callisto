@@ -899,7 +899,8 @@ pub fn do_fire_actions<S: BuildHasher>(
       // Nothing can be done to a ship that is not detected. Read off the
       // attacker's start-of-round snapshot, so a shot is judged against what
       // the crew knew when the order was given.
-      if !attacker.contacts.iter().any(|name| name == target) {
+      let target_seen = ships.get(target).is_some_and(|t| attacker.detects(&t.read().unwrap()));
+      if !target_seen {
         debug!(
           "(Combat.do_fire_actions) {} has no contact on {}; fire action dropped.",
           attacker.get_name(),

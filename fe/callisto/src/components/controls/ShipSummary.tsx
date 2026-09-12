@@ -51,7 +51,7 @@ export function ShipSummary() {
         // Hull and thrust are exactly what a sensor contact would tell you --
         // thrust in G is the manoeuvre-drive DM on the detection table -- so a
         // ship you have no contact on shows its presence and nothing else.
-        undetected: isUndetected(observer, ship.name),
+        undetected: isUndetected(observer, ship),
         team: ship.team,
       };
     });
@@ -75,11 +75,11 @@ export function ShipSummary() {
             </span>
             <span className="ship-summary-hull">
               {row.undetected
-                ? "\u2014"
+                ? "?"
                 : `${row.current}${row.max !== null ? `(${row.max})` : ""}`}
             </span>
             <span className="ship-summary-thrust">
-              {row.undetected ? "\u2014" : `${row.thrust.toFixed(1)} G`}
+              {row.undetected ? "?" : `${row.thrust.toFixed(1)} G`}
             </span>
           </li>
         ))}
