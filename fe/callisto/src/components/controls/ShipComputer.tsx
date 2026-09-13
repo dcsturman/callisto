@@ -6,7 +6,7 @@ import {ViewMode} from "lib/view";
 
 import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
 import {Team, TEAMS, teamLabelColor} from "lib/teams";
-import {isUndetected, withinDistant} from "lib/contacts";
+import {isUndetected, sameSide} from "lib/contacts";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
@@ -499,8 +499,6 @@ function sensorActionToString(action: SensorState): string {
       return "sl-" + action.target;
     case SensorAction.JamComms:
       return "jc-" + action.target;
-    case SensorAction.SearchFor:
-      return "sf-" + action.target;
   }
 }
 
@@ -545,13 +543,6 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
         setSensorAction({
           shipName: ship.name,
           action: newSensorState(SensorAction.SensorLock, value.substring(3)),
-        })
-      );
-    } else if (value.startsWith("sf-")) {
-      dispatch(
-        setSensorAction({
-          shipName: ship.name,
-          action: newSensorState(SensorAction.SearchFor, value.substring(3)),
         })
       );
     } else if (value.startsWith("jc-")) {
@@ -633,24 +624,6 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             {"Break Sensor Lock: " + s}
           </option>
         ))}
-        {/* Ships worth looking for: another side, close enough to find, and not
-            already found. Detection happens automatically every round anyway —
-            what ordering it buys is the sensop's attention, so a captain's
-            leadership boost can be spent on that particular check. Offering it
-            when there is nothing to find would just be noise. */}
-        {entities.ships
-          .filter(
-            (target) =>
-              target.name !== ship.name &&
-              isUndetected(ship, target) &&
-              (ship.team == null || target.team !== ship.team) &&
-              withinDistant(ship, target),
-          )
-          .map((target) => (
-            <option key={target.name + "-search"} value={"sf-" + target.name}>
-              {"Search for: " + target.name}
-            </option>
-          ))}
 
         {/* Both lists are limited to ships this one has a sensor contact on.
             Nothing can be done to a ship that has not been detected, so
@@ -659,6 +632,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
           .filter(
             (target) =>
               target.name !== ship.name &&
+              !sameSide(ship, target) &&
               !isUndetected(ship, target) &&
               !ship.sensor_locks.includes(target.name),
           )
@@ -670,7 +644,10 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
 
         {entities.ships
           .filter(
-            (target) => target.name !== ship.name && !isUndetected(ship, target),
+            (target) =>
+              target.name !== ship.name &&
+              !sameSide(ship, target) &&
+              !isUndetected(ship, target),
           )
           .map((target) => (
             <option key={target.name + "-jam-comms"} value={"jc-" + target.name}>

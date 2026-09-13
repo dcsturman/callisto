@@ -17,6 +17,8 @@ function describeBoost(b: BoostTarget): string {
       return `PD on ${b.ship} (W#${b.weapon_id})`;
     case "Sensor":
       return `Sensor on ${b.ship}`;
+    case "Detection":
+      return `${b.ship} searching for ${b.target}`;
     case "Engineer":
       return `Engineer on ${b.ship}`;
     case "Evade":

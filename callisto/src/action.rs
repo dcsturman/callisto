@@ -18,12 +18,36 @@ use crate::ship::{Ship, ShipSystem, WeaponType};
 /// `BoostTarget::Engineer`.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BoostTarget {
-  Fire { ship: String, weapon_id: usize },
-  PointDefense { ship: String, weapon_id: usize },
-  Sensor { ship: String },
-  Engineer { ship: String },
-  Evade { ship: String },
-  AssistGunner { ship: String },
+  Fire {
+    ship: String,
+    weapon_id: usize,
+  },
+  PointDefense {
+    ship: String,
+    weapon_id: usize,
+  },
+  Sensor {
+    ship: String,
+  },
+  /// A captain concentrating the sensop on finding one particular ship.
+  ///
+  /// Unlike the others this backs no queued action: detection happens every
+  /// round for free whether anyone asks or not. What the captain buys is the
+  /// sensop's attention on one check, so the target names the pair rather than
+  /// just the ship, and it is live whenever there is something to find.
+  Detection {
+    ship: String,
+    target: String,
+  },
+  Engineer {
+    ship: String,
+  },
+  Evade {
+    ship: String,
+  },
+  AssistGunner {
+    ship: String,
+  },
 }
 
 /// Pool of active boosts for the current resolution turn. Built in
@@ -31,6 +55,16 @@ pub enum BoostTarget {
 /// passed by reference into per-category resolvers. Multi-captain stacking
 /// is intentionally NOT supported: duplicate targets collapse to a single +1.
 pub type BoostMap = HashSet<BoostTarget>;
+
+/// Returns the boost (`+1` if present, else `0`) a captain has put on the
+/// detection check `observer` will make against `target` this round.
+#[must_use]
+pub fn boost_for_detection(map: &BoostMap, observer: &str, target: &str) -> i16 {
+  i16::from(map.contains(&BoostTarget::Detection {
+    ship: observer.to_string(),
+    target: target.to_string(),
+  }))
+}
 
 /// Returns the boost (`+1` if present, else `0`) for a sensor-class action on
 /// `ship_name`. Helper used by the sensor / engineer / jump resolvers.
@@ -87,9 +121,10 @@ pub fn boost_target_kind_ord(t: &BoostTarget) -> u8 {
     BoostTarget::Fire { .. } => 0,
     BoostTarget::PointDefense { .. } => 1,
     BoostTarget::Sensor { .. } => 2,
-    BoostTarget::Engineer { .. } => 3,
-    BoostTarget::Evade { .. } => 4,
-    BoostTarget::AssistGunner { .. } => 5,
+    BoostTarget::Detection { .. } => 3,
+    BoostTarget::Engineer { .. } => 4,
+    BoostTarget::Evade { .. } => 5,
+    BoostTarget::AssistGunner { .. } => 6,
   }
 }
 
@@ -103,7 +138,8 @@ pub fn boost_target_sort_key(t: &BoostTarget) -> (String, u8, usize) {
     BoostTarget::Sensor { ship }
     | BoostTarget::Engineer { ship }
     | BoostTarget::Evade { ship }
-    | BoostTarget::AssistGunner { ship } => (ship.clone(), 0),
+    | BoostTarget::AssistGunner { ship }
+    | BoostTarget::Detection { ship, .. } => (ship.clone(), 0),
   };
   (ship, boost_target_kind_ord(t), weapon)
 }
@@ -134,11 +170,23 @@ pub fn boost_target_alive<S: BuildHasher>(
       let ship_ref = ship_lock.read().expect("(boost_target_alive) Unable to read ship lock.");
       return ship_ref.get_assist_gunners();
     }
+    // Backed by no action: live whenever there is still something to find.
+    BoostTarget::Detection { ship, target } => {
+      let (Some(observer), Some(quarry)) = (ships.get(ship), ships.get(target)) else {
+        return false;
+      };
+      let observer = observer.read().expect("(boost_target_alive) Unable to read ship lock.");
+      let quarry = quarry.read().expect("(boost_target_alive) Unable to read ship lock.");
+      return !observer.detects(&quarry);
+    }
     _ => {}
   }
 
   for (ship_name, ship_actions) in actions {
     match target {
+      // Handled above: it is backed by ship state, not by a queued action, so
+      // scanning the action list for it would always come up empty.
+      BoostTarget::Detection { .. } => return false,
       BoostTarget::Fire { ship, weapon_id } => {
         if ship_name == ship
           && ship_actions
@@ -166,7 +214,6 @@ pub fn boost_target_alive<S: BuildHasher>(
                 | ShipAction::BreakSensorLock { .. }
                 | ShipAction::SensorLock { .. }
                 | ShipAction::JamComms { .. }
-                | ShipAction::SearchFor { .. }
             )
           })
         {
@@ -219,15 +266,6 @@ pub enum ShipAction {
     target: String,
   },
   JamComms {
-    target: String,
-  },
-  /// Concentrate the sensop on finding one particular ship.
-  ///
-  /// Detection happens automatically every round regardless; what this buys is
-  /// the sensop's attention, so a captain's leadership boost can be spent on
-  /// the check. Only worth queueing against a ship of another side that is in
-  /// range and not yet a contact, which is the only case the client offers.
-  SearchFor {
     target: String,
   },
   Jump,
@@ -294,8 +332,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
           ShipAction::JamMissiles
           | ShipAction::BreakSensorLock { .. }
           | ShipAction::SensorLock { .. }
-          | ShipAction::JamComms { .. }
-          | ShipAction::SearchFor { .. } => {
+          | ShipAction::JamComms { .. } => {
             // Strip out all sensor actions, leaving just the non-sensor actions
             current_actions.retain(|action| {
               !matches!(
@@ -304,7 +341,6 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
                   | ShipAction::BreakSensorLock { .. }
                   | ShipAction::SensorLock { .. }
                   | ShipAction::JamComms { .. }
-                  | ShipAction::SearchFor { .. }
               )
             });
             current_actions.push(next_action.clone());
@@ -375,7 +411,6 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
                   | ShipAction::BreakSensorLock { .. }
                   | ShipAction::SensorLock { .. }
                   | ShipAction::JamComms { .. }
-                  | ShipAction::SearchFor { .. }
               )
             });
           }

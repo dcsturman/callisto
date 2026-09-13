@@ -29,6 +29,10 @@ export type BoostTarget =
   | { kind: "Fire"; ship: string; weapon_id: number }
   | { kind: "PointDefense"; ship: string; weapon_id: number }
   | { kind: "Sensor"; ship: string }
+  // Backed by no queued action: detection is free and happens every round. The
+  // boost names the pair, because a captain concentrates the sensop on finding
+  // one particular ship rather than on sensors in general.
+  | { kind: "Detection"; ship: string; target: string }
   | { kind: "Engineer"; ship: string }
   | { kind: "Evade"; ship: string }
   | { kind: "AssistGunner"; ship: string };
@@ -73,7 +77,6 @@ export enum SensorAction {
   BreakSensorLock,
   SensorLock,
   JamComms,
-  SearchFor,
 }
 
 export type SensorActionMsg = {[key: string]: SensorState};
@@ -159,6 +162,8 @@ export function boostTargetToWire(b: BoostTarget): object {
       return { PointDefense: { ship: b.ship, weapon_id: b.weapon_id } };
     case "Sensor":
       return { Sensor: { ship: b.ship } };
+    case "Detection":
+      return { Detection: { ship: b.ship, target: b.target } };
     case "Engineer":
       return { Engineer: { ship: b.ship } };
     case "Evade":
@@ -186,6 +191,10 @@ export function wireToBoostTarget(raw: unknown): BoostTarget | null {
     const v = obj["Sensor"] as { ship: string };
     return { kind: "Sensor", ship: v.ship };
   }
+  if (Object.hasOwn(obj, "Detection")) {
+    const v = obj["Detection"] as { ship: string; target: string };
+    return { kind: "Detection", ship: v.ship, target: v.target };
+  }
   if (Object.hasOwn(obj, "Engineer")) {
     const v = obj["Engineer"] as { ship: string };
     return { kind: "Engineer", ship: v.ship };
@@ -209,6 +218,11 @@ export function boostTargetEquals(a: BoostTarget, b: BoostTarget): boolean {
   if ((a.kind === "Fire" || a.kind === "PointDefense") &&
       (b.kind === "Fire" || b.kind === "PointDefense")) {
     return a.weapon_id === b.weapon_id;
+  }
+  // Detection is per pair, so two boosts on the same ship aimed at different
+  // quarry are different boosts.
+  if (a.kind === "Detection" && b.kind === "Detection") {
+    return a.target === b.target;
   }
   return true;
 }
@@ -241,8 +255,6 @@ function sensorActionPayload(sensor: SensorState) {
       return {SensorLock: {target: sensor.target}};
     case SensorAction.JamComms:
       return {JamComms: {target: sensor.target}};
-    case SensorAction.SearchFor:
-      return {SearchFor: {target: sensor.target}};
   }
 }
 
@@ -365,8 +377,6 @@ export function payloadToAction(payload: object[]): ActionType {
         s = {action: SensorAction.SensorLock, target: action["SensorLock"].target};
       } else if (typeof action === "object" && Object.hasOwn(action, "JamComms")) {
         s = {action: SensorAction.JamComms, target: action["JamComms"].target};
-      } else if (typeof action === "object" && Object.hasOwn(action, "SearchFor")) {
-        s = {action: SensorAction.SearchFor, target: action["SearchFor"].target};
       } else {
         console.error(
           "(payloadToAction) BUG: Should never get here when looking for sensor action " +
