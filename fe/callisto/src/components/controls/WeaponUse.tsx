@@ -52,7 +52,6 @@ import LargeBay from "assets/icons/bay-l.svg?react";
 import RayIcon from "assets/icons/laser.svg?react";
 import MissileIcon from "assets/icons/missile.svg?react";
 import { GiBinoculars, GiRadarSweep, GiRocket } from "react-icons/gi";
-import { isUndetected } from "lib/contacts";
 import { FaCog } from "react-icons/fa";
 import { Tooltip } from "react-tooltip";
 import { vectorDistance } from "lib/Util";
@@ -687,6 +686,15 @@ export const FireControl: React.FC<FireControlProps> = () => {
 export function Actions(args: {
   fireActions: FireState;
   pointDefenseActions: PointDefenseState;
+  /**
+   * Ships this one could be searching for: another side, not yet found.
+   *
+   * Not actions — detection is free and needs no order. They appear so a
+   * captain can concentrate the sensop on one of them, which is the only part
+   * of detection leadership reaches. Supplied by the caller because the caller
+   * knows which roles should see them.
+   */
+  searchTargets: Ship[];
   sensorAction: SensorState;
   engineerAction: EngineerState;
   pilotState: { dodgeThrust: number; assistGunners: boolean } | null;
@@ -965,36 +973,26 @@ export function Actions(args: {
       })}
 
       {/* Detection is free and happens every round, so there is no order to
-          queue and nothing to click off. The rows are here purely so a captain
-          can put the sensop's attention on one particular ship, which is the
-          only part of it leadership can affect. One row per ship worth looking
-          for: another side, and not yet found. */}
-      {computerShip != null &&
-        entities.ships
-          .filter(
-            (target) =>
-              target.name !== computerShip.name &&
-              isUndetected(computerShip, target) &&
-              !(computerShip.team != null && target.team === computerShip.team),
-          )
-          .map((target) => (
-            <div className="fire-actions-div" key={"search-" + target.name}>
-              <div>
-                <p>
-                  <GiRadarSweep
-                    className="beam-type-icon"
-                    style={{ fill: SEARCH_ICON_COLOR }}
-                  />{" "}
-                  Searching for {target.name}
-                </p>
-              </div>
-              {renderBoostCheckbox({
-                kind: "Detection",
-                ship: computerShip.name,
-                target: target.name,
-              })}
-            </div>
-          ))}
+          queue and nothing to click off. These rows exist so a captain can put
+          the sensop's attention on one particular ship. */}
+      {args.searchTargets.map((target) => (
+        <div className="fire-actions-div" key={"search-" + target.name}>
+          <div>
+            <p>
+              <GiRadarSweep
+                className="beam-type-icon"
+                style={{ fill: SEARCH_ICON_COLOR }}
+              />{" "}
+              Searching for {target.name}
+            </p>
+          </div>
+          {renderBoostCheckbox({
+            kind: "Detection",
+            ship: computerShipName ?? "",
+            target: target.name,
+          })}
+        </div>
+      ))}
 
       {args.pilotState != null && args.pilotState.dodgeThrust > 0 && (
         <div className="fire-actions-div">
