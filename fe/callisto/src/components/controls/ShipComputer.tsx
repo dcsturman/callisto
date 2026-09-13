@@ -6,7 +6,7 @@ import {ViewMode} from "lib/view";
 
 import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
 import {Team, TEAMS, teamLabelColor} from "lib/teams";
-import {isUndetected, withinDistant} from "lib/contacts";
+import {isUndetected, withinDistant, sameSide} from "lib/contacts";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
@@ -669,6 +669,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
           .filter(
             (target) =>
               target.name !== ship.name &&
+              !sameSide(ship, target) &&
               !isUndetected(ship, target) &&
               !ship.sensor_locks.includes(target.name),
           )
@@ -680,7 +681,10 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
 
         {entities.ships
           .filter(
-            (target) => target.name !== ship.name && !isUndetected(ship, target),
+            (target) =>
+              target.name !== ship.name &&
+              !sameSide(ship, target) &&
+              !isUndetected(ship, target),
           )
           .map((target) => (
             <option key={target.name + "-jam-comms"} value={"jc-" + target.name}>

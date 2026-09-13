@@ -1240,6 +1240,28 @@ impl Ship {
     }
   }
 
+  /// Reset every current value to what the design says, discarding damage.
+  ///
+  /// `fixup_current_values` raises a current value to the design's but never
+  /// lowers it, so that loading an undamaged ship fills the blanks in. That is
+  /// wrong when the *design itself* changes: re-pointing a ship at a smaller
+  /// hull left it with the larger one's hull, thrust and sensors, and the ship
+  /// went on flying at a rating its new design cannot reach.
+  pub fn reset_current_values_to_design(&mut self) {
+    self.current_hull = self.design.hull;
+    self.current_armor = self.design.armor;
+    self.current_power = self.design.power;
+    self.current_maneuver = self.design.maneuver;
+    self.current_jump = self.design.jump;
+    self.current_fuel = self.design.fuel;
+    self.current_crew = self.design.crew;
+    self.current_sensors = self.design.sensors;
+    self.active_weapons = vec![true; self.weapons().len()];
+    self.crit_level = [0; 11];
+    self.attack_dm = 0;
+    self.dodge_thrust = 0;
+  }
+
   pub fn fixup_current_values(&mut self) {
     self.current_hull = u32::max(self.current_hull, self.design.hull);
     self.current_armor = u32::max(self.current_armor, self.design.armor);

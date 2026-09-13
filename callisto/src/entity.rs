@@ -405,13 +405,22 @@ impl Entities {
       let mut ship = existing.write().unwrap();
       ship.set_position(position);
       ship.set_velocity(velocity);
+      // A ship pointed at a different design is a different ship, so its
+      // current values come from the new design rather than being carried over.
+      // `fixup_current_values` only ever raises them, so without this a swap to
+      // a smaller hull kept the larger one's hull, thrust and sensors.
+      let design_changed = ship.design.name != design.name;
       ship.design = design.clone();
       ship.crew = crew.unwrap_or_default();
       // Owned because `set_weapons` is about to replace what `weapons()` borrows.
       let before = ship.weapons().to_vec();
       // Set the armament before the fixup so `active_weapons` is sized to it.
       ship.set_weapons(weapons);
-      ship.fixup_current_values();
+      if design_changed {
+        ship.reset_current_values_to_design();
+      } else {
+        ship.fixup_current_values();
+      }
       ship.weapons() != before
     };
 
@@ -4292,6 +4301,47 @@ mod tests {
     let target = entities.missiles.values().next().unwrap().read().unwrap().target.clone();
     assert_eq!(target, "Zulu", "the missile should follow the rename");
     entities.deep_copy().expect("and the scenario stays readable");
+  }
+
+  /// Re-pointing a ship at a different design must not leave the old design's
+  /// numbers behind. `fixup_current_values` only ever raises a current value,
+  /// so a swap to a smaller hull used to keep the larger one's hull, thrust and
+  /// sensors, and the ship went on flying at a rating its design cannot reach.
+  #[test]
+  fn changing_a_design_resets_the_ship_to_it() {
+    let mut entities = Entities::default();
+    let big = Arc::new(ShipDesignTemplate {
+      name: "Big".to_string(),
+      hull: 120,
+      maneuver: 4,
+      sensors: crate::ship::Sensors::Civilian,
+      ..ShipDesignTemplate::default()
+    });
+    let small = Arc::new(ShipDesignTemplate {
+      name: "Small".to_string(),
+      hull: 40,
+      maneuver: 2,
+      sensors: crate::ship::Sensors::Military,
+      ..ShipDesignTemplate::default()
+    });
+
+    entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &big, None, None);
+    {
+      let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+      assert_eq!(ship.current_hull, 120);
+      assert_eq!(ship.current_maneuver, 4);
+    }
+
+    entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &small, None, None);
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert_eq!(ship.current_hull, 40, "hull should follow the new design down");
+    assert_eq!(ship.current_maneuver, 2, "so should thrust");
+    assert_eq!(
+      ship.current_sensors,
+      crate::ship::Sensors::Military,
+      "and the sensor suite, which changes what the ship can find"
+    );
   }
 
   /// A squadron knows its own formation. Team-mates never have to find each

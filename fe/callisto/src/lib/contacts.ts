@@ -60,3 +60,14 @@ export const withinDistant = (observer: Ship, target: Ship): boolean => {
   const dz = az - bz;
   return Math.sqrt(dx * dx + dy * dy + dz * dz) <= DISTANT_METRES;
 };
+
+/**
+ * Whether two ships are on the same side.
+ *
+ * Used to keep team-mates out of the menus for actions there is no reason to
+ * take against them -- locking or jamming your own wingman -- in the same
+ * spirit as hiding ships you cannot see. Unaligned ships share no side, not
+ * even with each other.
+ */
+export const sameSide = (a: Ship, b: Ship): boolean =>
+  a.team != null && a.team === b.team;

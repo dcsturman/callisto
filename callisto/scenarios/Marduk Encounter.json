@@ -250,15 +250,6 @@
         ]
       ],
       "design": "Scout/Courier",
-      "current_hull": 120,
-      "current_armor": 2,
-      "current_power": 210,
-      "current_maneuver": 4,
-      "current_jump": 1,
-      "current_fuel": 61,
-      "current_crew": 6,
-      "current_sensors": "Civilian",
-      "current_computer": 10,
       "active_weapons": [
         true,
         true,
