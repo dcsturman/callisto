@@ -646,19 +646,17 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
               (ship.team == null || target.team !== ship.team),
           )
           .map((target) => {
-            // Past Distant there is nothing to find, so the order would do
-            // nothing. Shown disabled rather than hidden: a search that simply
-            // is not in the list looks like a missing feature, where "out of
-            // range" says what to do about it.
+            // Orders are given before the round runs and the check happens
+            // after everything has moved, so a ship out of range now may well
+            // be inside Distant by the time the sensop looks. Blocking the
+            // order would mean a captain could never inspire the search that
+            // closing the range makes possible -- the one round it matters
+            // most. The range is shown as information, not as a bar.
             const tooFar = !withinDistant(ship, target);
             return (
-              <option
-                key={target.name + "-search"}
-                value={"sf-" + target.name}
-                disabled={tooFar}
-                className={tooFar ? "no-contact-option" : undefined}>
+              <option key={target.name + "-search"} value={"sf-" + target.name}>
                 {tooFar
-                  ? `Search for: ${target.name} (out of range)`
+                  ? `Search for: ${target.name} (not yet in range)`
                   : `Search for: ${target.name}`}
               </option>
             );
