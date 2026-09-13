@@ -4071,6 +4071,52 @@ mod tests {
     );
   }
 
+  /// A ship loaded from a scenario file gets its Bandwidth from its design.
+  ///
+  /// Regression: `current_computer` was set only in `Ship::new`, and was the one
+  /// `current_*` field missing from `fixup_current_values`. A ship whose JSON
+  /// omitted the key -- which is every ship hand-added to a scenario file --
+  /// therefore loaded with Bandwidth 0 and could neither send nor receive a
+  /// hand-off, silently, while its design said 5. Every hand-off test above
+  /// builds ships through `add_ship`, so none of them saw it.
+  #[test_log::test(tokio::test)]
+  async fn handoff_works_for_ships_loaded_without_a_computer_rating() {
+    config_test_ship_templates().await;
+
+    // Note what is NOT here: no `current_computer` on either ship.
+    let scenario = json!({"ships":[
+        {"name":"Picket","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
+         "team":"Red","handoff_sensors":true,"contacts":["Bogey"]},
+        {"name":"Mate","position":[1.0e6,0.0,0.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
+         "team":"Red"},
+        {"name":"Bogey","position":[2.0e6,0.0,0.0],"velocity":[0.0,0.0,0.0],
+         "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer"}]});
+
+    let mut entities = Entities::parse_bytes_with_ship_templates(
+      scenario.to_string().as_bytes(),
+      "handoff.json",
+      get_ship_templates_snapshot(),
+    )
+    .unwrap();
+
+    for name in ["Picket", "Mate"] {
+      let ship = entities.ships.get(name).unwrap().read().unwrap();
+      assert_eq!(
+        ship.current_computer, ship.design.computer,
+        "{name} should take its Bandwidth from its design"
+      );
+      assert!(ship.current_computer > 0, "the test design must have a computer");
+    }
+
+    entities.sensor_handoff_pass();
+    assert!(
+      holds_contact(&entities, "Mate", "Bogey"),
+      "a loaded ship with a design computer rating should be able to host a hand-off"
+    );
+  }
+
   /// "If one or more of the ships in a hand-off strays beyond Distant range,
   /// the connection is lost."
   #[test]
