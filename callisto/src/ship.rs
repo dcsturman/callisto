@@ -1256,6 +1256,7 @@ impl Ship {
     self.current_fuel = self.design.fuel;
     self.current_crew = self.design.crew;
     self.current_sensors = self.design.sensors;
+    self.current_computer = self.design.computer;
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.attack_dm = 0;
@@ -1271,6 +1272,7 @@ impl Ship {
     self.current_fuel = u32::max(self.current_fuel, self.design.fuel);
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
+    self.current_computer = u32::max(self.current_computer, self.design.computer);
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.attack_dm = 0;
