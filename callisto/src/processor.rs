@@ -1,10 +1,11 @@
 use std::boxed::Box;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::{Receiver, UnboundedReceiver};
 use futures::select;
-use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
+use futures::{stream::FuturesUnordered, FutureExt, SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tokio_tungstenite::tungstenite::{
@@ -72,6 +73,34 @@ struct Connection {
   /// It is not otherwise shared.
   player: PlayerManager,
   stream: WebSocketStream<SubStream>,
+  /// When this connection last did something that was not a keepalive.
+  ///
+  /// Keepalives are excluded deliberately: the client sends one every minute
+  /// whether anyone is at the keyboard or not, so counting them would mean no
+  /// connection was ever idle and the whole check would do nothing.
+  last_active: Instant,
+}
+
+/// How long a connection may go without doing anything before it counts as
+/// idle. Generous, because being wrong disconnects someone mid-thought and the
+/// cost of waiting is only a little more Cloud Run time.
+const IDLE_TIMEOUT: Duration = Duration::from_mins(30);
+
+/// How often idleness is checked. Not a timeout in itself — a connection is
+/// only ever dropped once it has actually been quiet for `IDLE_TIMEOUT`.
+const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Whether every connection has been quiet for longer than `timeout`.
+///
+/// All of them, not any: one person still playing keeps the whole table alive,
+/// including the tabs of people who have wandered off. The point is only to let
+/// Cloud Run scale to zero when nobody is using it, rather than to police
+/// individual connections — and a scenario with one active player is in use.
+///
+/// An empty list is not idle: there is nothing to disconnect, and the service
+/// will scale down on its own.
+fn all_connections_idle(last_active: &[Instant], now: Instant, timeout: Duration) -> bool {
+  !last_active.is_empty() && last_active.iter().all(|t| now.duration_since(*t) >= timeout)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,6 +124,8 @@ enum ActiveProcessorEvent {
   Connection(Option<Box<IncomingConnection>>),
   Reload(Option<ReloadNotification>),
   Message(Option<(usize, Option<Result<Message, Error>>)>),
+  /// Time to see whether everyone has wandered off.
+  IdleCheck,
 }
 
 impl Processor {
@@ -149,6 +180,14 @@ impl Processor {
   pub async fn processor(&mut self) {
     // All the data shared between authenticators.
     let mut connections = Vec::<Connection>::new();
+
+    // An interval rather than a timeout on the select, because a timeout would
+    // be reset by every message — and the client sends a keepalive every
+    // minute, so it would never fire. An interval ticks regardless of what else
+    // the loop is doing.
+    let mut idle_check = tokio::time::interval(IDLE_CHECK_INTERVAL);
+    // The first tick completes immediately; nothing can be idle yet.
+    idle_check.tick().await;
 
     loop {
       // In here, clean up old scenarios that haven't had anyone in them for 5 minutes.
@@ -207,11 +246,13 @@ impl Processor {
           next_connection = connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection.map(Box::new)),
           next_reload = reload_receiver.next() => ActiveProcessorEvent::Reload(next_reload),
           next_item =  message_streams.next() => ActiveProcessorEvent::Message(next_item),
+          _ = Box::pin(idle_check.tick()).fuse() => ActiveProcessorEvent::IdleCheck,
         }
       } else {
         select! {
           next_connection = self.connection_receiver.next() => ActiveProcessorEvent::Connection(next_connection.map(Box::new)),
           next_item =  message_streams.next() => ActiveProcessorEvent::Message(next_item),
+          _ = Box::pin(idle_check.tick()).fuse() => ActiveProcessorEvent::IdleCheck,
         }
       };
 
@@ -231,6 +272,22 @@ impl Processor {
           warn!("(processor) Connection receiver disconnected.  This is okay if the server is shutting down.Exiting.");
           break;
         }
+        ActiveProcessorEvent::IdleCheck => {
+          let last_active: Vec<Instant> = connections.iter().map(|c| c.last_active).collect();
+          if all_connections_idle(&last_active, Instant::now(), IDLE_TIMEOUT) {
+            info!(
+              "(processor) All {} connection(s) idle for {} minutes. Closing them so the service can scale down.",
+              connections.len(),
+              IDLE_TIMEOUT.as_secs() / 60
+            );
+            for connection in &mut connections {
+              // Best effort: the point is to let the socket go, and a client
+              // that has already vanished cannot be told about it.
+              let _ = connection.stream.close(None).await;
+            }
+            connections.clear();
+          }
+        }
         ActiveProcessorEvent::Reload(Some(notification)) => {
           self.handle_reload_notification(&mut connections, notification).await;
         }
@@ -248,6 +305,14 @@ impl Processor {
               // Grab this here as the ordering of the connections vector may change while we yield the thread!
               let num_connections = connections.len();
               let current_connection = &mut connections[index];
+
+              // Anything that is not a keepalive counts as somebody being
+              // there. Keepalives are excluded on purpose: the client sends one
+              // every minute whether or not anyone is at the keyboard, so
+              // counting them would mean nothing was ever idle.
+              if !matches!(parsed_message, RequestMsg::Ping) {
+                current_connection.last_active = Instant::now();
+              }
 
               let response = self.handle_request(parsed_message, &mut current_connection.player).await;
               // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
@@ -479,6 +544,7 @@ impl Processor {
     let mut connection = Connection {
       player: PlayerManager::new(None, authenticator, self.test_mode),
       stream,
+      last_active: Instant::now(),
     };
 
     // If we got a successful Some(email) then we need to fake like this was a log in by
@@ -1147,4 +1213,46 @@ async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &Respon
   stream.send(Message::Text(encoded_message)).await.unwrap_or_else(|e| {
     error!("(processor) Failed to send {context}: {e:?}");
   });
+}
+
+#[cfg(test)]
+mod idle_tests {
+  use super::{all_connections_idle, IDLE_TIMEOUT};
+  use std::time::{Duration, Instant};
+
+  #[test]
+  fn nothing_to_disconnect_when_there_are_no_connections() {
+    // Not "idle": there is nobody to drop, and the service scales down anyway.
+    assert!(!all_connections_idle(&[], Instant::now(), IDLE_TIMEOUT));
+  }
+
+  #[test]
+  fn one_active_connection_keeps_everyone_alive() {
+    let now = Instant::now();
+    let long_ago = now.checked_sub(IDLE_TIMEOUT + Duration::from_secs(60)).unwrap();
+    // Two people wandered off, one is still playing.
+    assert!(!all_connections_idle(&[long_ago, long_ago, now], now, IDLE_TIMEOUT));
+  }
+
+  #[test]
+  fn all_quiet_is_idle() {
+    let now = Instant::now();
+    let long_ago = now.checked_sub(IDLE_TIMEOUT + Duration::from_secs(1)).unwrap();
+    assert!(all_connections_idle(&[long_ago, long_ago], now, IDLE_TIMEOUT));
+  }
+
+  #[test]
+  fn just_under_the_timeout_is_not_idle() {
+    let now = Instant::now();
+    let recent = now
+      .checked_sub(IDLE_TIMEOUT.checked_sub(Duration::from_secs(1)).unwrap())
+      .unwrap();
+    assert!(!all_connections_idle(&[recent], now, IDLE_TIMEOUT));
+  }
+
+  #[test]
+  fn the_timeout_is_half_an_hour() {
+    // Named here so changing it is a deliberate act rather than a stray edit.
+    assert_eq!(IDLE_TIMEOUT, Duration::from_mins(30));
+  }
 }
