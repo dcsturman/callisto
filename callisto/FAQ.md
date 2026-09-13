@@ -304,13 +304,15 @@ round for every pair not already in contact.
 Teams are not a Mongoose concept at all; they exist so hand-offs have something
 to be shared along. Everything here is invention.
 
-#### Change — searching for a ship is an action, so a boost can be spent on it
-Detection happens automatically every round whether anyone orders it or not.
-What ordering a *search* buys is the sensop's attention: it is a sensor action
-like any other, so a captain's leadership boost can be spent on that particular
-check, and it costs the sensor slot that would otherwise go to a lock or a jam.
-The client only offers it against a ship of another side that is in range and
-not yet found, since anywhere else there is nothing to look for.
+#### Change — a captain can concentrate the sensop on one particular ship
+Detection happens every round for free, and searching is not an action: it costs
+no sensor slot and there is nothing to order. What a captain can do is put the
+sensop's attention on one check, which is worth the usual DM+1.
+
+The boost therefore names a *pair* rather than a ship, and it appears in the
+action list for every ship of another side that has not been found yet — the
+only place leadership can affect detection at all. Nothing is offered against a
+team-mate, whose position is known anyway.
 
 #### Change — team-mates always know where each other are
 No sensor check is needed to find your own wingman, even when both ships are

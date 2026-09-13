@@ -11,7 +11,9 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 use tracing::{event, Level};
 
-use crate::action::{boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList};
+use crate::action::{
+  boost_for_detection, boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList,
+};
 use crate::combat::{
   attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band, interception_cost,
   roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, STANDARD_ROLL_THRESHOLD,
@@ -1044,9 +1046,6 @@ impl Entities {
       // Process the actions for each ship.
       for action in actions {
         effects.append(&mut match action {
-          // Resolved by the detection pass at the end of the round, where the
-          // check it boosts actually happens.
-          ShipAction::SearchFor { .. } => continue,
           ShipAction::JamMissiles => self.jam_missiles(ship_name, boost, rng),
           ShipAction::BreakSensorLock { target } => {
             self.break_sensor_lock(ship_name, target, &reverse_sensor_locks, boost, rng)
@@ -1461,8 +1460,8 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write a ship.
   pub fn detection_pass(
-    &mut self, ship_snapshot: &HashMap<String, Ship>, fired: &HashSet<String>, searches: &[(String, String)],
-    boost_map: &BoostMap, rng: &mut dyn RngCore,
+    &mut self, ship_snapshot: &HashMap<String, Ship>, fired: &HashSet<String>, boost_map: &BoostMap,
+    rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     let mut effects = Vec::new();
     // Sorted so a seeded run is reproducible; `ships` is a HashMap.
@@ -1547,17 +1546,10 @@ impl Entities {
             continue;
           }
 
-          // A sensop told to concentrate on this ship can have a captain's
-          // leadership boost spent on the check. Detection happens either way;
-          // the order is what makes the boost spendable.
-          let searching = searches
-            .iter()
-            .any(|(searcher, sought)| searcher == *observer_name && sought == *target_name);
-          let boost = if searching {
-            boost_for_sensor(boost_map, observer_name)
-          } else {
-            0
-          };
+          // A captain can put the sensop's attention on one particular check.
+          // Detection happens either way — searching is free, not an action —
+          // so this is purely the leadership boost.
+          let boost = boost_for_detection(boost_map, observer_name, target_name);
 
           let dm = self.detection_dm(observer_name, target_name, &target, fired) + boost;
           let roll = roll_dice(2, rng);
@@ -1869,14 +1861,6 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
   pub fn reset_actions(&mut self) {
-    // Snapshot what each ship can see before taking a mutable borrow of the
-    // action lists, since the retain below needs to consult it.
-    let contacts: HashMap<String, HashSet<String>> = self
-      .ships
-      .iter()
-      .map(|(name, ship)| (name.clone(), ship.read().unwrap().contacts.iter().cloned().collect()))
-      .collect();
-
     self.actions.iter_mut().for_each(|(ship_name, actions)| {
       // Find the actual ship. If it no longer exists we don't need any of these actions.
       if !self.ships.contains_key(ship_name) {
@@ -1901,10 +1885,6 @@ impl Entities {
           ShipAction::JamComms { target } | ShipAction::FireAction { target, .. } => self.ships.contains_key(target),
           // Keep SensorLock only while the lock isn't yet established.
           ShipAction::SensorLock { target } => self.ships.contains_key(target) && !attacker_has_lock_on(target),
-          // Keep a search only while there is still something to search for.
-          ShipAction::SearchFor { target } => {
-            self.ships.contains_key(target) && !contacts.get(ship_name).is_some_and(|c| c.contains(target))
-          }
           // Keep BreakSensorLock if the target still exists and the target has a sensor lock.
           ShipAction::BreakSensorLock { target } => {
             if let Some(target_ship) = self.ships.get(target) {
@@ -3987,7 +3967,7 @@ mod tests {
     let mut rng = SmallRng::seed_from_u64(4);
 
     for _ in 0..30 {
-      entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+      entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
     }
 
     assert!(
@@ -4005,7 +3985,7 @@ mod tests {
 
     let mut found = false;
     for _ in 0..30 {
-      entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+      entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
       if holds_contact(&entities, "Seeker", "Quarry") {
         found = true;
         break;
@@ -4110,26 +4090,27 @@ mod tests {
     );
   }
 
-  /// A sensop told to concentrate on one ship can have a leadership boost spent
-  /// on that check. Detection happens either way — the order is what makes the
-  /// boost spendable, which is the whole reason it is an action at all.
+  /// A captain can put the sensop's attention on one particular check.
+  /// Detection is free and happens anyway — the boost is what leadership buys,
+  /// and it is aimed at a specific pair rather than at the ship in general.
   #[test]
-  fn searching_for_a_ship_lets_a_boost_apply() {
+  fn a_captain_can_boost_one_detection_check() {
     use crate::action::BoostTarget;
 
-    let with_boost = |searches: &[(String, String)], boost: bool| {
+    let run = |boost: bool| {
       let mut entities = detection_pair(Some(crate::ship::Stealth::Advanced), 1.0e6);
       entities.ships.get("Seeker").unwrap().write().unwrap().contacts.clear();
       let snapshot = entities.ship_deep_copy();
       let mut map = BoostMap::default();
       if boost {
-        map.insert(BoostTarget::Sensor {
+        map.insert(BoostTarget::Detection {
           ship: "Seeker".to_string(),
+          target: "Quarry".to_string(),
         });
       }
       let mut rng = SmallRng::seed_from_u64(11);
-      let effects = entities.detection_pass(&snapshot, &HashSet::new(), searches, &map, &mut rng);
-      effects
+      entities
+        .detection_pass(&snapshot, &HashSet::new(), &map, &mut rng)
         .iter()
         .find_map(|e| match e {
           EffectMsg::Message { content } if content.contains("sensor check on") => Some(content.clone()),
@@ -4138,14 +4119,8 @@ mod tests {
         .expect("a check should be reported")
     };
 
-    let search = vec![("Seeker".to_string(), "Quarry".to_string())];
-    let plain = with_boost(&[], true);
-    let boosted = with_boost(&search, true);
-    let searched_unboosted = with_boost(&search, false);
-
     // Same seed, so the dice match and only the DM moves.
-    assert_ne!(plain, boosted, "a boost should change the check when searching");
-    assert_eq!(plain, searched_unboosted, "searching without a boost to spend changes nothing");
+    assert_ne!(run(false), run(true), "the boost should change the check");
   }
 
   /// Every check actually rolled is reported, hit or miss, with the arithmetic
@@ -4157,7 +4132,7 @@ mod tests {
     let snapshot = entities.ship_deep_copy();
     let mut rng = SmallRng::seed_from_u64(3);
 
-    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
     let check = effects
       .iter()
@@ -4193,7 +4168,7 @@ mod tests {
     let snapshot = entities.ship_deep_copy();
     let mut rng = SmallRng::seed_from_u64(3);
 
-    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
     assert!(
       !effects
@@ -4569,7 +4544,7 @@ mod tests {
       .set_position(Vec3::new(6.0e7, 0.0, 0.0));
 
     let mut rng = SmallRng::seed_from_u64(1);
-    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
     assert!(!holds_contact(&entities, "Seeker", "Quarry"), "too far to hold contact");
     assert!(
@@ -4609,7 +4584,7 @@ mod tests {
 
       // A roll of 2 fails any check, so a stealthed target is certainly lost.
       let mut rng = StepRng::new(0, 0);
-      entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+      entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
       assert_eq!(
         holds_contact(&entities, "Seeker", "Quarry"),
@@ -4638,7 +4613,7 @@ mod tests {
       .set_position(Vec3::new(1.0e6, 0.0, 0.0));
 
     let mut rng = StepRng::new(0, 0);
-    entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+    entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
     assert!(
       holds_contact(&entities, "Seeker", "Quarry"),
@@ -4664,7 +4639,7 @@ mod tests {
       .unwrap()
       .set_position(Vec3::new(6.0e7, 0.0, 0.0));
     let mut rng = SmallRng::seed_from_u64(1);
-    entities.detection_pass(&snapshot, &HashSet::new(), &[], &BoostMap::default(), &mut rng);
+    entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
     let seeker = entities.ships.get("Seeker").unwrap().read().unwrap();
     assert!(seeker.contacts.is_empty());

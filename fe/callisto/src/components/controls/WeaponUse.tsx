@@ -51,7 +51,8 @@ import LargeBay from "assets/icons/bay-l.svg?react";
 // Icons to show fire states.
 import RayIcon from "assets/icons/laser.svg?react";
 import MissileIcon from "assets/icons/missile.svg?react";
-import { GiBinoculars, GiRocket } from "react-icons/gi";
+import { GiBinoculars, GiRadarSweep, GiRocket } from "react-icons/gi";
+import { isUndetected } from "lib/contacts";
 import { FaCog } from "react-icons/fa";
 import { Tooltip } from "react-tooltip";
 import { vectorDistance } from "lib/Util";
@@ -72,6 +73,10 @@ import { entitiesSelector } from "state/serverSlice";
 // Consistent set of colors for both type of weapons and fire states.
 /** Kinds the crew never orders, so they never get a fire button of their own. */
 const PASSIVE_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
+
+/// Searching gets a colour of its own: it is the only row here that is not an
+/// order, so it should not be mistaken for one of the sensop's actions.
+const SEARCH_ICON_COLOR = "violet";
 
 const WEAPON_COLORS: { [key: string]: string } = {
   Beam: "red",
@@ -99,9 +104,6 @@ const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
   [SensorAction.JamComms]: "blue",
   [SensorAction.SensorLock]: "red",
   [SensorAction.BreakSensorLock]: "orange",
-  // Distinct from the rest: searching finds a ship, where every other sensor
-  // action acts on one already found.
-  [SensorAction.SearchFor]: "violet",
 };
 
 const ENGINEER_ICON_COLORS: { [kind: string]: string } = {
@@ -812,9 +814,6 @@ export function Actions(args: {
       case SensorAction.JamComms:
         sensorLabel = "Jam " + args.sensorAction.target;
         break;
-      case SensorAction.SearchFor:
-        sensorLabel = "Search for " + args.sensorAction.target;
-        break;
     }
   }
 
@@ -964,6 +963,38 @@ export function Actions(args: {
           <></>
         );
       })}
+
+      {/* Detection is free and happens every round, so there is no order to
+          queue and nothing to click off. The rows are here purely so a captain
+          can put the sensop's attention on one particular ship, which is the
+          only part of it leadership can affect. One row per ship worth looking
+          for: another side, and not yet found. */}
+      {computerShip != null &&
+        entities.ships
+          .filter(
+            (target) =>
+              target.name !== computerShip.name &&
+              isUndetected(computerShip, target) &&
+              !(computerShip.team != null && target.team === computerShip.team),
+          )
+          .map((target) => (
+            <div className="fire-actions-div" key={"search-" + target.name}>
+              <div>
+                <p>
+                  <GiRadarSweep
+                    className="beam-type-icon"
+                    style={{ fill: SEARCH_ICON_COLOR }}
+                  />{" "}
+                  Searching for {target.name}
+                </p>
+              </div>
+              {renderBoostCheckbox({
+                kind: "Detection",
+                ship: computerShip.name,
+                target: target.name,
+              })}
+            </div>
+          ))}
 
       {args.pilotState != null && args.pilotState.dodgeThrust > 0 && (
         <div className="fire-actions-div">
