@@ -36,6 +36,14 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
    * reasonable, so the navigation computer leaves them selectable.
    */
   excludeSameTeam?: boolean;
+  /**
+   * What the empty choice is called.
+   *
+   * Blank everywhere by default, since "no target" needs no name. The role
+   * chooser is the exception: picking no ship there means running the whole
+   * board, which is a role in its own right and worth saying out loud.
+   */
+  noneLabel?: string;
 }
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
@@ -47,6 +55,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   formatter,
   observer,
   excludeSameTeam,
+  noneLabel,
   ...props
 }) => {
   const entities = useAppSelector(entitiesSelector);
@@ -148,7 +157,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         value={currentEntity ? currentEntity.name : ""}
         onChange={handleSelectChange}
         {...props}>
-        <option key="el-none" value=""></option>
+        <option key="el-none" value="">{noneLabel ?? ""}</option>
         {extra && (
           <option key={"extra"} value={extra.name}>
             {extra.name}

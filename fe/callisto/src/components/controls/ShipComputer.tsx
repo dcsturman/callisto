@@ -643,14 +643,26 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             (target) =>
               target.name !== ship.name &&
               isUndetected(ship, target) &&
-              (ship.team == null || target.team !== ship.team) &&
-              withinDistant(ship, target),
+              (ship.team == null || target.team !== ship.team),
           )
-          .map((target) => (
-            <option key={target.name + "-search"} value={"sf-" + target.name}>
-              {"Search for: " + target.name}
-            </option>
-          ))}
+          .map((target) => {
+            // Past Distant there is nothing to find, so the order would do
+            // nothing. Shown disabled rather than hidden: a search that simply
+            // is not in the list looks like a missing feature, where "out of
+            // range" says what to do about it.
+            const tooFar = !withinDistant(ship, target);
+            return (
+              <option
+                key={target.name + "-search"}
+                value={"sf-" + target.name}
+                disabled={tooFar}
+                className={tooFar ? "no-contact-option" : undefined}>
+                {tooFar
+                  ? `Search for: ${target.name} (out of range)`
+                  : `Search for: ${target.name}`}
+              </option>
+            );
+          })}
 
         {/* Both lists are limited to ships this one has a sensor contact on.
             Nothing can be done to a ship that has not been detected, so

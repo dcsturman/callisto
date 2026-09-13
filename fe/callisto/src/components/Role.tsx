@@ -37,6 +37,9 @@ export const RoleChooser = () => {
         filter={filter}
         setChoice={choiceHandler}
         current={current}
+        // Taking no ship here means running the whole board rather than
+        // declining to choose, so the empty option says so.
+        noneLabel="GM"
       />
       <select
         className="select-dropdown control-name-input control-input role-input"
