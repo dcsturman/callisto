@@ -411,6 +411,21 @@ Recorded so nobody assumes they were considered and rejected.
 
 ---
 
+## Idle disconnection
+
+Callisto runs on Cloud Run, which scales to zero when nothing is connected. A
+single browser tab left open would otherwise hold the service up indefinitely,
+so connections that have gone quiet for **30 minutes** are closed.
+
+The check is all-or-nothing: connections are only dropped when *every* one of
+them has been quiet that long. One person still playing keeps the whole table
+alive, including the tabs of people who have wandered off — the aim is to let an
+unused service shut down, not to police individual players.
+
+Keepalives do not count as activity. The client sends one every minute whether
+or not anyone is at the keyboard, so counting them would mean nothing was ever
+idle. Reconnecting is just a page reload.
+
 ## Known gaps being considered for future versions
 
 * **Capital ships**: hulls above 5,000 tons, which needs spinal mounts and weapon batteries before anything
