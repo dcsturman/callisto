@@ -176,6 +176,15 @@ pub struct Ship {
   pub current_crew: u32,
   #[serde(default)]
   pub current_sensors: Sensors,
+
+  /// The ship's computer Bandwidth, as reduced by bridge crits.
+  ///
+  /// TODO: implement computer software. Nothing runs on the computer yet, so
+  /// this is only ever spent by a sensor hand-off (one point at each end) and
+  /// there is no notion of *available* Bandwidth distinct from the rating.
+  /// Once software exists, both the maximum and what is left should reach the
+  /// client and be shown on the ship's display; until then they are always the
+  /// same number and showing it would tell a player nothing.
   #[serde(default)]
   pub current_computer: u32,
   #[serde(default)]
