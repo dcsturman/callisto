@@ -166,6 +166,7 @@ pub fn boost_target_alive<S: BuildHasher>(
                 | ShipAction::BreakSensorLock { .. }
                 | ShipAction::SensorLock { .. }
                 | ShipAction::JamComms { .. }
+                | ShipAction::SearchFor { .. }
             )
           })
         {
@@ -218,6 +219,15 @@ pub enum ShipAction {
     target: String,
   },
   JamComms {
+    target: String,
+  },
+  /// Concentrate the sensop on finding one particular ship.
+  ///
+  /// Detection happens automatically every round regardless; what this buys is
+  /// the sensop's attention, so a captain's leadership boost can be spent on
+  /// the check. Only worth queueing against a ship of another side that is in
+  /// range and not yet a contact, which is the only case the client offers.
+  SearchFor {
     target: String,
   },
   Jump,
@@ -284,7 +294,8 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
           ShipAction::JamMissiles
           | ShipAction::BreakSensorLock { .. }
           | ShipAction::SensorLock { .. }
-          | ShipAction::JamComms { .. } => {
+          | ShipAction::JamComms { .. }
+          | ShipAction::SearchFor { .. } => {
             // Strip out all sensor actions, leaving just the non-sensor actions
             current_actions.retain(|action| {
               !matches!(
@@ -293,6 +304,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
                   | ShipAction::BreakSensorLock { .. }
                   | ShipAction::SensorLock { .. }
                   | ShipAction::JamComms { .. }
+                  | ShipAction::SearchFor { .. }
               )
             });
             current_actions.push(next_action.clone());
@@ -363,6 +375,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
                   | ShipAction::BreakSensorLock { .. }
                   | ShipAction::SensorLock { .. }
                   | ShipAction::JamComms { .. }
+                  | ShipAction::SearchFor { .. }
               )
             });
           }
@@ -377,12 +390,21 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
     } else {
       // No prior actions for this ship — anti-actions have nothing to strip,
       // so drop them. Keep all other actions verbatim.
+      //
+      // `DeleteFireAction` belongs in that list and was missing from it, so a
+      // delete arriving for a ship with no queued actions was kept as though it
+      // were an order. It then sat in the queue for the rest of the scenario,
+      // reaching `do_fire_actions` every round and logging "Expected FireAction
+      // but got DeleteFireAction".
       let filtered: Vec<ShipAction> = next_action_list
         .into_iter()
         .filter(|a| {
           !matches!(
             a,
-            ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction | ShipAction::ClearLeadershipCheck
+            ShipAction::ClearSensorAction
+              | ShipAction::ClearEngineerAction
+              | ShipAction::ClearLeadershipCheck
+              | ShipAction::DeleteFireAction { .. }
           )
         })
         .collect();

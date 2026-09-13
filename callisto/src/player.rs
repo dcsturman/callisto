@@ -777,9 +777,10 @@ impl PlayerManager {
         }
         ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone()), None),
         ShipAction::JamMissiles => (None, None, Some(action.clone()), None, None),
-        ShipAction::BreakSensorLock { .. } | ShipAction::SensorLock { .. } | ShipAction::JamComms { .. } => {
-          (None, Some(action.clone()), None, None, None)
-        }
+        ShipAction::BreakSensorLock { .. }
+        | ShipAction::SensorLock { .. }
+        | ShipAction::JamComms { .. }
+        | ShipAction::SearchFor { .. } => (None, Some(action.clone()), None, None, None),
         // Engineer actions (including Jump) are deferred to end-of-turn evaluation.
         ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump => {
           (None, None, None, None, Some(action.clone()))
@@ -872,7 +873,18 @@ impl PlayerManager {
       .filter(|(_, actions)| actions.iter().any(|a| matches!(a, ShipAction::FireAction { .. })))
       .map(|(ship_name, _)| ship_name.clone())
       .collect();
-    effects.append(&mut entities.detection_pass(&ship_snapshot, &fired, &mut rng));
+    // Sensops told to concentrate on a particular ship; the boost applies to
+    // that pair's check in the pass below.
+    let searches: Vec<(String, String)> = sensor_actions
+      .iter()
+      .flat_map(|(ship_name, actions)| {
+        actions.iter().filter_map(move |a| match a {
+          ShipAction::SearchFor { target } => Some((ship_name.clone(), target.clone())),
+          _ => None,
+        })
+      })
+      .collect();
+    effects.append(&mut entities.detection_pass(&ship_snapshot, &fired, &searches, &boost_map, &mut rng));
 
     // Hand-offs run immediately after, so a contact acquired this round is
     // shared this round. Automatic in RAW — no check, no action, only Bandwidth.

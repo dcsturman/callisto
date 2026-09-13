@@ -99,6 +99,9 @@ const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
   [SensorAction.JamComms]: "blue",
   [SensorAction.SensorLock]: "red",
   [SensorAction.BreakSensorLock]: "orange",
+  // Distinct from the rest: searching finds a ship, where every other sensor
+  // action acts on one already found.
+  [SensorAction.SearchFor]: "violet",
 };
 
 const ENGINEER_ICON_COLORS: { [kind: string]: string } = {
@@ -703,15 +706,20 @@ export function Actions(args: {
     dispatch(toggleBoost({ shipName: captainShipName, target }));
   };
 
-  const renderBoostCheckbox = (target: BoostTarget) => {
+  const renderBoostCheckbox = (target: BoostTarget, noCheckReason?: string) => {
     if (!showBoostCheckbox) return null;
     const checked = boostDispatchEnabled ? isBoosted(target) : false;
     // Checked boxes stay toggleable so the user can free a slot. Only
     // unchecked-at-limit and the no-ship-bound case disable.
+    // Some actions resolve without a skill check, so there is nothing for a
+    // boost to modify. The row keeps its box so the column still lines up, but
+    // it is disabled and says why.
     const disabled =
-      !boostDispatchEnabled || (!checked && atLimit);
+      noCheckReason != null || !boostDispatchEnabled || (!checked && atLimit);
     let title: string;
-    if (!boostDispatchEnabled) {
+    if (noCheckReason != null) {
+      title = noCheckReason;
+    } else if (!boostDispatchEnabled) {
       title = "Sit on a ship to apply leadership boosts";
     } else if (!(captainShip?.leadership_rolled ?? false)) {
       title = "Roll the captain action first";
@@ -776,6 +784,9 @@ export function Actions(args: {
         break;
       case SensorAction.JamComms:
         sensorLabel = "Jam " + args.sensorAction.target;
+        break;
+      case SensorAction.SearchFor:
+        sensorLabel = "Search for " + args.sensorAction.target;
         break;
     }
   }
@@ -877,7 +888,10 @@ export function Actions(args: {
                 to {action.target}
               </p>
             </div>
-            {renderBoostCheckbox(fireBoostTarget)}
+            {renderBoostCheckbox(
+              fireBoostTarget,
+              "Launching makes no check, so there is nothing to boost",
+            )}
           </div>
         );
       })}

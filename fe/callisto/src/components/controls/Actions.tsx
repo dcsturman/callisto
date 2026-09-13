@@ -73,6 +73,7 @@ export enum SensorAction {
   BreakSensorLock,
   SensorLock,
   JamComms,
+  SearchFor,
 }
 
 export type SensorActionMsg = {[key: string]: SensorState};
@@ -100,11 +101,17 @@ export function actionPayload(actions: ActionType) {
     let fire_actions: (object | string)[] = value.fire
       ? value.fire.map((fireAction) => fireActionPayload(fireAction))
       : [];
-    if (value.unfire) {
-      fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
-    }
     if (value.pointDefense) {
       fire_actions = [...fire_actions, ...value.pointDefense.map((pointDefenseAction) => pointDefenseActionPayload(pointDefenseAction))];
+    }
+    // Anti-actions go last, after everything they might cancel. The client
+    // re-sends its whole action list each time, so a delete placed before the
+    // point-defence orders was applied and then immediately undone by the very
+    // order it was meant to remove -- which is why a point-defence action could
+    // not be clicked off and survived round after round. Fire actions escaped
+    // this only because they happened to be listed before the delete.
+    if (value.unfire) {
+      fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
     }
     const sensor_action = value.sensor ? sensorActionPayload(value.sensor): null;
     if (sensor_action) {
@@ -234,6 +241,8 @@ function sensorActionPayload(sensor: SensorState) {
       return {SensorLock: {target: sensor.target}};
     case SensorAction.JamComms:
       return {JamComms: {target: sensor.target}};
+    case SensorAction.SearchFor:
+      return {SearchFor: {target: sensor.target}};
   }
 }
 
@@ -356,6 +365,8 @@ export function payloadToAction(payload: object[]): ActionType {
         s = {action: SensorAction.SensorLock, target: action["SensorLock"].target};
       } else if (typeof action === "object" && Object.hasOwn(action, "JamComms")) {
         s = {action: SensorAction.JamComms, target: action["JamComms"].target};
+      } else if (typeof action === "object" && Object.hasOwn(action, "SearchFor")) {
+        s = {action: SensorAction.SearchFor, target: action["SearchFor"].target};
       } else {
         console.error(
           "(payloadToAction) BUG: Should never get here when looking for sensor action " +
