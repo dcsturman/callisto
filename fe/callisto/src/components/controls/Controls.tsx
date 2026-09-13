@@ -25,6 +25,7 @@ import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { AppMode } from "state/tutorialSlice";
+import { isUndetected, sameSide } from "lib/contacts";
 import { store } from "state/store";
 import {
   setComputerShipName,
@@ -492,11 +493,24 @@ export function Controls() {
           const pilotState = seePilot
             ? { dodgeThrust, assistGunners }
             : null;
+          // Ships this one could be looking for. Detection is free and needs
+          // no order, so these are not queued actions — they are here because
+          // a captain can concentrate the sensop on one of them, and that is
+          // the only part of detection leadership reaches.
+          const searchTargets = seeSensor
+            ? entities.ships.filter(
+                (target) =>
+                  target.name !== computerShip.name &&
+                  isUndetected(computerShip, target) &&
+                  !sameSide(computerShip, target),
+              )
+            : [];
           const hasAny =
             fireActions.length > 0 ||
             pdActions.length > 0 ||
             sensorAction.action !== SensorAction.None ||
             engineerAction != null ||
+            searchTargets.length > 0 ||
             (pilotState != null &&
               (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
           if (!hasAny) return null;
@@ -507,6 +521,7 @@ export function Controls() {
               sensorAction={sensorAction}
               engineerAction={engineerAction}
               pilotState={pilotState}
+              searchTargets={searchTargets}
               weapons={shipWeapons(computerShip, shipTemplates)}
             />
           );
