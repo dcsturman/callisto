@@ -358,10 +358,30 @@ individually, rather than salvoes tracked as units. Point defence and the
 torpedo halving are re-expressed to match; see `FAQ.md`.
 
 #### Omission — detecting missile launch
-CRB has the target roll to notice an incoming salvo — Routine (6+), or Average
-(8+) if the firing ship was itself undetected, with DM+1 per full 10 missiles.
-Callisto shows every launch to everyone. Implementing it needs salvo grouping,
-which does not exist.
+Callisto shows every launch to everyone. The rule as written:
+
+> When a ship launches missiles, sensor operators on board other ships may make
+> an immediate **Routine (6+)** Electronics (sensors) check in order to detect
+> them. If the firing ship has not been detected itself, this becomes an
+> **Average (8+)** check. DM+1 is applied for every full 10 missiles in the
+> salvo, up to a maximum of DM+6. Undetected missiles may be picked up by the
+> sensor operator at the start of every combat round with an Average (8+) check.
+
+Held deliberately, and the blocker is presentation rather than rules. Ship
+contacts are per-observer and the display already copes with that — a ship you
+cannot see is dimmed, greyed in the roster, unselectable as a target. Missiles
+would need the same treatment, and it is not yet clear how to show *which
+missiles are visible to whom* without the view becoming unreadable, particularly
+for a referee looking at every side at once. Until there is a good answer to
+that, showing every missile to everyone is the honest simplification.
+
+It would also need salvo grouping, since the DM scales with salvo size and
+Callisto tracks missiles individually. That is the smaller problem of the two.
+
+Note the interlock, for when it is picked up: *"if the firing ship has not been
+detected itself"* reads straight off the contact state that already exists, so
+shooting from stealth would make the missiles harder to spot as a consequence
+rather than as a special case.
 
 ---
 
