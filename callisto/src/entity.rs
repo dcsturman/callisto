@@ -1463,7 +1463,11 @@ impl Entities {
     // Decisions are collected first and applied after, so no ship is being
     // written while another pair is still reading it.
     let mut acquired = Vec::<(String, String)>::new();
-    let mut lost = Vec::<(String, String)>::new();
+    // The bool is whether a roll was reported for this pair. A check that was
+    // rolled already says how it came out, so repeating the outcome only makes
+    // the results longer. Contact dropped for range is not rolled, so it has
+    // nothing else to announce it.
+    let mut lost = Vec::<(String, String, bool)>::new();
     // Every check that was actually rolled, reported so a referee can see why
     // a ship stayed hidden rather than having to infer it.
     let mut rolls = Vec::<EffectMsg>::new();
@@ -1492,7 +1496,7 @@ impl Entities {
           // Beyond Distant everything is an undifferentiated blip (p. 76), so
           // contact cannot be held at all.
           if band_now == Range::Distant {
-            lost.push(((*observer_name).clone(), (*target_name).clone()));
+            lost.push(((*observer_name).clone(), (*target_name).clone(), false));
             continue;
           }
 
@@ -1513,7 +1517,7 @@ impl Entities {
           let roll = roll_dice(2, rng);
           let total = i32::from(roll) + i32::from(dm);
           if total < STANDARD_ROLL_THRESHOLD {
-            lost.push(((*observer_name).clone(), (*target_name).clone()));
+            lost.push(((*observer_name).clone(), (*target_name).clone(), true));
           }
           rolls.push(detection_roll_effect(
             observer_name,
@@ -1580,26 +1584,29 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to write to a ship.
-  fn apply_detection_changes(&self, lost: &[(String, String)], acquired: &[(String, String)]) -> Vec<EffectMsg> {
+  fn apply_detection_changes(&self, lost: &[(String, String, bool)], acquired: &[(String, String)]) -> Vec<EffectMsg> {
     let mut effects = Vec::new();
 
-    for (observer_name, target_name) in lost {
+    for (observer_name, target_name, rolled) in lost {
       let mut observer = self.ships.get(observer_name).unwrap().write().unwrap();
       observer.contacts.retain(|name| name != target_name);
       // A lock cannot outlive the contact it was built on.
       observer.sensor_locks.retain(|name| name != target_name);
-      effects.push(EffectMsg::Message {
-        content: format!("{observer_name} has lost sensor contact with {target_name}."),
-      });
+      // Only announce a loss nothing else has reported. A failed reacquisition
+      // already printed its roll, ending in "contact lost".
+      if !rolled {
+        effects.push(EffectMsg::Message {
+          content: format!("{observer_name} has lost sensor contact with {target_name}: out of range."),
+        });
+      }
     }
 
+    // Acquisitions are never announced separately: every one of them came from
+    // a check, and that check's line already ends in "contact".
     for (observer_name, target_name) in acquired {
       let mut observer = self.ships.get(observer_name).unwrap().write().unwrap();
       observer.contacts.push(target_name.clone());
       observer.contacts.sort();
-      effects.push(EffectMsg::Message {
-        content: format!("{observer_name} has acquired sensor contact with {target_name}."),
-      });
     }
 
     effects
