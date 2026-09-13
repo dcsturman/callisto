@@ -70,7 +70,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "team": "Red"
     },
     {
       "name": "HMS Executor",
@@ -155,7 +156,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "team": "Blue"
     },
     {
       "name": "Thrasher",
@@ -222,7 +224,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "team": "Red"
     },
     {
       "name": "Dragon",
@@ -288,7 +291,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "team": "Red"
     }
   ],
   "planets": [
