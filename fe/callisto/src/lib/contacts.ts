@@ -41,3 +41,22 @@ export const isUndetected = (
   observer: Ship | null | undefined,
   target: Ship,
 ): boolean => observer != null && !hasContact(observer, target);
+
+/**
+ * The edge of Distant, in metres: 50,000 km.
+ *
+ * Mirrors the last entry of `RANGE_BANDS` on the server. Past it, High Guard
+ * has everything as undifferentiated blips, so there is nothing to find and no
+ * point offering to look.
+ */
+const DISTANT_METRES = 50_000_000;
+
+/** Whether `target` is close enough to `observer` to be found at all. */
+export const withinDistant = (observer: Ship, target: Ship): boolean => {
+  const [ax, ay, az] = observer.position;
+  const [bx, by, bz] = target.position;
+  const dx = ax - bx;
+  const dy = ay - by;
+  const dz = az - bz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz) <= DISTANT_METRES;
+};

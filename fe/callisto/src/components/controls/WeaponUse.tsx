@@ -99,6 +99,9 @@ const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
   [SensorAction.JamComms]: "blue",
   [SensorAction.SensorLock]: "red",
   [SensorAction.BreakSensorLock]: "orange",
+  // Distinct from the rest: searching finds a ship, where every other sensor
+  // action acts on one already found.
+  [SensorAction.SearchFor]: "violet",
 };
 
 const ENGINEER_ICON_COLORS: { [kind: string]: string } = {
@@ -119,10 +122,29 @@ export const WeaponButton = (props: {
   count: number;
   onClick: () => void;
   disabled: boolean;
+  /**
+   * The other weapons sharing this mount, if any.
+   *
+   * A mixed turret gets one button per gun it can fire, so a pulse/sand turret
+   * renders exactly like a pure pulse one -- same icon, same tooltip -- and a
+   * ship carrying both, as the Threshing Oar does, shows two buttons that look
+   * identical for no visible reason. Naming what else is in the mount, and
+   * marking the button, tells them apart.
+   */
+  alongside?: string[];
 }) => {
   // Tooltips name the weapon for a person, so they use the readable label
   // rather than the wire identifier.  Colours are still keyed off the raw kind.
   const label = weaponKindLabel(props.weapon);
+
+  const mixed = props.alongside != null && props.alongside.length > 0;
+  const tip = (text: string) =>
+    mixed
+      ? `${text} — shares the mount with ${props.alongside!
+          .map(weaponKindLabel)
+          .join(", ")}`
+      : text;
+  const buttonClass = mixed ? "weapon-button weapon-button-mixed" : "weapon-button";
 
   // FixedMount is a bare string like Barbette, so it has to be matched first or
   // it falls into the Barbette arm and draws the wrong weapon entirely.
@@ -131,9 +153,9 @@ export const WeaponButton = (props: {
       <>
         <button
           id={props.weapon + "-fixed-mount-button"}
-          className="weapon-button"
+          className={buttonClass}
           data-tooltip-id={props.weapon + props.mount}
-          data-tooltip-content={`${label} Fixed Mount`}
+          data-tooltip-content={tip(`${label} Fixed Mount`)}
           data-tooltip-delay-show={700}
           onClick={props.onClick}
           disabled={props.disabled}
@@ -158,9 +180,9 @@ export const WeaponButton = (props: {
       <>
         <button
           id={props.weapon + "-barbette-button"}
-          className="weapon-button"
+          className={buttonClass}
           data-tooltip-id={props.weapon + props.mount}
-          data-tooltip-content={`${label} Barbette`}
+          data-tooltip-content={tip(`${label} Barbette`)}
           data-tooltip-delay-show={700}
           onClick={props.onClick}
           disabled={props.disabled}
@@ -187,10 +209,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-small-bay-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "small-bay"}
-            data-tooltip-content={`Small ${label} Bay`}
+            data-tooltip-content={tip(`Small ${label} Bay`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -213,10 +235,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-medium-bay-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "med-bay"}
-            data-tooltip-content={`Medium ${label} Bay`}
+            data-tooltip-content={tip(`Medium ${label} Bay`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -239,10 +261,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-large-bay-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "large-bay"}
-            data-tooltip-content={`Large ${label} Bay`}
+            data-tooltip-content={tip(`Large ${label} Bay`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -268,10 +290,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-single-turret-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
-            data-tooltip-content={`Single ${label} Turret`}
+            data-tooltip-content={tip(`Single ${label} Turret`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -295,10 +317,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-double-turret-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
-            data-tooltip-content={`Double ${label} Turret`}
+            data-tooltip-content={tip(`Double ${label} Turret`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -321,10 +343,10 @@ export const WeaponButton = (props: {
       <>
         <button
           id={props.weapon + "-triple-turret-button"}
-          className="weapon-button"
+          className={buttonClass}
           onClick={props.onClick}
           data-tooltip-id={props.weapon + num + "turret"}
-          data-tooltip-content={`Triple ${label} Turret`}
+          data-tooltip-content={tip(`Triple ${label} Turret`)}
           data-tooltip-delay-show={700}
           disabled={props.disabled}
         >
@@ -585,6 +607,14 @@ export const FireControl: React.FC<FireControlProps> = () => {
                 handleWeaponClick(weapon_name, mixed ? kind : undefined)
               }
               disabled={isWeaponDisabled({ kind, mount: weapon.mount })}
+              // Everything else in the mount, including the guns that cannot be
+              // fired: sand is exactly what distinguishes a mixed turret from a
+              // plain one, and it never gets a button of its own.
+              alongside={weaponKinds(
+                weapon.guns != null
+                  ? { mount: weapon.mount, guns: weapon.guns }
+                  : { kind: weapon.kind, mount: weapon.mount },
+              ).filter((other) => other !== kind)}
             />
           ));
         },
@@ -703,15 +733,20 @@ export function Actions(args: {
     dispatch(toggleBoost({ shipName: captainShipName, target }));
   };
 
-  const renderBoostCheckbox = (target: BoostTarget) => {
+  const renderBoostCheckbox = (target: BoostTarget, noCheckReason?: string) => {
     if (!showBoostCheckbox) return null;
     const checked = boostDispatchEnabled ? isBoosted(target) : false;
     // Checked boxes stay toggleable so the user can free a slot. Only
     // unchecked-at-limit and the no-ship-bound case disable.
+    // Some actions resolve without a skill check, so there is nothing for a
+    // boost to modify. The row keeps its box so the column still lines up, but
+    // it is disabled and says why.
     const disabled =
-      !boostDispatchEnabled || (!checked && atLimit);
+      noCheckReason != null || !boostDispatchEnabled || (!checked && atLimit);
     let title: string;
-    if (!boostDispatchEnabled) {
+    if (noCheckReason != null) {
+      title = noCheckReason;
+    } else if (!boostDispatchEnabled) {
       title = "Sit on a ship to apply leadership boosts";
     } else if (!(captainShip?.leadership_rolled ?? false)) {
       title = "Roll the captain action first";
@@ -776,6 +811,9 @@ export function Actions(args: {
         break;
       case SensorAction.JamComms:
         sensorLabel = "Jam " + args.sensorAction.target;
+        break;
+      case SensorAction.SearchFor:
+        sensorLabel = "Search for " + args.sensorAction.target;
         break;
     }
   }
@@ -877,7 +915,10 @@ export function Actions(args: {
                 to {action.target}
               </p>
             </div>
-            {renderBoostCheckbox(fireBoostTarget)}
+            {renderBoostCheckbox(
+              fireBoostTarget,
+              "Launching makes no check, so there is nothing to boost",
+            )}
           </div>
         );
       })}

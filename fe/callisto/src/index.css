@@ -1463,16 +1463,37 @@ input {
     cursor: not-allowed;
 }
 
-/* Team selector at the top of the Ship's Computer. It belongs to the ship
-   rather than to a crew station, so it sits above the role panels. */
-.ship-team-row {
+/* Heading row of the Ship's Computer: the ship's name and, in place of the
+   word "Controls", the team selector. Baseline-aligned so the dropdown sits
+   with the name rather than floating above or below it. */
+.computer-title-row {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
-.ship-team-label {
-    font-family: "Orbitron", sans-serif;
-    font-size: 9pt;
+.computer-title-row h1 {
+    margin: 0;
+}
+
+/* A weapon button for a gun that shares its mount with something else. Without
+   a mark, a pulse/sand turret and a plain pulse turret render identically --
+   same icon, same count badge -- and a ship carrying both shows two buttons
+   that look the same for no visible reason. The corner notch is deliberately
+   quiet: it is a distinction, not a warning. */
+.weapon-button-mixed {
+    position: relative;
+}
+
+.weapon-button-mixed::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 0;
+    height: 0;
+    border-top: 6px solid #b6bcae;
+    border-left: 6px solid transparent;
+    pointer-events: none;
 }

@@ -6,7 +6,7 @@ import {ViewMode} from "lib/view";
 
 import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
 import {Team, TEAMS, teamLabelColor} from "lib/teams";
-import {isUndetected} from "lib/contacts";
+import {isUndetected, withinDistant} from "lib/contacts";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {findShip} from "lib/entities";
@@ -283,19 +283,22 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     );
   }
 
-  const title = ship.name + " Controls";
+  // The team selector stands in for the word "Controls" in the heading:
+  // the panel is obviously controls, and the row it used to occupy was one
+  // of the things pushing this panel off a laptop screen.
+  const title = ship.name;
 
   // TODO: Full Stop is not correct, but needs server-side functions.  Should just get to 0 velocity and not care about position.
   // Current version tries to stop at the current position.
   return (
     <div id="computer-window" className="computer-window">
       <div id="crew-actions-window">
-        {role === ViewMode.General && <h1>{title}</h1>}
         {/* Which side the ship is on belongs to the ship, not to any one crew
-            station, so it sits at the top of the computer rather than under
-            sensors. Every role sees it. */}
-        <div className="ship-team-row">
-          <span className="ship-team-label">Team</span>
+            station, so it sits in the heading rather than under sensors, and
+            every role sees it. It carries its own colour, so it needs no label
+            to say what it is. */}
+        <div className="computer-title-row">
+          {role === ViewMode.General && <h1>{title}</h1>}
           <select
             className="team-select"
             value={ship.team ?? ""}
@@ -496,6 +499,8 @@ function sensorActionToString(action: SensorState): string {
       return "sl-" + action.target;
     case SensorAction.JamComms:
       return "jc-" + action.target;
+    case SensorAction.SearchFor:
+      return "sf-" + action.target;
   }
 }
 
@@ -540,6 +545,13 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
         setSensorAction({
           shipName: ship.name,
           action: newSensorState(SensorAction.SensorLock, value.substring(3)),
+        })
+      );
+    } else if (value.startsWith("sf-")) {
+      dispatch(
+        setSensorAction({
+          shipName: ship.name,
+          action: newSensorState(SensorAction.SearchFor, value.substring(3)),
         })
       );
     } else if (value.startsWith("jc-")) {
@@ -621,6 +633,25 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             {"Break Sensor Lock: " + s}
           </option>
         ))}
+        {/* Ships worth looking for: another side, close enough to find, and not
+            already found. Detection happens automatically every round anyway —
+            what ordering it buys is the sensop's attention, so a captain's
+            leadership boost can be spent on that particular check. Offering it
+            when there is nothing to find would just be noise. */}
+        {entities.ships
+          .filter(
+            (target) =>
+              target.name !== ship.name &&
+              isUndetected(ship, target) &&
+              (ship.team == null || target.team !== ship.team) &&
+              withinDistant(ship, target),
+          )
+          .map((target) => (
+            <option key={target.name + "-search"} value={"sf-" + target.name}>
+              {"Search for: " + target.name}
+            </option>
+          ))}
+
         {/* Both lists are limited to ships this one has a sensor contact on.
             Nothing can be done to a ship that has not been detected, so
             offering it and having the order refused later is just a trap. */}
