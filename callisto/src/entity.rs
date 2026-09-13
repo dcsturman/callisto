@@ -126,8 +126,14 @@ impl PartialEq for Entities {
 /// close or whether the target was never findable at all, and that is not
 /// something you can infer from silence.
 fn detection_roll_effect(observer: &str, target: &str, roll: u8, dm: i16, total: i32, outcome: &str) -> EffectMsg {
+  // Opens like the other checks Callisto reports — "with roll N and DM N" —
+  // but ends on the total against the target number rather than on Effect.
+  // Detection is pass or fail: the margin buys nothing here, unlike jamming,
+  // where Effect decides how many missiles die.
   EffectMsg::Message {
-    content: format!("{observer} sensor check vs {target}: 2D {roll} {dm:+} = {total} vs 8+, {outcome}."),
+    content: format!(
+      "{observer} sensor check on {target} with roll {roll} and DM {dm:+} for a total of {total} against 8: {outcome}."
+    ),
   }
 }
 
@@ -4061,14 +4067,15 @@ mod tests {
     let check = effects
       .iter()
       .find_map(|e| match e {
-        EffectMsg::Message { content } if content.contains("sensor check vs") => Some(content.clone()),
+        EffectMsg::Message { content } if content.contains("sensor check on") => Some(content.clone()),
         _ => None,
       })
       .expect("the attempt should be reported");
 
-    assert!(check.contains("Seeker sensor check vs Quarry"), "{check}");
-    assert!(check.contains("2D "), "the roll should be shown: {check}");
-    assert!(check.contains("vs 8+"), "the target number should be shown: {check}");
+    assert!(check.contains("Seeker sensor check on Quarry"), "{check}");
+    assert!(check.contains("with roll "), "the roll should be shown: {check}");
+    assert!(check.contains("a total of "), "the total should be shown: {check}");
+    assert!(check.contains("against 8"), "the target number should be shown: {check}");
     assert!(
       check.contains("no contact") || check.contains("contact."),
       "the outcome should be shown: {check}"
@@ -4096,7 +4103,7 @@ mod tests {
     assert!(
       !effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("sensor check vs"))),
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("sensor check on"))),
       "a ship running dark makes no check, so it should report none: {effects:#?}"
     );
   }
