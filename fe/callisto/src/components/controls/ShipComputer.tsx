@@ -283,19 +283,22 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     );
   }
 
-  const title = ship.name + " Controls";
+  // The team selector stands in for the word "Controls" in the heading:
+  // the panel is obviously controls, and the row it used to occupy was one
+  // of the things pushing this panel off a laptop screen.
+  const title = ship.name;
 
   // TODO: Full Stop is not correct, but needs server-side functions.  Should just get to 0 velocity and not care about position.
   // Current version tries to stop at the current position.
   return (
     <div id="computer-window" className="computer-window">
       <div id="crew-actions-window">
-        {role === ViewMode.General && <h1>{title}</h1>}
         {/* Which side the ship is on belongs to the ship, not to any one crew
-            station, so it sits at the top of the computer rather than under
-            sensors. Every role sees it. */}
-        <div className="ship-team-row">
-          <span className="ship-team-label">Team</span>
+            station, so it sits in the heading rather than under sensors, and
+            every role sees it. It carries its own colour, so it needs no label
+            to say what it is. */}
+        <div className="computer-title-row">
+          {role === ViewMode.General && <h1>{title}</h1>}
           <select
             className="team-select"
             value={ship.team ?? ""}
