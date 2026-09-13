@@ -19,7 +19,14 @@ env:
   GAR_LOCATION: gcr.io
   REGION: us-central1
   APP: callisto-be
-  TIMEOUT: 900
+  # A WebSocket is one long-lived HTTP request, so Cloud Run's request timeout
+  # is a hard cap on how long a player can stay connected: at 900s everyone got
+  # dropped every 15 minutes, and the fresh container lost every live scenario
+  # (Entities only ever lives in that process's RAM). 3600 is the ceiling Cloud
+  # Run allows -- the value "must be less than 60 minutes" -- so this is as far
+  # as configuration can take us. Google's own guidance is that clients must
+  # handle reconnecting; that, and persisting scenario state, are still to come.
+  TIMEOUT: 3600
   GENERAL_ARGS: --oauth-creds,/secrets/google_credentials,--users-file,gs://callisto-be-user-profiles/authorized_users.json,--design-dir,gs://callisto-ship-templates
   APP_ARGS: --web-server,https://callistoflight.com,--scenario-dir,gs://callisto-scenarios
   PORT: 30000
@@ -66,7 +73,7 @@ jobs:
 
       - name: 'Deploy to Cloud Run'
         run:
-          gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }}  --timeout=${{ env.TIMEOUT }}
+          gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }}  --timeout=${{ env.TIMEOUT }} --session-affinity
             --update-secrets=/secrets/google_credentials=google_credentials:latest
             --update-env-vars=SENTRY_DSN=https://2bd6b4d950ccb59ce589533dcf1b253a@o4511288095080448.ingest.us.sentry.io/4511288117755904,SENTRY_ENVIRONMENT=production
             --args=${{ env.APP_ARGS }},${{ env.GENERAL_ARGS }}
