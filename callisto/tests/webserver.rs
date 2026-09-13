@@ -625,6 +625,7 @@ async fn integration_add_ship() {
     active_sensors: None,
     transmitting: None,
     team: None,
+    contacts: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -699,6 +700,7 @@ async fn integration_add_planet_ship() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -718,6 +720,7 @@ async fn integration_add_planet_ship() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -744,7 +747,6 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "contacts": ["ship2"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -764,7 +766,6 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "contacts": ["ship1"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }],
           "missiles":[],
@@ -822,7 +823,6 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "contacts": ["ship2"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -842,7 +842,6 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "contacts": ["ship1"],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }]});
 
@@ -899,7 +898,6 @@ async fn integration_add_planet_ship() {
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
-     "contacts": ["ship2"],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
@@ -919,7 +917,6 @@ async fn integration_add_planet_ship() {
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
-     "contacts": ["ship1"],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     }]});
 
@@ -957,6 +954,7 @@ async fn integration_update_ship() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1013,6 +1011,7 @@ async fn integration_update_missile() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: Some(vec!["ship2".to_string()]),
     }),
   )
   .await;
@@ -1031,6 +1030,7 @@ async fn integration_update_missile() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1150,6 +1150,7 @@ async fn integration_remove_ship() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1284,6 +1285,7 @@ async fn integration_set_acceleration() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1346,6 +1348,7 @@ async fn integration_compute_path_basic() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1443,6 +1446,7 @@ async fn integration_compute_path_with_standoff() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1540,6 +1544,7 @@ async fn integration_malformed_requests() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1762,6 +1767,7 @@ async fn integration_set_crew_actions() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1844,6 +1850,7 @@ async fn integration_multi_client_test() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1860,6 +1867,7 @@ async fn integration_multi_client_test() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1882,6 +1890,7 @@ async fn integration_multi_client_test() {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     }),
   )
   .await;

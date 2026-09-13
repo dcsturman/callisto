@@ -213,10 +213,6 @@ carry mixed laser/sand turrets that would otherwise be half dead weight. Using a
 *laser* for point defence alongside an attack is **not** allowed, which is the
 case where the exemption would actually matter.
 
-#### Change — no reaction penalty
-An earlier version applied DM-1 to reactions. That rule is from personal combat
-(CRB p. 75) and does not apply to ship combat. Removed.
-
 ---
 
 ### Sensors and detection
@@ -290,11 +286,12 @@ blips on a display, difficult to differentiate from each other."* We take that
 as a hard limit: no acquisition past Distant, and existing contacts drop. It is
 also what makes running away work.
 
-#### Assumption — ordinary ships start a scenario detected, stealthed ships do not
-Pragmatic rather than derived. An ordinary hull would be found within a round or
-two anyway, and opening a fight with a coin flip over whether the two sides can
-see each other is worse than opening it resolved. A stealthed hull is the case
-worth playing out. Contacts are only seeded within Distant.
+#### Change — scenarios open with no contacts at all
+Ships start not knowing about each other, whatever they are, and the first
+detection pass runs at the end of the opening round. A scenario *author* can
+override this per ship when adding one, which is scenario creation rather than a
+default: that is how you set up an engagement already in progress instead of an
+approach.
 
 #### Change — the detection check is made once per round
 CRB gives the check a duration of 1D minutes. Callisto rolls it once per combat
@@ -327,10 +324,15 @@ The only thing HG says a hand-off *requires* is a point of computer Bandwidth at
 each end. There is no check and no step, so it is a standing setting rather than
 something the sensop spends an action on.
 
-#### Assumption — only transmitting lights you up; receiving does not
-Listening is passive. The Bandwidth cost at both ends is a computer-capacity
-limit, not an emission. Turning hand-off on therefore forces `transmitting` on
-and holds it there: a ship cannot share its contacts in silence.
+#### Assumption — only transmitting counts as communication; receiving does not
+Sending a hand-off counts as communication for detection purposes, and so adds
+the transponder-or-comms modifier to anyone trying to detect that ship.
+Receiving one does not: listening is passive, and the Bandwidth cost at both
+ends is a computer-capacity limit rather than an emission.
+
+Turning hand-off on therefore forces `transmitting` on and holds it there — a
+ship cannot share its contacts in silence. Jamming comms prevents hand-offs
+entirely, in both directions, for the round.
 
 #### Assumption — an inherited contact belongs to the receiver outright
 It does not lapse when the link breaks or the host is destroyed. The crew has
@@ -356,10 +358,30 @@ individually, rather than salvoes tracked as units. Point defence and the
 torpedo halving are re-expressed to match; see `FAQ.md`.
 
 #### Omission — detecting missile launch
-CRB has the target roll to notice an incoming salvo — Routine (6+), or Average
-(8+) if the firing ship was itself undetected, with DM+1 per full 10 missiles.
-Callisto shows every launch to everyone. Implementing it needs salvo grouping,
-which does not exist.
+Callisto shows every launch to everyone. The rule as written:
+
+> When a ship launches missiles, sensor operators on board other ships may make
+> an immediate **Routine (6+)** Electronics (sensors) check in order to detect
+> them. If the firing ship has not been detected itself, this becomes an
+> **Average (8+)** check. DM+1 is applied for every full 10 missiles in the
+> salvo, up to a maximum of DM+6. Undetected missiles may be picked up by the
+> sensor operator at the start of every combat round with an Average (8+) check.
+
+Held deliberately, and the blocker is presentation rather than rules. Ship
+contacts are per-observer and the display already copes with that — a ship you
+cannot see is dimmed, greyed in the roster, unselectable as a target. Missiles
+would need the same treatment, and it is not yet clear how to show *which
+missiles are visible to whom* without the view becoming unreadable, particularly
+for a referee looking at every side at once. Until there is a good answer to
+that, showing every missile to everyone is the honest simplification.
+
+It would also need salvo grouping, since the DM scales with salvo size and
+Callisto tracks missiles individually. That is the smaller problem of the two.
+
+Note the interlock, for when it is picked up: *"if the firing ship has not been
+detected itself"* reads straight off the contact state that already exists, so
+shooting from stealth would make the missiles harder to spot as a consequence
+rather than as a special case.
 
 ---
 
@@ -368,8 +390,10 @@ which does not exist.
 Recorded so nobody assumes they were considered and rejected.
 
 - **Extended sensor arrays** (+2 to be detected, and longer detail range).
-- **Electronic warfare against a sensop** as distinct from jamming comms. There
-  is no RAW for it, and *Jam Comms* is a comms action.
+- **Electronic warfare used to degrade a sensop's detection rolls**, as opposed
+  to cutting communications. Jamming comms *is* implemented and does break
+  hand-offs; what is missing is EW that makes a ship harder to find in the first
+  place.
 - **Squadron hand-off limits by Bandwidth count** — the cost of one point at each
   end is enforced, but a host is not capped at the number of recipients its
   spare Bandwidth allows.

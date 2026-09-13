@@ -277,12 +277,16 @@ impl PlayerManager {
     // Applied after creation rather than threaded through `add_ship`, which
     // already carries six arguments. Absent leaves the normal running state a
     // new ship is built with.
-    if ship.active_sensors.is_some() || ship.transmitting.is_some() || ship.team.is_some() {
+    if ship.active_sensors.is_some() || ship.transmitting.is_some() || ship.team.is_some() || ship.contacts.is_some() {
       if let Some(added) = entities.ships.get(&name) {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
         if ship.team.is_some() {
           added.team = ship.team;
+        }
+        if let Some(contacts) = ship.contacts {
+          added.contacts = contacts;
+          added.contacts.sort();
         }
       }
     }
@@ -367,6 +371,27 @@ impl PlayerManager {
     } else {
       Ok("Set ship emissions executed".to_string())
     }
+  }
+
+  /// Mark every ship as having found every other one.
+  ///
+  /// Scenarios open with no contacts: ships have to find each other, and the
+  /// first detection pass runs at the end of the opening round. This is the
+  /// hook for authoring a scenario that begins already engaged rather than as
+  /// an approach, and for tests that are about something other than
+  /// acquisition.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities, or if the server
+  /// has not yet been initialized.
+  pub fn establish_initial_contacts(&self) {
+    self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"))
+      .establish_initial_contacts();
   }
 
   /// Set which side a ship is on.

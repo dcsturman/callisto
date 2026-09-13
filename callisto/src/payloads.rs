@@ -83,6 +83,13 @@ pub struct AddShipMsg {
   /// Which side the ship is on. Absent leaves it unaligned.
   #[serde(default)]
   pub team: Option<Team>,
+  /// Ships this one already has a sensor contact on.
+  ///
+  /// Scenarios open with no contacts — ships have to find each other — so this
+  /// is how a scenario is *authored* as already engaged rather than as an
+  /// approach. Absent means none.
+  #[serde(default)]
+  pub contacts: Option<Vec<String>>,
 }
 
 #[skip_serializing_none]
@@ -478,6 +485,7 @@ mod tests {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     };
     let json = json!({
         "name": "ship1",
@@ -506,6 +514,7 @@ mod tests {
       active_sensors: None,
       transmitting: None,
       team: None,
+      contacts: None,
     };
     let json = json!({
         "name": "ship1",
