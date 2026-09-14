@@ -2,6 +2,8 @@ import {Weapon, CompressedWeapon, weaponToString, weaponKinds} from "./weapon";
 // Type-only: `lib/entities` sits in an import cycle with the Redux slices, and
 // a value import from here would drag this module into it.
 import type {Ship} from "./entities";
+// Type-only for the same reason: CrewBuilder reaches back into `lib/entities`.
+import type {Crew} from "components/controls/CrewBuilder";
 
 /**
  * Readable names for screen types, which travel the wire as Rust enum variant
@@ -39,6 +41,15 @@ export interface ShipDesignTemplate {
   stealth: string | null;
   countermeasures: string | null;
   computer: number;
+  /**
+   * The crew this ship flies with, for a design that is one particular ship
+   * rather than a class -- HMS Executor is one hull with one crew.
+   *
+   * Absent on class designs, where there is no such thing as "the" crew. Fields
+   * the server omits when zero or empty (leadership, screen_gunnery) come back
+   * missing, so merge onto a `createCrew()` base rather than using it raw.
+   */
+  crew_skills?: Crew | null;
   weapons: Weapon[];
   /** Directed defensive systems. Omitted from the wire when the design has none. */
   screens?: string[];
@@ -64,6 +75,7 @@ export const defaultShipDesignTemplate = () => {
     stealth: null,
     countermeasures: null,
     computer: 0,
+    crew_skills: null,
     weapons: [],
     tl: 0,
   };
