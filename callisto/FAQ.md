@@ -404,9 +404,17 @@ Recorded so nobody assumes they were considered and rejected.
   to cutting communications. Jamming comms *is* implemented and does break
   hand-offs; what is missing is EW that makes a ship harder to find in the first
   place.
+- **Computer software.** A ship's computer is a single Bandwidth number and
+  nothing runs on it. There are no software packages to buy, install, or run,
+  and so nothing consumes Bandwidth except the sensor hand-off below. Until
+  software exists there is no such thing as *available* Bandwidth as distinct
+  from the rating, which is why neither figure is shown anywhere: a max and an
+  available that are always equal tell a player nothing. When software lands,
+  both belong on the ship's display.
 - **Squadron hand-off limits by Bandwidth count** — the cost of one point at each
   end is enforced, but a host is not capped at the number of recipients its
-  spare Bandwidth allows.
+  spare Bandwidth allows. Meaningless before software, since nothing else is
+  competing for the points.
 - **Sensor hand-off relaying.** The single-hop rule *is* enforced.
 
 ---

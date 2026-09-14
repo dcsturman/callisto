@@ -1678,18 +1678,29 @@ impl Entities {
 
     // Snapshot what each host acquired on its own, before anything is shared,
     // so a hand-off cannot be relayed onward within the same pass.
-    let hosts: Vec<(String, Vec3, Vec<String>)> = self
-      .ships
-      .iter()
-      .filter_map(|(name, ship)| {
-        let ship = ship.read().unwrap();
-        let has_bandwidth = ship.current_computer > 0;
-        // A jammed ship cannot send: jamming stops communication, and a
-        // hand-off is communication.
-        (ship.handoff_sensors && ship.team.is_some() && has_bandwidth && !ship.comms_jammed)
-          .then(|| (name.clone(), ship.get_position(), ship.contacts.clone()))
-      })
-      .collect();
+    let mut hosts: Vec<(String, Vec3, Vec<String>)> = Vec::new();
+    for (name, ship) in &self.ships {
+      let ship = ship.read().unwrap();
+      // A jammed ship cannot send: jamming stops communication, and a
+      // hand-off is communication. Jamming already announces itself, so it
+      // needs no message here.
+      if !ship.handoff_sensors || ship.team.is_none() || ship.comms_jammed {
+        continue;
+      }
+      if ship.current_computer == 0 {
+        // Say so rather than failing quietly. A ship with no Bandwidth left --
+        // a bad enough bridge crit will take it -- looks exactly like one that
+        // is sharing fine, since nothing on screen shows the rating. Only worth
+        // saying when there is a picture to share.
+        if !ship.contacts.is_empty() {
+          effects.push(EffectMsg::Message {
+            content: format!("{name} cannot hand off its sensor picture: no computer Bandwidth available."),
+          });
+        }
+        continue;
+      }
+      hosts.push((name.clone(), ship.get_position(), ship.contacts.clone()));
+    }
     if hosts.is_empty() {
       return effects;
     }
@@ -1698,9 +1709,13 @@ impl Entities {
     for (recipient_name, recipient) in &self.ships {
       let recipient_guard = recipient.read().unwrap();
       let Some(team) = recipient_guard.team else { continue };
-      if recipient_guard.current_computer == 0 || recipient_guard.comms_jammed {
+      if recipient_guard.comms_jammed {
         continue;
       }
+      // Same reasoning as the host side: a recipient with no Bandwidth is told
+      // so, but only once something was actually held out to it.
+      let no_bandwidth = recipient_guard.current_computer == 0;
+      let mut missed_a_handoff = false;
       let here = recipient_guard.get_position();
 
       for (host_name, host_pos, host_contacts) in &hosts {
@@ -1719,9 +1734,19 @@ impl Entities {
 
         for contact in host_contacts {
           if contact != recipient_name && !recipient_guard.contacts.contains(contact) {
-            shared.push((recipient_name.clone(), contact.clone(), host_name.clone()));
+            if no_bandwidth {
+              missed_a_handoff = true;
+            } else {
+              shared.push((recipient_name.clone(), contact.clone(), host_name.clone()));
+            }
           }
         }
+      }
+
+      if missed_a_handoff {
+        effects.push(EffectMsg::Message {
+          content: format!("{recipient_name} cannot receive a sensor hand-off: no computer Bandwidth available."),
+        });
       }
     }
 
@@ -4054,20 +4079,64 @@ mod tests {
   /// the host and recipient ship" (High Guard p. 78).
   #[test]
   fn handoff_needs_bandwidth_at_both_ends() {
+    let says = |effects: &[EffectMsg], fragment: &str| {
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains(fragment)))
+    };
+
     let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
     entities.ships.get("Mate").unwrap().write().unwrap().current_computer = 0;
-    entities.sensor_handoff_pass();
+    let effects = entities.sensor_handoff_pass();
     assert!(
       !holds_contact(&entities, "Mate", "Bogey"),
       "a recipient with no Bandwidth cannot receive"
     );
+    assert!(
+      says(&effects, "Mate cannot receive a sensor hand-off"),
+      "and should be told why rather than failing quietly"
+    );
 
     let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
     entities.ships.get("Picket").unwrap().write().unwrap().current_computer = 0;
-    entities.sensor_handoff_pass();
+    let effects = entities.sensor_handoff_pass();
     assert!(
       !holds_contact(&entities, "Mate", "Bogey"),
       "a host with no Bandwidth cannot send"
+    );
+    assert!(
+      says(&effects, "Picket cannot hand off its sensor picture"),
+      "and should be told why rather than failing quietly"
+    );
+  }
+
+  /// The Bandwidth warnings are only worth printing when a hand-off was really
+  /// on offer -- otherwise every quiet ship nags every round for nothing.
+  #[test]
+  fn no_bandwidth_warning_when_there_was_nothing_to_share() {
+    // A host with the setting on but no contacts of its own.
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    {
+      let mut picket = entities.ships.get("Picket").unwrap().write().unwrap();
+      picket.current_computer = 0;
+      picket.contacts.clear();
+    }
+    assert!(
+      entities.sensor_handoff_pass().is_empty(),
+      "a host with nothing to share should say nothing"
+    );
+
+    // A recipient that already holds everything the host could offer.
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    {
+      let picket_contacts = entities.ships.get("Picket").unwrap().read().unwrap().contacts.clone();
+      let mut mate = entities.ships.get("Mate").unwrap().write().unwrap();
+      mate.current_computer = 0;
+      mate.contacts = picket_contacts;
+    }
+    assert!(
+      entities.sensor_handoff_pass().is_empty(),
+      "a recipient that would gain nothing should not be warned"
     );
   }
 
