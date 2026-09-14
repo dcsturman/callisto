@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::payloads::{EffectMsg, EngineerActionResult};
+use crate::payloads::{EffectMsg, EngineerActionResult, MessageCategory};
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -132,17 +132,21 @@ fn detection_roll_effect(observer: &str, target: &str, roll: u8, dm: i16, total:
   // but ends on the total against the target number rather than on Effect.
   // Detection is pass or fail: the margin buys nothing here, unlike jamming,
   // where Effect decides how many missiles die.
-  EffectMsg::Message {
-    content: format!(
+  EffectMsg::about(
+    observer,
+    MessageCategory::Detection,
+    format!(
       "{observer} sensor check on {target} with roll {roll} and DM {dm:+} for a total of {total} against 8: {outcome}."
     ),
-  }
+  )
 }
 
 pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> EffectMsg {
-  EffectMsg::Message {
-    content: format!("{ship_name} has no sensor contact on {target} and cannot {verb} it."),
-  }
+  EffectMsg::about(
+    ship_name,
+    MessageCategory::Detection,
+    format!("{ship_name} has no sensor contact on {target} and cannot {verb} it."),
+  )
 }
 
 impl Entities {
@@ -979,9 +983,7 @@ impl Entities {
               cleanup_ships_list.push(name.to_string());
               Some(vec![
                 EffectMsg::ShipDestroyed { position: pos },
-                EffectMsg::Message {
-                  content: format!("{name} destroyed."),
-                },
+                EffectMsg::about(name, MessageCategory::Destruction, format!("{name} destroyed.")),
               ])
             }
             update => panic!("(Entity.update_all) Unexpected update {update:?} during ship updates."),
@@ -1060,9 +1062,11 @@ impl Entities {
             // running dark is by definition not doing. High Guard p. 77:
             // pinpointing a ship "requires the use of active sensors".
             if !self.has_active_sensors(ship_name) {
-              effects.push(EffectMsg::Message {
-                content: format!("{ship_name} is running dark and cannot lock onto {target}."),
-              });
+              effects.push(EffectMsg::about(
+                ship_name,
+                MessageCategory::Detection,
+                format!("{ship_name} is running dark and cannot lock onto {target}."),
+              ));
               continue;
             }
             if !self.has_contact(ship_name, target) {
@@ -1151,13 +1155,17 @@ impl Entities {
           .sensor_locks
           .push(target.to_string());
       }
-      vec![EffectMsg::Message {
-        content: format!("Sensor lock on {target} established by {ship_name}."),
-      }]
+      vec![EffectMsg::about(
+        ship_name,
+        MessageCategory::Detection,
+        format!("Sensor lock on {target} established by {ship_name}."),
+      )]
     } else {
-      vec![EffectMsg::Message {
-        content: format!("Sensor lock on {target} not established by {ship_name}."),
-      }]
+      vec![EffectMsg::about(
+        ship_name,
+        MessageCategory::Detection,
+        format!("Sensor lock on {target} not established by {ship_name}."),
+      )]
     }
   }
 
@@ -1177,13 +1185,17 @@ impl Entities {
       if let Some(target_ship) = self.ships.get(target) {
         target_ship.write().unwrap().comms_jammed = true;
       }
-      vec![EffectMsg::Message {
-        content: format!("{ship_name} is jamming comms on {target}."),
-      }]
+      vec![EffectMsg::about(
+        ship_name,
+        MessageCategory::Detection,
+        format!("{ship_name} is jamming comms on {target}."),
+      )]
     } else {
-      vec![EffectMsg::Message {
-        content: format!("{ship_name} failed to jam comms on {target}."),
-      }]
+      vec![EffectMsg::about(
+        ship_name,
+        MessageCategory::Detection,
+        format!("{ship_name} failed to jam comms on {target}."),
+      )]
     }
   }
   fn jam_missiles(&mut self, ship_name: &String, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
@@ -1210,9 +1222,11 @@ impl Entities {
     );
 
     if check >= 0 {
-      effects.append(&mut vec![EffectMsg::Message {
-        content: format!("{ship_name} jams missiles with roll {dice} for effect {check}"),
-      }]);
+      effects.append(&mut vec![EffectMsg::about(
+        ship_name,
+        MessageCategory::Detection,
+        format!("{ship_name} jams missiles with roll {dice} for effect {check}"),
+      )]);
       // Deal with effect needing to allow one missile impact when the roll is made exactly.
       // Cast is safe because from above check >= 0.
       #[allow(clippy::cast_sign_loss)]
@@ -1230,9 +1244,10 @@ impl Entities {
               EffectMsg::ExhaustedMissile {
                 position: missile.get_position(),
               },
-              EffectMsg::Message {
-                content: format!("Missile {} destroyed by jamming.", missile.get_name()),
-              },
+              EffectMsg::tagged(
+                MessageCategory::Destruction,
+                format!("Missile {} destroyed by jamming.", missile.get_name()),
+              ),
             ]
           })
           .collect::<Vec<_>>(),
@@ -1240,9 +1255,11 @@ impl Entities {
       // Remove the destroyed missiles from the list of all missiles.
     } else {
       // If the EW check failed, just let the users know.
-      effects.push(EffectMsg::Message {
-        content: format!("Missile jamming attempt by {ship_name} failed with roll {dice} for effect {check}."),
-      });
+      effects.push(EffectMsg::about(
+        ship_name,
+        MessageCategory::Detection,
+        format!("Missile jamming attempt by {ship_name} failed with roll {dice} for effect {check}."),
+      ));
     }
     effects
   }
@@ -1278,13 +1295,17 @@ impl Entities {
           .unwrap()
           .sensor_locks
           .retain(|s| s != ship_name);
-        vec![EffectMsg::Message {
-          content: format!("{ship_name} broke {target}'s sensor lock!"),
-        }]
+        vec![EffectMsg::about(
+          ship_name,
+          MessageCategory::Detection,
+          format!("{ship_name} broke {target}'s sensor lock!"),
+        )]
       } else {
-        vec![EffectMsg::Message {
-          content: format!("{ship_name} failed to break {target}'s sensor lock."),
-        }]
+        vec![EffectMsg::about(
+          ship_name,
+          MessageCategory::Detection,
+          format!("{ship_name} failed to break {target}'s sensor lock."),
+        )]
       }
     } else {
       Vec::default()
@@ -1479,6 +1500,14 @@ impl Entities {
     // Every check that was actually rolled, reported so a referee can see why
     // a ship stayed hidden rather than having to infer it.
     let mut rolls = Vec::<EffectMsg>::new();
+    // Range bands that moved, reported to whoever holds the contact.
+    //
+    // Only to them: you cannot judge the range to a ship you cannot see, and
+    // reporting every pair would hand a player the position of ships they have
+    // no contact on. Worth saying even when nothing is rolled -- the band sets
+    // the to-hit modifier, and for a stealthed target an opening band is what
+    // puts the contact at risk.
+    let mut band_changes = Vec::<EffectMsg>::new();
 
     for observer_name in &names {
       for target_name in &names {
@@ -1501,6 +1530,16 @@ impl Entities {
         let holds_contact = observer.contacts.iter().any(|name| name == *target_name);
 
         if holds_contact {
+          if let Some(band_start) = Self::snapshot_band(ship_snapshot, observer_name, target_name) {
+            if band_now != band_start {
+              band_changes.push(EffectMsg::about(
+                observer_name,
+                MessageCategory::Detection,
+                format!("{observer_name}: {target_name} now at {band_now} range (was {band_start})."),
+              ));
+            }
+          }
+
           // Beyond Distant everything is an undifferentiated blip (p. 76), so
           // contact cannot be held at all.
           if band_now == Range::Distant {
@@ -1573,6 +1612,7 @@ impl Entities {
       }
     }
 
+    effects.append(&mut band_changes);
     effects.append(&mut rolls);
     effects.append(&mut self.apply_detection_changes(&lost, &acquired));
     effects
@@ -1596,9 +1636,11 @@ impl Entities {
       // Only announce a loss nothing else has reported. A failed reacquisition
       // already printed its roll, ending in "contact lost".
       if !rolled {
-        effects.push(EffectMsg::Message {
-          content: format!("{observer_name} has lost sensor contact with {target_name}: out of range."),
-        });
+        effects.push(EffectMsg::about(
+          observer_name,
+          MessageCategory::Detection,
+          format!("{observer_name} has lost sensor contact with {target_name}: out of range."),
+        ));
       }
     }
 
@@ -1693,9 +1735,11 @@ impl Entities {
         // is sharing fine, since nothing on screen shows the rating. Only worth
         // saying when there is a picture to share.
         if !ship.contacts.is_empty() {
-          effects.push(EffectMsg::Message {
-            content: format!("{name} cannot hand off its sensor picture: no computer Bandwidth available."),
-          });
+          effects.push(EffectMsg::about(
+            name,
+            MessageCategory::Handoff,
+            format!("{name} cannot hand off its sensor picture: no computer Bandwidth available."),
+          ));
         }
         continue;
       }
@@ -1744,9 +1788,11 @@ impl Entities {
       }
 
       if missed_a_handoff {
-        effects.push(EffectMsg::Message {
-          content: format!("{recipient_name} cannot receive a sensor hand-off: no computer Bandwidth available."),
-        });
+        effects.push(EffectMsg::about(
+          recipient_name,
+          MessageCategory::Handoff,
+          format!("{recipient_name} cannot receive a sensor hand-off: no computer Bandwidth available."),
+        ));
       }
     }
 
@@ -1757,9 +1803,11 @@ impl Entities {
       }
       recipient.contacts.push(contact.clone());
       recipient.contacts.sort();
-      effects.push(EffectMsg::Message {
-        content: format!("{recipient_name} receives contact on {contact} from {host_name}."),
-      });
+      effects.push(EffectMsg::about(
+        &recipient_name,
+        MessageCategory::Handoff,
+        format!("{recipient_name} receives contact on {contact} from {host_name}."),
+      ));
     }
 
     effects
@@ -3649,7 +3697,7 @@ mod tests {
     assert_eq!(entities.missiles.len(), 1); // Only one missile should be left
     assert_eq!(effects.len(), 15); // One message for jamming success and one for missile destruction
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("destroyed by jamming")
+        EffectMsg::Message { content, .. } if content.contains("destroyed by jamming")
     )));
 
     let mut entities = Entities::default();
@@ -3679,7 +3727,7 @@ mod tests {
     assert_eq!(entities.missiles.len(), 2); // No missiles should be destroyed due to check result
     assert_eq!(effects.len(), 1); // Only one message for jamming failure
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("jamming attempt by defender failed")
+        EffectMsg::Message { content, .. } if content.contains("jamming attempt by defender failed")
     )));
   }
 
@@ -3726,7 +3774,7 @@ mod tests {
     );
     assert!(
       effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("destroyed by jamming")
+        EffectMsg::Message { content, .. } if content.contains("destroyed by jamming")
       )),
       "Expected a 'destroyed by jamming' effect message"
     );
@@ -3757,7 +3805,7 @@ mod tests {
     let boost_map = BoostMap::default();
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("not established by")
+        EffectMsg::Message { content, .. } if content.contains("not established by")
     )));
     let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
 
@@ -3766,7 +3814,7 @@ mod tests {
 
     // With a roll of 6 and sensor skill of 4, the lock should be established
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("lock on target established by")
+        EffectMsg::Message { content, .. } if content.contains("lock on target established by")
     )));
 
     let attacker = entities.ships.get("attacker").unwrap().read().unwrap();
@@ -3802,7 +3850,7 @@ mod tests {
 
     // Check that the lock was broken
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("broke")
+        EffectMsg::Message { content, .. } if content.contains("broke")
     )));
 
     {
@@ -3824,7 +3872,7 @@ mod tests {
 
     // Check that the lock was not broken
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("failed to break")
+        EffectMsg::Message { content, .. } if content.contains("failed to break")
     )));
   }
 
@@ -3853,7 +3901,7 @@ mod tests {
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("failed to jam comms on")
+        EffectMsg::Message { content, .. } if content.contains("failed to jam comms on")
     )));
 
     let mut rng = StepRng::new(4, 1); // Going past 6 on second two rolls ensures jammer wins
@@ -3861,7 +3909,7 @@ mod tests {
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     // With high sensor skill and good roll, jamming should succeed
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content } if content.contains("is jamming comms on")
+        EffectMsg::Message { content, .. } if content.contains("is jamming comms on")
     )));
   }
 
@@ -4055,7 +4103,7 @@ mod tests {
     assert!(
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("receives contact on Bogey"))),
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("receives contact on Bogey"))),
       "the hand-off should be reported"
     );
   }
@@ -4082,7 +4130,7 @@ mod tests {
     let says = |effects: &[EffectMsg], fragment: &str| {
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains(fragment)))
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains(fragment)))
     };
 
     let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
@@ -4205,6 +4253,96 @@ mod tests {
     );
   }
 
+  /// The band sets the to-hit modifier, so a change is worth saying even when
+  /// nothing is rolled -- and for an unstealthed target nothing ever is.
+  #[test]
+  fn a_range_band_change_is_reported_to_whoever_holds_the_contact() {
+    let band_lines = |effects: &[EffectMsg]| {
+      effects
+        .iter()
+        .filter_map(|e| match e {
+          EffectMsg::Message { content, .. } if content.contains("now at") => Some(content.clone()),
+          _ => None,
+        })
+        .collect::<Vec<_>>()
+    };
+
+    // No stealth, so the contact is never re-rolled: any message here is the
+    // band change itself and nothing else.
+    let mut entities = detection_pair(None, 1.0e6);
+    let snapshot = entities.ship_deep_copy();
+    entities
+      .ships
+      .get("Quarry")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(5.0e6, 0.0, 0.0));
+
+    let mut rng = SmallRng::seed_from_u64(7);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
+    let lines = band_lines(&effects);
+    assert!(
+      lines.iter().any(|l| l == "Seeker: Quarry now at Medium range (was Short)."),
+      "the observer holding the contact should be told the band moved, got {lines:?}"
+    );
+
+    // Closing again is reported too: you want to know when your own to-hit
+    // improves, not only when a contact is at risk.
+    let snapshot = entities.ship_deep_copy();
+    entities
+      .ships
+      .get("Quarry")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(1.0e6, 0.0, 0.0));
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
+    assert!(
+      band_lines(&effects)
+        .iter()
+        .any(|l| l == "Seeker: Quarry now at Short range (was Medium)."),
+      "closing the range should be reported as well as opening it"
+    );
+  }
+
+  /// You cannot judge the range to a ship you cannot see, and saying so anyway
+  /// would hand a player the position of ships they have no contact on.
+  #[test]
+  fn no_range_band_report_without_a_contact() {
+    let mut entities = detection_pair(None, 1.0e6);
+    for name in ["Seeker", "Quarry"] {
+      entities.ships.get(name).unwrap().write().unwrap().contacts.clear();
+    }
+    // Dark on both sides, so nothing is acquired during the pass either.
+    for name in ["Seeker", "Quarry"] {
+      entities
+        .ships
+        .get(name)
+        .unwrap()
+        .write()
+        .unwrap()
+        .set_emissions(Some(false), None);
+    }
+    let snapshot = entities.ship_deep_copy();
+    entities
+      .ships
+      .get("Quarry")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(5.0e6, 0.0, 0.0));
+
+    let mut rng = SmallRng::seed_from_u64(7);
+    let effects = entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
+    assert!(
+      !effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("now at"))),
+      "a ship with no contact should not be told the range, got {effects:?}"
+    );
+  }
+
   /// A captain can put the sensop's attention on one particular check.
   /// Detection is free and happens anyway — the boost is what leadership buys,
   /// and it is aimed at a specific pair rather than at the ship in general.
@@ -4228,7 +4366,7 @@ mod tests {
         .detection_pass(&snapshot, &HashSet::new(), &map, &mut rng)
         .iter()
         .find_map(|e| match e {
-          EffectMsg::Message { content } if content.contains("sensor check on") => Some(content.clone()),
+          EffectMsg::Message { content, .. } if content.contains("sensor check on") => Some(content.clone()),
           _ => None,
         })
         .expect("a check should be reported")
@@ -4252,7 +4390,7 @@ mod tests {
     let check = effects
       .iter()
       .find_map(|e| match e {
-        EffectMsg::Message { content } if content.contains("sensor check on") => Some(content.clone()),
+        EffectMsg::Message { content, .. } if content.contains("sensor check on") => Some(content.clone()),
         _ => None,
       })
       .expect("the attempt should be reported");
@@ -4288,7 +4426,7 @@ mod tests {
     assert!(
       !effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("sensor check on"))),
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("sensor check on"))),
       "a ship running dark makes no check, so it should report none: {effects:#?}"
     );
   }
@@ -4665,7 +4803,7 @@ mod tests {
     assert!(
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("lost sensor contact"))),
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
       "the loss should be reported"
     );
   }
@@ -4837,7 +4975,7 @@ mod tests {
     assert!(
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("running dark"))),
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("running dark"))),
       "expected a running-dark refusal, got {effects:?}"
     );
     assert!(
@@ -4955,7 +5093,7 @@ mod tests {
       assert!(
         effects
           .iter()
-          .any(|e| matches!(e, EffectMsg::Message { content } if content.contains(wording))),
+          .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains(wording))),
         "expected a refusal containing {wording:?}, got {effects:?}"
       );
     }

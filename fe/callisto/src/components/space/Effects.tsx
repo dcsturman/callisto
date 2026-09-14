@@ -8,6 +8,7 @@ import { findShip } from "lib/entities";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { setShowResults, setEvents } from "state/uiSlice";
+import { messageStyle } from "lib/messages";
 import {entitiesSelector} from "state/serverSlice";
 
 
@@ -29,7 +30,13 @@ export interface Event {
   // while target is the name of a target.
   position: [number, number, number] | null,
   target: string | null,
-  origin: [number, number, number] | null
+  origin: [number, number, number] | null,
+  // Message events only. `category` drives the colour in the results log;
+  // `ship` is the subject of the sentence -- the attacker for an attack, the
+  // ship taking it for damage. Both optional: the visual event kinds carry
+  // neither, and an older server sends messages without them.
+  category?: string,
+  ship?: string | null
 }
 
 export const createEvent = (kind: string, content: string | null, position: [number, number, number] | null, target: string | null, origin: [number, number, number] | null) => {
@@ -186,6 +193,12 @@ export function Explosions() {
   );
 }
 
+/**
+ * The turn's results.
+ *
+ * Coloured by category rather than by keyword: the server says what each line
+ * is, so rewording a message never silently changes how it looks.
+ */
 export function ResultsWindow() {
   const events = useAppSelector(state => state.ui.events);
   const dispatch = useAppDispatch();
@@ -204,7 +217,9 @@ export function ResultsWindow() {
       <h1>Results</h1>
       <br></br>
       {messages.length === 0 && <h2>No results</h2>}
-      {messages.length > 0 && messages.map((msg, index) => (<p key={"msg-" + index}>{msg.content}</p>))}
+      {messages.length > 0 && messages.map((msg, index) => (
+        <p key={"msg-" + index} style={messageStyle(msg.category)}>{msg.content}</p>
+      ))}
       <button className="control-input control-button blue-button button-next-round" onClick={closeWindow}>Okay!</button>
     </div>
   )

@@ -21,7 +21,7 @@ use crate::authentication::MockAuthenticator;
 use crate::entity::G;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use crate::list_local_or_cloud_dir;
-use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
+use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, MessageCategory, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::player::PlayerManager;
 use crate::server::Server;
 use crate::ship::{BaySize, ShipDesignTemplate, ShipSystem, Weapon, WeaponMount, WeaponType};
@@ -624,7 +624,7 @@ async fn test_exhausted_missile() {
   // First round 3 missiles are launched due to triple turret
   assert_eq!(response.len(), 1);
   assert!(
-    matches!(&response[0], EffectMsg::Message { content } if content == "ship1 launches 3 missile(s) at ship2."),
+    matches!(&response[0], EffectMsg::Message { content, .. } if content == "ship1 launches 3 missile(s) at ship2."),
     "Round 0"
   );
 
@@ -650,13 +650,13 @@ async fn test_exhausted_missile() {
   assert!(
     response
       .iter()
-      .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("lost sensor contact"))),
+      .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
     "ship1 should lose contact once ship2 is beyond Distant: {response:#?}"
   );
   assert!(
     response
       .iter()
-      .all(|e| matches!(e, EffectMsg::Message { content } if content.contains("lost sensor contact"))),
+      .all(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
     "nothing else should happen this round: {response:#?}"
   );
   server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
@@ -716,9 +716,11 @@ async fn test_destroy_ship() {
   assert!(effects.contains(&EffectMsg::ShipDestroyed {
     position: Vec3::new(50000.0, 0.0, 50000.0)
   }));
-  assert!(effects.contains(&EffectMsg::Message {
-    content: "ship2 destroyed.".to_string()
-  }));
+  assert!(effects.contains(&EffectMsg::about(
+    "ship2",
+    MessageCategory::Destruction,
+    "ship2 destroyed.".to_string()
+  )));
 }
 
 #[test(tokio::test)]
@@ -772,11 +774,11 @@ async fn test_called_shot() {
     let effects = server.update();
     destroyed = effects
       .iter()
-      .any(|e| matches!(e, EffectMsg::Message { content } if content.contains("destroyed")));
+      .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("destroyed")));
 
     for effect in &effects {
       // "caused" messages are damage effects rather than crits.
-      let EffectMsg::Message { content } = effect else {
+      let EffectMsg::Message { content, .. } = effect else {
         continue;
       };
       if !content.contains("critical") || content.contains("caused") {
@@ -861,7 +863,7 @@ async fn test_point_defense_battery_intercepts_missiles() {
   let intercepted = effects
     .iter()
     .filter(
-      |e| matches!(e, EffectMsg::Message { content } if content.contains("destroyed by defender's point defence")),
+      |e| matches!(e, EffectMsg::Message { content, .. } if content.contains("destroyed by defender's point defence")),
     )
     .count();
 
