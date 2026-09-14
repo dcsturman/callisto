@@ -1147,8 +1147,17 @@ impl Range {
 }
 
 impl Display for Range {
+  /// Written the way the book writes them. Was the derived `Debug`, which
+  /// reached players as the identifier `VeryLong` wherever a band is named.
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{self:?}")
+    let name = match self {
+      Range::Short => "Short",
+      Range::Medium => "Medium",
+      Range::Long => "Long",
+      Range::VeryLong => "Very Long",
+      Range::Distant => "Distant",
+    };
+    write!(f, "{name}")
   }
 }
 

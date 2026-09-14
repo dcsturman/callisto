@@ -772,6 +772,10 @@ function handleEffect(json: object[]) {
         position: null,
         target: null,
         origin: null,
+        // The two structured variants compose their own text here, so they
+        // also name their own category -- the server never sends one for them.
+        category: "Engineering",
+        ship: result.ship_name,
       } as Event;
     }
     if ((event as LeadershipActionEffect).kind === "LeadershipAction") {
@@ -782,6 +786,8 @@ function handleEffect(json: object[]) {
         position: null,
         target: null,
         origin: null,
+        category: "Leadership",
+        ship: lead.ship_name,
       } as Event;
     }
     return event as Event;

@@ -246,6 +246,21 @@ pub enum EffectMsg {
   },
   Message {
     content: String,
+    /// What kind of event this reports, so the client can colour the results
+    /// log without parsing English out of `content`.
+    ///
+    /// Presentation only. The text stays server-authored -- the category is
+    /// never enough to rebuild the sentence, and is not meant to be.
+    #[serde(default)]
+    category: MessageCategory,
+    /// The ship the message is about, where there is a single obvious one.
+    ///
+    /// The subject, not the object: an attack is about the attacker, damage is
+    /// about the ship taking it. Lets the client tint or filter by ship later
+    /// without every message being rewritten again. Omitted when a message has
+    /// no one subject, e.g. a range band, which is about a pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ship: Option<String>,
   },
   EngineerAction {
     result: EngineerActionResult,
@@ -262,10 +277,66 @@ pub enum EffectMsg {
   },
 }
 
+/// What a [`EffectMsg::Message`] is reporting.
+///
+/// Deliberately coarse: this exists so the results log can be coloured and
+/// scanned, not so the client can reason about game state. Anything that needs
+/// real structure gets its own `EffectMsg` variant instead.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MessageCategory {
+  /// An attack roll resolving, hit or miss, before damage is worked out.
+  Attack,
+  /// Damage reaching a ship -- including a hit stopped dead by armour or
+  /// screens, which is still the story of that attack landing.
+  Damage,
+  /// A critical hit and what it broke.
+  Critical,
+  /// Sensor checks, contacts gained and lost, range bands opening and closing.
+  Detection,
+  /// Sensor pictures shared between team-mates, and why one could not be.
+  Handoff,
+  /// Engineer actions.
+  Engineering,
+  /// A captain's leadership roll and the boosts it bought.
+  Leadership,
+  /// A ship or missile leaving play.
+  Destruction,
+  /// Everything else: refused orders, errors, general notes.
+  #[default]
+  Info,
+}
+
 impl EffectMsg {
+  /// An uncategorised note. The fallback for messages that are neither about
+  /// one ship nor part of a mechanic worth colouring.
   #[must_use]
   pub fn message(content: String) -> EffectMsg {
-    EffectMsg::Message { content }
+    EffectMsg::Message {
+      content,
+      category: MessageCategory::Info,
+      ship: None,
+    }
+  }
+
+  /// A message about one ship: the subject of the sentence, not its object.
+  #[must_use]
+  pub fn about(ship: &str, category: MessageCategory, content: String) -> EffectMsg {
+    EffectMsg::Message {
+      content,
+      category,
+      ship: Some(ship.to_string()),
+    }
+  }
+
+  /// A categorised message with no single subject ship, such as a range band,
+  /// which is a fact about a pair rather than about either one of them.
+  #[must_use]
+  pub fn tagged(category: MessageCategory, content: String) -> EffectMsg {
+    EffectMsg::Message {
+      content,
+      category,
+      ship: None,
+    }
   }
 }
 
@@ -668,12 +739,11 @@ mod tests {
     let json_str = serde_json::to_string(&msg).unwrap();
     assert_eq!(json_str, json.to_string());
 
-    let msg = EffectMsg::Message {
-      content: "2 points to the hull".to_string(),
-    };
+    let msg = EffectMsg::message("2 points to the hull".to_string());
     let json = json!({
         "kind" : "Message",
-        "content" : "2 points to the hull"
+        "content" : "2 points to the hull",
+        "category" : "Info"
     });
 
     let json_str = serde_json::to_string(&msg).unwrap();
