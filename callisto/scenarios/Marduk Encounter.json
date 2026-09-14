@@ -44,16 +44,17 @@
       ],
       "sensor_locks": [],
       "crew": {
-        "pilot": 0,
-        "engineering_jump": 0,
-        "engineering_power": 0,
+        "pilot": 1,
+        "engineering_jump": 1,
+        "engineering_power": 1,
         "engineering_maneuver": 0,
-        "sensors": 0,
+        "sensors": 1,
         "gunnery": [
-          0,
-          0,
-          0
-        ]
+          2,
+          1,
+          1
+        ],
+        "leadership": 4
       },
       "dodge_thrust": 0,
       "assist_gunners": false,
@@ -167,16 +168,17 @@
       ],
       "sensor_locks": [],
       "crew": {
-        "pilot": 0,
+        "pilot": 1,
         "engineering_jump": 0,
         "engineering_power": 0,
-        "engineering_maneuver": 0,
+        "engineering_maneuver": 1,
         "sensors": 0,
         "gunnery": [
+          3,
           0,
-          0,
-          0
-        ]
+          1
+        ],
+        "leadership": 3
       },
       "dodge_thrust": 0,
       "assist_gunners": false,
@@ -299,10 +301,11 @@
         "engineering_maneuver": 0,
         "sensors": 0,
         "gunnery": [
-          0,
-          0,
+          1,
+          1,
           0
-        ]
+        ],
+        "leadership": 3
       },
       "dodge_thrust": 0,
       "assist_gunners": false,
