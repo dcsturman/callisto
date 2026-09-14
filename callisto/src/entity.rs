@@ -417,7 +417,11 @@ impl Entities {
       // a smaller hull kept the larger one's hull, thrust and sensors.
       let design_changed = ship.design.name != design.name;
       ship.design = design.clone();
-      ship.crew = crew.unwrap_or_default();
+      // `None` means the scenario named no crew, so the design's stands -- the
+      // same rule the load path uses. Only an explicit crew replaces it.
+      if let Some(crew) = crew {
+        ship.set_crew(crew);
+      }
       // Owned because `set_weapons` is about to replace what `weapons()` borrows.
       let before = ship.weapons().to_vec();
       // Set the armament before the fixup so `active_weapons` is sized to it.
@@ -1120,7 +1124,7 @@ impl Entities {
   // Quality modifiers are the level of sensors as well as skill of the crew
   fn sensor_quality_modifiers(&self, ship_name: &str) -> i16 {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
-    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(ship.crew.get_sensors())
+    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(ship.get_crew().get_sensors())
   }
 
   fn sensor_lock(&mut self, ship_name: &String, target: &str, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
@@ -2106,7 +2110,7 @@ impl Entities {
       );
     }
 
-    let skill = ship.crew.get_engineering_jump();
+    let skill = ship.get_crew().get_engineering_jump();
     drop(ship);
 
     let roll = roll_dice(2, rng);
@@ -3280,6 +3284,7 @@ mod tests {
       stealth: None,
       countermeasures: None,
       computer: 1,
+      crew_skills: None,
       weapons: vec![],
       screens: vec![],
       tl: 10,
@@ -3658,7 +3663,7 @@ mod tests {
     let mut crew = Crew::default();
     crew.set_skill(Skills::Sensors, sensor_skill);
     let mut ship = Ship::default();
-    ship.crew = crew;
+    ship.set_crew(crew);
     ship.set_name(name.to_string());
     ship
   }
@@ -3932,7 +3937,7 @@ mod tests {
     attack_ship.current_sensors = attack_ship.design.sensors;
     let mut attack_crew = Crew::default();
     attack_crew.set_skill(Skills::Sensors, attack_crew_skill);
-    attack_ship.crew = attack_crew;
+    attack_ship.set_crew(attack_crew);
 
     // Create target ship
     let mut target_ship = Ship::default();
@@ -3940,7 +3945,7 @@ mod tests {
     target_ship.design = templates.get(target_design).unwrap().clone();
     let mut target_crew = Crew::default();
     target_crew.set_skill(Skills::Sensors, target_crew_skill);
-    target_ship.crew = target_crew;
+    target_ship.set_crew(target_crew);
 
     // Add ships to entities
     entities
@@ -4250,6 +4255,53 @@ mod tests {
     assert!(
       !holds_contact(&entities, "Mate", "Bogey"),
       "the link should not reach past Distant"
+    );
+  }
+
+  /// A named ship's crew lives on its design, and a scenario inherits it.
+  ///
+  /// HMS Executor is one hull with one crew, but her skills were restated in
+  /// every scenario and had drifted into three different crews. The design is
+  /// now the single source; a scenario that states its own `crew` still wins,
+  /// so a wounded or replacement crew stays expressible.
+  #[test_log::test(tokio::test)]
+  async fn a_scenario_inherits_its_design_crew_but_can_override_it() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    let design = templates.get("HMS Executor").expect("Executor design");
+    let from_design = design.crew_skills.clone().expect("Executor names her crew");
+    assert!(from_design.get_sensors() > 0, "the fixture must have a non-default crew");
+
+    let parse = |json: serde_json::Value| {
+      Entities::parse_bytes_with_ship_templates(json.to_string().as_bytes(), "crew.json", get_ship_templates_snapshot())
+        .unwrap()
+    };
+
+    // No `crew` key: the design's crew comes aboard.
+    let inherited = parse(json!({"ships":[
+      {"name":"Executor","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"HMS Executor"}]}));
+    let ship = inherited.ships.get("Executor").unwrap().read().unwrap();
+    assert_eq!(
+      ship.get_crew().get_sensors(),
+      from_design.get_sensors(),
+      "a scenario that names no crew should fly with the design's"
+    );
+    assert_eq!(ship.get_crew().get_gunnery(0), from_design.get_gunnery(0));
+    drop(ship);
+
+    // An explicit crew wins -- including one deliberately less skilled than the
+    // design's, which is the case an all-zero default could never express.
+    let overridden = parse(json!({"ships":[
+      {"name":"Executor","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
+       "plan":[[[0.0,0.0,0.0],50000]],"design":"HMS Executor",
+       "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,
+               "engineering_maneuver":0,"sensors":0,"gunnery":[]}}]}));
+    let ship = overridden.ships.get("Executor").unwrap().read().unwrap();
+    assert_eq!(
+      ship.get_crew().get_sensors(),
+      0,
+      "a stated crew should override the design's, even an untrained one"
     );
   }
 

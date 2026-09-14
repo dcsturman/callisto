@@ -1561,7 +1561,7 @@ pub fn build_point_defense_tallies(
     .enumerate()
     .map(|(index, weapon)| {
       if ship.active_weapons[index] {
-        point_defense_score(weapon) + u16::from(ship.crew.get_gunnery(index))
+        point_defense_score(weapon) + u16::from(ship.get_crew().get_gunnery(index))
       } else {
         0
       }

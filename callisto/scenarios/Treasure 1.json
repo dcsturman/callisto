@@ -45,18 +45,6 @@
       "contacts": [
         "Tai'ao"
       ],
-      "crew": {
-        "pilot": 3,
-        "engineering_jump": 3,
-        "engineering_power": 3,
-        "engineering_maneuver": 3,
-        "sensors": 3,
-        "gunnery": [
-          2,
-          2
-        ],
-        "leadership": 4
-      },
       "dodge_thrust": 0,
       "assist_gunners": false,
       "can_jump": false,
@@ -117,19 +105,6 @@
       "contacts": [
         "HMS Executor"
       ],
-      "crew": {
-        "pilot": 3,
-        "engineering_jump": 2,
-        "engineering_power": 3,
-        "engineering_maneuver": 2,
-        "sensors": 4,
-        "gunnery": [
-          3,
-          2,
-          0,
-          4
-        ]
-      },
       "dodge_thrust": 0,
       "assist_gunners": false,
       "can_jump": false,

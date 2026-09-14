@@ -10,6 +10,19 @@
   "crew": 10,
   "sensors": "Military",
   "computer": 5,
+  "crew_skills": {
+    "pilot": 3,
+    "engineering_jump": 2,
+    "engineering_power": 3,
+    "engineering_maneuver": 2,
+    "sensors": 4,
+    "gunnery": [
+      3,
+      2,
+      0,
+      4
+    ]
+  },
   "weapons": [
     {
       "kind": "Beam",
