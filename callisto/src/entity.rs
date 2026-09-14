@@ -4253,6 +4253,37 @@ mod tests {
     );
   }
 
+  /// Every scenario that ships with the repo still loads.
+  ///
+  /// A scenario that fails to parse does not announce itself -- the loader logs
+  /// and moves on, so the only symptom is the file quietly missing from the
+  /// picker. That has already happened once, when adding `owner` to `MetaData`
+  /// dropped every older file until the field was defaulted. This walks the
+  /// whole directory so a new scenario, or a new required field, cannot break
+  /// one unnoticed.
+  #[test_log::test(tokio::test)]
+  async fn every_bundled_scenario_loads() {
+    config_test_ship_templates().await;
+
+    let mut checked = 0;
+    for entry in fs::read_dir("./scenarios").expect("scenarios directory") {
+      let path = entry.expect("readable entry").path();
+      if path.extension().is_none_or(|e| e != "json") {
+        continue;
+      }
+      let name = path.display().to_string();
+      let bytes = fs::read(&path).unwrap_or_else(|e| panic!("{name}: unreadable: {e}"));
+      let entities = Entities::parse_bytes_with_ship_templates(&bytes, &name, get_ship_templates_snapshot())
+        .unwrap_or_else(|e| panic!("{name}: failed to load: {e}"));
+      assert!(
+        !entities.ships.is_empty() || !entities.planets.is_empty(),
+        "{name}: loaded but is empty, which usually means the shape is wrong rather than the syntax"
+      );
+      checked += 1;
+    }
+    assert!(checked > 0, "no scenarios found to check -- has the directory moved?");
+  }
+
   /// The band sets the to-hit modifier, so a change is worth saying even when
   /// nothing is rolled -- and for an unstealthed target nothing ever is.
   #[test]
