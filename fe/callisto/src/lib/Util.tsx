@@ -174,6 +174,16 @@ export function RangeSphere({
 const RANGE_CIRCLE_SEGMENTS = 96;
 
 /**
+ * Label size as a fraction of camera distance, which is what keeps it constant
+ * on screen: apparent size goes as world size over distance, so scaling the one
+ * by the other cancels out.
+ */
+const LABEL_SCALE = 0.035;
+
+/** Reused so the per-frame label scaling allocates nothing. */
+const LABEL_SCRATCH = new THREE.Vector3();
+
+/**
  * One range band, drawn as the circle you would see looking at a sphere.
  *
  * A sphere centred on a ship has the same silhouette from every viewpoint -- a
@@ -195,7 +205,12 @@ export function RangeCircle({
   distance,
   label,
   color = DEFAULT_RANGE_SPHERE_COLOR,
-  opacity = 0.55,
+  // Every circle at the same weight. Fading outwards made sense for nested
+  // shells, where alpha accumulated through every surface in front; lines do
+  // not overlap, so a fade only made the outer bands faintest exactly when
+  // they are hardest to see -- they are only in frame at all when the camera
+  // is far enough out for a hairline to be thin.
+  opacity = 0.6,
 }: {
   pos: [number, number, number];
   distance: number;
@@ -205,10 +220,30 @@ export function RangeCircle({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const lineRef = useRef<THREE.Line>(null);
+  const labelRef = useRef<THREE.Object3D>(null);
   const { camera } = useThree();
   const radius = distance * SCALE;
 
-  useFrame(() => groupRef.current?.lookAt(camera.position));
+  useFrame(() => {
+    const group = groupRef.current;
+    if (group == null) {
+      return;
+    }
+    group.lookAt(camera.position);
+
+    // Hold the label at a constant size on screen. Text measured in world
+    // units shrinks with distance, and these circles span a 40x range of
+    // radii -- the outermost is only in frame from about 65 units out, where
+    // a fixed 0.35-unit label is a third of a percent of screen height. The
+    // band you can see would be the one you cannot read.
+    const label = labelRef.current;
+    if (label != null) {
+      group.getWorldPosition(LABEL_SCRATCH);
+      label.scale.setScalar(
+        camera.position.distanceTo(LABEL_SCRATCH) * LABEL_SCALE,
+      );
+    }
+  });
 
   useLayoutEffect(() => {
     const points = [];
@@ -241,8 +276,9 @@ export function RangeCircle({
       </line_>
       {label && (
         <Text
+          ref={labelRef}
           position={[0, radius, 0]}
-          fontSize={0.35}
+          fontSize={1}
           color={color}
           anchorX="center"
           anchorY="bottom"
