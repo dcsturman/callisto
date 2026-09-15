@@ -420,6 +420,27 @@ input {
     letter-spacing: 0.03em;
 }
 
+/* One gunner per mount, mount named so a skill can be tied to a turret without
+   counting. Same two-column shape as the camera key reference. */
+.crew-gunner-list {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 10px;
+    row-gap: 2px;
+    margin: 2px 0 4px 0;
+    font-size: 0.85em;
+}
+
+.crew-gunner-list dt,
+.crew-gunner-list dd {
+    margin: 0;
+}
+
+.crew-gunner-list dd {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
 .view-controls-window {
     padding-left: 4px;
     border: 1px solid #b6bcae;
