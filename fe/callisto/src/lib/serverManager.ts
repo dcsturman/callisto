@@ -30,7 +30,7 @@ import {
 } from "state/uiSlice";
 import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
 import { AppMode, setAppMode } from "state/tutorialSlice";
-import { setActions } from "state/actionsSlice";
+import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
 import {
@@ -430,6 +430,15 @@ export function setCrewActions(
   };
 
   socket.send(JSON.stringify(payload));
+
+  // Withdrawing a pilot action withdraws the captain's boost on it. Nothing
+  // else will: boost state is local and survives server snapshots mid-turn.
+  if (!assist_gunners) {
+    store.dispatch(dropBoosts({ shipName: target, kinds: ["AssistGunner"] }));
+  }
+  if (dodge === 0) {
+    store.dispatch(dropBoosts({ shipName: target, kinds: ["Evade"] }));
+  }
 }
 
 export function removeEntity(target: string) {
