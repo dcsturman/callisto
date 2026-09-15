@@ -1,7 +1,7 @@
 {
   "metadata": {
     "name": "Treasure 1",
-    "description": "Faihlokh's Tai'ao comes around Noricum onto the grounded HMS Executor.",
+    "description": "Faihlokh's Tai'ao comes around Noricum onto the grounded HMS Executor. Neither has seen the other yet.",
     "owner": "dcsturman@gmail.com"
   },
   "ships": [
@@ -42,9 +42,6 @@
         true
       ],
       "sensor_locks": [],
-      "contacts": [
-        "Tai'ao"
-      ],
       "dodge_thrust": 0,
       "assist_gunners": false,
       "can_jump": false,
@@ -102,9 +99,6 @@
         true
       ],
       "sensor_locks": [],
-      "contacts": [
-        "HMS Executor"
-      ],
       "dodge_thrust": 0,
       "assist_gunners": false,
       "can_jump": false,
