@@ -396,6 +396,30 @@ input {
     line-height: 1.3;
 }
 
+/* What a plotted course promises. Sits under the nav-target picker so it is
+   read at the moment the choice is made. Two tones: an intercept is the normal
+   case and stays quiet; pursuit and shadowing change what next turn means and
+   are lifted so they are not skimmed past. */
+.course-banner {
+    margin: 4px 0 6px 0;
+    font-size: 0.85em;
+    line-height: 1.35;
+    max-width: 30em;
+}
+
+.course-banner-quiet {
+    opacity: 0.7;
+}
+
+.course-banner-warn {
+    color: #ffc94d;
+}
+
+.course-banner-headline {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
 .view-controls-window {
     padding-left: 4px;
     border: 1px solid #b6bcae;
