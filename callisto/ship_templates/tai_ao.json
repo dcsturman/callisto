@@ -15,12 +15,12 @@
     "engineering_jump": 2,
     "engineering_power": 3,
     "engineering_maneuver": 2,
-    "sensors": 4,
+    "sensors": 2,
     "gunnery": [
       3,
       2,
       0,
-      4
+      2
     ]
   },
   "weapons": [

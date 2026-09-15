@@ -22,7 +22,9 @@ use crate::crew::Crew;
 use crate::missile::Missile;
 use crate::planet::{Planet, PlanetVisualEffect};
 use crate::read_local_or_cloud_file;
-use crate::rules_tables::{countermeasures_mod, detection_modifiers, Emissions, SENSOR_QUALITY_MOD};
+use crate::rules_tables::{
+  countermeasures_mod, detection_modifier_terms, detection_modifiers, Emissions, SENSOR_QUALITY_MOD,
+};
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem};
@@ -127,7 +129,21 @@ impl PartialEq for Entities {
 /// stealth ship stay hidden for six rounds wants to know whether the rolls were
 /// close or whether the target was never findable at all, and that is not
 /// something you can infer from silence.
-fn detection_roll_effect(observer: &str, target: &str, roll: u8, dm: i16, total: i32, outcome: &str) -> EffectMsg {
+fn detection_roll_effect(
+  observer: &str, target: &str, roll: u8, dm: i16, total: i32, outcome: &str, terms: &[(&str, i16)],
+) -> EffectMsg {
+  // Only the terms that did something; a quiet target keeps the line short.
+  let breakdown = terms
+    .iter()
+    .filter(|(_, value)| *value != 0)
+    .map(|(name, value)| format!("{name} {value:+}"))
+    .collect::<Vec<_>>()
+    .join(", ");
+  let breakdown = if breakdown.is_empty() {
+    String::new()
+  } else {
+    format!(" ({breakdown})")
+  };
   // Opens like the other checks Callisto reports — "with roll N and DM N" —
   // but ends on the total against the target number rather than on Effect.
   // Detection is pass or fail: the margin buys nothing here, unlike jamming,
@@ -136,7 +152,46 @@ fn detection_roll_effect(observer: &str, target: &str, roll: u8, dm: i16, total:
     observer,
     MessageCategory::Detection,
     format!(
-      "{observer} sensor check on {target} with roll {roll} and DM {dm:+} for a total of {total} against 8: {outcome}."
+      "{observer} sensor check on {target} with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against 8: {outcome}."
+    ),
+  )
+}
+
+/// One sensor-operator check against a fixed target number.
+///
+/// Same shape as `detection_roll_effect` deliberately: every check a sensop
+/// makes should read the same way, so a referee can see why one failed without
+/// reaching for the debug log.
+fn sensor_check_effect(
+  actor: &str, action: &str, other: Option<&str>, roll: u8, dm: i16, target_number: i16, outcome: &str,
+) -> EffectMsg {
+  let total = i16::from(roll) + dm;
+  // Jamming inbound missiles is the one sensop check with no second ship in it.
+  let subject = other.map_or_else(|| action.to_string(), |other| format!("{action} {other}"));
+  EffectMsg::about(
+    actor,
+    MessageCategory::Detection,
+    format!(
+      "{actor} {subject} with roll {roll} and DM {dm:+} for a total of {total} against {target_number}: {outcome}."
+    ),
+  )
+}
+
+/// An opposed sensor check, where there is no target number -- only the other
+/// ship's roll. Both sides are shown, because "failed" against a 12 and against
+/// a 4 are very different pieces of information.
+fn opposed_check_effect(
+  actor: &str, action: &str, other: &str, acting: (u8, i16), opposing: (u8, i16), outcome: &str,
+) -> EffectMsg {
+  let (roll, dm) = acting;
+  let (other_roll, other_dm) = opposing;
+  let mine = i16::from(roll) + dm;
+  let theirs = i16::from(other_roll) + other_dm;
+  EffectMsg::about(
+    actor,
+    MessageCategory::Detection,
+    format!(
+      "{actor} {action} {other} with roll {roll} and DM {dm:+} for {mine}, against roll {other_roll} and DM {other_dm:+} for {theirs}: {outcome}."
     ),
   )
 }
@@ -1138,11 +1193,9 @@ impl Entities {
     }
 
     // Check if sensor lock is achieved.
-    let check = i16::from(roll_dice(2, rng))
-      + self.sensor_quality_modifiers(ship_name)
-      + self.sensor_detection_modifiers(ship_name, target)
-      + boost
-      - 8;
+    let roll = roll_dice(2, rng);
+    let dm = self.sensor_quality_modifiers(ship_name) + self.sensor_detection_modifiers(ship_name, target) + boost;
+    let check = i16::from(roll) + dm - 8;
 
     if check > 0 {
       // If there is sensor lock, record it.
@@ -1159,28 +1212,39 @@ impl Entities {
           .sensor_locks
           .push(target.to_string());
       }
-      vec![EffectMsg::about(
+      vec![sensor_check_effect(
         ship_name,
-        MessageCategory::Detection,
-        format!("Sensor lock on {target} established by {ship_name}."),
+        "attempts a sensor lock on",
+        Some(target),
+        roll,
+        dm,
+        8,
+        "lock established",
       )]
     } else {
-      vec![EffectMsg::about(
+      vec![sensor_check_effect(
         ship_name,
-        MessageCategory::Detection,
-        format!("Sensor lock on {target} not established by {ship_name}."),
+        "attempts a sensor lock on",
+        Some(target),
+        roll,
+        dm,
+        8,
+        "no lock",
       )]
     }
   }
 
   fn jam_comms(&self, ship_name: &String, target: &str, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
-    let check = i16::from(roll_dice(2, rng))
-      + self.sensor_quality_modifiers(ship_name)
+    // Rolled jammer-first, then target, to consume the seeded stream in the
+    // order this always did.
+    let roll = roll_dice(2, rng);
+    let dm = self.sensor_quality_modifiers(ship_name)
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
-      + boost
-      - i16::from(roll_dice(2, rng))
-      - self.sensor_quality_modifiers(target)
-      - countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures);
+      + boost;
+    let other_roll = roll_dice(2, rng);
+    let other_dm = self.sensor_quality_modifiers(target)
+      + countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures);
+    let check = i16::from(roll) + dm - i16::from(other_roll) - other_dm;
 
     if check >= 0 {
       // Jamming stops communication, and a sensor hand-off is communication:
@@ -1189,16 +1253,22 @@ impl Entities {
       if let Some(target_ship) = self.ships.get(target) {
         target_ship.write().unwrap().comms_jammed = true;
       }
-      vec![EffectMsg::about(
+      vec![opposed_check_effect(
         ship_name,
-        MessageCategory::Detection,
-        format!("{ship_name} is jamming comms on {target}."),
+        "jams comms on",
+        target,
+        (roll, dm),
+        (other_roll, other_dm),
+        "comms jammed",
       )]
     } else {
-      vec![EffectMsg::about(
+      vec![opposed_check_effect(
         ship_name,
-        MessageCategory::Detection,
-        format!("{ship_name} failed to jam comms on {target}."),
+        "jams comms on",
+        target,
+        (roll, dm),
+        (other_roll, other_dm),
+        "jamming failed",
       )]
     }
   }
@@ -1213,11 +1283,10 @@ impl Entities {
       .collect::<Vec<_>>();
 
     let dice = roll_dice(2, rng);
-    let check = i16::from(dice)
-      + self.sensor_quality_modifiers(ship_name)
+    let dm = self.sensor_quality_modifiers(ship_name)
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
-      + boost
-      - 10;
+      + boost;
+    let check = i16::from(dice) + dm - 10;
 
     debug!(
       "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, sensor_quality mod {}, countermeasures mod {} gives an effect of {check}.",
@@ -1226,10 +1295,14 @@ impl Entities {
     );
 
     if check >= 0 {
-      effects.append(&mut vec![EffectMsg::about(
+      effects.append(&mut vec![sensor_check_effect(
         ship_name,
-        MessageCategory::Detection,
-        format!("{ship_name} jams missiles with roll {dice} for effect {check}"),
+        "jams inbound missiles",
+        None,
+        dice,
+        dm,
+        10,
+        &format!("effect {check}"),
       )]);
       // Deal with effect needing to allow one missile impact when the roll is made exactly.
       // Cast is safe because from above check >= 0.
@@ -1259,10 +1332,14 @@ impl Entities {
       // Remove the destroyed missiles from the list of all missiles.
     } else {
       // If the EW check failed, just let the users know.
-      effects.push(EffectMsg::about(
+      effects.push(sensor_check_effect(
         ship_name,
-        MessageCategory::Detection,
-        format!("Missile jamming attempt by {ship_name} failed with roll {dice} for effect {check}."),
+        "jams inbound missiles",
+        None,
+        dice,
+        dm,
+        10,
+        "jamming failed",
       ));
     }
     effects
@@ -1279,17 +1356,21 @@ impl Entities {
       .and_then(|ships_with_locks| ships_with_locks.iter().find(|&s| *s == target));
     if valid_lock.is_some() {
       // Make an opposed check - this ship vs the one with the lock..
-      let check = i16::from(roll_dice(2, rng)) + self.sensor_quality_modifiers(ship_name)
+      // Rolled breaker-first, then holder, to consume the seeded stream in the
+      // order this always did.
+      let roll = roll_dice(2, rng);
+      let dm = self.sensor_quality_modifiers(ship_name)
         + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
-        + boost
-        - self.sensor_quality_modifiers(target)
+        + boost;
+      let other_dm = self.sensor_quality_modifiers(target)
         // The ship shaking off the lock benefits from ITS OWN stealth, so the
         // observer here is `target` (which holds the lock) and the quarry is
         // `ship_name`. Negating turns the detection penalty into a bonus for
         // the ship breaking free.
-        - self.sensor_detection_modifiers(target, ship_name)
-        - countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures)
-        - i16::from(roll_dice(2, rng));
+        + self.sensor_detection_modifiers(target, ship_name)
+        + countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures);
+      let other_roll = roll_dice(2, rng);
+      let check = i16::from(roll) + dm - other_dm - i16::from(other_roll);
       if check >= 0 {
         self
           .ships
@@ -1299,16 +1380,22 @@ impl Entities {
           .unwrap()
           .sensor_locks
           .retain(|s| s != ship_name);
-        vec![EffectMsg::about(
+        vec![opposed_check_effect(
           ship_name,
-          MessageCategory::Detection,
-          format!("{ship_name} broke {target}'s sensor lock!"),
+          "breaks the sensor lock held by",
+          target,
+          (roll, dm),
+          (other_roll, other_dm),
+          "lock broken",
         )]
       } else {
-        vec![EffectMsg::about(
+        vec![opposed_check_effect(
           ship_name,
-          MessageCategory::Detection,
-          format!("{ship_name} failed to break {target}'s sensor lock."),
+          "breaks the sensor lock held by",
+          target,
+          (roll, dm),
+          (other_roll, other_dm),
+          "lock holds",
         )]
       }
     } else {
@@ -1564,7 +1651,8 @@ impl Entities {
             continue;
           }
 
-          let dm = self.detection_dm(observer_name, target_name, &target, fired);
+          let terms = self.detection_dm_terms(observer_name, target_name, &target, fired);
+          let dm: i16 = terms.iter().map(|(_, value)| value).sum();
           let roll = roll_dice(2, rng);
           let total = i32::from(roll) + i32::from(dm);
           if total < STANDARD_ROLL_THRESHOLD {
@@ -1581,6 +1669,7 @@ impl Entities {
             } else {
               "contact held"
             },
+            &terms,
           ));
         } else {
           // Acquisition needs active sensors: pinpointing a ship "requires the
@@ -1594,7 +1683,8 @@ impl Entities {
           // so this is purely the leadership boost.
           let boost = boost_for_detection(boost_map, observer_name, target_name);
 
-          let dm = self.detection_dm(observer_name, target_name, &target, fired) + boost;
+          let terms = self.detection_dm_terms(observer_name, target_name, &target, fired);
+          let dm: i16 = terms.iter().map(|(_, value)| value).sum::<i16>() + boost;
           let roll = roll_dice(2, rng);
           let total = i32::from(roll) + i32::from(dm);
           if total >= STANDARD_ROLL_THRESHOLD {
@@ -1611,6 +1701,7 @@ impl Entities {
             } else {
               "no contact"
             },
+            &terms,
           ));
         }
       }
@@ -1668,10 +1759,42 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
+  /// The net DM. Production reads [`Self::detection_dm_terms`] so it can report
+  /// the breakdown; this stays for tests that only assert the total.
+  #[cfg(test)]
   fn detection_dm(&self, observer_name: &str, target_name: &str, target: &Ship, fired: &HashSet<String>) -> i16 {
-    self.sensor_quality_modifiers(observer_name)
-      + self.sensor_detection_modifiers(observer_name, target_name)
-      + Emissions {
+    self
+      .detection_dm_terms(observer_name, target_name, target, fired)
+      .iter()
+      .map(|(_, value)| value)
+      .sum()
+  }
+
+  /// The detection DM broken into named terms, in the order they are reasoned
+  /// about: what the observer brings, then what the target gives away.
+  ///
+  /// A detection DM is eight or so numbers summed into one, and as one number
+  /// it cannot be checked. A net DM+9 against an Advanced-stealth hull three
+  /// TLs above the observer looks wrong until the itemised form shows the
+  /// target was under 5G thrust, running active sensors, shooting, and hot
+  /// from its criticals -- at which point it is obviously right.
+  fn detection_dm_terms(
+    &self, observer_name: &str, target_name: &str, target: &Ship, fired: &HashSet<String>,
+  ) -> Vec<(&'static str, i16)> {
+    let observer = self.ships.get(observer_name).unwrap().read().unwrap();
+    let mut terms = vec![
+      ("sensor grade", SENSOR_QUALITY_MOD[observer.current_sensors as usize]),
+      ("sensor skill", i16::from(observer.get_crew().get_sensors())),
+    ];
+    terms.extend(detection_modifier_terms(
+      observer.design.tl,
+      target.design.tl,
+      target.design.stealth,
+    ));
+    drop(observer);
+
+    terms.extend(
+      Emissions {
         active_sensors: target.active_sensors,
         thrust_g: target.thrust_in_g(),
         power_plant: target.current_power > 0,
@@ -1679,7 +1802,9 @@ impl Entities {
         crit_severity: target.total_crit_severity(),
         transmitting: target.transmitting,
       }
-      .detection_dm()
+      .detection_terms(),
+    );
+    terms
   }
 
   /// Clear the per-round comms jamming flags.
@@ -3732,7 +3857,7 @@ mod tests {
     assert_eq!(entities.missiles.len(), 2); // No missiles should be destroyed due to check result
     assert_eq!(effects.len(), 1); // Only one message for jamming failure
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("jamming attempt by defender failed")
+        EffectMsg::Message { content, .. } if content.contains("defender jams inbound missiles") && content.contains("jamming failed")
     )));
   }
 
@@ -3810,7 +3935,7 @@ mod tests {
     let boost_map = BoostMap::default();
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("not established by")
+        EffectMsg::Message { content, .. } if content.contains("attempts a sensor lock on target") && content.contains("no lock")
     )));
     let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
 
@@ -3819,7 +3944,7 @@ mod tests {
 
     // With a roll of 6 and sensor skill of 4, the lock should be established
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("lock on target established by")
+        EffectMsg::Message { content, .. } if content.contains("attempts a sensor lock on target") && content.contains("lock established")
     )));
 
     let attacker = entities.ships.get("attacker").unwrap().read().unwrap();
@@ -3877,7 +4002,7 @@ mod tests {
 
     // Check that the lock was not broken
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("failed to break")
+        EffectMsg::Message { content, .. } if content.contains("breaks the sensor lock held by") && content.contains("lock holds")
     )));
   }
 
@@ -3906,7 +4031,7 @@ mod tests {
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("failed to jam comms on")
+        EffectMsg::Message { content, .. } if content.contains("jams comms on") && content.contains("jamming failed")
     )));
 
     let mut rng = StepRng::new(4, 1); // Going past 6 on second two rolls ensures jammer wins
@@ -3914,7 +4039,7 @@ mod tests {
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     // With high sensor skill and good roll, jamming should succeed
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("is jamming comms on")
+        EffectMsg::Message { content, .. } if content.contains("jams comms on") && content.contains("comms jammed")
     )));
   }
 
@@ -4302,6 +4427,77 @@ mod tests {
       ship.get_crew().get_sensors(),
       0,
       "a stated crew should override the design's, even an untrained one"
+    );
+  }
+
+  /// A worked example: Tai'ao looking at HMS Executor in Treasure 1.
+  ///
+  /// The net DM is +9 against an Advanced-stealth hull three TLs above the
+  /// observer, which reads as impossible until it is itemised. It is not: the
+  /// -9 that stealth and TL are worth is simply outweighed by a target under
+  /// 5G thrust, running active sensors, shooting, and hot from its criticals.
+  /// Pinned because the arithmetic looked wrong enough to be worth checking.
+  #[test_log::test(tokio::test)]
+  async fn the_detection_dm_shows_its_working() {
+    config_test_ship_templates().await;
+    let templates = get_ship_templates_snapshot();
+    let mut entities = Entities::default();
+    entities.add_ship(
+      "Tai'ao".to_string(),
+      Vec3::zero(),
+      Vec3::zero(),
+      templates.get("Tai'ao").expect("Tai'ao design"),
+      None,
+      None,
+    );
+    entities.add_ship(
+      "HMS Executor".to_string(),
+      Vec3::new(2.4e6, 0.0, 0.0),
+      Vec3::zero(),
+      templates.get("HMS Executor").expect("Executor design"),
+      None,
+      None,
+    );
+
+    {
+      let mut executor = entities.ships.get("HMS Executor").unwrap().write().unwrap();
+      executor.plan = FlightPlan::acceleration(Vec3::new(5.0 * G, 0.0, 0.0));
+      executor.crit_level[0] = 4; // criticals totalling severity 4
+      assert_eq!(executor.thrust_in_g(), 5);
+    }
+    {
+      // Pinned here rather than read from the design. This test documents a
+      // rules question -- how eight terms sum to a DM that looks impossible --
+      // and must not start failing because the scenario was rebalanced.
+      let mut taiao = entities.ships.get("Tai'ao").unwrap().write().unwrap();
+      taiao.set_crew(serde_json::from_value(json!({"sensors": 4})).unwrap());
+    }
+
+    let target = entities.ships.get("HMS Executor").unwrap().read().unwrap().clone();
+    let fired = HashSet::from(["HMS Executor".to_string()]);
+    let terms = entities.detection_dm_terms("Tai'ao", "HMS Executor", &target, &fired);
+    let named: HashMap<&str, i16> = terms.iter().copied().collect();
+
+    // What Tai'ao brings: Military sensors are the baseline grade, and her
+    // sensop is skilled.
+    assert_eq!(named["sensor grade"], 0);
+    assert_eq!(named["sensor skill"], 4);
+    // What should be hiding Executor, and very nearly does.
+    assert_eq!(named["TL"], 0, "a lower-TL observer gets no bonus, only no penalty");
+    assert_eq!(named["stealth"], -6);
+    assert_eq!(named["stealth TL"], -3, "DM-1 per TL the stealthed target is above");
+    // What gives her away anyway.
+    assert_eq!(named["active sensors"], 2);
+    assert_eq!(named["thrust"], 5);
+    assert_eq!(named["power plant"], 1);
+    assert_eq!(named["firing"], 2);
+    assert_eq!(named["damage heat"], 4);
+    assert_eq!(named["transmitting"], 0, "Executor is not squawking");
+
+    assert_eq!(
+      entities.detection_dm("Tai'ao", "HMS Executor", &target, &fired),
+      9,
+      "the observed net DM"
     );
   }
 

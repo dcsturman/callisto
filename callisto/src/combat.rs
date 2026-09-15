@@ -1240,7 +1240,16 @@ pub fn do_fire_actions<S: BuildHasher>(
               // There is a serious error if after checking if the sand_casters list isn't empty
               // it then cannot pop an element. So unwrap() is safe here.
               let modifier = sand_casters.pop().unwrap();
-              let effect = i32::from(roll_dice(2, rng)) - STANDARD_ROLL_THRESHOLD + modifier;
+              let dice = i32::from(roll_dice(2, rng));
+              let effect = dice - STANDARD_ROLL_THRESHOLD + modifier;
+              // Same compact shape as an attack line: sand is part of the same
+              // exchange, and the defender rolling it is the actor here.
+              let sand_line = format!(
+                "{} sand -> {}: {dice}{modifier:+}={} vs {STANDARD_ROLL_THRESHOLD}",
+                target.get_name(),
+                attacker.get_name(),
+                dice + modifier
+              );
               if effect >= 0 {
                 debug!(
                   "(Combat.do_fire_actions) {}'s sand (modifier = {})successfully deployed against {} with effect {}.",
@@ -1249,17 +1258,15 @@ pub fn do_fire_actions<S: BuildHasher>(
                   attacker.get_name(),
                   effect
                 );
-                let sand_mod = effect + i32::from(roll(rng));
+                let sand_roll = i32::from(roll(rng));
+                let sand_mod = effect + sand_roll;
                 (
                   sand_mod,
                   vec![EffectMsg::about(
                     target.get_name(),
                     MessageCategory::Damage,
                     format!(
-                      "{}'s sand successfully deployed against {} reducing damage by {}.",
-                      target.get_name(),
-                      attacker.get_name(),
-                      sand_mod
+                      "{sand_line}, effect {effect}. Deployed, damage -{sand_mod} ({effect} effect +1D {sand_roll})."
                     ),
                   )],
                 )
@@ -1277,7 +1284,7 @@ pub fn do_fire_actions<S: BuildHasher>(
                   vec![EffectMsg::about(
                     target.get_name(),
                     MessageCategory::Damage,
-                    format!("{}'s sand failed to deploy against {}.", target.get_name(), attacker.get_name()),
+                    format!("{sand_line}, fails to deploy."),
                   )],
                 )
               }

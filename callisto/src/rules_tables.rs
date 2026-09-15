@@ -194,19 +194,33 @@ const STEALTH_MOD: [i16; 4] = [-2, -2, -4, -6];
 /// plain target reduces to `max(0, delta)`.
 #[must_use]
 pub fn detection_modifiers(observer_tl: u8, target_tl: u8, target_stealth: Option<Stealth>) -> i16 {
+  detection_modifier_terms(observer_tl, target_tl, target_stealth)
+    .iter()
+    .map(|(_, value)| value)
+    .sum()
+}
+
+/// The same modifiers, itemised, so a check can show its working.
+///
+/// A detection DM is the sum of eight or so terms and reaches a player as one
+/// number, which cannot be checked: a net DM+9 against an Advanced-stealth hull
+/// three TLs up looks impossible until you can see the target was under 5G
+/// thrust, lit up, shooting, and streaming heat from its criticals.
+///
+/// Zero terms are dropped by the caller, so a quiet target stays short.
+#[must_use]
+pub fn detection_modifier_terms(
+  observer_tl: u8, target_tl: u8, target_stealth: Option<Stealth>,
+) -> Vec<(&'static str, i16)> {
   let delta = i16::from(observer_tl) - i16::from(target_tl);
-
-  // "+1 per higher TL" - observer only, never a penalty.
-  let tl_bonus = delta.max(0);
-
-  // Stealth grade, plus DM-1 per TL the target is above the observer.
-  let stealth = if target_stealth.is_some() {
-    stealth_mod(target_stealth) + delta.min(0)
-  } else {
-    0
-  };
-
-  tl_bonus + stealth
+  let mut terms = vec![("TL", delta.max(0))];
+  if target_stealth.is_some() {
+    terms.push(("stealth", stealth_mod(target_stealth)));
+    // DM-1 per TL the target is above the observer, and only for a stealthed
+    // hull -- a plain target gets no benefit from being built further ahead.
+    terms.push(("stealth TL", delta.min(0)));
+  }
+  terms
 }
 
 /// Target-side DMs for a sensor check: how loud the ship being looked for is.
@@ -269,13 +283,24 @@ impl Emissions {
   /// The DM this ship's behaviour gives to anyone making a sensor check
   /// against it. Rows stack.
   #[must_use]
+  /// The net DM. Production reads [`Self::detection_terms`] so it can report
+  /// the breakdown; this stays for tests that only assert the total.
+  #[cfg(test)]
   pub fn detection_dm(self) -> i16 {
-    i16::from(self.active_sensors) * 2
-      + i16::from(self.thrust_g)
-      + i16::from(self.power_plant)
-      + i16::from(self.fired_weapons) * 2
-      + i16::try_from(self.crit_severity).unwrap_or(i16::MAX)
-      + i16::from(self.transmitting) * 6
+    self.detection_terms().iter().map(|(_, value)| value).sum()
+  }
+
+  /// The same rows, itemised and named, so a check can show its working.
+  #[must_use]
+  pub fn detection_terms(self) -> Vec<(&'static str, i16)> {
+    vec![
+      ("active sensors", i16::from(self.active_sensors) * 2),
+      ("thrust", i16::from(self.thrust_g)),
+      ("power plant", i16::from(self.power_plant)),
+      ("firing", i16::from(self.fired_weapons) * 2),
+      ("damage heat", i16::try_from(self.crit_severity).unwrap_or(i16::MAX)),
+      ("transmitting", i16::from(self.transmitting) * 6),
+    ]
   }
 }
 
