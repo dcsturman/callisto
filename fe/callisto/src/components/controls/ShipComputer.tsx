@@ -637,8 +637,16 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
               !ship.sensor_locks.includes(target.name),
           )
           .map((target) => (
-            <option key={target.name + "-sensor-lock"} value={"sl-" + target.name}>
+            <option
+              key={target.name + "-sensor-lock"}
+              value={"sl-" + target.name}
+              /* A lock is deliberate, continuous illumination, which a ship
+                 running dark is by definition not doing (High Guard p. 77).
+                 The server refuses it either way; offering it and having the
+                 order rejected at end of turn is just a trap. */
+              disabled={!activeSensors}>
               {"Sensor Lock: " + target.name}
+              {activeSensors ? "" : " \u2014 running dark"}
             </option>
           ))}
 

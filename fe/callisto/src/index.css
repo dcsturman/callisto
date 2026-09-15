@@ -381,13 +381,14 @@ input {
     margin: 2px 0;
 }
 
+/* One grid for the whole list, not one per row. A per-row grid sizes its `auto`
+   tracks to that row's own content, so no two rows agreed on a column position
+   -- which was already true of hull and thrust and only became obvious once
+   range made the values different widths. */
 .ship-summary-rows {
     list-style: none;
     padding: 0;
     margin: 0;
-}
-
-.ship-summary-row {
     display: grid;
     grid-template-columns: 1fr auto auto;
     column-gap: 10px;
@@ -397,8 +398,15 @@ input {
 /* The range column only exists when there is a ship to measure from, so the
    track is added rather than always reserved -- the referee's view keeps the
    narrow three-column box. */
-.ship-summary-rows-with-range .ship-summary-row {
+.ship-summary-rows-with-range {
     grid-template-columns: 1fr auto auto auto;
+}
+
+/* The cells belong to the list's grid. `display: contents` drops the row box
+   without dropping inheritance, so the undetected styling -- which is only
+   colour and font-style -- still reaches them. */
+.ship-summary-row {
+    display: contents;
 }
 
 /* Units live here instead of on every value, which is what pays for the extra
