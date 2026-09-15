@@ -215,6 +215,57 @@ case where the exemption would actually matter.
 
 ---
 
+### Movement and range
+
+#### Change — movement is Newtonian, not the Core Rulebook's Thrust-cost table
+The distances are the book's exactly (CRB p. 167): Short to 1,250 km, Medium to
+10,000, Long to 25,000, Very Long to 50,000, Distant beyond. What differs is how
+ships get between them.
+
+The CRB does not simulate motion. Its *Ship Movement* table prices each band as
+a Thrust cost — Short 2, Medium 5, Long 10, Very Long 25, Distant 50 — paid over
+as many rounds as it takes. **There is no momentum.** Each band is a fresh bill,
+and a ship that stops thrusting stops changing range.
+
+Callisto integrates real kinematics over the 360-second round, so velocity
+accumulates and is kept. From rest at Thrust 2, burning straight away:
+
+| leave band | CRB | Callisto |
+| --- | --- | --- |
+| Short (1,250 km) | 1 round | 1 round |
+| Medium (10,000 km) | 4 | 3 |
+| Long (25,000 km) | 9 | 5 |
+| Very Long (50,000 km) | 21 | 7 |
+
+The marginal cost is where the models really part. Per band, the CRB charges
+1 / 3 / 5 / 12 rounds — geometrically worse — while Callisto stays near two
+rounds throughout, because the bands roughly double in width just as the ship's
+speed keeps climbing. After six rounds at Thrust 2 a ship is making 42 km/s and
+would cross a whole band on coasting alone; under the CRB that round produces no
+change at all.
+
+So disengagement is far easier here than at the table. Running from Medium to
+Distant at Thrust 2 is 21 rounds by the book and 7 in Callisto.
+
+This is not a house invention. The *Traveller Companion* replaces the Thrust-cost
+table with **Vector-Based Space Combat** (pp. 170–178), which tracks position,
+applies Thrust as a change to a persistent velocity vector, and keeps the range
+bands unchanged — the same model Callisto uses, arrived at independently. Its map
+scale of 648 km per space is simply the CRB bands re-expressed: 15 spaces is
+9,720 km against the book's 10,000, 38 is 24,624 against 25,000, 77 is 49,896
+against 50,000.
+
+One caveat if comparing directly against the Companion. It sets one space to
+"the distance travelled accelerating at 1G for one round", 648 km, and then also
+credits one point of Thrust with +1 space per round of *speed*. Those are not the
+same quantity: a 1G burn over 360 s covers 636 km but leaves the ship at
+3,531 m/s, which coasts 1,271 km — nearly two spaces — in the next round. The
+Companion therefore accumulates velocity at about half the physical rate, and its
+ships fall progressively behind Callisto's: level at round one, 1.3x by round two,
+1.8x by round ten. Callisto follows the physics rather than the discretisation.
+
+---
+
 ### Sensors and detection
 
 #### Change — the two detection tables are treated as one, and the rows stack
