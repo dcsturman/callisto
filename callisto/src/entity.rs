@@ -4465,6 +4465,13 @@ mod tests {
       executor.crit_level[0] = 4; // criticals totalling severity 4
       assert_eq!(executor.thrust_in_g(), 5);
     }
+    {
+      // Pinned here rather than read from the design. This test documents a
+      // rules question -- how eight terms sum to a DM that looks impossible --
+      // and must not start failing because the scenario was rebalanced.
+      let mut taiao = entities.ships.get("Tai'ao").unwrap().write().unwrap();
+      taiao.set_crew(serde_json::from_value(json!({"sensors": 4})).unwrap());
+    }
 
     let target = entities.ships.get("HMS Executor").unwrap().read().unwrap().clone();
     let fired = HashSet::from(["HMS Executor".to_string()]);
