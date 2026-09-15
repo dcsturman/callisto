@@ -273,9 +273,17 @@ pub struct Ship {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub team: Option<Team>,
 
+  /// The crew aboard, or `None` when the scenario did not say.
+  ///
+  /// `None` means "take the design's", resolved by `fixup_current_values` on
+  /// load -- which is why this is private and read through `get_crew`. Without
+  /// the Option an omitted crew and a deliberately green one are the same JSON,
+  /// and a design-level crew could never be overridden back down to zero.
+  ///
+  /// Always `Some` by the time it reaches a client.
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
-  pub crew: Crew,
+  crew: Option<Crew>,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -455,6 +463,20 @@ pub struct ShipDesignTemplate {
   pub stealth: Option<Stealth>,
   pub countermeasures: Option<CounterMeasures>,
   pub computer: u32,
+  /// The crew this ship flies with, for a design that is one particular ship
+  /// rather than a class.
+  ///
+  /// HMS Executor is a single hull with a single crew; restating their skills
+  /// in every scenario is how they drift, and they had -- three scenarios gave
+  /// her three different crews. Gunnery makes the case on its own: it is
+  /// index-aligned with `weapons` below, so a design whose armament changes
+  /// silently misaligns every scenario's array onto the wrong mounts.
+  ///
+  /// A scenario that states its own `crew` still wins, so a wounded or
+  /// replacement crew stays expressible. Left unset on class designs, where
+  /// there is no such thing as "the" crew.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub crew_skills: Option<Crew>,
   pub weapons: Vec<Weapon>,
   /// Directed defensive systems (High Guard pp. 40-41).  Omitted from the wire
   /// when empty, so every design written before screens existed is unchanged.
@@ -1238,7 +1260,7 @@ impl Ship {
       team: None,
       crit_level: [0; 11],
       attack_dm: 0,
-      crew: crew.unwrap_or_default(),
+      crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
       dodge_thrust: 0,
       assist_gunners: false,
       can_jump: false,
@@ -1275,6 +1297,7 @@ impl Ship {
     self.current_crew = self.design.crew;
     self.current_sensors = self.design.sensors;
     self.current_computer = self.design.computer;
+    self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.attack_dm = 0;
@@ -1291,6 +1314,7 @@ impl Ship {
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
     self.current_computer = u32::max(self.current_computer, self.design.computer);
+    self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.attack_dm = 0;
@@ -1407,12 +1431,29 @@ impl Ship {
   }
 
   #[must_use]
+  /// The crew aboard. An unresolved crew reads as untrained rather than
+  /// panicking; `fixup_current_values` resolves it on every load path.
   pub fn get_crew(&self) -> &Crew {
-    &self.crew
+    static UNTRAINED: std::sync::LazyLock<Crew> = std::sync::LazyLock::new(Crew::new);
+    self.crew.as_ref().unwrap_or(&UNTRAINED)
   }
 
   pub fn get_crew_mut(&mut self) -> &mut Crew {
-    &mut self.crew
+    self.crew.get_or_insert_with(Crew::new)
+  }
+
+  pub fn set_crew(&mut self, crew: Crew) {
+    self.crew = Some(crew);
+  }
+
+  /// Fill in the crew from the design when the scenario did not name one.
+  ///
+  /// Idempotent, and never overwrites: a scenario that states its own crew
+  /// keeps it. Falls back to untrained so `crew` is `Some` from here on.
+  fn resolve_crew(&mut self) {
+    if self.crew.is_none() {
+      self.crew = Some(self.design.crew_skills.clone().unwrap_or_default());
+    }
   }
 
   pub fn enable_jump(&mut self) {
@@ -2491,6 +2532,7 @@ impl FlightPlan {
 impl Default for ShipDesignTemplate {
   fn default() -> Self {
     ShipDesignTemplate {
+      crew_skills: None,
       name: "Buccaneer".to_string(),
       displacement: 400,
       hull: 160,
@@ -2766,6 +2808,7 @@ mod tests {
       stealth: None,
       countermeasures: None,
       computer: 1,
+      crew_skills: None,
       weapons: vec![],
       screens: vec![],
       tl: 10,
@@ -3343,6 +3386,7 @@ mod tests {
       stealth: None,
       countermeasures: None,
       computer: 10,
+      crew_skills: None,
       weapons: vec![
         Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2),
         Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small)),
@@ -3482,6 +3526,7 @@ mod tests {
       stealth: None,
       countermeasures: None,
       computer: 10,
+      crew_skills: None,
       weapons: vec![],
       screens: vec![],
       tl: 12,

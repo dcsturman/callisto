@@ -79,6 +79,21 @@ export const AddShip: React.FC<AddShipProps> = () => {
     [shipDesignTemplates],
   );
 
+  // A design that is one particular ship carries its crew, so picking it should
+  // bring them aboard rather than leaving a blank form to retype -- which is how
+  // HMS Executor ended up with three different crews across three scenarios.
+  //
+  // Merged onto a blank crew because the server omits fields that are zero or
+  // empty (leadership, screen_gunnery), so `crew_skills` arrives with holes in
+  // it. A class design has no crew_skills and yields a blank crew as before.
+  const crewForDesign = useCallback(
+    (designName: string): Crew => ({
+      ...createCrew(),
+      ...(shipDesignTemplates[designName]?.crew_skills ?? {}),
+    }),
+    [shipDesignTemplates],
+  );
+
   const initialTemplate = useMemo(() => {
     const firstDesign = Object.values(shipDesignTemplates)[0];
     return {
@@ -90,15 +105,21 @@ export const AddShip: React.FC<AddShipProps> = () => {
       yvel: "0",
       zvel: "0",
       design: firstDesign.name,
-      crew: createCrew(),
-      armament: buildWeaponRows(firstDesign.name),
+      crew: crewForDesign(firstDesign.name),
+      // Seeded with the design's gunnery so the per-weapon gunner boxes agree
+      // with the crew the design named.
+      armament: buildWeaponRows(
+        firstDesign.name,
+        undefined,
+        crewForDesign(firstDesign.name).gunnery,
+      ),
       // Ships are built with sensors up but silent: transmitting is the loudest
       // thing a ship can do, so a scenario opts into it deliberately.
       activeSensors: true,
       transmitting: false,
       team: null as Team | null,
     };
-  }, [shipDesignTemplates, entities, buildWeaponRows]);
+  }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
   const [addShipData, setAddShipData] = useState(initialTemplate);
 
@@ -235,16 +256,20 @@ export const AddShip: React.FC<AddShipProps> = () => {
     [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates],
   );
 
-  // Changing the design changes the allowance and the default armament, so the
-  // rows are rebuilt from the new design rather than carried over.
+  // Changing the design changes the allowance, the default armament and, for a
+  // design that names one, the crew -- so all three are rebuilt from the new
+  // design rather than carried over from the old one.
   const handleDesignChange = useCallback(
-    (design: string) =>
+    (design: string) => {
+      const crew = crewForDesign(design);
       setAddShipData({
         ...addShipData,
         design: design,
-        armament: buildWeaponRows(design),
-      }),
-    [addShipData, setAddShipData, buildWeaponRows],
+        crew,
+        armament: buildWeaponRows(design, undefined, crew.gunnery),
+      });
+    },
+    [addShipData, setAddShipData, buildWeaponRows, crewForDesign],
   );
 
   const handleWeaponsChange = useCallback(
