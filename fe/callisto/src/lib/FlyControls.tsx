@@ -47,6 +47,31 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     let moveState = {...NO_MOVE};
     let mouseStatus = 0;
     let movementSpeedMultiplier = 1;
+    let rotationSpeedMultiplier = 1;
+
+    /**
+     * Shift boosts turning as well as flying, but nowhere near as hard.
+     * Translation's 100x is fine because distance is unbounded; a camera that
+     * span a hundred times faster would be unusable.
+     */
+    const SHIFT_ROTATION_BOOST = 3;
+
+    /**
+     * Keys are listened for on the window, so they must not be stolen from
+     * anything the user is actually typing into.
+     */
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      const element = target as HTMLElement | null;
+      if (element == null) {
+        return false;
+      }
+      return (
+        element.tagName === "INPUT" ||
+        element.tagName === "TEXTAREA" ||
+        element.tagName === "SELECT" ||
+        element.isContentEditable
+      );
+    };
 
     let previousTime = 0;
     let isActive = true; // Flag to control animation loop
@@ -84,7 +109,7 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       lastQuaternion.copy(camera.quaternion);
 
       const moveMultiplier = delta * movementSpeed * movementSpeedMultiplier;
-      const rotationMultiplier = delta * rollSpeed;
+      const rotationMultiplier = delta * rollSpeed * rotationSpeedMultiplier;
 
       const moveVector = generateMovementVector();
       const rotationVector = generateRotationalVector();
@@ -115,13 +140,14 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
     };
 
     const keydown = (event: KeyboardEvent): void => {
-      if (event.altKey) {
+      if (event.altKey || isTypingTarget(event.target)) {
         return;
       }
       switch (event.code) {
         case "ShiftLeft":
         case "ShiftRight":
           movementSpeedMultiplier = 100;
+          rotationSpeedMultiplier = SHIFT_ROTATION_BOOST;
           break;
 
         case "KeyW":
@@ -163,11 +189,34 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       }
     };
 
+    /** Which movement this key drives, so a release clears only that one. */
+    const KEY_TO_MOVE: {[code: string]: keyof typeof NO_MOVE} = {
+      KeyW: "forward",
+      KeyS: "back",
+      KeyA: "left",
+      KeyD: "right",
+      KeyR: "up",
+      KeyF: "down",
+      ArrowUp: "pitchUp",
+      ArrowDown: "pitchDown",
+      ArrowLeft: "yawLeft",
+      ArrowRight: "yawRight",
+      KeyQ: "rollLeft",
+      KeyE: "rollRight",
+    };
+
     const keyup = (event: KeyboardEvent): void => {
       if (["ShiftLeft", "ShiftRight"].includes(event.code)) {
         movementSpeedMultiplier = 1;
-      } else {
-        moveState = {...NO_MOVE};
+        rotationSpeedMultiplier = 1;
+        return;
+      }
+      // Clearing the whole state on any release meant that flying forward while
+      // turning, then letting go of either key, stopped both -- so holding two
+      // keys at once never worked.
+      const move = KEY_TO_MOVE[event.code];
+      if (move != null) {
+        moveState[move] = 0;
       }
     };
 
@@ -277,8 +326,13 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       domElement.addEventListener("pointermove", pointermove);
       domElement.addEventListener("pointerdown", pointerdown);
       domElement.addEventListener("pointerup", pointerup);
-      domElement.addEventListener("keydown", keydown);
-      domElement.addEventListener("keyup", keyup);
+      // On the window, not the canvas. A `keydown` only reaches a focused
+      // element, and nothing ever focused the canvas -- so the flight keys
+      // worked only until the user clicked any control, after which focus
+      // lived in the sidebar and they silently did nothing. `isTypingTarget`
+      // is what keeps them out of text fields.
+      window.addEventListener("keydown", keydown);
+      window.addEventListener("keyup", keyup);
 
       if (enableFlywheelZoom) {
         domElement.addEventListener("wheel", wheel, {passive: false});
@@ -289,8 +343,8 @@ export const FlyControls: React.FC<FlyControlsProps> = ({
       domElement.removeEventListener("pointermove", pointermove);
       domElement.removeEventListener("pointerdown", pointerdown);
       domElement.removeEventListener("pointerup", pointerup);
-      domElement.removeEventListener("keydown", keydown);
-      domElement.removeEventListener("keyup", keyup);
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
 
       if (enableFlywheelZoom) {
         domElement.removeEventListener("wheel", wheel);

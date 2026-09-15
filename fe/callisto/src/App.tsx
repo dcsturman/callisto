@@ -61,6 +61,15 @@ import "./index.css";
 export const GOOGLE_OAUTH_CLIENT_ID: string =
   import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
 
+/**
+ * How fast the camera turns under the arrow and roll keys.
+ *
+ * Was 0.2, which worked out to about 23 degrees a second -- four seconds to
+ * bring the view ninety degrees around, which is why turning felt broken. 0.6
+ * is a shade under 70 degrees a second, and holding Shift trebles it.
+ */
+const CAMERA_ROLL_SPEED = 0.6;
+
 export function App() {
   const socketReady = useAppSelector((state) => state.server.socketReady);
   const authenticated = useAppSelector((state) => state.server.authenticated);
@@ -221,7 +230,7 @@ function Simulator() {
             autoForward={false}
             dragToLook={true}
             movementSpeed={50}
-            rollSpeed={0.2}
+            rollSpeed={CAMERA_ROLL_SPEED}
             enableFlywheelZoom={true}
           />
           <Suspense fallback={null}>
