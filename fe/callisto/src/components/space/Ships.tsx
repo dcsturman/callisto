@@ -124,9 +124,6 @@ function Ship(args: {
             label={RANGE_BAND_NAMES[index]}
             key={args.ship.name + "range" + index}
             color={"#5ba0ff"}
-            // Fading outwards gives depth order at a glance without the
-            // labels having to be read.
-            opacity={0.7 - index * 0.12}
           />
         ))}
       <group position={scaleVector(args.ship.position, SCALE) as Vector3}>
