@@ -367,6 +367,35 @@ input {
     z-index: 12;
 }
 
+/* Key reference inside View Controls. Two columns so the keys form a column of
+   their own and the list can be scanned down rather than read across. */
+.camera-key-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 8px;
+    row-gap: 2px;
+    margin: 2px 0 4px 0;
+    font-size: 0.8em;
+}
+
+.camera-key-list dt,
+.camera-key-list dd {
+    margin: 0;
+}
+
+.camera-key-list dd {
+    opacity: 0.75;
+}
+
+.camera-key-list kbd {
+    border: 1px solid #b6bcae;
+    border-radius: 3px;
+    padding: 0 3px;
+    font-family: inherit;
+    font-size: 0.95em;
+    line-height: 1.3;
+}
+
 .view-controls-window {
     padding-left: 4px;
     border: 1px solid #b6bcae;

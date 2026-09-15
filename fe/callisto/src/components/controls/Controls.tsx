@@ -573,6 +573,44 @@ export function ViewControls() {
         />{" "}
         100 Diameter Limit
       </label>
+      {/* Collapsed by default: this is reference material, not a control, and
+          the top-right corner has no room to spare. It exists at all because
+          the flight keys were documented nowhere -- not in the tutorial, not
+          in the README -- so the only way to find them was to read
+          `FlyControls`. */}
+      <Accordion
+        className="camera-keys"
+        title="Camera Keys"
+        initialOpen={false}>
+        <dl className="camera-key-list">
+          <dt>
+            <kbd>W</kbd> <kbd>S</kbd>
+          </dt>
+          <dd>forward / back</dd>
+          <dt>
+            <kbd>A</kbd> <kbd>D</kbd>
+          </dt>
+          <dd>left / right</dd>
+          <dt>
+            <kbd>R</kbd> <kbd>F</kbd>
+          </dt>
+          <dd>up / down</dd>
+          <dt>
+            <kbd>Q</kbd> <kbd>E</kbd>
+          </dt>
+          <dd>roll</dd>
+          <dt>
+            <kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd>
+          </dt>
+          <dd>pitch / yaw</dd>
+          <dt>
+            <kbd>Shift</kbd>
+          </dt>
+          <dd>faster</dd>
+          <dt>drag</dt>
+          <dd>look</dd>
+        </dl>
+      </Accordion>
     </div>
   );
 }
