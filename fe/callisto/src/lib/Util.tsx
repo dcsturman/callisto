@@ -1,7 +1,8 @@
 import * as React from "react";
 import * as THREE from "three";
 import { useLayoutEffect, useRef } from "react";
-import { extend } from "@react-three/fiber";
+import { extend, useFrame, useThree } from "@react-three/fiber";
+import { Text } from "@react-three/drei";
 import { SCALE, RANGE_BANDS } from "./universal";
 
 extend({ Line_: THREE.Line });
@@ -149,16 +150,107 @@ export function RangeSphere({
   return (
     <>
       <mesh position={pos} renderOrder={order}>
-        <sphereGeometry args={[distance * SCALE, 15, 15]} />
+        <sphereGeometry args={[distance * SCALE, 40, 40]} />
+        {/* BackSide, not DoubleSide: half the surfaces, and you look into the
+            shell rather than through both of its faces. `depthWrite: false`
+            stops it punching holes in other transparent geometry. */}
         <meshBasicMaterial
           color={color}
           opacity={opacity}
           transparent={true}
-          side={THREE.DoubleSide}
+          depthWrite={false}
+          side={THREE.BackSide}
           wireframe={false}
         />
       </mesh>
     </>
+  );
+}
+
+/**
+ * Enough segments that the circle reads as a circle rather than a polygon.
+ * Cheap: this is a line, not a surface.
+ */
+const RANGE_CIRCLE_SEGMENTS = 96;
+
+/**
+ * One range band, drawn as the circle you would see looking at a sphere.
+ *
+ * A sphere centred on a ship has the same silhouette from every viewpoint -- a
+ * circle of its radius -- so the circle carries the whole of what a shell has
+ * to say. Filled shells were the obvious first try and they do not work: four
+ * of them, double-sided, stack eight translucent surfaces over exactly the part
+ * of the display you care about, the middle, and transparency sorting turns
+ * near-coincident surfaces into a checkerboard.
+ *
+ * Range is a scalar. Drawing it as a volume is what made it unreadable; drawing
+ * it as an annotation costs almost no ink, occludes nothing, and survives
+ * several ships being on screen at once.
+ *
+ * Billboarded, so it stays a true silhouette as the camera moves rather than
+ * foreshortening into an ellipse.
+ */
+export function RangeCircle({
+  pos,
+  distance,
+  label,
+  color = DEFAULT_RANGE_SPHERE_COLOR,
+  opacity = 0.55,
+}: {
+  pos: [number, number, number];
+  distance: number;
+  label?: string;
+  color?: string;
+  opacity?: number;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const lineRef = useRef<THREE.Line>(null);
+  const { camera } = useThree();
+  const radius = distance * SCALE;
+
+  useFrame(() => groupRef.current?.lookAt(camera.position));
+
+  useLayoutEffect(() => {
+    const points = [];
+    for (let i = 0; i <= RANGE_CIRCLE_SEGMENTS; i++) {
+      const angle = (i / RANGE_CIRCLE_SEGMENTS) * Math.PI * 2;
+      points.push(
+        new THREE.Vector3(
+          Math.cos(angle) * radius,
+          Math.sin(angle) * radius,
+          0,
+        ),
+      );
+    }
+    lineRef.current?.geometry.setFromPoints(points);
+  }, [radius]);
+
+  return (
+    <group ref={groupRef} position={pos}>
+      <line_ ref={lineRef}>
+        <bufferGeometry />
+        {/* `depthWrite: false` on anything transparent -- a transparent surface
+            writing depth is what makes chunks of other transparent things
+            disappear. */}
+        <lineBasicMaterial
+          color={color}
+          transparent={true}
+          opacity={opacity}
+          depthWrite={false}
+        />
+      </line_>
+      {label && (
+        <Text
+          position={[0, radius, 0]}
+          fontSize={0.35}
+          color={color}
+          anchorX="center"
+          anchorY="bottom"
+          fillOpacity={opacity}>
+          {label}
+        </Text>
+      )}
+    </group>
   );
 }
 
