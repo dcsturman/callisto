@@ -9,7 +9,7 @@ use rand::SeedableRng;
 
 use crate::action::{boost_target_alive, boost_target_sort_key, merge, BoostMap, BoostTarget, ShipAction};
 use crate::authentication::Authenticator;
-use crate::computer::FlightParams;
+use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
@@ -932,21 +932,19 @@ impl PlayerManager {
                     (adjusted_end_pos - msg.end_pos).magnitude());
     }
 
-    let mut params = FlightParams::new(
+    // Never an error for a ship that exists: the ladder ends in a closed-form
+    // burn, and the result says which rung it came from so the pilot is told
+    // what the plan promises.
+    let plan = plot_course(
       start_pos,
-      adjusted_end_pos,
       start_vel,
+      max_accel,
+      adjusted_end_pos,
       msg.end_vel,
       msg.target_velocity,
       msg.target_acceleration,
-      max_accel,
     );
-
-    debug!("(/compute_path) Call computer with params: {:?}", params);
-
-    let Ok(plan) = params.compute_flight_path() else {
-      return Err(format!("Unable to compute flight path: {params:?}"));
-    };
+    debug!("(/compute_path) Course is a {:?}", plan.mode);
 
     debug!("(/compute_path) Plan: {:?}", plan);
     debug!(

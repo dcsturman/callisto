@@ -344,6 +344,29 @@ override this per ship when adding one, which is scenario creation rather than a
 default: that is how you set up an engagement already in progress instead of an
 approach.
 
+#### Assumption — a course can be plotted toward a ship with no contact
+Nothing can be *done* to an undetected ship, but a course can be laid toward
+one. HG p. 76 has a ship beyond detection as "an undifferentiated blip": the
+sensors know something is there and where it is going, they just cannot say
+what it is. So the navigation computer accepts a blip as a target, using its
+position and velocity but **not** its acceleration -- a ship you have no contact
+on shows `?` for thrust everywhere else, and the computer must not know more
+than the sensors do. The pilot is told the course assumes the blip holds its
+velocity. Without this, a player with no contact was left hovering over a dot
+with a calculator, which is not play.
+
+#### Change — the navigation computer never refuses a reachable target
+The flight solver finds a rendezvous: arrive *and* match velocity. Against a
+target that out-accelerates you and is already receding there is no such
+course, and it used to come back as an error -- in every scenario built so
+far, since the Oars and the Tai'ao can never rendezvous with a burning
+Executor. It now tries three things in turn and reports which it got:
+**intercept** (rendezvous), **pursuit** (cross the target's projected position
+at any speed, the missile guidance problem pointed at a ship), and
+**shadowing** (burn flat out at where the target will be next turn, which is
+the direction that lets the range grow least -- closed form, cannot fail).
+Re-plotting each turn walks back up the ladder as the geometry improves.
+
 #### Change — the detection check is made once per round
 CRB gives the check a duration of 1D minutes. Callisto rolls it once per combat
 round for every pair not already in contact.

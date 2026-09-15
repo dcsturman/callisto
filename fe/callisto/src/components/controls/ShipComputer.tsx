@@ -9,6 +9,8 @@ import {Team, TEAMS, teamLabelColor} from "lib/teams";
 import {isUndetected, sameSide} from "lib/contacts";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
+import {CourseMode} from "lib/flightPath";
+import {describeCourse} from "lib/courseMode";
 import {findShip} from "lib/entities";
 import {EngineerTasks} from "components/controls/EngineerTasks";
 import {CaptainTasks} from "components/controls/CaptainTasks";
@@ -80,6 +82,16 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     return {position: ship.position, velocity: ship.velocity, plan: ship.plan};
   }, [entities, currentNavTarget]);
 
+  // Whether the nav target is a ship this one has no contact on. Resolved by
+  // name because `target` is a slimmed-down union of ship and planet, and only
+  // a real Ship can be checked for contact. A boolean dependency also means the
+  // course is re-plotted exactly when contact is gained or lost -- which is
+  // when the computer's picture of the target changes.
+  const navBlip = useMemo(() => {
+    const navShip = entities.ships.find((s) => s.name === currentNavTarget);
+    return navShip != null && isUndetected(ship, navShip);
+  }, [entities.ships, currentNavTarget, ship]);
+
   useEffect(() => {
     if (target == null) {
       setNavigationTarget(initNavigationTargetState);
@@ -98,7 +110,11 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
       standoff = (target.radius! * 1.1) / POSITION_SCALE;
     }
 
-    const plan = target.plan ?? null;
+    // A blip's velocity is on its track, but its acceleration is not: a ship
+    // with no contact shows "?" for thrust everywhere else, and the computer
+    // must not know more than the sensors do. A course to a blip therefore
+    // assumes it holds its velocity, and the pilot is told so.
+    const plan = navBlip ? null : (target.plan ?? null);
 
     setNavigationTarget({
       p_x: target.position[0],
@@ -122,7 +138,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
       plan ? plan[0][0] : null,
       standoff
     );
-  }, [currentNavTarget, target, initNavigationTargetState, ship.name]);
+  }, [currentNavTarget, target, initNavigationTargetState, ship.name, navBlip]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.
@@ -368,8 +384,16 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
                 }
                 exclude={ship.name}
                 observer={ship}
+                allowUndetected
               />
             </label>
+            {proposedPlan != null && (
+              <CourseBanner
+                mode={proposedPlan.mode}
+                target={currentNavTarget}
+                blip={navBlip}
+              />
+            )}
             <div className="target-details-div">
               <label className="control-label">
                 Target Position (km)
@@ -699,5 +723,27 @@ export function NavigationPlan(args: {plan: [Acceleration, Acceleration | null]}
         </div>
       )}
     </>
+  );
+}
+
+
+/**
+ * Tells the pilot which rung of the navigation ladder their course came from.
+ *
+ * Inline rather than a modal: a fleeing target gets re-plotted every turn, and
+ * a dialog to dismiss every turn would be worse than the error it replaces. An
+ * intercept reads quietly; the other two are worth a second look.
+ */
+function CourseBanner(args: {
+  mode: CourseMode | undefined;
+  target: string | null;
+  blip: boolean;
+}) {
+  const {headline, detail} = describeCourse(args.mode, args.target, args.blip);
+  const tone = (args.mode ?? "Intercept") === "Intercept" ? "quiet" : "warn";
+  return (
+    <p className={`course-banner course-banner-${tone}`}>
+      <span className="course-banner-headline">{headline}</span> {detail}
+    </p>
   );
 }

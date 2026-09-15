@@ -29,6 +29,16 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
    */
   observer?: Ship | null;
   /**
+   * List undetected ships as selectable rather than barred.
+   *
+   * Set on the navigation target only. Nothing can be *done* to a ship with no
+   * contact -- fired on, locked, jammed -- but a course can be plotted toward
+   * one: the sensors know something is there and where it is going, they just
+   * cannot say what it is or how hard it is burning. The option stays marked
+   * so it is clear a blip is being chased rather than a ship.
+   */
+  allowUndetected?: boolean;
+  /**
    * Also bar ships on the observer's own side.
    *
    * Set on the firing menu only. A ship will not shoot its own team, but
@@ -54,6 +64,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   extra,
   formatter,
   observer,
+  allowUndetected,
   excludeSameTeam,
   noneLabel,
   ...props
@@ -111,7 +122,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         // Belt and braces: `disabled` should stop this, but contact can be lost
         // between render and click, and acting on an invisible ship is exactly
         // what the server would reject anyway.
-        if (isUndetected(observer, shipTarget)) {
+        if (!allowUndetected && isUndetected(observer, shipTarget)) {
           return;
         }
         if (
@@ -172,15 +183,15 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
                 excludeSameTeam === true &&
                 observer?.team != null &&
                 notMeShip.team === observer.team;
-              const barred = undetected || sameTeam;
+              const barred = (undetected && !allowUndetected) || sameTeam;
               return (
                 <option
                   key={"els" + notMeShip.name}
                   value={notMeShip.name}
                   disabled={barred}
-                  className={barred ? "no-contact-option" : undefined}>
+                  className={barred || undetected ? "no-contact-option" : undefined}>
                   {undetected
-                    ? `${notMeShip.name} (no contact)`
+                    ? `${notMeShip.name} (${allowUndetected ? "blip" : "no contact"})`
                     : sameTeam
                       ? `${notMeShip.name} (same side)`
                       : nf(notMeShip.name, notMeShip)}
