@@ -18,14 +18,15 @@ import { Line } from "lib/Util";
 import {
   SCALE,
   TURN_IN_SECONDS,
-  RANGE_BANDS
+  RANGE_BANDS,
+  RANGE_BAND_NAMES
 } from "lib/universal";
 import { Ship as ShipType, Missile as MissileType} from "lib/entities";
 import { isUndetected } from "lib/contacts";
 import { teamBodyColor, teamLabelColor } from "lib/teams";
 import { FlightPath } from "lib/flightPath";
 
-import { addVector, scaleVector, RangeSphere } from "lib/Util";
+import { addVector, scaleVector, RangeCircle } from "lib/Util";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { setEntityToShow, setComputerShipName } from "state/uiSlice";
@@ -56,8 +57,13 @@ function Ship(args: {
   ship: ShipType;
   index: number;
 }) {
-  const computerShipName = useAppSelector(state => state.ui.computerShipName);
-  const showRange = useAppSelector(state => state.ui.showRange) === computerShipName;
+  // `showRange` holds the name of the one ship whose bands are being shown.
+  // This compared it against `computerShipName` instead, which is the same
+  // value in every copy of this component -- so every ship drew its own four
+  // shells at once. Five ships a few thousand km apart, each with a 50,000 km
+  // sphere, put twenty near-coincident surfaces in the same place, which is
+  // what the display was actually showing.
+  const showRange = useAppSelector(state => state.ui.showRange) === args.ship.name;
   const dispatch = useAppDispatch();
 
   // The ship whose console is open is the one doing the looking. In the GM's
@@ -108,18 +114,21 @@ function Ship(args: {
 
   return (
     <>
-      {computerShipName && showRange && RANGE_BANDS.map(
-          (distance, index) => (
-              <RangeSphere
-                pos={scaleVector(args.ship.position, SCALE)}
-                distance={distance}
-                order={2*index}
-                key={showRange + "range" + index}
-                color={"#5ba0ff"}
-                opacity={0.18}
-              />
-          )
-        )}
+      {showRange &&
+        RANGE_BANDS.map((distance, index) => (
+          <RangeCircle
+            pos={scaleVector(args.ship.position, SCALE)}
+            distance={distance}
+            // Named, so a band is identified by its label rather than by
+            // counting rings outwards or reading a shade.
+            label={RANGE_BAND_NAMES[index]}
+            key={args.ship.name + "range" + index}
+            color={"#5ba0ff"}
+            // Fading outwards gives depth order at a glance without the
+            // labels having to be read.
+            opacity={0.7 - index * 0.12}
+          />
+        ))}
       <group position={scaleVector(args.ship.position, SCALE) as Vector3}>
         <mesh
           ref={shipRef}
