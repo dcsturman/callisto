@@ -394,6 +394,31 @@ input {
     align-items: baseline;
 }
 
+/* The range column only exists when there is a ship to measure from, so the
+   track is added rather than always reserved -- the referee's view keeps the
+   narrow three-column box. */
+.ship-summary-rows-with-range .ship-summary-row {
+    grid-template-columns: 1fr auto auto auto;
+}
+
+/* Units live here instead of on every value, which is what pays for the extra
+   column. Quiet enough not to compete with the ships themselves. */
+.ship-summary-header {
+    font-size: 0.75em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.55;
+}
+
+/* Digits line up in a column, and the cell must not resize as ships close --
+   a number that jitters horizontally every turn is hard to read. */
+.ship-summary-hull,
+.ship-summary-thrust,
+.ship-summary-range {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
 .ship-summary-hull {
     text-align: right;
     font-variant-numeric: tabular-nums;

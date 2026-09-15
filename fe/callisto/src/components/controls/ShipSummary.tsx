@@ -4,6 +4,7 @@ import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
 import { isUndetected } from "lib/contacts";
 import { teamLabelColor } from "lib/teams";
+import { formatRange, rangeBetween } from "lib/range";
 
 /**
  * Compact at-a-glance roster of every ship in the current scenario. Lives
@@ -32,6 +33,17 @@ export function ShipSummary() {
       ? null
       : entities.ships.find((s) => s.name === viewingShipName) ?? null;
 
+  // The plan the pilot is dialling in, if there is one, so the projected range
+  // moves while a burn is being chosen rather than only after it is committed.
+  // Only ever applied to the observer -- it is the one ship whose intentions
+  // this client knows.
+  const proposedPlan = useAppSelector((state) => state.ui.proposedPlan);
+
+  // Range is measured *from* somewhere, and in the referee's all-ships view
+  // there is no such somewhere. Rather than a column of dashes, the column is
+  // dropped and the box stays narrow.
+  const showRangeColumn = observer != null;
+
   if (!entities.ships.length) {
     return null;
   }
@@ -53,13 +65,32 @@ export function ShipSummary() {
         // ship you have no contact on shows its presence and nothing else.
         undetected: isUndetected(observer, ship),
         team: ship.team,
+        range:
+          observer == null || observer.name === ship.name
+            ? null
+            : rangeBetween(observer, ship, proposedPlan?.plan),
       };
     });
 
   return (
     <div className="ship-summary-window">
       <h2 className="ship-summary-title">Ships</h2>
-      <ul className="ship-summary-rows">
+      <ul
+        className={
+          showRangeColumn
+            ? "ship-summary-rows ship-summary-rows-with-range"
+            : "ship-summary-rows"
+        }>
+        {/* Naming the units once here is what lets the values below drop their
+            "G" and "km" suffixes, which pays for the extra column. */}
+        <li className="ship-summary-row ship-summary-header" aria-hidden="true">
+          <span />
+          <span className="ship-summary-hull">hull</span>
+          <span className="ship-summary-thrust">thr</span>
+          {showRangeColumn && (
+            <span className="ship-summary-range">range (km)</span>
+          )}
+        </li>
         {rows.map((row) => (
           <li
             key={row.name}
@@ -79,8 +110,19 @@ export function ShipSummary() {
                 : `${row.current}${row.max !== null ? `(${row.max})` : ""}`}
             </span>
             <span className="ship-summary-thrust">
-              {row.undetected ? "?" : `${row.thrust.toFixed(1)} G`}
+              {row.undetected ? "?" : row.thrust.toFixed(1)}
             </span>
+            {showRangeColumn && (
+              <span className="ship-summary-range">
+                {/* Undetected reads "?" exactly as hull and thrust do; the
+                    observer's own row has no range to itself. */}
+                {row.undetected
+                  ? "?"
+                  : row.range == null
+                    ? "—"
+                    : formatRange(row.range)}
+              </span>
+            )}
           </li>
         ))}
       </ul>
