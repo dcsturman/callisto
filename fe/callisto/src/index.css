@@ -743,7 +743,26 @@ input {
 }
 
 #results-window {
+    /* Cap the width. This is a flex child that sizes to its widest line, and
+       since detection checks started itemising their DM the widest line is very
+       wide indeed -- the box grew across the viewport and slid under the
+       fixed top-right controls. Long lines wrap instead. */
+    max-width: min(44rem, 50vw);
     overflow: auto;
+}
+
+/* The heading is chrome, not content: at the shared 18pt it was taller than the
+   results underneath it. */
+#results-window h1 {
+    font-size: 13pt;
+    margin: 0 0 0.35em 0;
+}
+
+/* Results are read as a list, so they want tighter leading between entries than
+   the default paragraph spacing gives. */
+#results-window p {
+    margin: 0 0 0.5em 0;
+    line-height: 1.35;
 }
 
 .crew-actions-form-container {
