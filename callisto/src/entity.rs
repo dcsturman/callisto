@@ -1906,12 +1906,28 @@ impl Entities {
         }
 
         for contact in host_contacts {
-          if contact != recipient_name && !recipient_guard.contacts.contains(contact) {
-            if no_bandwidth {
-              missed_a_handoff = true;
-            } else {
-              shared.push((recipient_name.clone(), contact.clone(), host_name.clone()));
-            }
+          if contact == recipient_name || recipient_guard.contacts.contains(contact) {
+            continue;
+          }
+          // A hand-off cannot give the recipient a contact it could not hold.
+          // Beyond Distant everything is an undifferentiated blip (p. 76), and
+          // the detection pass drops any contact held that far out -- so a
+          // hand-off that ignored the recipient's own range to the contact
+          // re-created it every round, one pass dropping what the other had
+          // just shared, and the contact never went away. The link's own
+          // range is checked above; this is the contact's.
+          let Some(contact_ship) = self.ships.get(contact) else {
+            continue;
+          };
+          #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+          let to_contact = (contact_ship.read().unwrap().get_position() - here).magnitude() as u32;
+          if find_range_band(to_contact) == Range::Distant {
+            continue;
+          }
+          if no_bandwidth {
+            missed_a_handoff = true;
+          } else {
+            shared.push((recipient_name.clone(), contact.clone(), host_name.clone()));
           }
         }
       }
@@ -4362,6 +4378,37 @@ mod tests {
       holds_contact(&entities, "Mate", "Bogey"),
       "a loaded ship with a design computer rating should be able to host a hand-off"
     );
+  }
+
+  /// A hand-off cannot convey a contact the recipient could not hold.
+  ///
+  /// Regression: the link's range was checked, the contact's was not. A picket
+  /// close to the quarry shared it with a team-mate 60,000 km away, the
+  /// detection pass dropped it as out of range, the hand-off pass re-shared it,
+  /// and the contact sat beyond Very Long indefinitely.
+  #[test]
+  fn handoff_does_not_convey_a_contact_beyond_the_recipients_distant() {
+    // Picket at the origin with the Bogey close by. The mate is placed so the
+    // link to the picket holds (inside Distant) but the Bogey itself is not.
+    let place_mate = |x: f64| {
+      let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+      entities
+        .ships
+        .get("Mate")
+        .unwrap()
+        .write()
+        .unwrap()
+        .set_position(Vec3::new(x, 0.0, 0.0));
+      entities.sensor_handoff_pass();
+      holds_contact(&entities, "Mate", "Bogey")
+    };
+    // Bogey is at +2.0e6. Mate at -4.9e7: link is 4.9e7 (holds), Bogey is 5.1e7 (Distant).
+    assert!(
+      !place_mate(-4.9e7),
+      "a contact beyond the recipient's Distant must not be handed to it"
+    );
+    // Mate at -4.7e7: link 4.7e7, Bogey 4.9e7 -- both inside Distant.
+    assert!(place_mate(-4.7e7), "and inside it the hand-off still works");
   }
 
   /// "If one or more of the ships in a hand-off strays beyond Distant range,
