@@ -1,7 +1,7 @@
 import {describe, expect, test} from "vitest";
 import {Acceleration} from "lib/entities";
 import {G, TURN_IN_SECONDS} from "lib/universal";
-import {formatKm, formatRange, projectPosition, rangeBetween} from "lib/range";
+import {formatKm, formatRange, projectPosition, rangeBetween, sphereSilhouette} from "lib/range";
 
 type Vec3 = [number, number, number];
 const ZERO: Vec3 = [0, 0, 0];
@@ -125,3 +125,42 @@ describe("formatting", () => {
     expect(formatRange({now: 4_000_000, next: 9_000_000})).toContain("4,000 → ~9,000");
   });
 });
+
+describe("sphereSilhouette", () => {
+  test("far away, the outline is the great circle", () => {
+    const s = sphereSilhouette(50, 1e9)!;
+    expect(s.scale).toBeCloseTo(1, 6);
+    expect(s.offset).toBeCloseTo(0, 3);
+  });
+
+  test("two radii out, the outline is noticeably smaller and nearer", () => {
+    // sin(theta) = 1/2: radius r*sqrt(3)/2, pushed r/2 toward the camera.
+    const s = sphereSilhouette(50, 100)!;
+    expect(s.scale).toBeCloseTo(Math.sqrt(3) / 2, 9);
+    expect(s.offset).toBeCloseTo(25, 9);
+  });
+
+  test("the great circle always under-draws the true outline", () => {
+    // Apparent angular radius: great circle atan(r/d), true outline asin(r/d).
+    // The whole bug: a point 2% inside the sphere, camera 2.2 radii out, is
+    // drawn outside a great-circle ring but inside the true outline.
+    const r = 50, d = 112, inside = 0.98 * r;
+    const drawnGreatCircle = Math.atan(r / d);
+    const trueOutline = Math.asin(r / d);
+    const point = Math.atan(inside / (d - 0)); // point on the centre plane
+    expect(trueOutline).toBeGreaterThan(drawnGreatCircle);
+    // Closer than the plane by 10 units (the raiders' z offset) the point's
+    // apparent radius grows past the under-drawn ring...
+    const nearer = Math.atan(inside / (d - 10));
+    expect(nearer).toBeGreaterThan(drawnGreatCircle);
+    // ...but a point inside a sphere never leaves the sphere's real outline.
+    expect(nearer).toBeLessThan(trueOutline);
+    expect(point).toBeLessThan(trueOutline);
+  });
+
+  test("inside the sphere there is no outline to draw", () => {
+    expect(sphereSilhouette(50, 50)).toBeNull();
+    expect(sphereSilhouette(50, 10)).toBeNull();
+  });
+});
+
