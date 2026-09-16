@@ -508,9 +508,13 @@ The Bridge row then reads:
 | 5 | Computer destroyed | Computer station destroyed, Bandwidth 0 |
 | 6 | Random bridge station destroyed, occupant takes 1D×1D, Hull Severity +1 | As written |
 
-**Repair.** A successful Repair of the Bridge lowers its severity by one, as for
-any system, and also brings back one destroyed station. The first one on the
-list above comes back first. A repaired computer returns at full Bandwidth.
+**Repair.** Bridge damage is recorded in the order it lands. A successful
+Repair of the Bridge lowers its severity by one, as for any system, and undoes
+the damage done at the severity it has just left, most recent first. For
+example, repairing from 4 to 3 brings back the station the level 4 hit
+destroyed. Lost Bandwidth comes back the same way. Injuries to the crew are not
+undone. A station an earlier hit had already destroyed stays destroyed until
+that earlier hit's severity is repaired too.
 
 #### Change — a critically failed overload is a critical hit
 Failing an overload by 6 or more applies a severity +1 critical hit to that

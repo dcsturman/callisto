@@ -1016,7 +1016,7 @@ pub(crate) fn apply_crit(
       }
       (ShipSystem::Bridge, 1) => {
         let station = BridgeStation::random(rng);
-        defender.disable_station(station);
+        defender.bridge_hit_disable(level, station);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -1028,7 +1028,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Bridge, 2) => {
-        defender.disable_station(BridgeStation::Computer);
+        defender.bridge_hit_disable(level, BridgeStation::Computer);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -1040,7 +1040,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Bridge, 3) => {
-        defender.current_computer /= 2;
+        defender.bridge_hit_bandwidth(level, defender.current_computer / 2);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -1051,8 +1051,8 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Bridge, 5) => {
-        defender.current_computer = 0;
-        defender.destroy_station(BridgeStation::Computer);
+        defender.bridge_hit_destroy(level, BridgeStation::Computer);
+        defender.bridge_hit_bandwidth(level, 0);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -1066,7 +1066,7 @@ pub(crate) fn apply_crit(
       // 4, 6, and anything past 6 that reaches here (which it should not).
       (ShipSystem::Bridge, level) => {
         let station = BridgeStation::random(rng);
-        defender.destroy_station(station);
+        defender.bridge_hit_destroy(level, station);
         // Core Rulebook p. 170: the occupant takes 1D x 1D.
         let crew_damage = u16::from(roll(rng)) * u16::from(roll(rng));
         let mut effects = if level >= 6 {

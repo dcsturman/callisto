@@ -2626,13 +2626,18 @@ impl Entities {
       }
       ship_write.set_repair_bonus(0);
       ship_write.set_last_repair_component(Some(system));
-      // A bridge repair also brings back a destroyed station, if there is one.
-      let station = if system == ShipSystem::Bridge {
-        ship_write
-          .repair_bridge_station()
-          .map_or(String::new(), |station| format!(" The {station} station is working again."))
+      // A bridge repair takes the most recent bridge damage back off, down to
+      // the severity it now stands at.
+      let restored = if system == ShipSystem::Bridge {
+        let level = ship_write.crit_level[system as usize];
+        ship_write.undo_bridge_damage(level)
       } else {
+        vec![]
+      };
+      let station = if restored.is_empty() {
         String::new()
+      } else {
+        format!(" Restored: {}.", restored.join(", "))
       };
       EngineerActionResult {
         ship_name: ship_name.to_string(),
@@ -5140,8 +5145,8 @@ mod tests {
     let mut entities = bridge_board();
     {
       let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
-      ship.destroy_station(BridgeStation::Computer);
-      ship.current_computer = 0;
+      ship.bridge_hit_destroy(1, BridgeStation::Computer);
+      ship.bridge_hit_bandwidth(1, 0);
       // Low, so a 12 on the check clears the crit level's penalty.
       ship.crit_level[ShipSystem::Bridge as usize] = 1;
       ship.tick_bridge_stations();
@@ -5166,13 +5171,55 @@ mod tests {
     assert_eq!(ship.current_computer, 10, "at full Bandwidth");
     assert!(ship.can_jump());
     assert!(
-      format!("{effects:?}").contains("computer station is working again"),
+      format!("{effects:?}").contains("Restored: computer Bandwidth back to 10, computer station working again."),
       "{effects:?}"
     );
     assert!(
       format!("{effects:?}").contains("with roll 12 and DM -1 (damage -1) for a total of 11 against 8"),
       "the check should be spelled out: {effects:?}"
     );
+  }
+
+  /// Each Bridge repair takes off the damage done at the severity it leaves,
+  /// most recent first.
+  #[test]
+  fn bridge_repairs_undo_damage_newest_first() {
+    let entities = bridge_board();
+    let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+    ship.bridge_hit_bandwidth(3, 5);
+    ship.bridge_hit_destroy(4, BridgeStation::Pilot);
+    ship.bridge_hit_destroy(5, BridgeStation::Computer);
+    ship.bridge_hit_bandwidth(5, 0);
+
+    // 5 -> 4: the computer comes back, at what it had before the level 5 hit.
+    ship.undo_bridge_damage(4);
+    assert!(ship.station_working(BridgeStation::Computer));
+    assert_eq!(ship.current_computer, 5);
+    assert!(!ship.station_working(BridgeStation::Pilot), "the level 4 damage is still there");
+
+    // 4 -> 3: the pilot.
+    ship.undo_bridge_damage(3);
+    assert!(ship.station_working(BridgeStation::Pilot));
+    assert_eq!(ship.current_computer, 5, "Bandwidth still halved");
+
+    // 3 -> 2: the Bandwidth.
+    assert_eq!(ship.undo_bridge_damage(2), vec!["computer Bandwidth back to 10".to_string()]);
+    assert!(ship.bridge_damage.is_empty());
+  }
+
+  /// Undoing a destroyed station leaves it destroyed if an earlier hit had
+  /// already destroyed it.
+  #[test]
+  fn undoing_a_second_destroy_keeps_the_first() {
+    let entities = bridge_board();
+    let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+    ship.bridge_hit_destroy(4, BridgeStation::Pilot);
+    ship.bridge_hit_destroy(6, BridgeStation::Pilot);
+
+    ship.undo_bridge_damage(5);
+    assert!(!ship.station_working(BridgeStation::Pilot));
+    ship.undo_bridge_damage(3);
+    assert!(ship.station_working(BridgeStation::Pilot));
   }
 
   /// No astrogation, no jump -- and the engineer is told why.
