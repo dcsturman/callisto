@@ -169,14 +169,23 @@ export function Explosions() {
             removeMe = () => {
               dispatch(setEvents(events.filter((e) => e !== event)));
             };
+            // The line alone is too thin to see at most zooms, so the hit also
+            // gets an explosion on the target. The explosion runs longer, so it
+            // is the one that clears the event; the line just goes with it.
             return (
-              <Beam
-                key={key}
-                origin={(event.origin?? [0, 0, 0])}
-                end={(event.position?? [0, 0, 0])}
-                color={color}
-                cleanupFn={removeMe}
-              />
+              <React.Fragment key={key}>
+                <Beam
+                  origin={(event.origin?? [0, 0, 0])}
+                  end={(event.position?? [0, 0, 0])}
+                  color={color}
+                  cleanupFn={() => {}}
+                />
+                <Explosion
+                  center={event.position ?? [0, 0, 0]}
+                  color={color}
+                  cleanupFn={removeMe}
+                />
+              </React.Fragment>
             );
           case MESSAGE_EVENT:
             // DamageEffects don't show up as explosions so skip.
