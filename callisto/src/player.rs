@@ -905,6 +905,10 @@ impl PlayerManager {
     // Jamming lasts the round it was made in.
     entities.clear_comms_jamming();
 
+    // A disabled bridge station is out for the round it was hit in and the
+    // next, so this runs after everything that checks one.
+    entities.tick_bridge_stations();
+
     entities.reset_actions();
 
     effects

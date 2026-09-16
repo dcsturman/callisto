@@ -469,6 +469,57 @@ rather than as a special case.
 
 ---
 
+### Critical hits
+
+#### Assumption — what a "bridge station" is
+The CRB's Bridge row (p. 170) disables or destroys a "random bridge station"
+and never says what the stations are. HG's Fleet Battles table (p. 120) uses the
+same words and doesn't say either. Callisto rolls 1D on this list:
+
+| 1D | Station | While it is out |
+| --- | --- | --- |
+| 1 | Comms | Cannot transmit, or send or receive a sensor hand-off |
+| 2 | Sensors | No sensor actions: lock, break lock, jam comms, jam missiles |
+| 3 | Computer | No acceleration, jump or sensor hand-off |
+| 4 | Astrogation | No jump |
+| 5 | Fire control | No weapons fire, point defence (gunners or batteries) or sand |
+| 6 | Pilot | No acceleration, evasion or assisting gunners |
+
+A **disabled** station is out for the rest of the round it was hit in and all of
+the next, then comes back by itself. A **destroyed** station is out until an
+engineer repairs it.
+
+Gunners are not on the list. HG p. 91 has gunnery control dispersed through a
+ship, one "with its bridge destroyed can still be lethal as long as its guns
+keep firing", but the fire control that directs them is on the bridge.
+
+A ship that cannot accelerate coasts and keeps its flight plan, and picks it up
+again once the station is back. A computer is expected to run software as well;
+when software exists, a computer that is out should stop it too.
+
+The Bridge row then reads:
+
+| Severity | CRB | Callisto |
+| --- | --- | --- |
+| 1 | Random bridge station disabled | As written |
+| 2 | Computer reboots, all software unavailable this round and next | Computer station disabled |
+| 3 | Computer damaged, Bandwidth −50% | As written |
+| 4 | Random bridge station destroyed, occupant takes 1D×1D | As written; the injury is reported but not tracked |
+| 5 | Computer destroyed | Computer station destroyed, Bandwidth 0 |
+| 6 | Random bridge station destroyed, occupant takes 1D×1D, Hull Severity +1 | As written |
+
+**Repair.** A successful Repair of the Bridge lowers its severity by one, as for
+any system, and also brings back one destroyed station. The first one on the
+list above comes back first. A repaired computer returns at full Bandwidth.
+
+#### Change — a critically failed overload is a critical hit
+Failing an overload by 6 or more applies a severity +1 critical hit to that
+drive or power plant, with its full effect. We use the ordinary Critical Hit
+Effects table for this: a first failure costs the manoeuvre drive 1 Thrust, or
+the power plant 10% of its Power.
+
+---
+
 ### Not implemented
 
 Recorded so nobody assumes they were considered and rejected.

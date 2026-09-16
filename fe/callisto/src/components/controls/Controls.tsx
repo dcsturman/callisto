@@ -10,7 +10,14 @@ import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
 import { EntityList } from "./EntityList";
 import { POSITION_SCALE, SCALE } from "lib/universal";
-import { Ship, Entity, Planet, findShip, availablePower } from "lib/entities";
+import {
+  Ship,
+  Entity,
+  Planet,
+  findShip,
+  availablePower,
+  stationsDown,
+} from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
 import { nextRound } from "lib/serverManager";
@@ -394,8 +401,9 @@ export function Controls() {
               <h2 className="control-form">Current Plan (s @ G&apos;s)</h2>
               <NavigationPlan plan={computerShip.plan} />
             </div>
-            {computerShip.crit_level &&
-              computerShip.crit_level.some((c) => c > 0) && (
+            {((computerShip.crit_level &&
+              computerShip.crit_level.some((c) => c > 0)) ||
+              stationsDown(computerShip).length > 0) && (
                 <div id="crits-display">
                   <h2 className="control-form">Critical Hits</h2>
                   <pre className="plan-accel-text">
@@ -413,7 +421,7 @@ export function Controls() {
                         "Crew",
                         "Bridge",
                       ];
-                      const crits = computerShip.crit_level
+                      const crits = (computerShip.crit_level ?? [])
                         .map((level, index) => {
                           if (level === 0) return null;
                           return `${systems[index]}: ${level}`;
@@ -424,6 +432,12 @@ export function Controls() {
                       const rows = [];
                       for (let i = 0; i < crits.length; i += 3) {
                         rows.push(crits.slice(i, i + 3).join(", "));
+                      }
+                      // Stations that are out get their own line, since
+                      // they are what stops the crew doing something.
+                      const down = stationsDown(computerShip);
+                      if (down.length > 0) {
+                        rows.push(`Bridge stations: ${down.join(", ")}`);
                       }
                       return rows.join("\n");
                     })()}

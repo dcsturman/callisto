@@ -28,7 +28,9 @@ use crate::rules_tables::{
 };
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
-use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem};
+use crate::ship::{
+  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem,
+};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn, LOG_FILE_USE};
@@ -756,6 +758,38 @@ impl Entities {
     &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
     ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
+    // Nothing fires without fire control: not the guns, not point defence, not
+    // sand. Judged on the snapshot, since everyone fires at once.
+    let fire_control = |name: &String| {
+      ship_snapshot
+        .get(name)
+        .is_none_or(|ship| ship.station_working(BridgeStation::FireControl))
+    };
+    // One message per ship, in name order so seeded runs read the same.
+    let grounded: std::collections::BTreeSet<&String> = fire_actions
+      .iter()
+      .chain(point_defense_actions)
+      .filter(|(name, actions)| !actions.is_empty() && !fire_control(name))
+      .map(|(name, _)| name)
+      .collect();
+    let mut battery_effects: Vec<EffectMsg> = grounded
+      .into_iter()
+      .map(|name| {
+        EffectMsg::about(
+          name,
+          MessageCategory::Critical,
+          format!("{name} cannot fire: its fire control station is out."),
+        )
+      })
+      .collect();
+    let fire_actions: Vec<_> = fire_actions.iter().filter(|(name, _)| fire_control(name)).cloned().collect();
+    let point_defense_actions: Vec<_> = point_defense_actions
+      .iter()
+      .filter(|(name, _)| fire_control(name))
+      .cloned()
+      .collect();
+    let point_defense_actions = point_defense_actions.as_slice();
+
     // Create a snapshot of all the sand capabilities of each ship.
     let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions);
 
@@ -769,7 +803,6 @@ impl Entities {
     // same reason missiles are sorted before resolution below.
     let mut battery_ships: Vec<String> = self.ships.keys().cloned().collect();
     battery_ships.sort_unstable();
-    let mut battery_effects = Vec::new();
     for name in battery_ships {
       let Some(ship) = self.ships.get(&name) else {
         continue;
@@ -780,7 +813,11 @@ impl Entities {
       let screens = roll_screen_pool(&ship, rng);
       ship.set_screen_pool(screens);
 
-      let pool = roll_battery_pool(&ship, rng);
+      let pool = if ship.station_working(BridgeStation::FireControl) {
+        roll_battery_pool(&ship, rng)
+      } else {
+        0
+      };
       // A set rather than an add: this pass runs first, covers every ship, and
       // so is also what clears any value left over from the previous round.
       ship.set_point_defense_pool(pool);
@@ -1107,6 +1144,13 @@ impl Entities {
     let mut effects = Vec::<EffectMsg>::new();
 
     for (ship_name, actions) in actions {
+      if actions.is_empty() {
+        continue;
+      }
+      if let Some(effect) = self.station_down_effect(ship_name, BridgeStation::Sensors, "take sensor actions") {
+        effects.push(effect);
+        continue;
+      }
       let boost = boost_for_sensor(boost_map, ship_name);
       // Process the actions for each ship.
       for action in actions {
@@ -1804,11 +1848,37 @@ impl Entities {
         power_plant: target.current_power > 0,
         fired_weapons: fired.contains(target_name),
         crit_severity: target.total_crit_severity(),
-        transmitting: target.transmitting,
+        transmitting: target.is_transmitting(),
       }
       .detection_terms(),
     );
     terms
+  }
+
+  /// A message saying `ship_name` cannot `what` because `station` is out, or
+  /// `None` when the station is working (or the ship is gone).
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  fn station_down_effect(&self, ship_name: &str, station: BridgeStation, what: &str) -> Option<EffectMsg> {
+    let working = self.ships.get(ship_name)?.read().unwrap().station_working(station);
+    (!working).then(|| {
+      EffectMsg::about(
+        ship_name,
+        MessageCategory::Critical,
+        format!("{ship_name} cannot {what}: its {station} station is out."),
+      )
+    })
+  }
+
+  /// Count disabled bridge stations down at the end of the round.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  pub fn tick_bridge_stations(&self) {
+    for ship in self.ships.values() {
+      ship.write().unwrap().tick_bridge_stations();
+    }
   }
 
   /// Clear the per-round comms jamming flags.
@@ -1862,6 +1932,18 @@ impl Entities {
       if !ship.handoff_sensors || ship.team.is_none() || ship.comms_jammed {
         continue;
       }
+      // Sending takes the comms station, and the computer to package the
+      // picture. Said only when there was a picture to send.
+      if let Some(station) = ship.handoff_station_down() {
+        if !ship.contacts.is_empty() {
+          effects.push(EffectMsg::about(
+            name,
+            MessageCategory::Handoff,
+            format!("{name} cannot hand off its sensor picture: its {station} station is out."),
+          ));
+        }
+        continue;
+      }
       if ship.current_computer == 0 {
         // Say so rather than failing quietly. A ship with no Bandwidth left --
         // a bad enough bridge crit will take it -- looks exactly like one that
@@ -1886,7 +1968,7 @@ impl Entities {
     for (recipient_name, recipient) in &self.ships {
       let recipient_guard = recipient.read().unwrap();
       let Some(team) = recipient_guard.team else { continue };
-      if recipient_guard.comms_jammed {
+      if recipient_guard.comms_jammed || recipient_guard.handoff_station_down().is_some() {
         continue;
       }
       // Same reasoning as the host side: a recipient with no Bandwidth is told
@@ -2244,6 +2326,26 @@ impl Entities {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
     let action = ShipAction::Jump;
 
+    let stations_down: Vec<String> = [BridgeStation::Astrogation, BridgeStation::Computer]
+      .into_iter()
+      .filter(|station| !ship.station_working(*station))
+      .map(|station| station.to_string())
+      .collect();
+    if !stations_down.is_empty() {
+      return (
+        EngineerActionResult {
+          ship_name: ship_name.to_string(),
+          action,
+          success: false,
+          check: 0,
+          target: 0,
+          message: format!("{ship_name} cannot jump: its {} station is out.", stations_down.join(" and ")),
+          critical_failure: false,
+        },
+        false,
+      );
+    }
+
     if !ship.can_jump() || ship.current_fuel <= ship.design.hull / 10 {
       return (
         EngineerActionResult {
@@ -2484,13 +2586,21 @@ impl Entities {
       }
       ship_write.set_repair_bonus(0);
       ship_write.set_last_repair_component(Some(system));
+      // A bridge repair also brings back a destroyed station, if there is one.
+      let station = if system == ShipSystem::Bridge {
+        ship_write
+          .repair_bridge_station()
+          .map_or(String::new(), |station| format!(" The {station} station is working again."))
+      } else {
+        String::new()
+      };
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} successfully repaired {system:?}."),
+        message: format!("{ship_name} successfully repaired {system:?}.{station}"),
         critical_failure: false,
       }
     } else {
@@ -4910,6 +5020,183 @@ mod tests {
       crate::ship::Sensors::Military,
       "and the sensor suite, which changes what the ship can find"
     );
+  }
+
+  /// A two-ship board for the bridge station tests: Dragon, fully fuelled and
+  /// clear to jump, with a contact on Quarry.
+  fn bridge_board() -> Entities {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Dragon".to_string(),
+      hull: 120,
+      maneuver: 4,
+      jump: 2,
+      fuel: 100,
+      computer: 10,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(1.0e6, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let mut dragon = entities.ships.get("Dragon").unwrap().write().unwrap();
+    dragon.enable_jump();
+    dragon.contacts = vec!["Quarry".to_string()];
+    drop(dragon);
+    entities
+  }
+
+  /// Disabled is out for the round it was hit in and the whole of the next,
+  /// then back on its own.
+  #[test]
+  fn disabled_station_is_out_this_round_and_next() {
+    let entities = bridge_board();
+    let dragon = entities.ships.get("Dragon").unwrap();
+    {
+      let mut ship = dragon.write().unwrap();
+      ship.set_pilot_actions(Some(2), Some(true)).expect("(test) evade");
+      ship.disable_station(BridgeStation::Pilot);
+      assert!(!ship.can_accelerate());
+      assert_eq!(ship.get_dodge_thrust(), 0, "no evasion without a pilot");
+      assert!(!ship.get_assist_gunners(), "and no assisting the gunners");
+    }
+
+    entities.tick_bridge_stations();
+    assert!(!dragon.read().unwrap().can_accelerate(), "still out for the next round");
+
+    entities.tick_bridge_stations();
+    let ship = dragon.read().unwrap();
+    assert!(ship.can_accelerate(), "back after that");
+    assert_eq!(ship.get_dodge_thrust(), 2, "with the pilot's orders intact");
+  }
+
+  /// A ship without its pilot coasts, and keeps the plan for when it has one.
+  #[test]
+  fn ship_without_a_pilot_coasts() {
+    let mut entities = bridge_board();
+    let dragon = entities.ships.get("Dragon").unwrap();
+    {
+      let mut ship = dragon.write().unwrap();
+      ship
+        .set_flight_plan(&FlightPlan::new((Vec3::new(0.0, 2.0 * G, 0.0), 10_000).into(), None))
+        .expect("(test) plan");
+      ship.destroy_station(BridgeStation::Pilot);
+    }
+    entities.ships.get_mut("Dragon").unwrap().write().unwrap().update();
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert_eq!(ship.get_velocity(), Vec3::zero(), "no burn");
+    assert!(!ship.plan.empty(), "the plan waits");
+  }
+
+  /// A destroyed station stays out until an engineer repairs the bridge.
+  #[test]
+  fn bridge_repair_brings_a_destroyed_station_back() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      ship.destroy_station(BridgeStation::Computer);
+      ship.current_computer = 0;
+      // Low, so a 12 on the check clears the crit level's penalty.
+      ship.crit_level[ShipSystem::Bridge as usize] = 1;
+      ship.tick_bridge_stations();
+      assert!(!ship.can_jump(), "destroyed does not tick away");
+    }
+
+    // Every die a 6, so the repair succeeds.
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::Repair {
+          system: ShipSystem::Bridge,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert!(ship.station_working(BridgeStation::Computer));
+    assert_eq!(ship.current_computer, 10, "at full Bandwidth");
+    assert!(ship.can_jump());
+    assert!(
+      format!("{effects:?}").contains("computer station is working again"),
+      "{effects:?}"
+    );
+  }
+
+  /// No astrogation, no jump -- and the engineer is told why.
+  #[test]
+  fn jump_needs_astrogation() {
+    let mut entities = bridge_board();
+    entities
+      .ships
+      .get("Dragon")
+      .unwrap()
+      .write()
+      .unwrap()
+      .disable_station(BridgeStation::Astrogation);
+
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.engineer_actions(
+      &[("Dragon".to_string(), vec![ShipAction::Jump])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    assert!(entities.ships.contains_key("Dragon"), "Dragon should still be here");
+    assert!(format!("{effects:?}").contains("astrogation station is out"), "{effects:?}");
+  }
+
+  /// Sensor and fire actions are refused with a message when their station is
+  /// out, and nothing else happens.
+  #[test]
+  fn sensor_and_fire_actions_need_their_stations() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      ship.disable_station(BridgeStation::Sensors);
+      ship.destroy_station(BridgeStation::FireControl);
+    }
+    let mut rng = StepRng::new(5, 0);
+
+    let effects = entities.sensor_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::SensorLock {
+          target: "Quarry".to_string(),
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(format!("{effects:?}").contains("sensors station is out"), "{effects:?}");
+    assert!(entities.ships.get("Dragon").unwrap().read().unwrap().sensor_locks.is_empty());
+
+    let snapshot = entities.ship_deep_copy();
+    let effects = entities.fire_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::FireAction {
+          weapon_id: 0,
+          target: "Quarry".to_string(),
+          called_shot_system: None,
+          firing_kind: None,
+        }],
+      )],
+      &[],
+      &snapshot,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert_eq!(effects.len(), 1, "only the refusal: {effects:?}");
+    assert!(format!("{effects:?}").contains("fire control station is out"), "{effects:?}");
   }
 
   /// A critically failed overload damages the drive the same way a hit does.

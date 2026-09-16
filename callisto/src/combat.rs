@@ -12,7 +12,8 @@ use crate::entity::{no_contact_effect, Entity};
 use crate::payloads::{EffectMsg, LaunchMissileMsg, MessageCategory};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{
-  Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile, WeaponType,
+  BridgeStation, Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile,
+  WeaponType,
 };
 use crate::{debug, error, info, warn};
 use tracing::event;
@@ -1013,22 +1014,31 @@ pub(crate) fn apply_crit(
         )));
         effects
       }
-      (ShipSystem::Bridge, 1) => vec![EffectMsg::about(
-        &crit_ship,
-        MessageCategory::Critical,
-        format!(
-          "{}'s bridge critical hit (level 1) and random bridge system disabled.",
-          defender.get_name()
-        ),
-      )],
-      (ShipSystem::Bridge, 2) => vec![EffectMsg::about(
-        &crit_ship,
-        MessageCategory::Critical,
-        format!(
-          "{}'s bridge critical hit (level 2) and computer reboots, all software unavailable this round and next.",
-          defender.get_name()
-        ),
-      )],
+      (ShipSystem::Bridge, 1) => {
+        let station = BridgeStation::random(rng);
+        defender.disable_station(station);
+        vec![EffectMsg::about(
+          &crit_ship,
+          MessageCategory::Critical,
+          format!(
+            "{}'s bridge critical hit (level 1): {station} station disabled this round and next ({}).",
+            defender.get_name(),
+            station.loses()
+          ),
+        )]
+      }
+      (ShipSystem::Bridge, 2) => {
+        defender.disable_station(BridgeStation::Computer);
+        vec![EffectMsg::about(
+          &crit_ship,
+          MessageCategory::Critical,
+          format!(
+            "{}'s bridge critical hit (level 2): computer reboots, down this round and next ({}).",
+            defender.get_name(),
+            BridgeStation::Computer.loses()
+          ),
+        )]
+      }
       (ShipSystem::Bridge, 3) => {
         defender.current_computer /= 2;
         vec![EffectMsg::about(
@@ -1040,43 +1050,40 @@ pub(crate) fn apply_crit(
           ),
         )]
       }
-      (ShipSystem::Bridge, 4) => {
-        let crew_damage = roll_dice(2, rng);
-        vec![EffectMsg::about(
-          &crit_ship,
-          MessageCategory::Critical,
-          format!(
-        "{}'s bridge critical hit (level 4) and random bridge station destroyed: occupant takes {crew_damage} damage.",
-        defender.get_name()
-      ),
-        )]
-      }
       (ShipSystem::Bridge, 5) => {
         defender.current_computer = 0;
+        defender.destroy_station(BridgeStation::Computer);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
           format!(
-            "{}'s bridge critical hit (level 5) and computer destroyed.",
+            "{}'s bridge critical hit (level 5): computer destroyed until repaired ({}).",
             defender.get_name(),
+            BridgeStation::Computer.loses()
           ),
         )]
       }
-      (ShipSystem::Bridge, 6) => {
-        let crew_damage = roll_dice(3, rng);
-        let mut effects = apply_crit(1, ShipSystem::Hull, defender, rng);
-        effects.push(EffectMsg::about(&crit_ship, MessageCategory::Critical, format!(
-          "{}'s bridge critical hit (level 6) and random bridge station destroyed: occupant takes {crew_damage} damage.",
-          defender.get_name()
-        )));
-        effects
-      }
+      // 4, 6, and anything past 6 that reaches here (which it should not).
       (ShipSystem::Bridge, level) => {
-        let crew_damage = roll_dice(3, rng);
-        vec![EffectMsg::about(&crit_ship, MessageCategory::Critical, format!(
-          "{}'s bridge critical hit (level {level}) (<- This is a bug - should never hit this level) and random bridge station destroyed: occupant takes {crew_damage} damage.",
-          defender.get_name()
-      ))]
+        let station = BridgeStation::random(rng);
+        defender.destroy_station(station);
+        // Core Rulebook p. 170: the occupant takes 1D x 1D.
+        let crew_damage = u16::from(roll(rng)) * u16::from(roll(rng));
+        let mut effects = if level >= 6 {
+          apply_crit(1, ShipSystem::Hull, defender, rng)
+        } else {
+          vec![]
+        };
+        effects.push(EffectMsg::about(
+          &crit_ship,
+          MessageCategory::Critical,
+          format!(
+            "{}'s bridge critical hit (level {level}): {station} station destroyed until repaired ({}); occupant takes {crew_damage} damage.",
+            defender.get_name(),
+            station.loses()
+          ),
+        ));
+        effects
       }
     }
   }
