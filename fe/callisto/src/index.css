@@ -420,25 +420,14 @@ input {
     letter-spacing: 0.03em;
 }
 
-/* One gunner per mount, mount named so a skill can be tied to a turret without
-   counting. Same two-column shape as the camera key reference. */
-.crew-gunner-list {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    column-gap: 10px;
-    row-gap: 2px;
-    margin: 2px 0 4px 0;
-    font-size: 0.85em;
-}
-
-.crew-gunner-list dt,
-.crew-gunner-list dd {
-    margin: 0;
-}
-
-.crew-gunner-list dd {
-    font-variant-numeric: tabular-nums;
-    text-align: right;
+/* The crew line under its own heading at the bottom of the Ship's Computer:
+   body-sized, wrapping, so a fifteen-mount gunner list is two quiet lines
+   rather than a column. */
+.crew-line {
+    font-size: 10pt;
+    line-height: 1.4;
+    margin: 2px 0 4px 2px;
+    opacity: 0.85;
 }
 
 .view-controls-window {

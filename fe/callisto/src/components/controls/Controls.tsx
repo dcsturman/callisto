@@ -12,7 +12,6 @@ import { EntityList } from "./EntityList";
 import { POSITION_SCALE, SCALE } from "lib/universal";
 import { Ship, Entity, Planet, findShip, availablePower } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
-import { weaponToString } from "lib/weapon";
 import { ViewMode } from "lib/view";
 import { nextRound } from "lib/serverManager";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
@@ -347,51 +346,6 @@ export function Controls() {
                 </div>
               </div>
             )}
-            <div className="vital-stats-bloc">
-              <div className="stats-bloc-entry">
-                <h2>Pilot</h2>
-                <pre className="plan-accel-text">{computerShip.crew.pilot}</pre>
-              </div>
-              <div className="stats-bloc-entry">
-                <h2 title="Engineering: jump / power / manoeuvre">Eng J/P/M</h2>
-                <pre className="plan-accel-text">{`${computerShip.crew.engineering_jump}/${computerShip.crew.engineering_power}/${computerShip.crew.engineering_maneuver}`}</pre>
-              </div>
-              <div className="stats-bloc-entry">
-                <h2>Sensop</h2>
-                <pre className="plan-accel-text">{computerShip.crew.sensors}</pre>
-              </div>
-              <div className="stats-bloc-entry">
-                <h2>Lead</h2>
-                <pre className="plan-accel-text">{computerShip.crew.leadership}</pre>
-              </div>
-            </div>
-            {/* Gunners are one skill per mount, and a destroyer has fifteen.
-                Collapsed with the skills in the title, so the common case is
-                read at a glance and the long case is one line until opened. */}
-            {(() => {
-              const weapons = shipWeapons(computerShip, shipTemplates);
-              if (weapons.length === 0) {
-                return null;
-              }
-              const skills = weapons.map((_w, i) => computerShip.crew.gunnery[i] ?? 0);
-              const summary =
-                skills.length <= 6 ? skills.join(" ") : `${skills.length} mounts`;
-              return (
-                <Accordion
-                  className="crew-gunners"
-                  title={`Gunners \u00b7 ${summary}`}
-                  initialOpen={false}>
-                  <dl className="crew-gunner-list">
-                    {weapons.map((weapon, i) => (
-                      <React.Fragment key={"gunner-" + i}>
-                        <dt>{weaponToString(weapon)}</dt>
-                        <dd>{skills[i]}</dd>
-                      </React.Fragment>
-                    ))}
-                  </dl>
-                </Accordion>
-              );
-            })()}
             <h2 className="control-form">Current Position (km)</h2>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">
@@ -471,6 +425,23 @@ export function Controls() {
                   </pre>
                 </div>
               )}
+            {/* Bottom of the box, one heading in the section-title style and
+                one line in the body font. Gunners are one number per mount,
+                in mount order. */}
+            <h2 className="control-form">Crew</h2>
+            <p className="crew-line">
+              {[
+                `Pilot - ${computerShip.crew.pilot}`,
+                `Eng-J - ${computerShip.crew.engineering_jump}`,
+                `Eng-P - ${computerShip.crew.engineering_power}`,
+                `Eng-M - ${computerShip.crew.engineering_maneuver}`,
+                `Sensors - ${computerShip.crew.sensors}`,
+                `Leadership - ${computerShip.crew.leadership}`,
+                `Gunners - ${shipWeapons(computerShip, shipTemplates)
+                  .map((_w, i) => computerShip.crew.gunnery[i] ?? 0)
+                  .join(", ") || "none"}`,
+              ].join(",  ")}
+            </p>
             <hr />
             {[ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer].includes(
               role,
