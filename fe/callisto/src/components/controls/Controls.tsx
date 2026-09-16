@@ -467,9 +467,14 @@ export function Controls() {
         )}
         {/* Captain rolls leadership from the left pane (their main UI).
             General sees the same panel via the ShipComputer popup, so we
-            don't render it here twice. */}
-        {hasRole(roles, ViewMode.Captain) && !hasRole(roles, ViewMode.General) && shipName && (() => {
-          const captainShip = findShip(entities, shipName);
+            don't render it here twice.
+
+            The assigned ship if there is one, else the ship being viewed --
+            the same rule the boost checkboxes use. Every other station
+            already works on the viewed ship; requiring an assignment here
+            meant a captain looking at a ship got no leadership button. */}
+        {hasRole(roles, ViewMode.Captain) && !hasRole(roles, ViewMode.General) && (() => {
+          const captainShip = findShip(entities, shipName ?? computerShipName);
           if (!captainShip) return null;
           return <CaptainTasks ship={captainShip} />;
         })()}

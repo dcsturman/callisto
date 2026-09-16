@@ -335,8 +335,11 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
             their assigned ship if any; if General has no ship (GM-style),
             panel renders on whichever ship's popup they're viewing so they
             can roll leadership for it. */}
-        {((hasRole(roles, ViewMode.Captain) && ship.name === shipName) ||
-          (hasRole(roles, ViewMode.General) && (shipName == null || ship.name === shipName))) && (
+        {/* General only. A Captain's panel lives in the left pane, and this
+            component is also mounted inside the Pilot/Sensors/Engineer
+            accordion -- so a Captain who is also an Engineer would otherwise
+            get the leadership panel twice. */}
+        {hasRole(roles, ViewMode.General) && (shipName == null || ship.name === shipName) && (
           <CaptainTasks ship={ship} />
         )}
         {hasRole(roles, ViewMode.Pilot) && pilotActions()}
