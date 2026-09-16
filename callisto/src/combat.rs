@@ -564,8 +564,14 @@ fn do_critical(
   effects
 }
 
+/// Apply one critical hit at `location`, raising its severity by at least one.
+///
+/// Also the path for self-inflicted damage, such as a critically failed
+/// overload, so it has the same effect and message as a hit.
 #[allow(clippy::too_many_lines)]
-fn apply_crit(crit_level: u8, location: ShipSystem, defender: &mut Ship, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+pub(crate) fn apply_crit(
+  crit_level: u8, location: ShipSystem, defender: &mut Ship, rng: &mut dyn RngCore,
+) -> Vec<EffectMsg> {
   // Captured up front: every message below is about this ship, and `defender`
   // is mutated between them, so it cannot also be borrowed per call.
   let crit_ship = defender.get_name().to_string();

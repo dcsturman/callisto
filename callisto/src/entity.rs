@@ -15,8 +15,9 @@ use crate::action::{
   boost_for_detection, boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList,
 };
 use crate::combat::{
-  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band, interception_cost,
-  roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, HitMods, STANDARD_ROLL_THRESHOLD,
+  apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
+  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, HitMods,
+  STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -2196,9 +2197,12 @@ impl Entities {
           ship.set_engineer_action_taken(true);
         }
 
+        // Crits a failed overload does to its own ship, reported after the
+        // check that caused them.
+        let mut crits = Vec::new();
         let result = match action {
-          ShipAction::OverloadDrive => self.process_overload_drive(ship_name, boost, rng),
-          ShipAction::OverloadPlant => self.process_overload_plant(ship_name, boost, rng),
+          ShipAction::OverloadDrive => self.process_overload_drive(ship_name, boost, &mut crits, rng),
+          ShipAction::OverloadPlant => self.process_overload_plant(ship_name, boost, &mut crits, rng),
           ShipAction::Repair { system } => self.process_repair(ship_name, *system, boost, rng),
           ShipAction::Jump => {
             let (result, jumped) = self.process_jump(ship_name, boost, rng);
@@ -2211,6 +2215,7 @@ impl Entities {
           _ => continue,
         };
         effects.push(EffectMsg::EngineerAction { result });
+        effects.append(&mut crits);
       }
     }
 
@@ -2295,6 +2300,7 @@ impl Entities {
   ///
   /// # Arguments
   /// * `ship_name` - The name of the ship performing the action.
+  /// * `crits` - Receives the critical hit a critical failure does to the drive.
   /// * `rng` - The random number generator to use.
   ///
   /// # Returns
@@ -2302,7 +2308,9 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_overload_drive(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> EngineerActionResult {
+  fn process_overload_drive(
+    &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_maneuver();
     let roll = roll_dice(2, rng);
@@ -2327,7 +2335,7 @@ impl Entities {
       }
     } else if total <= 4 {
       // Critical failure (fail by 6+) - apply crit to maneuver drive
-      ship.write().unwrap().crit_level[ShipSystem::Maneuver as usize] += 1;
+      crits.append(&mut apply_crit(1, ShipSystem::Maneuver, &mut ship.write().unwrap(), rng));
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
@@ -2355,6 +2363,7 @@ impl Entities {
   ///
   /// # Arguments
   /// * `ship_name` - The name of the ship performing the action.
+  /// * `crits` - Receives the critical hit a critical failure does to the plant.
   /// * `rng` - The random number generator to use.
   ///
   /// # Returns
@@ -2362,7 +2371,9 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_overload_plant(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> EngineerActionResult {
+  fn process_overload_plant(
+    &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_power();
     let roll = roll_dice(2, rng);
@@ -2386,7 +2397,7 @@ impl Entities {
       }
     } else if total <= 4 {
       // Critical failure (fail by 6+) - apply crit to powerplant
-      ship.write().unwrap().crit_level[ShipSystem::Powerplant as usize] += 1;
+      crits.append(&mut apply_crit(1, ShipSystem::Powerplant, &mut ship.write().unwrap(), rng));
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
@@ -4898,6 +4909,40 @@ mod tests {
       ship.current_sensors,
       crate::ship::Sensors::Military,
       "and the sensor suite, which changes what the ship can find"
+    );
+  }
+
+  /// A critically failed overload damages the drive the same way a hit does.
+  /// It used to raise the drive's crit level and nothing else, so the log said
+  /// "Drive damaged" while thrust stayed where it was.
+  #[test]
+  fn critically_failed_overload_damages_the_drive() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Dragon".to_string(),
+      hull: 120,
+      maneuver: 4,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Every die a 1: a check of 2, a critical failure against 10.
+    let mut rng = StepRng::new(0, 0);
+    let effects = entities.engineer_actions(
+      &[("Dragon".to_string(), vec![ShipAction::OverloadDrive])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], 1);
+    assert_eq!(ship.current_maneuver, 3, "a level 1 drive crit costs a point of thrust");
+    assert!(
+      effects.iter().any(|effect| matches!(
+        effect,
+        EffectMsg::Message { category: MessageCategory::Critical, content, .. } if content.contains("maneuver critical hit")
+      )),
+      "the crit should be reported like any other: {effects:?}"
     );
   }
 
