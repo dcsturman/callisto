@@ -1515,6 +1515,26 @@ fn count_leadership_checks(entities: &Entities, ship: &str) -> usize {
   })
 }
 
+/// A captain who rolls and queues no boosts still sees the result. A failed
+/// roll has nothing to assign, so this is how every failure used to vanish.
+#[test(tokio::test)]
+async fn test_leadership_roll_reported_without_boosts() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
+
+  let captain_result = server.captain_action(&crate::payloads::CaptainActionMsg {
+    ship_name: "ship1".to_string(),
+  });
+  let effects = server.update();
+
+  let (points, applied) = extract_leadership_effect(&effects, "ship1");
+  assert_eq!(points, captain_result.points);
+  assert!(applied.is_empty());
+}
+
 /// Captain rolls leadership with a couple of boosts. Verify that the
 /// `LeadershipAction` effect is emitted and that — when N is positive —
 /// boosts get applied (i.e., `boosts_applied` is non-empty and is a subset

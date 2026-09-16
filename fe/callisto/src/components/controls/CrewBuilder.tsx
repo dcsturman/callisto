@@ -13,6 +13,8 @@ export interface Crew {
   sensors: number;
   gunnery: number[];
   leadership: number;
+  /** Repairs weapons, sensors and the bridge. Omitted by the server when 0. */
+  mechanic: number;
 }
 
 export const createCrew = (num_gunners: number = 0) => {
@@ -24,6 +26,7 @@ export const createCrew = (num_gunners: number = 0) => {
     sensors: 0,
     gunnery: new Array(num_gunners).fill(0),
     leadership: 0,
+    mechanic: 0,
   };
   return new_crew;
 };
@@ -144,6 +147,16 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
           name="leadership"
           type="text"
           value={customCrew.leadership ?? 0}
+          onChange={handleChange}
+        />
+      </label>
+      <label className="control-label crew-builder-input">
+        Mechanic
+        <input
+          className="control-input"
+          name="mechanic"
+          type="text"
+          value={customCrew.mechanic ?? 0}
           onChange={handleChange}
         />
       </label>

@@ -10,6 +10,7 @@ use std::sync::{Arc, RwLock};
 use cgmath::{InnerSpace, Zero};
 use derivative::Derivative;
 use once_cell::sync::OnceCell;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use strum_macros::{EnumIter, FromRepr};
@@ -355,6 +356,15 @@ pub struct Ship {
   // But we do serialize them to send to the client.
   #[serde(skip_deserializing)]
   pub crit_level: [u8; 11],
+  /// The state of each bridge station, indexed by `BridgeStation`. Omitted from
+  /// the wire while every station works.
+  #[serde(default, skip_serializing_if = "all_stations_working")]
+  pub bridge_stations: [StationStatus; BridgeStation::COUNT],
+  /// Bridge damage in the order it was done, each with the severity that did
+  /// it. A Bridge repair undoes it from the end. Injuries to the crew are not
+  /// on here: repairing the bridge does not heal anyone.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub bridge_damage: Vec<(u8, BridgeDamage)>,
   #[serde(skip)]
   pub attack_dm: i32,
   #[serde(skip)]
@@ -1227,6 +1237,94 @@ pub enum ShipSystem {
   Bridge,
 }
 
+/// A station on the bridge that a bridge critical hit can knock out.
+///
+/// The Core Rulebook (p. 170) says "random bridge station" and never lists them,
+/// so this is our list. Numbered from zero here, one to six on the die. Gunners
+/// are not on it: High Guard p. 91 has gunnery control dispersed through a ship,
+/// and a ship "with its bridge destroyed can still be lethal as long as its
+/// guns keep firing" -- but the fire control that directs them is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumIter, Deserialize, Serialize)]
+pub enum BridgeStation {
+  /// Transmitting and sensor hand-off.
+  Comms = 0,
+  /// The sensop's actions: locks, breaking locks and jamming.
+  Sensors,
+  /// Acceleration, jump and hand-off, which all need the computer.
+  Computer,
+  /// Jump.
+  Astrogation,
+  /// Every weapon, point defence included.
+  FireControl,
+  /// Acceleration, evasion and assisting the gunners.
+  Pilot,
+}
+
+impl BridgeStation {
+  pub const COUNT: usize = 6;
+
+  /// Roll 1D for the station a hit lands on.
+  #[must_use]
+  pub fn random(rng: &mut dyn RngCore) -> BridgeStation {
+    BridgeStation::from_repr(usize::from(crate::combat::roll(rng) - 1)).unwrap_or(BridgeStation::Comms)
+  }
+
+  /// What losing this station stops, for the crit message.
+  #[must_use]
+  pub fn loses(self) -> &'static str {
+    match self {
+      BridgeStation::Comms => "no transmitting or sensor hand-off",
+      BridgeStation::Sensors => "no sensor locks or jamming",
+      BridgeStation::Computer => "no acceleration, jump or sensor hand-off",
+      BridgeStation::Astrogation => "no jump",
+      BridgeStation::FireControl => "no weapons fire or point defence",
+      BridgeStation::Pilot => "no acceleration, evasion or assisting gunners",
+    }
+  }
+}
+
+impl Display for BridgeStation {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    f.write_str(match self {
+      BridgeStation::Comms => "comms",
+      BridgeStation::Sensors => "sensors",
+      BridgeStation::Computer => "computer",
+      BridgeStation::Astrogation => "astrogation",
+      BridgeStation::FireControl => "fire control",
+      BridgeStation::Pilot => "pilot",
+    })
+  }
+}
+
+/// Whether a bridge station can be used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub enum StationStatus {
+  #[default]
+  Working,
+  /// Out for the rest of the round it was hit in and all of the next. The
+  /// count is end-of-round ticks left, so it starts at two.
+  Disabled(u8),
+  /// Out until an engineer repairs it.
+  Destroyed,
+}
+
+/// One undoable piece of bridge damage, recorded against the severity that
+/// did it so a repair can take the most recent back off first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum BridgeDamage {
+  /// A station knocked out for a round or two.
+  Disabled(BridgeStation),
+  /// A station destroyed, and what it was before, so undoing it cannot bring
+  /// back a station an earlier hit had already destroyed.
+  Destroyed { station: BridgeStation, was: StationStatus },
+  /// Computer Bandwidth lost.
+  Bandwidth(u32),
+}
+
+fn all_stations_working(stations: &[StationStatus; BridgeStation::COUNT]) -> bool {
+  stations.iter().all(|status| *status == StationStatus::Working)
+}
+
 impl Ship {
   #[must_use]
   pub fn new(
@@ -1259,6 +1357,8 @@ impl Ship {
       comms_jammed: false,
       team: None,
       crit_level: [0; 11],
+      bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
+      bridge_damage: vec![],
       attack_dm: 0,
       crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
       dodge_thrust: 0,
@@ -1300,6 +1400,8 @@ impl Ship {
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
+    self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
+    self.bridge_damage.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
   }
@@ -1317,6 +1419,8 @@ impl Ship {
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
+    self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
+    self.bridge_damage.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
   }
@@ -1460,9 +1564,118 @@ impl Ship {
     self.can_jump = true;
   }
 
+  /// Clear of gravity wells, with astrogation and the computer to plot it.
   #[must_use]
   pub fn can_jump(&self) -> bool {
-    self.can_jump
+    self.can_jump && self.station_working(BridgeStation::Astrogation) && self.station_working(BridgeStation::Computer)
+  }
+
+  #[must_use]
+  pub fn station_status(&self, station: BridgeStation) -> StationStatus {
+    self.bridge_stations[station as usize]
+  }
+
+  #[must_use]
+  pub fn station_working(&self, station: BridgeStation) -> bool {
+    self.station_status(station) == StationStatus::Working
+  }
+
+  /// Knock a station out for the rest of this round and all of the next. A
+  /// destroyed station stays destroyed.
+  pub fn disable_station(&mut self, station: BridgeStation) {
+    if self.station_status(station) != StationStatus::Destroyed {
+      self.bridge_stations[station as usize] = StationStatus::Disabled(2);
+    }
+  }
+
+  pub fn destroy_station(&mut self, station: BridgeStation) {
+    self.bridge_stations[station as usize] = StationStatus::Destroyed;
+  }
+
+  /// Count disabled stations down at the end of a round.
+  pub fn tick_bridge_stations(&mut self) {
+    for status in &mut self.bridge_stations {
+      if let StationStatus::Disabled(rounds) = status {
+        *status = if *rounds <= 1 {
+          StationStatus::Working
+        } else {
+          StationStatus::Disabled(*rounds - 1)
+        };
+      }
+    }
+  }
+
+  /// A bridge hit at `level` disables `station`, recorded for repair.
+  pub fn bridge_hit_disable(&mut self, level: u8, station: BridgeStation) {
+    self.bridge_damage.push((level, BridgeDamage::Disabled(station)));
+    self.disable_station(station);
+  }
+
+  /// A bridge hit at `level` destroys `station`, recorded for repair.
+  pub fn bridge_hit_destroy(&mut self, level: u8, station: BridgeStation) {
+    let was = self.station_status(station);
+    self.bridge_damage.push((level, BridgeDamage::Destroyed { station, was }));
+    self.destroy_station(station);
+  }
+
+  /// A bridge hit at `level` cuts Bandwidth to `bandwidth`, recorded for repair.
+  pub fn bridge_hit_bandwidth(&mut self, level: u8, bandwidth: u32) {
+    let lost = self.current_computer.saturating_sub(bandwidth);
+    self.bridge_damage.push((level, BridgeDamage::Bandwidth(lost)));
+    self.current_computer = bandwidth;
+  }
+
+  /// Undo bridge damage done above severity `level`, most recent first, for a
+  /// repair that has just brought the bridge down to it. Returns what came
+  /// back, to tell the engineer.
+  pub fn undo_bridge_damage(&mut self, level: u8) -> Vec<String> {
+    let mut restored = Vec::new();
+    while let Some((_, damage)) = self.bridge_damage.pop_if(|(done_at, _)| *done_at > level) {
+      match damage {
+        BridgeDamage::Disabled(station) => {
+          if matches!(self.station_status(station), StationStatus::Disabled(_)) {
+            self.bridge_stations[station as usize] = StationStatus::Working;
+            restored.push(format!("{station} station back up"));
+          }
+        }
+        // Back to working unless an earlier hit had already destroyed it. A
+        // disable from before is not put back: it would have run out by now.
+        BridgeDamage::Destroyed { station, was } => {
+          if was != StationStatus::Destroyed {
+            self.bridge_stations[station as usize] = StationStatus::Working;
+            restored.push(format!("{station} station working again"));
+          }
+        }
+        BridgeDamage::Bandwidth(lost) => {
+          self.current_computer = (self.current_computer + lost).min(self.design.computer);
+          restored.push(format!("computer Bandwidth back to {}", self.current_computer));
+        }
+      }
+    }
+    restored
+  }
+
+  /// Whether the flight plan can be flown: it takes both the pilot and the
+  /// computer.
+  #[must_use]
+  pub fn can_accelerate(&self) -> bool {
+    self.station_working(BridgeStation::Pilot) && self.station_working(BridgeStation::Computer)
+  }
+
+  /// The first station a sensor hand-off needs that is out, at either end:
+  /// comms to pass the picture, and the computer to handle it.
+  #[must_use]
+  pub fn handoff_station_down(&self) -> Option<BridgeStation> {
+    [BridgeStation::Comms, BridgeStation::Computer]
+      .into_iter()
+      .find(|station| !self.station_working(*station))
+  }
+
+  /// Whether the ship is actually radiating. The crew can want to, but not with
+  /// the comms station out.
+  #[must_use]
+  pub fn is_transmitting(&self) -> bool {
+    self.transmitting && self.station_working(BridgeStation::Comms)
   }
 
   /// The thrust this ship is applying, in whole G, for the detection tables.
@@ -1617,18 +1830,24 @@ impl Ship {
     self.dodge_thrust = u8::saturating_sub(self.dodge_thrust, 1);
   }
 
+  /// Assisting the gunners takes a pilot at their station.
   #[must_use]
   pub fn get_assist_gunners(&self) -> bool {
-    self.assist_gunners
+    self.assist_gunners && self.station_working(BridgeStation::Pilot)
   }
   pub fn reset_pilot_actions(&mut self) {
     self.dodge_thrust = 0;
     self.assist_gunners = false;
   }
 
+  /// Thrust left for evasion. None without a pilot at their station.
   #[must_use]
   pub fn get_dodge_thrust(&self) -> u8 {
-    self.dodge_thrust
+    if self.station_working(BridgeStation::Pilot) {
+      self.dodge_thrust
+    } else {
+      0
+    }
   }
 
   pub fn set_point_defense_list(&mut self, list: Vec<(usize, u16)>) {
@@ -1886,8 +2105,9 @@ impl Entity for Ship {
       return Some(UpdateAction::ShipDestroyed);
     }
 
-    if self.plan.empty() {
-      // Just move at current velocity
+    if self.plan.empty() || !self.can_accelerate() {
+      // Just move at current velocity. A ship that cannot fly its plan this
+      // round keeps it, and picks it up again once the station is back.
       self.position += self.velocity * DELTA_TIME_F64;
       debug!(
         "(Ship.update) No acceleration for {}: move at velocity {:0.0?} for time {}, position now {:0.0?}",

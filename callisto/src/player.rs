@@ -759,6 +759,40 @@ impl PlayerManager {
           });
         }
       }
+
+      // A captain who rolled but has nothing queued still gets a line. That is
+      // every failed roll -- no points, so nothing to assign -- and a failure
+      // matters as much as a success.
+      let reported: HashSet<&String> = leadership_effects
+        .iter()
+        .filter_map(|effect| match effect {
+          EffectMsg::LeadershipAction { ship_name, .. } => Some(ship_name),
+          _ => None,
+        })
+        .collect();
+      let mut unreported: Vec<(&String, i16, u8)> = entities
+        .ships
+        .iter()
+        .filter(|(name, _)| !reported.contains(name))
+        .filter_map(|(name, ship)| {
+          let ship = ship.read().unwrap();
+          ship
+            .has_leadership_rolled()
+            .then(|| (name, ship.get_leadership_points(), ship.get_crew().get_leadership()))
+        })
+        .collect();
+      unreported.sort_unstable_by_key(|(name, ..)| *name);
+      let unreported: Vec<EffectMsg> = unreported
+        .into_iter()
+        .map(|(name, points, leadership)| EffectMsg::LeadershipAction {
+          ship_name: name.clone(),
+          roll: Some(u8::try_from(points + 8 - i16::from(leadership)).unwrap_or(0)),
+          leadership,
+          points,
+          boosts_applied: vec![],
+        })
+        .collect();
+      leadership_effects.extend(unreported);
     }
 
     let actions = &entities.actions;
@@ -904,6 +938,10 @@ impl PlayerManager {
 
     // Jamming lasts the round it was made in.
     entities.clear_comms_jamming();
+
+    // A disabled bridge station is out for the round it was hit in and the
+    // next, so this runs after everything that checks one.
+    entities.tick_bridge_stations();
 
     entities.reset_actions();
 

@@ -116,6 +116,12 @@ export interface Ship extends Entity {
   team?: Team;
   crew: Crew;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
+  /**
+   * Each bridge station's state, in the order of {@link BRIDGE_STATIONS}.
+   * Absent while every station works. A disabled station carries the
+   * end-of-round ticks it has left.
+   */
+  bridge_stations?: StationStatus[];
   repair_bonus?: number;
   last_repair_component?: string | null; // String representation of ShipSystem (e.g., "Sensors")
   temporary_maneuver?: number;
@@ -414,3 +420,26 @@ export const findPlanet = (entities: EntityList, name: string | null) => {
   }
   return entities.planets.find((planet) => planet.name === name) || null;
 };
+
+/** Bridge stations, in the server's order. */
+export const BRIDGE_STATIONS = [
+  "Comms",
+  "Sensors",
+  "Computer",
+  "Astrogation",
+  "Fire control",
+  "Pilot",
+] as const;
+
+export type StationStatus = "Working" | "Destroyed" | { Disabled: number };
+
+/**
+ * The bridge stations that are out, as "Pilot disabled" or "Computer
+ * destroyed". Empty when all are working.
+ */
+export const stationsDown = (ship: Ship): string[] =>
+  (ship.bridge_stations ?? []).flatMap((status, index) => {
+    if (status === "Working") return [];
+    const state = status === "Destroyed" ? "destroyed" : "disabled";
+    return [`${BRIDGE_STATIONS[index]} ${state}`];
+  });
