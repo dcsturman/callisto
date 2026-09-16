@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef } from "react";
 import { extend, useFrame, useThree } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
 import { SCALE, RANGE_BANDS } from "./universal";
+import { sphereSilhouette } from "./range";
 
 extend({ Line_: THREE.Line });
 
@@ -219,6 +220,7 @@ export function RangeCircle({
   opacity?: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const ringRef = useRef<THREE.Group>(null);
   const lineRef = useRef<THREE.Line>(null);
   const labelRef = useRef<THREE.Object3D>(null);
   const { camera } = useThree();
@@ -226,22 +228,35 @@ export function RangeCircle({
 
   useFrame(() => {
     const group = groupRef.current;
-    if (group == null) {
+    const ring = ringRef.current;
+    if (group == null || ring == null) {
       return;
     }
     group.lookAt(camera.position);
+    group.getWorldPosition(LABEL_SCRATCH);
+    const cameraDistance = camera.position.distanceTo(LABEL_SCRATCH);
+
+    // Draw the sphere's real outline, not the great circle through its
+    // centre. The two differ by enough, when the camera is a few radii out,
+    // that a ship inside the sphere was drawn outside the ring -- see
+    // `sphereSilhouette`. After `lookAt`, local +z points at the camera.
+    const silhouette = sphereSilhouette(radius, cameraDistance);
+    ring.visible = silhouette != null;
+    if (silhouette == null) {
+      return;
+    }
+    ring.scale.setScalar(silhouette.scale);
+    ring.position.z = silhouette.offset;
 
     // Hold the label at a constant size on screen. Text measured in world
     // units shrinks with distance, and these circles span a 40x range of
     // radii -- the outermost is only in frame from about 65 units out, where
     // a fixed 0.35-unit label is a third of a percent of screen height. The
-    // band you can see would be the one you cannot read.
+    // band you can see would be the one you cannot read. Divided by the
+    // ring's scale, since the label sits inside the scaled ring.
     const label = labelRef.current;
     if (label != null) {
-      group.getWorldPosition(LABEL_SCRATCH);
-      label.scale.setScalar(
-        camera.position.distanceTo(LABEL_SCRATCH) * LABEL_SCALE,
-      );
+      label.scale.setScalar((cameraDistance * LABEL_SCALE) / silhouette.scale);
     }
   });
 
@@ -262,6 +277,10 @@ export function RangeCircle({
 
   return (
     <group ref={groupRef} position={pos}>
+      {/* The ring and its label move together: scaled down and pushed toward
+          the camera by exactly the amount that turns the great circle into
+          the outline. */}
+      <group ref={ringRef}>
       <line_ ref={lineRef}>
         <bufferGeometry />
         {/* `depthWrite: false` on anything transparent -- a transparent surface
@@ -286,6 +305,7 @@ export function RangeCircle({
           {label}
         </Text>
       )}
+      </group>
     </group>
   );
 }

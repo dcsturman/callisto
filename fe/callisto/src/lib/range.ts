@@ -113,3 +113,34 @@ export const formatKm = (metres: number): string => {
  */
 export const formatRange = (reading: RangeReading): string =>
   `${formatKm(reading.now)} → ~${formatKm(reading.next)}`;
+
+/**
+ * How to draw a sphere's true outline as a circle facing the camera.
+ *
+ * The obvious circle -- radius `r`, in the plane through the centre -- is not
+ * the outline. The eye's tangent cone touches the sphere on a smaller circle,
+ * radius `r·cos(θ)`, displaced `r·sin(θ)` toward the camera, where
+ * `sin(θ) = r / d`. The great circle sits further back, so it projects
+ * *smaller* than the real outline; a point just inside the sphere can then
+ * land outside the drawn ring. Far away the two agree, but with the camera a
+ * couple of radii out the great circle under-draws by around a tenth, which
+ * was enough to put ships at 49,000 km visibly outside a 50,000 km ring.
+ *
+ * Returns the scale to apply to an `r`-radius circle and how far to push it
+ * toward the camera, or `null` when the camera is inside the sphere and there
+ * is no outline to draw.
+ */
+export const sphereSilhouette = (
+  radius: number,
+  cameraDistance: number,
+): {scale: number; offset: number} | null => {
+  if (cameraDistance <= radius) {
+    return null;
+  }
+  const sin = radius / cameraDistance;
+  return {
+    scale: Math.sqrt(1 - sin * sin),
+    offset: radius * sin,
+  };
+};
+
