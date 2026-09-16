@@ -367,6 +367,16 @@ input {
     z-index: 12;
 }
 
+/* The reference's own title. It is a disclosure line inside View Controls, not
+   a peer of it, so it sits below that heading's 12pt -- body size, regular
+   weight -- rather than shouting louder than the box it lives in. Two classes
+   so this outranks the shared .accordion-header rule and nothing else. */
+.accordion.camera-keys > .accordion-header {
+    font-size: 10pt;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
 /* Key reference inside View Controls. Two columns so the keys form a column of
    their own and the list can be scanned down rather than read across. */
 .camera-key-list {
