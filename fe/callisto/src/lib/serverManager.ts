@@ -816,7 +816,9 @@ function formatEngineerResult(result: EngineerActionResult): string {
     : result.success
       ? "SUCCESS"
       : "FAILURE";
-  return `[Engineer ${outcome}] ${result.message} (Check ${result.check} vs ${result.target})`;
+  // The server's message carries the roll, each modifier and the total
+  // against the target, so it is not repeated here.
+  return `[Engineer ${outcome}] ${result.message}`;
 }
 
 interface LeadershipActionEffect {

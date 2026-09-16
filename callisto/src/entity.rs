@@ -160,6 +160,29 @@ fn detection_roll_effect(
   )
 }
 
+/// An engineer's check, reading like the sensop's: the roll, the DM with each
+/// term that did something named, and the total against the target number.
+/// Returns the total, floored at zero, with that text.
+fn engineer_check(roll: u8, terms: &[(&str, i16)], target: u8) -> (u8, String) {
+  let dm: i16 = terms.iter().map(|(_, value)| value).sum();
+  let total = u8::try_from((i16::from(roll) + dm).max(0)).unwrap_or(u8::MAX);
+  let breakdown = terms
+    .iter()
+    .filter(|(_, value)| *value != 0)
+    .map(|(name, value)| format!("{name} {value:+}"))
+    .collect::<Vec<_>>()
+    .join(", ");
+  let breakdown = if breakdown.is_empty() {
+    String::new()
+  } else {
+    format!(" ({breakdown})")
+  };
+  (
+    total,
+    format!("with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against {target}"),
+  )
+}
+
 /// One sensor-operator check against a fixed target number.
 ///
 /// Same shape as `detection_roll_effect` deliberately: every check a sensop
@@ -2364,10 +2387,12 @@ impl Entities {
     let skill = ship.get_crew().get_engineering_jump();
     drop(ship);
 
-    let roll = roll_dice(2, rng);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 6;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (j-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
 
     if total >= target {
       (
@@ -2377,7 +2402,7 @@ impl Entities {
           success: true,
           check: total,
           target,
-          message: format!("{ship_name} jumps successfully!"),
+          message: format!("{ship_name} jump check {check}: jumps successfully."),
           critical_failure: false,
         },
         true,
@@ -2390,7 +2415,7 @@ impl Entities {
           success: false,
           check: total,
           target,
-          message: format!("{ship_name} misjumps! Ship is lost in jump space."),
+          message: format!("{ship_name} jump check {check}: misjumps! Ship is lost in jump space."),
           critical_failure: true,
         },
         true,
@@ -2415,11 +2440,12 @@ impl Entities {
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_maneuver();
-    let roll = roll_dice(2, rng);
-    // Boost is 0 or 1 (HashSet membership); cast through u8 is safe.
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 10;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (m-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
 
     let action = ShipAction::OverloadDrive;
 
@@ -2432,7 +2458,7 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} overloaded maneuver drive successfully! Temporary +1 maneuver."),
+        message: format!("{ship_name} maneuver drive overload {check}: success, temporary +1 maneuver."),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -2444,7 +2470,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} critically failed overloading maneuver drive! Drive damaged."),
+        message: format!("{ship_name} maneuver drive overload {check}: critical failure, drive damaged."),
         critical_failure: true,
       }
     } else {
@@ -2455,7 +2481,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} failed to overload maneuver drive."),
+        message: format!("{ship_name} maneuver drive overload {check}: failed."),
         critical_failure: false,
       }
     }
@@ -2478,10 +2504,12 @@ impl Entities {
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_power();
-    let roll = roll_dice(2, rng);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 10;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
 
     let action = ShipAction::OverloadPlant;
 
@@ -2494,7 +2522,7 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} overloaded power plant successfully! Temporary +10% power."),
+        message: format!("{ship_name} power plant overload {check}: success, temporary +10% power."),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -2506,7 +2534,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} critically failed overloading power plant! Plant damaged."),
+        message: format!("{ship_name} power plant overload {check}: critical failure, plant damaged."),
         critical_failure: true,
       }
     } else {
@@ -2517,7 +2545,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} failed to overload power plant."),
+        message: format!("{ship_name} power plant overload {check}: failed."),
         critical_failure: false,
       }
     }
@@ -2574,10 +2602,22 @@ impl Entities {
       0
     };
 
-    let roll = roll_dice(2, rng);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = u8::saturating_sub(roll + skill + repair_bonus + boost.max(0) as u8, crit_level);
     let target: u8 = 8;
+    let skill_name = match system {
+      ShipSystem::Jump => "engineering (j-drive)",
+      ShipSystem::Powerplant => "engineering (power)",
+      _ => "engineering (m-drive)",
+    };
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[
+        (skill_name, i16::from(skill)),
+        ("earlier attempts", i16::from(repair_bonus)),
+        ("captain", boost.max(0)),
+        ("damage", -i16::from(crit_level)),
+      ],
+      target,
+    );
 
     if total >= target {
       // Success - reduce crit level by 1
@@ -2600,7 +2640,7 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} successfully repaired {system:?}.{station}"),
+        message: format!("{ship_name} repair {system:?} {check}: repaired.{station}"),
         critical_failure: false,
       }
     } else {
@@ -2614,7 +2654,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} failed to repair {system:?}."),
+        message: format!("{ship_name} repair {system:?} {check}: failed."),
         critical_failure: false,
       }
     }
