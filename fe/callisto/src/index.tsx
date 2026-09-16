@@ -7,6 +7,7 @@ import { GoogleOAuthProvider } from "@react-oauth/google";
 import "./index.css";
 import { GOOGLE_OAUTH_CLIENT_ID, App } from "./App";
 import { PersistGate } from "redux-persist/integration/react";
+import { installStaleChunkReload } from "./lib/staleChunk";
 
 
 // Announce which build this is, so a stale bundle is something you can check
@@ -34,6 +35,30 @@ if (sentryDsn) {
   });
 }
 
+// A deploy invalidates the chunk names this tab was built with; the first
+// lazy import after one would otherwise land in the error boundary. Installed
+// before anything can import.
+installStaleChunkReload();
+
+/**
+ * What the boundary shows when something still gets through. The common
+ * cause is a stale tab after a deploy, so the honest advice -- and a button
+ * that gives it -- is to reload.
+ */
+function SomethingWentWrong() {
+  return (
+    <div className="fatal-error">
+      <p>Something went wrong.</p>
+      <p className="fatal-error-detail">
+        If Callisto was just updated, this tab is out of date.
+      </p>
+      <button type="button" onClick={() => window.location.reload()}>
+        Reload
+      </button>
+    </div>
+  );
+}
+
 const root = ReactDOM.createRoot(
   document.getElementById("root") as HTMLElement
 );
@@ -54,7 +79,7 @@ console.log("Running on " + window.location.href);
 console.groupEnd();
 
 root.render(
-  <Sentry.ErrorBoundary fallback={<div>Something went wrong.</div>}>
+  <Sentry.ErrorBoundary fallback={<SomethingWentWrong />}>
     <GoogleOAuthProvider clientId={GOOGLE_OAUTH_CLIENT_ID}>
       <React.StrictMode>
         <Provider store={store}>
