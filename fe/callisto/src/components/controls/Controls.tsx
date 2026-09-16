@@ -361,9 +361,14 @@ export function Controls() {
                 <input
                   id="show-range-checkbox"
                   type="checkbox"
-                  checked={showRange !== null}
+                  // Checked only when the circles are around THIS ship. It
+                  // used to read as "on" for any ship once toggled anywhere,
+                  // so switching ships left the box ticked while the circles
+                  // stayed around the previous one. Toggling on a different
+                  // ship now re-targets rather than clears.
+                  checked={showRange === computerShipName}
                   onChange={() => {
-                    if (showRange === null && computerShipName) {
+                    if (showRange !== computerShipName && computerShipName) {
                       dispatch(setShowRange(computerShipName));
                     } else {
                       dispatch(setShowRange(null));
