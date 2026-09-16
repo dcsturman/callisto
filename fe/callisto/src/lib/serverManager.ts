@@ -846,7 +846,12 @@ function formatLeadershipResult(lead: LeadershipActionEffect): string {
   }
   const skill = lead.leadership ?? 0;
   const total = lead.roll + skill;
-  const points = `${lead.points} point${lead.points === 1 ? "" : "s"}`;
+  // Nothing to spend on a roll that missed, so say it failed rather than
+  // reporting a negative number of points.
+  const points =
+    lead.points > 0
+      ? `${lead.points} point${lead.points === 1 ? "" : "s"}`
+      : "failed";
   return (
     `[Captain] ${lead.ship_name} leadership check with roll ${lead.roll} and skill ` +
     `${skill >= 0 ? "+" : ""}${skill} for a total of ${total} against 8: ${points}; ${summary}.`
