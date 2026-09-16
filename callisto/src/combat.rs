@@ -79,8 +79,50 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 // mods, attacker, defender, weapon, called-shot, boost map, and rng.
 // Splitting them into a struct would not improve clarity here.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+/// The attacker's side of the to-hit DM, kept as separate terms.
+///
+/// These used to arrive summed into one number that the log could only call
+/// "gunner", so a skill-3 gunner showing +6 looked like a bug. It was the
+/// pilot's assist and two captain's inspires stacked on top -- all real, none
+/// of them visible.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HitMods {
+  /// The gunner's own skill on this mount.
+  pub gunner: i32,
+  /// The pilot's Assist Gunner task chain, from their own roll this round.
+  pub assist: i32,
+  /// The captain's inspire on that assist: +1 on the first shot only.
+  pub captain_assist: i32,
+  /// The captain's inspire on this weapon's fire action.
+  pub captain_fire: i32,
+}
+
+impl HitMods {
+  /// Just a gunner, nobody helping. What most tests want.
+  #[must_use]
+  pub const fn gunner(gunner: i32) -> Self {
+    HitMods {
+      gunner,
+      assist: 0,
+      captain_assist: 0,
+      captain_fire: 0,
+    }
+  }
+
+  /// Named for the results log, in the order they are reasoned about.
+  #[must_use]
+  pub const fn terms(&self) -> [(&'static str, i32); 4] {
+    [
+      ("gunner", self.gunner),
+      ("assist", self.assist),
+      ("captain assist", self.captain_assist),
+      ("captain fire", self.captain_fire),
+    ]
+  }
+}
+
 pub fn attack(
-  hit_mod: i32, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
+  hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
   called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let attacker_name = attacker.get_name();
@@ -195,7 +237,7 @@ pub fn attack(
   };
 
   info!(
-        "(Combat.attack) Ship {attacker_name} attacking with {firing:?} against {} with hit mod {hit_mod}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
+        "(Combat.attack) Ship {attacker_name} attacking with {firing:?} against {} with hit mods {hit:?}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
         defender.get_name(),
         profile.hit_mod
     );
@@ -212,15 +254,19 @@ pub fn attack(
   // never reached the results log at all. Same treatment the detection DM
   // gets, and for the same reason. Zero terms are dropped so an ordinary
   // shot stays short.
-  let terms: [(&str, i32); 8] = [
-    ("gunner", hit_mod),
+  let [gunner, assist, captain_assist, captain_fire] = hit.terms();
+  let terms: [(&str, i32); 11] = [
+    gunner,
+    assist,
+    captain_assist,
+    captain_fire,
     ("weapon", profile.hit_mod),
     ("range", range_mod),
     ("called shot", called_mod),
     ("small target", small_target_mod),
     ("sensor lock", lock_mod),
     ("evade", evade_mod),
-    ("captain", captain_mod),
+    ("captain evade", captain_mod),
   ];
   let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
@@ -1058,18 +1104,34 @@ pub fn do_fire_actions<S: BuildHasher>(
 ) -> (Vec<LaunchMissileMsg>, Vec<EffectMsg>) {
   let mut new_missiles = vec![];
 
-  let assist_bonus = if attacker.get_assist_gunners() {
-    let effect = i32::from(roll_dice(2, rng)) - STANDARD_ROLL_THRESHOLD + i32::from(attacker.get_crew().get_pilot());
+  // The pilot's Assist Gunner roll. Reported like every other check: it was
+  // debug-only, so the +2 it fed into every shot this round had no visible
+  // source.
+  let (assist_bonus, assist_effect) = if attacker.get_assist_gunners() {
+    let roll = i32::from(roll_dice(2, rng));
+    let pilot = i32::from(attacker.get_crew().get_pilot());
+    let effect = roll - STANDARD_ROLL_THRESHOLD + pilot;
+    let impact = task_chain_impact(effect);
     debug!(
       "(Combat.do_fire_actions) Pilot of {} with skill {} is assisting gunners.  Effect is {} so task chain impact is {}.",
       attacker.get_name(),
-      attacker.get_crew().get_pilot(),
+      pilot,
       effect,
-      task_chain_impact(effect)
+      impact
     );
-    task_chain_impact(effect)
+    (
+      impact,
+      Some(EffectMsg::about(
+        attacker.get_name(),
+        MessageCategory::Attack,
+        format!(
+          "{} pilot assists gunners with roll {roll} and skill {pilot:+} for effect {effect}: DM {impact:+} to this round's shots.",
+          attacker.get_name()
+        ),
+      )),
+    )
   } else {
-    0
+    (0, None)
   };
 
   // Tracks whether the captain's AssistGunner +1 has been applied to this
@@ -1078,7 +1140,7 @@ pub fn do_fire_actions<S: BuildHasher>(
   // attacker's weapons), so a ship-level flag would be redundant.
   let mut first_assist_consumed = false;
 
-  let effects = actions
+  let mut effects: Vec<EffectMsg> = actions
     .iter()
     .flat_map(|action| {
       let ShipAction::FireAction {
@@ -1335,17 +1397,24 @@ pub fn do_fire_actions<S: BuildHasher>(
           // this attacker makes this turn (only when assist_gunners is set
           // on the attacker). Missiles don't roll here, so they don't
           // consume the bonus.
-          let mut effective_assist = assist_bonus;
-          if attacker.get_assist_gunners()
+          let captain_assist = if attacker.get_assist_gunners()
             && boost_for_assist_gunner(boost_map, attacker.get_name()) > 0
             && !first_assist_consumed
           {
-            effective_assist += 1;
             first_assist_consumed = true;
-          }
+            1
+          } else {
+            0
+          };
+          let hit = HitMods {
+            gunner: gunnery_skill,
+            assist: assist_bonus,
+            captain_assist,
+            captain_fire: leadership_boost,
+          };
 
           effects.append(&mut attack(
-            effective_assist + gunnery_skill + leadership_boost,
+            hit,
             -sand_mod,
             attacker,
             &mut target,
@@ -1368,17 +1437,24 @@ pub fn do_fire_actions<S: BuildHasher>(
           // this attacker makes this turn (only when assist_gunners is set
           // on the attacker). Missiles don't roll here, so they don't
           // consume the bonus.
-          let mut effective_assist = assist_bonus;
-          if attacker.get_assist_gunners()
+          let captain_assist = if attacker.get_assist_gunners()
             && boost_for_assist_gunner(boost_map, attacker.get_name()) > 0
             && !first_assist_consumed
           {
-            effective_assist += 1;
             first_assist_consumed = true;
-          }
+            1
+          } else {
+            0
+          };
+          let hit = HitMods {
+            gunner: gunnery_skill,
+            assist: assist_bonus,
+            captain_assist,
+            captain_fire: leadership_boost,
+          };
 
           attack(
-            effective_assist + gunnery_skill + leadership_boost,
+            hit,
             0,
             attacker,
             &mut target,
@@ -1391,6 +1467,11 @@ pub fn do_fire_actions<S: BuildHasher>(
       }
     })
     .collect();
+
+  // The assist roll came first and applied to every shot, so it reads first.
+  if let Some(assist) = assist_effect {
+    effects.insert(0, assist);
+  }
 
   (new_missiles, effects)
 }
@@ -1912,7 +1993,7 @@ mod battery_tests {
       for _ in 0..400 {
         let mut defender = Ship::new("D".to_string(), Vec3::zero(), Vec3::zero(), design, None, None);
         let effects = attack(
-          0,
+          HitMods::gunner(0),
           0,
           &attacker,
           &mut defender,
@@ -1953,7 +2034,7 @@ mod battery_tests {
     let hull_before = defender.get_current_hull_points();
     for _ in 0..50 {
       attack(
-        8,
+        HitMods::gunner(8),
         0,
         &attacker,
         &mut defender,
@@ -2741,6 +2822,56 @@ mod tests {
     assert!(matches!(effects[1], EffectMsg::Message { .. }));
   }
 
+  /// The attacker's modifiers are named, not summed: a skill-3 gunner showing
+  /// "+6" is a pilot's assist and two inspires, and the log now says so.
+  #[test]
+  fn attack_messages_split_the_gunners_side() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Design".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      hull: 200,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let mut defender = Ship::new(
+      "Defender".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
+    let mut rng = StdRng::seed_from_u64(42);
+    let effects = attack(
+      HitMods {
+        gunner: 3,
+        assist: 2,
+        captain_assist: 0,
+        captain_fire: 1,
+      },
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    let text = effects
+      .iter()
+      .find_map(|e| match e {
+        EffectMsg::Message { content, .. } => Some(content.clone()),
+        _ => None,
+      })
+      .unwrap();
+    for fragment in ["gunner +3", "assist +2", "captain fire +1"] {
+      assert!(text.contains(fragment), "{text:?} should contain {fragment:?}");
+    }
+    assert!(!text.contains("captain assist"), "a zero term is dropped: {text}");
+    assert!(text.contains("+6="), "and they still sum to the DM: {text}");
+  }
+
   /// An evasion is finally visible in the results, and the captain's inspire
   /// on it shows on the one shot it applies to and not the next.
   ///
@@ -2792,7 +2923,7 @@ mod tests {
     let mut rng = StdRng::seed_from_u64(42);
     let mut shoot = |defender: &mut Ship, boosts: &BoostMap| {
       text(&attack(
-        0,
+        HitMods::gunner(0),
         0,
         &attacker,
         defender,
@@ -2806,7 +2937,7 @@ mod tests {
     // First shot: the pilot's skill and the captain's point, both named.
     let first = shoot(&mut defender, &boost_map);
     assert!(first.contains("evade -3"), "pilot should be named: {first}");
-    assert!(first.contains("captain -1"), "the inspire should be named: {first}");
+    assert!(first.contains("captain evade -1"), "the inspire should be named: {first}");
 
     // Second shot the same turn: still dodging (2G bought two attacks), but the
     // inspire is spent and must not be claimed again.
@@ -2876,7 +3007,7 @@ mod tests {
 
     let shoot = |hit_mod, defender: &mut Ship, rng: &mut dyn RngCore| {
       attack(
-        hit_mod,
+        HitMods::gunner(hit_mod),
         0,
         &attacker,
         defender,
@@ -2996,7 +3127,7 @@ mod tests {
       let starting_hull = defender.get_current_hull_points();
 
       let effects = attack(
-        hit_mod,
+        HitMods::gunner(hit_mod),
         damage_mod,
         &attacker,
         &mut defender,
@@ -3061,7 +3192,7 @@ mod tests {
 
     // Test miss scenario
     let miss_effects = attack(
-      -10,
+      HitMods::gunner(-10),
       0,
       &attacker,
       &mut defender,
@@ -3080,7 +3211,7 @@ mod tests {
     info!("(test.test_attack) Test critical hit scenario");
     // Test critical hit scenario
     let crit_effects = attack(
-      20,
+      HitMods::gunner(20),
       0,
       &attacker,
       &mut defender,
@@ -3115,7 +3246,7 @@ mod tests {
       while !effects.iter().any(|e| !matches!(e, EffectMsg::Message { .. })) {
         defender.current_hull = 200;
         effects = attack(
-          0,
+          HitMods::gunner(0),
           0,
           &attacker,
           &mut defender,
@@ -3168,7 +3299,7 @@ mod tests {
     let in_range_weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
     defender.set_position(Vec3::new(1_000_000.0, 0.0, 0.0)); // Assuming this is within range
     let result = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
@@ -3183,7 +3314,7 @@ mod tests {
     let out_of_range_weapon = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 1);
     defender.set_position(Vec3::new(30_000_000.0, 0.0, 0.0)); // Assuming this is out of range
     let result = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
@@ -3197,7 +3328,7 @@ mod tests {
     // Test missile which should never be out of range
     let missile_weapon = Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1);
     let result = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
@@ -3243,7 +3374,7 @@ mod tests {
     assert_eq!(range_band, Range::Long);
 
     let result = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
@@ -3278,7 +3409,7 @@ mod tests {
     assert_eq!(range_band, Range::Medium);
 
     let result = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
@@ -3338,7 +3469,7 @@ mod tests {
 
     // First attack: evade boost consumed, flag flips to true.
     let _ = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
@@ -3359,7 +3490,7 @@ mod tests {
 
     // Second attack: flag stays true (already consumed); dodge thrust decrements again.
     let _ = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
@@ -3437,7 +3568,7 @@ mod tests {
       let mut rng_boosted = StdRng::seed_from_u64(seed);
 
       let _ = attack(
-        0,
+        HitMods::gunner(0),
         0,
         &attacker,
         &mut d_unboosted,
@@ -3452,7 +3583,7 @@ mod tests {
         ship: "Defender".to_string(),
       });
       let _ = attack(
-        0,
+        HitMods::gunner(0),
         0,
         &attacker,
         &mut d_boosted,
@@ -3514,7 +3645,7 @@ mod tests {
     });
 
     let _ = attack(
-      0,
+      HitMods::gunner(0),
       0,
       &attacker,
       &mut defender,
