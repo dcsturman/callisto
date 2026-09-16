@@ -68,7 +68,7 @@ pub struct PlayerManager {
   // Authenticator for this player.  It contains the session key and email identity of the player.
   authenticator: Box<dyn Authenticator>,
   // Role this player might have assumed
-  role: Role,
+  roles: Vec<Role>,
   // Ship this player may have assumed a crew position on.
   ship: Option<String>,
   test_mode: bool,
@@ -82,13 +82,13 @@ impl PlayerManager {
       server,
       authenticator,
       test_mode,
-      role: Role::General,
+      roles: vec![Role::General],
       ship: None,
     }
   }
 
-  pub fn set_role_ship(&mut self, role: Role, ship: Option<String>) {
-    self.role = role;
+  pub fn set_role_ship(&mut self, roles: Vec<Role>, ship: Option<String>) {
+    self.roles = roles;
     self.ship = ship;
   }
 
@@ -161,7 +161,7 @@ impl PlayerManager {
     Ok(AuthResponse {
       email,
       scenario: None,
-      role: None,
+      roles: None,
       ship: None,
     })
   }
@@ -188,7 +188,7 @@ impl PlayerManager {
     Ok(AuthResponse {
       email,
       scenario: None,
-      role: None,
+      roles: None,
       ship: None,
     })
   }
@@ -201,7 +201,7 @@ impl PlayerManager {
   /// # Panics
   /// Panics if the lock on entities cannot be obtained or if the server has never been initialized.
   pub fn reset(&self) -> Result<String, String> {
-    if self.role == Role::General && self.ship.is_none() {
+    if self.roles.contains(&Role::General) && self.ship.is_none() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
       // initial_scenario was validated at scenario-load time, so this
       // shouldn't fail in practice. Propagate the error rather than
@@ -962,12 +962,12 @@ impl PlayerManager {
   }
 
   #[must_use]
-  pub fn get_role(&self) -> (Role, Option<String>) {
-    (self.role, self.ship.clone())
+  pub fn get_roles(&self) -> (Vec<Role>, Option<String>) {
+    (self.roles.clone(), self.ship.clone())
   }
 
   pub fn set_role(&mut self, msg: &ChangeRole) -> String {
-    self.role = msg.role;
+    self.roles.clone_from(&msg.roles);
     self.ship.clone_from(&msg.ship);
     "Role set".to_string()
   }

@@ -44,7 +44,7 @@ import {
 import { Users } from "components/UserList";
 
 import { ShipComputer } from "components/controls/ShipComputer";
-import { ViewMode } from "lib/view";
+import { ViewMode, hasRole, isReferee } from "lib/view";
 
 import { RoleChooser } from "components/Role";
 import { ScenarioManager } from "components/scenarios/ScenarioManager";
@@ -93,7 +93,7 @@ export function App() {
 
   useEffect(() => {
     if (!joinedScenario) {
-      dispatch(setRoleShip([ViewMode.General, null]));
+      dispatch(setRoleShip([[ViewMode.General], null]));
       dispatch(setAppMode(AppMode.Game));
     }
   }, [joinedScenario, dispatch]);
@@ -123,7 +123,7 @@ function Simulator() {
   const tutorialMode = appMode === AppMode.Tutorial;
   const scenarioBuilderMode = appMode === AppMode.ScenarioBuilder;
 
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const shipName = useAppSelector((state) => state.user.shipName);
   const joinedScenario = useAppSelector((state) => state.user.joinedScenario);
   const email = useAppSelector((state) => state.user.email);
@@ -163,11 +163,9 @@ function Simulator() {
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
-        {(scenarioBuilderMode || role !== ViewMode.Observer) && <Controls />}
+        {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
         {(scenarioBuilderMode ||
-          [ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(
-            role,
-          )) && (
+          hasRole(roles, ViewMode.General, ViewMode.Pilot, ViewMode.Observer)) && (
           <div className="top-right-stack">
             <ShipSummary />
             <ViewControls />
@@ -186,12 +184,12 @@ function Simulator() {
           {!scenarioBuilderMode && <RoleChooser />}
           <div className="reset-and-logout-buttons">
             <Exit email={email} />
-            {role === ViewMode.General && shipName == null && (
+            {isReferee(roles, shipName) && (
               <ResetButton appMode={appMode} />
             )}
           </div>
         </div>
-        {!scenarioBuilderMode && role === ViewMode.General && computerShip && (
+        {!scenarioBuilderMode && hasRole(roles, ViewMode.General) && computerShip && (
           <ShipComputer ship={computerShip} />
         )}
         {showResults && (

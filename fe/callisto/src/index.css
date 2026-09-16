@@ -440,6 +440,22 @@ input {
     opacity: 0.85;
 }
 
+/* The multi-station picker. Reuses the confirm dialog's chrome; the options
+   are a short column of checkboxes, one per station. */
+.role-picker-options {
+    display: grid;
+    grid-template-columns: 1fr;
+    row-gap: 6px;
+    margin: 4px 0 14px 2px;
+}
+
+.role-picker-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
 .view-controls-window {
     padding-left: 4px;
     border: 1px solid #b6bcae;

@@ -40,7 +40,7 @@ import {
   MetaData,
   EngineerActionResult,
 } from "lib/entities";
-import { ViewMode, stringToViewMode } from "lib/view";
+import { ViewMode, parseRoles } from "lib/view";
 import { Acceleration } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
@@ -562,14 +562,13 @@ export function computeFlightPath(
   );
 }
 
-export function requestRoleChoice(role: ViewMode, ship: string | null) {
-  if (ship !== null) {
-    const payload = { SetRole: { role: ViewMode[role], ship: ship } };
-    socket.send(JSON.stringify(payload));
-  } else {
-    const payload = { SetRole: { role: ViewMode[role] } };
-    socket.send(JSON.stringify(payload));
-  }
+export function requestRoleChoice(roles: ViewMode[], ship: string | null) {
+  const names = roles.map((r) => ViewMode[r]);
+  const payload =
+    ship !== null
+      ? { SetRole: { roles: names, ship: ship } }
+      : { SetRole: { roles: names } };
+  socket.send(JSON.stringify(payload));
 }
 
 export function joinScenario(scenario_name: string) {
@@ -854,8 +853,9 @@ function handleUsers(json: [UserContext]) {
   for (const user of json) {
     const c: UserContext = {} as UserContext;
     c.display_name = user.display_name;
-    c.role =
-      stringToViewMode(user.role as unknown as string) ?? ViewMode.General;
+    // `roles` from a current server; `role` from one a deploy behind.
+    const raw = user as unknown as { roles?: unknown; role?: unknown };
+    c.roles = parseRoles(raw.roles ?? raw.role);
     c.ship = user.ship;
     users.push(c);
   }
@@ -896,7 +896,8 @@ function syncAppModeForScenario(scenario: string) {
 function handleAuthenticated(json: {
   email: string | null;
   scenario: string | null;
-  role: string | null;
+  roles?: string[] | null;
+  role?: string | null;
   ship: string | null;
 }): void {
   console.log(
@@ -911,13 +912,8 @@ function handleAuthenticated(json: {
       store.dispatch(setJoinedScenario(json.scenario));
       syncAppModeForScenario(json.scenario);
     }
-    if (json.role != null) {
-      store.dispatch(
-        setRoleShip([
-          stringToViewMode(json.role) ?? ViewMode.General,
-          json.ship,
-        ]),
-      );
+    if (json.roles != null || json.role != null) {
+      store.dispatch(setRoleShip([parseRoles(json.roles ?? json.role), json.ship]));
     }
   } else {
     store.dispatch(setAuthenticated(false));

@@ -56,7 +56,7 @@ impl Debug for LoginMsg {
 pub struct AuthResponse {
   pub email: String,
   pub scenario: Option<String>,
-  pub role: Option<Role>,
+  pub roles: Option<Vec<Role>>,
   pub ship: Option<String>,
 }
 
@@ -379,7 +379,7 @@ pub struct CaptainActionResult {
   pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Role {
   General = 0,
   Pilot,
@@ -395,7 +395,10 @@ pub enum Role {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserData {
   pub display_name: String,
-  pub role: Role,
+  /// Every station this player is working. One entry for a single role,
+  /// several for a player covering more than one seat on a small crew, and
+  /// `General` for all of them.
+  pub roles: Vec<Role>,
   pub ship: Option<String>,
 }
 
@@ -411,8 +414,29 @@ pub fn email_to_display_name(email: &str) -> String {
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChangeRole {
-  pub role: Role,
+  /// The stations to take. Accepted as either a list under `roles` or, from a
+  /// client written before roles were a set, a single name under `role`, so
+  /// the two halves of a deploy cannot race each other.
+  #[serde(alias = "role", deserialize_with = "one_or_many_roles")]
+  pub roles: Vec<Role>,
   pub ship: Option<String>,
+}
+
+/// A role list, or a bare role that reads as a list of one.
+fn one_or_many_roles<'de, D>(deserializer: D) -> Result<Vec<Role>, D::Error>
+where
+  D: serde::Deserializer<'de>,
+{
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum OneOrMany {
+    One(Role),
+    Many(Vec<Role>),
+  }
+  Ok(match OneOrMany::deserialize(deserializer)? {
+    OneOrMany::One(role) => vec![role],
+    OneOrMany::Many(roles) => roles,
+  })
 }
 
 #[serde_as]
