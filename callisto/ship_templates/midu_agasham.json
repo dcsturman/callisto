@@ -137,7 +137,27 @@
       "mount": {
         "Turret": 3
       }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
+    },
+    {
+      "kind": "PointDefense",
+      "mount": {
+        "Battery": 3
+      }
     }
+  ],
+  "screens": [
+    "Meson",
+    "Meson",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper",
+    "NuclearDamper"
   ],
   "tl": 15,
   "role": "Cruiser",

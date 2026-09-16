@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{ShipDesignTemplate, Weapon};
+use super::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -56,7 +56,7 @@ impl Debug for LoginMsg {
 pub struct AuthResponse {
   pub email: String,
   pub scenario: Option<String>,
-  pub role: Option<Role>,
+  pub roles: Option<Vec<Role>>,
   pub ship: Option<String>,
 }
 
@@ -73,6 +73,23 @@ pub struct AddShipMsg {
   pub crew: Option<Crew>,
   /// The ship's armament.  Absent (or null) means it uses its design's weapons.
   pub weapons: Option<Vec<Weapon>>,
+  /// Emissions the ship starts with. Absent means the defaults: active sensors
+  /// up, and not transmitting. A scenario that wants a ship squawking — a
+  /// merchant that believes all is well, say — sets `transmitting` explicitly.
+  #[serde(default)]
+  pub active_sensors: Option<bool>,
+  #[serde(default)]
+  pub transmitting: Option<bool>,
+  /// Which side the ship is on. Absent leaves it unaligned.
+  #[serde(default)]
+  pub team: Option<Team>,
+  /// Ships this one already has a sensor contact on.
+  ///
+  /// Scenarios open with no contacts — ships have to find each other — so this
+  /// is how a scenario is *authored* as already engaged rather than as an
+  /// approach. Absent means none.
+  #[serde(default)]
+  pub contacts: Option<Vec<String>>,
 }
 
 #[skip_serializing_none]
@@ -94,11 +111,48 @@ impl SetPilotActions {
   }
 }
 
+/// Set which side a ship is on. `None` makes it unaligned.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetShipTeam {
+  pub ship_name: String,
+  pub team: Option<Team>,
+}
+
+/// Set a ship's emissions: whether it runs active sensors, and whether it is
+/// radiating on RF (transponder or radio comms).
+///
+/// Both are `Option` so a client can change one without restating the other.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetShipEmissions {
+  pub ship_name: String,
+  #[serde(default)]
+  pub active_sensors: Option<bool>,
+  #[serde(default)]
+  pub transmitting: Option<bool>,
+  /// Whether the ship shares its sensor picture with its team. Turning it on
+  /// forces `transmitting` on, since sharing means broadcasting.
+  #[serde(default)]
+  pub handoff_sensors: Option<bool>,
+}
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LaunchMissileMsg {
   pub source: String,
   pub target: String,
+  /// The weapon that threw this object, so a torpedo resolves with a torpedo's
+  /// damage on impact rather than a missile's.  Defaulted so scenarios saved
+  /// before torpedoes existed still load.
+  #[serde(default = "default_launcher")]
+  pub weapon: Weapon,
+}
+
+/// A single missile rack, matching how every launch behaved before the
+/// launching weapon was recorded.
+fn default_launcher() -> Weapon {
+  Weapon::single(WeaponType::Missile, WeaponMount::Turret)
 }
 
 #[serde_as]
@@ -192,6 +246,21 @@ pub enum EffectMsg {
   },
   Message {
     content: String,
+    /// What kind of event this reports, so the client can colour the results
+    /// log without parsing English out of `content`.
+    ///
+    /// Presentation only. The text stays server-authored -- the category is
+    /// never enough to rebuild the sentence, and is not meant to be.
+    #[serde(default)]
+    category: MessageCategory,
+    /// The ship the message is about, where there is a single obvious one.
+    ///
+    /// The subject, not the object: an attack is about the attacker, damage is
+    /// about the ship taking it. Lets the client tint or filter by ship later
+    /// without every message being rewritten again. Omitted when a message has
+    /// no one subject, e.g. a range band, which is about a pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ship: Option<String>,
   },
   EngineerAction {
     result: EngineerActionResult,
@@ -201,17 +270,80 @@ pub enum EffectMsg {
   /// reported but mean no boosts applied. `boosts_applied` is the actual list
   /// of targets that received a +1 (already truncated by N and filtered down
   /// to live queue entries).
+  ///
+  /// `roll` and `leadership` are the dice and the skill behind `points`, so
+  /// the log can show the check rather than only its net. `roll` is `None`
+  /// when the captain never pressed the button this round -- the resolution
+  /// still runs, with no points, and a roll must not be invented for it.
   LeadershipAction {
     ship_name: String,
+    roll: Option<u8>,
+    leadership: u8,
     points: i16,
     boosts_applied: Vec<BoostTarget>,
   },
 }
 
+/// What a [`EffectMsg::Message`] is reporting.
+///
+/// Deliberately coarse: this exists so the results log can be coloured and
+/// scanned, not so the client can reason about game state. Anything that needs
+/// real structure gets its own `EffectMsg` variant instead.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MessageCategory {
+  /// An attack roll resolving, hit or miss, before damage is worked out.
+  Attack,
+  /// Damage reaching a ship -- including a hit stopped dead by armour or
+  /// screens, which is still the story of that attack landing.
+  Damage,
+  /// A critical hit and what it broke.
+  Critical,
+  /// Sensor checks, contacts gained and lost, range bands opening and closing.
+  Detection,
+  /// Sensor pictures shared between team-mates, and why one could not be.
+  Handoff,
+  /// Engineer actions.
+  Engineering,
+  /// A captain's leadership roll and the boosts it bought.
+  Leadership,
+  /// A ship or missile leaving play.
+  Destruction,
+  /// Everything else: refused orders, errors, general notes.
+  #[default]
+  Info,
+}
+
 impl EffectMsg {
+  /// An uncategorised note. The fallback for messages that are neither about
+  /// one ship nor part of a mechanic worth colouring.
   #[must_use]
   pub fn message(content: String) -> EffectMsg {
-    EffectMsg::Message { content }
+    EffectMsg::Message {
+      content,
+      category: MessageCategory::Info,
+      ship: None,
+    }
+  }
+
+  /// A message about one ship: the subject of the sentence, not its object.
+  #[must_use]
+  pub fn about(ship: &str, category: MessageCategory, content: String) -> EffectMsg {
+    EffectMsg::Message {
+      content,
+      category,
+      ship: Some(ship.to_string()),
+    }
+  }
+
+  /// A categorised message with no single subject ship, such as a range band,
+  /// which is a fact about a pair rather than about either one of them.
+  #[must_use]
+  pub fn tagged(category: MessageCategory, content: String) -> EffectMsg {
+    EffectMsg::Message {
+      content,
+      category,
+      ship: None,
+    }
   }
 }
 
@@ -254,7 +386,7 @@ pub struct CaptainActionResult {
   pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Role {
   General = 0,
   Pilot,
@@ -270,7 +402,10 @@ pub enum Role {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserData {
   pub display_name: String,
-  pub role: Role,
+  /// Every station this player is working. One entry for a single role,
+  /// several for a player covering more than one seat on a small crew, and
+  /// `General` for all of them.
+  pub roles: Vec<Role>,
   pub ship: Option<String>,
 }
 
@@ -286,8 +421,29 @@ pub fn email_to_display_name(email: &str) -> String {
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChangeRole {
-  pub role: Role,
+  /// The stations to take. Accepted as either a list under `roles` or, from a
+  /// client written before roles were a set, a single name under `role`, so
+  /// the two halves of a deploy cannot race each other.
+  #[serde(alias = "role", deserialize_with = "one_or_many_roles")]
+  pub roles: Vec<Role>,
   pub ship: Option<String>,
+}
+
+/// A role list, or a bare role that reads as a list of one.
+fn one_or_many_roles<'de, D>(deserializer: D) -> Result<Vec<Role>, D::Error>
+where
+  D: serde::Deserializer<'de>,
+{
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum OneOrMany {
+    One(Role),
+    Many(Vec<Role>),
+  }
+  Ok(match OneOrMany::deserialize(deserializer)? {
+    OneOrMany::One(role) => vec![role],
+    OneOrMany::Many(roles) => roles,
+  })
 }
 
 #[serde_as]
@@ -354,6 +510,8 @@ pub enum RequestMsg {
   SetPlan(SetPlanMsg),
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),
+  SetShipEmissions(SetShipEmissions),
+  SetShipTeam(SetShipTeam),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
@@ -426,6 +584,10 @@ mod tests {
       design: default_template_name.clone(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     };
     let json = json!({
         "name": "ship1",
@@ -451,6 +613,10 @@ mod tests {
       design: default_template_name.clone(),
       crew: Some(crew),
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     };
     let json = json!({
         "name": "ship1",
@@ -604,12 +770,11 @@ mod tests {
     let json_str = serde_json::to_string(&msg).unwrap();
     assert_eq!(json_str, json.to_string());
 
-    let msg = EffectMsg::Message {
-      content: "2 points to the hull".to_string(),
-    };
+    let msg = EffectMsg::message("2 points to the hull".to_string());
     let json = json!({
         "kind" : "Message",
-        "content" : "2 points to the hull"
+        "content" : "2 points to the hull",
+        "category" : "Info"
     });
 
     let json_str = serde_json::to_string(&msg).unwrap();
@@ -634,6 +799,7 @@ mod tests {
           weapon_id: 0,
           target: "ship2".to_string(),
           called_shot_system: None,
+          firing_kind: None,
         }],
       ),
       (
@@ -642,6 +808,7 @@ mod tests {
           weapon_id: 1,
           target: "ship1".to_string(),
           called_shot_system: None,
+          firing_kind: None,
         }],
       ),
     ];

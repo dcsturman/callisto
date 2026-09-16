@@ -4,8 +4,7 @@ import * as THREE from "three";
 
 import { TextureLoader } from "three/src/loaders/TextureLoader";
 
-import { Line, scaleVector } from "lib/Util";
-import { SCALE } from "lib/universal";
+import { Line } from "lib/Util";
 import { Planet as PlanetType } from "lib/entities";
 
 import { useAppSelector } from "state/hooks";

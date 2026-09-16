@@ -12,7 +12,7 @@ use derivative::Derivative;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
-use strum_macros::FromRepr;
+use strum_macros::{EnumIter, FromRepr};
 
 use futures::stream::{self, StreamExt};
 
@@ -176,6 +176,15 @@ pub struct Ship {
   pub current_crew: u32,
   #[serde(default)]
   pub current_sensors: Sensors,
+
+  /// The ship's computer Bandwidth, as reduced by bridge crits.
+  ///
+  /// TODO: implement computer software. Nothing runs on the computer yet, so
+  /// this is only ever spent by a sensor hand-off (one point at each end) and
+  /// there is no notion of *available* Bandwidth distinct from the rating.
+  /// Once software exists, both the maximum and what is left should reach the
+  /// client and be shown on the ship's display; until then they are always the
+  /// same number and showing it would tell a player nothing.
   #[serde(default)]
   pub current_computer: u32,
   #[serde(default)]
@@ -185,9 +194,96 @@ pub struct Ship {
   #[serde(default)]
   pub sensor_locks: Vec<String>,
 
+  /// The ships this one currently detects.
+  ///
+  /// Directional: A having a contact on B says nothing about whether B has one
+  /// on A, which is what lets stealth work at all. Sticky once established -
+  /// High Guard p. 77, "after initial contact, sensor detection is maintained
+  /// under most circumstances" - so it is dropped only by losing a stealthed
+  /// target across a range band or by the range opening past Distant.
+  ///
+  /// A sensor lock requires a contact, and more broadly nothing can be done to
+  /// a ship that is not detected. Omitted from the wire when empty.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub contacts: Vec<String>,
+
+  /// Whether the ship is running active radar/lidar.
+  ///
+  /// Active sensors are what let a sensop pinpoint another ship at all: High
+  /// Guard p. 77, "attempting to locate a ship with this level of accuracy
+  /// requires the use of active sensors". They also announce the ship, handing
+  /// anyone looking for it DM+2 on the Initial Detection table.
+  ///
+  /// Running dark keeps the contacts already held - detection "is maintained
+  /// under most circumstances" - but acquires nothing new and cannot lock.
+  #[serde(default = "default_true", skip_serializing_if = "is_true")]
+  pub active_sensors: bool,
+
+  /// Whether the ship is radiating on RF: transponder, radio comms, or both.
+  ///
+  /// High Guard's row is "transponder **or** radio comms" at +6 — the single
+  /// largest modifier on the detection table — so the two are one flag. A
+  /// merchant squawking its transponder because it believes all is well, and a
+  /// stealth ship breaking silence to warn a team-mate, are the same emission
+  /// as far as anyone hunting them is concerned.
+  ///
+  /// Defaults to **off**. RAW expects transponders on in civilised space, but
+  /// this is the largest row on the detection table by some margin, and a ship
+  /// left transmitting by accident is simply found — which would quietly undo
+  /// stealth for any scenario whose author did not think about it. Defaulting
+  /// off means a scenario opts into the noise deliberately, which is the safer
+  /// direction for a switch this loud. Scenario builders can turn it on per
+  /// ship when adding one.
+  ///
+  /// Receiving a transmission does not set this. Listening is passive; only
+  /// sending gives you away.
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub transmitting: bool,
+
+  /// Whether this ship is sharing its sensor picture with its team.
+  ///
+  /// A hand-off is automatic in RAW — it needs no check and no action, only a
+  /// point of computer Bandwidth at each end — so this is a standing setting
+  /// rather than something the sensop does each round.
+  ///
+  /// Sharing means transmitting, so turning this on forces `transmitting` on
+  /// and holds it there: a ship cannot pass its contacts to anyone while
+  /// running silent. Turning it off releases the flag but does not switch it
+  /// back off, since the crew may want to stay lit for other reasons.
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub handoff_sensors: bool,
+
+  /// Whether this ship's comms are being jammed this round.
+  ///
+  /// Transient: set by a successful `JamComms` and cleared at the end of the
+  /// round, so it never reaches the wire or a saved scenario. While it is set
+  /// the ship can neither send nor receive a sensor hand-off — jamming stops
+  /// communication, and a hand-off is communication.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  pub comms_jammed: bool,
+
+  /// Which side this ship is on, if any.
+  ///
+  /// Unaligned by default, and omitted from the wire when unset, so nothing
+  /// built before teams existed changes. Nothing enforces it yet — it colours
+  /// the display and will be what sensor hand-offs are shared along.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub team: Option<Team>,
+
+  /// The crew aboard, or `None` when the scenario did not say.
+  ///
+  /// `None` means "take the design's", resolved by `fixup_current_values` on
+  /// load -- which is why this is private and read through `get_crew`. Without
+  /// the Option an omitted crew and a deliberately green one are the same JSON,
+  /// and a design-level crew could never be overridden back down to zero.
+  ///
+  /// Always `Some` by the time it reaches a client.
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
-  pub crew: Crew,
+  crew: Option<Crew>,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -263,6 +359,35 @@ pub struct Ship {
   pub attack_dm: i32,
   #[serde(skip)]
   pub point_defense_list: Vec<(usize, u16)>,
+  /// Everything this ship can shoot down this round, in pool points.
+  ///
+  /// Batteries contribute their Intercept (High Guard p. 40) and each queued
+  /// gunner contributes the Effect of one check (Core Rulebook p. 171); the
+  /// book totals them into a single pool, so this does too.  A missile costs
+  /// one point and a torpedo two.
+  ///
+  /// Per-round scratch like `point_defense_list`, so it is not persisted.
+  #[serde(skip)]
+  pub point_defense_pool: u32,
+  /// Damage each of this ship's screens will absorb this round, index-aligned
+  /// with the design's `screens`.  Rolled once at the start of resolution and
+  /// spent as attacks arrive; per-round scratch, so not persisted.
+  #[serde(skip)]
+  pub screen_pool: Vec<u32>,
+  /// Power currently suppressed by ion hits.
+  ///
+  /// Ion weapons deal no lasting harm -- the Power comes back when the effect
+  /// lapses -- so this is tracked apart from `current_power` rather than
+  /// subtracted from it.  Keeping them separate means a repair cannot
+  /// accidentally "fix" an ion hit, and an ion hit cannot mask real damage.
+  ///
+  /// Omitted from the wire when zero, so a ship nobody has shot with an ion
+  /// cannon serializes exactly as it did before ion existed.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub ion_power_loss: u32,
+  /// Rounds of ion suppression still to run.  Zero means none.
+  #[serde(default, skip_serializing_if = "is_zero_u8")]
+  pub ion_rounds: u8,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -280,6 +405,29 @@ fn is_default_power_multiplier(value: &f32) -> bool {
 /// the use of a reference a bit funny, but necessary.
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u8(value: &u8) -> bool {
+  *value == 0
+}
+
+/// Active sensors default to on: a ship runs them unless the crew decides to
+/// go quiet.
+fn default_true() -> bool {
+  true
+}
+
+/// Paired with `default_true` so a ship running normally adds nothing to the
+/// wire or to a saved scenario.
+///
+/// Takes a reference because that is what `skip_serializing_if` hands it, the
+/// same wrinkle as the other helpers here.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_true(value: &bool) -> bool {
+  *value
+}
+
+/// A helper function to avoid serializing when zero.  It makes
+/// the use of a reference a bit funny, but necessary.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u32(value: &u32) -> bool {
   *value == 0
 }
 
@@ -315,7 +463,25 @@ pub struct ShipDesignTemplate {
   pub stealth: Option<Stealth>,
   pub countermeasures: Option<CounterMeasures>,
   pub computer: u32,
+  /// The crew this ship flies with, for a design that is one particular ship
+  /// rather than a class.
+  ///
+  /// HMS Executor is a single hull with a single crew; restating their skills
+  /// in every scenario is how they drift, and they had -- three scenarios gave
+  /// her three different crews. Gunnery makes the case on its own: it is
+  /// index-aligned with `weapons` below, so a design whose armament changes
+  /// silently misaligns every scenario's array onto the wrong mounts.
+  ///
+  /// A scenario that states its own `crew` still wins, so a wounded or
+  /// replacement crew stays expressible. Left unset on class designs, where
+  /// there is no such thing as "the" crew.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub crew_skills: Option<Crew>,
   pub weapons: Vec<Weapon>,
+  /// Directed defensive systems (High Guard pp. 40-41).  Omitted from the wire
+  /// when empty, so every design written before screens existed is unchanged.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub screens: Vec<ScreenType>,
   pub tl: u8,
   /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
   /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
@@ -325,20 +491,231 @@ pub struct ShipDesignTemplate {
   pub source: Option<String>,
 }
 
+/// A High Guard weapon Advantage or Disadvantage (pp. 70-71).
+///
+/// These attach to the **weapon**, not the mount: the book fits a triple turret
+/// with "long range, high yield pulse lasers x2, sandcaster", where only the
+/// lasers are modified.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+pub enum WeaponModifier {
+  /// DM+1 to all attack rolls.
+  Accurate,
+  /// DM-1 to all attack rolls.
+  Inaccurate,
+  /// Rolling damage, every `1` counts as `2`.  Not applicable to missiles or
+  /// torpedoes.
+  HighYield,
+  /// Rolling damage, every `1` and `2` counts as `3`.  Not applicable to
+  /// missiles or torpedoes.
+  VeryHighYield,
+  /// AP+2.  Lasers and particle weapons only.
+  IntenseFocus,
+  /// Range increased by one band, to a maximum of Very Long.
+  LongRange,
+  /// Critical hits on this weapon are one Severity lower.
+  Resilient,
+  /// Consumes 25% less Power.  Recorded but inert: Callisto does not model a
+  /// weapon's power draw in play.
+  EnergyEfficient,
+  /// Consumes 30% more Power.  Recorded but inert, as above.
+  EnergyInefficient,
+  /// 10% less tonnage.  Recorded but inert: tonnage is not validated.
+  SizeReduction,
+  /// 25% more tonnage.  Recorded but inert, as above.
+  IncreasedSize,
+  /// DM+1 to repair attempts.  Recorded but inert.
+  EasyToRepair,
+}
+
+impl From<WeaponModifier> for String {
+  fn from(m: WeaponModifier) -> Self {
+    match m {
+      WeaponModifier::Accurate => "accurate".to_string(),
+      WeaponModifier::Inaccurate => "inaccurate".to_string(),
+      WeaponModifier::HighYield => "high yield".to_string(),
+      WeaponModifier::VeryHighYield => "very high yield".to_string(),
+      WeaponModifier::IntenseFocus => "intense focus".to_string(),
+      WeaponModifier::LongRange => "long range".to_string(),
+      WeaponModifier::Resilient => "resilient".to_string(),
+      WeaponModifier::EnergyEfficient => "energy efficient".to_string(),
+      WeaponModifier::EnergyInefficient => "energy inefficient".to_string(),
+      WeaponModifier::SizeReduction => "size reduction".to_string(),
+      WeaponModifier::IncreasedSize => "increased size".to_string(),
+      WeaponModifier::EasyToRepair => "easy to repair".to_string(),
+    }
+  }
+}
+
+/// One gun inside a mount.
+///
+/// Modifiers live here rather than on the mount because the book fits a triple
+/// turret with "long range, high yield pulse lasers x2, sandcaster" -- only the
+/// lasers are modified.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct Weapon {
+pub struct Gun {
   pub kind: WeaponType,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub modifiers: Vec<WeaponModifier>,
+}
+
+impl Gun {
+  #[must_use]
+  pub fn new(kind: WeaponType) -> Self {
+    Gun {
+      kind,
+      modifiers: vec![],
+    }
+  }
+
+  #[must_use]
+  pub fn with_modifiers(kind: WeaponType, modifiers: Vec<WeaponModifier>) -> Self {
+    Gun { kind, modifiers }
+  }
+}
+
+/// A mount resolved down to the one weapon type it is firing.
+///
+/// A mixed turret may only use one type per round (Core Rulebook p. 166), so
+/// everything downstream of that choice works on this rather than on the mount.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Firing<'a> {
+  pub kind: WeaponType,
+  pub mount: &'a WeaponMount,
+  pub modifiers: &'a [WeaponModifier],
+  /// Guns of this type in the mount, for the same-type damage bonus.
+  pub count: u8,
+}
+
+/// One weapon mount and everything bolted into it.
+///
+/// This is the unit `weapon_id` addresses and the unit a gunner is assigned to,
+/// which is why a mixed turret is one `Weapon` with several `Gun`s rather than
+/// several `Weapon`s.  A turret holds one to three guns; every other mount holds
+/// exactly one.
+///
+/// See `docs/mixed_turrets_design.md`.  The wire format still writes the older
+/// `{kind, mount, modifiers}` shape whenever every gun matches, so existing
+/// designs are unchanged -- see the `Serialize`/`Deserialize` impls below.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Weapon {
   pub mount: WeaponMount,
+  pub guns: Vec<Gun>,
+}
+
+impl Weapon {
+  /// A mount holding `count` identical guns.
+  #[must_use]
+  pub fn uniform(kind: WeaponType, mount: WeaponMount, count: u8) -> Self {
+    Weapon {
+      mount,
+      guns: (0..count.max(1)).map(|_| Gun::new(kind)).collect(),
+    }
+  }
+
+  /// A mount holding a single gun, for barbettes, bays and fixed mounts.
+  #[must_use]
+  pub fn single(kind: WeaponType, mount: WeaponMount) -> Self {
+    Weapon {
+      mount,
+      guns: vec![Gun::new(kind)],
+    }
+  }
+
+  /// True when every gun in this mount is the same type.
+  ///
+  /// A uniform mount fires all its guns together; a mixed one must choose a
+  /// type each round (Core Rulebook p. 166).
+  #[must_use]
+  pub fn is_uniform(&self) -> bool {
+    self.guns.windows(2).all(|pair| pair[0].kind == pair[1].kind)
+  }
+
+  /// The distinct weapon types in this mount, in first-appearance order.
+  #[must_use]
+  pub fn kinds(&self) -> Vec<WeaponType> {
+    let mut seen: Vec<WeaponType> = Vec::new();
+    for gun in &self.guns {
+      if !seen.contains(&gun.kind) {
+        seen.push(gun.kind);
+      }
+    }
+    seen
+  }
+
+  /// How many guns of `kind` this mount holds.
+  ///
+  /// This is the count the same-type damage bonus and the sandcaster and
+  /// point-defence tallies all want -- not the size of the turret, which in a
+  /// mixed mount overstates every one of them.
+  #[must_use]
+  pub fn count_of(&self, kind: WeaponType) -> u8 {
+    u8::try_from(self.guns.iter().filter(|gun| gun.kind == kind).count()).unwrap_or(u8::MAX)
+  }
+
+  /// Whether this mount carries any gun of `kind`.
+  #[must_use]
+  pub fn has_kind(&self, kind: WeaponType) -> bool {
+    self.guns.iter().any(|gun| gun.kind == kind)
+  }
+
+  /// Resolve this mount for firing a particular weapon type.
+  ///
+  /// `None` when the mount carries no gun of that type.  The `count` is the
+  /// number of guns of that type -- not the size of the turret -- which is what
+  /// the same-type damage bonus wants, and the distinction only matters once a
+  /// turret can hold different weapons.
+  #[must_use]
+  pub fn firing(&self, kind: WeaponType) -> Option<Firing<'_>> {
+    let count = self.count_of(kind);
+    if count == 0 {
+      return None;
+    }
+    let modifiers = self
+      .guns
+      .iter()
+      .find(|gun| gun.kind == kind)
+      .map_or(&[] as &[WeaponModifier], |gun| gun.modifiers.as_slice());
+    Some(Firing {
+      kind,
+      mount: &self.mount,
+      modifiers,
+      count,
+    })
+  }
+
+  /// Resolve a uniform mount, or the first gun of a mixed one.
+  #[must_use]
+  pub fn firing_default(&self) -> Option<Firing<'_>> {
+    self.guns.first().and_then(|gun| self.firing(gun.kind))
+  }
+
+  /// The type a uniform mount fires, or the first gun's type otherwise.
+  ///
+  /// Callers that must handle a mixed mount correctly should use [`kinds`] or
+  /// [`count_of`]; this exists for logging and display.
+  #[must_use]
+  pub fn primary_kind(&self) -> WeaponType {
+    self.guns.first().map_or(WeaponType::Beam, |gun| gun.kind)
+  }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum WeaponMount {
-  Turret(u8),
+  /// A turret holds one to three guns; the count lives in `Weapon::guns`
+  /// rather than here, so the two cannot disagree.
+  Turret,
   Barbette,
   Bay(BaySize),
   /// A single weapon bolted to the hull.  Unlike a turret it cannot traverse,
   /// so it fires along the thrust vector only and cannot serve as point defense.
   FixedMount,
+  /// A 20-ton point-defence battery consuming one Hardpoint.  The `u8` is the
+  /// book's Type -- 1, 2 or 3 (High Guard p. 40) -- which sets its Intercept.
+  ///
+  /// The grade lives here rather than on [`WeaponType`] so that a second family
+  /// of batteries (the book also sells gauss ones) is a single new `WeaponType`
+  /// reusing these same mounts.
+  Battery(u8),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,13 +725,413 @@ pub enum BaySize {
   Large,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
 pub enum WeaponType {
   Beam = 0,
   Pulse,
   Missile,
   Sand,
   Particle,
+  // Everything below was added after the fact.  Variants are appended rather
+  // than sorted into place because scenario and design JSON round-trips these
+  // by name, and because the older entries above are load-bearing in saved
+  // games.  Order carries no meaning.
+  Torpedo,
+  Fusion,
+  Plasma,
+  Railgun,
+  Meson,
+  MassDriver,
+  Repulsor,
+  /// An ion cannon.  Instead of damaging the hull it temporarily drains the
+  /// target's Power, disabling rather than destroying (High Guard p. 30).
+  Ion,
+  /// A point-defence laser battery.  Never fires offensively and never takes an
+  /// attack roll: it is a passive sink that deletes incoming missiles.  Its
+  /// Intercept grade lives on [`WeaponMount::Battery`].
+  PointDefense,
+}
+
+/// A weapon mount with the turret count erased.
+///
+/// Turret size scales the *number of guns*, never the damage multiple, so every
+/// `Turret(n)` shares one profile.  `FixedMount` is our own concept rather than
+/// the book's — High Guard treats a fixed mount as a turret that cannot
+/// traverse — so it resolves to the same profiles a turret gets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
+pub enum MountClass {
+  Turret,
+  Fixed,
+  Barbette,
+  SmallBay,
+  MediumBay,
+  LargeBay,
+  /// Point-defence batteries.  Unlike every other class this is not a size --
+  /// all batteries are 20 tons -- but it has to be distinct so the profile
+  /// table can refuse to put a gun in one.
+  Battery,
+}
+
+impl From<&WeaponMount> for MountClass {
+  fn from(mount: &WeaponMount) -> Self {
+    match mount {
+      WeaponMount::Turret => MountClass::Turret,
+      WeaponMount::FixedMount => MountClass::Fixed,
+      WeaponMount::Barbette => MountClass::Barbette,
+      WeaponMount::Bay(BaySize::Small) => MountClass::SmallBay,
+      WeaponMount::Bay(BaySize::Medium) => MountClass::MediumBay,
+      WeaponMount::Bay(BaySize::Large) => MountClass::LargeBay,
+      WeaponMount::Battery(_) => MountClass::Battery,
+    }
+  }
+}
+
+/// How many objects a launcher throws per attack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Salvo {
+  /// One per gun in the mount, i.e. `Turret(n)` launches `n`.
+  PerGun,
+  /// A large missile bay throws 120, so this does not fit in a `u8`.
+  Fixed(u16),
+}
+
+/// Everything about a weapon that depends on how it is mounted.
+///
+/// A weapon scales its output in exactly one of two ways, never both: direct-fire
+/// weapons multiply damage by the mount's Damage Multiple (High Guard p. 29),
+/// while launchers throw a bigger salvo and take no multiple at all. That
+/// invariant is why `use_multiple` and `salvo` are always opposites in the
+/// table below.
+// The bools are the book's weapon traits, which are genuinely independent of
+// one another -- a weapon can be any combination of them.  Bundling them into
+// a flags type would obscure the mapping to the printed tables without making
+// any illegal state unrepresentable.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WeaponProfile {
+  /// Tech level of the weapon itself, which drives the Smart DM.
+  pub tl: u8,
+  pub damage_dice: u8,
+  pub hit_mod: i32,
+  /// The longest band this reaches; `None` is the book's "Special", meaning
+  /// range never rules the shot out.
+  pub max_range: Option<Range>,
+  /// Armour ignored before damage is reduced. [`AP_INFINITE`] ignores all of it.
+  pub ap: u8,
+  pub radiation: bool,
+  /// Smart rounds add their TL minus the target's, clamped to +1..=+6
+  /// (Core Rulebook p. 79).
+  pub smart: bool,
+  pub use_multiple: bool,
+  /// `None` for direct-fire weapons.
+  pub salvo: Option<Salvo>,
+  /// Damage suppresses the target's Power instead of harming its hull
+  /// (High Guard p. 30).  Nothing is permanently destroyed.
+  pub ion: bool,
+}
+
+// --- Weapon wire format ---------------------------------------------------
+//
+// A `Weapon` used to be one gun that knew its mount: `{kind, mount: {Turret: 3},
+// modifiers}` meant a triple turret of three identical guns.  It is now a mount
+// holding a list of guns, so that a turret can hold different ones.
+//
+// Both spellings are read.  The old one is still *written* whenever every gun in
+// a mount matches, which is every design in the library, so this change leaves
+// those files byte-identical and only a genuinely mixed turret gets new syntax.
+
+/// The mount as it appears on the wire, where a turret still carries its size.
+#[derive(Serialize, Deserialize)]
+enum MountWire {
+  Turret(u8),
+  Barbette,
+  Bay(BaySize),
+  FixedMount,
+  Battery(u8),
+}
+
+impl MountWire {
+  fn to_mount(&self) -> WeaponMount {
+    match self {
+      MountWire::Turret(_) => WeaponMount::Turret,
+      MountWire::Barbette => WeaponMount::Barbette,
+      MountWire::Bay(size) => WeaponMount::Bay(*size),
+      MountWire::FixedMount => WeaponMount::FixedMount,
+      MountWire::Battery(grade) => WeaponMount::Battery(*grade),
+    }
+  }
+
+  fn from_mount(mount: &WeaponMount, guns: usize) -> Self {
+    match mount {
+      WeaponMount::Turret => MountWire::Turret(u8::try_from(guns).unwrap_or(1)),
+      WeaponMount::Barbette => MountWire::Barbette,
+      WeaponMount::Bay(size) => MountWire::Bay(*size),
+      WeaponMount::FixedMount => MountWire::FixedMount,
+      WeaponMount::Battery(grade) => MountWire::Battery(*grade),
+    }
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WeaponWire {
+  /// The shape every existing design file uses: one kind, and a turret size.
+  Uniform {
+    kind: WeaponType,
+    mount: MountWire,
+    #[serde(default)]
+    modifiers: Vec<WeaponModifier>,
+  },
+  /// A mount listing its guns, needed only when they differ.
+  Guns { mount: MountWire, guns: Vec<Gun> },
+}
+
+impl<'de> Deserialize<'de> for Weapon {
+  fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    Ok(match WeaponWire::deserialize(deserializer)? {
+      WeaponWire::Uniform { kind, mount, modifiers } => {
+        // A turret's size becomes that many identical guns; everything else
+        // holds exactly one.
+        let count = match mount {
+          MountWire::Turret(size) => size.max(1),
+          _ => 1,
+        };
+        Weapon {
+          mount: mount.to_mount(),
+          guns: (0..count)
+            .map(|_| Gun {
+              kind,
+              modifiers: modifiers.clone(),
+            })
+            .collect(),
+        }
+      }
+      WeaponWire::Guns { mount, guns } => Weapon {
+        mount: mount.to_mount(),
+        guns,
+      },
+    })
+  }
+}
+
+impl Serialize for Weapon {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    let mount = MountWire::from_mount(&self.mount, self.guns.len());
+    if self.is_uniform() {
+      // Write the older shape so existing designs round-trip unchanged.
+      let first = self.guns.first();
+      WeaponUniformOut {
+        kind: first.map_or(WeaponType::Beam, |gun| gun.kind),
+        mount,
+        modifiers: first.map(|gun| gun.modifiers.clone()).unwrap_or_default(),
+      }
+      .serialize(serializer)
+    } else {
+      WeaponGunsOut {
+        mount,
+        guns: &self.guns,
+      }
+      .serialize(serializer)
+    }
+  }
+}
+
+#[derive(Serialize)]
+struct WeaponUniformOut {
+  kind: WeaponType,
+  mount: MountWire,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  modifiers: Vec<WeaponModifier>,
+}
+
+#[derive(Serialize)]
+struct WeaponGunsOut<'a> {
+  mount: MountWire,
+  guns: &'a Vec<Gun>,
+}
+
+/// A directed defensive system that reduces the damage of a specific kind of
+/// attack (High Guard pp. 40-41).
+///
+/// Screens are not weapons: they have no mount, consume no Hardpoint, never
+/// fire, and cannot be aimed.  They live in their own list rather than in
+/// `Ship::weapons()` for exactly that reason.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+pub enum ScreenType {
+  /// Reduces meson weapon damage by 2D x 10.
+  Meson,
+  /// Reduces fusion and nuclear-warhead damage by 2D.
+  NuclearDamper,
+}
+
+impl ScreenType {
+  /// Damage dice this screen rolls, and the factor its roll is multiplied by.
+  ///
+  /// The meson screen's x10 is part of its stated reduction, not a separate
+  /// step: "a successful use of a meson screen reduces the damage of a meson
+  /// weapon by 2D x 10" (High Guard p. 41).
+  #[must_use]
+  pub const fn reduction_dice(self) -> (u8, u32) {
+    match self {
+      ScreenType::Meson => (2, 10),
+      ScreenType::NuclearDamper => (2, 1),
+    }
+  }
+
+  /// Whether this screen defends against a given weapon.
+  ///
+  /// Screens are strictly type-specific: a meson screen does nothing against a
+  /// fusion gun and a nuclear damper does nothing against a meson gun.
+  #[must_use]
+  pub fn defends_against(self, kind: WeaponType) -> bool {
+    match self {
+      ScreenType::Meson => kind == WeaponType::Meson,
+      // The book also covers nuclear warheads, which Callisto does not model.
+      ScreenType::NuclearDamper => kind == WeaponType::Fusion,
+    }
+  }
+}
+
+impl From<ScreenType> for String {
+  fn from(s: ScreenType) -> Self {
+    match s {
+      ScreenType::Meson => "meson screen".to_string(),
+      ScreenType::NuclearDamper => "nuclear damper".to_string(),
+    }
+  }
+}
+
+/// Meson guns ignore armour entirely (the book writes this as "AP ∞").
+pub const AP_INFINITE: u8 = u8::MAX;
+
+impl WeaponProfile {
+  /// A direct-fire weapon: takes the mount's Damage Multiple, throws nothing.
+  #[must_use]
+  pub const fn gun(tl: u8, damage_dice: u8, max_range: Range) -> Self {
+    Self {
+      tl,
+      damage_dice,
+      hit_mod: 0,
+      max_range: Some(max_range),
+      ap: 0,
+      radiation: false,
+      smart: false,
+      use_multiple: true,
+      salvo: None,
+      ion: false,
+    }
+  }
+
+  /// A launcher: throws `salvo` objects that resolve on impact.  Range is
+  /// "Special" and the Damage Multiple never applies — salvo size is the
+  /// scaling instead.
+  #[must_use]
+  pub const fn launcher(tl: u8, damage_dice: u8, salvo: Salvo) -> Self {
+    Self {
+      tl,
+      damage_dice,
+      hit_mod: 0,
+      max_range: None,
+      ap: 0,
+      radiation: false,
+      smart: true,
+      use_multiple: false,
+      salvo: Some(salvo),
+      ion: false,
+    }
+  }
+
+  /// A weapon whose damage the rules leave as "Special", so it rolls nothing.
+  #[must_use]
+  pub const fn special(tl: u8, max_range: Range) -> Self {
+    Self {
+      damage_dice: 0,
+      use_multiple: false,
+      ..Self::gun(tl, 0, max_range)
+    }
+  }
+
+  #[must_use]
+  pub const fn hit(mut self, hit_mod: i32) -> Self {
+    self.hit_mod = hit_mod;
+    self
+  }
+
+  #[must_use]
+  pub const fn ap(mut self, ap: u8) -> Self {
+    self.ap = ap;
+    self
+  }
+
+  #[must_use]
+  pub const fn rad(mut self) -> Self {
+    self.radiation = true;
+    self
+  }
+
+  /// Mark this as an ion weapon: it drains Power rather than damaging the hull,
+  /// and ignores armour entirely while doing so.
+  #[must_use]
+  pub const fn ion(mut self) -> Self {
+    self.ion = true;
+    self.ap = AP_INFINITE;
+    self
+  }
+
+  /// Apply a weapon's Advantages and Disadvantages to its profile.
+  ///
+  /// Only the ones that change how a weapon *fires* are handled here; the rest
+  /// are recorded on the weapon but inert (power draw and tonnage are not
+  /// modelled).  Modifiers the rules forbid for this weapon are ignored rather
+  /// than rejected, so a hand-edited design still loads.
+  #[must_use]
+  pub fn with_modifiers(mut self, kind: WeaponType, modifiers: &[WeaponModifier]) -> Self {
+    for modifier in modifiers {
+      match modifier {
+        WeaponModifier::Accurate => self.hit_mod += 1,
+        WeaponModifier::Inaccurate => self.hit_mod -= 1,
+        // "Intense Focus can only be applied to lasers and particle weapons."
+        WeaponModifier::IntenseFocus if kind.is_laser() || kind == WeaponType::Particle => {
+          self.ap = self.ap.saturating_add(2);
+        }
+        // "The range for the weapon is increased by one band, to a maximum of
+        // Very Long."  A launcher has no range band to raise.
+        WeaponModifier::LongRange => {
+          self.max_range = self.max_range.map(Range::one_band_further);
+        }
+        // Yield changes the dice themselves; see `min_die`.
+        _ => {}
+      }
+    }
+    self
+  }
+
+  /// The lowest value any damage die may show, after High Yield.
+  ///
+  /// "When rolling damage for a High Yield weapon ... any '1's rolled are
+  /// counted as '2's", and Very High Yield counts '1's and '2's as '3's
+  /// (High Guard p. 71).  Neither applies to missiles or torpedoes.
+  #[must_use]
+  pub fn min_die(kind: WeaponType, modifiers: &[WeaponModifier]) -> u8 {
+    if matches!(kind, WeaponType::Missile | WeaponType::Torpedo) {
+      return 1;
+    }
+    modifiers
+      .iter()
+      .map(|modifier| match modifier {
+        WeaponModifier::VeryHighYield => 3,
+        WeaponModifier::HighYield => 2,
+        _ => 1,
+      })
+      .max()
+      .unwrap_or(1)
+  }
+
+  /// Whether this weapon may be fired at `range`.
+  #[must_use]
+  pub fn reaches(&self, range: Range) -> bool {
+    self.max_range.is_none_or(|max| range <= max)
+  }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
@@ -376,9 +1153,33 @@ pub enum Range {
   Distant,
 }
 
+impl Range {
+  /// The next range band out, saturating at Very Long.
+  ///
+  /// Distant is deliberately not reachable: "the range for the weapon is
+  /// increased by one band, to a maximum of Very Long" (High Guard p. 71).
+  #[must_use]
+  pub const fn one_band_further(self) -> Self {
+    match self {
+      Range::Short => Range::Medium,
+      Range::Medium => Range::Long,
+      Range::Long | Range::VeryLong | Range::Distant => Range::VeryLong,
+    }
+  }
+}
+
 impl Display for Range {
+  /// Written the way the book writes them. Was the derived `Debug`, which
+  /// reached players as the identifier `VeryLong` wherever a band is named.
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{self:?}")
+    let name = match self {
+      Range::Short => "Short",
+      Range::Medium => "Medium",
+      Range::Long => "Long",
+      Range::VeryLong => "Very Long",
+      Range::Distant => "Distant",
+    };
+    write!(f, "{name}")
   }
 }
 
@@ -388,6 +1189,20 @@ pub enum Stealth {
   Improved,
   Enhanced,
   Advanced,
+}
+
+/// Which side a ship is on.
+///
+/// Capped at four, and named for colours rather than numbers because the whole
+/// point is that the display codes them: a referee reading "Red" on a dropdown
+/// and seeing a red ship in the view needs no translation step. `None` means
+/// unaligned, which is how every ship built before teams existed arrives.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Team {
+  Red,
+  Blue,
+  Green,
+  Gold,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -437,9 +1252,15 @@ impl Ship {
       current_computer: design.computer,
       active_weapons: vec![true; num_weapons],
       sensor_locks: vec![],
+      contacts: vec![],
+      active_sensors: true,
+      transmitting: false,
+      handoff_sensors: false,
+      comms_jammed: false,
+      team: None,
       crit_level: [0; 11],
       attack_dm: 0,
-      crew: crew.unwrap_or_default(),
+      crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
       dodge_thrust: 0,
       assist_gunners: false,
       can_jump: false,
@@ -452,7 +1273,35 @@ impl Ship {
       leadership_points: 0,
       leadership_rolled: false,
       point_defense_list: vec![],
+      point_defense_pool: 0,
+      screen_pool: vec![],
+      ion_power_loss: 0,
+      ion_rounds: 0,
     }
+  }
+
+  /// Reset every current value to what the design says, discarding damage.
+  ///
+  /// `fixup_current_values` raises a current value to the design's but never
+  /// lowers it, so that loading an undamaged ship fills the blanks in. That is
+  /// wrong when the *design itself* changes: re-pointing a ship at a smaller
+  /// hull left it with the larger one's hull, thrust and sensors, and the ship
+  /// went on flying at a rating its new design cannot reach.
+  pub fn reset_current_values_to_design(&mut self) {
+    self.current_hull = self.design.hull;
+    self.current_armor = self.design.armor;
+    self.current_power = self.design.power;
+    self.current_maneuver = self.design.maneuver;
+    self.current_jump = self.design.jump;
+    self.current_fuel = self.design.fuel;
+    self.current_crew = self.design.crew;
+    self.current_sensors = self.design.sensors;
+    self.current_computer = self.design.computer;
+    self.resolve_crew();
+    self.active_weapons = vec![true; self.weapons().len()];
+    self.crit_level = [0; 11];
+    self.attack_dm = 0;
+    self.dodge_thrust = 0;
   }
 
   pub fn fixup_current_values(&mut self) {
@@ -464,6 +1313,8 @@ impl Ship {
     self.current_fuel = u32::max(self.current_fuel, self.design.fuel);
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
+    self.current_computer = u32::max(self.current_computer, self.design.computer);
+    self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.attack_dm = 0;
@@ -514,7 +1365,7 @@ impl Ship {
 
   #[must_use]
   pub fn max_acceleration(&self) -> u8 {
-    let power_limit = self.design.best_thrust(self.current_power);
+    let power_limit = self.design.best_thrust(self.available_power());
     let maneuver_limit = self.current_maneuver;
 
     // TODO: Remove this once using a match doesn't trigger the warning about attributes on expressions being experimental.
@@ -580,12 +1431,29 @@ impl Ship {
   }
 
   #[must_use]
+  /// The crew aboard. An unresolved crew reads as untrained rather than
+  /// panicking; `fixup_current_values` resolves it on every load path.
   pub fn get_crew(&self) -> &Crew {
-    &self.crew
+    static UNTRAINED: std::sync::LazyLock<Crew> = std::sync::LazyLock::new(Crew::new);
+    self.crew.as_ref().unwrap_or(&UNTRAINED)
   }
 
   pub fn get_crew_mut(&mut self) -> &mut Crew {
-    &mut self.crew
+    self.crew.get_or_insert_with(Crew::new)
+  }
+
+  pub fn set_crew(&mut self, crew: Crew) {
+    self.crew = Some(crew);
+  }
+
+  /// Fill in the crew from the design when the scenario did not name one.
+  ///
+  /// Idempotent, and never overwrites: a scenario that states its own crew
+  /// keeps it. Falls back to untrained so `crew` is `Some` from here on.
+  fn resolve_crew(&mut self) {
+    if self.crew.is_none() {
+      self.crew = Some(self.design.crew_skills.clone().unwrap_or_default());
+    }
   }
 
   pub fn enable_jump(&mut self) {
@@ -595,6 +1463,100 @@ impl Ship {
   #[must_use]
   pub fn can_jump(&self) -> bool {
     self.can_jump
+  }
+
+  /// The thrust this ship is applying, in whole G, for the detection tables.
+  ///
+  /// "Target is operating manoeuvre drive: +1 per Thrust". A flight plan may
+  /// carry two accelerations with separate durations; the louder of the two is
+  /// what a sensop notices, so the maximum magnitude is used rather than an
+  /// average. Rounded down, so a ship drifting under 1G contributes nothing.
+  #[must_use]
+  pub fn thrust_in_g(&self) -> u8 {
+    let first = self.plan.0 .0.magnitude();
+    let second = self.plan.1.as_ref().map_or(0.0, |accel| accel.0.magnitude());
+    let loudest = first.max(second);
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let g = (loudest / crate::entity::G).floor().clamp(0.0, f64::from(u8::MAX)) as u8;
+    g
+  }
+
+  /// Total severity of the critical hits this ship has taken.
+  ///
+  /// "Stealthed target has been damaged and emits heat: +1 per Severity".
+  /// Summed across every system, and cleared with the rest of `crit_level` on
+  /// repair or reset.
+  #[must_use]
+  pub fn total_crit_severity(&self) -> u16 {
+    self.crit_level.iter().map(|level| u16::from(*level)).sum()
+  }
+
+  /// Turn sensor hand-off on or off.
+  ///
+  /// Switching it on also switches transmitting on, because sharing contacts
+  /// means broadcasting them. Switching it off leaves transmitting where it is:
+  /// the crew may have wanted to be lit up anyway, and silently going quiet
+  /// would be a surprise.
+  pub fn set_handoff_sensors(&mut self, handoff: bool) {
+    self.handoff_sensors = handoff;
+    if handoff {
+      self.transmitting = true;
+    }
+  }
+
+  /// Whether this ship knows where `target` is.
+  ///
+  /// Ships on the same side always do. A squadron shares a plot as a matter of
+  /// course — they launched together, they are in comms, and they are not
+  /// hunting each other — so making a sensop roll to find your own wingman
+  /// would be strange. This is not a sensor hand-off: hand-offs share contacts
+  /// on *third parties*, and cost Bandwidth and an emission to do it.
+  ///
+  /// Otherwise it is a question of what the sensors have found.
+  #[must_use]
+  pub fn detects(&self, target: &Ship) -> bool {
+    if let (Some(mine), Some(theirs)) = (self.team, target.team) {
+      if mine == theirs {
+        return true;
+      }
+    }
+    self.contacts.iter().any(|name| name == target.get_name())
+  }
+
+  /// Set the ship's emissions, returning whether shutting down active sensors
+  /// dropped any locks.
+  ///
+  /// `None` leaves a setting alone, so a caller can change one without knowing
+  /// the other.
+  ///
+  /// Shutting them down drops every sensor lock this ship holds. A lock is
+  /// deliberate, continuous illumination of a target - the Stealthed Ships
+  /// table charges DM+2 for "sensor locks, electronic warfare or other
+  /// deliberate use of active sensors" - so it cannot survive going quiet.
+  /// Contacts are kept: High Guard p. 77 has detection "maintained under most
+  /// circumstances" once established, and it is that asymmetry that makes going
+  /// dark a real choice rather than a free one. House rule; RAW does not say.
+  pub fn set_emissions(&mut self, active_sensors: Option<bool>, transmitting: Option<bool>) -> bool {
+    if let Some(transmitting) = transmitting {
+      // Sharing a sensor picture means transmitting one. The client greys the
+      // control out while hand-off is on, but the rule is enforced here so a
+      // hand-crafted request cannot produce a ship sharing contacts in silence.
+      self.transmitting = transmitting || self.handoff_sensors;
+    }
+
+    let Some(active_sensors) = active_sensors else {
+      return false;
+    };
+
+    let going_dark = self.active_sensors && !active_sensors;
+    self.active_sensors = active_sensors;
+
+    if going_dark && !self.sensor_locks.is_empty() {
+      self.sensor_locks.clear();
+      return true;
+    }
+    false
   }
 
   /// Set possible pilot actions for the next round. These include allocating thrust to dodging as
@@ -673,8 +1635,71 @@ impl Ship {
     self.point_defense_list = list;
   }
 
+  pub fn add_point_defense_pool(&mut self, pool: u32) {
+    self.point_defense_pool += pool;
+  }
+
+  pub fn set_point_defense_pool(&mut self, pool: u32) {
+    self.point_defense_pool = pool;
+  }
+
+  /// Spend `cost` pool points to stop one incoming object, if enough remain.
+  ///
+  /// A partial pool stops nothing: one point left will not half-destroy a
+  /// torpedo, and that point stays available for a missile.
+  pub fn take_interception(&mut self, cost: u32) -> bool {
+    if self.point_defense_pool < cost {
+      return false;
+    }
+    self.point_defense_pool -= cost;
+    true
+  }
+
   pub fn clear_point_defense(&mut self) {
     self.point_defense_list.clear();
+    self.point_defense_pool = 0;
+    self.screen_pool.clear();
+  }
+
+  pub fn set_screen_pool(&mut self, pool: Vec<u32>) {
+    self.screen_pool = pool;
+  }
+
+  /// Spend screens against `damage` from a weapon of `kind`, returning what is
+  /// left of it.
+  ///
+  /// Screens are spent whole and greedily: each one that defends against this
+  /// weapon is applied in turn until the damage reaches zero, and whatever it
+  /// does not need is lost with it.  The next attack starts from the next
+  /// unspent screen.  The book instead lets a gunner pick their moment and
+  /// concentrate every screen on one attack; we resolve attacks in sequence
+  /// with nobody to ask, so this is the closest approximation available.
+  pub fn apply_screens(&mut self, kind: WeaponType, damage: u32) -> u32 {
+    if damage == 0 || self.screen_pool.is_empty() {
+      return damage;
+    }
+
+    let screens = self.design.screens.clone();
+    let mut remaining = damage;
+    for (index, screen) in screens.iter().enumerate() {
+      if remaining == 0 {
+        break;
+      }
+      if !screen.defends_against(kind) {
+        continue;
+      }
+      let Some(absorbed) = self.screen_pool.get_mut(index) else {
+        continue;
+      };
+      if *absorbed == 0 {
+        continue;
+      }
+      remaining = remaining.saturating_sub(*absorbed);
+      // Spent whole: any excess beyond what this attack needed is wasted, as it
+      // would be in the book where a screen is used against one attack.
+      *absorbed = 0;
+    }
+    remaining
   }
 
   // Engineer action getters and setters
@@ -763,6 +1788,37 @@ impl Ship {
     self.evade_boost_used = value;
   }
 
+  /// Power actually available to run the ship, after any ion suppression.
+  ///
+  /// Everything that asks what the ship can currently do should read this
+  /// rather than `current_power`, which is the undamaged-by-ion figure.
+  #[must_use]
+  pub fn available_power(&self) -> u32 {
+    self.current_power.saturating_sub(self.ion_power_loss)
+  }
+
+  /// Suppress `amount` Power for `rounds` rounds.
+  ///
+  /// Hits stack: a ship caught by two ion cannons loses both, and the longer
+  /// duration wins so the second hit cannot cut the first one short.
+  pub fn apply_ion_damage(&mut self, amount: u32, rounds: u8) {
+    self.ion_power_loss = self.ion_power_loss.saturating_add(amount);
+    self.ion_rounds = self.ion_rounds.max(rounds);
+  }
+
+  /// Run the ion suppression down by one round, restoring the Power when it
+  /// lapses.  Called once per round after actions resolve.
+  pub fn tick_ion_recovery(&mut self) {
+    if self.ion_rounds == 0 {
+      self.ion_power_loss = 0;
+      return;
+    }
+    self.ion_rounds -= 1;
+    if self.ion_rounds == 0 {
+      self.ion_power_loss = 0;
+    }
+  }
+
   /// Returns the effective power including temporary multiplier.
   #[must_use]
   #[allow(
@@ -771,7 +1827,7 @@ impl Ship {
     clippy::cast_precision_loss
   )]
   pub fn get_effective_power(&self) -> u32 {
-    (self.current_power as f32 * self.temporary_power_multiplier) as u32
+    (self.available_power() as f32 * self.temporary_power_multiplier) as u32
   }
 }
 
@@ -1081,22 +2137,28 @@ impl Ord for Weapon {
     // but seems more readable when expanded.
     #[allow(clippy::match_same_arms)]
     match (&self.mount, &other.mount) {
-      (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Bay(BaySize::Large), WeaponMount::Bay(BaySize::Large)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Large), _) => std::cmp::Ordering::Less,
       (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Large)) => std::cmp::Ordering::Greater,
-      (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Bay(BaySize::Medium), WeaponMount::Bay(BaySize::Medium)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Medium), _) => std::cmp::Ordering::Less,
       (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Large)) => std::cmp::Ordering::Greater,
       (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Medium)) => std::cmp::Ordering::Greater,
-      (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Bay(BaySize::Small), WeaponMount::Bay(BaySize::Small)) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::Bay(BaySize::Small), _) => std::cmp::Ordering::Less,
       (WeaponMount::Barbette, _) => std::cmp::Ordering::Less,
-      (WeaponMount::Turret(_), WeaponMount::Bay(_)) => std::cmp::Ordering::Greater,
-      (WeaponMount::Turret(_), WeaponMount::Barbette) => std::cmp::Ordering::Greater,
-      (WeaponMount::Turret(_), WeaponMount::Turret(_)) => self.kind.cmp(&other.kind),
+      (WeaponMount::Turret, WeaponMount::Bay(_)) => std::cmp::Ordering::Greater,
+      (WeaponMount::Turret, WeaponMount::Barbette) => std::cmp::Ordering::Greater,
+      (WeaponMount::Turret, WeaponMount::Turret) => self.kinds().cmp(&other.kinds()),
       // A fixed mount is the least capable mount, so it sorts after everything else.
-      (WeaponMount::Turret(_), WeaponMount::FixedMount) => std::cmp::Ordering::Less,
-      (WeaponMount::FixedMount, WeaponMount::FixedMount) => self.kind.cmp(&other.kind),
+      (WeaponMount::Turret, WeaponMount::FixedMount) => std::cmp::Ordering::Less,
+      // A battery is real hardware but not a gun, so it sits between the
+      // turrets and the fixed mounts.
+      (WeaponMount::Turret, WeaponMount::Battery(_)) => std::cmp::Ordering::Less,
+      (WeaponMount::Battery(_), WeaponMount::Battery(_)) => self.kinds().cmp(&other.kinds()),
+      (WeaponMount::Battery(_), WeaponMount::FixedMount) => std::cmp::Ordering::Less,
+      (WeaponMount::Battery(_), _) => std::cmp::Ordering::Greater,
+      (WeaponMount::FixedMount, WeaponMount::FixedMount) => self.kinds().cmp(&other.kinds()),
       (WeaponMount::FixedMount, _) => std::cmp::Ordering::Greater,
     }
   }
@@ -1188,26 +2250,63 @@ impl From<&WeaponType> for String {
       WeaponType::Missile => "missile".to_string(),
       WeaponType::Sand => "sand".to_string(),
       WeaponType::Particle => "particle beam".to_string(),
+      WeaponType::Torpedo => "torpedo".to_string(),
+      WeaponType::Fusion => "fusion gun".to_string(),
+      WeaponType::Plasma => "plasma gun".to_string(),
+      WeaponType::Railgun => "railgun".to_string(),
+      WeaponType::Meson => "meson gun".to_string(),
+      WeaponType::MassDriver => "mass driver".to_string(),
+      WeaponType::Repulsor => "repulsor".to_string(),
+      WeaponType::Ion => "ion cannon".to_string(),
+      WeaponType::PointDefense => "point defence battery".to_string(),
     }
   }
 }
 
 impl From<&Weapon> for String {
   fn from(w: &Weapon) -> Self {
-    match (&w.kind, &w.mount) {
-      (kind, WeaponMount::Turret(1)) => format!("{} single turret", String::from(kind)),
-      (kind, WeaponMount::Turret(2)) => format!("{} double turret", String::from(kind)),
-      (kind, WeaponMount::Turret(3)) => format!("{} triple turret", String::from(kind)),
-      (_, WeaponMount::Turret(size)) => {
-        panic!("(From<Weapon> for String) illegal turret size {size}.")
+    // A mixed turret is named by its contents rather than by a single kind:
+    // "pulse laser x2, sandcaster triple turret".
+    let contents = if w.is_uniform() {
+      String::from(&w.primary_kind())
+    } else {
+      w.kinds()
+        .iter()
+        .map(|kind| {
+          let count = w.count_of(*kind);
+          if count > 1 {
+            format!("{} x{count}", String::from(kind))
+          } else {
+            String::from(kind)
+          }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+    };
+
+    match &w.mount {
+      WeaponMount::Turret => match w.guns.len() {
+        1 => format!("{contents} single turret"),
+        2 => format!("{contents} double turret"),
+        3 => format!("{contents} triple turret"),
+        size => format!("{contents} turret of {size}"),
+      },
+      WeaponMount::FixedMount => format!("{contents} fixed mount"),
+      WeaponMount::Barbette => format!("{contents} barbette"),
+      WeaponMount::Bay(BaySize::Small) => format!("{contents} small bay"),
+      WeaponMount::Bay(BaySize::Medium) => format!("{contents} medium bay"),
+      WeaponMount::Bay(BaySize::Large) => format!("{contents} large bay"),
+      // The grade is the whole identity of a battery, so name it rather than
+      // falling back on the weapon kind.
+      WeaponMount::Battery(grade) => {
+        let numeral = match grade {
+          1 => "I",
+          2 => "II",
+          3 => "III",
+          _ => "?",
+        };
+        format!("point defence battery (Type {numeral})")
       }
-      (kind, WeaponMount::FixedMount) => format!("{} fixed mount", String::from(kind)),
-      (kind, WeaponMount::Barbette) => format!("{} barbette", String::from(kind)),
-      (kind, WeaponMount::Bay(BaySize::Small)) => format!("{} small bay", String::from(kind)),
-      (kind, WeaponMount::Bay(BaySize::Medium)) => {
-        format!("{} medium bay", String::from(kind))
-      }
-      (kind, WeaponMount::Bay(BaySize::Large)) => format!("{} large bay", String::from(kind)),
     }
   }
 }
@@ -1218,18 +2317,10 @@ impl WeaponType {
     matches!(self, WeaponType::Beam | WeaponType::Pulse)
   }
 
-  // Max ranges by weapon type.  Provide first range band
-  // 0 is short, 1 is medium, 2 is long, 3 is very long, 4 is distant
-  // Using a function as its just easier than a Lazy, etc.
-  #[must_use]
-  pub fn in_range(&self, range: Range) -> bool {
-    match self {
-      WeaponType::Beam => range <= Range::Medium,
-      WeaponType::Pulse => range <= Range::Long,
-      WeaponType::Missile | WeaponType::Sand => true,
-      WeaponType::Particle => range <= Range::VeryLong,
-    }
-  }
+  // Range used to be a property of the weapon alone, but it is not: a railgun
+  // reaches Short from a turret and Medium from a barbette, and a particle beam
+  // only reaches Distant out of a large bay.  Ask the profile instead —
+  // `WeaponProfile::reaches`.
 }
 
 impl From<ShipSystem> for String {
@@ -1441,6 +2532,7 @@ impl FlightPlan {
 impl Default for ShipDesignTemplate {
   fn default() -> Self {
     ShipDesignTemplate {
+      crew_skills: None,
       name: "Buccaneer".to_string(),
       displacement: 400,
       hull: 160,
@@ -1455,23 +2547,12 @@ impl Default for ShipDesignTemplate {
       countermeasures: None,
       computer: 5,
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Pulse,
-          mount: WeaponMount::Turret(2),
-        },
-        Weapon {
-          kind: WeaponType::Pulse,
-          mount: WeaponMount::Turret(2),
-        },
-        Weapon {
-          kind: WeaponType::Sand,
-          mount: WeaponMount::Turret(2),
-        },
-        Weapon {
-          kind: WeaponType::Sand,
-          mount: WeaponMount::Turret(2),
-        },
+        Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
+        Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
       ],
+      screens: vec![],
       tl: 15,
       role: None,
       source: None,
@@ -1727,7 +2808,9 @@ mod tests {
       stealth: None,
       countermeasures: None,
       computer: 1,
+      crew_skills: None,
       weapons: vec![],
+      screens: vec![],
       tl: 10,
       role: None,
       source: None,
@@ -2203,46 +3286,19 @@ mod tests {
   #[test_log::test]
   fn test_weapon_ordering() {
     // Create test weapons with different mounts and types
-    let large_bay_beam = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Bay(BaySize::Large),
-    };
-    let large_bay_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Bay(BaySize::Large),
-    };
-    let medium_bay = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Bay(BaySize::Medium),
-    };
+    let large_bay_beam = Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Large));
+    let large_bay_pulse = Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Large));
+    let medium_bay = Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Medium));
 
-    let medium_bay_missile = Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::Bay(BaySize::Medium),
-    };
+    let medium_bay_missile = Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Medium));
 
-    let small_bay = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Bay(BaySize::Small),
-    };
+    let small_bay = Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Small));
 
-    let small_bay_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Bay(BaySize::Small),
-    };
+    let small_bay_pulse = Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small));
 
-    let barbette = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Barbette,
-    };
-    let turret = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(2),
-    };
-    let turret_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::Turret(2),
-    };
+    let barbette = Weapon::single(WeaponType::Beam, WeaponMount::Barbette);
+    let turret = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2);
+    let turret_pulse = Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2);
 
     // Test ordering between same mount types
     assert!(large_bay_beam < large_bay_pulse); // Same mount, different types
@@ -2272,14 +3328,8 @@ mod tests {
     assert!(turret > small_bay); // Turret > Small bay
 
     // A fixed mount is the least capable mount, so it sorts after everything.
-    let fixed = Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::FixedMount,
-    };
-    let fixed_pulse = Weapon {
-      kind: WeaponType::Pulse,
-      mount: WeaponMount::FixedMount,
-    };
+    let fixed = Weapon::single(WeaponType::Beam, WeaponMount::FixedMount);
+    let fixed_pulse = Weapon::single(WeaponType::Pulse, WeaponMount::FixedMount);
     assert!(fixed > turret);
     assert!(turret < fixed);
     assert!(fixed > barbette);
@@ -2289,10 +3339,7 @@ mod tests {
 
   #[test_log::test]
   fn test_fixed_mount_naming_and_serde() {
-    let fixed = Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::FixedMount,
-    };
+    let fixed = Weapon::single(WeaponType::Missile, WeaponMount::FixedMount);
     assert_eq!(String::from(&fixed), "missile fixed mount");
 
     // The wire form is a bare string, like the other unit variant (Barbette).
@@ -2339,16 +3386,12 @@ mod tests {
       stealth: None,
       countermeasures: None,
       computer: 10,
+      crew_skills: None,
       weapons: vec![
-        Weapon {
-          kind: WeaponType::Beam,
-          mount: WeaponMount::Turret(2),
-        },
-        Weapon {
-          kind: WeaponType::Pulse,
-          mount: WeaponMount::Bay(BaySize::Small),
-        },
+        Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 2),
+        Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small)),
       ],
+      screens: vec![],
       tl: 12,
       role: None,
       source: None,
@@ -2483,7 +3526,9 @@ mod tests {
       stealth: None,
       countermeasures: None,
       computer: 10,
+      crew_skills: None,
       weapons: vec![],
+      screens: vec![],
       tl: 12,
       role: None,
       source: None,
@@ -2559,5 +3604,50 @@ mod tests {
 
     assert!(!ship.has_engineer_action_taken());
     assert!(!ship.has_evade_boost_used());
+  }
+
+  /// "+1 per Thrust" reads the loudest burn of the round and rounds down.
+  #[test]
+  fn thrust_in_g_takes_the_loudest_segment() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Test".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Drifting.
+    ship.plan = FlightPlan::acceleration(Vec3::zero());
+    assert_eq!(ship.thrust_in_g(), 0);
+
+    // Just under 1G rounds down to nothing.
+    ship.plan = FlightPlan::acceleration(Vec3::new(9.0, 0.0, 0.0));
+    assert_eq!(ship.thrust_in_g(), 0);
+
+    // Exactly 3G.
+    ship.plan = FlightPlan::acceleration(Vec3::new(3.0 * crate::entity::G, 0.0, 0.0));
+    assert_eq!(ship.thrust_in_g(), 3);
+
+    // Two segments: the louder one is what a sensop notices, whichever order
+    // they come in.
+    ship.plan = FlightPlan::new(
+      (Vec3::new(crate::entity::G, 0.0, 0.0), 100).into(),
+      Some((Vec3::new(4.0 * crate::entity::G, 0.0, 0.0), 100).into()),
+    );
+    assert_eq!(ship.thrust_in_g(), 4);
+
+    ship.plan = FlightPlan::new(
+      (Vec3::new(4.0 * crate::entity::G, 0.0, 0.0), 100).into(),
+      Some((Vec3::new(crate::entity::G, 0.0, 0.0), 100).into()),
+    );
+    assert_eq!(ship.thrust_in_g(), 4);
+  }
+
+  /// Heat is the sum of every critical the ship is carrying.
+  #[test]
+  fn crit_severity_sums_across_systems() {
+    let design = Arc::new(ShipDesignTemplate::default());
+    let mut ship = Ship::new("Test".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.total_crit_severity(), 0);
+
+    ship.crit_level[0] = 2;
+    ship.crit_level[5] = 3;
+    assert_eq!(ship.total_crit_severity(), 5);
   }
 }

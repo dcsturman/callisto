@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useMemo } from "react";
-import { Entity } from "./entities";
+import { Entity, Ship } from "./entities";
+import { isUndetected } from "./contacts";
 
 import {useAppSelector} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
@@ -18,6 +19,41 @@ type EntitySelectorProps = React.JSX.IntrinsicElements["select"] & {
   exclude?: string;
   extra?: Entity;
   formatter?: (name: string, entity: Entity) => string;
+  /**
+   * The ship doing the looking. Ships it has no sensor contact on are listed
+   * but not selectable: an undetected ship cannot be fired on, locked, jammed
+   * or navigated to, and showing the name greyed says why the option is there
+   * but unusable.
+   *
+   * Only ships are gated. Planets do not hide.
+   */
+  observer?: Ship | null;
+  /**
+   * List undetected ships as selectable rather than barred.
+   *
+   * Set on the navigation target only. Nothing can be *done* to a ship with no
+   * contact -- fired on, locked, jammed -- but a course can be plotted toward
+   * one: the sensors know something is there and where it is going, they just
+   * cannot say what it is or how hard it is burning. The option stays marked
+   * so it is clear a blip is being chased rather than a ship.
+   */
+  allowUndetected?: boolean;
+  /**
+   * Also bar ships on the observer's own side.
+   *
+   * Set on the firing menu only. A ship will not shoot its own team, but
+   * plotting a course to a team-mate -- or sensor locking one -- is perfectly
+   * reasonable, so the navigation computer leaves them selectable.
+   */
+  excludeSameTeam?: boolean;
+  /**
+   * What the empty choice is called.
+   *
+   * Blank everywhere by default, since "no target" needs no name. The role
+   * chooser is the exception: picking no ship there means running the whole
+   * board, which is a role in its own right and worth saying out loud.
+   */
+  noneLabel?: string;
 }
 
 export const EntitySelector: React.FC<EntitySelectorProps> = ({
@@ -27,6 +63,10 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
   exclude,
   extra,
   formatter,
+  observer,
+  allowUndetected,
+  excludeSameTeam,
+  noneLabel,
   ...props
 }) => {
   const entities = useAppSelector(entitiesSelector);
@@ -79,6 +119,19 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
     if (filter.includes(EntitySelectorType.Ship)) {
       const shipTarget = entities.ships.find((ship) => ship.name === value);
       if (shipTarget != null) {
+        // Belt and braces: `disabled` should stop this, but contact can be lost
+        // between render and click, and acting on an invisible ship is exactly
+        // what the server would reject anyway.
+        if (!allowUndetected && isUndetected(observer, shipTarget)) {
+          return;
+        }
+        if (
+          excludeSameTeam === true &&
+          observer?.team != null &&
+          shipTarget.team === observer.team
+        ) {
+          return;
+        }
         setChoice(shipTarget);
         return;
       }
@@ -115,7 +168,7 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         value={currentEntity ? currentEntity.name : ""}
         onChange={handleSelectChange}
         {...props}>
-        <option key="el-none" value=""></option>
+        <option key="el-none" value="">{noneLabel ?? ""}</option>
         {extra && (
           <option key={"extra"} value={extra.name}>
             {extra.name}
@@ -124,11 +177,27 @@ export const EntitySelector: React.FC<EntitySelectorProps> = ({
         {filter.includes(EntitySelectorType.Ship) &&
           entities.ships
             .filter((candidate) => candidate.name !== exclude)
-            .map((notMeShip) => (
-              <option key={"els"+notMeShip.name} value={notMeShip.name}>
-                {nf(notMeShip.name, notMeShip)}
-              </option>
-            ))}
+            .map((notMeShip) => {
+              const undetected = isUndetected(observer, notMeShip);
+              const sameTeam =
+                excludeSameTeam === true &&
+                observer?.team != null &&
+                notMeShip.team === observer.team;
+              const barred = (undetected && !allowUndetected) || sameTeam;
+              return (
+                <option
+                  key={"els" + notMeShip.name}
+                  value={notMeShip.name}
+                  disabled={barred}
+                  className={barred || undetected ? "no-contact-option" : undefined}>
+                  {undetected
+                    ? `${notMeShip.name} (${allowUndetected ? "blip" : "no contact"})`
+                    : sameTeam
+                      ? `${notMeShip.name} (same side)`
+                      : nf(notMeShip.name, notMeShip)}
+                </option>
+              );
+            })}
         {filter.includes(EntitySelectorType.Planet) &&
           entities.planets
             .filter((candidate) => candidate.name !== exclude)

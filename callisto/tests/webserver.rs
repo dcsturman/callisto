@@ -135,7 +135,70 @@ async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
   spawn_server(port, true, None, None, false).await
 }
 
+/// How long to keep retrying a connection before giving up on the server.
+///
+/// The server is a spawned child process, so it is not listening the instant
+/// `spawn` returns. Running the suite in parallel starts a couple of dozen of
+/// them at once, and under that load a fixed wait is a guess that is sometimes
+/// wrong — which showed up as `ConnectionRefused` on whichever tests happened
+/// to lose the race. Polling until the port answers makes the wait depend on
+/// the machine rather than on a constant.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(50);
+/// Ceiling on a single connection attempt.
+///
+/// A server that accepts the TCP connection but never finishes the websocket
+/// handshake leaves `connect_async` waiting indefinitely, so without this the
+/// overall deadline below is never reached and the test hangs rather than
+/// failing. Seen in practice: a parallel run wedged and left its servers behind.
+const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Errors that mean "the server is not ready yet" rather than "the server said
+/// no".
+///
+/// A child process comes up in stages: the port is refused until it binds, and
+/// for a moment after that the listener exists but the accept loop does not yet
+/// service it, which surfaces as a reset or an abort mid-handshake. All three
+/// are worth waiting out. No test expects `open_socket` to fail — every call
+/// site unwraps it — so retrying these cannot mask an expected failure, and a
+/// server that never comes up still fails the test on the deadline.
+fn is_not_ready_yet(e: &Error) -> bool {
+  matches!(
+    e,
+    Error::Io(io)
+      if matches!(
+        io.kind(),
+        io::ErrorKind::ConnectionRefused | io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted
+      )
+  )
+}
+
+/// Connect to a test server, waiting for it to come up.
+///
+/// Retries only startup symptoms; any other error is a real one and is returned
+/// immediately rather than retried into the timeout.
 async fn open_socket(port: u16) -> Result<MyWebSocket, Box<Error>> {
+  let deadline = std::time::Instant::now() + CONNECT_TIMEOUT;
+  loop {
+    match timeout(CONNECT_ATTEMPT_TIMEOUT, open_socket_once(port)).await {
+      Ok(Ok(stream)) => return Ok(stream),
+      Ok(Err(e)) => {
+        if !is_not_ready_yet(&e) || std::time::Instant::now() >= deadline {
+          return Err(e);
+        }
+      }
+      Err(_elapsed) => {
+        assert!(
+          std::time::Instant::now() < deadline,
+          "server on port {port} accepted connections but never completed a websocket handshake"
+        );
+      }
+    }
+    sleep(CONNECT_RETRY_DELAY).await;
+  }
+}
+
+async fn open_socket_once(port: u16) -> Result<MyWebSocket, Box<Error>> {
   #[cfg(feature = "no_tls_upgrade")]
   {
     let socket_url = format!("ws://{SERVER_ADDRESS}:{port}/ws");
@@ -559,6 +622,10 @@ async fn integration_add_ship() {
     design: "Buccaneer".to_string(),
     crew: None,
     weapons: None,
+    active_sensors: None,
+    transmitting: None,
+    team: None,
+    contacts: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -630,6 +697,10 @@ async fn integration_add_planet_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -646,6 +717,10 @@ async fn integration_add_planet_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -876,6 +951,10 @@ async fn integration_update_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -929,6 +1008,10 @@ async fn integration_update_missile() {
       design: "System Defense Boat".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: Some(vec!["ship2".to_string()]),
     }),
   )
   .await;
@@ -944,6 +1027,10 @@ async fn integration_update_missile() {
       design: "System Defense Boat".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -956,6 +1043,7 @@ async fn integration_update_missile() {
       weapon_id: 1,
       target: "ship2".to_string(),
       called_shot_system: None,
+      firing_kind: None,
     }],
   )];
 
@@ -1003,6 +1091,7 @@ async fn integration_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -1022,6 +1111,7 @@ async fn integration_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship1"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
@@ -1057,6 +1147,10 @@ async fn integration_remove_ship() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1188,6 +1282,10 @@ async fn integration_set_acceleration() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1247,6 +1345,10 @@ async fn integration_compute_path_basic() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1341,6 +1443,10 @@ async fn integration_compute_path_with_standoff() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1435,6 +1541,10 @@ async fn integration_malformed_requests() {
       design: "NonexistentDesign".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1497,6 +1607,7 @@ async fn integration_malformed_requests() {
         weapon_id: 0,
         target: "nonexistent_target".to_string(),
         called_shot_system: None,
+        firing_kind: None,
       }],
     )]),
   )
@@ -1562,6 +1673,7 @@ async fn integration_bad_requests() {
       weapon_id: usize::MAX,
       target: "ship2".to_string(),
       called_shot_system: None,
+      firing_kind: None,
     }],
   )]);
   let _response = rpc(&mut stream, msg).await;
@@ -1582,14 +1694,23 @@ async fn integration_fail_login() {
   let port = get_next_port();
   let _server = spawn_test_server(port).await;
 
-  // Test unauthenticated connection
-  let socket_url = format!("ws://127.0.0.1:{port}/ws");
-  let stream = connect_async(socket_url).await;
-
-  if cfg!(feature = "no_tls_upgrade") {
-    assert!(stream.is_ok(), "Expected connection to succeed without TLS upgrade");
-  } else {
-    assert!(stream.is_err(), "Expected connection to fail without authentication");
+  // Test unauthenticated connection. This goes through `open_socket` rather
+  // than calling `connect_async` directly so that it waits for the server to
+  // come up like every other test, instead of racing its startup.
+  #[cfg(feature = "no_tls_upgrade")]
+  {
+    assert!(
+      open_socket(port).await.is_ok(),
+      "Expected connection to succeed without TLS upgrade"
+    );
+  }
+  #[cfg(not(feature = "no_tls_upgrade"))]
+  {
+    let socket_url = format!("ws://127.0.0.1:{port}/ws");
+    assert!(
+      connect_async(socket_url).await.is_err(),
+      "Expected connection to fail without authentication"
+    );
   }
 
   // Test invalid authentication
@@ -1643,6 +1764,10 @@ async fn integration_set_crew_actions() {
       design: "Buccaneer".to_string(),
       crew: Some(crew),
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1722,6 +1847,10 @@ async fn integration_multi_client_test() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1735,6 +1864,10 @@ async fn integration_multi_client_test() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1754,6 +1887,10 @@ async fn integration_multi_client_test() {
       design: "Buccaneer".to_string(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     }),
   )
   .await;
@@ -1939,7 +2076,7 @@ async fn integration_users_message_uses_display_name() {
   let _ = rpc(
     &mut stream,
     RequestMsg::SetRole(callisto::payloads::ChangeRole {
-      role: callisto::payloads::Role::General,
+      roles: vec![callisto::payloads::Role::General],
       ship: None,
     }),
   )

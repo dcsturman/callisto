@@ -1,0 +1,148 @@
+{
+  "metadata": {
+    "name": "Treasure 1",
+    "description": "Faihlokh's Tai'ao comes around Noricum onto the grounded HMS Executor. Executor sees them coming; they have not found her yet.",
+    "owner": "dcsturman@gmail.com"
+  },
+  "ships": [
+    {
+      "name": "HMS Executor",
+      "position": [
+        6441000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "HMS Executor",
+      "current_hull": 80,
+      "current_armor": 4,
+      "current_power": 260,
+      "current_maneuver": 6,
+      "current_jump": 2,
+      "current_fuel": 42,
+      "current_crew": 11,
+      "current_sensors": "Advanced",
+      "current_computer": 20,
+      "active_weapons": [
+        true,
+        true
+      ],
+      "sensor_locks": [],
+      "contacts": [
+        "Tai'ao"
+      ],
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "team": "Blue"
+    },
+    {
+      "name": "Tai'ao",
+      "position": [
+        6522406.5,
+        0.0,
+        2373961.8
+      ],
+      "velocity": [
+        684.0,
+        0.0,
+        -1879.4
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Tai'ao",
+      "current_hull": 160,
+      "current_armor": 0,
+      "current_power": 165,
+      "current_maneuver": 1,
+      "current_jump": 2,
+      "current_fuel": 82,
+      "current_crew": 10,
+      "current_sensors": "Military",
+      "current_computer": 5,
+      "active_weapons": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "sensor_locks": [],
+      "dodge_thrust": 0,
+      "assist_gunners": false,
+      "can_jump": false,
+      "crit_level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "team": "Red"
+    }
+  ],
+  "planets": [
+    {
+      "name": "Noricum",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "color": "#4a7fa5",
+      "radius": 6441000.0,
+      "mass": 6.0361e+24,
+      "gravity_radius_025": 12817428.164807478,
+      "visual_effects": [
+        "Continents",
+        "AnimatedClouds",
+        "AtmosphereRing"
+      ]
+    }
+  ]
+}

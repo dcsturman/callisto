@@ -1,4 +1,15 @@
-import { BaySize, Weapon, WeaponMount, createWeapon } from "./weapon";
+import {
+  BaySize,
+  Gun,
+  Weapon,
+  WeaponMount,
+  createWeapon,
+  isUniformWeapon,
+  weaponGuns,
+  weaponKindLabel,
+  weaponKinds,
+} from "./weapon";
+import WEAPON_MOUNTS from "./weaponMounts.json";
 
 // Hardpoint and Firmpoint accounting, per High Guard pp. 26 and 31.
 //
@@ -33,6 +44,23 @@ export interface WeaponGroup {
   mount: WeaponMount | null;
   kind: string;
   gunnery: number;
+  /**
+   * Weapon Advantages and Disadvantages carried by every mount in this group.
+   *
+   * Part of the group's identity: the MK Mora fits long-range high-yield pulse
+   * turrets alongside plain sandcaster turrets, and merging across modifiers
+   * would spread them to weapons that never had them.
+   */
+  modifiers: string[];
+  /**
+   * The guns in each mount of this group, when it holds more than one type.
+   *
+   * `undefined` for a uniform mount, which `kind` and the turret size already
+   * describe. A mixed mount cannot be reduced to a single kind, so the editor
+   * carries its gun list verbatim and writes it back untouched -- without this
+   * a mixed turret would be saved as a uniform one and lose its other weapons.
+   */
+  guns?: Gun[];
 }
 
 export const DEFAULT_GUNNERY = 0;
@@ -119,6 +147,13 @@ export function checkAllowance(
     if (used > allowance.total) {
       rowProblems[index] = `Exceeds the ${allowance.total} ${allowance.kind} this hull allows`;
     }
+    // The rules do not sell every weapon in every mount — there is no torpedo
+    // turret and no laser bay.  The dropdown will not offer these, but a design
+    // file can still contain one, so flag it rather than quietly accepting it.
+    if (!isLegalPairing(group.kind, group.mount)) {
+      rowProblems[index] =
+        rowProblems[index] ?? `A ${group.kind} cannot be mounted this way`;
+    }
   });
 
   if (allowance.kind === "firmpoints") {
@@ -161,11 +196,16 @@ export function checkAllowance(
 
 /** An empty trailing row, ready for the referee to fill in. */
 export function emptyGroup(gunnery: number = DEFAULT_GUNNERY): WeaponGroup {
-  return { count: 1, mount: null, kind: DEFAULT_WEAPON_KIND, gunnery };
+  return { count: 1, mount: null, kind: DEFAULT_WEAPON_KIND, gunnery, modifiers: [] };
 }
 
 function groupKey(weapon: Weapon, gunnery: number): string {
-  return `${JSON.stringify(weapon.mount)}|${weapon.kind}|${gunnery}`;
+  // The whole gun list is part of the key.  `kind` and `modifiers` are
+  // undefined on a mixed mount -- they live on the guns -- so keying on them
+  // alone collapsed every mixed turret on a ship into one group regardless of
+  // what was in it, and saving then rewrote them all as the first gun's type.
+  const guns = JSON.stringify(weaponGuns(weapon));
+  return `${JSON.stringify(weapon.mount)}|${gunnery}|${guns}`;
 }
 
 /**
@@ -196,11 +236,16 @@ export function groupWeapons(
       existing.count += 1;
       return;
     }
+    const uniform = isUniformWeapon(weapon);
     const group: WeaponGroup = {
       count: 1,
       mount: weapon.mount,
-      kind: weapon.kind,
+      kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
       gunnery: skill,
+      modifiers: weapon.modifiers ?? weaponGuns(weapon)[0]?.modifiers ?? [],
+      // Only a mixed mount needs its guns kept; a uniform one is fully
+      // described by its kind and the mount's size.
+      guns: uniform ? undefined : weaponGuns(weapon),
     };
     byKey.set(key, group);
     groups.push(group);
@@ -228,12 +273,93 @@ export function expandGroups(groups: readonly WeaponGroup[]): {
       return;
     }
     for (let n = 0; n < group.count; n++) {
-      weapons.push(createWeapon(group.kind, group.mount));
+      // A mixed mount is written back exactly as it came in.
+      weapons.push(
+        group.guns != null
+          ? { mount: group.mount, guns: group.guns }
+          : createWeapon(group.kind, group.mount, group.modifiers),
+      );
       gunnery.push(group.gunnery);
     }
   });
 
   return { weapons, gunnery };
+}
+
+/**
+ * Whether a group needs more than the inline row can express.
+ *
+ * A uniform mount with no modifications is fully described by its kind, so it
+ * stays editable in place; anything else is edited in the detail dialog.
+ */
+export function needsDetailEditor(group: WeaponGroup): boolean {
+  return group.guns != null || group.modifiers.length > 0;
+}
+
+/** Readable names for the mount classes, for explaining why a weapon is barred. */
+const MOUNT_CLASS_LABELS: Record<MountClass, string> = {
+  Turret: "turret",
+  Fixed: "fixed mount",
+  Barbette: "barbette",
+  SmallBay: "small bay",
+  MediumBay: "medium bay",
+  LargeBay: "large bay",
+  Battery: "battery",
+};
+
+/**
+ * Where the rules allow this weapon, phrased for a person.
+ *
+ * Used to explain why a weapon is greyed out rather than leaving its absence
+ * unexplained -- "no ion turret exists" is a rule worth teaching, and silently
+ * omitting the option reads as a broken list instead.
+ */
+export function legalMountsLabel(kind: string): string {
+  const classes = ((WEAPON_MOUNTS as Record<string, string[]>)[kind] ??
+    []) as MountClass[];
+  if (classes.length === 0) {
+    return "no mount this build knows";
+  }
+  // The three bays read better collapsed than listed one by one.
+  const bays = ["SmallBay", "MediumBay", "LargeBay"] as MountClass[];
+  const hasAllBays = bays.every((bay) => classes.includes(bay));
+  const parts = classes
+    .filter((mountClass) => !(hasAllBays && bays.includes(mountClass)))
+    .map((mountClass) => MOUNT_CLASS_LABELS[mountClass]);
+  if (hasAllBays) {
+    parts.push("bay");
+  }
+  if (parts.length === 1) {
+    return `a ${parts[0]}`;
+  }
+  return `a ${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
+}
+
+/** How many guns a mount of this kind holds. */
+export function gunCapacity(mount: WeaponMount | null): number {
+  if (mount != null && typeof mount === "object" && "Turret" in mount) {
+    return mount.Turret;
+  }
+  return 1;
+}
+
+/**
+ * A short description of a group's guns, for the editor's weapon cell.
+ *
+ * A uniform group is named by its kind; a mixed one has no single kind, so it
+ * lists what is actually in the mount.
+ */
+export function describeGroupGuns(group: WeaponGroup): string {
+  if (group.guns == null) {
+    return weaponKindLabel(group.kind);
+  }
+  const counts = new Map<string, number>();
+  group.guns.forEach((gun) => counts.set(gun.kind, (counts.get(gun.kind) ?? 0) + 1));
+  return Array.from(counts.entries())
+    .map(([kind, total]) =>
+      total > 1 ? `${weaponKindLabel(kind)} x${total}` : weaponKindLabel(kind),
+    )
+    .join(", ");
 }
 
 /** Total mounts across all rows — the number of weapons the ship will have. */
@@ -281,21 +407,99 @@ export interface MountOption {
   label: string;
   /** `null` is the "None" option: the row carries no weapon. */
   mount: WeaponMount | null;
+  /** Key into {@link WEAPON_MOUNTS}; `null` for the "None" option. */
+  mountClass: MountClass | null;
+}
+
+/**
+ * Mirrors the Rust `MountClass`: a mount with the turret size erased, which is
+ * the granularity the rules describe weapons at.
+ */
+export type MountClass =
+  | "Turret"
+  | "Fixed"
+  | "Barbette"
+  | "SmallBay"
+  | "MediumBay"
+  | "LargeBay"
+  | "Battery";
+
+/** The mount class of a concrete mount, matching Rust's `From<&WeaponMount>`. */
+export function mountClassOf(mount: WeaponMount): MountClass | null {
+  if (mount === "FixedMount") {
+    return "Fixed";
+  }
+  if (mount === "Barbette") {
+    return "Barbette";
+  }
+  if (typeof mount === "object" && "Turret" in mount) {
+    return "Turret";
+  }
+  if (typeof mount === "object" && "Bay" in mount) {
+    return `${mount.Bay}Bay` as MountClass;
+  }
+  if (typeof mount === "object" && "Battery" in mount) {
+    return "Battery";
+  }
+  return null;
+}
+
+/**
+ * Whether the rules sell this weapon in this mount.
+ *
+ * The table is generated from the Rust `weapon_profile` table, so the editor
+ * cannot drift from what the server will actually fire — see the
+ * `frontend_mount_matrix_is_current` test in `rules_tables.rs`.
+ */
+export function isLegalPairing(kind: string, mount: WeaponMount | null): boolean {
+  if (mount === null) {
+    return true;
+  }
+  const mountClass = mountClassOf(mount);
+  const legal = (WEAPON_MOUNTS as Record<string, string[]>)[kind];
+  // An unknown weapon kind comes from a design this build does not know about.
+  // Leave it alone rather than declaring the referee's data illegal.
+  if (mountClass === null || legal === undefined) {
+    return true;
+  }
+  return legal.includes(mountClass);
+}
+
+/** The weapons the rules allow in a given mount, in {@link WEAPON_KINDS} order. */
+export function weaponKindsForMount(mount: WeaponMount | null): string[] {
+  if (mount === null) {
+    return WEAPON_KINDS;
+  }
+  return WEAPON_KINDS.filter((kind) => isLegalPairing(kind, mount));
 }
 
 const BAY_SIZES: BaySize[] = ["Small", "Medium", "Large"];
 
+// Point-defence batteries come in three grades and no others (High Guard p. 40).
+const BATTERY_TYPES = [
+  { grade: 1, numeral: "I" },
+  { grade: 2, numeral: "II" },
+  { grade: 3, numeral: "III" },
+];
+
 export const MOUNT_OPTIONS: MountOption[] = [
-  { id: "none", label: "None", mount: null },
-  { id: "fixed", label: "Fixed Mount", mount: "FixedMount" },
-  { id: "turret-1", label: "Single Turret", mount: { Turret: 1 } },
-  { id: "turret-2", label: "Double Turret", mount: { Turret: 2 } },
-  { id: "turret-3", label: "Triple Turret", mount: { Turret: 3 } },
-  { id: "barbette", label: "Barbette", mount: "Barbette" },
+  { id: "none", label: "None", mount: null, mountClass: null },
+  { id: "fixed", label: "Fixed Mount", mount: "FixedMount", mountClass: "Fixed" },
+  { id: "turret-1", label: "Single Turret", mount: { Turret: 1 }, mountClass: "Turret" },
+  { id: "turret-2", label: "Double Turret", mount: { Turret: 2 }, mountClass: "Turret" },
+  { id: "turret-3", label: "Triple Turret", mount: { Turret: 3 }, mountClass: "Turret" },
+  { id: "barbette", label: "Barbette", mount: "Barbette", mountClass: "Barbette" },
   ...BAY_SIZES.map((size) => ({
     id: `bay-${size.toLowerCase()}`,
     label: `${size} Bay`,
     mount: { Bay: size } as WeaponMount,
+    mountClass: `${size}Bay` as MountClass,
+  })),
+  ...BATTERY_TYPES.map(({ grade, numeral }) => ({
+    id: `battery-${grade}`,
+    label: `PD Battery (Type ${numeral})`,
+    mount: { Battery: grade } as WeaponMount,
+    mountClass: "Battery" as MountClass,
   })),
 ];
 
@@ -343,6 +547,9 @@ export function mountOptionId(mount: WeaponMount | null): string | null {
     if ("Bay" in option.mount && "Bay" in mount) {
       return option.mount.Bay === mount.Bay;
     }
+    if ("Battery" in option.mount && "Battery" in mount) {
+      return option.mount.Battery === mount.Battery;
+    }
     return false;
   });
   return match ? match.id : null;
@@ -352,13 +559,14 @@ export function mountForOptionId(id: string): WeaponMount | null {
   return MOUNT_OPTIONS.find((option) => option.id === id)?.mount ?? null;
 }
 
-/** Mirrors the Rust `WeaponType` enum. */
-export const WEAPON_KINDS: string[] = [
-  "Beam",
-  "Pulse",
-  "Missile",
-  "Sand",
-  "Particle",
-];
+/**
+ * Mirrors the Rust `WeaponType` enum, in declaration order.
+ *
+ * Taken from the generated mount matrix so a weapon added on the server shows up
+ * here without a second edit.
+ */
+export const WEAPON_KINDS: string[] = Object.keys(WEAPON_MOUNTS);
 
 export const DEFAULT_WEAPON_KIND = WEAPON_KINDS[0];
+
+export { weaponKindLabel };

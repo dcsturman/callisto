@@ -2,42 +2,296 @@ export type BaySize = "Small" | "Medium" | "Large";
 
 // Mirrors the Rust `WeaponMount` enum: unit variants (`Barbette`) serialize as a
 // bare string, tuple variants as a single-key object.
-export type WeaponMount = string | {Turret: number} | {Bay: BaySize};
+export type WeaponMount =
+  | string
+  | {Turret: number}
+  | {Bay: BaySize}
+  | {Battery: number};
 
-export interface Weapon {
-  kind: string;
-  mount: WeaponMount;
-}
-
-
-export const createWeapon = (kind: string, mount: WeaponMount): Weapon => {
-  return {kind, mount};
+/**
+ * Human-readable names for the weapon kinds.
+ *
+ * Weapon kinds travel the wire as Rust enum variant names, so without this a
+ * referee sees "PointDefense" and "MassDriver" in the design summary and the
+ * Add Ship editor. Only kinds whose identifier differs from their name need an
+ * entry; the rest are already words.
+ */
+const WEAPON_LABELS: {[kind: string]: string} = {
+  PointDefense: "Point Defence",
+  MassDriver: "Mass Driver",
 };
 
+/** The mount on its own, with no weapon named. */
+export const mountToString = (mount: WeaponMount): string => {
+  if (mount === "FixedMount") {
+    return "Fixed Mount";
+  }
+  if (typeof mount === "string") {
+    return "Barbette";
+  }
+  if ("Turret" in mount) {
+    return (
+      {1: "Single Turret", 2: "Double Turret", 3: "Triple Turret"}[
+        mount.Turret
+      ] ?? `Turret of ${mount.Turret}`
+    );
+  }
+  if ("Bay" in mount) {
+    return `${mount.Bay} Bay`;
+  }
+  if ("Battery" in mount) {
+    return `Point Defence Battery (Type ${mount.Battery})`;
+  }
+  return "Unknown Mount";
+};
+
+/** The name to show a referee for a weapon kind. */
+export const weaponKindLabel = (kind: string): string =>
+  WEAPON_LABELS[kind] ?? kind;
+
+/** Roman numerals for point-defence battery grades, which only run I to III. */
+const BATTERY_TYPES: {[grade: number]: string} = {1: "I", 2: "II", 3: "III"};
+
+/** One gun inside a mount. */
+export interface Gun {
+  kind: string;
+  modifiers?: string[];
+}
+
+/**
+ * One weapon mount and its contents.
+ *
+ * The server writes the older single-kind shape whenever every gun in a mount
+ * matches, which is almost always, so `kind` is present on all but genuinely
+ * mixed turrets. Use {@link weaponGuns} rather than reading `kind` directly.
+ */
+export interface Weapon {
+  kind?: string;
+  guns?: Gun[];
+  mount: WeaponMount;
+  /**
+   * High Guard weapon Advantages and Disadvantages. These ride on the weapon,
+   * not the mount: a triple turret can hold two long-range high-yield pulse
+   * lasers and an unmodified sandcaster. Omitted from the wire when empty.
+   */
+  modifiers?: string[];
+}
+
+/** Readable names for modifiers, which travel the wire as Rust variant names. */
+const MODIFIER_LABELS: {[kind: string]: string} = {
+  Accurate: "accurate",
+  Inaccurate: "inaccurate",
+  HighYield: "high yield",
+  VeryHighYield: "very high yield",
+  IntenseFocus: "intense focus",
+  LongRange: "long range",
+  Resilient: "resilient",
+  EnergyEfficient: "energy efficient",
+  EnergyInefficient: "energy inefficient",
+  SizeReduction: "size reduction",
+  IncreasedSize: "increased size",
+  EasyToRepair: "easy to repair",
+};
+
+/**
+ * Weapons that throw an object at the target rather than firing at it.
+ *
+ * Only these two launch: everything else -- lasers, particle beams, fusion,
+ * meson, plasma, railguns, mass drivers, ion -- is direct fire, and should be
+ * drawn and treated as a beam.
+ */
+const LAUNCHER_KINDS = new Set(["Missile", "Torpedo"]);
+
+/** Whether this weapon launches an object that travels to its target. */
+export const isLauncherKind = (kind: string): boolean =>
+  LAUNCHER_KINDS.has(kind);
+
+/** Whether this weapon is a laser, which is what point defence requires. */
+export const isLaserKind = (kind: string): boolean =>
+  kind === "Beam" || kind === "Pulse";
+
+/**
+ * The weapon type an action is using.
+ *
+ * A mixed turret fires one of its guns, named on the action; a uniform mount
+ * has only one kind to use.
+ */
+export const actionWeaponKind = (
+  weapon: Weapon,
+  firingKind?: string,
+): string => firingKind ?? weapon.kind ?? weaponGuns(weapon)[0]?.kind ?? "";
+
+/**
+ * The weapon Advantages and Disadvantages a referee can fit, in the order they
+ * should be offered.
+ *
+ * `inert` marks the ones Callisto records but does not simulate: it models
+ * neither a weapon's power draw nor its tonnage, so those change nothing in
+ * play. They are still offered, because a design should be able to say what it
+ * really carries, but they are worth showing as secondary.
+ */
+export const WEAPON_MODIFIERS: {kind: string; label: string; inert?: boolean}[] =
+  [
+    {kind: "Accurate", label: "accurate (DM+1 to hit)"},
+    {kind: "HighYield", label: "high yield (1s count as 2s)"},
+    {kind: "VeryHighYield", label: "very high yield (1s and 2s count as 3s)"},
+    {kind: "IntenseFocus", label: "intense focus (AP+2, lasers and particle)"},
+    {kind: "LongRange", label: "long range (+1 range band)"},
+    {kind: "Inaccurate", label: "inaccurate (DM-1 to hit)"},
+    {kind: "Resilient", label: "resilient (not yet simulated)", inert: true},
+    {kind: "EnergyEfficient", label: "energy efficient (not simulated)", inert: true},
+    {kind: "EnergyInefficient", label: "energy inefficient (not simulated)", inert: true},
+    {kind: "SizeReduction", label: "size reduction (not simulated)", inert: true},
+    {kind: "IncreasedSize", label: "increased size (not simulated)", inert: true},
+    {kind: "EasyToRepair", label: "easy to repair (not simulated)", inert: true},
+  ];
+
+/**
+ * Modifiers as a readable list, collapsing repeats the way the book writes them
+ * ("energy efficient x3").
+ */
+export const describeModifiers = (modifiers: string[] | undefined): string => {
+  if (modifiers == null || modifiers.length === 0) {
+    return "";
+  }
+  const counts = new Map<string, number>();
+  modifiers.forEach((m) => counts.set(m, (counts.get(m) ?? 0) + 1));
+  return Array.from(counts.entries())
+    .map(([kind, total]) => {
+      const name = MODIFIER_LABELS[kind] ?? kind;
+      return total > 1 ? `${name} x${total}` : name;
+    })
+    .join(", ");
+};
+
+/**
+ * The guns in a mount, whichever shape it arrived in.
+ *
+ * A uniform mount sends one `kind` and a turret size; a mixed one sends `guns`.
+ */
+export const weaponGuns = (weapon: Weapon): Gun[] => {
+  if (weapon.guns != null) {
+    return weapon.guns;
+  }
+  const size =
+    typeof weapon.mount === "object" && "Turret" in weapon.mount
+      ? weapon.mount.Turret
+      : 1;
+  return Array.from({length: size}, () => ({
+    kind: weapon.kind ?? "",
+    modifiers: weapon.modifiers,
+  }));
+};
+
+/** The distinct weapon types in a mount, in first-appearance order. */
+export const weaponKinds = (weapon: Weapon): string[] => {
+  const seen: string[] = [];
+  weaponGuns(weapon).forEach((gun) => {
+    if (!seen.includes(gun.kind)) {
+      seen.push(gun.kind);
+    }
+  });
+  return seen;
+};
+
+/** True when every gun in the mount is the same type. */
+export const isUniformWeapon = (weapon: Weapon): boolean =>
+  weaponKinds(weapon).length <= 1;
+
+/** How many guns of `kind` the mount holds. */
+export const countOfKind = (weapon: Weapon, kind: string): number =>
+  weaponGuns(weapon).filter((gun) => gun.kind === kind).length;
+
+export const createWeapon = (
+  kind: string,
+  mount: WeaponMount,
+  modifiers?: string[],
+): Weapon =>
+  modifiers != null && modifiers.length > 0
+    ? {kind, mount, modifiers}
+    : {kind, mount};
+
 export const weaponToString = (weapon: Weapon): string => {
+    const kinds = weaponKinds(weapon);
+    const mods = describeModifiers(
+      weapon.modifiers ?? weaponGuns(weapon)[0]?.modifiers,
+    );
+
+    // A mixed mount cannot be named "Triple <kind> Turret", because it has no
+    // single kind. Name the mount and list what is in it.
+    if (kinds.length > 1) {
+      const contents = kinds
+        .map((k) => {
+          const count = countOfKind(weapon, k);
+          const label = weaponKindLabel(k);
+          return count > 1 ? `${label} x${count}` : label;
+        })
+        .join(", ");
+      return `${mountToString(weapon.mount)} (${contents})`;
+    }
+
+    const kind = weaponKindLabel(kinds[0] ?? weapon.kind ?? "");
+    const suffix = mods === "" ? "" : ` (${mods})`;
     if (weapon.mount === "FixedMount") {
-      return `${weapon.kind} Fixed Mount`;
+      return `${kind} Fixed Mount${suffix}`;
     } else if (typeof weapon.mount === "string") {
-      return `${weapon.kind} Barbette`;
+      return `${kind} Barbette${suffix}`;
     } else if ("Turret" in weapon.mount) {
       if (weapon.mount.Turret === 1) {
-        return `Single ${weapon.kind} Turret`;
+        return `Single ${kind} Turret${suffix}`;
       } else if (weapon.mount.Turret === 2) {
-        return `Double ${weapon.kind} Turret`;
+        return `Double ${kind} Turret${suffix}`;
       } else if (weapon.mount.Turret === 3) {
-        return `Triple ${weapon.kind} Turret`;
+        return `Triple ${kind} Turret${suffix}`;
       }
     } else if ("Bay" in weapon.mount) {
-      return `${weapon.mount.Bay} ${weapon.kind} Bay`;
+      return `${weapon.mount.Bay} ${kind} Bay${suffix}`;
+    } else if ("Battery" in weapon.mount) {
+      // The grade is the whole identity of a battery, so it is named instead of
+      // the weapon kind -- "Point Defence Battery (Type III)", not
+      // "PointDefense Battery".
+      const grade = BATTERY_TYPES[weapon.mount.Battery] ?? weapon.mount.Battery;
+      return `Point Defence Battery (Type ${grade})${suffix}`;
     }
     console.error("Unknown weapon mount type: " + weapon.mount);
     return "ERROR in weaponToString()";
 }
+
+/**
+ * Weapon kinds the crew never orders directly.
+ *
+ * Sandcasters are deployed by the combat engine rather than fired;
+ * point-defence batteries intercept automatically, "needing only a command from
+ * the bridge" (High Guard p. 40); and repulsors deflect incoming missiles rather
+ * than attacking, so there is no target to pick for any of them.
+ */
+const PASSIVE_WEAPON_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
+
+/**
+ * Whether this weapon is something the crew can be ordered to use.
+ *
+ * Tested on the weapon rather than its display name, so a design whose weapon
+ * kind merely contains the word "Sand" keeps its buttons.
+ */
+export const isActionableWeapon = (weapon: Weapon): boolean => {
+  // A mount is actionable if any gun in it is something the crew can order.
+  // A mixed turret of lasers and sand still gets a button for the lasers.
+  if (weaponKinds(weapon).every((kind) => PASSIVE_WEAPON_KINDS.has(kind))) {
+    return false;
+  }
+  return !(typeof weapon.mount === "object" && "Battery" in weapon.mount);
+};
+
+/** The complement of {@link isActionableWeapon}: defences that run themselves. */
+export const isPassiveWeapon = (weapon: Weapon): boolean =>
+  !isActionableWeapon(weapon);
 
 export interface CompressedWeapon {
   [weapon: string]: {
     kind: string;
     mount: WeaponMount;
     total: number;
+    /** Present when the mount holds more than one weapon type. */
+    guns?: Gun[];
   };
 };

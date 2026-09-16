@@ -1,0 +1,52 @@
+{
+  "name": "HMS Executor",
+  "displacement": 200,
+  "hull": 80,
+  "armor": 4,
+  "maneuver": 6,
+  "jump": 2,
+  "power": 260,
+  "fuel": 42,
+  "crew": 11,
+  "sensors": "Advanced",
+  "countermeasures": "Military",
+  "stealth": "Advanced",
+  "computer": 20,
+  "crew_skills": {
+    "pilot": 3,
+    "engineering_jump": 3,
+    "engineering_power": 3,
+    "engineering_maneuver": 3,
+    "sensors": 2,
+    "gunnery": [
+      3,
+      2
+    ],
+    "leadership": 4
+  },
+  "weapons": [
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "mount": {
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
+    }
+  ],
+  "tl": 15,
+  "role": "Raider",
+  "source": "Custom"
+}

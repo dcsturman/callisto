@@ -12,7 +12,7 @@ use serde_with::serde_as;
 use egobox_doe::{Lhs, LhsKind, SamplingMethod};
 use ndarray::{arr2, Array2};
 
-use crate::entity::{Vec3, DELTA_TIME_F64, G};
+use crate::entity::{Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use crate::missile::IMPACT_DISTANCE;
 use crate::payloads::Vec3asVec;
 use crate::ship::FlightPlan;
@@ -30,6 +30,30 @@ const ANS_PERCENT_OFF: f64 = 0.01;
 const MAX_ITERATIONS: usize = 100;
 const MAX_SAMPLES: usize = 100;
 
+/// Which rung of the course ladder produced a plan.
+///
+/// The navigation computer never answers "no" for a reachable target. It tries
+/// three things in order, each weaker than the last, and reports which one it
+/// landed on so the pilot knows what the plan actually promises:
+///
+/// * `Intercept` -- arrive at the target and match its velocity. The full
+///   rendezvous, solved by [`FlightParams`].
+/// * `Pursuit` -- cross the target's projected position at whatever velocity
+///   that takes. One burn, any arrival speed, solved by [`TargetParams`], which
+///   is the missile guidance problem pointed at a ship.
+/// * `Shadow` -- the target is pulling away faster than we can close, so no
+///   course reaches it. Burn flat out at where it will be next turn, which is
+///   the direction that lets the range grow least. Closed form; cannot fail.
+///
+/// Re-plotting each turn walks back up the ladder as the geometry improves.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
+pub enum PathMode {
+  #[default]
+  Intercept,
+  Pursuit,
+  Shadow,
+}
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct FlightPathResult {
@@ -38,6 +62,10 @@ pub struct FlightPathResult {
   #[serde_as(as = "Vec3asVec")]
   pub end_velocity: Vec3,
   pub plan: FlightPlan,
+  /// Absent on the wire from anything written before the ladder existed, and
+  /// every such plan was a rendezvous.
+  #[serde(default)]
+  pub mode: PathMode,
 }
 
 /**
@@ -303,6 +331,9 @@ impl FlightParams {
    * Computes a flight path given the parameters.
    * Returns a `FlightPathResult` which contains the path, the end velocity and the plan.
    */
+  // Sat at exactly the line limit before the result gained its `mode` field.
+  // Splitting a root-finding loop to recover one line is a change on its own.
+  #[allow(clippy::too_many_lines)]
   pub fn compute_flight_path(&mut self) -> Result<FlightPathResult, f64> {
     // Corner case eliminated here as all these zeros otherwise mess up solution finding.
     if cgmath::ulps_eq!(self.start_pos, self.end_pos) && cgmath::ulps_eq!(self.start_vel, self.end_vel) {
@@ -311,6 +342,7 @@ impl FlightParams {
         path: vec![self.start_pos],
         end_velocity: self.start_vel,
         plan: FlightPlan::new((Vec3::zero(), 0).into(), Some((Vec3::zero(), 0).into())),
+        mode: PathMode::Intercept,
       });
     }
 
@@ -433,6 +465,7 @@ impl FlightParams {
         end_velocity,
         // The server always works in m/s^2; UX must convert.
         plan: FlightPlan::new((a_1, t_1).into(), Some((a_2, t_2).into())),
+        mode: PathMode::Intercept,
       });
     }
   }
@@ -516,6 +549,113 @@ impl Problem for FlightParams {
  * The seventh value is the difference between the first acceleration magnitude and the max acceleration, squared.
  * The eighth value is the difference between the second acceleration magnitude and the max acceleration, squared.
  */
+/// How far ahead the shadowing burn aims: one turn.
+///
+/// The game resolves on this step and re-plans, so "least range growth by the
+/// end of this turn" is the honest objective. Aiming further ahead adds lead
+/// that overshoots on a curving chase; aiming at where the target is now is pure
+/// pursuit and gets beaten by anything crossing.
+const SHADOW_HORIZON: f64 = DELTA_TIME_F64;
+
+/// How many turns of the shadowing burn to draw. The plan itself keeps burning
+/// until re-plotted; this is only what the route shows.
+const SHADOW_PATH_TURNS: u32 = 5;
+
+/// Burn flat out at where the target will be one turn from now.
+///
+/// For a target we cannot reach, this is the direction that lets the range grow
+/// least. With `q` the gap there would be at the horizon if we did nothing, our
+/// burn shortens it by `a * T^2 / 2`, and `|q - a T^2 / 2|` over `|a| = max` is
+/// smallest with `a` along `q`. Closed form, so it always yields a direction --
+/// the one degenerate input is already being there, which is "do not burn".
+///
+/// The acceleration is applied to the projection only when it is known; a
+/// contact-less blip contributes its velocity alone.
+#[must_use]
+pub fn lead_burn(
+  start_pos: Vec3, start_vel: Vec3, max_acceleration: f64, end_pos: Vec3, target_vel: Option<Vec3>,
+  target_accel: Option<Vec3>,
+) -> FlightPathResult {
+  let horizon = SHADOW_HORIZON;
+  let theirs = end_pos
+    + target_vel.map_or(Vec3::zero(), |v| v * horizon)
+    + target_accel.map_or(Vec3::zero(), |a| a * horizon * horizon / 2.0);
+  let ours = start_pos + start_vel * horizon;
+  let gap = theirs - ours;
+
+  let accel = if gap.magnitude2() > 0.0 {
+    gap.normalize() * max_acceleration
+  } else {
+    Vec3::zero()
+  };
+
+  // Draw a few turns of the burn so the route is visible; the plan runs on
+  // until re-plotted, which is the safer failure if the navigator forgets --
+  // the ship keeps chasing rather than coasting.
+  let mut path = vec![start_pos];
+  let mut pos = start_pos;
+  let mut vel = start_vel;
+  for _ in 0..SHADOW_PATH_TURNS {
+    pos += vel * DELTA_TIME_F64 + accel * DELTA_TIME_F64 * DELTA_TIME_F64 / 2.0;
+    vel += accel * DELTA_TIME_F64;
+    path.push(pos);
+  }
+
+  FlightPathResult {
+    path,
+    end_velocity: vel,
+    plan: FlightPlan::new((accel, DEFAULT_ACCEL_DURATION).into(), None),
+    mode: PathMode::Shadow,
+  }
+}
+
+/// Plot a course to a target, always producing a plan.
+///
+/// Walks the ladder described on [`PathMode`]: a full rendezvous if one exists,
+/// otherwise a burn through the target's projected position, otherwise the burn
+/// that keeps the range growing least. The last rung is closed form, so this
+/// cannot fail for any target that exists.
+///
+/// No feasibility check is made up front. Whether a rendezvous exists depends
+/// on the relative acceleration along the line of sight *and* the closing
+/// velocity, and any cheap test gets some geometry wrong -- a target burning
+/// hard *toward* you is trivially catchable. The solver is the test.
+#[must_use]
+pub fn plot_course(
+  start_pos: Vec3, start_vel: Vec3, max_acceleration: f64, end_pos: Vec3, end_vel: Vec3, target_vel: Option<Vec3>,
+  target_accel: Option<Vec3>,
+) -> FlightPathResult {
+  let mut rendezvous = FlightParams::new(
+    start_pos,
+    end_pos,
+    start_vel,
+    end_vel,
+    target_vel,
+    target_accel,
+    max_acceleration,
+  );
+  if let Ok(plan) = rendezvous.compute_flight_path() {
+    return plan;
+  }
+  info!("(plot_course) No rendezvous; trying a pass-through.");
+
+  let pass_through = TargetParams::new(
+    start_pos,
+    end_pos,
+    start_vel,
+    target_vel.unwrap_or_else(Vec3::zero),
+    target_accel.unwrap_or_else(Vec3::zero),
+    max_acceleration,
+  );
+  if let Some(mut plan) = pass_through.compute_target_path() {
+    plan.mode = PathMode::Pursuit;
+    return plan;
+  }
+  info!("(plot_course) No pass-through either; shadowing.");
+
+  lead_burn(start_pos, start_vel, max_acceleration, end_pos, target_vel, target_accel)
+}
+
 impl System for FlightParams {
   // Evaluation of the system (computing the residuals).
   fn eval<Sx, Srx>(&self, x: &na::Vector<Self::Field, Dyn, Sx>, rx: &mut na::Vector<Self::Field, Dyn, Srx>)
@@ -640,6 +780,7 @@ impl TargetParams {
         path: vec![self.start_pos, self.end_pos],
         end_velocity: self.start_vel,
         plan: FlightPlan::new((Vec3::zero(), 0).into(), None),
+        mode: PathMode::Pursuit,
       });
     }
 
@@ -693,6 +834,7 @@ impl TargetParams {
           path: first_attempt.build_path(&result),
           end_velocity: self.start_vel + a * t,
           plan: FlightPlan::new((a, t_u64).into(), None),
+          mode: PathMode::Pursuit,
         })
       }
       Ok(_result) => {
@@ -724,6 +866,7 @@ impl TargetParams {
               path: self.build_path(&result),
               end_velocity: self.start_vel + a * t,
               plan: FlightPlan::new((a, t_u64).into(), None),
+              mode: PathMode::Pursuit,
             })
           },
         )
@@ -786,6 +929,70 @@ mod tests {
   use super::*;
   use cgmath::assert_relative_eq;
   use rand::Rng;
+
+  /// The shadowing burn points at where the target will be, not where it is.
+  #[test]
+  fn lead_burn_aims_at_the_projected_gap() {
+    // Dead ahead on x, sliding sideways on y. Aiming at where it *is* would be
+    // pure +x; the lead pulls the burn toward +y, exactly along the gap.
+    let result = lead_burn(
+      Vec3::zero(),
+      Vec3::zero(),
+      20.0,
+      Vec3::new(1.0e6, 0.0, 0.0),
+      Some(Vec3::new(0.0, 500.0, 0.0)),
+      None,
+    );
+    let a = result.plan.0 .0;
+    assert_relative_eq!(a.magnitude(), 20.0, epsilon = 1e-9);
+    assert!(a.x > 0.0 && a.y > 0.0, "should lead the target: {a:?}");
+    let gap = Vec3::new(1.0e6, 500.0 * DELTA_TIME_F64, 0.0).normalize();
+    assert_relative_eq!(a.normalize().dot(gap), 1.0, epsilon = 1e-9);
+    assert_eq!(result.mode, PathMode::Shadow);
+  }
+
+  /// Already there: nothing to aim at, so no burn rather than a NaN direction.
+  #[test]
+  fn lead_burn_at_the_target_does_not_burn() {
+    let r = lead_burn(Vec3::zero(), Vec3::zero(), 20.0, Vec3::zero(), None, None);
+    assert_eq!(r.plan.0 .0, Vec3::zero());
+  }
+
+  /// A target it can reach gets the full rendezvous, exactly as before.
+  #[test_log::test]
+  fn plot_course_intercepts_when_it_can() {
+    let r = plot_course(
+      Vec3::zero(),
+      Vec3::zero(),
+      4.0 * G,
+      Vec3::new(1.0e7, 0.0, 0.0),
+      Vec3::zero(),
+      Some(Vec3::zero()),
+      None,
+    );
+    assert_eq!(r.mode, PathMode::Intercept);
+  }
+
+  /// A target that out-accelerates us and is already receding has no root for
+  /// either solver -- and still gets a plan, pointed the right way at full burn.
+  /// This is the case that used to come back as an error every time.
+  #[test_log::test]
+  fn plot_course_shadows_what_it_cannot_catch() {
+    let receding = Vec3::new(30_000.0, 0.0, 0.0);
+    let r = plot_course(
+      Vec3::zero(),
+      Vec3::zero(),
+      2.0 * G,
+      Vec3::new(2.0e7, 0.0, 0.0),
+      receding,
+      Some(receding),
+      Some(Vec3::new(6.0 * G, 0.0, 0.0)),
+    );
+    assert_eq!(r.mode, PathMode::Shadow, "neither solver should find a root here");
+    let a = r.plan.0 .0;
+    assert!(a.x > 0.0, "should still chase: {a:?}");
+    assert_relative_eq!(a.magnitude(), 2.0 * G, epsilon = 1e-6);
+  }
 
   fn pos_error(_start: &Vec3, end: &Vec3, result: &Vec3) -> f64 {
     (end - result).magnitude() / end.magnitude()

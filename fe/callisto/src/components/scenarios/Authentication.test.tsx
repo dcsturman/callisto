@@ -98,9 +98,9 @@ afterEach(() => {
 });
 
 describe("Splash copy and version", () => {
-  it("shows the 1.0 version string", () => {
+  it("shows the 1.1 version string", () => {
     renderAuth();
-    expect(container.textContent).toContain("Callisto 1.0");
+    expect(container.textContent).toContain("Callisto 1.1");
   });
 
   it("shows the GA splash copy (no closed-beta wording)", () => {

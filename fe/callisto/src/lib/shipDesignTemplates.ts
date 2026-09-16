@@ -1,7 +1,31 @@
-import {Weapon, CompressedWeapon, weaponToString} from "./weapon";
+import {Weapon, CompressedWeapon, weaponToString, weaponKinds} from "./weapon";
 // Type-only: `lib/entities` sits in an import cycle with the Redux slices, and
 // a value import from here would drag this module into it.
 import type {Ship} from "./entities";
+// Type-only for the same reason: CrewBuilder reaches back into `lib/entities`.
+import type {Crew} from "components/controls/CrewBuilder";
+
+/**
+ * Readable names for screen types, which travel the wire as Rust enum variant
+ * names -- so without this a referee sees "NuclearDamper".
+ */
+const SCREEN_LABELS: {[kind: string]: string} = {
+  Meson: "Meson Screen",
+  NuclearDamper: "Nuclear Damper",
+};
+
+/** The name to show a referee for a screen, and its count if more than one. */
+export const describeScreens = (screens: string[] | undefined): string[] => {
+  if (screens == null || screens.length === 0) {
+    return [];
+  }
+  const counts = new Map<string, number>();
+  screens.forEach((screen) => counts.set(screen, (counts.get(screen) ?? 0) + 1));
+  return Array.from(counts.entries()).map(([kind, total]) => {
+    const name = SCREEN_LABELS[kind] ?? kind;
+    return total > 1 ? `${name} x${total}` : name;
+  });
+};
 
 export interface ShipDesignTemplate {
   name: string;
@@ -17,7 +41,18 @@ export interface ShipDesignTemplate {
   stealth: string | null;
   countermeasures: string | null;
   computer: number;
+  /**
+   * The crew this ship flies with, for a design that is one particular ship
+   * rather than a class -- HMS Executor is one hull with one crew.
+   *
+   * Absent on class designs, where there is no such thing as "the" crew. Fields
+   * the server omits when zero or empty (leadership, screen_gunnery) come back
+   * missing, so merge onto a `createCrew()` base rather than using it raw.
+   */
+  crew_skills?: Crew | null;
   weapons: Weapon[];
+  /** Directed defensive systems. Omitted from the wire when the design has none. */
+  screens?: string[];
   tl: number;
   // Both are free-form and optional on the Rust side (`Option<String>`, omitted
   // from the wire when unset).  Used only to organize the design picker.
@@ -40,6 +75,7 @@ export const defaultShipDesignTemplate = () => {
     stealth: null,
     countermeasures: null,
     computer: 0,
+    crew_skills: null,
     weapons: [],
     tl: 0,
   };
@@ -58,9 +94,12 @@ export const compressedWeapons = (weapons: Weapon[] | null) => {
       accumulator[weapon_name].total += 1;
     } else {
       accumulator[weapon_name] = {
-        kind: weapon.kind,
+        kind: weapon.kind ?? weaponKinds(weapon)[0] ?? "",
         mount: weapon.mount,
         total: 1,
+        // Carried so callers can rebuild the mount faithfully; without it a
+        // mixed turret reads back as whatever its first gun happens to be.
+        guns: weapon.guns,
       };
     }
     return accumulator;

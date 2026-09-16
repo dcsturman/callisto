@@ -44,14 +44,12 @@ import {
 import { Users } from "components/UserList";
 
 import { ShipComputer } from "components/controls/ShipComputer";
-import { ViewMode } from "lib/view";
+import { ViewMode, hasRole, isReferee } from "lib/view";
 
 import { RoleChooser } from "components/Role";
-import {
-  ScenarioManager,
-  TUTORIAL_PREFIX,
-} from "components/scenarios/ScenarioManager";
+import { ScenarioManager } from "components/scenarios/ScenarioManager";
 import { Tutorial } from "components/Tutorial";
+import { ConfirmDialog } from "components/ConfirmDialog";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { AppMode, setAppMode } from "state/tutorialSlice";
@@ -62,6 +60,15 @@ import "./index.css";
 
 export const GOOGLE_OAUTH_CLIENT_ID: string =
   import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || "CannotFindClientId";
+
+/**
+ * How fast the camera turns under the arrow and roll keys.
+ *
+ * Was 0.2, which worked out to about 23 degrees a second -- four seconds to
+ * bring the view ninety degrees around, which is why turning felt broken. 0.6
+ * is a shade under 70 degrees a second, and holding Shift trebles it.
+ */
+const CAMERA_ROLL_SPEED = 0.6;
 
 export function App() {
   const socketReady = useAppSelector((state) => state.server.socketReady);
@@ -86,7 +93,7 @@ export function App() {
 
   useEffect(() => {
     if (!joinedScenario) {
-      dispatch(setRoleShip([ViewMode.General, null]));
+      dispatch(setRoleShip([[ViewMode.General], null]));
       dispatch(setAppMode(AppMode.Game));
     }
   }, [joinedScenario, dispatch]);
@@ -116,7 +123,7 @@ function Simulator() {
   const tutorialMode = appMode === AppMode.Tutorial;
   const scenarioBuilderMode = appMode === AppMode.ScenarioBuilder;
 
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const shipName = useAppSelector((state) => state.user.shipName);
   const joinedScenario = useAppSelector((state) => state.user.joinedScenario);
   const email = useAppSelector((state) => state.user.email);
@@ -156,11 +163,9 @@ function Simulator() {
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
-        {(scenarioBuilderMode || role !== ViewMode.Observer) && <Controls />}
+        {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
         {(scenarioBuilderMode ||
-          [ViewMode.General, ViewMode.Pilot, ViewMode.Observer].includes(
-            role,
-          )) && (
+          hasRole(roles, ViewMode.General, ViewMode.Pilot, ViewMode.Observer)) && (
           <div className="top-right-stack">
             <ShipSummary />
             <ViewControls />
@@ -179,17 +184,12 @@ function Simulator() {
           {!scenarioBuilderMode && <RoleChooser />}
           <div className="reset-and-logout-buttons">
             <Exit email={email} />
-            {role === ViewMode.General && shipName == null && (
-              <button
-                className="blue-button"
-                onClick={() => resetServer(appMode)}
-              >
-                Reset
-              </button>
+            {isReferee(roles, shipName) && (
+              <ResetButton appMode={appMode} />
             )}
           </div>
         </div>
-        {!scenarioBuilderMode && role === ViewMode.General && computerShip && (
+        {!scenarioBuilderMode && hasRole(roles, ViewMode.General) && computerShip && (
           <ShipComputer ship={computerShip} />
         )}
         {showResults && (
@@ -228,7 +228,7 @@ function Simulator() {
             autoForward={false}
             dragToLook={true}
             movementSpeed={50}
-            rollSpeed={0.2}
+            rollSpeed={CAMERA_ROLL_SPEED}
             enableFlywheelZoom={true}
           />
           <Suspense fallback={null}>
@@ -278,9 +278,65 @@ function GrabCamera(args: { setCamera: (camera: THREE.Camera) => void }) {
   return null;
 }
 
+/**
+ * Reset the scenario to its loaded state.
+ *
+ * Reset is reachable from the Scenario Builder and throws away everything added
+ * since load, exactly as Exit did. The generic "reset the server?" prompt never
+ * said so, so a builder session with unsaved edits gets the same dialog Exit
+ * uses; everywhere else keeps the original confirm.
+ */
+export function ResetButton(args: { appMode: AppMode }) {
+  const [confirming, setConfirming] = useState(false);
+  const unsavedEdits = useAppSelector(
+    (state) =>
+      state.tutorial.appMode === AppMode.ScenarioBuilder &&
+      state.ui.scenarioDirty,
+  );
+
+  return (
+    <>
+      <button
+        className="blue-button"
+        onClick={() =>
+          unsavedEdits ? setConfirming(true) : resetServer(args.appMode)
+        }
+      >
+        Reset
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title="Unsaved changes"
+          message={
+            "Resetting returns the scenario to the state it was loaded in. " +
+            "Changes that have not been saved will be lost."
+          }
+          confirmLabel="Discard and reset"
+          cancelLabel="Keep editing"
+          onConfirm={() => {
+            setConfirming(false);
+            resetServer(args.appMode, true);
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </>
+  );
+}
+
 export function Exit(args: { email: string | null }) {
   const dispatch = useAppDispatch();
+  const [confirming, setConfirming] = useState(false);
+  // Only the Scenario Builder has a save to be out of date with, so a running
+  // game exits straight away however much its state has moved on.
+  const unsavedEdits = useAppSelector(
+    (state) =>
+      state.tutorial.appMode === AppMode.ScenarioBuilder &&
+      state.ui.scenarioDirty,
+  );
+
   const exit = () => {
+    setConfirming(false);
     dispatch(setJoinedScenario(null));
     exit_scenario();
     console.log("(Authentication.Logout) Quit scenario");
@@ -289,9 +345,25 @@ export function Exit(args: { email: string | null }) {
   const username = args.email ? args.email.split("@")[0] : "";
   return (
     <div className="logout-window">
-      <button className="blue-button logout-button" onClick={exit}>
+      <button
+        className="blue-button logout-button"
+        onClick={() => (unsavedEdits ? setConfirming(true) : exit())}
+      >
         Exit {username}
       </button>
+      {confirming && (
+        <ConfirmDialog
+          title="Unsaved changes"
+          message={
+            "This scenario has changes that have not been saved. " +
+            "Leaving now discards them."
+          }
+          confirmLabel="Discard and exit"
+          cancelLabel="Keep editing"
+          onConfirm={exit}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
     </div>
   );
 }

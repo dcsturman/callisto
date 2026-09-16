@@ -12,7 +12,7 @@
   "computer": 20,
   "weapons": [
     {
-      "kind": "Missile",
+      "kind": "Torpedo",
       "mount": "Barbette"
     }
   ],

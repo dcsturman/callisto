@@ -110,3 +110,143 @@ describe("ScenarioLoadErrors inbound handling", () => {
     expect(errors[1].error).toBe("bad json");
   });
 });
+
+describe("scenario dirty tracking", () => {
+  async function dirty() {
+    const { store } = await import("state/store");
+    return store.getState().ui.scenarioDirty;
+  }
+
+  it("starts clean", async () => {
+    expect(await dirty()).toBe(false);
+  });
+
+  it.each([
+    ["removeEntity", (sm: typeof import("lib/serverManager")) => sm.removeEntity("Flayer")],
+    [
+      "renameEntity",
+      (sm: typeof import("lib/serverManager")) => sm.renameEntity("Flayer", "Thrasher"),
+    ],
+  ])("marks the scenario dirty after %s", async (_name, mutate) => {
+    const sm = await import("lib/serverManager");
+    mutate(sm);
+    expect(await dirty()).toBe(true);
+  });
+
+  it("clears the flag when the server confirms a save", async () => {
+    const sm = await import("lib/serverManager");
+    sm.removeEntity("Flayer");
+    expect(await dirty()).toBe(true);
+
+    mockSocket.onmessage!(
+      new MessageEvent("message", {
+        data: JSON.stringify({ ScenarioSaved: "mine.json" }),
+      }),
+    );
+    expect(await dirty()).toBe(false);
+  });
+
+  it("clears the flag on leaving the scenario", async () => {
+    const sm = await import("lib/serverManager");
+    sm.removeEntity("Flayer");
+    expect(await dirty()).toBe(true);
+
+    sm.exit_scenario();
+    expect(await dirty()).toBe(false);
+  });
+
+  it("clears the flag when a different scenario is joined", async () => {
+    const sm = await import("lib/serverManager");
+    sm.removeEntity("Flayer");
+    expect(await dirty()).toBe(true);
+
+    sm.joinScenario("sol.json");
+    expect(await dirty()).toBe(false);
+  });
+});
+
+describe("setShipEmissions", () => {
+  it("sends a request to go dark", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Harrier", active_sensors: false },
+      }),
+    ]);
+  });
+
+  it("sends a request to bring sensors back up", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", true);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Harrier", active_sensors: true },
+      }),
+    ]);
+  });
+
+  it("can go silent without restating the sensor setting", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", undefined, false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Harrier", transmitting: false },
+      }),
+    ]);
+  });
+
+  it("can set both at once", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Harrier", false, false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: {
+          ship_name: "Harrier",
+          active_sensors: false,
+          transmitting: false,
+        },
+      }),
+    ]);
+  });
+});
+
+describe("setShipTeam", () => {
+  it("assigns a team", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipTeam("Harrier", "Red");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetShipTeam: { ship_name: "Harrier", team: "Red" } }),
+    ]);
+  });
+
+  it("omits the team to make a ship unaligned", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipTeam("Harrier", null);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetShipTeam: { ship_name: "Harrier" } }),
+    ]);
+  });
+});
+
+describe("sensor hand-off", () => {
+  it("turns hand-off on without restating the other emissions", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Picket", undefined, undefined, true);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Picket", handoff_sensors: true },
+      }),
+    ]);
+  });
+
+  it("can turn it off again", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipEmissions("Picket", undefined, undefined, false);
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipEmissions: { ship_name: "Picket", handoff_sensors: false },
+      }),
+    ]);
+  });
+});

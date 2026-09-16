@@ -8,10 +8,25 @@ import {
   compressedWeapons,
   shipWeapons,
 } from "lib/shipDesignTemplates";
-import { Weapon, WeaponMount, createWeapon, weaponToString } from "lib/weapon";
+import {
+  Gun,
+  Weapon,
+  WeaponMount,
+  createWeapon,
+  weaponToString,
+  mountToString,
+  WEAPON_MODIFIERS,
+} from "lib/weapon";
 import {
   DEFAULT_GUNNERY,
   MOUNT_OPTIONS,
+  weaponKindsForMount,
+  weaponKindLabel,
+  isLegalPairing,
+  gunCapacity,
+  describeGroupGuns,
+  legalMountsLabel,
+  needsDetailEditor,
   WEAPON_KINDS,
   WeaponGroup,
   checkAllowance,
@@ -29,6 +44,7 @@ import { Tooltip } from "react-tooltip";
 import { CiCircleQuestion } from "react-icons/ci";
 import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
+import { Team, TEAMS, TEAM_CSS } from "lib/teams";
 
 import { addShip } from "lib/serverManager";
 import { useAppSelector } from "state/hooks";
@@ -63,6 +79,21 @@ export const AddShip: React.FC<AddShipProps> = () => {
     [shipDesignTemplates],
   );
 
+  // A design that is one particular ship carries its crew, so picking it should
+  // bring them aboard rather than leaving a blank form to retype -- which is how
+  // HMS Executor ended up with three different crews across three scenarios.
+  //
+  // Merged onto a blank crew because the server omits fields that are zero or
+  // empty (leadership, screen_gunnery), so `crew_skills` arrives with holes in
+  // it. A class design has no crew_skills and yields a blank crew as before.
+  const crewForDesign = useCallback(
+    (designName: string): Crew => ({
+      ...createCrew(),
+      ...(shipDesignTemplates[designName]?.crew_skills ?? {}),
+    }),
+    [shipDesignTemplates],
+  );
+
   const initialTemplate = useMemo(() => {
     const firstDesign = Object.values(shipDesignTemplates)[0];
     return {
@@ -74,10 +105,21 @@ export const AddShip: React.FC<AddShipProps> = () => {
       yvel: "0",
       zvel: "0",
       design: firstDesign.name,
-      crew: createCrew(),
-      armament: buildWeaponRows(firstDesign.name),
+      crew: crewForDesign(firstDesign.name),
+      // Seeded with the design's gunnery so the per-weapon gunner boxes agree
+      // with the crew the design named.
+      armament: buildWeaponRows(
+        firstDesign.name,
+        undefined,
+        crewForDesign(firstDesign.name).gunnery,
+      ),
+      // Ships are built with sensors up but silent: transmitting is the loudest
+      // thing a ship can do, so a scenario opts into it deliberately.
+      activeSensors: true,
+      transmitting: false,
+      team: null as Team | null,
     };
-  }, [shipDesignTemplates, entities, buildWeaponRows]);
+  }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
   const [addShipData, setAddShipData] = useState(initialTemplate);
 
@@ -102,6 +144,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
           shipWeapons(current, shipDesignTemplates),
           current.crew?.gunnery,
         ),
+        // Absent on the wire means running normally.
+        activeSensors: current.active_sensors !== false,
+        transmitting: current.transmitting === true,
+        team: current.team ?? null,
       };
       setAddShipData(template);
     }
@@ -134,6 +180,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 shipWeapons(ship, shipDesignTemplates),
                 ship.crew?.gunnery,
               ),
+              // Absent on the wire means running normally.
+              activeSensors: ship.active_sensors !== false,
+              transmitting: ship.transmitting === true,
+              team: ship.team ?? null,
             });
           }
         }
@@ -194,6 +244,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
         design,
         crew,
         weapons: armament,
+        active_sensors: addShipData.activeSensors,
+        transmitting: addShipData.transmitting,
+        team: addShipData.team ?? undefined,
       };
 
       addShip(revision);
@@ -203,16 +256,20 @@ export const AddShip: React.FC<AddShipProps> = () => {
     [addShipData, entities, initialTemplate, shipNameRef, shipDesignTemplates],
   );
 
-  // Changing the design changes the allowance and the default armament, so the
-  // rows are rebuilt from the new design rather than carried over.
+  // Changing the design changes the allowance, the default armament and, for a
+  // design that names one, the crew -- so all three are rebuilt from the new
+  // design rather than carried over from the old one.
   const handleDesignChange = useCallback(
-    (design: string) =>
+    (design: string) => {
+      const crew = crewForDesign(design);
       setAddShipData({
         ...addShipData,
         design: design,
-        armament: buildWeaponRows(design),
-      }),
-    [addShipData, setAddShipData, buildWeaponRows],
+        crew,
+        armament: buildWeaponRows(design, undefined, crew.gunnery),
+      });
+    },
+    [addShipData, setAddShipData, buildWeaponRows, crewForDesign],
   );
 
   const handleWeaponsChange = useCallback(
@@ -305,6 +362,63 @@ export const AddShip: React.FC<AddShipProps> = () => {
             setShipDesignName={handleDesignChange}
             shipDesigns={shipDesignTemplates}
           />
+          <div className="emissions-row">
+            <label
+              className="emissions-toggle"
+              title="Active radar/lidar. A ship running dark acquires no new contacts and cannot sensor lock, but stops handing opponents DM+2 to find it.">
+              <input
+                type="checkbox"
+                checked={addShipData.activeSensors}
+                onChange={(event) =>
+                  setAddShipData({
+                    ...addShipData,
+                    activeSensors: event.target.checked,
+                  })
+                }
+              />
+              Active sensors
+            </label>
+            <label
+              className="emissions-toggle"
+              title="Transponder and radio comms. DM+6 to anyone hunting this ship. Turn off for a ship that is meant to be lurking.">
+              <input
+                type="checkbox"
+                checked={addShipData.transmitting}
+                onChange={(event) =>
+                  setAddShipData({
+                    ...addShipData,
+                    transmitting: event.target.checked,
+                  })
+                }
+              />
+              Transmit
+            </label>
+            <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
+              Team
+              <select
+                className="team-select"
+                value={addShipData.team ?? ""}
+                style={{
+                  color: addShipData.team
+                    ? TEAM_CSS[addShipData.team]
+                    : undefined,
+                }}
+                onChange={(event) =>
+                  setAddShipData({
+                    ...addShipData,
+                    team: (event.target.value || null) as Team | null,
+                  })
+                }
+              >
+                <option value="">None</option>
+                {TEAMS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
         <hr />
         <HardpointList
@@ -356,6 +470,9 @@ function HardpointList(args: {
 
   const bulkGunnery = useMemo(() => commonGunnery(args.groups), [args.groups]);
 
+  // Which row is open in the detail editor, if any.
+  const [detailRow, setDetailRow] = useState<number | null>(null);
+
   // Small craft cannot carry a double or triple turret, or a bay at all, so
   // those are not offered on a firmpoint hull.
   const options = useMemo(
@@ -386,16 +503,40 @@ function HardpointList(args: {
         args.setGroups(args.groups.filter((_, i) => i !== index));
         return;
       }
-      replaceRow(index, { ...args.groups[index], mount });
+      // Not every weapon fits every mount, so switching to a bay while holding
+      // a sandcaster has to move the weapon too.  Falling back to the first
+      // legal option keeps the row valid instead of leaving it unfireable.
+      const group = args.groups[index];
+      const kind = isLegalPairing(group.kind, mount)
+        ? group.kind
+        : (weaponKindsForMount(mount)[0] ?? group.kind);
+      // A mount holds a fixed number of guns, so changing it resizes the list.
+      // Dropping to a single-gun mount makes the row uniform again.
+      const size = gunCapacity(mount);
+      const guns =
+        group.guns == null || size < 2
+          ? undefined
+          : Array.from({ length: size }, (_unused, n) => group.guns![n] ?? { kind });
+      replaceRow(index, { ...group, mount, kind, guns });
     },
     [args, replaceRow],
   );
 
   const handleKindChange = useCallback(
-    (index: number, kind: string) =>
-      replaceRow(index, { ...args.groups[index], kind }),
+    (index: number, kind: string) => {
+      const group = args.groups[index];
+      if (kind === CUSTOMIZE_OPTION) {
+        setDetailRow(index);
+        return;
+      }
+      // Choosing a single weapon makes the mount uniform again.  Clearing the
+      // gun list matters: leaving it would show the new kind while still
+      // writing the old guns.
+      replaceRow(index, { ...group, kind, guns: undefined });
+    },
     [args.groups, replaceRow],
   );
+
 
   // Zero is allowed so the field can be cleared mid-edit; a zero-count row
   // simply contributes no weapons.
@@ -528,18 +669,48 @@ function HardpointList(args: {
                 className="select-dropdown control-input hardpoint-weapon"
                 name={"hardpoint-weapon-" + index}
                 aria-label={"Group " + (index + 1) + " weapon"}
-                value={group.kind}
+                value={needsDetailEditor(group) ? CUSTOMIZE_OPTION : group.kind}
                 onChange={(event) => handleKindChange(index, event.target.value)}
               >
-                {/* A design may name a weapon kind this build does not list. */}
-                {!WEAPON_KINDS.includes(group.kind) && (
-                  <option value={group.kind}>{group.kind}</option>
+                {/* A design may name a weapon kind this build does not list.
+                    Keep it selectable so existing data is never silently
+                    rewritten. */}
+                {!needsDetailEditor(group) && !WEAPON_KINDS.includes(group.kind) && (
+                  <option value={group.kind}>{weaponKindLabel(group.kind)}</option>
                 )}
-                {WEAPON_KINDS.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind}
-                  </option>
-                ))}
+                {/* Every weapon is listed, with the ones this mount cannot hold
+                    greyed out rather than hidden.  Omitting them made a missing
+                    weapon look like a broken list instead of a rule -- there is
+                    no ion turret, and that is worth showing rather than hiding. */}
+                {WEAPON_KINDS.map((kind) => {
+                  const legal = isLegalPairing(kind, group.mount);
+                  return (
+                    <option
+                      key={kind}
+                      value={kind}
+                      disabled={!legal}
+                      title={
+                        legal
+                          ? undefined
+                          : `${weaponKindLabel(kind)} needs ${legalMountsLabel(kind)}`
+                      }
+                    >
+                      {legal
+                        ? weaponKindLabel(kind)
+                        : `${weaponKindLabel(kind)} — needs ${legalMountsLabel(kind)}`}
+                    </option>
+                  );
+                })}
+                {/* Anything the four columns cannot express -- a turret of
+                    different weapons, or any Advantage fitted to a gun -- opens
+                    the detail editor.  When the row already is one of those,
+                    this entry is what the cell shows, naming the real contents
+                    rather than pretending a single weapon is selected. */}
+                <option value={CUSTOMIZE_OPTION}>
+                  {needsDetailEditor(group)
+                    ? describeGroupGuns(group)
+                    : "Customize\u2026"}
+                </option>
               </select>
             )}
             {!empty && (
@@ -563,9 +734,160 @@ function HardpointList(args: {
           {problem}
         </div>
       ))}
+      {detailRow != null && args.groups[detailRow] != null && (
+        <WeaponDetailDialog
+          group={args.groups[detailRow]}
+          index={detailRow}
+          onChange={(group) => replaceRow(detailRow, group)}
+          onClose={() => setDetailRow(null)}
+        />
+      )}
     </div>
   );
 }
+
+/**
+ * Detail editor for one hardpoint row.
+ *
+ * The inline row handles the common case -- a mount of identical, unmodified
+ * weapons -- in four columns.  Anything past that (a turret holding different
+ * weapons, or any Advantage fitted to a gun) needs more room than a side panel
+ * has, so it moves here.  Both kind and modifiers are per-gun properties, which
+ * is why this lists guns rather than hanging anything off the mount.
+ */
+const WeaponDetailDialog = (props: {
+  group: WeaponGroup;
+  index: number;
+  onChange: (group: WeaponGroup) => void;
+  onClose: () => void;
+}) => {
+  const { group, onChange, onClose } = props;
+  const mount = group.mount;
+  const size = gunCapacity(mount);
+
+  // Editing always works on an explicit gun list, even for a uniform mount, so
+  // the dialog has one shape.  It collapses back on close if nothing differs.
+  const guns: Gun[] =
+    group.guns ??
+    Array.from({ length: size }, () => ({
+      kind: group.kind,
+      modifiers: group.modifiers,
+    }));
+
+  const commit = (next: Gun[]) => {
+    const uniformKind = next.every((gun) => gun.kind === next[0].kind);
+    const sameMods = next.every(
+      (gun) =>
+        JSON.stringify(gun.modifiers ?? []) ===
+        JSON.stringify(next[0].modifiers ?? []),
+    );
+    // A mount whose guns all match is an ordinary uniform one again, and is
+    // stored that way so the row and the wire stay simple.
+    if (uniformKind && sameMods) {
+      onChange({
+        ...group,
+        kind: next[0].kind,
+        modifiers: next[0].modifiers ?? [],
+        guns: undefined,
+      });
+    } else {
+      onChange({ ...group, kind: next[0].kind, guns: next });
+    }
+  };
+
+  const setGunKind = (gunIndex: number, kind: string) =>
+    commit(guns.map((gun, n) => (n === gunIndex ? { ...gun, kind } : gun)));
+
+  const toggleModifier = (gunIndex: number, modifier: string) =>
+    commit(
+      guns.map((gun, n) => {
+        if (n !== gunIndex) {
+          return gun;
+        }
+        const current = gun.modifiers ?? [];
+        return {
+          ...gun,
+          modifiers: current.includes(modifier)
+            ? current.filter((m) => m !== modifier)
+            : [...current, modifier],
+        };
+      }),
+    );
+
+  return (
+    <div className="weapon-detail-backdrop" onClick={onClose}>
+      <div
+        className="weapon-detail-dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2>{mount == null ? "Weapon" : mountToString(mount)}</h2>
+        <div className="weapon-detail-summary">
+          {group.count} x {describeGroupGuns({ ...group, guns })}
+        </div>
+
+        {guns.map((gun, gunIndex) => (
+          <div className="weapon-detail-gun" key={"detail-gun-" + gunIndex}>
+            <div className="weapon-detail-gun-head">
+              {size > 1 && (
+                <span className="weapon-detail-gun-label">
+                  Gun {gunIndex + 1}
+                </span>
+              )}
+              <select
+                className="select-dropdown control-input"
+                aria-label={"Gun " + (gunIndex + 1) + " weapon"}
+                value={gun.kind}
+                onChange={(event) => setGunKind(gunIndex, event.target.value)}
+              >
+                {!WEAPON_KINDS.includes(gun.kind) && (
+                  <option value={gun.kind}>{weaponKindLabel(gun.kind)}</option>
+                )}
+                {WEAPON_KINDS.map((kind) => {
+                  const legal = isLegalPairing(kind, mount);
+                  return (
+                    <option key={kind} value={kind} disabled={!legal}>
+                      {legal
+                        ? weaponKindLabel(kind)
+                        : `${weaponKindLabel(kind)} — needs ${legalMountsLabel(kind)}`}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="weapon-detail-modifiers">
+              {WEAPON_MODIFIERS.map((modifier) => (
+                <label
+                  className={
+                    "weapon-detail-modifier" +
+                    (modifier.inert ? " weapon-detail-modifier-inert" : "")
+                  }
+                  key={"mod-" + gunIndex + "-" + modifier.kind}
+                >
+                  <input
+                    type="checkbox"
+                    checked={(gun.modifiers ?? []).includes(modifier.kind)}
+                    onChange={() => toggleModifier(gunIndex, modifier.kind)}
+                  />
+                  {modifier.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <button
+          className="control-input control-button blue-button"
+          onClick={onClose}
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/** Sentinel value for the weapon dropdown's entry that opens the detail editor. */
+const CUSTOMIZE_OPTION = "__customize__";
 
 const ShipDesignDetails = (render: {
   content: string | null;
@@ -583,9 +905,11 @@ const ShipDesignDetails = (render: {
     [design],
   );
   const describeWeapon = useMemo(
-    () => (weapon: { kind: string; mount: WeaponMount; total: number }) => {
+    () => (weapon: { kind: string; mount: WeaponMount; total: number; guns?: Gun[] }) => {
       const weapon_name = weaponToString(
-        createWeapon(weapon.kind, weapon.mount),
+        weapon.guns != null
+          ? { mount: weapon.mount, guns: weapon.guns }
+          : createWeapon(weapon.kind, weapon.mount),
       );
 
       const [quant, suffix] =

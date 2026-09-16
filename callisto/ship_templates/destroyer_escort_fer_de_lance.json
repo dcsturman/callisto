@@ -14,55 +14,91 @@
   "weapons": [
     {
       "kind": "Missile",
-      "mount": "Barbette"
+      "mount": "Barbette",
+      "modifiers": [
+        "Accurate"
+      ]
     },
     {
       "kind": "Missile",
-      "mount": "Barbette"
+      "mount": "Barbette",
+      "modifiers": [
+        "Accurate"
+      ]
     },
     {
       "kind": "Missile",
-      "mount": "Barbette"
+      "mount": "Barbette",
+      "modifiers": [
+        "Accurate"
+      ]
     },
     {
       "kind": "Missile",
-      "mount": "Barbette"
+      "mount": "Barbette",
+      "modifiers": [
+        "Accurate"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "Accurate",
+        "HighYield"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "Accurate",
+        "HighYield"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "Accurate",
+        "HighYield"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "Accurate",
+        "HighYield"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "Accurate",
+        "HighYield"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "modifiers": [
+        "Accurate",
+        "HighYield"
+      ]
     }
   ],
   "tl": 15,

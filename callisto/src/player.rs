@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 
@@ -9,12 +9,12 @@ use rand::SeedableRng;
 
 use crate::action::{boost_target_alive, boost_target_sort_key, merge, BoostMap, BoostTarget, ShipAction};
 use crate::authentication::Authenticator;
-use crate::computer::FlightParams;
+use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, ShipActionMsg,
-  ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
+  SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
@@ -41,12 +41,19 @@ fn validate_weapons(weapons: &[Weapon]) -> Result<(), String> {
   weapons
     .iter()
     .find_map(|weapon| match weapon.mount {
-      WeaponMount::Turret(size) if !(1..=3).contains(&size) => Some(size),
+      // A turret's size is now the number of guns in it.
+      WeaponMount::Turret if !(1..=3).contains(&weapon.guns.len()) => Some(weapon.guns.len()),
+      // Every other mount holds exactly one weapon.
+      WeaponMount::Barbette | WeaponMount::Bay(_) | WeaponMount::FixedMount | WeaponMount::Battery(_)
+        if weapon.guns.len() != 1 =>
+      {
+        Some(weapon.guns.len())
+      }
       _ => None,
     })
     .map_or(Ok(()), |size| {
       Err(format!(
-        "(PlayerManager.add_ship) Illegal turret size {size}; must be 1, 2 or 3."
+        "(PlayerManager.add_ship) Illegal mount holding {size} weapons; a turret holds 1 to 3 and every other mount exactly 1."
       ))
     })
 }
@@ -61,7 +68,7 @@ pub struct PlayerManager {
   // Authenticator for this player.  It contains the session key and email identity of the player.
   authenticator: Box<dyn Authenticator>,
   // Role this player might have assumed
-  role: Role,
+  roles: Vec<Role>,
   // Ship this player may have assumed a crew position on.
   ship: Option<String>,
   test_mode: bool,
@@ -75,13 +82,13 @@ impl PlayerManager {
       server,
       authenticator,
       test_mode,
-      role: Role::General,
+      roles: vec![Role::General],
       ship: None,
     }
   }
 
-  pub fn set_role_ship(&mut self, role: Role, ship: Option<String>) {
-    self.role = role;
+  pub fn set_role_ship(&mut self, roles: Vec<Role>, ship: Option<String>) {
+    self.roles = roles;
     self.ship = ship;
   }
 
@@ -154,7 +161,7 @@ impl PlayerManager {
     Ok(AuthResponse {
       email,
       scenario: None,
-      role: None,
+      roles: None,
       ship: None,
     })
   }
@@ -181,7 +188,7 @@ impl PlayerManager {
     Ok(AuthResponse {
       email,
       scenario: None,
-      role: None,
+      roles: None,
       ship: None,
     })
   }
@@ -194,7 +201,7 @@ impl PlayerManager {
   /// # Panics
   /// Panics if the lock on entities cannot be obtained or if the server has never been initialized.
   pub fn reset(&self) -> Result<String, String> {
-    if self.role == Role::General && self.ship.is_none() {
+    if self.roles.contains(&Role::General) && self.ship.is_none() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
       // initial_scenario was validated at scenario-load time, so this
       // shouldn't fail in practice. Propagate the error rather than
@@ -263,14 +270,26 @@ impl PlayerManager {
       validate_weapons(weapons)?;
     }
 
-    self.server.as_ref().unwrap().get_unlocked_entities().unwrap().add_ship(
-      ship.name,
-      ship.position,
-      ship.velocity,
-      &design,
-      ship.crew,
-      ship.weapons,
-    );
+    let mut entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    let name = ship.name.clone();
+    entities.add_ship(ship.name, ship.position, ship.velocity, &design, ship.crew, ship.weapons);
+
+    // Applied after creation rather than threaded through `add_ship`, which
+    // already carries six arguments. Absent leaves the normal running state a
+    // new ship is built with.
+    if ship.active_sensors.is_some() || ship.transmitting.is_some() || ship.team.is_some() || ship.contacts.is_some() {
+      if let Some(added) = entities.ships.get(&name) {
+        let mut added = added.write().unwrap();
+        added.set_emissions(ship.active_sensors, ship.transmitting);
+        if ship.team.is_some() {
+          added.team = ship.team;
+        }
+        if let Some(contacts) = ship.contacts {
+          added.contacts = contacts;
+          added.contacts.sort();
+        }
+      }
+    }
 
     Ok("Add ship action executed".to_string())
   }
@@ -309,6 +328,101 @@ impl PlayerManager {
     }
 
     Ok("Set crew action executed".to_string())
+  }
+
+  /// Set whether a ship runs its active sensors.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_emissions(&self, request: &SetShipEmissions) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to set emissions for.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    // Hand-off first: it can force transmitting on, and set_emissions honours
+    // that, so applying them the other way round would let a request turn
+    // hand-off on and transmitting off in the same breath.
+    if let Some(handoff) = request.handoff_sensors {
+      ship.set_handoff_sensors(handoff);
+    }
+    let locks_dropped = ship.set_emissions(request.active_sensors, request.transmitting);
+
+    info!(
+      "(PlayerManager.set_ship_emissions) {} now has active sensors {}, transmitting {}, hand-off {}.",
+      request.ship_name, ship.active_sensors, ship.transmitting, ship.handoff_sensors
+    );
+
+    if locks_dropped {
+      Ok(format!("{} went dark; its sensor locks were dropped.", request.ship_name))
+    } else {
+      Ok("Set ship emissions executed".to_string())
+    }
+  }
+
+  /// Mark every ship as having found every other one.
+  ///
+  /// Scenarios open with no contacts: ships have to find each other, and the
+  /// first detection pass runs at the end of the opening round. This is the
+  /// hook for authoring a scenario that begins already engaged rather than as
+  /// an approach, and for tests that are about something other than
+  /// acquisition.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities, or if the server
+  /// has not yet been initialized.
+  pub fn establish_initial_contacts(&self) {
+    self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"))
+      .establish_initial_contacts();
+  }
+
+  /// Set which side a ship is on.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_team(&self, request: &SetShipTeam) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to set team for.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.team = request.team;
+    info!(
+      "(PlayerManager.set_ship_team) {} is now on team {:?}.",
+      request.ship_name, request.team
+    );
+    Ok("Set ship team executed".to_string())
   }
 
   /// Gets the current entities and returns them in a `Result`.
@@ -436,8 +550,11 @@ impl PlayerManager {
 
     if entities.ships.remove(name).is_some() {
       // Drop any missile that was targeting this ship — its target_ptr
-      // would otherwise be unresolvable on next deep-clone.
-      entities.missiles.retain(|_, missile| missile.read().unwrap().target != *name);
+      // would otherwise be unresolvable on next deep-clone. Shared with the
+      // combat and jump paths, which used to miss this.
+      entities.prune_orphaned_missiles();
+      // Nobody keeps a contact or a lock on a ship that is no longer here.
+      entities.prune_ship_references();
       return Ok("Remove action executed".to_string());
     }
 
@@ -532,14 +649,21 @@ impl PlayerManager {
     let points = roll + leadership - 8;
     ship.write().unwrap().set_leadership_points(points);
 
+    // Shown the way every other check is: roll, skill, total against 8, and
+    // what it bought. The net alone gave a captain no way to tell a bad roll
+    // from a low skill.
+    let check = format!(
+      "leadership check with roll {roll} and skill {leadership:+} for a total of {} against 8",
+      roll + leadership
+    );
     let message = if points > 0 {
       format!(
-        "Captain on {} rolled {points}: can inspire {points} task{}.",
+        "Captain on {} {check}: can inspire {points} task{}.",
         msg.ship_name,
         if points == 1 { "" } else { "s" },
       )
     } else {
-      format!("Captain on {} rolled {points}: cannot boost tasks this turn.", msg.ship_name)
+      format!("Captain on {} {check}: cannot boost tasks this turn.", msg.ship_name)
     };
 
     CaptainActionResult {
@@ -611,8 +735,25 @@ impl PlayerManager {
             boost_map.insert(t.clone());
           }
 
+          // The roll was made when the captain pressed the button and only its
+          // net was kept, but points = roll + leadership - 8 exactly, so the
+          // dice are recoverable. Not when the button was never pressed: the
+          // resolution runs anyway with n = 0, and a roll must not be invented
+          // for it.
+          let (roll, leadership) = {
+            let s = ship_lock.read().unwrap();
+            let leadership = s.get_crew().get_leadership();
+            let roll = if s.has_leadership_rolled() {
+              Some(u8::try_from(n + 8 - i16::from(leadership)).unwrap_or(0))
+            } else {
+              None
+            };
+            (roll, leadership)
+          };
           leadership_effects.push(EffectMsg::LeadershipAction {
             ship_name: ship_name.clone(),
+            roll,
+            leadership,
             points: n,
             boosts_applied: truncated,
           });
@@ -745,6 +886,25 @@ impl PlayerManager {
     // existing Effects channel.
     effects.append(&mut entities.engineer_actions(&engineer_actions, &boost_map, &mut rng));
 
+    // Detection runs last, after movement and after any ship has jumped out.
+    // The trigger for losing a stealthed ship is the range opening, which needs
+    // both the start-of-round positions in `ship_snapshot` and the end-of-round
+    // ones; running here also means a player sees a new contact before queueing
+    // the orders that would use it.
+    let fired: HashSet<String> = fire_actions
+      .iter()
+      .filter(|(_, actions)| actions.iter().any(|a| matches!(a, ShipAction::FireAction { .. })))
+      .map(|(ship_name, _)| ship_name.clone())
+      .collect();
+    effects.append(&mut entities.detection_pass(&ship_snapshot, &fired, &boost_map, &mut rng));
+
+    // Hand-offs run immediately after, so a contact acquired this round is
+    // shared this round. Automatic in RAW — no check, no action, only Bandwidth.
+    effects.append(&mut entities.sensor_handoff_pass());
+
+    // Jamming lasts the round it was made in.
+    entities.clear_comms_jamming();
+
     entities.reset_actions();
 
     effects
@@ -796,21 +956,19 @@ impl PlayerManager {
                     (adjusted_end_pos - msg.end_pos).magnitude());
     }
 
-    let mut params = FlightParams::new(
+    // Never an error for a ship that exists: the ladder ends in a closed-form
+    // burn, and the result says which rung it came from so the pilot is told
+    // what the plan promises.
+    let plan = plot_course(
       start_pos,
-      adjusted_end_pos,
       start_vel,
+      max_accel,
+      adjusted_end_pos,
       msg.end_vel,
       msg.target_velocity,
       msg.target_acceleration,
-      max_accel,
     );
-
-    debug!("(/compute_path) Call computer with params: {:?}", params);
-
-    let Ok(plan) = params.compute_flight_path() else {
-      return Err(format!("Unable to compute flight path: {params:?}"));
-    };
+    debug!("(/compute_path) Course is a {:?}", plan.mode);
 
     debug!("(/compute_path) Plan: {:?}", plan);
     debug!(
@@ -828,12 +986,12 @@ impl PlayerManager {
   }
 
   #[must_use]
-  pub fn get_role(&self) -> (Role, Option<String>) {
-    (self.role, self.ship.clone())
+  pub fn get_roles(&self) -> (Vec<Role>, Option<String>) {
+    (self.roles.clone(), self.ship.clone())
   }
 
   pub fn set_role(&mut self, msg: &ChangeRole) -> String {
-    self.role = msg.role;
+    self.roles.clone_from(&msg.roles);
     self.ship.clone_from(&msg.ship);
     "Role set".to_string()
   }

@@ -42,8 +42,8 @@ describe("Users (peer list)", () => {
   it("renders all peers when more than one user is present", () => {
     renderUsers(
       [
-        { display_name: "alice", role: ViewMode.General, ship: "Buccaneer" },
-        { display_name: "bob", role: ViewMode.Pilot, ship: "Buccaneer" },
+        { display_name: "alice", roles: [ViewMode.General], ship: "Buccaneer" },
+        { display_name: "bob", roles: [ViewMode.Pilot], ship: "Buccaneer" },
       ],
       null,
     );
@@ -54,8 +54,8 @@ describe("Users (peer list)", () => {
   it("filters out the current user by display_name (derived from email local-part)", () => {
     renderUsers(
       [
-        { display_name: "alice", role: ViewMode.General, ship: null },
-        { display_name: "bob", role: ViewMode.General, ship: null },
+        { display_name: "alice", roles: [ViewMode.General], ship: null },
+        { display_name: "bob", roles: [ViewMode.General], ship: null },
       ],
       "alice@example.com",
     );
@@ -66,7 +66,7 @@ describe("Users (peer list)", () => {
 
   it("renders nothing when only the current user is in the list", () => {
     renderUsers(
-      [{ display_name: "alice", role: ViewMode.General, ship: null }],
+      [{ display_name: "alice", roles: [ViewMode.General], ship: null }],
       "alice@example.com",
     );
     expect(container.querySelector(".user-list")).toBeNull();
@@ -75,8 +75,8 @@ describe("Users (peer list)", () => {
   it("includes role/ship suffix in the rendered label", () => {
     renderUsers(
       [
-        { display_name: "alice", role: ViewMode.Pilot, ship: "Buccaneer" },
-        { display_name: "bob", role: ViewMode.General, ship: "Buccaneer" },
+        { display_name: "alice", roles: [ViewMode.Pilot], ship: "Buccaneer" },
+        { display_name: "bob", roles: [ViewMode.General], ship: "Buccaneer" },
       ],
       null,
     );
@@ -85,5 +85,22 @@ describe("Users (peer list)", () => {
     );
     expect(items.some((t) => /alice.*Pilot.*Buccaneer/.test(t))).toBe(true);
     expect(items.some((t) => /bob.*On Buccaneer/.test(t))).toBe(true);
+  });
+
+  it("lists every station a player is working, comma-separated", () => {
+    // A small crew doubling up: "Captain, Gunner on Executor" says exactly what
+    // that player is doing, where General would have said only the ship.
+    renderUsers(
+      [
+        { display_name: "alice", roles: [ViewMode.Captain, ViewMode.Gunner], ship: "Executor" },
+        { display_name: "bob", roles: [ViewMode.Pilot, ViewMode.Sensors], ship: null },
+      ],
+      null,
+    );
+    const items = Array.from(container.querySelectorAll("li")).map(
+      (li) => li.textContent ?? "",
+    );
+    expect(items.some((t) => t.includes("alice (Captain, Gunner on Executor)"))).toBe(true);
+    expect(items.some((t) => t.includes("bob (Pilot, Sensors)"))).toBe(true);
   });
 });

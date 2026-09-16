@@ -49,7 +49,7 @@ struct MembershipTable {
 /// would then have different session keys.
 struct MemberEntry {
   email: String,
-  role: Role,
+  roles: Vec<Role>,
   ship: Option<String>,
 }
 
@@ -159,7 +159,7 @@ impl ServerMembersTable {
       .insert(scenario_name.to_string(), template_name.to_string());
   }
 
-  pub fn update(&mut self, server_id: &str, session_key: &str, email: &str, role: Role, ship: Option<String>) {
+  pub fn update(&mut self, server_id: &str, session_key: &str, email: &str, roles: Vec<Role>, ship: Option<String>) {
     if !self.scenario_definition.contains_key(server_id) {
       error!("Server {server_id} is not registered with a scenario description.");
       return;
@@ -170,7 +170,7 @@ impl ServerMembersTable {
       session_key.to_string(),
       MemberEntry {
         email: email.to_string(),
-        role,
+        roles,
         ship,
       },
     );
@@ -185,13 +185,13 @@ impl ServerMembersTable {
   /// # Panics
   /// Panics if the server does not exist.
   #[must_use]
-  pub fn find_scenario_info_by_session_key(&self, key: &str) -> Option<(String, String, Role, Option<String>)> {
+  pub fn find_scenario_info_by_session_key(&self, key: &str) -> Option<(String, String, Vec<Role>, Option<String>)> {
     self.server_members.iter().find_map(|(server_id, members_table)| {
       members_table
         .table
         .iter()
         .find(|(session_key, _entry)| session_key.as_str() == key)
-        .map(|(_session_key, entry)| (server_id.clone(), entry.email.clone(), entry.role, entry.ship.clone()))
+        .map(|(_session_key, entry)| (server_id.clone(), entry.email.clone(), entry.roles.clone(), entry.ship.clone()))
     })
   }
 
@@ -223,7 +223,7 @@ impl ServerMembersTable {
       .values()
       .map(|entry| UserData {
         display_name: email_to_display_name(&entry.email),
-        role: entry.role,
+        roles: entry.roles.clone(),
         ship: entry.ship.clone(),
       })
       .collect()

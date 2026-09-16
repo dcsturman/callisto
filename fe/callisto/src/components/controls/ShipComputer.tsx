@@ -1,12 +1,16 @@
 import * as React from "react";
 import {useState, useEffect, useMemo} from "react";
 import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
-import {Ship, Acceleration} from "lib/entities";
-import {ViewMode} from "lib/view";
+import {Ship, Acceleration, Entity} from "lib/entities";
+import {ViewMode, hasRole} from "lib/view";
 
-import {setPlan, setCrewActions} from "lib/serverManager";
+import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
+import {Team, TEAMS, teamLabelColor} from "lib/teams";
+import {isUndetected, sameSide} from "lib/contacts";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
+import {CourseMode} from "lib/flightPath";
+import {describeCourse} from "lib/courseMode";
 import {findShip} from "lib/entities";
 import {EngineerTasks} from "components/controls/EngineerTasks";
 import {CaptainTasks} from "components/controls/CaptainTasks";
@@ -25,7 +29,7 @@ type ShipComputerProps = {
 
 export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
   const entities = useAppSelector(entitiesSelector);
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const shipName = useAppSelector((state) => state.user.shipName);
   const proposedPlan = useAppSelector((state) => state.ui.proposedPlan);
 
@@ -78,6 +82,16 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     return {position: ship.position, velocity: ship.velocity, plan: ship.plan};
   }, [entities, currentNavTarget]);
 
+  // Whether the nav target is a ship this one has no contact on. Resolved by
+  // name because `target` is a slimmed-down union of ship and planet, and only
+  // a real Ship can be checked for contact. A boolean dependency also means the
+  // course is re-plotted exactly when contact is gained or lost -- which is
+  // when the computer's picture of the target changes.
+  const navBlip = useMemo(() => {
+    const navShip = entities.ships.find((s) => s.name === currentNavTarget);
+    return navShip != null && isUndetected(ship, navShip);
+  }, [entities.ships, currentNavTarget, ship]);
+
   useEffect(() => {
     if (target == null) {
       setNavigationTarget(initNavigationTargetState);
@@ -96,7 +110,11 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
       standoff = (target.radius! * 1.1) / POSITION_SCALE;
     }
 
-    const plan = target.plan ?? null;
+    // A blip's velocity is on its track, but its acceleration is not: a ship
+    // with no contact shows "?" for thrust everywhere else, and the computer
+    // must not know more than the sensors do. A course to a blip therefore
+    // assumes it holds its velocity, and the pilot is told so.
+    const plan = navBlip ? null : (target.plan ?? null);
 
     setNavigationTarget({
       p_x: target.position[0],
@@ -120,7 +138,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
       plan ? plan[0][0] : null,
       standoff
     );
-  }, [currentNavTarget, target, initNavigationTargetState, ship.name]);
+  }, [currentNavTarget, target, initNavigationTargetState, ship.name, navBlip]);
 
   // Used only in the agility setting control, but that control isn't technically a React component
   // so need to define this here.
@@ -281,32 +299,59 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     );
   }
 
-  const title = ship.name + " Controls";
+  // The team selector stands in for the word "Controls" in the heading:
+  // the panel is obviously controls, and the row it used to occupy was one
+  // of the things pushing this panel off a laptop screen.
+  const title = ship.name;
 
   // TODO: Full Stop is not correct, but needs server-side functions.  Should just get to 0 velocity and not care about position.
   // Current version tries to stop at the current position.
   return (
     <div id="computer-window" className="computer-window">
       <div id="crew-actions-window">
-        {role === ViewMode.General && <h1>{title}</h1>}
+        {/* Which side the ship is on belongs to the ship, not to any one crew
+            station, so it sits in the heading rather than under sensors, and
+            every role sees it. It carries its own colour, so it needs no label
+            to say what it is. */}
+        <div className="computer-title-row">
+          {hasRole(roles, ViewMode.General) && <h1>{title}</h1>}
+          <select
+            className="team-select"
+            value={ship.team ?? ""}
+            style={{color: teamLabelColor(ship.team, {})}}
+            title="Which side this ship is on. Teams are colour-coded in the view, always know where each other are, and will not fire on one another."
+            onChange={(event) =>
+              setShipTeam(ship.name, (event.target.value || null) as Team | null)
+            }>
+            <option value="">Unaligned</option>
+            {TEAMS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
         {/* Captain only sees the panel on their own ship. General sees it on
             their assigned ship if any; if General has no ship (GM-style),
             panel renders on whichever ship's popup they're viewing so they
             can roll leadership for it. */}
-        {((role === ViewMode.Captain && ship.name === shipName) ||
-          (role === ViewMode.General && (shipName == null || ship.name === shipName))) && (
+        {/* General only. A Captain's panel lives in the left pane, and this
+            component is also mounted inside the Pilot/Sensors/Engineer
+            accordion -- so a Captain who is also an Engineer would otherwise
+            get the leadership panel twice. */}
+        {hasRole(roles, ViewMode.General) && (shipName == null || ship.name === shipName) && (
           <CaptainTasks ship={ship} />
         )}
-        {[ViewMode.General, ViewMode.Pilot].includes(role) && pilotActions()}
-        {[ViewMode.General, ViewMode.Sensors].includes(role) && (
+        {hasRole(roles, ViewMode.Pilot) && pilotActions()}
+        {hasRole(roles, ViewMode.Sensors) && (
           <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
         )}
-        {[ViewMode.General, ViewMode.Engineer].includes(role) && (
+        {hasRole(roles, ViewMode.Engineer) && (
           <EngineerTasks ship={ship} />
         )}
       </div>
       <hr />
-      {[ViewMode.General, ViewMode.Pilot].includes(role) && (
+      {hasRole(roles, ViewMode.Pilot) && (
         <>
           {accelerationManager()}
           <hr />
@@ -337,10 +382,21 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
               <EntitySelector
                 filter={[EntitySelectorType.Ship, EntitySelectorType.Planet]}
                 current={currentNavTarget}
-                setChoice={(entity: any) => setCurrentNavTarget(entity?.name ?? null)}
+                setChoice={(entity: Entity | null) =>
+                  setCurrentNavTarget(entity?.name ?? null)
+                }
                 exclude={ship.name}
+                observer={ship}
+                allowUndetected
               />
             </label>
+            {proposedPlan != null && (
+              <CourseBanner
+                mode={proposedPlan.mode}
+                target={currentNavTarget}
+                blip={navBlip}
+              />
+            )}
             <div className="target-details-div">
               <label className="control-label">
                 Target Position (km)
@@ -526,9 +582,64 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
     }
   }
 
+  // Absent means running normally, which is how ships built before emissions
+  // existed arrive.
+  const activeSensors = ship.active_sensors !== false;
+  // Defaults off, so absent means silent.
+  const transmitting = ship.transmitting === true;
+  const handoff = ship.handoff_sensors === true;
+
   return (
     <div className="control-label">
       <div className="section-tag">Sensors</div>
+      <div className="emissions-row">
+        <label className="emissions-toggle" title="Active radar/lidar. Running dark keeps the contacts you already hold but acquires nothing new, drops your sensor locks, and stops handing opponents DM+2 to find you.">
+          <input
+            type="checkbox"
+            checked={activeSensors}
+            onChange={(event) =>
+              setShipEmissions(ship.name, event.target.checked, undefined)
+            }
+          />
+          Active
+        </label>
+        <label
+          className={
+            handoff ? "emissions-toggle emissions-toggle-locked" : "emissions-toggle"
+          }
+          title={
+            handoff
+              ? "Held on while sensor hand-off is running: a ship cannot share its contacts in silence."
+              : "Transponder and radio comms. The largest signal a ship gives off: DM+6 to anyone hunting it. A ship meant to be lurking runs silent."
+          }>
+          <input
+            type="checkbox"
+            checked={transmitting}
+            disabled={handoff}
+            onChange={(event) =>
+              setShipEmissions(ship.name, undefined, event.target.checked)
+            }
+          />
+          Transmit
+        </label>
+        <label
+          className="emissions-toggle"
+          title="Share sensor contacts with the rest of this ship's team. Automatic once on -- it needs no action -- but it costs a point of computer Bandwidth at each end, breaks beyond Distant, and forces the transponder on.">
+          <input
+            type="checkbox"
+            checked={handoff}
+            onChange={(event) =>
+              setShipEmissions(
+                ship.name,
+                undefined,
+                undefined,
+                event.target.checked,
+              )
+            }
+          />
+          Hand-off
+        </label>
+      </div>
       <select
         className="sensor-action-select control-input "
         value={sensorActionToString(currentSensor)}
@@ -540,23 +651,42 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
             {"Break Sensor Lock: " + s}
           </option>
         ))}
+
+        {/* Both lists are limited to ships this one has a sensor contact on.
+            Nothing can be done to a ship that has not been detected, so
+            offering it and having the order refused later is just a trap. */}
         {entities.ships
           .filter(
-            (s) =>
-              s.name !== ship.name &&
-              !entities.ships.find((s) => ship.name === s.name)?.sensor_locks.includes(s.name)
+            (target) =>
+              target.name !== ship.name &&
+              !sameSide(ship, target) &&
+              !isUndetected(ship, target) &&
+              !ship.sensor_locks.includes(target.name),
           )
-          .map((s) => (
-            <option key={s.name + "-sensor-lock"} value={"sl-" + s.name}>
-              {"Sensor Lock: " + s.name}
+          .map((target) => (
+            <option
+              key={target.name + "-sensor-lock"}
+              value={"sl-" + target.name}
+              /* A lock is deliberate, continuous illumination, which a ship
+                 running dark is by definition not doing (High Guard p. 77).
+                 The server refuses it either way; offering it and having the
+                 order rejected at end of turn is just a trap. */
+              disabled={!activeSensors}>
+              {"Sensor Lock: " + target.name}
+              {activeSensors ? "" : " \u2014 running dark"}
             </option>
           ))}
 
         {entities.ships
-          .filter((s) => s.name !== ship.name)
-          .map((s) => (
-            <option key={s.name + "-jam-comms"} value={"jc-" + s.name}>
-              {"Jam Sensors: " + s.name}
+          .filter(
+            (target) =>
+              target.name !== ship.name &&
+              !sameSide(ship, target) &&
+              !isUndetected(ship, target),
+          )
+          .map((target) => (
+            <option key={target.name + "-jam-comms"} value={"jc-" + target.name}>
+              {"Jam Comms: " + target.name}
             </option>
           ))}
       </select>
@@ -596,5 +726,27 @@ export function NavigationPlan(args: {plan: [Acceleration, Acceleration | null]}
         </div>
       )}
     </>
+  );
+}
+
+
+/**
+ * Tells the pilot which rung of the navigation ladder their course came from.
+ *
+ * Inline rather than a modal: a fleeing target gets re-plotted every turn, and
+ * a dialog to dismiss every turn would be worse than the error it replaces. An
+ * intercept reads quietly; the other two are worth a second look.
+ */
+function CourseBanner(args: {
+  mode: CourseMode | undefined;
+  target: string | null;
+  blip: boolean;
+}) {
+  const {headline, detail} = describeCourse(args.mode, args.target, args.blip);
+  const tone = (args.mode ?? "Intercept") === "Intercept" ? "quiet" : "warn";
+  return (
+    <p className={`course-banner course-banner-${tone}`}>
+      <span className="course-banner-headline">{headline}</span> {detail}
+    </p>
   );
 }

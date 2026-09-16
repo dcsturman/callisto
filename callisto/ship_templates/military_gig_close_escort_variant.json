@@ -14,7 +14,11 @@
   "weapons": [
     {
       "kind": "Pulse",
-      "mount": "FixedMount"
+      "mount": "FixedMount",
+      "modifiers": [
+        "IntenseFocus",
+        "HighYield"
+      ]
     }
   ],
   "tl": 14,

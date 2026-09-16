@@ -1,12 +1,12 @@
 import * as React from "react";
-import { ViewMode } from "lib/view";
+import { ViewMode, rolesToString } from "lib/view";
 
 // Peer entries on the wire carry `display_name` (server strips the email's
 // local part). The current player's own email is still tracked separately in
 // `userSlice.email`.
 export type UserContext = {
     display_name: string;
-    role: ViewMode,
+    roles: ViewMode[],
     ship: string | null;
 }
 
@@ -25,14 +25,20 @@ export function Users(args: {users: UserList, email: string | null}) {
             <h4>Users</h4>
             <ul className="user-list-list">
                 {args.users.filter(user => user.display_name !== ownDisplayName).map((user) => {
+                    // General on a ship reads as just the ship: it is every
+                    // station, and naming them all says less than the name of
+                    // the ship. Anything narrower is listed, comma-separated,
+                    // so "Captain, Gunner on Executor" says exactly what that
+                    // player is doing.
+                    const general = user.roles.includes(ViewMode.General);
                     let role_text = "";
-                    if (user.role as ViewMode === ViewMode.General && user.ship != null) {
+                    if (general && user.ship != null) {
                         role_text = ` (On ${user.ship})`;
-                    } else if (user.role as ViewMode !== ViewMode.General && user.ship == null) {
-                        role_text = ` (${ViewMode[user.role]})`;
-                    } else if (user.role as ViewMode !== ViewMode.General && user.ship != null) {
-                        role_text = ` (${ViewMode[user.role]} on ${user.ship})`;
-                    };
+                    } else if (!general && user.ship == null) {
+                        role_text = ` (${rolesToString(user.roles)})`;
+                    } else if (!general && user.ship != null) {
+                        role_text = ` (${rolesToString(user.roles)} on ${user.ship})`;
+                    }
                     return (
                     <li key={user.display_name}>{user.display_name}{role_text}</li>
                 )})}

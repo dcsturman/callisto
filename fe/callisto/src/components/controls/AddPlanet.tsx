@@ -2,8 +2,6 @@ import * as React from "react";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { POSITION_SCALE } from "lib/universal";
 import { Accordion } from "lib/Accordion";
-import { Tooltip } from "react-tooltip";
-import { CiCircleQuestion } from "react-icons/ci";
 import {
   Planet,
   defaultPlanet,
@@ -280,7 +278,7 @@ function PlanetList(args: {
         >
           {[
             <option key="null-planet-list" value="">
-              {"" as String}
+              {""}
             </option>,
           ].concat(
             Object.values(args.planetNames)

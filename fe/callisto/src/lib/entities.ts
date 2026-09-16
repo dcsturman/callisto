@@ -1,5 +1,7 @@
 import { Crew, createCrew } from "components/controls/CrewBuilder";
 import { Weapon } from "lib/weapon";
+import { Team } from "lib/teams";
+export { availablePower } from "lib/power";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -59,6 +61,16 @@ export interface Ship extends Entity {
   current_hull: number;
   current_armor: number;
   current_power: number;
+  /**
+   * Power an ion hit is currently suppressing. Absent when none is.
+   *
+   * Tracked apart from `current_power` on the server so a repair cannot undo an
+   * ion hit -- which means anything asking what the ship can actually do has to
+   * subtract it. Use {@link availablePower} rather than `current_power`.
+   */
+  ion_power_loss?: number;
+  /** Rounds of ion suppression still to run. Absent when none is. */
+  ion_rounds?: number;
   current_maneuver: number;
   current_jump: number;
   current_fuel: number;
@@ -69,6 +81,39 @@ export interface Ship extends Entity {
   assist_gunners: boolean;
   can_jump: boolean;
   sensor_locks: string[];
+  /**
+   * Ships this one currently detects.
+   *
+   * Directional: a contact here says nothing about whether that ship sees this
+   * one. Absent means none, and nothing can be done to a ship that is not on
+   * this list.
+   */
+  contacts?: string[];
+  /**
+   * Whether the ship runs active radar/lidar. Absent means yes.
+   *
+   * Omitted from the wire when true, so a ship running normally looks exactly
+   * as it did before emissions existed.
+   */
+  active_sensors?: boolean;
+  /**
+   * Whether the ship is radiating on RF -- transponder, radio comms or both.
+   * Absent means **no**: this defaults off, unlike active sensors.
+   *
+   * High Guard prints transponder and comms as one row at +6, the largest
+   * modifier on the detection table. A scenario opts into that noise
+   * deliberately rather than inheriting it.
+   */
+  transmitting?: boolean;
+  /**
+   * Whether the ship shares its sensor picture with its team. Absent means no.
+   *
+   * Sharing means broadcasting, so while this is on the server holds
+   * {@link Ship.transmitting} on and the control for it is locked.
+   */
+  handoff_sensors?: boolean;
+  /** Which side the ship is on. Absent means unaligned. */
+  team?: Team;
   crew: Crew;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   repair_bonus?: number;
@@ -369,4 +414,3 @@ export const findPlanet = (entities: EntityList, name: string | null) => {
   }
   return entities.planets.find((planet) => planet.name === name) || null;
 };
-

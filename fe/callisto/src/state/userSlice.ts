@@ -3,14 +3,14 @@ import { ViewMode } from "lib/view";
 
 export interface UserState {
   email: string | null;
-  role: ViewMode;
+  roles: ViewMode[];
   shipName: string | null;
   joinedScenario: string | null;
 }
 
 const initialState: UserState = {
   email: null,
-  role: ViewMode.General,
+  roles: [ViewMode.General],
   shipName: null,
   joinedScenario: null,
 };
@@ -23,8 +23,8 @@ export const userSlice = createSlice({
     setEmail: (state, action: PayloadAction<string | null>) => {
       state.email = action.payload;
     },
-    setRoleShip: (state, action: PayloadAction<[ViewMode, string | null]>) => {
-      state.role = action.payload[0];
+    setRoleShip: (state, action: PayloadAction<[ViewMode[], string | null]>) => {
+      state.roles = action.payload[0];
       state.shipName = action.payload[1];
     },
     setJoinedScenario: (state, action: PayloadAction<string | null>) => {

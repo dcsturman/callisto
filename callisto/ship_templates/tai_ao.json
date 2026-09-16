@@ -1,0 +1,53 @@
+{
+  "name": "Tai'ao",
+  "displacement": 400,
+  "hull": 160,
+  "armor": 0,
+  "maneuver": 1,
+  "jump": 2,
+  "power": 165,
+  "fuel": 82,
+  "crew": 10,
+  "sensors": "Military",
+  "computer": 5,
+  "crew_skills": {
+    "pilot": 3,
+    "engineering_jump": 2,
+    "engineering_power": 3,
+    "engineering_maneuver": 2,
+    "sensors": 2,
+    "gunnery": [
+      3,
+      2,
+      0,
+      2
+    ]
+  },
+  "weapons": [
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Beam",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 2
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    }
+  ],
+  "tl": 12,
+  "role": "Raider",
+  "source": "Pirates of Drinax"
+}

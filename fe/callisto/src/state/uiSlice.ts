@@ -16,6 +16,15 @@ export interface UISlice {
     jumpDistance: boolean;
     showRange: string | null;
     computerShipName: string | null;
+    /**
+     * Whether the Scenario Builder holds edits that have not been saved.
+     *
+     * Set by the scenario-mutating requests in serverManager, cleared on a
+     * successful save and whenever a scenario is joined, created or left. Only
+     * consulted in AppMode.ScenarioBuilder — a running game has no "save", so
+     * nothing there can be unsaved.
+     */
+    scenarioDirty: boolean;
 }
 
 const initialState: UISlice  = {
@@ -29,6 +38,7 @@ const initialState: UISlice  = {
     jumpDistance: false,
     showRange: null,
     computerShipName: null,
+    scenarioDirty: false,
 }
 
 export const uiSlice = createSlice({
@@ -38,6 +48,9 @@ export const uiSlice = createSlice({
   reducers: {
     setEntityToShow: (state, action: PayloadAction<Entity | null>) => {
         state.entityToShow = action.payload;
+    },
+    setScenarioDirty: (state, action: PayloadAction<boolean>) => {
+        state.scenarioDirty = action.payload;
     },
     setProposedPlan: (state, action: PayloadAction<FlightPath | null>) => {
         state.proposedPlan = action.payload;
@@ -66,6 +79,6 @@ export const uiSlice = createSlice({
   }
 });
 
-export const { setEntityToShow, setProposedPlan, setShowResults, setEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;

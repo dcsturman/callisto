@@ -22,10 +22,15 @@ import {
   AuthBanner,
   ScenarioLoadError,
 } from "state/serverSlice";
-import { setEvents, setProposedPlan, setShowResults } from "state/uiSlice";
+import {
+  setEvents,
+  setProposedPlan,
+  setShowResults,
+  setScenarioDirty,
+} from "state/uiSlice";
 import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
 import { AppMode, setAppMode } from "state/tutorialSlice";
-import { setActions } from "state/actionsSlice";
+import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
 import {
@@ -35,10 +40,11 @@ import {
   MetaData,
   EngineerActionResult,
 } from "lib/entities";
-import { ViewMode, stringToViewMode } from "lib/view";
+import { ViewMode, parseRoles } from "lib/view";
 import { Acceleration } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
+import { Team } from "lib/teams";
 import { resetState as resetServerState } from "state/store";
 
 export const CALLISTO_BACKEND =
@@ -247,6 +253,7 @@ const handleMessage = (event: MessageEvent) => {
   if ("ScenarioSaved" in json) {
     const cb = pendingSaveCallback;
     pendingSaveCallback = null;
+    store.dispatch(setScenarioDirty(false));
     if (cb) cb({ ok: true, filename: json.ScenarioSaved });
     return;
   }
@@ -309,6 +316,18 @@ export function register(code: string) {
   socket.send(JSON.stringify(payload));
 }
 
+/**
+ * Flag the Scenario Builder as holding unsaved edits.
+ *
+ * Called by every request that changes what a save would write. The flag is
+ * only read in AppMode.ScenarioBuilder, so setting it during a normal game is
+ * harmless — a running game has no save to be out of date with, and joining or
+ * leaving any scenario clears it again.
+ */
+function markScenarioDirty() {
+  store.dispatch(setScenarioDirty(true));
+}
+
 export function addShip(ship: Ship) {
   const payload = {
     AddShip: {
@@ -321,10 +340,18 @@ export function addShip(ship: Ship) {
       // reads an absent `weapons` as "inherit from the design", so leaving it
       // out is what keeps old behaviour for unmodified ships.
       ...(ship.weapons ? { weapons: ship.weapons } : {}),
+      // Only sent when the referee started the ship dark; absent means the
+      // normal running state.
+      ...(ship.active_sensors === false ? { active_sensors: false } : {}),
+      // Inverted relative to active_sensors: transmitting defaults off, so only
+      // a ship deliberately switched on says anything.
+      ...(ship.transmitting === true ? { transmitting: true } : {}),
+      ...(ship.team ? { team: ship.team } : {}),
     },
   };
 
   socket.send(JSON.stringify(payload));
+  markScenarioDirty();
 }
 
 interface AddPlanetMsg {
@@ -351,6 +378,42 @@ export function addPlanet(planet: Planet) {
   };
 
   socket.send(JSON.stringify(payload));
+  markScenarioDirty();
+}
+
+/**
+ * Set a ship's emissions: active sensors, and whether it is radiating on RF.
+ *
+ * Either may be omitted to change one without restating the other. Shutting
+ * down active sensors drops the ship's sensor locks server-side -- a lock is
+ * deliberate illumination, which a ship running quiet is not doing -- while its
+ * existing contacts are kept.
+ */
+export function setShipEmissions(
+  shipName: string,
+  activeSensors?: boolean,
+  transmitting?: boolean,
+  handoffSensors?: boolean,
+) {
+  const payload = {
+    SetShipEmissions: {
+      ship_name: shipName,
+      ...(activeSensors === undefined ? {} : { active_sensors: activeSensors }),
+      ...(transmitting === undefined ? {} : { transmitting }),
+      ...(handoffSensors === undefined
+        ? {}
+        : { handoff_sensors: handoffSensors }),
+    },
+  };
+  socket.send(JSON.stringify(payload));
+}
+
+/** Set which side a ship is on. `null` makes it unaligned. */
+export function setShipTeam(shipName: string, team: Team | null) {
+  const payload = {
+    SetShipTeam: { ship_name: shipName, ...(team == null ? {} : { team }) },
+  };
+  socket.send(JSON.stringify(payload));
 }
 
 export function setCrewActions(
@@ -367,11 +430,21 @@ export function setCrewActions(
   };
 
   socket.send(JSON.stringify(payload));
+
+  // Withdrawing a pilot action withdraws the captain's boost on it. Nothing
+  // else will: boost state is local and survives server snapshots mid-turn.
+  if (!assist_gunners) {
+    store.dispatch(dropBoosts({ shipName: target, kinds: ["AssistGunner"] }));
+  }
+  if (dodge === 0) {
+    store.dispatch(dropBoosts({ shipName: target, kinds: ["Evade"] }));
+  }
 }
 
 export function removeEntity(target: string) {
   // Backend variant is `Remove(String)` — wire shape is `{"Remove": "name"}`.
   socket.send(JSON.stringify({ Remove: target }));
+  markScenarioDirty();
 }
 
 export function renameEntity(current: string, newName: string) {
@@ -380,6 +453,7 @@ export function renameEntity(current: string, newName: string) {
       RenameEntity: { current, new_name: newName },
     }),
   );
+  markScenarioDirty();
 }
 
 export async function setPlan(
@@ -488,24 +562,25 @@ export function computeFlightPath(
   );
 }
 
-export function requestRoleChoice(role: ViewMode, ship: string | null) {
-  if (ship !== null) {
-    const payload = { SetRole: { role: ViewMode[role], ship: ship } };
-    socket.send(JSON.stringify(payload));
-  } else {
-    const payload = { SetRole: { role: ViewMode[role] } };
-    socket.send(JSON.stringify(payload));
-  }
+export function requestRoleChoice(roles: ViewMode[], ship: string | null) {
+  const names = roles.map((r) => ViewMode[r]);
+  const payload =
+    ship !== null
+      ? { SetRole: { roles: names, ship: ship } }
+      : { SetRole: { roles: names } };
+  socket.send(JSON.stringify(payload));
 }
 
 export function joinScenario(scenario_name: string) {
   const payload = { JoinScenario: { scenario_name: scenario_name } };
   socket.send(JSON.stringify(payload));
+  store.dispatch(setScenarioDirty(false));
 }
 
 export function createScenario(name: string, scenario: string) {
   const payload = { CreateScenario: { name: name, scenario: scenario } };
   socket.send(JSON.stringify(payload));
+  store.dispatch(setScenarioDirty(false));
 }
 
 // Save the current scenario to disk / GCS. The callback fires when the server
@@ -547,8 +622,18 @@ export function getTemplates() {
   socket.send(DESIGN_TEMPLATE_REQUEST);
 }
 
-export function resetServer(appMode: AppMode) {
-  if (window.confirm("Are you sure you want to reset the server?")) {
+/**
+ * Reset the scenario to the state it was loaded in.
+ *
+ * Pass `skipConfirm` when the caller has already asked — the Scenario Builder
+ * puts up its own dialog, which can say what is actually at stake ("this
+ * discards unsaved edits") rather than the generic prompt used everywhere else.
+ */
+export function resetServer(appMode: AppMode, skipConfirm = false) {
+  if (
+    skipConfirm ||
+    window.confirm("Are you sure you want to reset the server?")
+  ) {
     store.dispatch(resetServerState());
     store.dispatch(setAppMode(appMode));
     socket.send(RESET_REQUEST);
@@ -557,6 +642,7 @@ export function resetServer(appMode: AppMode) {
 
 export function exit_scenario() {
   socket.send(EXIT_REQUEST);
+  store.dispatch(setScenarioDirty(false));
 }
 
 export function logout() {
@@ -694,6 +780,10 @@ function handleEffect(json: object[]) {
         position: null,
         target: null,
         origin: null,
+        // The two structured variants compose their own text here, so they
+        // also name their own category -- the server never sends one for them.
+        category: "Engineering",
+        ship: result.ship_name,
       } as Event;
     }
     if ((event as LeadershipActionEffect).kind === "LeadershipAction") {
@@ -704,6 +794,8 @@ function handleEffect(json: object[]) {
         position: null,
         target: null,
         origin: null,
+        category: "Leadership",
+        ship: lead.ship_name,
       } as Event;
     }
     return event as Event;
@@ -730,10 +822,18 @@ function formatEngineerResult(result: EngineerActionResult): string {
 interface LeadershipActionEffect {
   kind: "LeadershipAction";
   ship_name: string;
+  /** The 2D behind `points`; absent when the captain never rolled this round. */
+  roll?: number | null;
+  leadership?: number;
   points: number;
   boosts_applied: object[];
 }
 
+/**
+ * The captain's check, shown the way every other check is: roll, skill, total
+ * against 8, and what it bought. A round with no roll says so rather than
+ * reporting "0 points" as if the dice had come up badly.
+ */
 function formatLeadershipResult(lead: LeadershipActionEffect): string {
   const summary =
     lead.boosts_applied.length === 0
@@ -741,7 +841,16 @@ function formatLeadershipResult(lead: LeadershipActionEffect): string {
       : `${lead.boosts_applied.length} boost(s): ${lead.boosts_applied
           .map((b) => describeBoost(b))
           .join(", ")}`;
-  return `[Captain] ${lead.ship_name} rolled ${lead.points} leadership point(s); ${summary}.`;
+  if (lead.roll == null) {
+    return `[Captain] ${lead.ship_name} made no leadership roll this round; ${summary}.`;
+  }
+  const skill = lead.leadership ?? 0;
+  const total = lead.roll + skill;
+  const points = `${lead.points} point${lead.points === 1 ? "" : "s"}`;
+  return (
+    `[Captain] ${lead.ship_name} leadership check with roll ${lead.roll} and skill ` +
+    `${skill >= 0 ? "+" : ""}${skill} for a total of ${total} against 8: ${points}; ${summary}.`
+  );
 }
 
 function describeBoost(b: object): string {
@@ -761,8 +870,9 @@ function handleUsers(json: [UserContext]) {
   for (const user of json) {
     const c: UserContext = {} as UserContext;
     c.display_name = user.display_name;
-    c.role =
-      stringToViewMode(user.role as unknown as string) ?? ViewMode.General;
+    // `roles` from a current server; `role` from one a deploy behind.
+    const raw = user as unknown as { roles?: unknown; role?: unknown };
+    c.roles = parseRoles(raw.roles ?? raw.role);
     c.ship = user.ship;
     users.push(c);
   }
@@ -803,7 +913,8 @@ function syncAppModeForScenario(scenario: string) {
 function handleAuthenticated(json: {
   email: string | null;
   scenario: string | null;
-  role: string | null;
+  roles?: string[] | null;
+  role?: string | null;
   ship: string | null;
 }): void {
   console.log(
@@ -818,13 +929,8 @@ function handleAuthenticated(json: {
       store.dispatch(setJoinedScenario(json.scenario));
       syncAppModeForScenario(json.scenario);
     }
-    if (json.role != null) {
-      store.dispatch(
-        setRoleShip([
-          stringToViewMode(json.role) ?? ViewMode.General,
-          json.ship,
-        ]),
-      );
+    if (json.roles != null || json.role != null) {
+      store.dispatch(setRoleShip([parseRoles(json.roles ?? json.role), json.ship]));
     }
   } else {
     store.dispatch(setAuthenticated(false));

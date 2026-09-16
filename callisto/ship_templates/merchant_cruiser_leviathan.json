@@ -15,37 +15,67 @@
       "kind": "Beam",
       "mount": {
         "Turret": 2
-      }
+      },
+      "modifiers": [
+        "EnergyEfficient",
+        "EnergyEfficient",
+        "EnergyEfficient"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 2
-      }
+      },
+      "modifiers": [
+        "EnergyEfficient",
+        "EnergyEfficient",
+        "EnergyEfficient"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 2
-      }
+      },
+      "modifiers": [
+        "EnergyEfficient",
+        "EnergyEfficient",
+        "EnergyEfficient"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 2
-      }
+      },
+      "modifiers": [
+        "EnergyEfficient",
+        "EnergyEfficient",
+        "EnergyEfficient"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 2
-      }
+      },
+      "modifiers": [
+        "EnergyEfficient",
+        "EnergyEfficient",
+        "EnergyEfficient"
+      ]
     },
     {
       "kind": "Beam",
       "mount": {
         "Turret": 2
-      }
+      },
+      "modifiers": [
+        "EnergyEfficient",
+        "EnergyEfficient",
+        "EnergyEfficient"
+      ]
     },
     {
       "kind": "Missile",
@@ -56,11 +86,11 @@
       "mount": "FixedMount"
     },
     {
-      "kind": "Missile",
+      "kind": "Torpedo",
       "mount": "Barbette"
     },
     {
-      "kind": "Missile",
+      "kind": "Torpedo",
       "mount": "Barbette"
     }
   ],

@@ -10,9 +10,9 @@ import { AddShip } from "./AddShip";
 import { AddPlanet } from "./AddPlanet";
 import { EntityList } from "./EntityList";
 import { POSITION_SCALE, SCALE } from "lib/universal";
-import { Ship, Entity, Planet, findShip } from "lib/entities";
+import { Ship, Entity, Planet, findShip, availablePower } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
-import { ViewMode } from "lib/view";
+import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
 import { nextRound } from "lib/serverManager";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
@@ -25,6 +25,7 @@ import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { AppMode } from "state/tutorialSlice";
+import { isUndetected, sameSide } from "lib/contacts";
 import { store } from "state/store";
 import {
   setComputerShipName,
@@ -223,7 +224,7 @@ function ScenarioBuilderControls(args: {
 
 export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const isScenarioBuilder = useAppSelector(
     (state) => state.tutorial.appMode === AppMode.ScenarioBuilder,
   );
@@ -260,7 +261,10 @@ export function Controls() {
     <div className="controls-pane">
       <h1>Controls</h1>
       <hr />
-      {role === ViewMode.General && Object.keys(shipTemplates).length > 0 && (
+      {/* Referee only. General mode with a ship assigned is a player flying
+          that ship with every station open, not the GM; that is the case that
+          was leaking Add Ship. Same condition App.tsx uses for the reset. */}
+      {isReferee(roles, shipName) && Object.keys(shipTemplates).length > 0 && (
         <>
           <AddShip />
           <hr />
@@ -307,7 +311,7 @@ export function Controls() {
               </div>
               <div className="stats-bloc-entry">
                 <h2>Power</h2>
-                <pre className="plan-accel-text">{`${computerShip.current_power}(${computerShipDesign.power})`}</pre>
+                <pre className="plan-accel-text">{`${availablePower(computerShip)}(${computerShipDesign.power})`}</pre>
               </div>
               {!computerShipDesign.countermeasures &&
                 !computerShipDesign.stealth && (
@@ -357,9 +361,14 @@ export function Controls() {
                 <input
                   id="show-range-checkbox"
                   type="checkbox"
-                  checked={showRange !== null}
+                  // Checked only when the circles are around THIS ship. It
+                  // used to read as "on" for any ship once toggled anywhere,
+                  // so switching ships left the box ticked while the circles
+                  // stayed around the previous one. Toggling on a different
+                  // ship now re-targets rather than clears.
+                  checked={showRange === computerShipName}
                   onChange={() => {
-                    if (showRange === null && computerShipName) {
+                    if (showRange !== computerShipName && computerShipName) {
                       dispatch(setShowRange(computerShipName));
                     } else {
                       dispatch(setShowRange(null));
@@ -421,19 +430,35 @@ export function Controls() {
                   </pre>
                 </div>
               )}
+            {/* Bottom of the box, one heading in the section-title style and
+                one line in the body font. Gunners are one number per mount,
+                in mount order. */}
+            <h2 className="control-form">Crew</h2>
+            <p className="crew-line">
+              {[
+                `Pilot - ${computerShip.crew.pilot}`,
+                `Eng-J - ${computerShip.crew.engineering_jump}`,
+                `Eng-P - ${computerShip.crew.engineering_power}`,
+                `Eng-M - ${computerShip.crew.engineering_maneuver}`,
+                `Sensors - ${computerShip.crew.sensors}`,
+                `Leadership - ${computerShip.crew.leadership}`,
+                `Gunners - ${shipWeapons(computerShip, shipTemplates)
+                  .map((_w, i) => computerShip.crew.gunnery[i] ?? 0)
+                  .join(", ") || "none"}`,
+              ].join(",  ")}
+            </p>
             <hr />
-            {[ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer].includes(
-              role,
-            ) &&
+            {hasRole(roles, ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer) &&
+              !hasRole(roles, ViewMode.General) &&
               computerShipName && (
                 <Accordion
-                  title={`${computerShipName} ${ViewMode[role]} Controls`}
+                  title={`${computerShipName} ${rolesToString(roles)} Controls`}
                   initialOpen={true}
                 >
                   <ShipComputer ship={computerShip} />
                 </Accordion>
               )}
-            {[ViewMode.Gunner, ViewMode.General].includes(role) && (
+            {hasRole(roles, ViewMode.Gunner) && (
               <div className="control-form">
                 <Accordion
                   title={`${computerShipName} Fire Controls`}
@@ -447,9 +472,14 @@ export function Controls() {
         )}
         {/* Captain rolls leadership from the left pane (their main UI).
             General sees the same panel via the ShipComputer popup, so we
-            don't render it here twice. */}
-        {role === ViewMode.Captain && shipName && (() => {
-          const captainShip = findShip(entities, shipName);
+            don't render it here twice.
+
+            The assigned ship if there is one, else the ship being viewed --
+            the same rule the boost checkboxes use. Every other station
+            already works on the viewed ship; requiring an assignment here
+            meant a captain looking at a ship got no leadership button. */}
+        {hasRole(roles, ViewMode.Captain) && !hasRole(roles, ViewMode.General) && (() => {
+          const captainShip = findShip(entities, shipName ?? computerShipName);
           if (!captainShip) return null;
           return <CaptainTasks ship={captainShip} />;
         })()}
@@ -466,21 +496,13 @@ export function Controls() {
           // order to mark boost checkboxes against them, so Captain is added
           // to all three of these visibility flags.
           const seeFire =
-            role === ViewMode.General ||
-            role === ViewMode.Gunner ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Gunner, ViewMode.Captain);
           const seeSensor =
-            role === ViewMode.General ||
-            role === ViewMode.Sensors ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Sensors, ViewMode.Captain);
           const seeEngineer =
-            role === ViewMode.General ||
-            role === ViewMode.Engineer ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Engineer, ViewMode.Captain);
           const seePilot =
-            role === ViewMode.General ||
-            role === ViewMode.Pilot ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Pilot, ViewMode.Captain);
           const fireActions = seeFire ? a?.fire || [] : [];
           const pdActions = seeFire ? a?.pointDefense || [] : [];
           const sensorAction = seeSensor
@@ -492,11 +514,24 @@ export function Controls() {
           const pilotState = seePilot
             ? { dodgeThrust, assistGunners }
             : null;
+          // Ships this one could be looking for. Detection is free and needs
+          // no order, so these are not queued actions — they are here because
+          // a captain can concentrate the sensop on one of them, and that is
+          // the only part of detection leadership reaches.
+          const searchTargets = seeSensor
+            ? entities.ships.filter(
+                (target) =>
+                  target.name !== computerShip.name &&
+                  isUndetected(computerShip, target) &&
+                  !sameSide(computerShip, target),
+              )
+            : [];
           const hasAny =
             fireActions.length > 0 ||
             pdActions.length > 0 ||
             sensorAction.action !== SensorAction.None ||
             engineerAction != null ||
+            searchTargets.length > 0 ||
             (pilotState != null &&
               (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
           if (!hasAny) return null;
@@ -507,12 +542,13 @@ export function Controls() {
               sensorAction={sensorAction}
               engineerAction={engineerAction}
               pilotState={pilotState}
+              searchTargets={searchTargets}
               weapons={shipWeapons(computerShip, shipTemplates)}
             />
           );
         })()}
       </Accordion>
-      {[ViewMode.General, ViewMode.Captain].includes(role) && (
+      {hasRole(roles, ViewMode.Captain) && (
         <button
           className="control-input control-button blue-button button-next-round"
           // Reset the computer and route on the next round.  If this gets any more complex move it into its
@@ -558,6 +594,44 @@ export function ViewControls() {
         />{" "}
         100 Diameter Limit
       </label>
+      {/* Collapsed by default: this is reference material, not a control, and
+          the top-right corner has no room to spare. It exists at all because
+          the flight keys were documented nowhere -- not in the tutorial, not
+          in the README -- so the only way to find them was to read
+          `FlyControls`. */}
+      <Accordion
+        className="camera-keys"
+        title="Camera Keys"
+        initialOpen={false}>
+        <dl className="camera-key-list">
+          <dt>
+            <kbd>W</kbd> <kbd>S</kbd>
+          </dt>
+          <dd>forward / back</dd>
+          <dt>
+            <kbd>A</kbd> <kbd>D</kbd>
+          </dt>
+          <dd>left / right</dd>
+          <dt>
+            <kbd>R</kbd> <kbd>F</kbd>
+          </dt>
+          <dd>up / down</dd>
+          <dt>
+            <kbd>Q</kbd> <kbd>E</kbd>
+          </dt>
+          <dd>roll</dd>
+          <dt>
+            <kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd>
+          </dt>
+          <dd>pitch / yaw</dd>
+          <dt>
+            <kbd>Shift</kbd>
+          </dt>
+          <dd>faster</dd>
+          <dt>drag</dt>
+          <dd>look</dd>
+        </dl>
+      </Accordion>
     </div>
   );
 }

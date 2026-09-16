@@ -32,6 +32,52 @@ const newShipAction = () => {
   };
 };
 
+/** One ship's queued actions: the value type of the state map. Named from the
+ * map rather than from `newShipAction`, whose empty literals infer `never[]`. */
+type ShipActionSlot = ActionType[string];
+
+/**
+ * Remove the boosts that inspired an action which no longer exists.
+ *
+ * A captain's boost is a +1 on some other crew member's roll, so it only means
+ * anything while that roll is still going to happen. Boost state is held
+ * locally and deliberately survives server snapshots mid-turn (see
+ * `setActions`), which means nothing else will ever clear it -- so every
+ * place an action is withdrawn has to withdraw its boost too, or the captain
+ * is left with an inspire pinned to nothing. That is exactly what happened:
+ * deselect Assist Gunner and its boost stayed, and the only way out was to
+ * reselect, un-inspire, and deselect again.
+ *
+ * `weapon_id` narrows a Fire/PointDefense drop to one mount; other kinds have
+ * at most one boost per ship and ignore it.
+ */
+const dropBoostsFrom = (
+  slot: ShipActionSlot | undefined,
+  kinds: BoostTarget["kind"][],
+  weapon_id?: number,
+) => {
+  const boosts = slot?.leadershipCheck?.boosts;
+  if (slot == null || boosts == null || boosts.length === 0) {
+    return;
+  }
+  const next = boosts.filter((b) => {
+    if (!kinds.includes(b.kind)) {
+      return true;
+    }
+    if (weapon_id !== undefined && "weapon_id" in b) {
+      return b.weapon_id !== weapon_id;
+    }
+    return false;
+  });
+  if (next.length === boosts.length) {
+    return;
+  }
+  slot.leadershipCheck = { boosts: next };
+  // Same rule as toggleBoost: an empty list means "strip the queued
+  // LeadershipCheck", not "leave the old one on the server".
+  slot.clearLeadership = next.length === 0;
+};
+
 export const actionsSlice = createSlice({
   name: "server",
   initialState,
@@ -102,6 +148,9 @@ export const actionsSlice = createSlice({
       // sensor action implicitly replaces, so no clear flag needed.
       state[item.payload.shipName].clearSensor =
         item.payload.action.action === SensorAction.None;
+      if (item.payload.action.action === SensorAction.None) {
+        dropBoostsFrom(state[item.payload.shipName], ["Sensor"]);
+      }
       updateActions(state);
     },
     setEngineerAction: (state, item: PayloadAction<{ shipName: string, action: EngineerState}>) => {
@@ -110,6 +159,9 @@ export const actionsSlice = createSlice({
       // null means "clear" — flag the anti-action. Any other engineer action
       // replaces on the server side via merge.
       state[item.payload.shipName].clearEngineer = item.payload.action === null;
+      if (item.payload.action === null) {
+        dropBoostsFrom(state[item.payload.shipName], ["Engineer"]);
+      }
       updateActions(state);
     },
     // Idempotently add or remove a boost target. When the list goes empty,
@@ -137,6 +189,12 @@ export const actionsSlice = createSlice({
         target: string;
         entities: EntityList;
         called_shot?: string;
+        /**
+         * Which weapon type in the mount is firing. A mixed turret may only use
+         * one type per round, so it has to be named; omitted for a uniform
+         * mount, which has no choice to make.
+         */
+        firing_kind?: string;
       }>
     ) => {
       const entities = item.payload.entities;
@@ -156,6 +214,9 @@ export const actionsSlice = createSlice({
         weapon_id: item.payload.weapon_id,
         called_shot_system: item.payload.called_shot ?? null,
       };
+      if (item.payload.firing_kind != null) {
+        new_action.firing_kind = item.payload.firing_kind;
+      }
       state[item.payload.shipName] ??= newShipAction();
       state[item.payload.shipName].fire.push(new_action);
       updateActions(state);
@@ -170,7 +231,18 @@ export const actionsSlice = createSlice({
     unfireWeapon: (state, item: PayloadAction<{shipName: string; weapon_id: number}>) => {
       const new_action: UnfireAction = {weapon_id: item.payload.weapon_id};
       state[item.payload.shipName].unfire.push(new_action);
+      dropBoostsFrom(state[item.payload.shipName], ["Fire", "PointDefense"], item.payload.weapon_id);
       updateActions(state);
+    },
+    // Pilot actions have no reducer of their own -- they go straight to the
+    // server -- so their boosts are dropped by an explicit dispatch from
+    // `setCrewActions`. Local only, like toggleBoost: flushed on the next
+    // Update / CaptainAction.
+    dropBoosts: (
+      state,
+      item: PayloadAction<{ shipName: string; kinds: BoostTarget["kind"][]; weapon_id?: number }>
+    ) => {
+      dropBoostsFrom(state[item.payload.shipName], item.payload.kinds, item.payload.weapon_id);
     },
     updateFireCalledShot: (
       state,
@@ -189,6 +261,7 @@ export const {
   setSensorAction,
   setEngineerAction,
   toggleBoost,
+  dropBoosts,
   fireWeapon,
   pointDefenseWeapon,
   unfireWeapon,

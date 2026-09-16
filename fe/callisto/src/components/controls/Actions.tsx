@@ -29,6 +29,10 @@ export type BoostTarget =
   | { kind: "Fire"; ship: string; weapon_id: number }
   | { kind: "PointDefense"; ship: string; weapon_id: number }
   | { kind: "Sensor"; ship: string }
+  // Backed by no queued action: detection is free and happens every round. The
+  // boost names the pair, because a captain concentrates the sensop on finding
+  // one particular ship rather than on sensors in general.
+  | { kind: "Detection"; ship: string; target: string }
   | { kind: "Engineer"; ship: string }
   | { kind: "Evade"; ship: string }
   | { kind: "AssistGunner"; ship: string };
@@ -38,6 +42,14 @@ export type FireAction = {
   target: string;
   weapon_id: number;
   called_shot_system: string | null;
+  /**
+   * Which weapon type in the mount is firing.
+   *
+   * A mixed turret may only use one type per round (Core Rulebook p. 166), so
+   * it has to be told which. Omitted for a uniform mount, which has no choice
+   * to make.
+   */
+  firing_kind?: string;
 };
 
 export type FireState = FireAction[];
@@ -92,11 +104,17 @@ export function actionPayload(actions: ActionType) {
     let fire_actions: (object | string)[] = value.fire
       ? value.fire.map((fireAction) => fireActionPayload(fireAction))
       : [];
-    if (value.unfire) {
-      fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
-    }
     if (value.pointDefense) {
       fire_actions = [...fire_actions, ...value.pointDefense.map((pointDefenseAction) => pointDefenseActionPayload(pointDefenseAction))];
+    }
+    // Anti-actions go last, after everything they might cancel. The client
+    // re-sends its whole action list each time, so a delete placed before the
+    // point-defence orders was applied and then immediately undone by the very
+    // order it was meant to remove -- which is why a point-defence action could
+    // not be clicked off and survived round after round. Fire actions escaped
+    // this only because they happened to be listed before the delete.
+    if (value.unfire) {
+      fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
     }
     const sensor_action = value.sensor ? sensorActionPayload(value.sensor): null;
     if (sensor_action) {
@@ -144,6 +162,8 @@ export function boostTargetToWire(b: BoostTarget): object {
       return { PointDefense: { ship: b.ship, weapon_id: b.weapon_id } };
     case "Sensor":
       return { Sensor: { ship: b.ship } };
+    case "Detection":
+      return { Detection: { ship: b.ship, target: b.target } };
     case "Engineer":
       return { Engineer: { ship: b.ship } };
     case "Evade":
@@ -171,6 +191,10 @@ export function wireToBoostTarget(raw: unknown): BoostTarget | null {
     const v = obj["Sensor"] as { ship: string };
     return { kind: "Sensor", ship: v.ship };
   }
+  if (Object.hasOwn(obj, "Detection")) {
+    const v = obj["Detection"] as { ship: string; target: string };
+    return { kind: "Detection", ship: v.ship, target: v.target };
+  }
   if (Object.hasOwn(obj, "Engineer")) {
     const v = obj["Engineer"] as { ship: string };
     return { kind: "Engineer", ship: v.ship };
@@ -194,6 +218,11 @@ export function boostTargetEquals(a: BoostTarget, b: BoostTarget): boolean {
   if ((a.kind === "Fire" || a.kind === "PointDefense") &&
       (b.kind === "Fire" || b.kind === "PointDefense")) {
     return a.weapon_id === b.weapon_id;
+  }
+  // Detection is per pair, so two boosts on the same ship aimed at different
+  // quarry are different boosts.
+  if (a.kind === "Detection" && b.kind === "Detection") {
+    return a.target === b.target;
   }
   return true;
 }

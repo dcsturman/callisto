@@ -5,11 +5,24 @@ import { SHIP_SYSTEMS } from "lib/universal";
 import { Ship, Entity, findShip, stringToShipSystem } from "lib/entities";
 import {
   compressedWeapons,
+  describeScreens,
   getWeaponName,
   findNthWeapon,
   shipWeapons,
 } from "lib/shipDesignTemplates";
-import { Weapon, WeaponMount } from "lib/weapon";
+import {
+  Weapon,
+  WeaponMount,
+  actionWeaponKind,
+  isActionableWeapon,
+  isLaserKind,
+  isLauncherKind,
+  isPassiveWeapon,
+  weaponKinds,
+  createWeapon,
+  weaponToString,
+  weaponKindLabel,
+} from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
   FireState,
@@ -21,7 +34,7 @@ import {
   DEFAULT_SENSOR_STATE,
   boostTargetEquals,
 } from "components/controls/Actions";
-import { ViewMode } from "lib/view";
+import { ViewMode, hasRole } from "lib/view";
 import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
 import { setCrewActions } from "lib/serverManager";
 
@@ -38,7 +51,7 @@ import LargeBay from "assets/icons/bay-l.svg?react";
 // Icons to show fire states.
 import RayIcon from "assets/icons/laser.svg?react";
 import MissileIcon from "assets/icons/missile.svg?react";
-import { GiBinoculars, GiRocket } from "react-icons/gi";
+import { GiBinoculars, GiRadarSweep, GiRocket } from "react-icons/gi";
 import { FaCog } from "react-icons/fa";
 import { Tooltip } from "react-tooltip";
 import { vectorDistance } from "lib/Util";
@@ -57,12 +70,32 @@ import {
 import { entitiesSelector } from "state/serverSlice";
 
 // Consistent set of colors for both type of weapons and fire states.
+/** Kinds the crew never orders, so they never get a fire button of their own. */
+const PASSIVE_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
+
+/// Searching gets a colour of its own: it is the only row here that is not an
+/// order, so it should not be mistaken for one of the sensop's actions.
+const SEARCH_ICON_COLOR = "violet";
+
 const WEAPON_COLORS: { [key: string]: string } = {
   Beam: "red",
   Pulse: "blue",
   Missile: "green",
   Particle: "yellow",
   Sand: "tan",
+  // Torpedoes sit next to missiles in the launcher family, so they take a
+  // deeper shade of the same hue rather than a colour of their own.
+  Torpedo: "darkgreen",
+  Fusion: "orange",
+  Plasma: "magenta",
+  Railgun: "silver",
+  Meson: "violet",
+  MassDriver: "sienna",
+  Repulsor: "cyan",
+  Ion: "deepskyblue",
+  // Never rendered today -- batteries have no action button -- but present so
+  // a future passive-defences readout does not fall through to undefined.
+  PointDefense: "orange",
 };
 
 const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
@@ -90,7 +123,30 @@ export const WeaponButton = (props: {
   count: number;
   onClick: () => void;
   disabled: boolean;
+  /**
+   * The other weapons sharing this mount, if any.
+   *
+   * A mixed turret gets one button per gun it can fire, so a pulse/sand turret
+   * renders exactly like a pure pulse one -- same icon, same tooltip -- and a
+   * ship carrying both, as the Threshing Oar does, shows two buttons that look
+   * identical for no visible reason. Naming what else is in the mount, and
+   * marking the button, tells them apart.
+   */
+  alongside?: string[];
 }) => {
+  // Tooltips name the weapon for a person, so they use the readable label
+  // rather than the wire identifier.  Colours are still keyed off the raw kind.
+  const label = weaponKindLabel(props.weapon);
+
+  const mixed = props.alongside != null && props.alongside.length > 0;
+  const tip = (text: string) =>
+    mixed
+      ? `${text} — shares the mount with ${props.alongside!
+          .map(weaponKindLabel)
+          .join(", ")}`
+      : text;
+  const buttonClass = mixed ? "weapon-button weapon-button-mixed" : "weapon-button";
+
   // FixedMount is a bare string like Barbette, so it has to be matched first or
   // it falls into the Barbette arm and draws the wrong weapon entirely.
   if (props.mount === "FixedMount") {
@@ -98,9 +154,9 @@ export const WeaponButton = (props: {
       <>
         <button
           id={props.weapon + "-fixed-mount-button"}
-          className="weapon-button"
+          className={buttonClass}
           data-tooltip-id={props.weapon + props.mount}
-          data-tooltip-content={`${props.weapon} Fixed Mount`}
+          data-tooltip-content={tip(`${label} Fixed Mount`)}
           data-tooltip-delay-show={700}
           onClick={props.onClick}
           disabled={props.disabled}
@@ -125,9 +181,9 @@ export const WeaponButton = (props: {
       <>
         <button
           id={props.weapon + "-barbette-button"}
-          className="weapon-button"
+          className={buttonClass}
           data-tooltip-id={props.weapon + props.mount}
-          data-tooltip-content={`${props.weapon} Barbette`}
+          data-tooltip-content={tip(`${label} Barbette`)}
           data-tooltip-delay-show={700}
           onClick={props.onClick}
           disabled={props.disabled}
@@ -154,10 +210,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-small-bay-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "small-bay"}
-            data-tooltip-content={`Small ${props.weapon} Bay`}
+            data-tooltip-content={tip(`Small ${label} Bay`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -180,10 +236,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-medium-bay-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "med-bay"}
-            data-tooltip-content={`Medium ${props.weapon} Bay`}
+            data-tooltip-content={tip(`Medium ${label} Bay`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -206,10 +262,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-large-bay-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + "large-bay"}
-            data-tooltip-content={`Large ${props.weapon} Bay`}
+            data-tooltip-content={tip(`Large ${label} Bay`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -235,10 +291,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-single-turret-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
-            data-tooltip-content={`Single ${props.weapon} Turret`}
+            data-tooltip-content={tip(`Single ${label} Turret`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -262,10 +318,10 @@ export const WeaponButton = (props: {
         <>
           <button
             id={props.weapon + "-double-turret-button"}
-            className="weapon-button"
+            className={buttonClass}
             onClick={props.onClick}
             data-tooltip-id={props.weapon + num + "turret"}
-            data-tooltip-content={`Double ${props.weapon} Turret`}
+            data-tooltip-content={tip(`Double ${label} Turret`)}
             data-tooltip-delay-show={700}
             disabled={props.disabled}
           >
@@ -288,10 +344,10 @@ export const WeaponButton = (props: {
       <>
         <button
           id={props.weapon + "-triple-turret-button"}
-          className="weapon-button"
+          className={buttonClass}
           onClick={props.onClick}
           data-tooltip-id={props.weapon + num + "turret"}
-          data-tooltip-content={`Triple ${props.weapon} Turret`}
+          data-tooltip-content={tip(`Triple ${label} Turret`)}
           data-tooltip-delay-show={700}
           disabled={props.disabled}
         >
@@ -432,7 +488,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
   );
 
   const handleFireCommand = useCallback(
-    (attacker: string, target: string, weapon_name: string) => {
+    (attacker: string, target: string, weapon_name: string, firingKind?: string) => {
       if (computerShipWeapons.length === 0) {
         console.error(
           "(Controls.handleFireCommand) No weapons known for " + attacker + ".",
@@ -467,6 +523,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
             weapon_id: weapon_id,
             target: target,
             entities: entities,
+            firing_kind: firingKind,
           }),
         );
       }
@@ -495,7 +552,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
   const filter = useMemo(() => [EntitySelectorType.Ship], []);
 
   const handleWeaponClick = useCallback(
-    (weapon_name: string) => {
+    (weapon_name: string, firingKind?: string) => {
       if (!computerShipName) {
         return;
       }
@@ -503,6 +560,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
         computerShipName,
         fireTarget ? fireTarget.name : "",
         weapon_name,
+        firingKind,
       );
     },
     [handleFireCommand, computerShipName, fireTarget],
@@ -514,7 +572,7 @@ export const FireControl: React.FC<FireControlProps> = () => {
         !fireTarget ||
         (fireTarget.name === POINT_DEFENSE_NAME &&
           !(
-            (weapon.kind.includes("Beam") || weapon.kind.includes("Pulse")) &&
+            isLaserKind(weapon.kind ?? "") &&
             weapon.mount !== "Turret"
           ))
       );
@@ -525,18 +583,42 @@ export const FireControl: React.FC<FireControlProps> = () => {
   const weaponButtons = useMemo(
     () =>
       computerShipName &&
-      Object.entries(compressedWeapons(computerShipWeapons)).map(
-        ([weapon_name, weapon]) =>
-          !weapon_name.includes("Sand") && (
+      Object.entries(compressedWeapons(computerShipWeapons)).flatMap(
+        ([weapon_name, weapon]) => {
+          if (!isActionableWeapon(weapon)) {
+            return [];
+          }
+          // A mixed turret may only use one type per round, so it gets a button
+          // per orderable type rather than one for the mount.  A uniform mount
+          // has a single kind and so still renders exactly one button.
+          const kinds = weaponKinds(
+            weapon.guns != null
+              ? { mount: weapon.mount, guns: weapon.guns }
+              : { kind: weapon.kind, mount: weapon.mount },
+          ).filter((kind) => !PASSIVE_KINDS.has(kind));
+          const choices = kinds.length > 0 ? kinds : [weapon.kind];
+          const mixed = choices.length > 1;
+          return choices.map((kind) => (
             <WeaponButton
-              key={"weapon-" + computerShipName + "-" + weapon_name}
-              weapon={weapon.kind}
+              key={"weapon-" + computerShipName + "-" + weapon_name + "-" + kind}
+              weapon={kind}
               mount={weapon.mount}
               count={availableCounts[weapon_name]}
-              onClick={() => handleWeaponClick(weapon_name)}
-              disabled={isWeaponDisabled(weapon)}
+              onClick={() =>
+                handleWeaponClick(weapon_name, mixed ? kind : undefined)
+              }
+              disabled={isWeaponDisabled({ kind, mount: weapon.mount })}
+              // Everything else in the mount, including the guns that cannot be
+              // fired: sand is exactly what distinguishes a mixed turret from a
+              // plain one, and it never gets a button of its own.
+              alongside={weaponKinds(
+                weapon.guns != null
+                  ? { mount: weapon.mount, guns: weapon.guns }
+                  : { kind: weapon.kind, mount: weapon.mount },
+              ).filter((other) => other !== kind)}
             />
-          ),
+          ));
+        },
       ),
     [
       computerShipName,
@@ -546,6 +628,33 @@ export const FireControl: React.FC<FireControlProps> = () => {
       isWeaponDisabled,
     ],
   );
+
+  // Defences that run themselves get no button, but a referee still needs to
+  // know the ship has them -- otherwise point defence is invisible everywhere
+  // once a ship is in play.
+  const passiveDefences = useMemo(() => {
+    const entries = Object.values(compressedWeapons(computerShipWeapons)).filter((weapon) =>
+      isPassiveWeapon(
+        weapon.guns != null
+          ? { mount: weapon.mount, guns: weapon.guns }
+          : createWeapon(weapon.kind, weapon.mount),
+      ),
+    );
+    const weapons = entries.map((weapon) => {
+      const name = weaponToString(
+        weapon.guns != null
+          ? { mount: weapon.mount, guns: weapon.guns }
+          : createWeapon(weapon.kind, weapon.mount),
+      );
+      return weapon.total > 1 ? `${name} x${weapon.total}` : name;
+    });
+    // Screens are not weapons and live on the design rather than the ship, but
+    // they are automatic defences and belong in the same readout.
+    const design = computerShip?.design
+      ? shipTemplates[computerShip.design]
+      : undefined;
+    return [...weapons, ...describeScreens(design?.screens)];
+  }, [computerShipWeapons, computerShip, shipTemplates]);
 
   return (
     <>
@@ -559,9 +668,17 @@ export const FireControl: React.FC<FireControlProps> = () => {
           exclude={computerShipName!}
           extra={POINT_DEFENSE_PHANTOM}
           formatter={formatter}
+          observer={computerShip}
+          excludeSameTeam
         />
       </div>
       <div className="weapon-list">{weaponButtons}</div>
+      {passiveDefences.length > 0 && (
+        <div className="weapon-passive-list">
+          <span className="weapon-passive-label">Automatic:</span>{" "}
+          {passiveDefences.join(", ")}
+        </div>
+      )}
     </>
   );
 };
@@ -569,6 +686,15 @@ export const FireControl: React.FC<FireControlProps> = () => {
 export function Actions(args: {
   fireActions: FireState;
   pointDefenseActions: PointDefenseState;
+  /**
+   * Ships this one could be searching for: another side, not yet found.
+   *
+   * Not actions — detection is free and needs no order. They appear so a
+   * captain can concentrate the sensop on one of them, which is the only part
+   * of detection leadership reaches. Supplied by the caller because the caller
+   * knows which roles should see them.
+   */
+  searchTargets: Ship[];
   sensorAction: SensorState;
   engineerAction: EngineerState;
   pilotState: { dodgeThrust: number; assistGunners: boolean } | null;
@@ -577,7 +703,7 @@ export function Actions(args: {
 }) {
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const userShipName = useAppSelector((state) => state.user.shipName);
   // Boost checkboxes render for Captains and Generals (per spec: "There should
   // be a check box for the captain (and general of course) view to the far
@@ -586,8 +712,7 @@ export function Actions(args: {
   // in that case fall back to the currently-viewed ship so the General can
   // roll leadership on whichever ship's popup they're inspecting.
   const captainShipName = userShipName ?? computerShipName;
-  const showBoostCheckbox =
-    role === ViewMode.Captain || role === ViewMode.General;
+  const showBoostCheckbox = hasRole(roles, ViewMode.Captain);
   const boostDispatchEnabled = showBoostCheckbox && captainShipName != null;
   const captainBoosts = useAppSelector((state) => {
     if (!captainShipName) return [] as BoostTarget[];
@@ -617,15 +742,20 @@ export function Actions(args: {
     dispatch(toggleBoost({ shipName: captainShipName, target }));
   };
 
-  const renderBoostCheckbox = (target: BoostTarget) => {
+  const renderBoostCheckbox = (target: BoostTarget, noCheckReason?: string) => {
     if (!showBoostCheckbox) return null;
     const checked = boostDispatchEnabled ? isBoosted(target) : false;
     // Checked boxes stay toggleable so the user can free a slot. Only
     // unchecked-at-limit and the no-ship-bound case disable.
+    // Some actions resolve without a skill check, so there is nothing for a
+    // boost to modify. The row keeps its box so the column still lines up, but
+    // it is disabled and says why.
     const disabled =
-      !boostDispatchEnabled || (!checked && atLimit);
+      noCheckReason != null || !boostDispatchEnabled || (!checked && atLimit);
     let title: string;
-    if (!boostDispatchEnabled) {
+    if (noCheckReason != null) {
+      title = noCheckReason;
+    } else if (!boostDispatchEnabled) {
       title = "Sit on a ship to apply leadership boosts";
     } else if (!(captainShip?.leadership_rolled ?? false)) {
       title = "Roll the captain action first";
@@ -724,16 +854,14 @@ export function Actions(args: {
         </div>
       )}
       {args.fireActions.map((action, index) => {
-        let kind = null;
-        if (args.weapons[action.weapon_id].kind === "Beam") {
-          kind = "Beam";
-        } else if (args.weapons[action.weapon_id].kind === "Pulse") {
-          kind = "Pulse";
-        } else if (args.weapons[action.weapon_id].kind === "Particle") {
-          kind = "Particle";
-        } else {
-          kind = "Missile";
-        }
+        // The weapon's own type.  This used to be a chain that mapped anything
+        // other than Beam, Pulse or Particle to the literal string "Missile",
+        // so every weapon added since -- fusion, meson, plasma, railgun, mass
+        // driver, ion -- was drawn and coloured as a missile.
+        const kind = actionWeaponKind(
+          args.weapons[action.weapon_id],
+          action.firing_kind,
+        );
 
         const fireBoostTarget: BoostTarget = {
           kind: "Fire",
@@ -741,7 +869,11 @@ export function Actions(args: {
           weapon_id: action.weapon_id,
         };
 
-        return ["Beam", "Pulse", "Particle"].includes(kind) ? (
+        // Anything that is not a launcher is direct fire and draws as a beam.
+        // This used to be a hardcoded list of Beam, Pulse and Particle, so every
+        // weapon added since -- fusion, meson, plasma, railgun, mass driver,
+        // ion -- fell through and drew a missile.
+        return !isLauncherKind(kind) ? (
           <div className="fire-actions-div" key={index + "_fire_img"}>
             <div onClick={() => onClick(action.weapon_id)}>
               <p>
@@ -783,21 +915,24 @@ export function Actions(args: {
                     fill: WEAPON_COLORS[kind],
                   }}
                 />{" "}
+                <span className="fire-action-weapon">
+                  {weaponKindLabel(kind)}
+                </span>{" "}
                 to {action.target}
               </p>
             </div>
-            {renderBoostCheckbox(fireBoostTarget)}
+            {renderBoostCheckbox(
+              fireBoostTarget,
+              "Launching makes no check, so there is nothing to boost",
+            )}
           </div>
         );
       })}
 
       {args.pointDefenseActions.map((action, index) => {
-        let kind = null;
-        if (args.weapons[action.weapon_id].kind === "Beam") {
-          kind = "Beam";
-        } else if (args.weapons[action.weapon_id].kind === "Pulse") {
-          kind = "Pulse";
-        } else {
+        // A mixed turret has no single kind, so ask which gun is on duty.
+        const kind = actionWeaponKind(args.weapons[action.weapon_id]);
+        if (!isLaserKind(kind)) {
           console.error(
             "(Actions) Illegal weapon kind for point defense: " +
               args.weapons[action.weapon_id].kind,
@@ -815,7 +950,8 @@ export function Actions(args: {
           weapon_id: action.weapon_id,
         };
 
-        return ["Beam", "Pulse"].includes(kind) ? (
+        // Point defence is lasers only (High Guard p. 30).
+        return isLaserKind(kind) ? (
           <div className="fire-actions-div" key={index + "_pd_img"}>
             <div onClick={() => onClick(action.weapon_id)}>
               <p>
@@ -834,6 +970,28 @@ export function Actions(args: {
           <></>
         );
       })}
+
+      {/* Detection is free and happens every round, so there is no order to
+          queue and nothing to click off. These rows exist so a captain can put
+          the sensop's attention on one particular ship. */}
+      {args.searchTargets.map((target) => (
+        <div className="fire-actions-div" key={"search-" + target.name}>
+          <div>
+            <p>
+              <GiRadarSweep
+                className="beam-type-icon"
+                style={{ fill: SEARCH_ICON_COLOR }}
+              />{" "}
+              Searching for {target.name}
+            </p>
+          </div>
+          {renderBoostCheckbox({
+            kind: "Detection",
+            ship: computerShipName ?? "",
+            target: target.name,
+          })}
+        </div>
+      ))}
 
       {args.pilotState != null && args.pilotState.dodgeThrust > 0 && (
         <div className="fire-actions-div">

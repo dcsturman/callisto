@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useRef } from "react";
+import { useRef, useMemo } from "react";
 
 import { Group, Mesh, SphereGeometry } from "three";
 import {
@@ -18,12 +18,15 @@ import { Line } from "lib/Util";
 import {
   SCALE,
   TURN_IN_SECONDS,
-  RANGE_BANDS
+  RANGE_BANDS,
+  RANGE_BAND_NAMES
 } from "lib/universal";
 import { Ship as ShipType, Missile as MissileType} from "lib/entities";
+import { isUndetected } from "lib/contacts";
+import { teamBodyColor, teamLabelColor } from "lib/teams";
 import { FlightPath } from "lib/flightPath";
 
-import { addVector, scaleVector, RangeSphere } from "lib/Util";
+import { addVector, scaleVector, RangeCircle } from "lib/Util";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { setEntityToShow, setComputerShipName } from "state/uiSlice";
@@ -54,9 +57,47 @@ function Ship(args: {
   ship: ShipType;
   index: number;
 }) {
-  const computerShipName = useAppSelector(state => state.ui.computerShipName);
-  const showRange = useAppSelector(state => state.ui.showRange) === computerShipName;
+  // `showRange` holds the name of the one ship whose bands are being shown.
+  // This compared it against `computerShipName` instead, which is the same
+  // value in every copy of this component -- so every ship drew its own four
+  // shells at once. Five ships a few thousand km apart, each with a 50,000 km
+  // sphere, put twenty near-coincident surfaces in the same place, which is
+  // what the display was actually showing.
+  const showRange = useAppSelector(state => state.ui.showRange) === args.ship.name;
   const dispatch = useAppDispatch();
+
+  // The ship whose console is open is the one doing the looking. In the GM's
+  // all-ships view no ship is being flown, so nothing is dimmed and everything
+  // shows as it always did.
+  const viewingShipName = useAppSelector((state) => state.user.shipName);
+  const entities = useAppSelector(entitiesSelector);
+  const observer = useMemo(
+    () =>
+      viewingShipName == null
+        ? null
+        : entities.ships.find((s) => s.name === viewingShipName) ?? null,
+    [entities.ships, viewingShipName],
+  );
+
+  const isOwnShip = viewingShipName === args.ship.name;
+  const undetected = isUndetected(observer, args.ship);
+  // Two axes, deliberately kept separate: hue says which side a ship is on,
+  // brightness says how well this console can see it. Scaling the team colour
+  // rather than replacing it keeps both readable at once -- a dimmed red ship
+  // still reads as team red, not currently detected.
+  //
+  // Your own ship, and every ship in the GM's all-ships view, is at full
+  // brightness; a ship you merely detect is dimmed; one you cannot see is
+  // dimmer still, present only because the referee's table can see the board.
+  const brightness = isOwnShip || observer == null ? 1 : undetected ? 0.06 : 0.2;
+  const bodyColor = teamBodyColor(args.ship.team, brightness);
+  // Detection wins over team: a ship you cannot see reads grey whatever side it
+  // is on. Once detected the team colour comes through, dimmed for anything
+  // that is not the ship whose console is open.
+  const labelColor = teamLabelColor(args.ship.team, {
+    undetected,
+    dim: !(isOwnShip || observer == null),
+  });
 
   const { camera } = useThree();
   const textRef = useRef<Mesh>(null);
@@ -73,18 +114,18 @@ function Ship(args: {
 
   return (
     <>
-      {computerShipName && showRange && RANGE_BANDS.map(
-          (distance, index) => (
-              <RangeSphere
-                pos={scaleVector(args.ship.position, SCALE)}
-                distance={distance}
-                order={2*index}
-                key={showRange + "range" + index}
-                color={"#5ba0ff"}
-                opacity={0.18}
-              />
-          )
-        )}
+      {showRange &&
+        RANGE_BANDS.map((distance, index) => (
+          <RangeCircle
+            pos={scaleVector(args.ship.position, SCALE)}
+            distance={distance}
+            // Named, so a band is identified by its label rather than by
+            // counting rings outwards or reading a shade.
+            label={RANGE_BAND_NAMES[index]}
+            key={args.ship.name + "range" + index}
+            color={"#5ba0ff"}
+          />
+        ))}
       <group position={scaleVector(args.ship.position, SCALE) as Vector3}>
         <mesh
           ref={shipRef}
@@ -96,7 +137,7 @@ function Ship(args: {
           {/* HDR: the composer keeps a half-float buffer, so values above 1
               survive and set how hard a ship blooms relative to dimmer things
               like the labels. */}
-          <meshBasicMaterial color={[10, 10, 24.0]} />
+          <meshBasicMaterial color={bodyColor} />
         </mesh>
         {/* vector showing a ships's velocity (so distance next turn) */}
         <Line
@@ -125,7 +166,7 @@ function Ship(args: {
                 { font: labelFont, size: 0.7, depth: 0.05 },
               ]}
             />
-            <meshBasicMaterial attach="material" color="#3dfc32" />
+            <meshBasicMaterial attach="material" color={labelColor} />
           </mesh>
         )}
       </group>

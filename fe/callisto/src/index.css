@@ -367,6 +367,122 @@ input {
     z-index: 12;
 }
 
+/* The reference's own title. It is a disclosure line inside View Controls, not
+   a peer of it, so it sits below that heading's 12pt -- body size, regular
+   weight -- rather than shouting louder than the box it lives in. Two classes
+   so this outranks the shared .accordion-header rule and nothing else. */
+.accordion.camera-keys > .accordion-header {
+    font-size: 10pt;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+/* Key reference inside View Controls. Two columns so the keys form a column of
+   their own and the list can be scanned down rather than read across. */
+.camera-key-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 8px;
+    row-gap: 2px;
+    margin: 2px 0 4px 0;
+    font-size: 0.8em;
+}
+
+.camera-key-list dt,
+.camera-key-list dd {
+    margin: 0;
+}
+
+.camera-key-list dd {
+    opacity: 0.75;
+}
+
+.camera-key-list kbd {
+    border: 1px solid #b6bcae;
+    border-radius: 3px;
+    padding: 0 3px;
+    font-family: inherit;
+    font-size: 0.95em;
+    line-height: 1.3;
+}
+
+/* What a plotted course promises. Sits under the nav-target picker so it is
+   read at the moment the choice is made. Two tones: an intercept is the normal
+   case and stays quiet; pursuit and shadowing change what next turn means and
+   are lifted so they are not skimmed past. */
+.course-banner {
+    margin: 4px 0 6px 0;
+    font-size: 0.85em;
+    line-height: 1.35;
+    max-width: 30em;
+}
+
+.course-banner-quiet {
+    opacity: 0.7;
+}
+
+.course-banner-warn {
+    color: #ffc94d;
+}
+
+.course-banner-headline {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+/* The crew line under its own heading at the bottom of the Ship's Computer:
+   body-sized, wrapping, so a fifteen-mount gunner list is two quiet lines
+   rather than a column. */
+.crew-line {
+    font-size: 10pt;
+    line-height: 1.4;
+    margin: 2px 0 4px 2px;
+    opacity: 0.85;
+}
+
+/* The multi-station picker. Reuses the confirm dialog's chrome; the options
+   are a short column of checkboxes, one per station. */
+.role-picker-options {
+    display: grid;
+    grid-template-columns: 1fr;
+    row-gap: 6px;
+    margin: 4px 0 14px 2px;
+}
+
+.role-picker-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+/* The last-resort screen. Centred and plain: by the time this shows, the
+   styled chrome may be exactly what failed to load. */
+.fatal-error {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: white;
+    background: black;
+    font-family: sans-serif;
+}
+
+.fatal-error-detail {
+    opacity: 0.7;
+    margin: 0;
+}
+
+.fatal-error button {
+    margin-top: 6px;
+    padding: 6px 18px;
+    font-size: 1em;
+    cursor: pointer;
+}
+
 .view-controls-window {
     padding-left: 4px;
     border: 1px solid #b6bcae;
@@ -381,17 +497,50 @@ input {
     margin: 2px 0;
 }
 
+/* One grid for the whole list, not one per row. A per-row grid sizes its `auto`
+   tracks to that row's own content, so no two rows agreed on a column position
+   -- which was already true of hull and thrust and only became obvious once
+   range made the values different widths. */
 .ship-summary-rows {
     list-style: none;
     padding: 0;
     margin: 0;
-}
-
-.ship-summary-row {
     display: grid;
     grid-template-columns: 1fr auto auto;
     column-gap: 10px;
     align-items: baseline;
+}
+
+/* The range column only exists when there is a ship to measure from, so the
+   track is added rather than always reserved -- the referee's view keeps the
+   narrow three-column box. */
+.ship-summary-rows-with-range {
+    grid-template-columns: 1fr auto auto auto;
+}
+
+/* The cells belong to the list's grid. `display: contents` drops the row box
+   without dropping inheritance, so the undetected styling -- which is only
+   colour and font-style -- still reaches them. */
+.ship-summary-row {
+    display: contents;
+}
+
+/* Units live here instead of on every value, which is what pays for the extra
+   column. Quiet enough not to compete with the ships themselves. */
+.ship-summary-header {
+    font-size: 0.75em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.55;
+}
+
+/* Digits line up in a column, and the cell must not resize as ships close --
+   a number that jitters horizontally every turn is hard to read. */
+.ship-summary-hull,
+.ship-summary-thrust,
+.ship-summary-range {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
 }
 
 .ship-summary-hull {
@@ -513,6 +662,9 @@ input {
 .weapon-list {
     display: flex;
     flex-direction: row;
+    /* Wrap, or a ship with more than about four kinds of weapon has the rest
+       run off the right-hand edge of the panel with no way to reach them. */
+    flex-wrap: wrap;
     justify-content: left;
     align-items: center;
 }
@@ -543,6 +695,20 @@ input {
 
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+.weapon-passive-list {
+    /* Defences with no button -- point defence, sand, repulsors.  Listed as
+       text so a referee can see a ship carries them. */
+    font-size: 9pt;
+    color: #b0b0b0;
+    padding: 2px 4px 4px 4px;
+    line-height: 1.3;
+}
+
+.weapon-passive-label {
+    font-weight: bold;
+    color: #d0d0d0;
 }
 
 .weapon-button-tooltip {
@@ -726,7 +892,26 @@ input {
 }
 
 #results-window {
+    /* Cap the width. This is a flex child that sizes to its widest line, and
+       since detection checks started itemising their DM the widest line is very
+       wide indeed -- the box grew across the viewport and slid under the
+       fixed top-right controls. Long lines wrap instead. */
+    max-width: min(44rem, 50vw);
     overflow: auto;
+}
+
+/* The heading is chrome, not content: at the shared 18pt it was taller than the
+   results underneath it. */
+#results-window h1 {
+    font-size: 13pt;
+    margin: 0 0 0.35em 0;
+}
+
+/* Results are read as a list, so they want tighter leading between entries than
+   the default paragraph spacing gives. */
+#results-window p {
+    margin: 0 0 0.5em 0;
+    line-height: 1.35;
 }
 
 .crew-actions-form-container {
@@ -976,7 +1161,8 @@ input {
     font-size: 9pt;
 }
 
-.save-scenario-dialog-backdrop {
+.save-scenario-dialog-backdrop,
+.confirm-dialog-backdrop {
     position: fixed;
     inset: 0;
     background-color: rgba(0, 0, 0, 0.6);
@@ -986,7 +1172,8 @@ input {
     justify-content: center;
 }
 
-.save-scenario-dialog {
+.save-scenario-dialog,
+.confirm-dialog {
     background-color: #1a1a1a;
     border: 1px solid #b6bcae;
     border-radius: 6px;
@@ -996,7 +1183,8 @@ input {
     color: white;
 }
 
-.save-scenario-dialog h2 {
+.save-scenario-dialog h2,
+.confirm-dialog h2 {
     margin-bottom: 12px;
 }
 
@@ -1025,14 +1213,16 @@ input {
     min-height: 60px;
 }
 
-.save-scenario-button-row {
+.save-scenario-button-row,
+.confirm-dialog-button-row {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
     margin-top: 8px;
 }
 
-.save-scenario-button-row button {
+.save-scenario-button-row button,
+.confirm-dialog-button-row button {
     height: 30px;
     padding: 0 14px;
     border-radius: 4px;
@@ -1085,6 +1275,89 @@ input {
 /* Full-width bands between the rows. */
 .hardpoint-header,
 .hardpoint-bulk-gunnery,
+.hardpoint-guns {
+    /* The per-gun editors for a mixed mount, sitting under its row and
+       spanning the whole grid so each gun gets usable width. */
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 4px;
+    padding: 0 0 2px 34px;
+}
+
+.hardpoint-guns .hardpoint-gun {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 9pt;
+}
+
+.weapon-detail-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 40;
+}
+
+.weapon-detail-dialog {
+    background: #1b1b1b;
+    border: 1px solid #545454;
+    border-radius: 6px;
+    padding: 12px 16px;
+    max-width: 460px;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: #e0e0e0;
+}
+
+.weapon-detail-dialog h2 {
+    margin: 0 0 4px 0;
+    font-size: 13pt;
+}
+
+.weapon-detail-summary {
+    color: #b0b0b0;
+    font-size: 9pt;
+    margin-bottom: 10px;
+}
+
+.weapon-detail-gun {
+    border-top: 1px solid #3a3a3a;
+    padding: 8px 0;
+}
+
+.weapon-detail-gun-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.weapon-detail-gun-label {
+    font-size: 9pt;
+    color: #b0b0b0;
+    min-width: 44px;
+}
+
+.weapon-detail-modifiers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px 8px;
+    padding: 6px 0 0 44px;
+}
+
+.weapon-detail-modifier {
+    font-size: 8.5pt;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Recorded on the design but not simulated in play, so shown as secondary. */
+.weapon-detail-modifier-inert {
+    color: #8a8a8a;
+}
+
 .hardpoint-problem {
     grid-column: 1 / -1;
 }
@@ -1178,6 +1451,89 @@ input {
     grid-column: 2 / -1;
 }
 
+.hardpoint-guns {
+    /* The per-gun editors for a mixed mount, sitting under its row and
+       spanning the whole grid so each gun gets usable width. */
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 4px;
+    padding: 0 0 2px 34px;
+}
+
+.hardpoint-guns .hardpoint-gun {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 9pt;
+}
+
+.weapon-detail-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 40;
+}
+
+.weapon-detail-dialog {
+    background: #1b1b1b;
+    border: 1px solid #545454;
+    border-radius: 6px;
+    padding: 12px 16px;
+    max-width: 460px;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: #e0e0e0;
+}
+
+.weapon-detail-dialog h2 {
+    margin: 0 0 4px 0;
+    font-size: 13pt;
+}
+
+.weapon-detail-summary {
+    color: #b0b0b0;
+    font-size: 9pt;
+    margin-bottom: 10px;
+}
+
+.weapon-detail-gun {
+    border-top: 1px solid #3a3a3a;
+    padding: 8px 0;
+}
+
+.weapon-detail-gun-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.weapon-detail-gun-label {
+    font-size: 9pt;
+    color: #b0b0b0;
+    min-width: 44px;
+}
+
+.weapon-detail-modifiers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px 8px;
+    padding: 6px 0 0 44px;
+}
+
+.weapon-detail-modifier {
+    font-size: 8.5pt;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Recorded on the design but not simulated in play, so shown as secondary. */
+.weapon-detail-modifier-inert {
+    color: #8a8a8a;
+}
+
 .hardpoint-problem {
     font-size: 12px;
     color: #b00;
@@ -1190,4 +1546,122 @@ input {
     font-size: 12px;
     opacity: 0.7;
     margin: 4px 0 0 0;
+}
+
+/* Warning modal (ConfirmDialog). Shares the save-scenario dialog's backdrop,
+   shell, heading and button-row rules above; only the message and the
+   destructive button need their own treatment. */
+.confirm-dialog-message {
+    margin: 0 0 4px 0;
+    line-height: 1.45;
+}
+
+/* The confirm button is the one that discards work, so it reads as a warning
+   rather than as the obvious thing to click. Cancel keeps the neutral styling
+   and the initial focus. */
+.confirm-dialog-button-row .confirm-dialog-danger {
+    border-color: #a33;
+    background-color: #52201f;
+}
+
+.confirm-dialog-button-row .confirm-dialog-danger:hover {
+    background-color: #6d2a29;
+}
+
+/* Emissions toggles (active sensors / transponder), shown in the sensor panel
+   and the Add Ship dialog. Laid out as a row so the two read as one setting
+   with two switches rather than as unrelated checkboxes. */
+.emissions-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin: 2px 0 4px 0;
+}
+
+.emissions-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9pt;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.emissions-toggle input {
+    cursor: pointer;
+    margin: 0;
+}
+
+/* A ship with no sensor contact: present in the roster, but its hull and thrust
+   are exactly what a contact would have told you, so they are withheld. Grey
+   rather than hidden, so the referee's board still shows what is out there. */
+.ship-summary-row-undetected {
+    color: #6f6f6f;
+    font-style: italic;
+}
+
+/* Target options for ships that cannot be seen. Listed, so it is clear why the
+   ship is not available, but not selectable. */
+.no-contact-option {
+    color: #777;
+    font-style: italic;
+}
+
+/* Team dropdown, shown inline with the emissions toggles. Sized to sit on the
+   same row rather than pushing them onto a second line. */
+.team-select {
+    background-color: #1a1a1a;
+    color: inherit;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-family: "Sono", monospace;
+    font-size: 9pt;
+    padding: 0 2px;
+}
+
+/* A toggle the server is holding for us -- currently Transmit while sensor
+   hand-off is on. Shown rather than hidden, so it is clear the setting exists
+   and why it cannot be changed. */
+.emissions-toggle-locked {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.emissions-toggle-locked input {
+    cursor: not-allowed;
+}
+
+/* Heading row of the Ship's Computer: the ship's name and, in place of the
+   word "Controls", the team selector. Baseline-aligned so the dropdown sits
+   with the name rather than floating above or below it. */
+.computer-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.computer-title-row h1 {
+    margin: 0;
+}
+
+/* A weapon button for a gun that shares its mount with something else. Without
+   a mark, a pulse/sand turret and a plain pulse turret render identically --
+   same icon, same count badge -- and a ship carrying both shows two buttons
+   that look the same for no visible reason. The corner notch is deliberately
+   quiet: it is a distinction, not a warning. */
+.weapon-button-mixed {
+    position: relative;
+}
+
+.weapon-button-mixed::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 0;
+    height: 0;
+    border-top: 6px solid #b6bcae;
+    border-left: 6px solid transparent;
+    pointer-events: none;
 }

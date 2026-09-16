@@ -12,64 +12,228 @@
   "computer": 15,
   "weapons": [
     {
-      "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     },
     {
-      "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     },
     {
-      "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     },
     {
-      "kind": "Pulse",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     },
     {
-      "kind": "Sand",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     },
     {
-      "kind": "Sand",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Pulse",
+          "modifiers": [
+            "LongRange",
+            "HighYield"
+          ]
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
     },
     {
-      "kind": "Missile",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Beam",
+          "modifiers": [
+            "Accurate",
+            "HighYield"
+          ]
+        }
+      ]
     },
     {
-      "kind": "Missile",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Beam",
+          "modifiers": [
+            "Accurate",
+            "HighYield"
+          ]
+        }
+      ]
     },
     {
-      "kind": "Missile",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Beam",
+          "modifiers": [
+            "Accurate",
+            "HighYield"
+          ]
+        }
+      ]
     },
     {
-      "kind": "Beam",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Beam",
+          "modifiers": [
+            "Accurate",
+            "HighYield"
+          ]
+        }
+      ]
     }
   ],
   "tl": 15,

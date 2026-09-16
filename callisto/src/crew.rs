@@ -35,6 +35,10 @@ pub struct Crew {
   sensors: u8,
   #[serde(default = "default_gunnery")]
   gunnery: Vec<u8>,
+  /// Gunner (screen) skill, index-aligned with the ship's `screens` exactly as
+  /// `gunnery` is with its weapons.  Out-of-range reads as 0, same as gunnery.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  screen_gunnery: Vec<u8>,
   #[serde(default, skip_serializing_if = "is_zero")]
   leadership: u8,
 }
@@ -54,6 +58,7 @@ impl Crew {
       engineering_maneuver: 0,
       sensors: 0,
       gunnery: vec![],
+      screen_gunnery: vec![],
       leadership: 0,
     }
   }
@@ -116,6 +121,20 @@ impl Crew {
       return 0;
     }
     self.gunnery[gun]
+  }
+
+  /// Gunner (screen) skill for the screen at `screen`, or 0 if unspecified.
+  #[must_use]
+  pub fn get_screen_gunnery(&self, screen: usize) -> u8 {
+    if screen >= self.screen_gunnery.len() {
+      return 0;
+    }
+    self.screen_gunnery[screen]
+  }
+
+  /// Append a Gunner (screen) skill, mirroring `add_gunnery`.
+  pub fn add_screen_gunnery(&mut self, skill: u8) {
+    self.screen_gunnery.push(skill);
   }
 
   /// Sets a crew skill level.  Note that setting a skill this way for gunnery is not allowed.

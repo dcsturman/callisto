@@ -10,6 +10,12 @@ export const POSITION_SCALE = 1000.0;
 // Range bands for Short, Medium, Long, Very Long
 export const RANGE_BANDS = [1250000, 10000000, 25000000, 50000000];
 
+/**
+ * What each entry of {@link RANGE_BANDS} is the outer edge of. Anything past
+ * the last one is Distant, which has no circle to draw.
+ */
+export const RANGE_BAND_NAMES = ["Short", "Medium", "Long", "Very Long"];
+
 export const SHIP_SYSTEMS = [
   "Sensors",
   "Powerplant",

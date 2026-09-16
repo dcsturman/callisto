@@ -10,11 +10,31 @@ errors — they are gaps in our model. **We need to go back and fix these ASAP.*
 
 ---
 
-## TODO 1 — Implement the missing weapon types (HIGH PRIORITY)
+## ~~TODO 1 — Implement the missing weapon types~~ MOSTLY DONE (2026-09-07)
 
-`WeaponType` is currently only `Beam | Pulse | Missile | Sand | Particle`, and
-`WeaponMount` only `Turret(n) | Barbette | Bay(Small|Medium|Large)`. The book uses many
-more. Weapons below were **substituted with the nearest analogue** to keep the ships armed:
+**Shipped.** `WeaponType` gained `Torpedo, Fusion, Plasma, Railgun, Meson, MassDriver,
+Repulsor`, and damage/range/hit-mod/armour-penetration became properties of the
+*weapon and its mount together* rather than of the weapon alone — see
+`rules_tables.rs::weapon_profile`, transcribed from the Turret Weapons (p. 28),
+Barbettes (p. 30) and Bay Weapons (pp. 32-33) tables.
+
+Because the book only lists a weapon against mounts it is actually sold in, a missing
+entry doubles as the legality rule: there is no torpedo turret and no laser bay, so
+those pairings return `None` and the editor refuses to offer them.
+
+Three things started working as a side effect: **AP** (nothing implemented it before, so
+meson's AP ∞ and railgun's AP 4/5/10 did nothing), **mount-dependent range** (a railgun
+reaches Short from a turret but Medium from a barbette), and **torpedo damage** —
+missiles now carry the weapon that launched them, so a torpedo resolves at its own 6D
+instead of being faked as a 4D missile.
+
+Nothing from this section is outstanding: Ion weapons landed as TODO 7 and Point Defence
+Laser Batteries as TODO 9. Not done, and deliberately so:
+Laser Drill (an Adjacent-range mining tool, not a warship weapon) and the Orbital
+Strike / Orbital Bombardment variants, which target planets — something combat has no
+notion of.
+
+The original substitution table, kept for the record:
 
 | Book weapon | Encoded as | Affected designs |
 |---|---|---|
@@ -36,17 +56,89 @@ Weapon types NOT needed under 5,000 tons but required before we can support larg
 meson guns (incl. spinal mounts), particle accelerator spinal mounts, railguns, repulsors,
 orbital strike mass drivers. **There is no spinal mount concept in `WeaponMount` at all.**
 
-## TODO 2 — Weapon modifiers are silently dropped
+## ~~TODO 8 — Migrate the designs that still use substituted weapons~~ DONE (2026-09-07)
 
-High Guard weapon modifications have nowhere to live in the schema. Dropped from:
+**Shipped.** Three designs carried stand-ins because the real weapon did not exist yet.
+Each was re-checked against the book rather than trusted from the table above:
 
-| Design | Dropped modifiers |
+| Design | Was | Now | Book |
+|---|---|---|---|
+| Torpedo Boat (p152) | `Missile` / `Barbette` | `Torpedo` / `Barbette` | "Torpedo Barbette" |
+| Merchant Cruiser - Leviathan (p217) | `Missile` / `Barbette` x2 | `Torpedo` / `Barbette` x2 | "Torpedo Barbettes x2" |
+| Destroyer Escort - Chrysanthemum (p207) | `Particle` / `Barbette` x3 | `Fusion` x1 + `Particle` x2 | "Fusion Barbette" + "Particle Barbettes x2" |
+
+Not changed, having been checked and found correct: the **Fer-de-Lance**'s four barbettes
+really are missile barbettes (the book's "accurate" modifier is still dropped, per TODO 2),
+and the Leviathan's two **Fixed Mount** missile racks are genuinely missiles — only its
+barbettes were torpedoes.
+
+Every other new-weapon mention in the book (meson screens and spinal mounts, repulsor
+bays, large meson gun bays, fusion barbettes x12) belongs to a hull over 5,000 tons and
+is therefore out of scope — see "Out of scope" below.
+
+`rules_tables.rs::shipped_designs_use_legal_mounts` now walks the whole library and fails
+if any design carries a weapon the rules do not allow in that mount, so a future typo
+cannot silently disarm a ship at runtime.
+
+The Point Defence Laser Battery substitutions are deliberately left alone; see TODO 9.
+
+---
+
+## ~~TODO 2 — Weapon modifiers are silently dropped~~ DONE (2026-09-08)
+
+**Shipped.** `Weapon` gained `modifiers: Vec<WeaponModifier>`, omitted from the wire when
+empty so every design written before them is unchanged.
+
+Modifiers ride on the **weapon**, not the mount — the book fits a triple turret with
+"long range, high yield pulse lasers x2, sandcaster", where only the lasers are modified.
+
+Implemented, because they change how a weapon fires:
+
+| Modifier | Effect |
 |---|---|
-| Military Gig - Close Escort Variant (p138) | intense focus, high yield |
-| System Defence Boat - Dragon (p193) | size reduction x3 (on the Small Missile Bay) |
-| Destroyer Escort - Fer-de-Lance (p211) | accurate, high yield |
-| Merchant Cruiser - Leviathan (p217) | energy efficient x3 |
-| Cargo Carrier - MK Mora (p223) | long range, high yield, accurate |
+| Accurate / Inaccurate | DM+1 / DM-1 to attack rolls |
+| High Yield | every damage die of `1` counts as `2` |
+| Very High Yield | every `1` and `2` counts as `3` |
+| Intense Focus | AP+2, lasers and particle weapons only |
+| Long Range | range up one band, capped at Very Long |
+
+Two of these only became meaningful because of earlier work in this file: **Intense Focus**
+is AP+2, and AP did nothing at all until TODO 1; **Long Range** shifts a range band, and
+range only became a real per-mount property then too.
+
+High Yield needed a per-die roll (`roll_dice_min`), since "any '1's rolled are counted as
+'2's" cannot be applied to a total. It correctly does nothing on missiles and torpedoes,
+which the book excludes.
+
+Recorded but **inert**, because Callisto models neither a weapon's power draw nor its
+tonnage: Energy Efficient, Energy Inefficient, Size Reduction, Increased Size, Easy to
+Repair. They are stored so designs stay faithful.
+
+**Not implemented: Resilient** (critical hits on the weapon are one Severity lower). The
+weapon a critical lands on is chosen *inside* `apply_crit`, so a per-weapon severity
+reduction is awkward there — and no design in the library carries it.
+
+Designs migrated:
+
+| Design | Weapons modified |
+|---|---|
+| Military Gig - Close Escort (p138) | fixed-mount pulse laser: intense focus, high yield |
+| Destroyer Escort - Fer-de-Lance (p211) | 4 missile barbettes: accurate; 6 beam triple turrets: accurate, high yield |
+| Cargo Carrier - MK Mora (p223) | 4 pulse triple turrets: long range, high yield; 1 beam triple turret: accurate, high yield |
+| System Defence Boat - Dragon (p193) | small missile bay: size reduction x3 *(inert)* |
+| Merchant Cruiser - Leviathan (p217) | 6 beam double turrets: energy efficient x3 *(inert)* |
+
+The MK Mora is the only one whose modifiers came from **mixed** turrets. Because the
+conversion had already split those into uniform turrets (see "Mixed-turret refactoring"),
+the modifiers land cleanly on the laser turrets and not on the sandcasters or missile racks
+that shared the original mount. If mixed turrets are ever implemented, that gets harder:
+modifiers would then need to apply per weapon *within* a turret.
+
+On the frontend, modifiers join the editor's grouping key alongside gunnery. Without that a
+modified and an unmodified pulse turret would collapse into one row, and saving the ship
+would spread the modifications to weapons that never had them.
+
+---
 
 ## ~~TODO 3 — `add ship` needs weapon customization~~ DONE (2026-09-06)
 
@@ -74,16 +166,78 @@ Seeker Mining Ship - Type J, Scout - Serpent, Safari Ship - Type K,
 Mercenary Cruiser - Type C (**8 empty triple turrets**), X-Boat Tender - XT
 (2 empty single turrets + 1 empty pop-up single turret).
 
-## TODO 4 — Defensive screens are unrepresented
+## ~~TODO 4 — Defensive screens are unrepresented~~ DONE (2026-09-08)
 
-No schema field exists for these; they were dropped:
+**Shipped.** Designed in `docs/screens_design.md`, built as described there.
 
-- Colonial Cruiser - Kinunir (p215): Nuclear Dampers x5, Black Globe Generator
-- Fleet Escort - P.F. Sloan (p232): Meson Screens x2, Nuclear Dampers x2
+Screens are **not weapons** — no mount, no Hardpoint, never fired, cannot be aimed — so they
+live in their own `screens: Vec<ScreenType>` on the design rather than in `Ship::weapons()`,
+with `Crew::screen_gunnery` index-aligned to them exactly as `gunnery` is to weapons.
+
+Each screen rolls its own Gunner (screen) check once per round and absorbs
+`dice x factor x Effect` damage, applied **after armour** (High Guard p. 40). Meson screens
+reduce 2D x 10 and defend only against meson weapons; nuclear dampers reduce 2D and defend
+only against fusion weapons.
+
+Allocation is **greedy in resolution order**: screens are spent whole on the current attack
+until its damage reaches zero, then the next screen carries to the next attack. The book
+instead lets a gunner pick their moment and concentrate every screen on one attack; we
+resolve attacks in sequence with nobody to ask. §4.2 of the design doc works out what that
+costs — nothing against meson weapons, which out-damage their own screens, and a little
+against fusion turrets.
+
+Designs migrated, each re-checked against the book:
+
+| Design | Screens |
+|---|---|
+| Colonial Cruiser - Kinunir (p215) | Nuclear Damper x5 |
+| Fleet Escort - P.F. Sloan (p232) | Meson Screen x2, Nuclear Damper x2 |
+| Midu Agasham (p228) | Meson Screen x2, Nuclear Damper x4 |
+
+The Midu Agasham's screens were never recorded in this TODO at all — it listed only the
+Kinunir and the P.F. Sloan.
+
+**Repulsors now work too.** They are not screens: a repulsor deflects missiles on a Gunner
+(capital) check, removing `1D x Effect` of them (x2 medium, x5 large), which is the same
+shape as a point-defence battery. They feed the same per-round pool and needed no new
+schema at all, turning a weapon that was mountable-but-inert into a working one.
+
+**Still not modelled:** black globe generators (a ship *mode* needing a capacitor model, and
+only the Kinunir has one), tractor beams (a manoeuvre subsystem), nuclear warheads (so a
+damper's anti-warhead half has nothing to defend against), and hardened systems.
 
 ---
 
-## TODO 5 — `MAX_SHIP_WEAPONS` binds long before the rules do
+## TODO 5 — Enable capital ships
+
+Traveller hulls go to **1,000,000 tons**; Callisto stops at 5,000. This is one project, not
+four, because none of the pieces below is useful without the others — and it is the single
+largest gap in the tool. (Formerly TODO 5 and TODO 6, merged 2026-09-08.)
+
+### Weapon batteries
+
+`Ship.weapons` is a flat `Vec<Weapon>` and `weapon_id` is an index into it, so a
+1,000,000-ton hull would carry ten thousand individually addressable weapons and combat
+would resolve ten thousand separate attacks. The representation gives out long before any
+cap does.
+
+The book's answer is **batteries** — identical turrets grouped and fired as one unit. Note
+the UI already works this way: the Add Ship hardpoint editor groups identical mounts into a
+counted row (`fe/callisto/src/lib/hardpoints.ts`), because no design in the library has more
+than five distinct mount/weapon combinations. The data model should follow the same shape
+rather than the editor flattening groups out on submit.
+
+**Do not confuse these with point defence laser batteries**, which are a specific 20-ton
+installation and are already supported.
+
+### Spinal mounts
+
+No `WeaponMount` variant exists, and it needs more than a variant: a spinal weapon carries a
+×1,000 Damage Multiple, scales its damage dice with its own tonnage, consumes a Hardpoint
+per 100 tons, cannot exceed half its ship's displacement, and takes escalating negative DMs
+against small or nearby targets (High Guard p. 36).
+
+### `MAX_SHIP_WEAPONS`
 
 `player.rs:25` caps client-supplied armament at **64 weapons**:
 
@@ -91,54 +245,184 @@ No schema field exists for these; they were dropped:
 const MAX_SHIP_WEAPONS: usize = 64;
 ```
 
-Hardpoints are one per 100 tons, so the cap binds at **6,400 tons** — a 6,500-ton design
-wants 65 mounts and is rejected outright, with a "more than the limit of 64" error that
-says nothing about tonnage. The limit is not a rules constraint; it exists only to stop a
-malformed or hostile request allocating an unbounded weapon list.
+Hardpoints are one per 100 tons, so this binds at **6,400 tons** — a 6,500-ton design wants
+65 mounts and is rejected outright, with an error that says nothing about tonnage. It is not
+a rules constraint; it exists only to stop a malformed or hostile request allocating an
+unbounded weapon list.
 
-**Not urgent.** The library stops at 5,000 tons (50 hardpoints) because larger designs were
-deliberately out of scope for the import, and per TODO 6 much bigger work gates real
-capital ships anyway.
+**When fixing:** derive the cap from displacement rather than picking another arbitrary
+number, keeping an absolute ceiling for the malformed-request case. Bays complicate it: a
+Large Bay costs 5 hardpoints but is still 1 weapon, so a displacement-derived cap is an
+upper bound, never an exact count. Batteries change this arithmetic again, which is why this
+belongs here rather than as its own task.
 
-**When fixing:** derive the cap from displacement rather than raising the constant to
-another arbitrary number — the allowance is already computable from the design. Keep an
-absolute ceiling for the malformed-request case, but make the normal path scale. Bays
-complicate it slightly: a Large Bay costs 5 hardpoints but is still 1 weapon, so a
-displacement-derived cap is an upper bound, never an exact count.
+### Squadrons
 
-## TODO 6 — Capital ships need batteries, not longer weapon lists
+Fleet-scale play groups ships into squadrons that are recorded and resolved together
+(High Guard, *Fleet Battles*). That is the same grouping problem as weapon batteries, one
+level up: a carrier's fighter complement or a battle line should not need every hull driven
+individually.
 
-Traveller hulls go to **1,000,000 tons**, which is 10,000 hardpoints. Raising
-`MAX_SHIP_WEAPONS` does not get us there: `Ship.weapons` is a flat `Vec<Weapon>` and
-`weapon_id` is an index into it, so a capital ship would carry ten thousand individually
-addressable weapons and combat would resolve ten thousand separate attacks. The
-representation gives out well before the cap does.
+Callisto has no concept of a ship group at all — `Entities::ships` is a flat map and every
+order names a single ship.
 
-The book's own answer is **batteries** — turrets grouped and fired as one unit. That is the
-model to adopt, and note the UI already works this way: the Add Ship hardpoint editor
-groups identical mounts into a single row with a count (`fe/callisto/src/lib/hardpoints.ts`),
-because no design in the library has more than five distinct mount/weapon combinations. The
-data model should follow the same shape rather than the editor flattening groups out on
-submit.
+### Also required
 
-Blocking real capital ships, roughly in order:
+**Defensive screens** (see TODO 4). Capital ships lean on them heavily, and a battle line
+without meson screens fights very differently from one with them.
 
-- **Batteries** — grouped turrets resolved as one attack, per above.
-- **Spinal mounts** — no `WeaponMount` variant exists at all (see TODO 1).
-- **Torpedoes** — currently substituted with `Missile` (see TODO 1).
-- **Meson guns, railguns, repulsors, mass drivers** — all unimplemented (see TODO 1).
-- **Defensive screens** — meson screens, nuclear dampers, black globes (see TODO 4).
-
-**Current position: the 5,000-ton import limit stands and is fine.** None of the above is
-worth starting until we actually want ships above that.
+**Current position: the 5,000-ton import limit stands and is fine.** None of this is worth
+starting until we actually want ships above that.
 
 ---
 
-## Mixed-turret refactoring
+## ~~TODO 7 — Ion weapons~~ DONE (2026-09-07)
 
-Per the Core Rulebook ("Double and Triple Turrets"), a turret holding *different* weapon
-types may only fire one type per round, while same-type weapons fire together for bonus
-damage. Mixed turrets were therefore regrouped into uniform ones, conserving gun count.
+**Shipped.** `WeaponType::Ion`, sold as a barbette and all three bay sizes — the book
+lists no ion turret.
+
+The mechanic (High Guard p. 30, *Weapon Trait: Ion*): on a hit, roll damage **ignoring
+the target's armour entirely**, then deduct it from the target's **Power** rather than
+its hull. Nothing is permanently damaged, no critical hits are rolled, and the Power
+comes back when the effect lapses — after one round, or **D3 rounds** if the attack's
+Effect was 6 or more.
+
+Damage Multiples apply, since ion is ordinary direct fire. That is worth stating because
+it is independently confirmed: the book's *fleet-scale* Ion table (p. 132) gives 75 /
+200 / 500 / 3,500 for barbette / small / medium / large, and the tactical dice times the
+mount multiples give 73.5 / 210 / 560 / 3,500. The two scales agree, which is good
+evidence the multiples were meant to apply here.
+
+| Mount | TL | Range | Damage | × multiple | ≈ fleet value |
+|---|---|---|---|---|---|
+| Ion Cannon (barbette) | 12 | Medium | 7D | ×3 | 75 |
+| Small Ion Bay | 12 | Medium | 6D | ×10 | 200 |
+| Medium Ion Bay | 12 | Medium | 8D | ×20 | 500 |
+| Large Ion Bay | 12 | Long | 10D | ×100 | 3,500 |
+
+`Ship` gained `ion_power_loss` and `ion_rounds`, tracked apart from `current_power` so a
+repair cannot accidentally "fix" an ion hit and an ion hit cannot mask real damage.
+`available_power()` is what everything asking "what can this ship do now" reads, which is
+why the manoeuvre penalty needed no new code: `max_acceleration` already derived thrust
+from power. Hits stack, and the longer duration wins so a second hit cannot cut the first
+one short.
+
+Both fields are omitted from the wire when zero, so a ship nobody has shot with an ion
+cannon serializes exactly as it did before.
+
+**Not modelled: hardened systems.** The book lets a crew allocate Power to hardened
+systems before the ion deduction lands. Callisto has no concept of a hardened system —
+`/fib` computers are not represented — so there is nothing to protect yet. Worth
+revisiting if computer models are ever modelled in detail.
+
+---
+
+## ~~TODO 9 — Point Defence Laser Batteries~~ DONE (2026-09-07)
+
+**Shipped.** Designed in `docs/pd_batteries_design.md`, built as described there.
+
+A point-defence battery is **not a weapon** (High Guard p. 40). It has no attack roll,
+no damage, no range band, no gunner and no offensive mode; it "automatically intercepts"
+a number of missiles each round, which the defender may spread across salvoes as they
+like. So it is modelled as `WeaponType::PointDefense` in a `WeaponMount::Battery(grade)`,
+where the grade is the book's Type and sets the Intercept: **2D / 4D / 6D for Type
+I / II / III**.
+
+Resolution is a **single per-round pool** per ship, which is how the book totals it.
+Batteries contribute their Intercept, and every queued gunner contributes the Effect of
+one check — "a gunner may only attempt Point Defence once every round… the Effect of the
+check will remove that many missiles from the salvo" (Core Rulebook p. 171). Each
+incoming object then drains the pool.
+
+That replaced an earlier model which popped **one weapon per incoming missile**, so a
+gunner only ever rolled if enough missiles arrived to use up the previous weapon's
+surplus. That was wrong twice over: it silently capped a ship at one check per missile
+rather than one per gunner, and nothing in the rules stops two gunners engaging the same
+missile. It also made the order of the list matter, which it should not.
+
+Batteries are rolled per mount rather than pooled into one throw, so a critical hit
+disabling one removes exactly its share. Because they sit in `Ship::weapons()` like
+anything else, `active_weapons` and the `ShipSystem::Weapon` crit already treat them as
+destructible hardware with no new code.
+
+Designs migrated (each re-verified against the book, not taken from the table above):
+
+| Design | Was | Now |
+|---|---|---|
+| System Defence Boat - Dragon (p193) | `Pulse`/`Turret(2)` | `PointDefense`/`Battery(2)` |
+| Colonial Cruiser - Kinunir (p215) | `Pulse`/`Turret(3)` | `PointDefense`/`Battery(3)` |
+| Fleet Escort - P.F. Sloan (p232) | `Pulse`/`Turret(3)` x2 | `PointDefense`/`Battery(3)` x2 |
+| Midu Agasham | *omitted entirely* | `PointDefense`/`Battery(3)` x2 (appended) |
+
+No existing `weapon_id` moved: three were in-place field rewrites and the fourth was an
+append, so queued actions and per-ship armament overrides keep working.
+
+**How much this changed:** the stopgap resolved through the ordinary point-defence path,
+which rolls 2D vs 8 and removes *Effect* missiles. On the Dragon that was worth about
+1.7 missiles per round where the book says 14 — a factor of eight, and the reason this
+was worth doing before Ion.
+
+**Torpedoes** are half as easy to stop: "a torpedo salvo halves the Effect of any
+successful point defence taken against it, rounding down" (High Guard p. 39). Since we
+resolve against one summed pool rather than per-check, halving is expressed as a torpedo
+costing two pool points where a missile costs one — `floor(pool / 2)` torpedoes stopped,
+the same arithmetic applied to the total. The Fleet Battles rule prices it identically
+("double the amount taken from the pool", p. 113), which corroborates the aggregate
+reading. A pool too small for a torpedo stops nothing and keeps its leftover point for a
+missile.
+
+The same paragraph gives torpedoes **DM-2 on attack rolls against ships under 2,000
+tons**, since they are built to kill capital ships. That is now applied in `attack()`.
+
+Still not built, and deliberately: **Point Defence Gauss Batteries** (p. 40). Same
+tonnage and same 2D/4D/6D, but tuned against torpedoes with DM penalties by target
+Thrust, plus ammunition. No design in the library carries one.
+
+---
+
+## ~~Mixed-turret refactoring~~ REVERSED (2026-09-08)
+
+Mixed turrets are now supported, so the split recorded below has been undone for the one
+design it distorted.  Kept as a record of what the library looked like before.
+
+**Threshing Oar Raider — armament corrected (2026-09-09).** Checked against *Reach
+Adventure 8* p. 36. Two of its three turrets are mixed: the book gives it one
+`Double Turret (pulse lasers)` and two `Double Turrets (pulse laser, sandcaster)`. Those
+were previously split into two pulse doubles and one sand double, which conserved the gun
+count -- four pulse, two sand -- but let the ship fire all four lasers *and* both
+sandcasters every round, where the book makes each mixed turret choose. Also gained the
+`Stealth (basic)` coating the text calls universal, and its source corrected to *Ships of
+the Reach*.
+
+Three divergences from that stat block are deliberate and remain:
+
+- **Power 210, where the book says 120.** The book gives the ship M-Drive Thrust 1 plus an
+  R-Drive Thrust 3; Callisto has no reaction drive, so the two are combined into
+  `maneuver: 4`. Power 120 would cap thrust at 2 under `best_thrust`, so the ship could not
+  reach the speed the book gives it. The inflated figure is what makes the combined thrust
+  work and should stay until reaction drives are modelled.
+- **Crew 6, where the book lists 22.** The extra sixteen are Marines, counted as troops
+  rather than operating crew -- the same treatment the Kinunir's and the Mercenary
+  Cruiser's give theirs.
+- **Two `Fixed Mounts (light autocannon)` are dropped.** Small weapons under 250kg
+  "consume neither hardpoints nor firmpoints" and draw no Power (High Guard p. 40); they
+  are a different class of thing from ship weapons and Callisto models none of them.
+
+**HMS Executor — restored and renamed (2026-09-09).** Formerly *HMS Excelsior*, a custom
+design. Its armament is a particle barbette plus one triple turret of two missile racks and
+a sandcaster, which the old encoding had to split into a double missile turret and a single
+sand turret — three mounts on a hull with two Hardpoints, so a legal ship read as over its
+allowance. It is now two mounts and fits.
+
+**Cargo Carrier - MK Mora (p223) — restored to its book armament.** It now carries six
+triple turrets of two long-range high-yield pulse lasers plus a sandcaster, and four of two
+missile racks plus an accurate high-yield beam laser: ten mounts, thirty guns, exactly as
+printed.  The deliberate +1 missile / -1 beam rounding recorded below is gone with it.
+
+That also closes a real divergence.  Split into uniform turrets, the MK Mora could fire
+twelve pulse lasers **and** six sandcasters every round; the book makes each turret choose.
+
+The original conversion notes follow.
 
 **Cargo Carrier - MK Mora (p223)**
 

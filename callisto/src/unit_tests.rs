@@ -7,6 +7,7 @@
  */
 
 use pretty_env_logger;
+use std::collections::HashMap;
 
 use cgmath::{assert_relative_eq, assert_ulps_eq, Zero};
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use crate::authentication::MockAuthenticator;
 use crate::entity::G;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64};
 use crate::list_local_or_cloud_dir;
-use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
+use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, MessageCategory, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::player::PlayerManager;
 use crate::server::Server;
 use crate::ship::{BaySize, ShipDesignTemplate, ShipSystem, Weapon, WeaponMount, WeaponType};
@@ -315,6 +316,10 @@ async fn test_update_ship() {
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
   let response = server.update();
   assert_eq!(response, Vec::new());
@@ -344,6 +349,10 @@ async fn test_update_missile() {
   assert_eq!(response, "Add ship action executed");
 
   let fire_missile = json!([["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]).to_string();
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
   let response = server.update();
 
@@ -379,6 +388,7 @@ async fn test_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -398,6 +408,7 @@ async fn test_update_missile() {
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
+             "contacts": ["ship1"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
              "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]});
@@ -593,21 +604,27 @@ async fn test_exhausted_missile() {
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  // Put second ship far way (out of range of a missile)
+  // Second ship starts just inside Distant: close enough to be detected, so the
+  // salvo can be aimed at it, but far enough that the missiles cannot arrive in
+  // the round they launch.
   let ship2 =
-    r#"{"name":"ship2","position":[1e10,0,1e10],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+    r#"{"name":"ship2","position":[4.9e7,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
   // Fire a missile
   let fire_actions = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}] ]]).to_string();
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let response = server.update();
 
   // First round 3 missiles are launched due to triple turret
   assert_eq!(response.len(), 1);
   assert!(
-    matches!(&response[0], EffectMsg::Message { content } if content == "ship1 launches 3 missile(s) at ship2."),
+    matches!(&response[0], EffectMsg::Message { content, .. } if content == "ship1 launches 3 missile(s) at ship2."),
     "Round 0"
   );
 
@@ -615,8 +632,37 @@ async fn test_exhausted_missile() {
   let fire_actions = json!([["ship1", [{"DeleteFireAction" : {"weapon_id": 1}}]]]).to_string();
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
 
-  // Second to 8th round nothing happens.
-  for round in 0..9 {
+  // Now put ship2 out of reach so the salvo can never catch it and has to burn
+  // out. Re-adding under the same name moves the existing ship.
+  //
+  // This also covers a rule in its own right: the missiles keep flying even
+  // though ship1 immediately loses sensor contact at that range. Every missile
+  // in Callisto is smart and guides itself, so contact belongs to the ship that
+  // fired, not to what it fired.
+  let ship2_far =
+    r#"{"name":"ship2","position":[1e10,0,1e10],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer"}"#;
+  server.add_ship(serde_json::from_str(ship2_far).unwrap()).unwrap();
+
+  // The end of the next round is when the detection pass notices the range,
+  // so that round reports the lost contact and nothing else. The missiles are
+  // untouched by it.
+  let response = server.update();
+  assert!(
+    response
+      .iter()
+      .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
+    "ship1 should lose contact once ship2 is beyond Distant: {response:#?}"
+  );
+  assert!(
+    response
+      .iter()
+      .all(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
+    "nothing else should happen this round: {response:#?}"
+  );
+  server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
+
+  // Rounds 3 to 9: the missiles are still chasing a target they cannot reach.
+  for round in 0..8 {
     let response = server.update();
     assert_eq!(response, Vec::new(), "Round {round}");
     server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
@@ -658,6 +704,10 @@ async fn test_destroy_ship() {
   ]]])
   .to_string();
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
@@ -666,9 +716,11 @@ async fn test_destroy_ship() {
   assert!(effects.contains(&EffectMsg::ShipDestroyed {
     position: Vec3::new(50000.0, 0.0, 50000.0)
   }));
-  assert!(effects.contains(&EffectMsg::Message {
-    content: "ship2 destroyed.".to_string()
-  }));
+  assert!(effects.contains(&EffectMsg::about(
+    "ship2",
+    MessageCategory::Destruction,
+    "ship2 destroyed.".to_string()
+  )));
 }
 
 #[test(tokio::test)]
@@ -697,32 +749,133 @@ async fn test_called_shot() {
   ]]])
   .to_string();
 
+  // Fire the same called shots over several rounds and pool the results.
+  //
+  // This used to assert an exact crit count from a single round, which made it
+  // a tripwire for the seeded RNG rather than a test of called shots: it broke
+  // twice from unrelated changes -- point-defence batteries, then screens --
+  // simply because those roll dice before these attacks resolve and shift the
+  // stream.  Aggregating over rounds tests the property the feature actually
+  // promises, which is that called shots concentrate criticals on the system
+  // that was named.
+  // Keep firing until the target dies, which it does after a handful of rounds
+  // -- that is what caps the sample size here, not the loop bound.
+  let mut by_system: HashMap<String, u32> = HashMap::new();
+  let mut destroyed = false;
+  for _ in 0..30 {
+    if destroyed {
+      break;
+    }
+    // Scenarios open with no contacts. This test is about combat, not
+    // acquisition, so give every ship the contacts it needs to act.
+    server.establish_initial_contacts();
+
+    server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
+    let effects = server.update();
+    destroyed = effects
+      .iter()
+      .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("destroyed")));
+
+    for effect in &effects {
+      // "caused" messages are damage effects rather than crits.
+      let EffectMsg::Message { content, .. } = effect else {
+        continue;
+      };
+      if !content.contains("critical") || content.contains("caused") {
+        continue;
+      }
+      // Messages read "ship2's maneuver critical hit (level 1) and ...".
+      let Some(system) = content.split("'s ").nth(1).and_then(|rest| rest.split(" critical").next()) else {
+        continue;
+      };
+      *by_system.entry(system.to_string()).or_default() += 1;
+    }
+  }
+
+  let maneuver = by_system.get("maneuver").copied().unwrap_or(0);
+  assert!(
+    maneuver > 0,
+    "called shots at the maneuver drive produced no maneuver criticals before the target died: {by_system:?}"
+  );
+
+  // Only the *primary* critical follows the called shot; criticals from
+  // sustained damage are rolled against a random system, so other systems will
+  // pick some up.  What the feature promises is that the named system takes
+  // more than any other single one.
+  let worst_other = by_system
+    .iter()
+    .filter(|(system, _)| system.as_str() != "maneuver")
+    .map(|(_, count)| *count)
+    .max()
+    .unwrap_or(0);
+  assert!(
+    maneuver > worst_other,
+    "called shots should make maneuver the most-hit system, but got {by_system:?}"
+  );
+}
+
+#[test(tokio::test)]
+async fn test_point_defense_battery_intercepts_missiles() {
+  let authenticator = setup_authenticator();
+  let server = setup_test_with_server(authenticator).await;
+
+  // The Midu Agasham's weapon 1 is a triple missile turret, so it launches
+  // three missiles in one action.
+  let attacker =
+    r#"{"name":"attacker","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham"}"#;
+  server.add_ship(serde_json::from_str(attacker).unwrap()).unwrap();
+
+  // The Dragon carries a Type II point-defence battery (4D Intercept), which is
+  // far more than three missiles on any roll.
+  let defender = r#"{"name":"defender","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defence Boat - Dragon"}"#;
+  server.add_ship(serde_json::from_str(defender).unwrap()).unwrap();
+
+  // The Dragon carries Improved stealth, so it starts undetected and cannot be
+  // fired on until someone finds it. Run one round to let the attacker's
+  // detection pass acquire the contact; the fire action below then has
+  // something to aim at.
+  let mut found = false;
+  for _ in 0..20 {
+    let _ = server.update();
+    found = server
+      .get_entities()
+      .unwrap()
+      .ships
+      .get("attacker")
+      .unwrap()
+      .read()
+      .unwrap()
+      .contacts
+      .iter()
+      .any(|name| name == "defender");
+    if found {
+      break;
+    }
+  }
+  assert!(found, "attacker should have found the stealthed Dragon within 20 rounds");
+
+  // Note the defender queues no actions at all.  A battery is automatic, so it
+  // must still defend in a round where its crew does nothing.
+  let fire_actions = json!([["attacker", [{"FireAction" : {"weapon_id": 1, "target": "defender"}}]]]).to_string();
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
-  // First ensure there is at least one critical hit that matches.
-  assert!(
-    effects.iter().any(
-      |e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver") && content.contains("critical"))
-    ),
-    "No critical hits to called shot area: maneuver"
-  );
-
-  // Second ensure 6 critical hits to maneuver and the rest to hull.
-  // This means we find all messages with the word "critical" but not the word "caused" (the latter are damage effects)
-  let crits = effects
+  let intercepted = effects
     .iter()
     .filter(
-      |e| matches!(e, EffectMsg::Message { content } if content.contains("critical") && !content.contains("caused")),
+      |e| matches!(e, EffectMsg::Message { content, .. } if content.contains("destroyed by defender's point defence")),
     )
-    .collect::<Vec<_>>();
-  assert_eq!(
-    crits
-      .iter()
-      .filter(|e| matches!(e, EffectMsg::Message { content } if content.contains("maneuver")))
-      .count(),
-    4,
-    "Expected 4 critical hits to maneuver: {crits:#?}"
+    .count();
+
+  assert!(
+    intercepted > 0,
+    "the Dragon's battery should have intercepted at least one missile: {effects:#?}"
+  );
+  // Its pool comfortably exceeds a three-missile salvo, so nothing should get
+  // through to the hull.
+  assert!(
+    !effects.iter().any(|e| matches!(e, EffectMsg::ShipImpact { .. })),
+    "no missile should have reached the defender: {effects:#?}"
   );
 }
 
@@ -752,6 +905,10 @@ async fn test_big_fight() {
       {"FireAction" : {"weapon_id": 2, "target": "ship1"}},
       {"FireAction" :{"weapon_id": 3, "target": "ship1"}},
   ]]]);
+
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
 
   server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let mut effects = server.update();
@@ -800,6 +957,7 @@ async fn test_big_fight() {
    "assist_gunners":false,
    "can_jump":true,
    "sensor_locks": [],
+   "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -814,6 +972,7 @@ async fn test_big_fight() {
    "assist_gunners":false,
    "can_jump":true,
    "sensor_locks": [],
+   "contacts": ["ship1"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
@@ -870,6 +1029,10 @@ async fn test_fight_with_crew() {
       {"FireAction" : {"weapon_id": 3, "target": "ship1"}},
   ]]]);
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let mut effects = server.update();
 
@@ -916,6 +1079,7 @@ async fn test_fight_with_crew() {
    "assist_gunners":true,
    "can_jump":true,
    "sensor_locks": [],
+   "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
@@ -930,6 +1094,7 @@ async fn test_fight_with_crew() {
    "assist_gunners":false,
    "can_jump":false,
    "sensor_locks": [],
+   "contacts": ["ship1"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
@@ -967,9 +1132,13 @@ async fn test_slugfest() {
   let response = server.set_pilot_actions(&serde_json::from_str(crew_actions).unwrap()).unwrap();
   assert_eq!(response, "Set crew action executed");
 
-  let harrier =
-    r#"{"name":"Harrier","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Harrier"}"#;
-  let response = server.add_ship(serde_json::from_str(harrier).unwrap()).unwrap();
+  // A Star Ray Interceptor rather than a Harrier: same 200-ton hull, same
+  // armour, and two weapons in the same slots, but no stealth. This test is
+  // about massed fire destroying a ship, and a stealth hull would start
+  // undetected and simply never be shot at -- which the detection tests cover
+  // in their own right.
+  let interceptor = r#"{"name":"Interceptor","position":[5000,0,4000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Star Ray Interceptor"}"#;
+  let response = server.add_ship(serde_json::from_str(interceptor).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
   let buc1 =
@@ -983,8 +1152,8 @@ async fn test_slugfest() {
   assert_eq!(response, "Add ship action executed");
 
   let fire_actions = json!([["Evil Destroyer", [
-      {"FireAction" : {"weapon_id": 0, "target": "Harrier"}},
-      {"FireAction" : {"weapon_id": 1, "target": "Harrier"}},
+      {"FireAction" : {"weapon_id": 0, "target": "Interceptor"}},
+      {"FireAction" : {"weapon_id": 1, "target": "Interceptor"}},
       {"FireAction" : {"weapon_id": 2, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 3, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 4, "target": "Buc2"}},
@@ -993,13 +1162,13 @@ async fn test_slugfest() {
       {"FireAction" : {"weapon_id": 7, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 8, "target": "Buc1"}},
       {"FireAction" : {"weapon_id": 9, "target": "Buc1"}},
-      {"FireAction" : {"weapon_id": 10, "target": "Harrier"}},
+      {"FireAction" : {"weapon_id": 10, "target": "Interceptor"}},
       {"FireAction" : {"weapon_id": 11, "target": "Buc2"}},
       {"FireAction" : {"weapon_id": 12, "target": "Buc2"}},
       {"FireAction" : {"weapon_id": 13, "target": "Buc2"}},
-      {"FireAction" : {"weapon_id": 14, "target": "Harrier"}},
+      {"FireAction" : {"weapon_id": 14, "target": "Interceptor"}},
       ]],
-  ["Harrier", [
+  ["Interceptor", [
       {"FireAction" : {"weapon_id": 0, "target": "Evil Destroyer"}},
       {"FireAction" : {"weapon_id": 1, "target": "Evil Destroyer"}}]],
   ["Buc1", [
@@ -1016,20 +1185,27 @@ async fn test_slugfest() {
       ]]
   ]);
 
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_actions.to_string()).unwrap());
   let _response = server.update();
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-  // Should only have 3 ships now as the Harrier should have been destroyed
+  // Should only have 3 ships now as the Interceptor should have been destroyed
   assert_eq!(
     entities.ships.len(),
     3,
     "Was expecting only 3 ships to survive instead of {}",
     entities.ships.len()
   );
-  assert!(!entities.ships.contains_key("Harrier"), "Harrier should have been destroyed.");
+  assert!(
+    !entities.ships.contains_key("Interceptor"),
+    "Interceptor should have been destroyed."
+  );
 }
 
 #[test(tokio::test)]
@@ -1055,6 +1231,10 @@ async fn test_get_entities() {
       design: ShipDesignTemplate::default().name.clone(),
       crew: None,
       weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
     })
     .unwrap();
 
@@ -1124,6 +1304,10 @@ async fn test_missile_impact_close() {
 
   // Fire a missile within impact range.
   let fire_missile = json!([["ship1", [{"FireAction" : {"weapon_id": 1, "target": "ship2"}}]]]).to_string();
+  // Scenarios open with no contacts. This test is about combat, not
+  // acquisition, so give every ship the contacts it needs to act.
+  server.establish_initial_contacts();
+
   server.merge_actions(serde_json::from_str(&fire_missile).unwrap());
   let effects = server.update();
 
@@ -1309,6 +1493,7 @@ fn extract_leadership_effect(effects: &[EffectMsg], ship: &str) -> (i16, Vec<cra
       ship_name,
       points,
       boosts_applied,
+      ..
     } = e
     {
       if ship_name == ship {
@@ -1644,14 +1829,8 @@ const WEAPONS_SCENARIO: &str = r#"{
 
 fn custom_armament() -> Vec<Weapon> {
   vec![
-    Weapon {
-      kind: WeaponType::Beam,
-      mount: WeaponMount::Turret(3),
-    },
-    Weapon {
-      kind: WeaponType::Missile,
-      mount: WeaponMount::FixedMount,
-    },
+    Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 3),
+    Weapon::single(WeaponType::Missile, WeaponMount::FixedMount),
   ]
 }
 
@@ -1712,26 +1891,11 @@ async fn test_add_ship_accepts_every_mount_shape() {
   assert_eq!(
     ship.weapons(),
     vec![
-      Weapon {
-        kind: WeaponType::Particle,
-        mount: WeaponMount::Barbette
-      },
-      Weapon {
-        kind: WeaponType::Missile,
-        mount: WeaponMount::Bay(BaySize::Small)
-      },
-      Weapon {
-        kind: WeaponType::Beam,
-        mount: WeaponMount::Bay(BaySize::Medium)
-      },
-      Weapon {
-        kind: WeaponType::Pulse,
-        mount: WeaponMount::Bay(BaySize::Large)
-      },
-      Weapon {
-        kind: WeaponType::Sand,
-        mount: WeaponMount::Turret(1)
-      },
+      Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
+      Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Small)),
+      Weapon::single(WeaponType::Beam, WeaponMount::Bay(BaySize::Medium)),
+      Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Large)),
+      Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 1),
     ]
   );
   assert_eq!(ship.active_weapons.len(), 5);
@@ -1782,7 +1946,9 @@ async fn test_add_ship_rejects_illegal_armament() {
   let quad_turret = r#"{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"design":"Buccaneer",
         "weapons":[{"kind":"Beam","mount":{"Turret":4}}]}"#;
   let error = server.add_ship(serde_json::from_str(quad_turret).unwrap()).unwrap_err();
-  assert!(error.contains("Illegal turret size 4"), "unexpected error: {error}");
+  // The message now covers every mount, since a bay or barbette holding more
+  // than one gun is equally illegal.
+  assert!(error.contains("Illegal mount holding 4 weapons"), "unexpected error: {error}");
 
   let many = (0..65)
     .map(|_| json!({"kind": "Beam", "mount": {"Turret": 1}}))

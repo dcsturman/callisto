@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { describeScreens } from "lib/shipDesignTemplates";
+import { availablePower } from "lib/power";
 import {
   MOUNT_OPTIONS,
   WeaponGroup,
@@ -12,10 +14,31 @@ import {
   mountForOptionId,
   mountOptionId,
   mountOptionsFor,
+  describeGroupGuns,
+  gunCapacity,
+  legalMountsLabel,
   setAllGunnery,
   totalMounts,
+  isLegalPairing,
+  weaponKindsForMount,
 } from "lib/hardpoints";
-import { Weapon, WeaponMount, createWeapon } from "lib/weapon";
+import {
+  Weapon,
+  WeaponMount,
+  createWeapon,
+  describeModifiers,
+  actionWeaponKind,
+  isActionableWeapon,
+  isLaserKind,
+  isLauncherKind,
+  isPassiveWeapon,
+  weaponToString,
+  weaponKindLabel,
+  weaponGuns,
+  weaponKinds,
+  countOfKind,
+  isUniformWeapon,
+} from "lib/weapon";
 
 // Editor rows.
 const turret = (size: number, kind = "Beam", count = 1): WeaponGroup => ({
@@ -23,23 +46,26 @@ const turret = (size: number, kind = "Beam", count = 1): WeaponGroup => ({
   mount: { Turret: size },
   kind,
   gunnery: 0,
+  modifiers: [],
 });
 const bay = (
   size: "Small" | "Medium" | "Large",
   kind = "Missile",
   count = 1,
-): WeaponGroup => ({ count, mount: { Bay: size }, kind, gunnery: 0 });
+): WeaponGroup => ({ count, mount: { Bay: size }, kind, gunnery: 0, modifiers: [] });
 const barbette = (kind = "Particle", count = 1): WeaponGroup => ({
   count,
   mount: "Barbette",
   kind,
   gunnery: 0,
+  modifiers: [],
 });
 const fixed = (kind = "Missile", count = 1): WeaponGroup => ({
   count,
   mount: "FixedMount",
   kind,
   gunnery: 0,
+  modifiers: [],
 });
 
 // Flat weapons, as they arrive from a design or an existing ship.
@@ -159,10 +185,33 @@ describe("checkAllowance on ships of 100 tons or more", () => {
     expect(report.overAllowance).toBe(false);
   });
 
-  // `excelsior` is really a barbette plus one mixed triple turret (2
-  // hardpoints), but WeaponMount cannot express a mixed turret so it is stored
-  // as three mounts. It must render and report, not crash or lose a mount.
-  it("reports the excelsior over-allowance without dropping any mount", () => {
+  // The Executor is a particle barbette plus one triple turret of two missile
+  // racks and a sandcaster: two mounts on a 200-ton hull, which is exactly its
+  // two Hardpoints.  It used to be stored as three separate mounts because a
+  // turret could not hold different weapons, which made a legal ship read as
+  // over its allowance.
+  it("fits the Executor in its two hardpoints", () => {
+    const groups: WeaponGroup[] = [
+      barbette(),
+      {
+        count: 1,
+        mount: { Turret: 3 },
+        kind: "Missile",
+        gunnery: 0,
+        modifiers: [],
+        guns: [{ kind: "Missile" }, { kind: "Missile" }, { kind: "Sand" }],
+      },
+    ];
+    const report = checkAllowance(groups, 200);
+    expect(report.used).toBe(2);
+    expect(report.overAllowance).toBe(false);
+    expect(report.problems).toEqual([]);
+  });
+
+  // Splitting that same armament across three mounts is what the old encoding
+  // did, and it really is over the allowance -- the report must still say so
+  // rather than quietly dropping a mount.
+  it("still reports a genuine over-allowance without dropping a mount", () => {
     const groups = [barbette(), turret(2, "Missile"), turret(1, "Sand")];
     const report = checkAllowance(groups, 200);
     expect(report.used).toBe(3);
@@ -281,8 +330,8 @@ describe("groupWeapons", () => {
 describe("expandGroups", () => {
   it("produces weapons and gunnery index-aligned, which is what weapon_id needs", () => {
     const { weapons, gunnery } = expandGroups([
-      { count: 2, mount: { Bay: "Small" }, kind: "Missile", gunnery: 3 },
-      { count: 3, mount: { Turret: 3 }, kind: "Beam", gunnery: 1 },
+      { count: 2, mount: { Bay: "Small" }, kind: "Missile", gunnery: 3, modifiers: [] },
+      { count: 3, mount: { Turret: 3 }, kind: "Beam", gunnery: 1, modifiers: [] },
     ]);
     expect(weapons).toHaveLength(5);
     expect(gunnery).toEqual([3, 3, 1, 1, 1]);
@@ -388,7 +437,17 @@ describe("mount dropdown options", () => {
       "Small Bay",
       "Medium Bay",
       "Large Bay",
+      "PD Battery (Type I)",
+      "PD Battery (Type II)",
+      "PD Battery (Type III)",
     ]);
+  });
+
+  it("does not offer a battery on a firmpoint hull", () => {
+    // A point-defence battery is 20 tons and consumes a Hardpoint, which a hull
+    // under 100 tons does not have.
+    const ids = mountOptionsFor("firmpoints").map((option) => option.id);
+    expect(ids.some((id) => id.startsWith("battery-"))).toBe(false);
   });
 
   it("round-trips every option between id and mount", () => {
@@ -406,5 +465,442 @@ describe("mount dropdown options", () => {
   it("returns null for a mount it cannot represent", () => {
     expect(mountOptionId({ Turret: 4 } as WeaponMount)).toBeNull();
     expect(mountOptionId("Spinal" as WeaponMount)).toBeNull();
+  });
+});
+
+describe("point defence batteries", () => {
+  it("only allows point defence in a battery mount", () => {
+    expect(isLegalPairing("PointDefense", { Battery: 3 })).toBe(true);
+    expect(isLegalPairing("PointDefense", { Turret: 3 })).toBe(false);
+    expect(isLegalPairing("PointDefense", "Barbette")).toBe(false);
+  });
+
+  it("only allows a battery mount to hold point defence", () => {
+    expect(isLegalPairing("Beam", { Battery: 2 })).toBe(false);
+    expect(isLegalPairing("Missile", { Battery: 2 })).toBe(false);
+    expect(weaponKindsForMount({ Battery: 3 })).toEqual(["PointDefense"]);
+  });
+
+  it("names a battery by its grade rather than its weapon kind", () => {
+    expect(weaponToString({ kind: "PointDefense", mount: { Battery: 3 } })).toBe(
+      "Point Defence Battery (Type III)",
+    );
+    expect(weaponToString({ kind: "PointDefense", mount: { Battery: 1 } })).toBe(
+      "Point Defence Battery (Type I)",
+    );
+  });
+
+  it("gives a battery no action button", () => {
+    // It intercepts automatically, so there is nothing for the crew to order.
+    expect(
+      isActionableWeapon({ kind: "PointDefense", mount: { Battery: 3 } }),
+    ).toBe(false);
+    // Sandcasters are excluded by kind, not by their display name -- so a
+    // weapon merely containing "Sand" in its name keeps its button.
+    expect(isActionableWeapon({ kind: "Sand", mount: { Turret: 3 } })).toBe(
+      false,
+    );
+    expect(isActionableWeapon({ kind: "Beam", mount: { Turret: 3 } })).toBe(
+      true,
+    );
+  });
+
+  it("charges a battery one hardpoint", () => {
+    expect(mountCost({ Battery: 3 }, "hardpoints")).toBe(1);
+  });
+});
+
+describe("weapon kind labels", () => {
+  it("shows readable names instead of wire identifiers", () => {
+    // These travel the wire as Rust enum variant names.
+    expect(weaponKindLabel("PointDefense")).toBe("Point Defence");
+    expect(weaponKindLabel("MassDriver")).toBe("Mass Driver");
+  });
+
+  it("leaves kinds that are already words alone", () => {
+    expect(weaponKindLabel("Beam")).toBe("Beam");
+    expect(weaponKindLabel("Torpedo")).toBe("Torpedo");
+    // Including one this build has never heard of.
+    expect(weaponKindLabel("Antimatter")).toBe("Antimatter");
+  });
+
+  it("uses the readable name when naming a mounted weapon", () => {
+    expect(
+      weaponToString({ kind: "MassDriver", mount: { Bay: "Large" } }),
+    ).toBe("Large Mass Driver Bay");
+  });
+});
+
+describe("automatic defences get no fire-control button", () => {
+  // Repulsors deflect incoming missiles rather than attacking, so like
+  // sandcasters and point-defence batteries there is no target to pick.
+  it("treats repulsors as automatic", () => {
+    const repulsor: Weapon = { kind: "Repulsor", mount: { Bay: "Small" } };
+    expect(isActionableWeapon(repulsor)).toBe(false);
+    expect(isPassiveWeapon(repulsor)).toBe(true);
+  });
+
+  it("treats sandcasters and point defence batteries as automatic", () => {
+    expect(isPassiveWeapon({ kind: "Sand", mount: { Turret: 3 } })).toBe(true);
+    expect(
+      isPassiveWeapon({ kind: "PointDefense", mount: { Battery: 3 } }),
+    ).toBe(true);
+  });
+
+  // Everything that actually shoots at a target keeps its button, including the
+  // weapon types added most recently.
+  it("leaves real weapons actionable", () => {
+    const armed: Weapon[] = [
+      { kind: "Beam", mount: { Turret: 3 } },
+      { kind: "Torpedo", mount: "Barbette" },
+      { kind: "Meson", mount: { Bay: "Medium" } },
+      { kind: "Ion", mount: "Barbette" },
+      { kind: "MassDriver", mount: { Bay: "Large" } },
+    ];
+    armed.forEach((weapon) => {
+      expect(isActionableWeapon(weapon)).toBe(true);
+      expect(isPassiveWeapon(weapon)).toBe(false);
+    });
+  });
+});
+
+describe("describing a design's screens", () => {
+  it("names screens readably and counts repeats", () => {
+    // These travel the wire as Rust enum variant names.
+    expect(describeScreens(["Meson", "Meson", "NuclearDamper"])).toEqual([
+      "Meson Screen x2",
+      "Nuclear Damper",
+    ]);
+  });
+
+  it("says nothing for a design with no screens", () => {
+    expect(describeScreens(undefined)).toEqual([]);
+    expect(describeScreens([])).toEqual([]);
+  });
+
+  it("passes through a screen type this build does not know", () => {
+    expect(describeScreens(["Antimatter"])).toEqual(["Antimatter"]);
+  });
+});
+
+describe("weapon modifiers", () => {
+  const modified = (kind: string, mods: string[]): Weapon => ({
+    kind,
+    mount: { Turret: 3 },
+    modifiers: mods,
+  });
+
+  // The hazard: a referee opening a modified design in the editor and saving it
+  // must not silently strip the modifiers off its weapons.
+  it("survives a group/expand round trip", () => {
+    const original: Weapon[] = [
+      modified("Pulse", ["LongRange", "HighYield"]),
+      modified("Pulse", ["LongRange", "HighYield"]),
+      createWeapon("Sand", { Turret: 3 }),
+    ];
+    const { weapons } = expandGroups(groupWeapons(original));
+    expect(weapons).toEqual(original);
+  });
+
+  // The MK Mora's case: same kind, same mount, different modifiers. Merging
+  // them would give the plain weapon modifications it never had.
+  it("does not merge weapons that differ only by modifier", () => {
+    const groups = groupWeapons([
+      modified("Pulse", ["HighYield"]),
+      createWeapon("Pulse", { Turret: 3 }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].modifiers).toEqual(["HighYield"]);
+    expect(groups[1].modifiers).toEqual([]);
+  });
+
+  it("still merges weapons that match in every respect", () => {
+    const groups = groupWeapons([
+      modified("Pulse", ["HighYield"]),
+      modified("Pulse", ["HighYield"]),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].count).toBe(2);
+  });
+
+  it("names modifiers readably, collapsing repeats as the book writes them", () => {
+    expect(describeModifiers(["EnergyEfficient", "EnergyEfficient", "EnergyEfficient"])).toBe(
+      "energy efficient x3",
+    );
+    expect(describeModifiers(["LongRange", "HighYield"])).toBe("long range, high yield");
+    expect(describeModifiers([])).toBe("");
+    expect(describeModifiers(undefined)).toBe("");
+  });
+
+  it("shows modifiers when naming a weapon", () => {
+    expect(weaponToString(modified("Pulse", ["LongRange", "HighYield"]))).toBe(
+      "Triple Pulse Turret (long range, high yield)",
+    );
+    // An unmodified weapon reads exactly as before.
+    expect(weaponToString(createWeapon("Pulse", { Turret: 3 }))).toBe("Triple Pulse Turret");
+  });
+});
+
+describe("mixed turrets", () => {
+  // The MK Mora's turret: two long-range high-yield pulse lasers and a plain
+  // sandcaster, in the wire shape the server sends for a mixed mount.
+  const moraTurret: Weapon = {
+    mount: { Turret: 3 },
+    guns: [
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Sand" },
+    ],
+  };
+
+  it("reads the guns out of a mixed mount", () => {
+    expect(weaponGuns(moraTurret)).toHaveLength(3);
+    expect(weaponKinds(moraTurret)).toEqual(["Pulse", "Sand"]);
+    expect(countOfKind(moraTurret, "Pulse")).toBe(2);
+    expect(countOfKind(moraTurret, "Sand")).toBe(1);
+    expect(isUniformWeapon(moraTurret)).toBe(false);
+  });
+
+  // A uniform mount still arrives in the old shape, with a kind and a turret
+  // size rather than a gun list.
+  it("expands a uniform mount from its turret size", () => {
+    const triple: Weapon = { kind: "Beam", mount: { Turret: 3 } };
+    expect(weaponGuns(triple)).toHaveLength(3);
+    expect(weaponKinds(triple)).toEqual(["Beam"]);
+    expect(isUniformWeapon(triple)).toBe(true);
+    // And a mount that holds one weapon expands to one gun.
+    expect(weaponGuns({ kind: "Torpedo", mount: "Barbette" })).toHaveLength(1);
+  });
+
+  it("names a mixed mount by its contents", () => {
+    expect(weaponToString(moraTurret)).toBe("Triple Turret (Pulse x2, Sand)");
+    // A uniform mount is unchanged.
+    expect(weaponToString({ kind: "Beam", mount: { Turret: 3 } })).toBe(
+      "Triple Beam Turret",
+    );
+  });
+
+  // A turret of lasers and sand is still orderable -- the lasers can fire even
+  // though the sandcaster cannot be ordered.
+  it("keeps a mixed turret actionable if any gun in it can be ordered", () => {
+    expect(isActionableWeapon(moraTurret)).toBe(true);
+    // But a mount whose every gun is automatic is not.
+    expect(
+      isActionableWeapon({
+        mount: { Turret: 2 },
+        guns: [{ kind: "Sand" }, { kind: "Sand" }],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("the editor must not destroy a mixed-turret ship", () => {
+  // The MK Mora as the server sends it: six turrets of two long-range
+  // high-yield pulse lasers plus a sandcaster, and four of two missile racks
+  // plus an accurate high-yield beam laser.
+  const laserSand = (): Weapon => ({
+    mount: { Turret: 3 },
+    guns: [
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+      { kind: "Sand" },
+    ],
+  });
+  const missileBeam = (): Weapon => ({
+    mount: { Turret: 3 },
+    guns: [
+      { kind: "Missile" },
+      { kind: "Missile" },
+      { kind: "Beam", modifiers: ["Accurate", "HighYield"] },
+    ],
+  });
+  const mkMora = (): Weapon[] => [
+    ...Array.from({ length: 6 }, laserSand),
+    ...Array.from({ length: 4 }, missileBeam),
+  ];
+
+  // The bug this guards: `kind` and `modifiers` are undefined on a mixed mount
+  // because they live on the guns, so keying the editor rows on them collapsed
+  // all ten of the MK Mora's turrets into a single group -- and saving wrote
+  // them back as ten uniform pulse turrets, destroying the ship's armament.
+  it("keeps mixed turrets in separate groups", () => {
+    const groups = groupWeapons(mkMora());
+    expect(groups).toHaveLength(2);
+    expect(groups[0].count).toBe(6);
+    expect(groups[1].count).toBe(4);
+  });
+
+  it("writes a mixed-turret ship back exactly as it came in", () => {
+    const original = mkMora();
+    const { weapons } = expandGroups(groupWeapons(original));
+    expect(weapons).toEqual(original);
+  });
+
+  it("still merges mixed turrets that are genuinely identical", () => {
+    const groups = groupWeapons([laserSand(), laserSand()]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].count).toBe(2);
+  });
+
+  // Two mounts of the same size and the same kinds but different arrangements
+  // are different ships and must not merge.
+  it("does not merge mounts whose guns differ in proportion", () => {
+    const twoLasers = laserSand();
+    const oneLaser: Weapon = {
+      mount: { Turret: 3 },
+      guns: [
+        { kind: "Pulse", modifiers: ["LongRange", "HighYield"] },
+        { kind: "Sand" },
+        { kind: "Sand" },
+      ],
+    };
+    expect(groupWeapons([twoLasers, oneLaser])).toHaveLength(2);
+  });
+
+  it("leaves uniform mounts round-tripping as before", () => {
+    const uniform: Weapon[] = [
+      createWeapon("Beam", { Turret: 3 }),
+      createWeapon("Beam", { Turret: 3 }),
+      createWeapon("Torpedo", "Barbette"),
+    ];
+    const { weapons } = expandGroups(groupWeapons(uniform));
+    expect(weapons).toEqual(uniform);
+  });
+});
+
+describe("editing a mixed mount", () => {
+  const mixedGroup = (): WeaponGroup => ({
+    count: 6,
+    mount: { Turret: 3 },
+    kind: "Pulse",
+    gunnery: 0,
+    modifiers: [],
+    guns: [{ kind: "Pulse" }, { kind: "Pulse" }, { kind: "Sand" }],
+  });
+
+  it("names a mixed group by what is in the mount", () => {
+    expect(describeGroupGuns(mixedGroup())).toBe("Pulse x2, Sand");
+    // A uniform group is still named by its kind.
+    expect(
+      describeGroupGuns({
+        count: 1,
+        mount: { Turret: 3 },
+        kind: "Beam",
+        gunnery: 0,
+        modifiers: [],
+      }),
+    ).toBe("Beam");
+  });
+
+  it("knows how many guns a mount holds", () => {
+    expect(gunCapacity({ Turret: 3 })).toBe(3);
+    expect(gunCapacity({ Turret: 1 })).toBe(1);
+    // Everything that is not a turret holds exactly one.
+    expect(gunCapacity("Barbette")).toBe(1);
+    expect(gunCapacity({ Bay: "Large" })).toBe(1);
+    expect(gunCapacity(null)).toBe(1);
+  });
+
+  it("expands a mixed group into the guns it lists", () => {
+    const { weapons } = expandGroups([mixedGroup()]);
+    expect(weapons).toHaveLength(6);
+    // Every mount carries the same three guns, in order.
+    weapons.forEach((weapon) => {
+      expect(weapon.guns).toEqual([
+        { kind: "Pulse" },
+        { kind: "Pulse" },
+        { kind: "Sand" },
+      ]);
+    });
+  });
+});
+
+describe("explaining why a weapon is barred from a mount", () => {
+  it("names where a weapon may go", () => {
+    // There is no ion turret, which is exactly the case that read as a broken
+    // list when the option was simply omitted.
+    expect(legalMountsLabel("Ion")).toBe("a barbette or bay");
+    expect(legalMountsLabel("Torpedo")).toBe("a barbette or bay");
+    // Bay-only weapons collapse the three bay sizes into one word.
+    expect(legalMountsLabel("Meson")).toBe("a bay");
+    expect(legalMountsLabel("PointDefense")).toBe("a battery");
+  });
+
+  it("lists several mounts readably", () => {
+    expect(legalMountsLabel("Sand")).toBe("a turret or fixed mount");
+  });
+
+  it("copes with a weapon this build has never heard of", () => {
+    expect(legalMountsLabel("Antimatter")).toBe("no mount this build knows");
+  });
+});
+
+describe("which icon an action draws", () => {
+  it("treats only missiles and torpedoes as launchers", () => {
+    expect(isLauncherKind("Missile")).toBe(true);
+    expect(isLauncherKind("Torpedo")).toBe(true);
+    // Everything else is direct fire and draws as a beam.  These are the ones
+    // that were falling through to the missile icon.
+    ["Beam", "Pulse", "Particle", "Fusion", "Meson", "Plasma", "Railgun", "MassDriver", "Ion"].forEach(
+      (kind) => expect(isLauncherKind(kind)).toBe(false),
+    );
+  });
+
+  it("knows which weapons can run point defence", () => {
+    expect(isLaserKind("Beam")).toBe(true);
+    expect(isLaserKind("Pulse")).toBe(true);
+    expect(isLaserKind("Fusion")).toBe(false);
+    expect(isLaserKind("Particle")).toBe(false);
+  });
+
+  it("reads the kind off a uniform mount", () => {
+    expect(actionWeaponKind({ kind: "Meson", mount: { Bay: "Medium" } })).toBe(
+      "Meson",
+    );
+  });
+
+  // The second half of the bug: a mixed turret has no `kind` at all, so a
+  // pulse laser in one was reported as undefined and fell through to the
+  // missile icon exactly like meson and fusion did.
+  it("falls back to the first gun on a mixed mount", () => {
+    const mixed: Weapon = {
+      mount: { Turret: 3 },
+      guns: [{ kind: "Pulse" }, { kind: "Pulse" }, { kind: "Sand" }],
+    };
+    expect(actionWeaponKind(mixed)).toBe("Pulse");
+    expect(isLauncherKind(actionWeaponKind(mixed))).toBe(false);
+  });
+
+  it("prefers the type the action says it is firing", () => {
+    const mixed: Weapon = {
+      mount: { Turret: 3 },
+      guns: [{ kind: "Missile" }, { kind: "Missile" }, { kind: "Beam" }],
+    };
+    // Firing the beam laser out of a mostly-missile turret draws a beam.
+    expect(actionWeaponKind(mixed, "Beam")).toBe("Beam");
+    expect(actionWeaponKind(mixed)).toBe("Missile");
+  });
+});
+
+describe("power after an ion hit", () => {
+  const ship = (power: number, ionLoss?: number) => ({
+    current_power: power,
+    ion_power_loss: ionLoss,
+  });
+
+  it("subtracts what an ion cannon is suppressing", () => {
+    // The server keeps the two apart so a repair cannot undo an ion hit, which
+    // means the display has to do the subtraction itself -- without this a ship
+    // read as fully powered in the same round its power was drained.
+    expect(availablePower(ship(1520, 220))).toBe(1300);
+  });
+
+  it("reads full power when nothing is suppressed", () => {
+    expect(availablePower(ship(1520))).toBe(1520);
+    expect(availablePower(ship(1520, 0))).toBe(1520);
+  });
+
+  it("never goes negative", () => {
+    expect(availablePower(ship(100, 400))).toBe(0);
   });
 });

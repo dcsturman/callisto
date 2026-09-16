@@ -147,7 +147,7 @@ export function Authentication() {
 
   return (
     <div className="authentication-container">
-      <h1 className="authentication-title">Callisto 1.0</h1>
+      <h1 className="authentication-title">Callisto 1.1</h1>
       <br />
       <br />
       <div className="authentication-blurb">
