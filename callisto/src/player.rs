@@ -649,14 +649,21 @@ impl PlayerManager {
     let points = roll + leadership - 8;
     ship.write().unwrap().set_leadership_points(points);
 
+    // Shown the way every other check is: roll, skill, total against 8, and
+    // what it bought. The net alone gave a captain no way to tell a bad roll
+    // from a low skill.
+    let check = format!(
+      "leadership check with roll {roll} and skill {leadership:+} for a total of {} against 8",
+      roll + leadership
+    );
     let message = if points > 0 {
       format!(
-        "Captain on {} rolled {points}: can inspire {points} task{}.",
+        "Captain on {} {check}: can inspire {points} task{}.",
         msg.ship_name,
         if points == 1 { "" } else { "s" },
       )
     } else {
-      format!("Captain on {} rolled {points}: cannot boost tasks this turn.", msg.ship_name)
+      format!("Captain on {} {check}: cannot boost tasks this turn.", msg.ship_name)
     };
 
     CaptainActionResult {
@@ -728,8 +735,25 @@ impl PlayerManager {
             boost_map.insert(t.clone());
           }
 
+          // The roll was made when the captain pressed the button and only its
+          // net was kept, but points = roll + leadership - 8 exactly, so the
+          // dice are recoverable. Not when the button was never pressed: the
+          // resolution runs anyway with n = 0, and a roll must not be invented
+          // for it.
+          let (roll, leadership) = {
+            let s = ship_lock.read().unwrap();
+            let leadership = s.get_crew().get_leadership();
+            let roll = if s.has_leadership_rolled() {
+              Some(u8::try_from(n + 8 - i16::from(leadership)).unwrap_or(0))
+            } else {
+              None
+            };
+            (roll, leadership)
+          };
           leadership_effects.push(EffectMsg::LeadershipAction {
             ship_name: ship_name.clone(),
+            roll,
+            leadership,
             points: n,
             boosts_applied: truncated,
           });

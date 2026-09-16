@@ -1493,6 +1493,7 @@ fn extract_leadership_effect(effects: &[EffectMsg], ship: &str) -> (i16, Vec<cra
       ship_name,
       points,
       boosts_applied,
+      ..
     } = e
     {
       if ship_name == ship {

@@ -822,10 +822,18 @@ function formatEngineerResult(result: EngineerActionResult): string {
 interface LeadershipActionEffect {
   kind: "LeadershipAction";
   ship_name: string;
+  /** The 2D behind `points`; absent when the captain never rolled this round. */
+  roll?: number | null;
+  leadership?: number;
   points: number;
   boosts_applied: object[];
 }
 
+/**
+ * The captain's check, shown the way every other check is: roll, skill, total
+ * against 8, and what it bought. A round with no roll says so rather than
+ * reporting "0 points" as if the dice had come up badly.
+ */
 function formatLeadershipResult(lead: LeadershipActionEffect): string {
   const summary =
     lead.boosts_applied.length === 0
@@ -833,7 +841,16 @@ function formatLeadershipResult(lead: LeadershipActionEffect): string {
       : `${lead.boosts_applied.length} boost(s): ${lead.boosts_applied
           .map((b) => describeBoost(b))
           .join(", ")}`;
-  return `[Captain] ${lead.ship_name} rolled ${lead.points} leadership point(s); ${summary}.`;
+  if (lead.roll == null) {
+    return `[Captain] ${lead.ship_name} made no leadership roll this round; ${summary}.`;
+  }
+  const skill = lead.leadership ?? 0;
+  const total = lead.roll + skill;
+  const points = `${lead.points} point${lead.points === 1 ? "" : "s"}`;
+  return (
+    `[Captain] ${lead.ship_name} leadership check with roll ${lead.roll} and skill ` +
+    `${skill >= 0 ? "+" : ""}${skill} for a total of ${total} against 8: ${points}; ${summary}.`
+  );
 }
 
 function describeBoost(b: object): string {
