@@ -7,7 +7,7 @@ import { GrowLine } from "lib/Util";
 import { findShip } from "lib/entities";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
-import { setShowResults, setEvents } from "state/uiSlice";
+import { setShowResults, removeEvent, clearMessageEvents } from "state/uiSlice";
 import { messageStyle } from "lib/messages";
 import {entitiesSelector} from "state/serverSlice";
 
@@ -25,6 +25,8 @@ const SHIP_DESTROYED_COLOR: [number, number, number] = [0.0, 0.0, 1.0];
 const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0.55, 0];
 
 export interface Event {
+  /** Set on receipt; unique across rounds. */
+  id?: number,
   kind: string,
   content: string | null,
   // Will only have one of position or target. Position is a concrete position
@@ -122,9 +124,11 @@ export function Explosions() {
             // Use the current position of the target if we can find it; otherwise use the position (last known position actually) as a backup
             position = findShip(entities, event.target)?.position ?? event.position ?? [0, 0, 0];
             color = MISSILE_HIT_COLOR;
-            key = "Impact-" + index;
+            key = "Impact-" + (event.id ?? index);
             removeMe = () => {
-              dispatch(setEvents(events.filter((e) => e !== event)));
+              if (event.id != null) {
+                dispatch(removeEvent(event.id));
+              }
             };
             console.log("(Explosions) key: " + key);
             return (
@@ -137,9 +141,11 @@ export function Explosions() {
             );
           case EXHAUSTED_MISSILE:
             color = MISSILE_EXHAUSTED_COLOR;
-            key = "Gone-" + index;
+            key = "Gone-" + (event.id ?? index);
             removeMe = () => {
-              dispatch(setEvents(events.filter((e) => e !== event)));
+              if (event.id != null) {
+                dispatch(removeEvent(event.id));
+              }
             };
             return (
               <Explosion
@@ -151,9 +157,11 @@ export function Explosions() {
             );
           case SHIP_DESTROYED:
             color = SHIP_DESTROYED_COLOR;
-            key = "Destroyed-" + index;
+            key = "Destroyed-" + (event.id ?? index);
             removeMe = () => {
-              dispatch(setEvents(events.filter((e) => e !== event)));
+              if (event.id != null) {
+                dispatch(removeEvent(event.id));
+              }
             };
             return (
               <Explosion
@@ -165,9 +173,11 @@ export function Explosions() {
             );
           case BEAM_HIT:
             color = BEAM_HIT_COLOR;
-            key = "Beam-" + index;
+            key = "Beam-" + (event.id ?? index);
             removeMe = () => {
-              dispatch(setEvents(events.filter((e) => e !== event)));
+              if (event.id != null) {
+                dispatch(removeEvent(event.id));
+              }
             };
             // The line alone is too thin to see at most zooms, so the hit also
             // gets an explosion on the target. The explosion runs longer, so it
@@ -214,11 +224,9 @@ export function ResultsWindow() {
   const dispatch = useAppDispatch();
 
   const closeWindow = useCallback(() => {
-    if (events !== null) {
-      dispatch(setEvents(events.filter((event) => event.kind !== MESSAGE_EVENT)));
-    }
+    dispatch(clearMessageEvents());
     dispatch(setShowResults(false));
-  }, [events, dispatch]);
+  }, [dispatch]);
 
   const messages = useMemo(() => events?.filter((event) => event.kind === MESSAGE_EVENT) ?? [], [events]);
 

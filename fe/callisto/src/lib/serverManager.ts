@@ -758,6 +758,11 @@ function handleFlightPath(json: object) {
   store.dispatch(setProposedPlan(path));
 }
 
+// Ids for incoming events, so an explosion is keyed by the event it shows
+// rather than its place in a list that shrinks as animations finish. Seeded
+// from the clock so ids never repeat ones persisted before a reload.
+let nextEventId = Date.now();
+
 function handleEffect(json: object[]) {
   console.groupCollapsed("Received Effects: ");
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
@@ -799,7 +804,7 @@ function handleEffect(json: object[]) {
       } as Event;
     }
     return event as Event;
-  });
+  }).map((event) => ({ ...event, id: nextEventId++ }));
 
   store.dispatch(setEvents(events));
   store.dispatch(setShowResults(true));
