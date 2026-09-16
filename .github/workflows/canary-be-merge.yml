@@ -19,7 +19,7 @@ env:
   GAR_LOCATION: gcr.io
   REGION: us-central1
   APP: callisto-be
-  GENERAL_ARGS: --oauth-creds,/secrets/google_credentials,--users-file,gs://callisto-be-user-profiles/authorized_users.json,--design-dir,gs://callisto-canary-ship-templates
+  GENERAL_ARGS: --oauth-creds,/secrets/google_credentials,--users-file,gs://callisto-canary-user-profiles/authorized_users.json,--design-dir,gs://callisto-canary-ship-templates
   # A WebSocket is one long-lived HTTP request, so Cloud Run's request timeout
   # is a hard cap on how long a player can stay connected: at 900s everyone got
   # dropped every 15 minutes, and the fresh container lost every live scenario
