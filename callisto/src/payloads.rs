@@ -270,8 +270,15 @@ pub enum EffectMsg {
   /// reported but mean no boosts applied. `boosts_applied` is the actual list
   /// of targets that received a +1 (already truncated by N and filtered down
   /// to live queue entries).
+  ///
+  /// `roll` and `leadership` are the dice and the skill behind `points`, so
+  /// the log can show the check rather than only its net. `roll` is `None`
+  /// when the captain never pressed the button this round -- the resolution
+  /// still runs, with no points, and a roll must not be invented for it.
   LeadershipAction {
     ship_name: String,
+    roll: Option<u8>,
+    leadership: u8,
     points: i16,
     boosts_applied: Vec<BoostTarget>,
   },
