@@ -13,7 +13,7 @@ import {
   hasEffect,
 } from "lib/entities";
 
-import { RangeSphere } from "lib/Util";
+import { RangeSphere, RangeCircle } from "lib/Util";
 
 import { useAppDispatch } from "state/hooks";
 import { setEntityToShow } from "state/uiSlice";
@@ -69,16 +69,17 @@ export function Planet(args: PlanetProps) {
   function allViewChanges() {
     return (
       <>
+        {/* The 100-diameter limit is a radius, and a radius reads as a circle
+            -- the same silhouette treatment the ship range bands got. The
+            wireframe sphere it replaces drew a 14-segment cage over the whole
+            planet and everything near it. `RangeCircle` takes metres. */}
         {args.controlJumpDistance && (
-          <mesh position={pos} renderOrder={12}>
-            <sphereGeometry args={[args.planet.radius * 200 * SCALE, 14, 14]} />
-            <meshBasicMaterial
-              color="#888888"
-              wireframe={true}
-              alphaToCoverage={false}
-              transparent={true}
-            />
-          </mesh>
+          <RangeCircle
+            pos={pos}
+            distance={args.planet.radius * 200}
+            label="100 diameter limit"
+            color="#9a9a9a"
+          />
         )}
         {args.controlGravityWell && args.planet.gravity_radius_025 && (
           <RangeSphere
