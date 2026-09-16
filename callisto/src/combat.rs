@@ -135,7 +135,11 @@ pub fn attack(
     0
   };
 
-  let defensive_modifier = if defender.get_dodge_thrust() > 0 {
+  // Kept as two terms rather than one, because they are two different facts
+  // the pilot and captain each want to see: the pilot's skill is why the shot
+  // was harder, and the captain's inspire -- spent on this one attack -- is
+  // why it was harder still.
+  let (evade_mod, captain_mod) = if defender.get_dodge_thrust() > 0 {
     debug!(
       "(Combat.attack) {} has dodge thrust {}, so defensive modifier is -{} (with evade boost {}).",
       defender.get_name(),
@@ -144,10 +148,11 @@ pub fn attack(
       evade_boost
     );
     defender.decrement_dodge_thrust();
-    -i32::from(defender.get_crew().get_pilot()) - evade_boost
+    (-i32::from(defender.get_crew().get_pilot()), -evade_boost)
   } else {
-    0
+    (0, 0)
   };
+  let defensive_modifier = evade_mod + captain_mod;
 
   // Launchers have "Special" range: the salvo flies to the target, so the
   // firing range never modifies the roll and never rules the shot out.
@@ -200,16 +205,43 @@ pub fn attack(
   }
 
   let roll = i32::from(roll_dice(2, rng));
-  let attack_mod =
-    hit_mod + profile.hit_mod + range_mod + called_mod + small_target_mod + lock_mod + defensive_modifier;
+
+  // The attack DM, itemised. Seven terms summed into one number cannot be
+  // checked, and the two that matter most to the ship being shot at -- its
+  // pilot dodging, and its captain's inspire -- were invisible: an evasion
+  // never reached the results log at all. Same treatment the detection DM
+  // gets, and for the same reason. Zero terms are dropped so an ordinary
+  // shot stays short.
+  let terms: [(&str, i32); 8] = [
+    ("gunner", hit_mod),
+    ("weapon", profile.hit_mod),
+    ("range", range_mod),
+    ("called shot", called_mod),
+    ("small target", small_target_mod),
+    ("sensor lock", lock_mod),
+    ("evade", evade_mod),
+    ("captain", captain_mod),
+  ];
+  let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
+  let breakdown = terms
+    .iter()
+    .filter(|(_, value)| *value != 0)
+    .map(|(name, value)| format!("{name} {value:+}"))
+    .collect::<Vec<_>>()
+    .join(", ");
+  let breakdown = if breakdown.is_empty() {
+    String::new()
+  } else {
+    format!(" ({breakdown})")
+  };
 
   // Every attack opens the same way, so a reader can always see how the shot
   // was worked out and not just how it came out. Built before the damage roll
   // shadows anything, and reused by all four outcomes below.
   let weapon_name = String::from(&firing.kind);
   let attack_line = format!(
-    "{attacker_name} {weapon_name} -> {}: {roll}{attack_mod:+}={hit_roll} vs {STANDARD_ROLL_THRESHOLD}",
+    "{attacker_name} {weapon_name} -> {}: {roll}{attack_mod:+}={hit_roll}{breakdown} vs {STANDARD_ROLL_THRESHOLD}",
     defender.get_name()
   );
 
@@ -2707,6 +2739,92 @@ mod tests {
     );
     assert!(matches!(effects[0], EffectMsg::Message { .. }));
     assert!(matches!(effects[1], EffectMsg::Message { .. }));
+  }
+
+  /// An evasion is finally visible in the results, and the captain's inspire
+  /// on it shows on the one shot it applies to and not the next.
+  ///
+  /// Before this the whole attack DM reached the player as one number, so a
+  /// dodging pilot and a spent leadership point were indistinguishable from a
+  /// long-range shot -- and an evasion never produced a message at all.
+  #[test]
+  fn attack_messages_name_evade_and_the_captains_inspire() {
+    let text = |effects: &[EffectMsg]| {
+      effects
+        .iter()
+        .find_map(|e| match e {
+          EffectMsg::Message { content, .. } => Some(content.clone()),
+          _ => None,
+        })
+        .expect("an attack always reports something")
+    };
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Attacker".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      ..ShipDesignTemplate::default()
+    });
+    // Enough drive and power to have thrust to spare for dodging.
+    let defender_design = Arc::new(ShipDesignTemplate {
+      name: "Defender".to_string(),
+      hull: 200,
+      maneuver: 6,
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    let mut defender = Ship::new(
+      "Defender".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &defender_design,
+      None,
+      None,
+    );
+    defender.set_crew(serde_json::from_value::<crate::crew::Crew>(serde_json::json!({"pilot": 3})).unwrap());
+    defender
+      .set_pilot_actions(Some(2), None)
+      .expect("a 6G hull can spare 2G to dodge");
+    let mut boost_map = BoostMap::default();
+    boost_map.insert(crate::action::BoostTarget::Evade {
+      ship: "Defender".to_string(),
+    });
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
+    let mut rng = StdRng::seed_from_u64(42);
+    let mut shoot = |defender: &mut Ship, boosts: &BoostMap| {
+      text(&attack(
+        0,
+        0,
+        &attacker,
+        defender,
+        &weapon.firing_default().unwrap(),
+        None,
+        boosts,
+        &mut rng,
+      ))
+    };
+
+    // First shot: the pilot's skill and the captain's point, both named.
+    let first = shoot(&mut defender, &boost_map);
+    assert!(first.contains("evade -3"), "pilot should be named: {first}");
+    assert!(first.contains("captain -1"), "the inspire should be named: {first}");
+
+    // Second shot the same turn: still dodging (2G bought two attacks), but the
+    // inspire is spent and must not be claimed again.
+    let second = shoot(&mut defender, &boost_map);
+    assert!(second.contains("evade -3"), "{second}");
+    assert!(!second.contains("captain"), "the inspire is one-shot: {second}");
+
+    // A target that is not dodging shows neither term.
+    let mut still = Ship::new(
+      "Still".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &defender_design,
+      None,
+      None,
+    );
+    let plain = shoot(&mut still, &BoostMap::default());
+    assert!(!plain.contains("evade") && !plain.contains("captain"), "{plain}");
   }
 
   /// Every attack reports how it was worked out, not only how it came out.
