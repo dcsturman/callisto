@@ -11,6 +11,8 @@ use serde_with::serde_as;
 
 use egobox_doe::{Lhs, LhsKind, SamplingMethod};
 use ndarray::{arr2, Array2};
+use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256Plus;
 
 use crate::entity::{Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use crate::missile::IMPACT_DISTANCE;
@@ -310,7 +312,16 @@ impl FlightParams {
         [0.0, 200_000.0],
       ]);
 
-      self.sample_cache = Some(Lhs::new(&xlimits).kind(LhsKind::Centered).sample(self.max_samples));
+      // Seeded, not from entropy: an unseeded sampler made the solver's answer -- and
+      // whether it found one at all -- depend on the run, so identical inputs could
+      // plot different courses and one test flaked under a parallel suite. The seed
+      // is arbitrary; only its constancy matters.
+      let rng = Xoshiro256Plus::seed_from_u64(0xCA11_1570);
+      self.sample_cache = Some(
+        Lhs::new_with_rng(&xlimits, rng)
+          .kind(LhsKind::Centered)
+          .sample(self.max_samples),
+      );
     }
 
     let sample = self.sample_cache.as_ref().unwrap();

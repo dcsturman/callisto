@@ -61,6 +61,15 @@ export const uiSlice = createSlice({
     setEvents: (state, action: PayloadAction<Event[] | null>) => {
         state.events = action.payload;
     },
+    // Removals work on the store's current list, by id. An animation that
+    // finishes holds the list from when it started, and filtering that copy
+    // would put back events other animations had already removed.
+    removeEvent: (state, action: PayloadAction<number>) => {
+        state.events = state.events?.filter((event) => event.id !== action.payload) ?? null;
+    },
+    clearMessageEvents: (state) => {
+        state.events = state.events?.filter((event) => event.kind !== "Message") ?? null;
+    },
     setCameraPos: (state, action: PayloadAction<{x: number, y: number, z: number}>) => {
         state.cameraPos = [action.payload.x, action.payload.y, action.payload.z];
     },
@@ -79,6 +88,6 @@ export const uiSlice = createSlice({
   }
 });
 
-export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;

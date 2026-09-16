@@ -15,8 +15,9 @@ use crate::action::{
   boost_for_detection, boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList,
 };
 use crate::combat::{
-  attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band, interception_cost,
-  roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, STANDARD_ROLL_THRESHOLD,
+  apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
+  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, HitMods,
+  STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -27,7 +28,9 @@ use crate::rules_tables::{
 };
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
-use crate::ship::{with_ship_templates_for_deserialization, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem};
+use crate::ship::{
+  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem,
+};
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn, LOG_FILE_USE};
@@ -154,6 +157,29 @@ fn detection_roll_effect(
     format!(
       "{observer} sensor check on {target} with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against 8: {outcome}."
     ),
+  )
+}
+
+/// An engineer's check, reading like the sensop's: the roll, the DM with each
+/// term that did something named, and the total against the target number.
+/// Returns the total, floored at zero, with that text.
+fn engineer_check(roll: u8, terms: &[(&str, i16)], target: u8) -> (u8, String) {
+  let dm: i16 = terms.iter().map(|(_, value)| value).sum();
+  let total = u8::try_from((i16::from(roll) + dm).max(0)).unwrap_or(u8::MAX);
+  let breakdown = terms
+    .iter()
+    .filter(|(_, value)| *value != 0)
+    .map(|(name, value)| format!("{name} {value:+}"))
+    .collect::<Vec<_>>()
+    .join(", ");
+  let breakdown = if breakdown.is_empty() {
+    String::new()
+  } else {
+    format!(" ({breakdown})")
+  };
+  (
+    total,
+    format!("with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against {target}"),
   )
 }
 
@@ -755,6 +781,38 @@ impl Entities {
     &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
     ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
+    // Nothing fires without fire control: not the guns, not point defence, not
+    // sand. Judged on the snapshot, since everyone fires at once.
+    let fire_control = |name: &String| {
+      ship_snapshot
+        .get(name)
+        .is_none_or(|ship| ship.station_working(BridgeStation::FireControl))
+    };
+    // One message per ship, in name order so seeded runs read the same.
+    let grounded: std::collections::BTreeSet<&String> = fire_actions
+      .iter()
+      .chain(point_defense_actions)
+      .filter(|(name, actions)| !actions.is_empty() && !fire_control(name))
+      .map(|(name, _)| name)
+      .collect();
+    let mut battery_effects: Vec<EffectMsg> = grounded
+      .into_iter()
+      .map(|name| {
+        EffectMsg::about(
+          name,
+          MessageCategory::Critical,
+          format!("{name} cannot fire: its fire control station is out."),
+        )
+      })
+      .collect();
+    let fire_actions: Vec<_> = fire_actions.iter().filter(|(name, _)| fire_control(name)).cloned().collect();
+    let point_defense_actions: Vec<_> = point_defense_actions
+      .iter()
+      .filter(|(name, _)| fire_control(name))
+      .cloned()
+      .collect();
+    let point_defense_actions = point_defense_actions.as_slice();
+
     // Create a snapshot of all the sand capabilities of each ship.
     let mut sand_counts = create_sand_counts(ship_snapshot, point_defense_actions);
 
@@ -768,7 +826,6 @@ impl Entities {
     // same reason missiles are sorted before resolution below.
     let mut battery_ships: Vec<String> = self.ships.keys().cloned().collect();
     battery_ships.sort_unstable();
-    let mut battery_effects = Vec::new();
     for name in battery_ships {
       let Some(ship) = self.ships.get(&name) else {
         continue;
@@ -779,7 +836,11 @@ impl Entities {
       let screens = roll_screen_pool(&ship, rng);
       ship.set_screen_pool(screens);
 
-      let pool = roll_battery_pool(&ship, rng);
+      let pool = if ship.station_working(BridgeStation::FireControl) {
+        roll_battery_pool(&ship, rng)
+      } else {
+        0
+      };
       // A set rather than an add: this pass runs first, covers every ship, and
       // so is also what clears any value left over from the previous round.
       ship.set_point_defense_pool(pool);
@@ -981,7 +1042,10 @@ impl Entities {
                   return None;
                 };
                 let effects = attack(
-                  smart_missile_bonus,
+                  HitMods {
+                    smart: smart_missile_bonus,
+                    ..HitMods::default()
+                  },
                   0,
                   missile_source,
                   &mut target,
@@ -1103,6 +1167,13 @@ impl Entities {
     let mut effects = Vec::<EffectMsg>::new();
 
     for (ship_name, actions) in actions {
+      if actions.is_empty() {
+        continue;
+      }
+      if let Some(effect) = self.station_down_effect(ship_name, BridgeStation::Sensors, "take sensor actions") {
+        effects.push(effect);
+        continue;
+      }
       let boost = boost_for_sensor(boost_map, ship_name);
       // Process the actions for each ship.
       for action in actions {
@@ -1800,11 +1871,37 @@ impl Entities {
         power_plant: target.current_power > 0,
         fired_weapons: fired.contains(target_name),
         crit_severity: target.total_crit_severity(),
-        transmitting: target.transmitting,
+        transmitting: target.is_transmitting(),
       }
       .detection_terms(),
     );
     terms
+  }
+
+  /// A message saying `ship_name` cannot `what` because `station` is out, or
+  /// `None` when the station is working (or the ship is gone).
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  fn station_down_effect(&self, ship_name: &str, station: BridgeStation, what: &str) -> Option<EffectMsg> {
+    let working = self.ships.get(ship_name)?.read().unwrap().station_working(station);
+    (!working).then(|| {
+      EffectMsg::about(
+        ship_name,
+        MessageCategory::Critical,
+        format!("{ship_name} cannot {what}: its {station} station is out."),
+      )
+    })
+  }
+
+  /// Count disabled bridge stations down at the end of the round.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to write to a ship.
+  pub fn tick_bridge_stations(&self) {
+    for ship in self.ships.values() {
+      ship.write().unwrap().tick_bridge_stations();
+    }
   }
 
   /// Clear the per-round comms jamming flags.
@@ -1858,6 +1955,18 @@ impl Entities {
       if !ship.handoff_sensors || ship.team.is_none() || ship.comms_jammed {
         continue;
       }
+      // Sending takes the comms station, and the computer to package the
+      // picture. Said only when there was a picture to send.
+      if let Some(station) = ship.handoff_station_down() {
+        if !ship.contacts.is_empty() {
+          effects.push(EffectMsg::about(
+            name,
+            MessageCategory::Handoff,
+            format!("{name} cannot hand off its sensor picture: its {station} station is out."),
+          ));
+        }
+        continue;
+      }
       if ship.current_computer == 0 {
         // Say so rather than failing quietly. A ship with no Bandwidth left --
         // a bad enough bridge crit will take it -- looks exactly like one that
@@ -1882,7 +1991,7 @@ impl Entities {
     for (recipient_name, recipient) in &self.ships {
       let recipient_guard = recipient.read().unwrap();
       let Some(team) = recipient_guard.team else { continue };
-      if recipient_guard.comms_jammed {
+      if recipient_guard.comms_jammed || recipient_guard.handoff_station_down().is_some() {
         continue;
       }
       // Same reasoning as the host side: a recipient with no Bandwidth is told
@@ -2193,9 +2302,12 @@ impl Entities {
           ship.set_engineer_action_taken(true);
         }
 
+        // Crits a failed overload does to its own ship, reported after the
+        // check that caused them.
+        let mut crits = Vec::new();
         let result = match action {
-          ShipAction::OverloadDrive => self.process_overload_drive(ship_name, boost, rng),
-          ShipAction::OverloadPlant => self.process_overload_plant(ship_name, boost, rng),
+          ShipAction::OverloadDrive => self.process_overload_drive(ship_name, boost, &mut crits, rng),
+          ShipAction::OverloadPlant => self.process_overload_plant(ship_name, boost, &mut crits, rng),
           ShipAction::Repair { system } => self.process_repair(ship_name, *system, boost, rng),
           ShipAction::Jump => {
             let (result, jumped) = self.process_jump(ship_name, boost, rng);
@@ -2208,6 +2320,7 @@ impl Entities {
           _ => continue,
         };
         effects.push(EffectMsg::EngineerAction { result });
+        effects.append(&mut crits);
       }
     }
 
@@ -2236,6 +2349,26 @@ impl Entities {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
     let action = ShipAction::Jump;
 
+    let stations_down: Vec<String> = [BridgeStation::Astrogation, BridgeStation::Computer]
+      .into_iter()
+      .filter(|station| !ship.station_working(*station))
+      .map(|station| station.to_string())
+      .collect();
+    if !stations_down.is_empty() {
+      return (
+        EngineerActionResult {
+          ship_name: ship_name.to_string(),
+          action,
+          success: false,
+          check: 0,
+          target: 0,
+          message: format!("{ship_name} cannot jump: its {} station is out.", stations_down.join(" and ")),
+          critical_failure: false,
+        },
+        false,
+      );
+    }
+
     if !ship.can_jump() || ship.current_fuel <= ship.design.hull / 10 {
       return (
         EngineerActionResult {
@@ -2254,10 +2387,12 @@ impl Entities {
     let skill = ship.get_crew().get_engineering_jump();
     drop(ship);
 
-    let roll = roll_dice(2, rng);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 6;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (j-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
 
     if total >= target {
       (
@@ -2267,7 +2402,7 @@ impl Entities {
           success: true,
           check: total,
           target,
-          message: format!("{ship_name} jumps successfully!"),
+          message: format!("{ship_name} jump check {check}: jumps successfully."),
           critical_failure: false,
         },
         true,
@@ -2280,7 +2415,7 @@ impl Entities {
           success: false,
           check: total,
           target,
-          message: format!("{ship_name} misjumps! Ship is lost in jump space."),
+          message: format!("{ship_name} jump check {check}: misjumps! Ship is lost in jump space."),
           critical_failure: true,
         },
         true,
@@ -2292,6 +2427,7 @@ impl Entities {
   ///
   /// # Arguments
   /// * `ship_name` - The name of the ship performing the action.
+  /// * `crits` - Receives the critical hit a critical failure does to the drive.
   /// * `rng` - The random number generator to use.
   ///
   /// # Returns
@@ -2299,14 +2435,17 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_overload_drive(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> EngineerActionResult {
+  fn process_overload_drive(
+    &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_maneuver();
-    let roll = roll_dice(2, rng);
-    // Boost is 0 or 1 (HashSet membership); cast through u8 is safe.
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 10;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (m-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
 
     let action = ShipAction::OverloadDrive;
 
@@ -2319,19 +2458,19 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} overloaded maneuver drive successfully! Temporary +1 maneuver."),
+        message: format!("{ship_name} maneuver drive overload {check}: success, temporary +1 maneuver."),
         critical_failure: false,
       }
     } else if total <= 4 {
       // Critical failure (fail by 6+) - apply crit to maneuver drive
-      ship.write().unwrap().crit_level[ShipSystem::Maneuver as usize] += 1;
+      crits.append(&mut apply_crit(1, ShipSystem::Maneuver, &mut ship.write().unwrap(), rng));
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} critically failed overloading maneuver drive! Drive damaged."),
+        message: format!("{ship_name} maneuver drive overload {check}: critical failure, drive damaged."),
         critical_failure: true,
       }
     } else {
@@ -2342,7 +2481,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} failed to overload maneuver drive."),
+        message: format!("{ship_name} maneuver drive overload {check}: failed."),
         critical_failure: false,
       }
     }
@@ -2352,6 +2491,7 @@ impl Entities {
   ///
   /// # Arguments
   /// * `ship_name` - The name of the ship performing the action.
+  /// * `crits` - Receives the critical hit a critical failure does to the plant.
   /// * `rng` - The random number generator to use.
   ///
   /// # Returns
@@ -2359,13 +2499,17 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_overload_plant(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> EngineerActionResult {
+  fn process_overload_plant(
+    &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().get_engineering_power();
-    let roll = roll_dice(2, rng);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = roll + skill + boost.max(0) as u8;
     let target: u8 = 10;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
 
     let action = ShipAction::OverloadPlant;
 
@@ -2378,19 +2522,19 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} overloaded power plant successfully! Temporary +10% power."),
+        message: format!("{ship_name} power plant overload {check}: success, temporary +10% power."),
         critical_failure: false,
       }
     } else if total <= 4 {
       // Critical failure (fail by 6+) - apply crit to powerplant
-      ship.write().unwrap().crit_level[ShipSystem::Powerplant as usize] += 1;
+      crits.append(&mut apply_crit(1, ShipSystem::Powerplant, &mut ship.write().unwrap(), rng));
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} critically failed overloading power plant! Plant damaged."),
+        message: format!("{ship_name} power plant overload {check}: critical failure, plant damaged."),
         critical_failure: true,
       }
     } else {
@@ -2401,7 +2545,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} failed to overload power plant."),
+        message: format!("{ship_name} power plant overload {check}: failed."),
         critical_failure: false,
       }
     }
@@ -2440,11 +2584,14 @@ impl Entities {
     let ship = self.ships.get(ship_name).unwrap();
     let mut ship_write = ship.write().unwrap();
 
-    // Get the appropriate skill based on system
-    let skill = match system {
-      ShipSystem::Jump => ship_write.get_crew().get_engineering_jump(),
-      ShipSystem::Powerplant => ship_write.get_crew().get_engineering_power(),
-      _ => ship_write.get_crew().get_engineering_maneuver(),
+    // Engineering for the drives and the power plant; Mechanic for the rest of
+    // the ship's equipment.
+    let crew = ship_write.get_crew();
+    let (skill, skill_name) = match system {
+      ShipSystem::Jump => (crew.get_engineering_jump(), "engineering (j-drive)"),
+      ShipSystem::Powerplant => (crew.get_engineering_power(), "engineering (power)"),
+      ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (crew.get_mechanic(), "mechanic"),
+      _ => (crew.get_engineering_maneuver(), "engineering (m-drive)"),
     };
 
     // Get current crit level for the system
@@ -2458,10 +2605,17 @@ impl Entities {
       0
     };
 
-    let roll = roll_dice(2, rng);
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let total = u8::saturating_sub(roll + skill + repair_bonus + boost.max(0) as u8, crit_level);
     let target: u8 = 8;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[
+        (skill_name, i16::from(skill)),
+        ("earlier attempts", i16::from(repair_bonus)),
+        ("captain", boost.max(0)),
+        ("damage", -i16::from(crit_level)),
+      ],
+      target,
+    );
 
     if total >= target {
       // Success - reduce crit level by 1
@@ -2470,13 +2624,26 @@ impl Entities {
       }
       ship_write.set_repair_bonus(0);
       ship_write.set_last_repair_component(Some(system));
+      // A bridge repair takes the most recent bridge damage back off, down to
+      // the severity it now stands at.
+      let restored = if system == ShipSystem::Bridge {
+        let level = ship_write.crit_level[system as usize];
+        ship_write.undo_bridge_damage(level)
+      } else {
+        vec![]
+      };
+      let station = if restored.is_empty() {
+        String::new()
+      } else {
+        format!(" Restored: {}.", restored.join(", "))
+      };
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} successfully repaired {system:?}."),
+        message: format!("{ship_name} repair {system:?} {check}: repaired.{station}"),
         critical_failure: false,
       }
     } else {
@@ -2490,7 +2657,7 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} failed to repair {system:?}."),
+        message: format!("{ship_name} repair {system:?} {check}: failed."),
         critical_failure: false,
       }
     }
@@ -4895,6 +5062,294 @@ mod tests {
       ship.current_sensors,
       crate::ship::Sensors::Military,
       "and the sensor suite, which changes what the ship can find"
+    );
+  }
+
+  /// A two-ship board for the bridge station tests: Dragon, fully fuelled and
+  /// clear to jump, with a contact on Quarry.
+  fn bridge_board() -> Entities {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Dragon".to_string(),
+      hull: 120,
+      maneuver: 4,
+      jump: 2,
+      fuel: 100,
+      computer: 10,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(1.0e6, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let mut dragon = entities.ships.get("Dragon").unwrap().write().unwrap();
+    dragon.enable_jump();
+    dragon.contacts = vec!["Quarry".to_string()];
+    drop(dragon);
+    entities
+  }
+
+  /// Disabled is out for the round it was hit in and the whole of the next,
+  /// then back on its own.
+  #[test]
+  fn disabled_station_is_out_this_round_and_next() {
+    let entities = bridge_board();
+    let dragon = entities.ships.get("Dragon").unwrap();
+    {
+      let mut ship = dragon.write().unwrap();
+      ship.set_pilot_actions(Some(2), Some(true)).expect("(test) evade");
+      ship.disable_station(BridgeStation::Pilot);
+      assert!(!ship.can_accelerate());
+      assert_eq!(ship.get_dodge_thrust(), 0, "no evasion without a pilot");
+      assert!(!ship.get_assist_gunners(), "and no assisting the gunners");
+    }
+
+    entities.tick_bridge_stations();
+    assert!(!dragon.read().unwrap().can_accelerate(), "still out for the next round");
+
+    entities.tick_bridge_stations();
+    let ship = dragon.read().unwrap();
+    assert!(ship.can_accelerate(), "back after that");
+    assert_eq!(ship.get_dodge_thrust(), 2, "with the pilot's orders intact");
+  }
+
+  /// A ship without its pilot coasts, and keeps the plan for when it has one.
+  #[test]
+  fn ship_without_a_pilot_coasts() {
+    let mut entities = bridge_board();
+    let dragon = entities.ships.get("Dragon").unwrap();
+    {
+      let mut ship = dragon.write().unwrap();
+      ship
+        .set_flight_plan(&FlightPlan::new((Vec3::new(0.0, 2.0 * G, 0.0), 10_000).into(), None))
+        .expect("(test) plan");
+      ship.destroy_station(BridgeStation::Pilot);
+    }
+    entities.ships.get_mut("Dragon").unwrap().write().unwrap().update();
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert_eq!(ship.get_velocity(), Vec3::zero(), "no burn");
+    assert!(!ship.plan.empty(), "the plan waits");
+  }
+
+  /// A destroyed station stays out until an engineer repairs the bridge.
+  #[test]
+  fn bridge_repair_brings_a_destroyed_station_back() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      ship.bridge_hit_destroy(1, BridgeStation::Computer);
+      ship.bridge_hit_bandwidth(1, 0);
+      // Low, so a 12 on the check clears the crit level's penalty.
+      ship.crit_level[ShipSystem::Bridge as usize] = 1;
+      ship.tick_bridge_stations();
+      assert!(!ship.can_jump(), "destroyed does not tick away");
+    }
+
+    // Every die a 6, so the repair succeeds.
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::Repair {
+          system: ShipSystem::Bridge,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert!(ship.station_working(BridgeStation::Computer));
+    assert_eq!(ship.current_computer, 10, "at full Bandwidth");
+    assert!(ship.can_jump());
+    assert!(
+      format!("{effects:?}").contains("Restored: computer Bandwidth back to 10, computer station working again."),
+      "{effects:?}"
+    );
+    assert!(
+      format!("{effects:?}").contains("with roll 12 and DM -1 (damage -1) for a total of 11 against 8"),
+      "the check should be spelled out: {effects:?}"
+    );
+  }
+
+  /// Each Bridge repair takes off the damage done at the severity it leaves,
+  /// most recent first.
+  #[test]
+  fn bridge_repairs_undo_damage_newest_first() {
+    let entities = bridge_board();
+    let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+    ship.bridge_hit_bandwidth(3, 5);
+    ship.bridge_hit_destroy(4, BridgeStation::Pilot);
+    ship.bridge_hit_destroy(5, BridgeStation::Computer);
+    ship.bridge_hit_bandwidth(5, 0);
+
+    // 5 -> 4: the computer comes back, at what it had before the level 5 hit.
+    ship.undo_bridge_damage(4);
+    assert!(ship.station_working(BridgeStation::Computer));
+    assert_eq!(ship.current_computer, 5);
+    assert!(!ship.station_working(BridgeStation::Pilot), "the level 4 damage is still there");
+
+    // 4 -> 3: the pilot.
+    ship.undo_bridge_damage(3);
+    assert!(ship.station_working(BridgeStation::Pilot));
+    assert_eq!(ship.current_computer, 5, "Bandwidth still halved");
+
+    // 3 -> 2: the Bandwidth.
+    assert_eq!(ship.undo_bridge_damage(2), vec!["computer Bandwidth back to 10".to_string()]);
+    assert!(ship.bridge_damage.is_empty());
+  }
+
+  /// Undoing a destroyed station leaves it destroyed if an earlier hit had
+  /// already destroyed it.
+  #[test]
+  fn undoing_a_second_destroy_keeps_the_first() {
+    let entities = bridge_board();
+    let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+    ship.bridge_hit_destroy(4, BridgeStation::Pilot);
+    ship.bridge_hit_destroy(6, BridgeStation::Pilot);
+
+    ship.undo_bridge_damage(5);
+    assert!(!ship.station_working(BridgeStation::Pilot));
+    ship.undo_bridge_damage(3);
+    assert!(ship.station_working(BridgeStation::Pilot));
+  }
+
+  /// Weapons, sensors and the bridge are repaired with Mechanic, not
+  /// Engineering.
+  #[test]
+  fn mechanic_repairs_sensors() {
+    let mut entities = bridge_board();
+    let mut crew = Crew::new();
+    crew.set_skill(Skills::Mechanic, 3);
+    crew.set_skill(Skills::EngineeringManeuver, 1);
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      ship.set_crew(crew);
+      ship.crit_level[ShipSystem::Sensors as usize] = 1;
+    }
+
+    let mut rng = StepRng::new(0, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::Repair {
+          system: ShipSystem::Sensors,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(
+      format!("{effects:?}").contains("with roll 2 and DM +2 (mechanic +3, damage -1)"),
+      "{effects:?}"
+    );
+  }
+
+  /// No astrogation, no jump -- and the engineer is told why.
+  #[test]
+  fn jump_needs_astrogation() {
+    let mut entities = bridge_board();
+    entities
+      .ships
+      .get("Dragon")
+      .unwrap()
+      .write()
+      .unwrap()
+      .disable_station(BridgeStation::Astrogation);
+
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.engineer_actions(
+      &[("Dragon".to_string(), vec![ShipAction::Jump])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    assert!(entities.ships.contains_key("Dragon"), "Dragon should still be here");
+    assert!(format!("{effects:?}").contains("astrogation station is out"), "{effects:?}");
+  }
+
+  /// Sensor and fire actions are refused with a message when their station is
+  /// out, and nothing else happens.
+  #[test]
+  fn sensor_and_fire_actions_need_their_stations() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      ship.disable_station(BridgeStation::Sensors);
+      ship.destroy_station(BridgeStation::FireControl);
+    }
+    let mut rng = StepRng::new(5, 0);
+
+    let effects = entities.sensor_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::SensorLock {
+          target: "Quarry".to_string(),
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(format!("{effects:?}").contains("sensors station is out"), "{effects:?}");
+    assert!(entities.ships.get("Dragon").unwrap().read().unwrap().sensor_locks.is_empty());
+
+    let snapshot = entities.ship_deep_copy();
+    let effects = entities.fire_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::FireAction {
+          weapon_id: 0,
+          target: "Quarry".to_string(),
+          called_shot_system: None,
+          firing_kind: None,
+        }],
+      )],
+      &[],
+      &snapshot,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert_eq!(effects.len(), 1, "only the refusal: {effects:?}");
+    assert!(format!("{effects:?}").contains("fire control station is out"), "{effects:?}");
+  }
+
+  /// A critically failed overload damages the drive the same way a hit does.
+  /// It used to raise the drive's crit level and nothing else, so the log said
+  /// "Drive damaged" while thrust stayed where it was.
+  #[test]
+  fn critically_failed_overload_damages_the_drive() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Dragon".to_string(),
+      hull: 120,
+      maneuver: 4,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Every die a 1: a check of 2, a critical failure against 10.
+    let mut rng = StepRng::new(0, 0);
+    let effects = entities.engineer_actions(
+      &[("Dragon".to_string(), vec![ShipAction::OverloadDrive])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], 1);
+    assert_eq!(ship.current_maneuver, 3, "a level 1 drive crit costs a point of thrust");
+    assert!(
+      effects.iter().any(|effect| matches!(
+        effect,
+        EffectMsg::Message { category: MessageCategory::Critical, content, .. } if content.contains("maneuver critical hit")
+      )),
+      "the crit should be reported like any other: {effects:?}"
     );
   }
 

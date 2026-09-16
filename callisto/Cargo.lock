@@ -504,6 +504,7 @@ dependencies = [
  "pretty_env_logger",
  "quit",
  "rand 0.8.5",
+ "rand_xoshiro",
  "reqwest 0.12.12",
  "rustls",
  "sentry",

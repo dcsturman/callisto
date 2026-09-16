@@ -9,6 +9,7 @@ pub enum Skills {
   Gunnery,
   Sensors,
   Leadership,
+  Mechanic,
 }
 
 // Helper used by serde `skip_serializing_if` so that zero-valued integer
@@ -41,6 +42,10 @@ pub struct Crew {
   screen_gunnery: Vec<u8>,
   #[serde(default, skip_serializing_if = "is_zero")]
   leadership: u8,
+  /// Repairs everything that is not a drive or the power plant: weapons,
+  /// sensors and the bridge.
+  #[serde(default, skip_serializing_if = "is_zero")]
+  mechanic: u8,
 }
 
 // Function just to provide a default value for gunnery deserialization
@@ -60,6 +65,7 @@ impl Crew {
       gunnery: vec![],
       screen_gunnery: vec![],
       leadership: 0,
+      mechanic: 0,
     }
   }
 
@@ -81,6 +87,7 @@ impl Crew {
       Skills::EngineeringManeuver => self.engineering_maneuver,
       Skills::Sensors => self.sensors,
       Skills::Leadership => self.leadership,
+      Skills::Mechanic => self.mechanic,
       Skills::Gunnery => panic!("(Crew.getSkill) Multiple gunners possible."),
     }
   }
@@ -113,6 +120,11 @@ impl Crew {
   #[must_use]
   pub fn get_leadership(&self) -> u8 {
     self.leadership
+  }
+
+  #[must_use]
+  pub fn get_mechanic(&self) -> u8 {
+    self.mechanic
   }
 
   #[must_use]
@@ -154,6 +166,7 @@ impl Crew {
       Skills::EngineeringManeuver => self.engineering_maneuver = value,
       Skills::Sensors => self.sensors = value,
       Skills::Leadership => self.leadership = value,
+      Skills::Mechanic => self.mechanic = value,
       Skills::Gunnery => panic!("Cannot use set_skill for gunnery. Use add_gunnery instead."),
     }
   }
@@ -251,6 +264,7 @@ mod tests {
     crew.set_skill(Skills::EngineeringManeuver, 4);
     crew.set_skill(Skills::Sensors, 5);
     crew.set_skill(Skills::Leadership, 6);
+    crew.set_skill(Skills::Mechanic, 7);
 
     assert_eq!(crew.pilot, 3);
     assert_eq!(crew.engineering_jump, 2);
@@ -258,6 +272,7 @@ mod tests {
     assert_eq!(crew.engineering_maneuver, 4);
     assert_eq!(crew.sensors, 5);
     assert_eq!(crew.leadership, 6);
+    assert_eq!(crew.get_mechanic(), 7);
   }
 
   #[test_log::test]

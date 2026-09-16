@@ -758,6 +758,11 @@ function handleFlightPath(json: object) {
   store.dispatch(setProposedPlan(path));
 }
 
+// Ids for incoming events, so an explosion is keyed by the event it shows
+// rather than its place in a list that shrinks as animations finish. Seeded
+// from the clock so ids never repeat ones persisted before a reload.
+let nextEventId = Date.now();
+
 function handleEffect(json: object[]) {
   console.groupCollapsed("Received Effects: ");
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
@@ -799,7 +804,7 @@ function handleEffect(json: object[]) {
       } as Event;
     }
     return event as Event;
-  });
+  }).map((event) => ({ ...event, id: nextEventId++ }));
 
   store.dispatch(setEvents(events));
   store.dispatch(setShowResults(true));
@@ -816,7 +821,9 @@ function formatEngineerResult(result: EngineerActionResult): string {
     : result.success
       ? "SUCCESS"
       : "FAILURE";
-  return `[Engineer ${outcome}] ${result.message} (Check ${result.check} vs ${result.target})`;
+  // The server's message carries the roll, each modifier and the total
+  // against the target, so it is not repeated here.
+  return `[Engineer ${outcome}] ${result.message}`;
 }
 
 interface LeadershipActionEffect {
@@ -846,7 +853,12 @@ function formatLeadershipResult(lead: LeadershipActionEffect): string {
   }
   const skill = lead.leadership ?? 0;
   const total = lead.roll + skill;
-  const points = `${lead.points} point${lead.points === 1 ? "" : "s"}`;
+  // Nothing to spend on a roll that missed, so say it failed rather than
+  // reporting a negative number of points.
+  const points =
+    lead.points > 0
+      ? `${lead.points} point${lead.points === 1 ? "" : "s"}`
+      : "failed";
   return (
     `[Captain] ${lead.ship_name} leadership check with roll ${lead.roll} and skill ` +
     `${skill >= 0 ? "+" : ""}${skill} for a total of ${total} against 8: ${points}; ${summary}.`
