@@ -2,7 +2,7 @@ import * as React from "react";
 import {useState, useEffect, useMemo} from "react";
 import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
-import {ViewMode} from "lib/view";
+import {ViewMode, hasRole} from "lib/view";
 
 import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
 import {Team, TEAMS, teamLabelColor} from "lib/teams";
@@ -29,7 +29,7 @@ type ShipComputerProps = {
 
 export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
   const entities = useAppSelector(entitiesSelector);
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const shipName = useAppSelector((state) => state.user.shipName);
   const proposedPlan = useAppSelector((state) => state.ui.proposedPlan);
 
@@ -314,7 +314,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
             every role sees it. It carries its own colour, so it needs no label
             to say what it is. */}
         <div className="computer-title-row">
-          {role === ViewMode.General && <h1>{title}</h1>}
+          {hasRole(roles, ViewMode.General) && <h1>{title}</h1>}
           <select
             className="team-select"
             value={ship.team ?? ""}
@@ -335,20 +335,20 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
             their assigned ship if any; if General has no ship (GM-style),
             panel renders on whichever ship's popup they're viewing so they
             can roll leadership for it. */}
-        {((role === ViewMode.Captain && ship.name === shipName) ||
-          (role === ViewMode.General && (shipName == null || ship.name === shipName))) && (
+        {((hasRole(roles, ViewMode.Captain) && ship.name === shipName) ||
+          (hasRole(roles, ViewMode.General) && (shipName == null || ship.name === shipName))) && (
           <CaptainTasks ship={ship} />
         )}
-        {[ViewMode.General, ViewMode.Pilot].includes(role) && pilotActions()}
-        {[ViewMode.General, ViewMode.Sensors].includes(role) && (
+        {hasRole(roles, ViewMode.Pilot) && pilotActions()}
+        {hasRole(roles, ViewMode.Sensors) && (
           <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
         )}
-        {[ViewMode.General, ViewMode.Engineer].includes(role) && (
+        {hasRole(roles, ViewMode.Engineer) && (
           <EngineerTasks ship={ship} />
         )}
       </div>
       <hr />
-      {[ViewMode.General, ViewMode.Pilot].includes(role) && (
+      {hasRole(roles, ViewMode.Pilot) && (
         <>
           {accelerationManager()}
           <hr />

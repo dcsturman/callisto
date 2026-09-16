@@ -590,14 +590,14 @@ impl Processor {
         }
       }
 
-      let (role, ship) = connection.player.get_role();
+      let (role, ship) = connection.player.get_roles();
 
       let mut msgs = self.build_successful_auth_msgs(
         &connection.player,
         AuthResponse {
           email: email.clone(),
           scenario: connection.player.server.as_ref().map(|s| s.id.clone()),
-          role: Some(role),
+          roles: Some(role),
           ship,
         },
       );
@@ -718,7 +718,7 @@ impl Processor {
                 server.get_id(),
                 &session_key,
                 &player.get_email().unwrap(),
-                role.role,
+                role.roles.clone(),
                 role.ship,
               );
               vec![ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
@@ -778,7 +778,7 @@ impl Processor {
           scenario = server_id,
           action = "exit"
         );
-        player.set_role_ship(crate::payloads::Role::General, None);
+        player.set_role_ship(vec![crate::payloads::Role::General], None);
 
         vec![ResponseMsg::Users(self.members.get_user_context(server_id))]
       }
@@ -816,11 +816,11 @@ impl Processor {
               player.logout(&self.session_keys);
               return vec![ResponseMsg::PleaseLogin];
             }
-            let (role, ship) = player.get_role();
+            let (role, ship) = player.get_roles();
             vec![ResponseMsg::AuthResponse(AuthResponse {
               email: email_clone,
               scenario: player.server.as_ref().map(|s| s.id.clone()),
-              role: Some(role),
+              roles: Some(role),
               ship,
             })]
           } else {
@@ -855,8 +855,8 @@ impl Processor {
             server.get_id(),
             &session_key,
             &player.get_email().unwrap(),
-            player.get_role().0,
-            player.get_role().1,
+            player.get_roles().0,
+            player.get_roles().1,
           );
           let mut msgs = vec![ResponseMsg::JoinedScenario(join_scenario.scenario_name)];
           msgs.append(&mut self.build_post_join_msgs(player));
@@ -902,8 +902,8 @@ impl Processor {
           server.get_id(),
           &session_key,
           &player.get_email().unwrap(),
-          player.get_role().0,
-          player.get_role().1,
+          player.get_roles().0,
+          player.get_roles().1,
         );
         event!(
           target: LOG_SCENARIO_ACTIVITY,

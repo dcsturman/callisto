@@ -34,7 +34,7 @@ import {
   DEFAULT_SENSOR_STATE,
   boostTargetEquals,
 } from "components/controls/Actions";
-import { ViewMode } from "lib/view";
+import { ViewMode, hasRole } from "lib/view";
 import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
 import { setCrewActions } from "lib/serverManager";
 
@@ -703,7 +703,7 @@ export function Actions(args: {
 }) {
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const userShipName = useAppSelector((state) => state.user.shipName);
   // Boost checkboxes render for Captains and Generals (per spec: "There should
   // be a check box for the captain (and general of course) view to the far
@@ -712,8 +712,7 @@ export function Actions(args: {
   // in that case fall back to the currently-viewed ship so the General can
   // roll leadership on whichever ship's popup they're inspecting.
   const captainShipName = userShipName ?? computerShipName;
-  const showBoostCheckbox =
-    role === ViewMode.Captain || role === ViewMode.General;
+  const showBoostCheckbox = hasRole(roles, ViewMode.Captain);
   const boostDispatchEnabled = showBoostCheckbox && captainShipName != null;
   const captainBoosts = useAppSelector((state) => {
     if (!captainShipName) return [] as BoostTarget[];

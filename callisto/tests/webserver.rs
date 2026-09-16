@@ -2076,7 +2076,7 @@ async fn integration_users_message_uses_display_name() {
   let _ = rpc(
     &mut stream,
     RequestMsg::SetRole(callisto::payloads::ChangeRole {
-      role: callisto::payloads::Role::General,
+      roles: vec![callisto::payloads::Role::General],
       ship: None,
     }),
   )

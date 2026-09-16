@@ -12,7 +12,7 @@ import { EntityList } from "./EntityList";
 import { POSITION_SCALE, SCALE } from "lib/universal";
 import { Ship, Entity, Planet, findShip, availablePower } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
-import { ViewMode } from "lib/view";
+import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
 import { nextRound } from "lib/serverManager";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
@@ -224,7 +224,7 @@ function ScenarioBuilderControls(args: {
 
 export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
-  const role = useAppSelector((state) => state.user.role);
+  const roles = useAppSelector((state) => state.user.roles);
   const isScenarioBuilder = useAppSelector(
     (state) => state.tutorial.appMode === AppMode.ScenarioBuilder,
   );
@@ -264,7 +264,7 @@ export function Controls() {
       {/* Referee only. General mode with a ship assigned is a player flying
           that ship with every station open, not the GM; that is the case that
           was leaking Add Ship. Same condition App.tsx uses for the reset. */}
-      {role === ViewMode.General && shipName == null && Object.keys(shipTemplates).length > 0 && (
+      {isReferee(roles, shipName) && Object.keys(shipTemplates).length > 0 && (
         <>
           <AddShip />
           <hr />
@@ -443,18 +443,17 @@ export function Controls() {
               ].join(",  ")}
             </p>
             <hr />
-            {[ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer].includes(
-              role,
-            ) &&
+            {hasRole(roles, ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer) &&
+              !hasRole(roles, ViewMode.General) &&
               computerShipName && (
                 <Accordion
-                  title={`${computerShipName} ${ViewMode[role]} Controls`}
+                  title={`${computerShipName} ${rolesToString(roles)} Controls`}
                   initialOpen={true}
                 >
                   <ShipComputer ship={computerShip} />
                 </Accordion>
               )}
-            {[ViewMode.Gunner, ViewMode.General].includes(role) && (
+            {hasRole(roles, ViewMode.Gunner) && (
               <div className="control-form">
                 <Accordion
                   title={`${computerShipName} Fire Controls`}
@@ -469,7 +468,7 @@ export function Controls() {
         {/* Captain rolls leadership from the left pane (their main UI).
             General sees the same panel via the ShipComputer popup, so we
             don't render it here twice. */}
-        {role === ViewMode.Captain && shipName && (() => {
+        {hasRole(roles, ViewMode.Captain) && !hasRole(roles, ViewMode.General) && shipName && (() => {
           const captainShip = findShip(entities, shipName);
           if (!captainShip) return null;
           return <CaptainTasks ship={captainShip} />;
@@ -487,21 +486,13 @@ export function Controls() {
           // order to mark boost checkboxes against them, so Captain is added
           // to all three of these visibility flags.
           const seeFire =
-            role === ViewMode.General ||
-            role === ViewMode.Gunner ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Gunner, ViewMode.Captain);
           const seeSensor =
-            role === ViewMode.General ||
-            role === ViewMode.Sensors ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Sensors, ViewMode.Captain);
           const seeEngineer =
-            role === ViewMode.General ||
-            role === ViewMode.Engineer ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Engineer, ViewMode.Captain);
           const seePilot =
-            role === ViewMode.General ||
-            role === ViewMode.Pilot ||
-            role === ViewMode.Captain;
+            hasRole(roles, ViewMode.Pilot, ViewMode.Captain);
           const fireActions = seeFire ? a?.fire || [] : [];
           const pdActions = seeFire ? a?.pointDefense || [] : [];
           const sensorAction = seeSensor
@@ -547,7 +538,7 @@ export function Controls() {
           );
         })()}
       </Accordion>
-      {[ViewMode.General, ViewMode.Captain].includes(role) && (
+      {hasRole(roles, ViewMode.Captain) && (
         <button
           className="control-input control-button blue-button button-next-round"
           // Reset the computer and route on the next round.  If this gets any more complex move it into its
