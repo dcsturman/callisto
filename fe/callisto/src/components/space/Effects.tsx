@@ -21,7 +21,8 @@ const MESSAGE_EVENT = "Message";
 const MISSILE_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
 const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [1.0, 1.0, 1.0];
 const SHIP_DESTROYED_COLOR: [number, number, number] = [0.0, 0.0, 1.0];
-const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
+// Orange, so a beam hit reads apart from a missile hit (red).
+const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0.55, 0];
 
 export interface Event {
   kind: string,
