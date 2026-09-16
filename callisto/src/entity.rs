@@ -16,7 +16,7 @@ use crate::action::{
 };
 use crate::combat::{
   attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band, interception_cost,
-  roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, STANDARD_ROLL_THRESHOLD,
+  roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, HitMods, STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
 use crate::missile::Missile;
@@ -981,7 +981,10 @@ impl Entities {
                   return None;
                 };
                 let effects = attack(
-                  smart_missile_bonus,
+                  HitMods {
+                    smart: smart_missile_bonus,
+                    ..HitMods::default()
+                  },
                   0,
                   missile_source,
                   &mut target,

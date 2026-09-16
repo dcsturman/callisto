@@ -57,11 +57,59 @@ pub fn task_chain_impact(effect: i32) -> i32 {
   }
 }
 
+/// The attacker's side of the to-hit DM, kept as separate terms.
+///
+/// These used to arrive summed into one number that the log could only call
+/// "gunner", so a skill-3 gunner showing +6 looked like a bug. It was the
+/// pilot's assist and two captain's inspires stacked on top -- all real, none
+/// of them visible.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HitMods {
+  /// The gunner's own skill on this mount.
+  pub gunner: i32,
+  /// The pilot's Assist Gunner task chain, from their own roll this round.
+  pub assist: i32,
+  /// The captain's inspire on that assist: +1 on the first shot only.
+  pub captain_assist: i32,
+  /// The captain's inspire on this weapon's fire action.
+  pub captain_fire: i32,
+  /// A smart missile's guidance bonus: its TL over the target's, clamped.
+  /// A launched object resolves as the gun that threw it, so this is the
+  /// attacker-side term for a missile, where there is no gunner at impact.
+  pub smart: i32,
+}
+
+impl HitMods {
+  /// Just a gunner, nobody helping. What most tests want.
+  #[must_use]
+  pub const fn gunner(gunner: i32) -> Self {
+    HitMods {
+      gunner,
+      assist: 0,
+      captain_assist: 0,
+      captain_fire: 0,
+      smart: 0,
+    }
+  }
+
+  /// Named for the results log, in the order they are reasoned about.
+  #[must_use]
+  pub const fn terms(&self) -> [(&'static str, i32); 5] {
+    [
+      ("gunner", self.gunner),
+      ("assist", self.assist),
+      ("captain assist", self.captain_assist),
+      ("captain fire", self.captain_fire),
+      ("smart missile", self.smart),
+    ]
+  }
+}
+
 /// Do the attack of one ship's weapon system against a ship.  This includes resolving previously launched missiles that
 /// now impact the target.
 ///
 /// # Arguments
-/// * `hit_mod` - The hit modifier to use (positive or negative).
+/// * `hit` - The attacker's to-hit terms, reported separately in the log.
 /// * `damage_mod` - The damage modifier to use (positive or negative).
 /// * `attacker` - The ship that is attacking.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod`.
 /// * `defender` - The ship that is being attacked.  This is used to get any relevant DMs not included in `hit_mod` or `damage_mod` (e.g. armor) as
@@ -79,48 +127,6 @@ pub fn task_chain_impact(effect: i32) -> i32 {
 // mods, attacker, defender, weapon, called-shot, boost map, and rng.
 // Splitting them into a struct would not improve clarity here.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
-/// The attacker's side of the to-hit DM, kept as separate terms.
-///
-/// These used to arrive summed into one number that the log could only call
-/// "gunner", so a skill-3 gunner showing +6 looked like a bug. It was the
-/// pilot's assist and two captain's inspires stacked on top -- all real, none
-/// of them visible.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct HitMods {
-  /// The gunner's own skill on this mount.
-  pub gunner: i32,
-  /// The pilot's Assist Gunner task chain, from their own roll this round.
-  pub assist: i32,
-  /// The captain's inspire on that assist: +1 on the first shot only.
-  pub captain_assist: i32,
-  /// The captain's inspire on this weapon's fire action.
-  pub captain_fire: i32,
-}
-
-impl HitMods {
-  /// Just a gunner, nobody helping. What most tests want.
-  #[must_use]
-  pub const fn gunner(gunner: i32) -> Self {
-    HitMods {
-      gunner,
-      assist: 0,
-      captain_assist: 0,
-      captain_fire: 0,
-    }
-  }
-
-  /// Named for the results log, in the order they are reasoned about.
-  #[must_use]
-  pub const fn terms(&self) -> [(&'static str, i32); 4] {
-    [
-      ("gunner", self.gunner),
-      ("assist", self.assist),
-      ("captain assist", self.captain_assist),
-      ("captain fire", self.captain_fire),
-    ]
-  }
-}
-
 pub fn attack(
   hit: HitMods, damage_mod: i32, attacker: &Ship, defender: &mut Ship, firing: &Firing<'_>,
   called_shot_system: Option<&ShipSystem>, boost_map: &BoostMap, rng: &mut dyn RngCore,
@@ -254,12 +260,13 @@ pub fn attack(
   // never reached the results log at all. Same treatment the detection DM
   // gets, and for the same reason. Zero terms are dropped so an ordinary
   // shot stays short.
-  let [gunner, assist, captain_assist, captain_fire] = hit.terms();
-  let terms: [(&str, i32); 11] = [
+  let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
+  let terms: [(&str, i32); 12] = [
     gunner,
     assist,
     captain_assist,
     captain_fire,
+    smart,
     ("weapon", profile.hit_mod),
     ("range", range_mod),
     ("called shot", called_mod),
@@ -1411,6 +1418,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             assist: assist_bonus,
             captain_assist,
             captain_fire: leadership_boost,
+            smart: 0,
           };
 
           effects.append(&mut attack(
@@ -1451,6 +1459,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             assist: assist_bonus,
             captain_assist,
             captain_fire: leadership_boost,
+            smart: 0,
           };
 
           attack(
@@ -2849,6 +2858,7 @@ mod tests {
         assist: 2,
         captain_assist: 0,
         captain_fire: 1,
+        smart: 0,
       },
       0,
       &attacker,
@@ -2865,11 +2875,10 @@ mod tests {
         _ => None,
       })
       .unwrap();
-    for fragment in ["gunner +3", "assist +2", "captain fire +1"] {
-      assert!(text.contains(fragment), "{text:?} should contain {fragment:?}");
-    }
+    // In order, with the zero captain-assist term dropped between them. The
+    // weapon's own +4 follows; the total is the arithmetic test's business.
+    assert!(text.contains("(gunner +3, assist +2, captain fire +1, weapon +4"), "{text:?}");
     assert!(!text.contains("captain assist"), "a zero term is dropped: {text}");
-    assert!(text.contains("+6="), "and they still sum to the DM: {text}");
   }
 
   /// An evasion is finally visible in the results, and the captain's inspire
