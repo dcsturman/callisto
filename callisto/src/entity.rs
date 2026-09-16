@@ -5169,6 +5169,10 @@ mod tests {
       format!("{effects:?}").contains("computer station is working again"),
       "{effects:?}"
     );
+    assert!(
+      format!("{effects:?}").contains("with roll 12 and DM -1 (damage -1) for a total of 11 against 8"),
+      "the check should be spelled out: {effects:?}"
+    );
   }
 
   /// No astrogation, no jump -- and the engineer is told why.
