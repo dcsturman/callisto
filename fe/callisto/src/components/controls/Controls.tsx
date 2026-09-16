@@ -455,7 +455,8 @@ export function Controls() {
                 `Eng-P - ${computerShip.crew.engineering_power}`,
                 `Eng-M - ${computerShip.crew.engineering_maneuver}`,
                 `Sensors - ${computerShip.crew.sensors}`,
-                `Leadership - ${computerShip.crew.leadership}`,
+                `Leadership - ${computerShip.crew.leadership ?? 0}`,
+                `Mechanic - ${computerShip.crew.mechanic ?? 0}`,
                 `Gunners - ${shipWeapons(computerShip, shipTemplates)
                   .map((_w, i) => computerShip.crew.gunnery[i] ?? 0)
                   .join(", ") || "none"}`,

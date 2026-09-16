@@ -2584,11 +2584,14 @@ impl Entities {
     let ship = self.ships.get(ship_name).unwrap();
     let mut ship_write = ship.write().unwrap();
 
-    // Get the appropriate skill based on system
-    let skill = match system {
-      ShipSystem::Jump => ship_write.get_crew().get_engineering_jump(),
-      ShipSystem::Powerplant => ship_write.get_crew().get_engineering_power(),
-      _ => ship_write.get_crew().get_engineering_maneuver(),
+    // Engineering for the drives and the power plant; Mechanic for the rest of
+    // the ship's equipment.
+    let crew = ship_write.get_crew();
+    let (skill, skill_name) = match system {
+      ShipSystem::Jump => (crew.get_engineering_jump(), "engineering (j-drive)"),
+      ShipSystem::Powerplant => (crew.get_engineering_power(), "engineering (power)"),
+      ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (crew.get_mechanic(), "mechanic"),
+      _ => (crew.get_engineering_maneuver(), "engineering (m-drive)"),
     };
 
     // Get current crit level for the system
@@ -2603,11 +2606,6 @@ impl Entities {
     };
 
     let target: u8 = 8;
-    let skill_name = match system {
-      ShipSystem::Jump => "engineering (j-drive)",
-      ShipSystem::Powerplant => "engineering (power)",
-      _ => "engineering (m-drive)",
-    };
     let (total, check) = engineer_check(
       roll_dice(2, rng),
       &[
@@ -5220,6 +5218,37 @@ mod tests {
     assert!(!ship.station_working(BridgeStation::Pilot));
     ship.undo_bridge_damage(3);
     assert!(ship.station_working(BridgeStation::Pilot));
+  }
+
+  /// Weapons, sensors and the bridge are repaired with Mechanic, not
+  /// Engineering.
+  #[test]
+  fn mechanic_repairs_sensors() {
+    let mut entities = bridge_board();
+    let mut crew = Crew::new();
+    crew.set_skill(Skills::Mechanic, 3);
+    crew.set_skill(Skills::EngineeringManeuver, 1);
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      ship.set_crew(crew);
+      ship.crit_level[ShipSystem::Sensors as usize] = 1;
+    }
+
+    let mut rng = StepRng::new(0, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::Repair {
+          system: ShipSystem::Sensors,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(
+      format!("{effects:?}").contains("with roll 2 and DM +2 (mechanic +3, damage -1)"),
+      "{effects:?}"
+    );
   }
 
   /// No astrogation, no jump -- and the engineer is told why.
