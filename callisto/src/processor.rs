@@ -1126,10 +1126,18 @@ impl Processor {
 
 // Utility functions to help build messages etc.
 
+/// Whether everyone in the scenario should see this, rather than only the
+/// player whose request produced it.
+///
+/// Effects are the round's results and the explosions and beams that go with
+/// them: they describe what happened to the whole board, so sending them only
+/// to whoever pressed Next Round left every other player with an empty log and
+/// a silent screen.
 fn is_broadcast_message(message: &ResponseMsg) -> bool {
-  matches!(message, ResponseMsg::EntityResponse(_))
-    || matches!(message, ResponseMsg::Users(_))
-    || matches!(message, ResponseMsg::Scenarios(_))
+  matches!(
+    message,
+    ResponseMsg::EntityResponse(_) | ResponseMsg::Users(_) | ResponseMsg::Scenarios(_) | ResponseMsg::Effects(_)
+  )
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -1217,7 +1225,7 @@ async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &Respon
 
 #[cfg(test)]
 mod idle_tests {
-  use super::{all_connections_idle, IDLE_TIMEOUT};
+  use super::{all_connections_idle, is_broadcast_message, ResponseMsg, IDLE_TIMEOUT};
   use std::time::{Duration, Instant};
 
   #[test]
@@ -1248,6 +1256,14 @@ mod idle_tests {
       .checked_sub(IDLE_TIMEOUT.checked_sub(Duration::from_secs(1)).unwrap())
       .unwrap();
     assert!(!all_connections_idle(&[recent], now, IDLE_TIMEOUT));
+  }
+
+  /// The round's results and its explosions belong to everyone at the table,
+  /// not only whoever pressed Next Round.
+  #[test]
+  fn effects_go_to_the_whole_scenario() {
+    assert!(is_broadcast_message(&ResponseMsg::Effects(vec![])));
+    assert!(!is_broadcast_message(&ResponseMsg::SimpleMsg("done".to_string())));
   }
 
   #[test]

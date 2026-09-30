@@ -1,9 +1,9 @@
 import * as React from "react";
 import {useCallback, useMemo} from "react";
+import * as THREE from "three";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "lib/Util";
 import { SCALE } from "lib/universal";
-import { GrowLine } from "lib/Util";
 import { findShip } from "lib/entities";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
@@ -23,6 +23,16 @@ const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [1.0, 1.0, 1.0];
 const SHIP_DESTROYED_COLOR: [number, number, number] = [0.0, 0.0, 1.0];
 // Orange, so a beam hit reads apart from a missile hit (red).
 const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0.55, 0];
+
+// A laser is instantaneous in fiction, but one that clears the screen in a few
+// frames is one nobody sees -- particularly a referee watching the whole board.
+// It holds at full strength, then fades.
+const BEAM_HOLD_MS = 1800;
+const BEAM_FADE_MS = 700;
+// The beam's radius as a fraction of its own length, so it stays visible
+// whether the shot crosses a screen or a pixel. A WebGL line is one pixel wide
+// whatever `linewidth` says, which is why this is a solid body rather than one.
+const BEAM_RADIUS_FRACTION = 0.004;
 
 export interface Event {
   /** Set on receipt; unique across rounds. */
@@ -84,28 +94,50 @@ export function Beam(args: {
   color: [number, number, number];
   cleanupFn: () => void;
 }) {
+  // A cylinder from the firing ship to where the shot landed: built along Y,
+  // then turned to point down the line of fire.
+  const { center, quaternion, length } = useMemo(() => {
+    const from = new THREE.Vector3(...scaleVector(args.origin, SCALE));
+    const to = new THREE.Vector3(...scaleVector(args.end, SCALE));
+    const along = new THREE.Vector3().subVectors(to, from);
+    return {
+      center: new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5),
+      quaternion: new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        along.clone().normalize()
+      ),
+      length: along.length(),
+    };
+  }, [args.origin, args.end]);
 
-  const AnimatedLine = animated(GrowLine);
-
-  const { scale } = useSpring({
-    from: { scale: 0.0 },
-    to: [ { scale: 1.0 }],
+  const { opacity } = useSpring({
+    from: { opacity: 1.0 },
+    to: { opacity: 0.0 },
+    delay: BEAM_HOLD_MS,
+    config: { duration: BEAM_FADE_MS },
     onResolve: (result) => {
       if (result.finished) {
         args.cleanupFn();
       }
     },
-    config: {
-      mass: 10,
-      tension: 180,
-      friction: 40,
-    },
   });
 
+  const radius = length * BEAM_RADIUS_FRACTION;
+
   return (
-    <AnimatedLine start={scaleVector(args.origin, SCALE)} end={scaleVector(args.end, SCALE)} scale={scale} color={args.color} />
-  )
+    <animated.mesh position={center} quaternion={quaternion}>
+      <cylinderGeometry args={[radius, radius, length, 8, 1, true]} />
+      <animated.meshBasicMaterial
+        color={args.color}
+        transparent={true}
+        opacity={opacity}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+    </animated.mesh>
+  );
 }
+
 export function Explosions() {
   const entities = useAppSelector(entitiesSelector);
   const events = useAppSelector(state => state.ui.events);
@@ -179,21 +211,20 @@ export function Explosions() {
                 dispatch(removeEvent(event.id));
               }
             };
-            // The line alone is too thin to see at most zooms, so the hit also
-            // gets an explosion on the target. The explosion runs longer, so it
-            // is the one that clears the event; the line just goes with it.
+            // The beam and an explosion where it lands. The beam is on screen
+            // the longest, so it is the one that clears the event.
             return (
               <React.Fragment key={key}>
                 <Beam
                   origin={(event.origin?? [0, 0, 0])}
                   end={(event.position?? [0, 0, 0])}
                   color={color}
-                  cleanupFn={() => {}}
+                  cleanupFn={removeMe}
                 />
                 <Explosion
                   center={event.position ?? [0, 0, 0]}
                   color={color}
-                  cleanupFn={removeMe}
+                  cleanupFn={() => {}}
                 />
               </React.Fragment>
             );
