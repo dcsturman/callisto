@@ -2681,14 +2681,11 @@ impl Entities {
       }
       ship_write.set_repair_bonus(0);
       ship_write.set_last_repair_component(Some(system));
-      // A bridge repair takes the most recent bridge damage back off, down to
-      // the severity it now stands at.
-      let restored = if system == ShipSystem::Bridge {
-        let level = ship_write.crit_level[system as usize];
-        ship_write.undo_bridge_damage(level)
-      } else {
-        vec![]
-      };
+      // Give back what the severity just repaired had taken: thrust, power,
+      // jump, sensors, a weapon mount, a bridge station. Lowering the number
+      // alone left a ship with its drive repaired and no thrust.
+      let level = ship_write.crit_level[system as usize];
+      let restored = ship_write.undo_damage(system, level);
       let station = if restored.is_empty() {
         String::new()
       } else {
@@ -5299,6 +5296,79 @@ mod tests {
     );
   }
 
+  /// A repaired drive flies again. The report was a raider with its thrust at
+  /// 0(4) whose engineer repaired the crit and stayed dead in the water: the
+  /// repair lowered the severity and gave nothing back.
+  #[test]
+  fn repairing_a_drive_gives_the_thrust_back() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Threshing Oar".to_string(),
+      hull: 200,
+      maneuver: 4,
+      power: 200,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Thrasher".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Two hits on the drive and one on the plant, as the shooting went.
+    let mut rng = StepRng::new(5, 0);
+    {
+      let mut ship = entities.ships.get("Thrasher").unwrap().write().unwrap();
+      crate::combat::apply_crit(1, ShipSystem::Maneuver, &mut ship, &mut rng);
+      crate::combat::apply_crit(2, ShipSystem::Maneuver, &mut ship, &mut rng);
+      crate::combat::apply_crit(1, ShipSystem::Powerplant, &mut ship, &mut rng);
+      assert_eq!(ship.current_maneuver, 2, "two hits, two points of thrust");
+      assert_eq!(ship.current_power, 180, "and a tenth of the plant");
+      // A crew who can actually fix it.
+      let mut crew = Crew::new();
+      crew.set_skill(Skills::EngineeringManeuver, 3);
+      crew.set_skill(Skills::EngineeringPower, 3);
+      ship.set_crew(crew);
+    }
+
+    let repair = |entities: &mut Entities, system: ShipSystem| {
+      // Every die a 6, so the check succeeds.
+      let mut rng = StepRng::new(5, 0);
+      entities.engineer_actions(
+        &[("Thrasher".to_string(), vec![ShipAction::Repair { system }])],
+        &BoostMap::default(),
+        &mut rng,
+      )
+    };
+
+    let effects = repair(&mut entities, ShipSystem::Maneuver);
+    {
+      let ship = entities.ships.get("Thrasher").unwrap().read().unwrap();
+      assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], 1);
+      assert_eq!(ship.current_maneuver, 3, "the second hit's point comes back");
+    }
+    assert!(format!("{effects:?}").contains("thrust back to 3"), "{effects:?}");
+
+    // The ship has to be told to try again; one repair is one severity.
+    entities
+      .ships
+      .get("Thrasher")
+      .unwrap()
+      .write()
+      .unwrap()
+      .reset_temporary_bonuses();
+    repair(&mut entities, ShipSystem::Maneuver);
+    entities
+      .ships
+      .get("Thrasher")
+      .unwrap()
+      .write()
+      .unwrap()
+      .reset_temporary_bonuses();
+    repair(&mut entities, ShipSystem::Powerplant);
+
+    let ship = entities.ships.get("Thrasher").unwrap().read().unwrap();
+    assert_eq!(ship.current_maneuver, 4, "fully repaired, fully flying");
+    assert_eq!(ship.current_power, 200, "and the plant back to its rating");
+    assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], 0);
+  }
+
   /// Each Bridge repair takes off the damage done at the severity it leaves,
   /// most recent first.
   #[test]
@@ -5311,19 +5381,22 @@ mod tests {
     ship.bridge_hit_bandwidth(5, 0);
 
     // 5 -> 4: the computer comes back, at what it had before the level 5 hit.
-    ship.undo_bridge_damage(4);
+    ship.undo_damage(ShipSystem::Bridge, 4);
     assert!(ship.station_working(BridgeStation::Computer));
     assert_eq!(ship.current_computer, 5);
     assert!(!ship.station_working(BridgeStation::Pilot), "the level 4 damage is still there");
 
     // 4 -> 3: the pilot.
-    ship.undo_bridge_damage(3);
+    ship.undo_damage(ShipSystem::Bridge, 3);
     assert!(ship.station_working(BridgeStation::Pilot));
     assert_eq!(ship.current_computer, 5, "Bandwidth still halved");
 
     // 3 -> 2: the Bandwidth.
-    assert_eq!(ship.undo_bridge_damage(2), vec!["computer Bandwidth back to 10".to_string()]);
-    assert!(ship.bridge_damage.is_empty());
+    assert_eq!(
+      ship.undo_damage(ShipSystem::Bridge, 2),
+      vec!["computer Bandwidth back to 10".to_string()]
+    );
+    assert!(ship.damage_log.is_empty());
   }
 
   /// Undoing a destroyed station leaves it destroyed if an earlier hit had
@@ -5335,9 +5408,9 @@ mod tests {
     ship.bridge_hit_destroy(4, BridgeStation::Pilot);
     ship.bridge_hit_destroy(6, BridgeStation::Pilot);
 
-    ship.undo_bridge_damage(5);
+    ship.undo_damage(ShipSystem::Bridge, 5);
     assert!(!ship.station_working(BridgeStation::Pilot));
-    ship.undo_bridge_damage(3);
+    ship.undo_damage(ShipSystem::Bridge, 3);
     assert!(ship.station_working(BridgeStation::Pilot));
   }
 

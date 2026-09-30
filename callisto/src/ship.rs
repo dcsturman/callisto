@@ -371,11 +371,19 @@ pub struct Ship {
   /// the wire while every station works.
   #[serde(default, skip_serializing_if = "all_stations_working")]
   pub bridge_stations: [StationStatus; BridgeStation::COUNT],
-  /// Bridge damage in the order it was done, each with the severity that did
-  /// it. A Bridge repair undoes it from the end. Injuries to the crew are not
-  /// on here: repairing the bridge does not heal anyone.
-  #[serde(default, skip_serializing_if = "Vec::is_empty")]
-  pub bridge_damage: Vec<(u8, BridgeDamage)>,
+  /// What each critical hit took away, in the order it happened, with the
+  /// system and the severity that did it. Repairing a system undoes its own
+  /// damage from the end.
+  ///
+  /// Hull, armour, fuel, cargo and crew are not on here. None of them is
+  /// repaired in flight: a hole is a hole, spent fuel is spent, and a repair
+  /// does not heal anyone.
+  ///
+  /// Server-side bookkeeping: the client is told each system's severity and
+  /// what the ship can currently do, which is all it can show. Kept off the
+  /// wire and out of saved scenarios for that reason.
+  #[serde(skip)]
+  pub damage_log: Vec<(ShipSystem, u8, SystemDamage)>,
   #[serde(skip)]
   pub attack_dm: i32,
   #[serde(skip)]
@@ -1323,14 +1331,31 @@ pub enum StationStatus {
   Destroyed,
 }
 
-/// One undoable piece of bridge damage, recorded against the severity that
-/// did it so a repair can take the most recent back off first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-pub enum BridgeDamage {
-  /// A station knocked out for a round or two.
+/// One undoable piece of damage, recorded against the severity that did it so
+/// a repair can take the most recent back off first.
+///
+/// A crit's effect is not a function of its severity alone -- a power plant
+/// loses a tenth of its rating each time, a sensor suite drops a grade -- so
+/// what was lost has to be written down when it is taken, or a repair has
+/// nothing to give back.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum SystemDamage {
+  /// Thrust lost.
+  Thrust(u8),
+  /// Power lost.
+  Power(u32),
+  /// Jump rating lost.
+  Jump(u8),
+  /// The sensor grade held before the hit knocked it down one.
+  SensorGrade(Sensors),
+  /// Points taken off the ship's attack DM.
+  AttackDm(i32),
+  /// Weapon mounts switched off, by index.
+  WeaponsOff(Vec<usize>),
+  /// A bridge station knocked out for a round or two.
   Disabled(BridgeStation),
-  /// A station destroyed, and what it was before, so undoing it cannot bring
-  /// back a station an earlier hit had already destroyed.
+  /// A bridge station destroyed, and what it was before, so undoing it cannot
+  /// bring back a station an earlier hit had already destroyed.
   Destroyed { station: BridgeStation, was: StationStatus },
   /// Computer Bandwidth lost.
   Bandwidth(u32),
@@ -1373,7 +1398,7 @@ impl Ship {
       team: None,
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
-      bridge_damage: vec![],
+      damage_log: vec![],
       attack_dm: 0,
       crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
       dodge_thrust: 0,
@@ -1417,7 +1442,7 @@ impl Ship {
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
-    self.bridge_damage.clear();
+    self.damage_log.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
     self.dodge_spent = 0;
@@ -1437,7 +1462,7 @@ impl Ship {
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
-    self.bridge_damage.clear();
+    self.damage_log.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
   }
@@ -1622,34 +1647,82 @@ impl Ship {
     }
   }
 
+  /// Note what a hit at `level` took from `system`, so a repair can give it
+  /// back.
+  pub fn record_damage(&mut self, system: ShipSystem, level: u8, damage: SystemDamage) {
+    self.damage_log.push((system, level, damage));
+  }
+
   /// A bridge hit at `level` disables `station`, recorded for repair.
   pub fn bridge_hit_disable(&mut self, level: u8, station: BridgeStation) {
-    self.bridge_damage.push((level, BridgeDamage::Disabled(station)));
+    self.record_damage(ShipSystem::Bridge, level, SystemDamage::Disabled(station));
     self.disable_station(station);
   }
 
   /// A bridge hit at `level` destroys `station`, recorded for repair.
   pub fn bridge_hit_destroy(&mut self, level: u8, station: BridgeStation) {
     let was = self.station_status(station);
-    self.bridge_damage.push((level, BridgeDamage::Destroyed { station, was }));
+    self.record_damage(ShipSystem::Bridge, level, SystemDamage::Destroyed { station, was });
     self.destroy_station(station);
   }
 
   /// A bridge hit at `level` cuts Bandwidth to `bandwidth`, recorded for repair.
   pub fn bridge_hit_bandwidth(&mut self, level: u8, bandwidth: u32) {
     let lost = self.current_computer.saturating_sub(bandwidth);
-    self.bridge_damage.push((level, BridgeDamage::Bandwidth(lost)));
+    self.record_damage(ShipSystem::Bridge, level, SystemDamage::Bandwidth(lost));
     self.current_computer = bandwidth;
   }
 
-  /// Undo bridge damage done above severity `level`, most recent first, for a
-  /// repair that has just brought the bridge down to it. Returns what came
-  /// back, to tell the engineer.
-  pub fn undo_bridge_damage(&mut self, level: u8) -> Vec<String> {
+  /// Undo the damage a system took above severity `level`, most recent first,
+  /// for a repair that has just brought it down to that level. Returns what
+  /// came back, to tell the engineer.
+  ///
+  /// Nothing is capped above the design: a repair restores what a hit took,
+  /// and cannot build a better ship than the yard did.
+  pub fn undo_damage(&mut self, system: ShipSystem, level: u8) -> Vec<String> {
+    // Newest first, and only this system's: another system's damage may have
+    // landed in between, and is not this engineer's to undo.
+    let mut undoing = Vec::new();
+    let mut index = self.damage_log.len();
+    while index > 0 {
+      index -= 1;
+      if self.damage_log[index].0 == system && self.damage_log[index].1 > level {
+        undoing.push(self.damage_log.remove(index).2);
+      }
+    }
+
     let mut restored = Vec::new();
-    while let Some((_, damage)) = self.bridge_damage.pop_if(|(done_at, _)| *done_at > level) {
+    for damage in undoing {
       match damage {
-        BridgeDamage::Disabled(station) => {
+        SystemDamage::Thrust(lost) => {
+          self.current_maneuver = (self.current_maneuver + lost).min(self.design.maneuver);
+          restored.push(format!("thrust back to {}", self.current_maneuver));
+        }
+        SystemDamage::Power(lost) => {
+          self.current_power = (self.current_power + lost).min(self.design.power);
+          restored.push(format!("power back to {}", self.current_power));
+        }
+        SystemDamage::Jump(lost) => {
+          self.current_jump = (self.current_jump + lost).min(self.design.jump);
+          restored.push(format!("jump back to {}", self.current_jump));
+        }
+        SystemDamage::SensorGrade(was) => {
+          self.current_sensors = Sensors::max(self.current_sensors, was);
+          restored.push(format!("sensors back to {}", String::from(self.current_sensors)));
+        }
+        SystemDamage::AttackDm(lost) => {
+          self.attack_dm += lost;
+          restored.push("attack DM restored".to_string());
+        }
+        SystemDamage::WeaponsOff(indices) => {
+          for index in indices {
+            if let Some(active) = self.active_weapons.get_mut(index) {
+              *active = true;
+            }
+          }
+          restored.push("weapons back online".to_string());
+        }
+        SystemDamage::Disabled(station) => {
           if matches!(self.station_status(station), StationStatus::Disabled(_)) {
             self.bridge_stations[station as usize] = StationStatus::Working;
             restored.push(format!("{station} station back up"));
@@ -1657,13 +1730,13 @@ impl Ship {
         }
         // Back to working unless an earlier hit had already destroyed it. A
         // disable from before is not put back: it would have run out by now.
-        BridgeDamage::Destroyed { station, was } => {
+        SystemDamage::Destroyed { station, was } => {
           if was != StationStatus::Destroyed {
             self.bridge_stations[station as usize] = StationStatus::Working;
             restored.push(format!("{station} station working again"));
           }
         }
-        BridgeDamage::Bandwidth(lost) => {
+        SystemDamage::Bandwidth(lost) => {
           self.current_computer = (self.current_computer + lost).min(self.design.computer);
           restored.push(format!("computer Bandwidth back to {}", self.current_computer));
         }

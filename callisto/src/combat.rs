@@ -12,8 +12,8 @@ use crate::entity::{no_contact_effect, Entity};
 use crate::payloads::{EffectMsg, LaunchMissileMsg, MessageCategory};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{
-  BridgeStation, Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile,
-  WeaponType,
+  BridgeStation, Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, SystemDamage, Weapon, WeaponMount,
+  WeaponProfile, WeaponType,
 };
 use crate::{debug, error, info, warn};
 use tracing::event;
@@ -572,6 +572,17 @@ fn do_critical(
   effects
 }
 
+/// The mounts still switched on, so a hit that silences the ship can put them
+/// all back when it is repaired.
+fn live_weapons(ship: &Ship) -> Vec<usize> {
+  ship
+    .active_weapons
+    .iter()
+    .enumerate()
+    .filter_map(|(index, active)| active.then_some(index))
+    .collect()
+}
+
 /// Apply one critical hit at `location`, raising its severity by at least one.
 ///
 /// Also the path for self-inflicted damage, such as a critically failed
@@ -628,6 +639,7 @@ pub(crate) fn apply_crit(
       // I take some liberties with interpreting Sensors impact to make it a bit structured
       (ShipSystem::Sensors, 1) => {
         defender.attack_dm -= 1;
+        defender.record_damage(location, level, SystemDamage::AttackDm(1));
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -638,6 +650,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Sensors, 6) => {
+        defender.record_damage(location, level, SystemDamage::WeaponsOff(live_weapons(defender)));
         defender.active_weapons = vec![false; defender.active_weapons.len()];
         vec![EffectMsg::about(
           &crit_ship,
@@ -650,6 +663,7 @@ pub(crate) fn apply_crit(
       }
       (ShipSystem::Sensors, _) => {
         if defender.current_sensors == Sensors::Basic {
+          defender.record_damage(location, level, SystemDamage::WeaponsOff(live_weapons(defender)));
           defender.active_weapons = vec![false; defender.active_weapons.len()];
           vec![EffectMsg::about(
             &crit_ship,
@@ -660,6 +674,7 @@ pub(crate) fn apply_crit(
             ),
           )]
         } else {
+          defender.record_damage(location, level, SystemDamage::SensorGrade(defender.current_sensors));
           defender.current_sensors = defender.current_sensors - 1;
           vec![EffectMsg::about(
             &crit_ship,
@@ -673,7 +688,9 @@ pub(crate) fn apply_crit(
         }
       }
       (ShipSystem::Powerplant, 3) => {
-        defender.current_power = u32::saturating_sub(defender.current_power, defender.design.power / 2);
+        let lost = defender.current_power.min(defender.design.power / 2);
+        defender.record_damage(location, level, SystemDamage::Power(lost));
+        defender.current_power -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -684,6 +701,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Powerplant, 4) => {
+        defender.record_damage(location, level, SystemDamage::Power(defender.current_power));
         defender.current_power = 0;
         vec![EffectMsg::about(
           &crit_ship,
@@ -692,7 +710,9 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Powerplant, level) if level < 3 => {
-        defender.current_power = u32::saturating_sub(defender.current_power, defender.design.power / 10);
+        let lost = defender.current_power.min(defender.design.power / 10);
+        defender.record_damage(location, level, SystemDamage::Power(lost));
+        defender.current_power -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -703,6 +723,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Powerplant, level) => {
+        defender.record_damage(location, level, SystemDamage::Power(defender.current_power));
         defender.current_power = 0;
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
@@ -755,6 +776,7 @@ pub(crate) fn apply_crit(
       }
       (ShipSystem::Weapon, 1) => {
         defender.attack_dm -= 1;
+        defender.record_damage(location, level, SystemDamage::AttackDm(1));
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -789,6 +811,7 @@ pub(crate) fn apply_crit(
 
           // Name the weapon before disabling it: `weapons()` borrows the ship.
           let disabled = String::from(&defender.weapons()[selected_index]);
+          defender.record_damage(location, level, SystemDamage::WeaponsOff(vec![selected_index]));
           defender.active_weapons[selected_index] = false;
           vec![EffectMsg::about(
             &crit_ship,
@@ -852,6 +875,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Maneuver, 5) => {
+        defender.record_damage(location, level, SystemDamage::Thrust(defender.current_maneuver));
         defender.current_maneuver = 0;
         vec![EffectMsg::about(
           &crit_ship,
@@ -860,6 +884,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Maneuver, 6) => {
+        defender.record_damage(location, level, SystemDamage::Thrust(defender.current_maneuver));
         defender.current_maneuver = 0;
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
@@ -870,7 +895,9 @@ pub(crate) fn apply_crit(
         effects
       }
       (ShipSystem::Maneuver, _) => {
-        defender.current_maneuver = u8::saturating_sub(defender.current_maneuver, 1);
+        let lost = defender.current_maneuver.min(1);
+        defender.record_damage(location, level, SystemDamage::Thrust(lost));
+        defender.current_maneuver -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -931,7 +958,9 @@ pub(crate) fn apply_crit(
         effects
       }
       (ShipSystem::Jump, 1) => {
-        defender.current_jump = u8::saturating_sub(defender.current_jump, 1);
+        let lost = defender.current_jump.min(1);
+        defender.record_damage(location, level, SystemDamage::Jump(lost));
+        defender.current_jump -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -939,6 +968,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Jump, level) => {
+        defender.record_damage(location, level, SystemDamage::Jump(defender.current_jump));
         defender.current_jump = 0;
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
