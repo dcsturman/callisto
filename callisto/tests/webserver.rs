@@ -1044,6 +1044,7 @@ async fn integration_update_missile() {
       target: "ship2".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
     }],
   )];
 
@@ -1608,6 +1609,7 @@ async fn integration_malformed_requests() {
         target: "nonexistent_target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }],
     )]),
   )
@@ -1674,6 +1676,7 @@ async fn integration_bad_requests() {
       target: "ship2".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
     }],
   )]);
   let _response = rpc(&mut stream, msg).await;
