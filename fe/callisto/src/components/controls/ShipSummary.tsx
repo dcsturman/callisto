@@ -4,7 +4,7 @@ import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
 import { isUndetected } from "lib/contacts";
 import { teamLabelColor } from "lib/teams";
-import { formatRange, rangeBetween } from "lib/range";
+import { bandName, formatBands, formatRange, rangeBetween } from "lib/range";
 
 /**
  * Compact at-a-glance roster of every ship in the current scenario. Lives
@@ -16,6 +16,18 @@ import { formatRange, rangeBetween } from "lib/range";
  * carries `current_hull`. Thrust magnitude is `||plan[0][0]||` where the
  * server already converted m/s² → G in `serverManager.handleEntities`.
  */
+/**
+ * A colour per band, warm as the range closes. Distant is grey: nothing can be
+ * held out there, so it reads as absent rather than as a band you are in.
+ */
+const BAND_COLORS: {[band: string]: string} = {
+  Short: "#ff6b6b",
+  Medium: "#ffa94d",
+  Long: "#ffd43b",
+  "Very Long": "#74c0fc",
+  Distant: "#909296",
+};
+
 export function ShipSummary() {
   const entities = useAppSelector(entitiesSelector);
   const templates = useAppSelector(templatesSelector);
@@ -88,7 +100,15 @@ export function ShipSummary() {
           <span className="ship-summary-hull">hull</span>
           <span className="ship-summary-thrust">thr</span>
           {showRangeColumn && (
-            <span className="ship-summary-range">range (km)</span>
+            <>
+              <span className="ship-summary-range">range (km)</span>
+              {/* The band is what the rules are written in: a gunner's DM and
+                  a weapon's reach are per band, and a pilot dialling a burn
+                  wants to know the band it ends in. Both columns move as the
+                  burn is dialled, since the projection uses the plan being
+                  chosen rather than the one committed. */}
+              <span className="ship-summary-band">end of round</span>
+            </>
           )}
         </li>
         {rows.map((row) => (
@@ -113,15 +133,28 @@ export function ShipSummary() {
               {row.undetected ? "?" : row.thrust.toFixed(1)}
             </span>
             {showRangeColumn && (
-              <span className="ship-summary-range">
-                {/* Undetected reads "?" exactly as hull and thrust do; the
-                    observer's own row has no range to itself. */}
-                {row.undetected
-                  ? "?"
-                  : row.range == null
-                    ? "—"
-                    : formatRange(row.range)}
-              </span>
+              <>
+                <span className="ship-summary-range">
+                  {/* Undetected reads "?" exactly as hull and thrust do; the
+                      observer's own row has no range to itself. */}
+                  {row.undetected
+                    ? "?"
+                    : row.range == null
+                      ? "—"
+                      : formatRange(row.range)}
+                </span>
+                <span
+                  className="ship-summary-band"
+                  // Coloured by the band the round ends in, which is the one
+                  // being steered for.
+                  style={
+                    row.undetected || row.range == null
+                      ? undefined
+                      : {color: BAND_COLORS[bandName(row.range.next)]}
+                  }>
+                  {row.undetected ? "?" : row.range == null ? "—" : formatBands(row.range)}
+                </span>
+              </>
             )}
           </li>
         ))}

@@ -515,7 +515,14 @@ input {
    track is added rather than always reserved -- the referee's view keeps the
    narrow three-column box. */
 .ship-summary-rows-with-range {
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto;
+}
+
+/* The band the round ends in. Sits right of the kilometres and reads as the
+   conclusion drawn from them, so it is not bolder than the name. */
+.ship-summary-band {
+    padding-left: 6px;
+    white-space: nowrap;
 }
 
 /* The cells belong to the list's grid. `display: contents` drops the row box
