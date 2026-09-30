@@ -188,7 +188,8 @@ pub fn attack(
   // the pilot and captain each want to see: the pilot's skill is why the shot
   // was harder, and the captain's inspire -- spent on this one attack -- is
   // why it was harder still.
-  let (evade_mod, captain_mod) = if defender.get_dodge_thrust() > 0 {
+  let evading = defender.get_dodge_thrust() > 0;
+  let (evade_mod, captain_mod) = if evading {
     debug!(
       "(Combat.attack) {} has dodge thrust {}, so defensive modifier is -{} (with evade boost {}).",
       defender.get_name(),
@@ -278,12 +279,18 @@ pub fn attack(
   ];
   let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
-  let breakdown = terms
+  let mut named: Vec<String> = terms
     .iter()
-    .filter(|(_, value)| *value != 0)
+    .filter(|(name, value)| *value != 0 || *name == "evade")
     .map(|(name, value)| format!("{name} {value:+}"))
-    .collect::<Vec<_>>()
-    .join(", ");
+    .collect();
+  // A ship that dodged says so even when its pilot's skill is 0 and the dodge
+  // bought nothing. Otherwise the line is identical to one where nobody
+  // evaded, and a pilot cannot tell the order was carried out.
+  if !evading {
+    named.retain(|term| !term.starts_with("evade "));
+  }
+  let breakdown = named.join(", ");
   let breakdown = if breakdown.is_empty() {
     String::new()
   } else {
@@ -3815,6 +3822,128 @@ mod tests {
         "{attacker_team:?} firing on {target_team:?} should be allowed"
       );
     }
+  }
+
+  /// A dodge by a pilot with no skill still shows in the log. It buys nothing,
+  /// which is the point: the line has to say the order was carried out.
+  #[test]
+  fn an_unskilled_dodge_is_still_reported() {
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Attacker".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      ..ShipDesignTemplate::default()
+    });
+    let defender_design = Arc::new(ShipDesignTemplate {
+      name: "Defender".to_string(),
+      hull: 200,
+      maneuver: 6,
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    let mut defender = Ship::new(
+      "Defender".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &defender_design,
+      None,
+      None,
+    );
+    // The crew the scenario gave them: a pilot of skill 0.
+    defender.set_pilot_actions(Some(1), None).expect("a 6G hull can spare 1G");
+
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
+    let mut rng = StdRng::seed_from_u64(11);
+    let effects = attack(
+      HitMods::gunner(0),
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    let line = effects
+      .iter()
+      .find_map(|e| match e {
+        EffectMsg::Message { content, .. } => Some(content.clone()),
+        _ => None,
+      })
+      .expect("an attack always reports something");
+    assert!(line.contains("evade +0"), "the dodge should be named: {line}");
+  }
+
+  /// A sandcaster sharing a turret with missile racks still deploys, and the
+  /// log says so. Executor's second turret is exactly this shape.
+  #[test]
+  fn sand_from_a_mixed_turret_is_reported() {
+    let defender_design = Arc::new(ShipDesignTemplate {
+      name: "HMS Executor".to_string(),
+      hull: 400,
+      weapons: vec![
+        Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
+        Weapon {
+          mount: WeaponMount::Turret,
+          guns: vec![
+            crate::ship::Gun::new(WeaponType::Missile),
+            crate::ship::Gun::new(WeaponType::Missile),
+            crate::ship::Gun::new(WeaponType::Sand),
+          ],
+        },
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Threshing Oar".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2)],
+      ..ShipDesignTemplate::default()
+    });
+
+    let mut attacker = Ship::new("Thrasher".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    attacker.contacts = vec!["Executor".to_string()];
+    let defender = Ship::new(
+      "Executor".to_string(),
+      Vec3::new(5000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &defender_design,
+      None,
+      None,
+    );
+
+    let mut snapshot = HashMap::new();
+    snapshot.insert("Executor".to_string(), defender.clone());
+    let mut sand_counts = create_sand_counts(&snapshot, &[]);
+    assert_eq!(
+      sand_counts.get("Executor").map(Vec::len),
+      Some(1),
+      "the mixed turret should offer one sandcaster: {sand_counts:?}"
+    );
+
+    let mut ships = HashMap::new();
+    ships.insert("Executor".to_string(), Arc::new(RwLock::new(defender)));
+    let actions = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Executor".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+    }];
+    let mut rng = StdRng::seed_from_u64(3);
+    let (_, effects) = do_fire_actions(
+      &attacker,
+      &mut ships,
+      &mut sand_counts,
+      &actions,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("sand"))),
+      "the sand attempt should be reported: {effects:?}"
+    );
   }
 
   /// A gunner may throw fewer missiles than the rack holds -- a warning shot,
