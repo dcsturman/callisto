@@ -741,10 +741,42 @@ impl Processor {
           Err(e) => entity_clone_failure_response(&e),
         }
       }
+      RequestMsg::SetReady(ready) => {
+        let Some((server_id, session_key)) = player.server_and_session() else {
+          error!("(handle_request) Attempt to set ready outside a scenario.  Ignoring.");
+          return error_msg("Cannot say you are ready before joining a scenario.".to_string());
+        };
+        if self.members.set_ready(&server_id, &session_key, ready) {
+          vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
+        } else {
+          error_msg("Cannot say you are ready: you are not in this scenario.".to_string())
+        }
+      }
       RequestMsg::Update => {
+        // The referee advances the round. Everyone else says Ready and waits:
+        // two players pressing it would end the round before the rest of the
+        // table had finished giving orders. A scenario with nobody refereeing
+        // -- one player, or a group who all took ships -- has no such problem,
+        // so anyone may advance it.
+        let (own_roles, own_ship) = player.get_roles();
+        let refereeing = own_ship.is_none() && own_roles.contains(&crate::payloads::Role::General);
+        let server_id = player.server.as_ref().map(|server| server.get_id().to_string());
+        if !refereeing && server_id.as_ref().is_some_and(|id| self.members.has_referee(id)) {
+          return error_msg("Only the GM can advance the round.".to_string());
+        }
+
         let effects = player.update();
+        if let Some(server_id) = &server_id {
+          self.members.clear_ready(server_id);
+        }
         match player.clone_entities() {
-          Ok(entities) => vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities)],
+          Ok(entities) => {
+            let mut msgs = vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities)];
+            if let Some(server_id) = &server_id {
+              msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
+            }
+            msgs
+          }
           Err(e) => entity_clone_failure_response(&e),
         }
       }

@@ -1023,6 +1023,14 @@ impl PlayerManager {
     self.authenticator.get_email()
   }
 
+  /// The scenario this player is in and the session key that identifies them
+  /// in it, when they have both.
+  #[must_use]
+  pub fn server_and_session(&self) -> Option<(String, String)> {
+    let server_id = self.server.as_ref()?.get_id().to_string();
+    Some((server_id, self.get_session_key()?))
+  }
+
   #[must_use]
   pub fn get_roles(&self) -> (Vec<Role>, Option<String>) {
     (self.roles.clone(), self.ship.clone())

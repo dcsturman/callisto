@@ -493,6 +493,14 @@ export function updateActions(actions: ActionType) {
   socket.send(JSON.stringify(payload));
 }
 
+// A player saying their orders are in. Their queued actions go up with it, so
+// the referee is looking at what the player actually meant when they advance
+// the round.
+export function setReady(ready: boolean) {
+  updateActions(store.getState().actions);
+  socket.send(JSON.stringify({ SetReady: ready }));
+}
+
 export function nextRound() {
   // Flush any locally-held boost state to the server before ending the round.
   // Boost toggles don't round-trip on every click anymore (see
@@ -886,6 +894,7 @@ function handleUsers(json: [UserContext]) {
     const raw = user as unknown as { roles?: unknown; role?: unknown };
     c.roles = parseRoles(raw.roles ?? raw.role);
     c.ship = user.ship;
+    c.ready = user.ready ?? false;
     users.push(c);
   }
   store.dispatch(setUsers(users));

@@ -836,6 +836,14 @@ input {
         color: rgb(0, 255, 0);
     }
 }
+/* Ready tick. Green like the list markers, and monospace so the tick and the
+   blank it stands in for take the same room. */
+.user-ready-mark {
+    display: inline-block;
+    width: 1em;
+    font-family: monospace;
+    color: rgb(0, 255, 0);
+}
 .logout-button {
     width: 100%;
 }

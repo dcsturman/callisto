@@ -402,6 +402,11 @@ pub enum Role {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserData {
   pub display_name: String,
+  /// Whether this player has said they are done for the round. Cleared for
+  /// everyone when the round advances. The referee has no use for it -- they
+  /// are the one waiting -- but it costs nothing to carry.
+  #[serde(default)]
+  pub ready: bool,
   /// Every station this player is working. One entry for a single role,
   /// several for a player covering more than one seat on a small crew, and
   /// `General` for all of them.
@@ -515,6 +520,8 @@ pub enum RequestMsg {
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
+  /// A player saying their orders for this round are in, or taking it back.
+  SetReady(bool),
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),

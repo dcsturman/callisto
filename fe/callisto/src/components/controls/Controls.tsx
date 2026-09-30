@@ -20,7 +20,7 @@ import {
 } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
-import { nextRound } from "lib/serverManager";
+import { nextRound, setReady } from "lib/serverManager";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
@@ -232,6 +232,16 @@ function ScenarioBuilderControls(args: {
 export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
   const roles = useAppSelector((state) => state.user.roles);
+  // My own entry in the user list, to show whether I have readied up. The
+  // server names players by the local part of their email, as it does for
+  // everyone else in the list.
+  const email = useAppSelector((state) => state.user.email);
+  const users = useAppSelector((state) => state.server.users);
+  const amReady = useMemo(() => {
+    const me = email ? email.split("@")[0] : null;
+    return users.some((user) => user.display_name === me && user.ready);
+  }, [users, email]);
+
   const isScenarioBuilder = useAppSelector(
     (state) => state.tutorial.appMode === AppMode.ScenarioBuilder,
   );
@@ -563,7 +573,10 @@ export function Controls() {
           );
         })()}
       </Accordion>
-      {hasRole(roles, ViewMode.Captain) && (
+      {/* The referee ends the round; everyone else says when their orders are
+          in. Two people pressing Next Round ends the round before the rest of
+          the table has finished giving theirs. */}
+      {isReferee(roles, shipName) ? (
         <button
           className="control-input control-button blue-button button-next-round"
           // Reset the computer and route on the next round.  If this gets any more complex move it into its
@@ -577,6 +590,18 @@ export function Controls() {
           }}
         >
           Next Round
+        </button>
+      ) : (
+        <button
+          className="control-input control-button blue-button button-next-round"
+          title={
+            amReady
+              ? "Take it back if you still have orders to give"
+              : "Tell the GM your orders are in"
+          }
+          onClick={() => setReady(!amReady)}
+        >
+          {amReady ? "Not Ready" : "Ready"}
         </button>
       )}
     </div>
