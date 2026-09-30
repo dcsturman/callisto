@@ -164,13 +164,14 @@ function Simulator() {
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
         {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
-        {(scenarioBuilderMode ||
-          hasRole(roles, ViewMode.General, ViewMode.Pilot, ViewMode.Observer)) && (
-          <div className="top-right-stack">
-            <ShipSummary />
-            <ViewControls />
-          </div>
-        )}
+        {/* The ship list and view options are for everyone at the table. They
+            were limited to General, Pilot and Observer, which left an engineer
+            or a gunner with no way to see the other ships or turn the range
+            rings on. */}
+        <div className="top-right-stack">
+          <ShipSummary />
+          <ViewControls />
+        </div>
         <div className="admin-button-window">
           <h2>
             {joinedScenario &&
