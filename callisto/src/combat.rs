@@ -1168,6 +1168,7 @@ pub fn do_fire_actions<S: BuildHasher>(
         target,
         called_shot_system,
         firing_kind,
+        salvo_size,
       } = action
       else {
         error!("(Combat.do_fire_actions) Expected FireAction but got {:?}.", action);
@@ -1226,6 +1227,12 @@ pub fn do_fire_actions<S: BuildHasher>(
         Some(kind) => weapon.firing(*kind),
         None => weapon.firing_default(),
       };
+      // A gunner may throw fewer than the mount holds -- a warning shot, or
+      // keeping some in the racks. Never more, whatever the client asks for.
+      let firing = firing.map(|firing| Firing {
+        salvo_limit: *salvo_size,
+        ..firing
+      });
       let Some(firing) = firing else {
         debug!(
           "(Combat.do_fire_actions) Weapon {} cannot fire {:?}; it holds {:?}.",
@@ -1304,12 +1311,15 @@ pub fn do_fire_actions<S: BuildHasher>(
         // Launched weapons don't attack when fired.  Each object comes back and
         // calls attack() on impact, carrying the weapon that threw it so a
         // torpedo resolves as a torpedo rather than as a missile.
-        let count = match salvo {
+        let full_salvo = match salvo {
           // One object per launcher gun, which in a mixed turret is the number
           // of racks in it rather than the size of the turret.
           Salvo::PerGun => u16::from(firing.count),
           Salvo::Fixed(n) => n,
         };
+        // Firing fewer is a choice; firing more is not on offer, and asking
+        // for none would be an order to do nothing, so one is the floor.
+        let count = firing.salvo_limit.map_or(full_salvo, |limit| limit.clamp(1, full_salvo));
         for _ in 0..count {
           new_missiles.push(LaunchMissileMsg {
             source: attacker.get_name().to_string(),
@@ -2592,36 +2602,42 @@ mod tests {
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }, // Beam Turret
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }, // Missile Turret
       ShipAction::FireAction {
         weapon_id: 2,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }, // Missile Barbette
       ShipAction::FireAction {
         weapon_id: 3,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }, // Missile Bay (Small)
       ShipAction::FireAction {
         weapon_id: 4,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }, // Missile Bay (Medium)
       ShipAction::FireAction {
         weapon_id: 5,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }, // Missile Bay (Large)
     ];
 
@@ -3719,6 +3735,7 @@ mod tests {
       target: "Target".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
     }];
 
     let (missiles, effects) = do_fire_actions(
@@ -3781,6 +3798,7 @@ mod tests {
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       }];
       let (_, effects) = do_fire_actions(
         &attacker,
@@ -3797,6 +3815,55 @@ mod tests {
         "{attacker_team:?} firing on {target_team:?} should be allowed"
       );
     }
+  }
+
+  /// A gunner may throw fewer missiles than the rack holds -- a warning shot,
+  /// or keeping some back -- but never more than it holds.
+  #[test]
+  fn a_gunner_can_fire_a_short_salvo() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "TestShip".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3)],
+      ..ShipDesignTemplate::default()
+    });
+
+    let launch = |salvo_size: Option<u16>| {
+      let mut rng = StdRng::seed_from_u64(7);
+      let mut attacker = Ship::new(
+        "Attacker".to_string(),
+        Vec3::new(-1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      attacker.contacts = vec!["Target".to_string()];
+      let target = Ship::new("Target".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+      let mut ships = HashMap::new();
+      ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+      let mut sand_counts = HashMap::new();
+      let actions = vec![ShipAction::FireAction {
+        weapon_id: 0,
+        target: "Target".to_string(),
+        called_shot_system: None,
+        firing_kind: None,
+        salvo_size,
+      }];
+      let (missiles, _) = do_fire_actions(
+        &attacker,
+        &mut ships,
+        &mut sand_counts,
+        &actions,
+        &BoostMap::default(),
+        &mut rng,
+      );
+      missiles.len()
+    };
+
+    assert_eq!(launch(None), 3, "the whole rack by default");
+    assert_eq!(launch(Some(1)), 1, "a warning shot");
+    assert_eq!(launch(Some(9)), 3, "and never more than the rack holds");
+    assert_eq!(launch(Some(0)), 1, "asking for none still fires one");
   }
 
   /// A ship cannot shoot what it has not detected. The order is accepted but
@@ -3831,6 +3898,7 @@ mod tests {
       target: "Target".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
     }];
 
     let (missiles, effects) = do_fire_actions(
@@ -3917,6 +3985,7 @@ mod tests {
       target: "Target".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
     }];
 
     let mut total_unboosted: u64 = 0;
@@ -4061,12 +4130,14 @@ mod tests {
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       },
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
       },
     ];
 

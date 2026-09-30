@@ -594,6 +594,9 @@ pub struct Firing<'a> {
   pub modifiers: &'a [WeaponModifier],
   /// Guns of this type in the mount, for the same-type damage bonus.
   pub count: u8,
+  /// A gunner's cap on the salvo, when they chose to throw fewer than the
+  /// mount holds. `None` is the whole salvo. Means nothing to direct fire.
+  pub salvo_limit: Option<u16>,
 }
 
 /// One weapon mount and everything bolted into it.
@@ -690,6 +693,7 @@ impl Weapon {
       mount: &self.mount,
       modifiers,
       count,
+      salvo_limit: None,
     })
   }
 

@@ -1651,6 +1651,19 @@ input {
     margin: 0;
 }
 
+/* Salvo size on a launch action: how many of the rack to throw. Sized to sit
+   on the action's own row rather than pushing the boost column along. */
+.salvo-select {
+    background-color: #1a1a1a;
+    color: inherit;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-family: "Sono", monospace;
+    font-size: 9pt;
+    padding: 0 2px;
+    margin-left: 4px;
+}
+
 /* A weapon button for a gun that shares its mount with something else. Without
    a mark, a pulse/sand turret and a plain pulse turret render identically --
    same icon, same count badge -- and a ship carrying both shows two buttons

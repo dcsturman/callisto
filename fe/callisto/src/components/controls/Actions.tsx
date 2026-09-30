@@ -50,6 +50,11 @@ export type FireAction = {
    * to make.
    */
   firing_kind?: string;
+  /**
+   * How many missiles or torpedoes to launch, when fewer than the mount holds.
+   * Omitted for a full salvo, and for anything that is not a launcher.
+   */
+  salvo_size?: number;
 };
 
 export type FireState = FireAction[];
@@ -264,6 +269,10 @@ function fireActionPayload(fireAction: FireAction) {
       weapon_id: fireAction.weapon_id,
       target: fireAction.target,
       called_shot_system: fireAction.called_shot_system,
+      // Which gun of a mixed turret is firing, and how much of the rack to
+      // throw. Both are omitted when there is no choice to record.
+      firing_kind: fireAction.firing_kind,
+      salvo_size: fireAction.salvo_size,
     },
   };
 }

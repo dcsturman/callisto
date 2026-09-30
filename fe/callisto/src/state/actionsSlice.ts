@@ -257,6 +257,24 @@ export const actionsSlice = createSlice({
         item.payload.system;
       updateActions(state);
     },
+    // How much of the rack to throw. The full salvo is the default and is
+    // stored as undefined, so an untouched action looks exactly as it did
+    // before short salvoes existed.
+    updateFireSalvo: (
+      state,
+      item: PayloadAction<{shipName: string; index: number; size: number | null}>
+    ) => {
+      const action = state[item.payload.shipName]?.fire[item.payload.index];
+      if (!action) {
+        return;
+      }
+      if (item.payload.size == null) {
+        delete action.salvo_size;
+      } else {
+        action.salvo_size = item.payload.size;
+      }
+      updateActions(state);
+    },
     resetServer: () => initialState,
   },
 });
@@ -271,6 +289,7 @@ export const {
   pointDefenseWeapon,
   unfireWeapon,
   updateFireCalledShot,
+  updateFireSalvo,
   resetServer,
 } = actionsSlice.actions;
 

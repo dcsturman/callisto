@@ -807,6 +807,7 @@ mod tests {
           target: "ship2".to_string(),
           called_shot_system: None,
           firing_kind: None,
+          salvo_size: None,
         }],
       ),
       (
@@ -816,6 +817,7 @@ mod tests {
           target: "ship1".to_string(),
           called_shot_system: None,
           firing_kind: None,
+          salvo_size: None,
         }],
       ),
     ];

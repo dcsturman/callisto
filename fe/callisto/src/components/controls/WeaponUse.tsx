@@ -18,6 +18,8 @@ import {
   isLaserKind,
   isLauncherKind,
   isPassiveWeapon,
+  fullSalvo,
+  salvoChoices,
   weaponKinds,
   createWeapon,
   weaponToString,
@@ -63,6 +65,7 @@ import {
   fireWeapon,
   unfireWeapon,
   updateFireCalledShot,
+  updateFireSalvo,
   setSensorAction,
   setEngineerAction,
   toggleBoost,
@@ -921,6 +924,39 @@ export function Actions(args: {
                 to {action.target}
               </p>
             </div>
+            {/* How much of the rack to throw. A full salvo is the default;
+                a gunner may want one away as a warning shot, or to keep the
+                rest for a second target. */}
+            {(() => {
+              const full = fullSalvo(args.weapons[action.weapon_id], kind);
+              if (full == null || full <= 1) {
+                return null;
+              }
+              const chosen = action.salvo_size ?? full;
+              return (
+                <select
+                  className="salvo-select"
+                  value={chosen}
+                  title={`How many to launch, of ${full}`}
+                  onChange={(event) => {
+                    const size = Number(event.target.value);
+                    dispatch(
+                      updateFireSalvo({
+                        shipName: computerShipName!,
+                        index: index,
+                        size: size === full ? null : size,
+                      }),
+                    );
+                  }}
+                >
+                  {salvoChoices(full).map((size) => (
+                    <option key={size} value={size}>
+                      {size === full ? `all ${size}` : size}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
             {renderBoostCheckbox(
               fireBoostTarget,
               "Launching makes no check, so there is nothing to boost",

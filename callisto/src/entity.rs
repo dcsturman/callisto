@@ -5308,6 +5308,7 @@ mod tests {
           target: "Quarry".to_string(),
           called_shot_system: None,
           firing_kind: None,
+          salvo_size: None,
         }],
       )],
       &[],

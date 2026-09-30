@@ -251,6 +251,13 @@ pub enum ShipAction {
     /// before mixed turrets existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     firing_kind: Option<WeaponType>,
+
+    /// How many missiles or torpedoes to launch, when fewer than the mount
+    /// throws by default -- a warning shot, or holding some back. `None` means
+    /// the full salvo, which is what every action written before this said.
+    /// Ignored by anything that is not a launcher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    salvo_size: Option<u16>,
   },
   PointDefenseAction {
     weapon_id: usize,
