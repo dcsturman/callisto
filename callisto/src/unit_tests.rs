@@ -1075,7 +1075,9 @@ async fn test_fight_with_crew() {
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,true,true,true],
    "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]},
-   "dodge_thrust":0,
+   // The pilot's order stands after the round it was given in: dodging three
+   // attacks spends the allowance, not the order.
+   "dodge_thrust":3,
    "assist_gunners":true,
    "can_jump":true,
    "sensor_locks": [],

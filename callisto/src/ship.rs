@@ -286,9 +286,20 @@ pub struct Ship {
   #[serde(default)]
   crew: Option<Crew>,
 
+  /// The thrust the pilot has set aside for dodging, as an order that stands
+  /// until they change it.
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   dodge_thrust: u8,
+
+  /// How much of that order has been used this round. Kept apart from the
+  /// order itself: spending it used to eat the order, so a pilot who dodged
+  /// two attacks stopped dodging -- that round and every round after -- until
+  /// they noticed and typed the number in again. Per-round scratch, so it is
+  /// neither saved nor sent.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  dodge_spent: u8,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -1366,6 +1377,7 @@ impl Ship {
       attack_dm: 0,
       crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
       dodge_thrust: 0,
+      dodge_spent: 0,
       assist_gunners: false,
       can_jump: false,
       temporary_maneuver: 0,
@@ -1408,6 +1420,7 @@ impl Ship {
     self.bridge_damage.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
+    self.dodge_spent = 0;
   }
 
   pub fn fixup_current_values(&mut self) {
@@ -1827,11 +1840,12 @@ impl Ship {
     }
   }
 
+  /// Spend one point of the pilot's dodge on an attack.
   pub fn decrement_dodge_thrust(&mut self) {
-    if self.dodge_thrust == 0 {
+    if self.get_dodge_thrust() == 0 {
       warn!("(Ship.decrement_dodge_thrust) Attempting to decrement a 0 dodge thrust; should never happen.");
     }
-    self.dodge_thrust = u8::saturating_sub(self.dodge_thrust, 1);
+    self.dodge_spent = self.dodge_spent.saturating_add(1);
   }
 
   /// Assisting the gunners takes a pilot at their station.
@@ -1841,14 +1855,16 @@ impl Ship {
   }
   pub fn reset_pilot_actions(&mut self) {
     self.dodge_thrust = 0;
+    self.dodge_spent = 0;
     self.assist_gunners = false;
   }
 
-  /// Thrust left for evasion. None without a pilot at their station.
+  /// Thrust left for evasion this round: what the pilot set aside, less what
+  /// has already been dodged. None without a pilot at their station.
   #[must_use]
   pub fn get_dodge_thrust(&self) -> u8 {
     if self.station_working(BridgeStation::Pilot) {
-      self.dodge_thrust
+      self.dodge_thrust.saturating_sub(self.dodge_spent)
     } else {
       0
     }
@@ -1964,6 +1980,11 @@ impl Ship {
 
   /// Resets temporary bonuses from engineer overload actions and action tracking.
   pub fn reset_temporary_bonuses(&mut self) {
+    // A new round brings the pilot's spare thrust back: "each point of unspent
+    // Thrust will allow the spacecraft to attempt to dodge one attack" (CRB
+    // p. 171), which is a fresh allowance every round. The order itself stands
+    // until the pilot changes it.
+    self.dodge_spent = 0;
     self.temporary_maneuver = 0;
     self.temporary_power_multiplier = 1.0;
     self.engineer_action_taken = false;
@@ -2839,6 +2860,29 @@ fn int_to_digit(code: u8) -> char {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// The pilot's Evade order stands between rounds; only the allowance is
+  /// spent. It used to be the same number, so a pilot who dodged two attacks
+  /// silently stopped dodging from then on.
+  #[test]
+  fn a_dodge_order_survives_the_round_it_is_spent_in() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Executor".to_string(),
+      maneuver: 6,
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.set_pilot_actions(Some(2), None).expect("a 6G hull can spare 2G");
+
+    ship.decrement_dodge_thrust();
+    assert_eq!(ship.get_dodge_thrust(), 1, "one attack dodged, one left");
+    ship.decrement_dodge_thrust();
+    assert_eq!(ship.get_dodge_thrust(), 0, "the round's allowance is spent");
+
+    ship.reset_temporary_bonuses();
+    assert_eq!(ship.get_dodge_thrust(), 2, "and it comes back next round");
+  }
   use crate::crew::Skills;
   use cgmath::assert_ulps_eq;
 
