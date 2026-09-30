@@ -916,7 +916,7 @@ pub(crate) fn apply_crit(
         ),
       )],
       (ShipSystem::Cargo, 2) => {
-        let percent_destroyed = format!("{}%", 10 * roll(rng));
+        let percent_destroyed = 10 * roll(rng);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -927,7 +927,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Cargo, 3) => {
-        let percent_destroyed = format!("{}%", roll_dice(2, rng).min(10) * 10);
+        let percent_destroyed = roll_dice(2, rng).min(10) * 10;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -3851,6 +3851,27 @@ mod tests {
           .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("same side"))),
         "{attacker_team:?} firing on {target_team:?} should be allowed"
       );
+    }
+  }
+
+  /// The cargo lines say "50% of cargo destroyed", not "50%%".
+  #[test]
+  fn cargo_crits_print_one_percent_sign() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Freighter".to_string(),
+      hull: 200,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Freighter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let mut rng = StdRng::seed_from_u64(5);
+
+    for level in 1..=6 {
+      let effects = apply_crit(level, ShipSystem::Cargo, &mut ship, &mut rng);
+      for effect in &effects {
+        if let EffectMsg::Message { content, .. } = effect {
+          assert!(!content.contains("%%"), "level {level}: {content}");
+        }
+      }
     }
   }
 
