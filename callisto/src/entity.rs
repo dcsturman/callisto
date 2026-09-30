@@ -204,6 +204,20 @@ fn sensor_check_effect(
 }
 
 /// An opposed sensor check, where there is no target number -- only the other
+/// A ship sharing its picture: its name, where it is, and what it holds.
+type HandoffHost = (String, Vec3, Vec<String>);
+
+/// "Alpha", "Alpha and Beta", "Alpha, Beta and Gamma" -- for a list in a
+/// sentence rather than a log dump.
+fn join_names<'a>(names: impl IntoIterator<Item = &'a String>) -> String {
+  let names: Vec<&str> = names.into_iter().map(String::as_str).collect();
+  match names.as_slice() {
+    [] => String::new(),
+    [one] => (*one).to_string(),
+    [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+  }
+}
+
 /// ship's roll. Both sides are shown, because "failed" against a 12 and against
 /// a 4 are very different pieces of information.
 fn opposed_check_effect(
@@ -1917,36 +1931,17 @@ impl Entities {
     }
   }
 
-  /// Share contacts along the team's hand-off links.
+  /// The ships sharing their picture this round, with what each of them holds,
+  /// and anything that has to be said about those that cannot share.
   ///
-  /// High Guard p. 77: ships in a squadron can pass their sensor picture to
-  /// each other over comms, so a sensop that succeeds covers those that failed.
-  /// It needs no check and no action — only a point of computer Bandwidth at
-  /// each end — so this runs automatically after the detection pass for any
-  /// ship whose crew has switched hand-off on.
-  ///
-  /// Three limits from the text:
-  ///
-  /// * the link costs one Bandwidth from **both** host and recipient, so a
-  ///   ship with none available can neither send nor receive;
-  /// * it breaks beyond Distant, which is why the range is checked per pair;
-  /// * "ships that receive hand-off sensory data cannot then hand-off that data
-  ///   to additional ships", so this is a single hop — sharing reads from the
-  ///   picture each host acquired itself, not from what it was given.
-  ///
-  /// A hand-off can convey a contact the recipient could never have acquired
-  /// alone, which is the whole point: a squadron can post one picket with
-  /// excellent sensors running fully active while everyone else stays quiet and
-  /// still shoots at what the picket sees.
+  /// Snapshotted before anything is shared, so a hand-off cannot be relayed
+  /// onward within the same pass.
   ///
   /// # Panics
-  /// Panics if the lock cannot be obtained to read or write a ship.
-  pub fn sensor_handoff_pass(&mut self) -> Vec<EffectMsg> {
+  /// Panics if the lock cannot be obtained to read a ship.
+  fn handoff_hosts(&self) -> (Vec<HandoffHost>, Vec<EffectMsg>) {
     let mut effects = Vec::new();
-
-    // Snapshot what each host acquired on its own, before anything is shared,
-    // so a hand-off cannot be relayed onward within the same pass.
-    let mut hosts: Vec<(String, Vec3, Vec<String>)> = Vec::new();
+    let mut hosts: Vec<HandoffHost> = Vec::new();
     for (name, ship) in &self.ships {
       let ship = ship.read().unwrap();
       // A jammed ship cannot send: jamming stops communication, and a
@@ -1983,6 +1978,35 @@ impl Entities {
       }
       hosts.push((name.clone(), ship.get_position(), ship.contacts.clone()));
     }
+    (hosts, effects)
+  }
+
+  /// Share contacts along the team's hand-off links.
+  ///
+  /// High Guard p. 77: ships in a squadron can pass their sensor picture to
+  /// each other over comms, so a sensop that succeeds covers those that failed.
+  /// It needs no check and no action — only a point of computer Bandwidth at
+  /// each end — so this runs automatically after the detection pass for any
+  /// ship whose crew has switched hand-off on.
+  ///
+  /// Three limits from the text:
+  ///
+  /// * the link costs one Bandwidth from **both** host and recipient, so a
+  ///   ship with none available can neither send nor receive;
+  /// * it breaks beyond Distant, which is why the range is checked per pair;
+  /// * "ships that receive hand-off sensory data cannot then hand-off that data
+  ///   to additional ships", so this is a single hop — sharing reads from the
+  ///   picture each host acquired itself, not from what it was given.
+  ///
+  /// A hand-off can convey a contact the recipient could never have acquired
+  /// alone, which is the whole point: a squadron can post one picket with
+  /// excellent sensors running fully active while everyone else stays quiet and
+  /// still shoots at what the picket sees.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write a ship.
+  pub fn sensor_handoff_pass(&mut self) -> Vec<EffectMsg> {
+    let (hosts, mut effects) = self.handoff_hosts();
     if hosts.is_empty() {
       return effects;
     }
@@ -1998,6 +2022,11 @@ impl Entities {
       // so, but only once something was actually held out to it.
       let no_bandwidth = recipient_guard.current_computer == 0;
       let mut missed_a_handoff = false;
+      // Hand-offs refused for range, so the crew is told why rather than
+      // watching a team-mate hold a contact they never receive. Gathered per
+      // recipient and said once, since a silent refusal repeats every round.
+      let mut distant_hosts = std::collections::BTreeSet::<String>::new();
+      let mut distant_contacts = std::collections::BTreeSet::<String>::new();
       let here = recipient_guard.get_position();
 
       for (host_name, host_pos, host_contacts) in &hosts {
@@ -2011,6 +2040,12 @@ impl Entities {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let distance = (*host_pos - here).magnitude() as u32;
         if find_range_band(distance) == Range::Distant {
+          if host_contacts
+            .iter()
+            .any(|contact| contact != recipient_name && !recipient_guard.contacts.contains(contact))
+          {
+            distant_hosts.insert(host_name.clone());
+          }
           continue;
         }
 
@@ -2031,6 +2066,7 @@ impl Entities {
           #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
           let to_contact = (contact_ship.read().unwrap().get_position() - here).magnitude() as u32;
           if find_range_band(to_contact) == Range::Distant {
+            distant_contacts.insert(contact.clone());
             continue;
           }
           if no_bandwidth {
@@ -2046,6 +2082,27 @@ impl Entities {
           recipient_name,
           MessageCategory::Handoff,
           format!("{recipient_name} cannot receive a sensor hand-off: no computer Bandwidth available."),
+        ));
+      }
+      if !distant_hosts.is_empty() {
+        effects.push(EffectMsg::about(
+          recipient_name,
+          MessageCategory::Handoff,
+          format!(
+            "{recipient_name} is beyond Distant from {} and cannot take a hand-off from {}.",
+            join_names(&distant_hosts),
+            if distant_hosts.len() == 1 { "it" } else { "them" }
+          ),
+        ));
+      }
+      if !distant_contacts.is_empty() {
+        effects.push(EffectMsg::about(
+          recipient_name,
+          MessageCategory::Handoff,
+          format!(
+            "{recipient_name} cannot be handed a contact on {}: beyond Distant, where nothing can be held.",
+            join_names(&distant_contacts)
+          ),
         ));
       }
     }
@@ -4418,6 +4475,70 @@ mod tests {
         .iter()
         .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("receives contact on Bogey"))),
       "the hand-off should be reported"
+    );
+  }
+
+  /// A hand-off refused for range says so. Silence left a crew watching a
+  /// team-mate hold a contact that never arrived, with nothing to explain it.
+  #[test]
+  fn a_range_blocked_handoff_says_why() {
+    // The contact sits beyond Distant from the recipient, though the picket
+    // holds it and the link between the two ships is fine.
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities
+      .ships
+      .get("Bogey")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(2.0e9, 0.0, 0.0));
+
+    let effects = entities.sensor_handoff_pass();
+    assert!(!holds_contact(&entities, "Mate", "Bogey"));
+    assert!(
+      effects.iter().any(
+        |e| matches!(e, EffectMsg::Message { content, .. } if content.contains("cannot be handed a contact on Bogey"))
+      ),
+      "the refusal should be reported: {effects:?}"
+    );
+
+    // And when it is the link itself that is too long.
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities
+      .ships
+      .get("Mate")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(2.0e9, 0.0, 0.0));
+
+    let effects = entities.sensor_handoff_pass();
+    assert!(!holds_contact(&entities, "Mate", "Bogey"));
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("beyond Distant from Picket"))),
+      "the broken link should be reported: {effects:?}"
+    );
+  }
+
+  /// A hand-off that could not happen this round happens the next one. The
+  /// report was that it only ever worked on the round the contact was made.
+  #[test]
+  fn handoff_retries_in_later_rounds() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+
+    // Round one: the recipient is jammed, so nothing reaches it.
+    entities.ships.get("Mate").unwrap().write().unwrap().comms_jammed = true;
+    entities.sensor_handoff_pass();
+    assert!(!holds_contact(&entities, "Mate", "Bogey"), "jammed, so nothing this round");
+
+    // Round two: the jamming has lapsed and the picket still holds the contact.
+    entities.clear_comms_jamming();
+    entities.sensor_handoff_pass();
+    assert!(
+      holds_contact(&entities, "Mate", "Bogey"),
+      "the contact should be handed off in a later round too"
     );
   }
 
