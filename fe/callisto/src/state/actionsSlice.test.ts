@@ -20,6 +20,18 @@ const boosted = (...targets: Parameters<typeof toggleBoost>[0]["target"][]) =>
 
 const boostsOf = (state: ReturnType<typeof reduce>) => state[SHIP]?.leadershipCheck?.boosts ?? [];
 
+describe("boosts reach the server", () => {
+  // They used to live in the captain's browser until the end of the round, so
+  // nobody else -- a player taking that seat, or the referee -- saw them.
+  test("toggling a boost queues the actions with the server", async () => {
+    const {updateActions} = await import("lib/serverManager");
+    vi.mocked(updateActions).mockClear();
+
+    reduce(undefined, toggleBoost({shipName: SHIP, target: {kind: "AssistGunner", ship: SHIP}}));
+    expect(updateActions).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("boosts follow the action they inspire", () => {
   test("deselecting Assist Gunner drops its boost, and asks the server to forget the check", () => {
     // The reported bug: the boost stayed pinned to an action that no longer existed.

@@ -107,8 +107,10 @@ export const actionsSlice = createSlice({
     ) => {
       const { parsed, captainShipName, captainLeadershipRolled } = item.payload;
 
-      // Snapshot the captain's local leadership boosts before reset, so a
-      // peer's ModifyActions / EntityResponse round-trip doesn't drop them.
+      // Snapshot the captain's leadership boosts before reset. They are sent
+      // to the server now, but a peer's EntityResponse can still arrive in the
+      // gap between a toggle and its own round-trip, and would otherwise drop
+      // them for that moment.
       const localCaptainLC =
         captainShipName && state[captainShipName]
           ? state[captainShipName].leadershipCheck
@@ -166,11 +168,13 @@ export const actionsSlice = createSlice({
     },
     // Idempotently add or remove a boost target. When the list goes empty,
     // set `clearLeadership` so the server strips its queued LeadershipCheck;
-    // otherwise the LeadershipCheck wire form rides along on the next
-    // ModifyActions. Boost state is held locally in Redux only — no
-    // updateActions round-trip per click. The list is flushed to the server
-    // on Update / CaptainAction (see serverManager.nextRound /
-    // serverManager.captainAction).
+    // otherwise the LeadershipCheck wire form rides along on the ModifyActions
+    // below.
+    //
+    // Each toggle goes to the server, as every other queued action does. Held
+    // locally it was invisible to everyone else: a player taking the captain's
+    // seat, or the referee looking at that ship, saw empty boxes while the
+    // captain saw their own ticks.
     toggleBoost: (state, item: PayloadAction<{ shipName: string; target: BoostTarget }>) => {
       state[item.payload.shipName] ??= newShipAction();
       const slot = state[item.payload.shipName];
@@ -180,6 +184,7 @@ export const actionsSlice = createSlice({
         idx === -1 ? [...boosts, item.payload.target] : boosts.filter((_, i) => i !== idx);
       slot.leadershipCheck = { boosts: nextBoosts };
       slot.clearLeadership = nextBoosts.length === 0;
+      updateActions(state);
     },
     fireWeapon: (
       state,
