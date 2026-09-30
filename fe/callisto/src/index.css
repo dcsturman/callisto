@@ -1639,9 +1639,7 @@ input {
     cursor: not-allowed;
 }
 
-/* Heading row of the Ship's Computer: the ship's name and, in place of the
-   word "Controls", the team selector. Baseline-aligned so the dropdown sits
-   with the name rather than floating above or below it. */
+/* Heading row of the Ship's Computer: the ship's name. */
 .computer-title-row {
     display: flex;
     align-items: baseline;

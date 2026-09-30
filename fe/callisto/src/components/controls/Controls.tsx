@@ -20,7 +20,8 @@ import {
 } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
-import { nextRound, setReady } from "lib/serverManager";
+import { nextRound, setReady, setShipTeam } from "lib/serverManager";
+import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
@@ -307,6 +308,31 @@ export function Controls() {
               <div className="stats-bloc-entry">
                 <h2>Design</h2>
                 <pre className="plan-accel-text">{computerShip.design}</pre>
+              </div>
+              {/* Which side the ship is on belongs to the ship, not to any one
+                  crew station, so it sits with the ship's other numbers where
+                  every role can see and set it. */}
+              <div className="stats-bloc-entry">
+                <h2>Team</h2>
+                <select
+                  className="team-select"
+                  value={computerShip.team ?? ""}
+                  style={{ color: teamLabelColor(computerShip.team, {}) }}
+                  title="Which side this ship is on. Teams are colour-coded in the view, always know where each other are, and will not fire on one another."
+                  onChange={(event) =>
+                    setShipTeam(
+                      computerShip.name,
+                      (event.target.value || null) as Team | null,
+                    )
+                  }
+                >
+                  <option value="">Unaligned</option>
+                  {TEAMS.map((team) => (
+                    <option key={team} value={team}>
+                      {team}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="stats-bloc-entry">
                 <h2>Hull</h2>

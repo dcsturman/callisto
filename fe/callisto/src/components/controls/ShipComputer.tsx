@@ -4,8 +4,7 @@ import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
 import {ViewMode, hasRole} from "lib/view";
 
-import {setPlan, setCrewActions, setShipEmissions, setShipTeam} from "lib/serverManager";
-import {Team, TEAMS, teamLabelColor} from "lib/teams";
+import {setPlan, setCrewActions, setShipEmissions} from "lib/serverManager";
 import {isUndetected, sameSide} from "lib/contacts";
 import {SensorState, SensorAction, newSensorState} from "components/controls/Actions";
 import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
@@ -309,27 +308,11 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
   return (
     <div id="computer-window" className="computer-window">
       <div id="crew-actions-window">
-        {/* Which side the ship is on belongs to the ship, not to any one crew
-            station, so it sits in the heading rather than under sensors, and
-            every role sees it. It carries its own colour, so it needs no label
-            to say what it is. */}
+        {/* The ship's team lives with its other numbers in the left pane,
+            where every station sees it, rather than in this panel, which only
+            some stations open. */}
         <div className="computer-title-row">
           {hasRole(roles, ViewMode.General) && <h1>{title}</h1>}
-          <select
-            className="team-select"
-            value={ship.team ?? ""}
-            style={{color: teamLabelColor(ship.team, {})}}
-            title="Which side this ship is on. Teams are colour-coded in the view, always know where each other are, and will not fire on one another."
-            onChange={(event) =>
-              setShipTeam(ship.name, (event.target.value || null) as Team | null)
-            }>
-            <option value="">Unaligned</option>
-            {TEAMS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
         </div>
         {/* Captain only sees the panel on their own ship. General sees it on
             their assigned ship if any; if General has no ship (GM-style),
