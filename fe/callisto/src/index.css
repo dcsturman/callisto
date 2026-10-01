@@ -32,9 +32,9 @@ body {
        lg  a panel heading
        xl  the application's own title */
     --font-xs: 8.5pt;
-    --font-sm: 9.5pt;
-    --font-md: 11pt;
-    --font-lg: 13pt;
+    --font-sm: 9pt;
+    --font-md: 10.5pt;
+    --font-lg: 12pt;
     --font-xl: 18pt;
 }
 
@@ -87,6 +87,10 @@ input {
 }
 
 .controls-pane {
+    /* Border and padding are part of the 100vh, not added to it: without
+       this the pane overflowed by its own border and drew a scrollbar down
+       an otherwise empty column. */
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
@@ -94,7 +98,8 @@ input {
     padding-right: 4px;
     flex-grow: 0;
     flex-shrink: 0;
-    flex-basis: 250px;
+    /* Wide enough for the three-column stat rows inside it. */
+    flex-basis: 300px;
     border: 1px solid #b6bcae;
     background-color: black;
     color-scheme: dark;
@@ -607,6 +612,10 @@ select.control-input,
     display: flex;
     flex-direction: row;
     justify-content: space-between;
+    /* A narrow pane wraps the row instead of hiding the last column: the
+       pane clips horizontal overflow, so "Hull" simply vanished. */
+    flex-wrap: wrap;
+    gap: 0 8px;
 }
 .target-entry-form {
     display: flex;
@@ -2398,6 +2407,11 @@ select.control-input,
    --------------------------------------------------------------------------- */
 
 .stations {
+    /* Positioned, like every other panel: the star field is an absolutely
+       positioned canvas, so an unpositioned panel paints underneath it and
+       the cards simply were not there. */
+    position: relative;
+    z-index: 10;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(330px, 380px));
     align-content: start;
@@ -2471,6 +2485,12 @@ select.control-input,
     margin-top: 6px;
     border-top: 1px solid #22303d;
     padding-top: 4px;
+}
+
+/* No stations to show -- an observer, or no ship selected -- is no panel at
+   all, rather than an empty column with a scrollbar. */
+.stations:empty {
+    display: none;
 }
 
 .stations-note {
