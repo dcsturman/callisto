@@ -78,6 +78,17 @@ describe("Error inbound handling", () => {
     },
   );
 
+  // A ship that jumped out or was destroyed takes its console with it. A
+  // request already in flight comes back as an error, which is a race rather
+  // than anything the player did.
+  it("does not alert when the error is about a ship that has left the scenario", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    await fireMessage({
+      Error: "Cannot compute flightpath for unknown ship named 'Dragon'",
+    });
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
   it("ignores non-pinned Error strings (no banner state change)", async () => {
     const { store } = await import("state/store");
     const initialBanner = store.getState().server.authBanner;
@@ -248,5 +259,14 @@ describe("sensor hand-off", () => {
         SetShipEmissions: { ship_name: "Picket", handoff_sensors: false },
       }),
     ]);
+  });
+});
+
+describe("computeFlightPath", () => {
+  it("sends nothing for a ship that is no longer in the scenario", async () => {
+    const sm = await import("lib/serverManager");
+    const before = mockSocket.sent.length;
+    sm.computeFlightPath("Dragon", [0, 0, 0], [0, 0, 0]);
+    expect(mockSocket.sent.length).toBe(before);
   });
 });

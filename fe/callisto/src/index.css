@@ -2436,6 +2436,34 @@ h3.control-form {
     color: #ffb84d;
 }
 
+/* A console whose ship has left the scenario. */
+.ship-gone {
+    position: relative;
+    z-index: 10;
+    box-sizing: border-box;
+    width: 310px;
+    margin: 4px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 107, 107, 0.45);
+    border-radius: 4px;
+    background: rgba(24, 10, 12, 0.82);
+}
+
+.ship-gone-title {
+    margin: 0;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #ff6b6b;
+}
+
+.ship-gone-note {
+    margin: 6px 0 0;
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {

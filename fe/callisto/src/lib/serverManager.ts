@@ -282,6 +282,13 @@ const handleMessage = (event: MessageEvent) => {
       store.dispatch(setAuthBanner(json.Error));
       return;
     }
+    // A request about a ship that has just left the scenario -- jumped out,
+    // blown up -- is a race, not something the player did wrong. The console
+    // disables itself; a modal demanding an OK does not belong here.
+    if (/unknown ship named/i.test(json.Error)) {
+      console.warn("Received Error for a ship no longer in the scenario: " + json.Error);
+      return;
+    }
     console.error("Received Error: " + json.Error);
     alert(json.Error);
   }
@@ -552,6 +559,15 @@ export function computeFlightPath(
 ) {
   if (entity_name == null) {
     store.dispatch(setProposedPlan(null));
+    return;
+  }
+
+  // A ship that jumped out or was destroyed is no longer in the scenario, and
+  // the server answers a course request for it with an error. Asking at all is
+  // the bug: the console has nothing left to fly.
+  if (!store.getState().server.entities.ships.some((ship) => ship.name === entity_name)) {
+    store.dispatch(setProposedPlan(null));
+    console.warn(`(computeFlightPath) ${entity_name} is no longer in the scenario; no course plotted.`);
     return;
   }
 
