@@ -5,6 +5,8 @@ import {ViewMode, hasRole} from "lib/view";
 import {useAppSelector} from "state/hooks";
 
 import {StationCard} from "components/controls/StationCard";
+import {GiCaptainHatProfile, GiLaserTurret, GiLightningTrio, GiRadarSweep, GiShipWheel, GiSpanner} from "react-icons/gi";
+import {FaCog} from "react-icons/fa";
 import {CaptainTasks} from "components/controls/CaptainTasks";
 import {PilotStation, SensorActionChooser} from "components/controls/ShipComputer";
 import {SensorStation} from "components/controls/SensorStation";
@@ -40,7 +42,7 @@ export function Stations(args: {ship: Ship}) {
   return (
     <>
       {hasRole(roles, ViewMode.Captain) && (
-        <StationCard title="Captain" crew={`leadership ${args.ship.crew.leadership ?? 0}`}>
+        <StationCard title="Captain" icon={<GiCaptainHatProfile />} crew={`leadership ${args.ship.crew.leadership ?? 0}`}>
           <CaptainTasks ship={args.ship} />
           {/* Everything queued this round, with the boost ticks beside it:
               the captain is the one person whose job is the whole round. */}
@@ -49,7 +51,7 @@ export function Stations(args: {ship: Ship}) {
       )}
 
       {hasRole(roles, ViewMode.Pilot) && (
-        <StationCard title="Pilot" crew={`skill ${args.ship.crew.pilot}`}>
+        <StationCard title="Pilot" icon={<GiShipWheel />} crew={`skill ${args.ship.crew.pilot}`}>
           <PilotStation ship={args.ship} />
           {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Pilot]} />}
         </StationCard>
@@ -60,6 +62,7 @@ export function Stations(args: {ship: Ship}) {
           <StationCard
             key={`sensors-${operator}`}
             title="Sensors"
+            icon={<GiRadarSweep />}
             crew={crewTag(operator, operators.length, operators[operator])}>
             <SensorActionChooser
               ship={args.ship}
@@ -74,7 +77,7 @@ export function Stations(args: {ship: Ship}) {
         ))}
 
       {hasRole(roles, ViewMode.Gunner) && (
-        <StationCard title="Gunner" crew={gunnerTag(args.ship)}>
+        <StationCard title="Gunner" icon={<GiLaserTurret />} crew={gunnerTag(args.ship)}>
           <FireControl />
           {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Gunner]} />}
         </StationCard>
@@ -86,15 +89,16 @@ export function Stations(args: {ship: Ship}) {
             <StationCard
               key={`engineer-${engineer}`}
               title="Engineer"
+              icon={<FaCog />}
               crew={engineers.length > 1 ? `#${engineer + 1}` : undefined}>
               <EngineerTasks ship={args.ship} engineer={engineer} />
               {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Engineer]} />}
             </StationCard>
           ))}
-          <StationCard title="Power">
+          <StationCard title="Power" icon={<GiLightningTrio />}>
             <PowerBoard ship={args.ship} />
           </StationCard>
-          <StationCard title="Damage control">
+          <StationCard title="Damage control" icon={<GiSpanner />}>
             <DamageBoard ship={args.ship} />
           </StationCard>
         </>

@@ -14,6 +14,8 @@ import {useState} from "react";
 export function StationCard(args: {
   /** The station: "Pilot", "Gunner", and so on. */
   title: string;
+  /** A glyph for it, where one is unmistakable. */
+  icon?: React.ReactNode;
   /** Who is working it, when the ship carries more than one of them. */
   crew?: string;
   /** Folded away to its heading. Stations start open. */
@@ -29,6 +31,11 @@ export function StationCard(args: {
         className="station-card-head"
         aria-expanded={open}
         onClick={() => setOpen(!open)}>
+        {args.icon != null && (
+          <span className="station-card-icon" aria-hidden="true">
+            {args.icon}
+          </span>
+        )}
         <span className="station-card-title">{args.title}</span>
         {args.crew != null && <span className="station-card-crew">{args.crew}</span>}
         <span className="station-card-chevron" aria-hidden="true">

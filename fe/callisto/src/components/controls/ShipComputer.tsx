@@ -15,6 +15,8 @@ import {useAppSelector, useAppDispatch} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
 import {setSensorAction} from "state/actionsSlice";
 import {computeFlightPath} from "lib/serverManager";
+import {SectionTag} from "components/controls/SectionTag";
+import {FaCompass} from "react-icons/fa";
 
 // Distance in km for standoff from another ship.
 const DEFAULT_SHIP_STANDOFF_DISTANCE: number = 10;
@@ -311,7 +313,7 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
             Full Stop
           </button>
           <hr />
-          <h2 className="control-form">Navigation</h2>
+          <SectionTag icon={<FaCompass />}>Navigation</SectionTag>
           <form className="target-entry-form" onSubmit={handleNavigationSubmit}>
             <label className="control-label" style={{display: "flex"}}>
               Nav Target:

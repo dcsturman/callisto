@@ -12,6 +12,8 @@ import {
   emissionTotal,
 } from "lib/emissions";
 import {useAppSelector} from "state/hooks";
+import {SectionTag} from "components/controls/SectionTag";
+import {FaSatelliteDish} from "react-icons/fa";
 
 /**
  * How loud this ship is, and why.
@@ -37,7 +39,7 @@ export function EmissionProfile(args: {ship: Ship}) {
 
   return (
     <div className="emission-profile">
-      <div className="section-tag">Emissions</div>
+      <SectionTag icon={<FaSatelliteDish />}>Emissions</SectionTag>
       <EmissionGauge total={total} level={level} />
       <ul className="emission-terms">
         {terms.map((term) => (

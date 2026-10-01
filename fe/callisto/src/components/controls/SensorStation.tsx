@@ -14,6 +14,7 @@ import {
   watchersOf,
 } from "lib/sensorPicture";
 import {WeaponGlyph} from "components/controls/WeaponGlyph";
+import {SectionTag} from "components/controls/SectionTag";
 import {shipWeapons} from "lib/shipDesignTemplates";
 import {useAppSelector} from "state/hooks";
 import {entitiesSelector, templatesSelector} from "state/serverSlice";
@@ -63,7 +64,7 @@ export function SensorStation(args: {ship: Ship}) {
 function EyesOnUs(args: {watchers: Watcher[]}) {
   return (
     <div className="sensor-block">
-      <div className="section-tag">Eyes on us</div>
+      <SectionTag icon={<EyeIcon />}>Eyes on us</SectionTag>
       {args.watchers.length === 0 ? (
         <p className="sensor-empty">Nobody has found us.</p>
       ) : (
@@ -94,7 +95,7 @@ function EyesOnUs(args: {watchers: Watcher[]}) {
 function IncomingSalvoes(args: {salvoes: Salvo[]}) {
   return (
     <div className="sensor-block">
-      <div className="section-tag">Inbound</div>
+      <SectionTag icon={<MissileIcon />}>Inbound</SectionTag>
       <ul className="salvo-list">
         {args.salvoes.map((salvo) => (
           <li key={salvo.source} className="salvo">
@@ -130,7 +131,7 @@ function IncomingSalvoes(args: {salvoes: Salvo[]}) {
 function TeamPicture(args: {ours: string[]; rows: PictureRow[]}) {
   return (
     <div className="sensor-block">
-      <div className="section-tag">Squadron picture</div>
+      <SectionTag>Squadron picture</SectionTag>
       {args.rows.length === 0 ? (
         <p className="sensor-empty">Nobody on our side has found anything.</p>
       ) : (
@@ -210,7 +211,7 @@ function ContactDetail(args: {
 
   return (
     <div className="sensor-block">
-      <div className="section-tag">Contact detail</div>
+      <SectionTag>Contact detail</SectionTag>
       <ul className="contact-detail-list">
         {contacts.map((ship) => {
           const design = args.templates[ship.design];

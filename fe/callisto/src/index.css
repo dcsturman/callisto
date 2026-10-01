@@ -1082,6 +1082,27 @@ h3.control-form {
 /* Compact section header used in the per-ship Controls popup. Replaces the
    bulky `<h2>` per role section so the controls themselves are the visual
    focus instead of the labels. */
+/* A heading's glyph: the same size as its text and in the same colour, so it
+   reads as part of the heading rather than as decoration beside it. */
+.section-tag-icon,
+.station-card-icon {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 5px;
+    opacity: 0.8;
+    vertical-align: -1px;
+}
+
+.station-card-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.section-tag-icon svg {
+    width: 12px;
+    height: 12px;
+}
+
 .section-tag {
     /* Absolute pt so the tag's size is consistent regardless of whichever
        parent's font-size context it lands in (e.g. `.control-label` parents
@@ -2493,7 +2514,7 @@ h3.control-form {
    a title bar, not as something to press for its own sake. */
 .station-card-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
     width: 100%;
     padding: 3px 6px;

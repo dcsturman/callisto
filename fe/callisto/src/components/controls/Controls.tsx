@@ -20,6 +20,8 @@ import {
 } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { isReferee } from "lib/view";
+import { SectionTag } from "components/controls/SectionTag";
+import { FaUsers, FaExclamationTriangle } from "react-icons/fa";
 import { ENGINEER_SKILLS } from "components/controls/CrewBuilder";
 import { nextRound, setReady, setShipTeam } from "lib/serverManager";
 import { Team, TEAMS, teamLabelColor } from "lib/teams";
@@ -440,7 +442,7 @@ export function Controls() {
               computerShip.crit_level.some((c) => c > 0)) ||
               stationsDown(computerShip).length > 0) && (
                 <div id="crits-display">
-                  <h2 className="control-form">Critical Hits</h2>
+                  <SectionTag icon={<FaExclamationTriangle />}>Critical Hits</SectionTag>
                   <pre className="plan-accel-text">
                     {(() => {
                       const systems = [
@@ -482,7 +484,7 @@ export function Controls() {
             {/* Bottom of the box, one heading in the section-title style and
                 one line in the body font. Gunners are one number per mount,
                 in mount order. */}
-            <h2 className="control-form">Crew</h2>
+            <SectionTag icon={<FaUsers />}>Crew</SectionTag>
             {/* Sensor operators and engineers are listed one per person, in
                 the order they sit in the crew, since the dropdowns that put
                 one of them on a station name them by that position. */}
