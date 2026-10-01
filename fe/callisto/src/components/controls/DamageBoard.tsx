@@ -56,7 +56,6 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
 
   return (
     <div className="damage-board">
-      <div className="section-tag">Damage control</div>
       {rows.length === 0 ? (
         <p className="sensor-empty">No damage.</p>
       ) : (

@@ -76,7 +76,6 @@ export function PowerBoard(args: {ship: Ship}) {
 
   return (
     <div className="power-board">
-      <div className="section-tag">Power</div>
       <div className="power-summary">
         <span className="power-supply">{supply} available</span>
         <span className={spare < 0 ? "power-spare power-short" : "power-spare"}>

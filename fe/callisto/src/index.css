@@ -622,6 +622,25 @@ select.control-input,
     padding-right: 6px;
 }
 
+h2.control-form,
+h3.control-form {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+    border-bottom: 1px solid #4a4f48;
+    padding: 6px 0 2px 0;
+    margin: 8px 0 4px 0;
+}
+
+/* A label names the box beside it, so it sits below its section heading
+   rather than over it. */
+.control-label {
+    font-size: var(--font-sm);
+    font-weight: 400;
+}
+
 .vital-stats-bloc {
     display: flex;
     flex-direction: row;
@@ -809,6 +828,44 @@ select.control-input,
 
 .stats-bloc-entry {
     padding-right: 4px;
+}
+
+/* Every heading inside a panel takes the same tone, whether it was written
+   as an h2 or as a section tag: the panels are instruments, and a heading in
+   one should not be louder than the same heading in the next. */
+.station-card h2,
+.controls-pane h2,
+.view-controls-window h2,
+.ship-summary-window h2 {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+    margin: 6px 0 3px 0;
+}
+
+/* The pane's own title is the one heading above that tone, and only just. */
+.controls-pane > h1 {
+    font-size: var(--font-lg);
+    margin: 4px 0;
+}
+
+.stats-bloc-entry h2 {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+    opacity: 0.75;
+    margin: 2px 0 0 0;
+}
+
+/* Values under those heads, and the crew line, are readings: monospace, so
+   digits line up down the panel. */
+.stats-bloc-entry .plan-accel-text,
+.crew-line {
+    font-size: var(--font-sm);
 }
 
 .authentication-container {

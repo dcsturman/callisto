@@ -134,7 +134,6 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship, engineer = 0
 
   return (
     <div className="engineer-tasks">
-      <div className="section-tag">Engineer</div>
       <select
         className="control-input"
         value={selectedValue}

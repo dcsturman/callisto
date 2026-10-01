@@ -262,7 +262,6 @@ export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
     }
     return (
       <>
-        <div className="section-tag">Pilot</div>
         <div className="pilot-actions-row">
           <label className="control-label">Evade</label>
           <input
@@ -541,7 +540,6 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, s
 
   return (
     <div className="control-label">
-      <div className="section-tag">Sensors</div>
       <div className="emissions-row">
         <label className="emissions-toggle" title="Active radar/lidar. Running dark keeps the contacts you already hold but acquires nothing new, drops your sensor locks, and stops handing opponents DM+2 to find you.">
           <input
