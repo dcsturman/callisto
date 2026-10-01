@@ -2126,3 +2126,187 @@ input {
     border-top: 1px solid #22303d;
     padding-top: 3px;
 }
+
+/* ---------------------------------------------------------------------------
+   Engineer's boards: power and damage control. Both are instruments -- read at
+   a glance, operated rarely -- so they lean on lit bars and pips rather than
+   on columns of figures.
+   --------------------------------------------------------------------------- */
+
+.power-board,
+.damage-board {
+    border: 1px solid #2c3c4c;
+    border-radius: 3px;
+    padding: 4px 6px 6px;
+    background: rgba(12, 20, 28, 0.6);
+    margin-top: 6px;
+}
+
+.power-summary {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9pt;
+    font-family: "Sono", monospace;
+}
+
+.power-spare {
+    color: #63c08c;
+}
+
+/* Drawing more than the plant makes: the engineer's problem to solve. */
+.power-short {
+    color: #ff6b6b;
+}
+
+.power-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    margin-top: 6px;
+    overflow-x: auto;
+}
+
+.power-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 34px;
+}
+
+/* The tube a column fills. Dark and recessed, so an unlit bar still reads as
+   a gauge with nothing in it rather than as empty space. */
+.power-column-track {
+    width: 14px;
+    height: 70px;
+    background: #10171e;
+    border: 1px solid #243240;
+    border-radius: 2px;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+}
+
+.power-column-fill {
+    width: 100%;
+    background: #ff4d4d;
+    box-shadow: 0 0 6px #ff4d4d, 0 0 14px rgba(255, 77, 77, 0.6);
+    transition: height 180ms ease-out;
+}
+
+/* Shut down: the tube is still there, the glow is not. */
+.power-column-dark .power-column-fill {
+    background: #3a4450;
+    box-shadow: none;
+}
+
+/* An order queued this round, not yet resolved: amber, as a pending switch. */
+.power-column-queued .power-column-fill {
+    background: #ffb84d;
+    box-shadow: 0 0 6px #ffb84d, 0 0 14px rgba(255, 184, 77, 0.5);
+}
+
+.power-column-draw {
+    font-family: "Sono", monospace;
+    font-size: 8.5pt;
+}
+
+.power-column-switch {
+    background: none;
+    border: 1px solid #2c3c4c;
+    border-radius: 2px;
+    color: inherit;
+    cursor: pointer;
+    font-family: "Sono", monospace;
+    font-size: 7pt;
+    padding: 0 3px;
+}
+
+.power-column-switch:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.power-column-label {
+    font-size: 7pt;
+    opacity: 0.7;
+    text-align: center;
+    max-width: 46px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.power-half {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    font-size: 8.5pt;
+    opacity: 0.85;
+}
+
+/* --- Damage control --- */
+
+.damage-rows,
+.damage-overloads {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    font-size: 9pt;
+}
+
+.damage-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+}
+
+.severity {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.severity-pip {
+    width: 6px;
+    height: 10px;
+    border: 1px solid #2c3c4c;
+    border-radius: 1px;
+}
+
+.severity-pip-lit {
+    background: #ffa94d;
+    border-color: #ffa94d;
+}
+
+/* Severity 4 and up is where systems start being destroyed outright. */
+.severity-bad .severity-pip-lit {
+    background: #ff6b6b;
+    border-color: #ff6b6b;
+}
+
+.damage-dm {
+    font-family: "Sono", monospace;
+    min-width: 2.2em;
+    text-align: right;
+}
+
+/* A repair that needs a 10 or better on 2D is one to think twice about. */
+.damage-dm-poor {
+    color: #ff6b6b;
+}
+
+.damage-overload {
+    font-size: 8.5pt;
+    color: #ffa94d;
+    opacity: 0.9;
+}
+
+.damage-hull {
+    margin-top: 4px;
+    font-size: 8.5pt;
+    font-family: "Sono", monospace;
+    opacity: 0.75;
+}

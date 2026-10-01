@@ -43,6 +43,8 @@ export type BoostTarget =
   | { kind: "Evade"; ship: string }
   | { kind: "AssistGunner"; ship: string };
 
+import {PowerSystem} from "lib/power";
+
 // All the different action types.
 export type FireAction = {
   target: string;
@@ -107,6 +109,8 @@ export type EngineerState =
   | { kind: "OverloadPlant" }
   | { kind: "Repair"; system: string }
   | { kind: "Jump" }
+  // Offline System: power something down, or bring it back (CRB p. 171).
+  | { kind: "SetPower"; system: PowerSystem; online: boolean }
   | null;
 
 // Marshalling/d-marshalling utilities
@@ -258,6 +262,8 @@ function engineerActionPayload(action: EngineerState, engineer: number) {
       return {Repair: {system: action.system, engineer}};
     case "Jump":
       return {Jump: {engineer}};
+    case "SetPower":
+      return {SetPower: {system: action.system, online: action.online, engineer}};
   }
 }
 
@@ -416,6 +422,16 @@ export function payloadToAction(payload: object[]): ActionType {
       } else if (Object.hasOwn(action, "Repair")) {
         const raw = (action as unknown as {Repair: {system: string; engineer?: number}}).Repair;
         place(engineers, raw.engineer ?? 0, {kind: "Repair", system: raw.system}, null);
+      } else if (Object.hasOwn(action, "SetPower")) {
+        const raw = (
+          action as unknown as {SetPower: {system: PowerSystem; online: boolean; engineer?: number}}
+        ).SetPower;
+        place(
+          engineers,
+          raw.engineer ?? 0,
+          {kind: "SetPower", system: raw.system, online: raw.online},
+          null
+        );
       }
     }
     result[shipName] = {...result[shipName], sensors, engineers};

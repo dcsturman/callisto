@@ -4,6 +4,9 @@ import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
 import {ViewMode, hasRole} from "lib/view";
 import {SensorStation} from "components/controls/SensorStation";
+import {PowerBoard} from "components/controls/PowerBoard";
+import {DamageBoard} from "components/controls/DamageBoard";
+import {Accordion} from "lib/Accordion";
 
 import {setPlan, setCrewActions, setShipEmissions} from "lib/serverManager";
 import {isUndetected, sameSide} from "lib/contacts";
@@ -357,6 +360,14 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
                 <EngineerTasks ship={ship} engineer={engineer} />
               </React.Fragment>
             ))}
+            {/* The engineer's instruments. Open for them, and foldable for the
+                referee, who has every other ship's to look at as well. */}
+            <Accordion title="Power" initialOpen={!roles.includes(ViewMode.General)}>
+              <PowerBoard ship={ship} />
+            </Accordion>
+            <Accordion title="Damage control" initialOpen={!roles.includes(ViewMode.General)}>
+              <DamageBoard ship={ship} />
+            </Accordion>
           </>
         )}
       </div>

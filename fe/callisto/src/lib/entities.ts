@@ -2,6 +2,7 @@ import { Crew, createCrew } from "components/controls/CrewBuilder";
 import { Weapon } from "lib/weapon";
 import { Team } from "lib/teams";
 export { availablePower } from "lib/power";
+import { PowerSystem } from "lib/power";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -122,6 +123,13 @@ export interface Ship extends Entity {
    */
   sensor_operator?: number;
   engineer_on_duty?: number;
+  /** Systems the engineer has powered down. Absent when everything is live. */
+  offline?: PowerSystem[];
+  /** Basic ship systems running at half, which the rules allow in a pinch. */
+  basic_power_halved?: boolean;
+  /** How many times each overload has been tried; each one past the first costs DM-2. */
+  overload_drive_attempts?: number;
+  overload_plant_attempts?: number;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   /**
    * Each bridge station's state, in the order of {@link BRIDGE_STATIONS}.

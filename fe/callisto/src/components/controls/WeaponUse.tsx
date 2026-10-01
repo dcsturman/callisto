@@ -37,6 +37,7 @@ import {
   boostTargetEquals,
 } from "components/controls/Actions";
 import { ViewMode, hasRole } from "lib/view";
+import { PowerSystem } from "lib/power";
 import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
 import { setCrewActions } from "lib/serverManager";
 
@@ -842,7 +843,19 @@ export function Actions(args: {
       }
       case "Jump":
         return "Jump";
+      case "SetPower":
+        return `${action.online ? "Power up" : "Power down"} ${powerSystemLabel(action.system)}`;
     }
+  };
+
+  // A power order names what it is switching. A weapon is named by its mount,
+  // which is how the rest of the console refers to it.
+  const powerSystemLabel = (system: PowerSystem): string => {
+    if (typeof system === "string") {
+      return system === "Maneuver" ? "the m-drive" : system === "Jump" ? "the j-drive" : system.toLowerCase();
+    }
+    const weapon = args.weapons[system.Weapon];
+    return weapon == null ? `mount ${system.Weapon + 1}` : weaponToString(weapon);
   };
 
   // Several operators or engineers mean the row has to say whose it is. One
