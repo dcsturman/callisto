@@ -15,6 +15,7 @@ use crate::ship::{
   BridgeStation, Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, SystemDamage, Weapon, WeaponMount,
   WeaponProfile, WeaponType,
 };
+use crate::software::SoftwareKind;
 use crate::{debug, error, info, warn};
 use tracing::event;
 use tracing::Level;
@@ -78,6 +79,12 @@ pub struct HitMods {
   /// A launched object resolves as the gun that threw it, so this is the
   /// attacker-side term for a missile, where there is no gunner at impact.
   pub smart: i32,
+  /// Fire Control points the gunner spent on this shot as a DM.
+  ///
+  /// The program's score is a pool each round, spent either on firing a
+  /// mount outright or on improving someone else's shot (CRB p. 161); this
+  /// is the second of those.
+  pub fire_control: i32,
 }
 
 impl HitMods {
@@ -90,6 +97,7 @@ impl HitMods {
       captain_assist: 0,
       captain_fire: 0,
       smart: 0,
+      fire_control: 0,
     }
   }
 
@@ -202,7 +210,26 @@ pub fn attack(
   } else {
     (0, 0)
   };
-  let defensive_modifier = evade_mod + captain_mod;
+  // Evade software flies the ship evasively on its own: "a negative DM equal
+  // to the Evade program's score to all attacks" (CRB p. 161). It needs no
+  // Thrust and no pilot, so it stacks with a pilot who is also dodging --
+  // the book gives no reason it should not, and the two are different
+  // things: one is the computer jinking, the other a pilot spending Thrust.
+  let evade_software = -i32::from(defender.running_level(SoftwareKind::Evade).unwrap_or(0));
+
+  // Advanced Fire Control adds its score to every attack the ship makes
+  // (High Guard p. 73), with no automated fire of its own.
+  let advanced_fire_control = i32::from(attacker.running_level(SoftwareKind::AdvancedFireControl).unwrap_or(0));
+
+  // Launch Solution does the same for missile and torpedo salvoes only
+  // (High Guard p. 75).
+  let launch_solution = if profile.salvo.is_some() {
+    i32::from(attacker.running_level(SoftwareKind::LaunchSolution).unwrap_or(0))
+  } else {
+    0
+  };
+
+  let defensive_modifier = evade_mod + captain_mod + evade_software;
 
   // Launchers have "Special" range: the salvo flies to the target, so the
   // firing range never modifies the roll and never rules the shot out.
@@ -263,7 +290,7 @@ pub fn attack(
   // gets, and for the same reason. Zero terms are dropped so an ordinary
   // shot stays short.
   let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
-  let terms: [(&str, i32); 12] = [
+  let terms: [(&str, i32); 16] = [
     gunner,
     assist,
     captain_assist,
@@ -276,6 +303,10 @@ pub fn attack(
     ("sensor lock", lock_mod),
     ("evade", evade_mod),
     ("captain evade", captain_mod),
+    ("evade software", evade_software),
+    ("fire control", hit.fire_control),
+    ("adv fire control", advanced_fire_control),
+    ("launch solution", launch_solution),
   ];
   let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
@@ -1202,6 +1233,13 @@ pub fn do_fire_actions<S: BuildHasher>(
   // attacker's weapons), so a ship-level flag would be redundant.
   let mut first_assist_consumed = false;
 
+  // The Fire Control pool for this round. The program's score is spent on
+  // firing mounts outright and on improving gunners' shots, in any mix
+  // (CRB p. 161); a crew that orders more than it has gets what the pool
+  // covers, in the order the mounts were given.
+  let fire_control_pool = i32::from(attacker.running_level(SoftwareKind::FireControl).unwrap_or(0));
+  let mut fire_control_left = fire_control_pool;
+
   let mut effects: Vec<EffectMsg> = actions
     .iter()
     .flat_map(|action| {
@@ -1211,6 +1249,8 @@ pub fn do_fire_actions<S: BuildHasher>(
         called_shot_system,
         firing_kind,
         salvo_size,
+        fire_control_dm,
+        computer_fired,
       } = action
       else {
         error!("(Combat.do_fire_actions) Expected FireAction but got {:?}.", action);
@@ -1298,7 +1338,23 @@ pub fn do_fire_actions<S: BuildHasher>(
         );
         return vec![];
       };
-      let gunnery_skill = i32::from(attacker.get_crew().get_gunnery(*weapon_id));
+      // Draw this mount's share of the pool: one point to have the computer
+      // fire it, plus whatever the gunner asked it to add to the shot.
+      let computer_fired = *computer_fired && fire_control_left > 0;
+      if computer_fired {
+        fire_control_left -= 1;
+      }
+      let fire_control_points = i32::from(*fire_control_dm).min(fire_control_left.max(0));
+      fire_control_left -= fire_control_points;
+
+      // A mount the computer is firing has no gunner's skill behind it: Fire
+      // Control buys the attack, not a gunner (CRB p. 161). One point goes on
+      // firing it, and the gunner's own skill does not apply.
+      let gunnery_skill = if computer_fired {
+        0
+      } else {
+        i32::from(attacker.get_crew().get_gunnery(*weapon_id))
+      };
       // Captain leadership boost for this specific (ship, weapon) fire action.
       let leadership_boost = i32::from(boost_for_fire(boost_map, attacker.get_name(), *weapon_id));
       debug!(
@@ -1498,6 +1554,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             captain_assist,
             captain_fire: leadership_boost,
             smart: 0,
+            fire_control: fire_control_points,
           };
 
           effects.append(&mut attack(
@@ -1539,6 +1596,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             captain_assist,
             captain_fire: leadership_boost,
             smart: 0,
+            fire_control: fire_control_points,
           };
 
           attack(
@@ -1690,6 +1748,18 @@ pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
     .iter()
     .enumerate()
     .map(|(index, screen)| {
+      // Angling a screen is a gunner's reaction, so an unstaffed screen does
+      // nothing -- unless Screen Optimiser is running, which "automatically
+      // performs the Angle Screens (gunner) action with a total DM+0 ... and
+      // can use any number of screens simultaneously" (High Guard p. 75).
+      // A staffed screen keeps its gunner, who is better than DM+0.
+      //
+      // The dice are rolled either way and the result discarded when nobody
+      // angled it: a scenario's outcome should not depend on how many rolls
+      // were skipped, and the seeded runs the tests rely on would shift
+      // under a short-circuit here.
+      let angled =
+        ship.get_crew().has_screen_gunner(index) || ship.running_level(SoftwareKind::ScreenOptimiser).is_some();
       let skill = ship.get_crew().get_screen_gunnery(index);
       let effect = i32::from(roll_dice(2, rng)) + i32::from(skill) - STANDARD_ROLL_THRESHOLD;
       if effect < 0 {
@@ -1698,7 +1768,12 @@ pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
       #[allow(clippy::cast_sign_loss)]
       let effect = (effect as u32).max(1);
       let (dice, factor) = screen.reduction_dice();
-      u32::from(roll_dice(dice, rng)) * factor * effect
+      let absorbed = u32::from(roll_dice(dice, rng)) * factor * effect;
+      if angled {
+        absorbed
+      } else {
+        0
+      }
     })
     .collect()
 }
@@ -2666,6 +2741,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Beam Turret
       ShipAction::FireAction {
         weapon_id: 1,
@@ -2673,6 +2750,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Turret
       ShipAction::FireAction {
         weapon_id: 2,
@@ -2680,6 +2759,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Barbette
       ShipAction::FireAction {
         weapon_id: 3,
@@ -2687,6 +2768,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Bay (Small)
       ShipAction::FireAction {
         weapon_id: 4,
@@ -2694,6 +2777,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Bay (Medium)
       ShipAction::FireAction {
         weapon_id: 5,
@@ -2701,6 +2786,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Bay (Large)
     ];
 
@@ -2951,6 +3038,7 @@ mod tests {
         captain_assist: 0,
         captain_fire: 1,
         smart: 0,
+        fire_control: 0,
       },
       0,
       &attacker,
@@ -3799,6 +3887,8 @@ mod tests {
       called_shot_system: None,
       firing_kind: None,
       salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }];
 
     let (missiles, effects) = do_fire_actions(
@@ -3862,6 +3952,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }];
       let (_, effects) = do_fire_actions(
         &attacker,
@@ -4005,6 +4097,8 @@ mod tests {
       called_shot_system: None,
       firing_kind: None,
       salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }];
     let mut rng = StdRng::seed_from_u64(3);
     let (_, effects) = do_fire_actions(
@@ -4054,6 +4148,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size,
+        fire_control_dm: 0,
+        computer_fired: false,
       }];
       let (missiles, _) = do_fire_actions(
         &attacker,
@@ -4105,6 +4201,8 @@ mod tests {
       called_shot_system: None,
       firing_kind: None,
       salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }];
 
     let (missiles, effects) = do_fire_actions(
@@ -4192,6 +4290,8 @@ mod tests {
       called_shot_system: None,
       firing_kind: None,
       salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }];
 
     let mut total_unboosted: u64 = 0;
@@ -4337,6 +4437,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       },
       ShipAction::FireAction {
         weapon_id: 1,
@@ -4344,6 +4446,8 @@ mod tests {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       },
     ];
 

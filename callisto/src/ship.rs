@@ -1769,6 +1769,7 @@ impl Ship {
       && self.station_working(BridgeStation::Astrogation)
       && self.station_working(BridgeStation::Computer)
       && self.jump_powered()
+      && self.running_level(SoftwareKind::JumpControl).is_some_and(|level| level > 0)
   }
 
   #[must_use]
@@ -2345,7 +2346,12 @@ impl Ship {
       return 0;
     }
     let affordable = u8::try_from(self.current_fuel / per).unwrap_or(u8::MAX);
-    affordable.min(self.current_jump)
+    // Jump Control is what plots the jump: "allows jumps of up to the
+    // specified number. Incorporates astrogation software and jump engine
+    // management" (CRB p. 161). Without it running there is no jump at all,
+    // whatever the drive is rated for or the tanks hold.
+    let plotted = self.running_level(SoftwareKind::JumpControl).unwrap_or(0);
+    affordable.min(self.current_jump).min(plotted)
   }
 
   /// Whether the sensors are running. A suite with no power finds nothing and
@@ -3596,6 +3602,32 @@ mod tests {
     assert_eq!(ship.max_acceleration(), 0);
   }
 
+  /// Jump Control is what plots a jump: no software, no jump, whatever the
+  /// drive is rated for.
+  #[test]
+  fn a_jump_needs_the_software_that_plots_it() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      jump: 2,
+      fuel: 100,
+      power: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::JumpControl, 2)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.can_jump = true;
+
+    assert_eq!(ship.jump_range_available(), 2);
+    assert!(ship.can_jump());
+
+    // Shut the software down and the drive has nothing to follow.
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), false));
+    assert_eq!(ship.jump_range_available(), 0);
+    assert!(!ship.can_jump());
+  }
+
   /// Bandwidth, not Power, is what limits a computer -- and a ship can own
   /// more software than it can run at once. HMS Executor is the case in
   /// point: Evade/1, Fire Control/2 and Jump Control/2 is 30 Bandwidth on a
@@ -3680,6 +3712,9 @@ mod tests {
       jump: 2,
       fuel: 23,
       power: 60,
+      computer: 5,
+      computer_bis: true,
+      software: vec![Software::new(SoftwareKind::JumpControl, 2)],
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);

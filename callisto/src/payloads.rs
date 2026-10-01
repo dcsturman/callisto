@@ -860,6 +860,8 @@ mod tests {
           called_shot_system: None,
           firing_kind: None,
           salvo_size: None,
+          fire_control_dm: 0,
+          computer_fired: false,
         }],
       ),
       (
@@ -870,6 +872,8 @@ mod tests {
           called_shot_system: None,
           firing_kind: None,
           salvo_size: None,
+          fire_control_dm: 0,
+          computer_fired: false,
         }],
       ),
     ];

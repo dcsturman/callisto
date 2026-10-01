@@ -374,11 +374,11 @@ async fn test_update_missile() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
 
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -424,8 +424,6 @@ async fn test_update_missile() {
              "sensor_locks": [],
              "contacts": ["ship2"],
              "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             "software": software_of("System Defense Boat"),
-             "software_running": software_running_of("System Defense Boat")
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -445,9 +443,7 @@ async fn test_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship1"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             "software": software_of("System Defense Boat"),
-             "software_running": software_running_of("System Defense Boat")
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
              "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]});
 
@@ -768,13 +764,12 @@ async fn test_called_shot() {
 
   // Gazelle class is a good test for this as it has 2 Particle Barbettes (likely to cause a crit) and 2 triple beams (also capable of called shots)
   // Give it a good gunner (skill 4) and sensor lock on ship2
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", "sensor_locks":["ship2"], "crew":{"gunnery":[7, 6, 6, 6]}}"#;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[], "sensor_locks":["ship2"], "crew":{"gunnery":[7, 6, 6, 6]}}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
   // Make this a big ship to reduce sustained damage crits.
-  let ship2 =
-    r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -922,12 +917,11 @@ async fn test_big_fight() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
 
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  let ship2 =
-    r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -997,8 +991,6 @@ async fn test_big_fight() {
    "sensor_locks": [],
    "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-   "software": software_of("Gazelle"),
-   "software_running": software_running_of("Gazelle")
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1013,9 +1005,7 @@ async fn test_big_fight() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-   "software": software_of("Gazelle"),
-   "software_running": software_running_of("Gazelle")
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
     "planets":[],
@@ -1040,7 +1030,7 @@ async fn test_fight_with_crew() {
   let server = setup_test_with_server(authenticator).await;
 
   // Ship 1 has a capable crew.
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[],
         "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[2, 2, 1, 1]}}"#;
 
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
@@ -1053,8 +1043,7 @@ async fn test_fight_with_crew() {
   assert_eq!(response, "Set crew action executed");
 
   // Ship 2 has no crew skills
-  let ship2 =
-    r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -1125,8 +1114,6 @@ async fn test_fight_with_crew() {
    "sensor_locks": [],
    "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-   "software": software_of("Gazelle"),
-   "software_running": software_running_of("Gazelle")
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1141,9 +1128,7 @@ async fn test_fight_with_crew() {
    "can_jump":false,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-   "software": software_of("Gazelle"),
-   "software_running": software_running_of("Gazelle")
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   }],
     "missiles":[],
     "planets":[],
@@ -1346,13 +1331,12 @@ async fn test_missile_impact_close() {
   let server = setup_test_with_server(authenticator).await;
 
   // Add the firing ship
-  let firing_ship =
-    r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let firing_ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(firing_ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
   // Add the target ship very close to the firing ship
-  let target_ship = r#"{"name":"ship2","position":[1000,1000,1000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let target_ship = r#"{"name":"ship2","position":[1000,1000,1000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(target_ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -1387,7 +1371,7 @@ async fn test_missile_impact_close() {
   );
 
   // Add the target ship very close to the firing ship but not in impact range.
-  let target_ship = r#"{"name":"ship2","position":[4000000,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let target_ship = r#"{"name":"ship2","position":[4000000,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(target_ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 

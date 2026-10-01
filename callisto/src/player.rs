@@ -282,6 +282,7 @@ impl PlayerManager {
       || ship.team.is_some()
       || ship.contacts.is_some()
       || ship.auxiliary_on.is_some()
+      || ship.software.is_some()
     {
       if let Some(added) = entities.ships.get(&name) {
         let mut added = added.write().unwrap();

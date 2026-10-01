@@ -306,6 +306,15 @@ impl Crew {
     self.screen_gunnery[screen]
   }
 
+  /// Whether anyone is actually on this screen.
+  ///
+  /// Distinct from a skill of 0: an unstaffed screen has nobody to take the
+  /// Angle Screens reaction at all, while a green rating 0 gunner can.
+  #[must_use]
+  pub fn has_screen_gunner(&self, screen: usize) -> bool {
+    screen < self.screen_gunnery.len()
+  }
+
   /// Append a Gunner (screen) skill, mirroring `add_gunnery`.
   pub fn add_screen_gunnery(&mut self, skill: u8) {
     self.screen_gunnery.push(skill);

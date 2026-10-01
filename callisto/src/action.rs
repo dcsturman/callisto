@@ -232,6 +232,15 @@ pub fn boost_target_alive<S: BuildHasher>(
   false
 }
 
+/// Serde helper: a Fire Control allocation of zero is the usual case and
+/// stays off the wire.
+///
+/// Takes a reference because that is the shape `skip_serializing_if` calls.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u8(value: &u8) -> bool {
+  *value == 0
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ShipAction {
   FireAction {
@@ -258,6 +267,22 @@ pub enum ShipAction {
     /// Ignored by anything that is not a launcher.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     salvo_size: Option<u16>,
+
+    /// Fire Control points spent on this attack as a DM.
+    ///
+    /// "Allows the computer to fire a number of turrets per round equal to
+    /// the listed number. Alternatively, it can give a positive DM to an
+    /// attack equal to the listed number or any combination of the two"
+    /// (Core Rulebook p. 161). So the program's score is a pool of points
+    /// each round, and this is what this mount drew from it.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    fire_control_dm: u8,
+
+    /// Whether the computer is firing this mount rather than a gunner.
+    ///
+    /// Costs one Fire Control point and brings no gunnery skill of its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    computer_fired: bool,
   },
   PointDefenseAction {
     weapon_id: usize,

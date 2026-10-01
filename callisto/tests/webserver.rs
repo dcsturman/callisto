@@ -1057,7 +1057,7 @@ async fn integration_update_missile() {
       team: None,
       contacts: Some(vec!["ship2".to_string()]),
       auxiliary_on: None,
-      software: None,
+      software: Some(vec![]),
     }),
   )
   .await;
@@ -1078,7 +1078,7 @@ async fn integration_update_missile() {
       team: None,
       contacts: None,
       auxiliary_on: None,
-      software: None,
+      software: Some(vec![]),
     }),
   )
   .await;
@@ -1093,6 +1093,8 @@ async fn integration_update_missile() {
       called_shot_system: None,
       firing_kind: None,
       salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }],
   )];
 
@@ -1141,9 +1143,7 @@ async fn integration_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship2"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             "software": software_of("System Defense Boat"),
-             "software_running": software_running_of("System Defense Boat")
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -1163,9 +1163,7 @@ async fn integration_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship1"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             "software": software_of("System Defense Boat"),
-             "software_running": software_running_of("System Defense Boat")
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 
@@ -1672,6 +1670,8 @@ async fn integration_malformed_requests() {
         called_shot_system: None,
         firing_kind: None,
         salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }],
     )]),
   )
@@ -1739,6 +1739,8 @@ async fn integration_bad_requests() {
       called_shot_system: None,
       firing_kind: None,
       salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }],
   )]);
   let _response = rpc(&mut stream, msg).await;

@@ -33,6 +33,7 @@ use crate::ship::{
   with_ship_templates_for_deserialization, BridgeStation, FlightPlan, PowerSystem, Range, Ship, ShipDesignTemplate,
   ShipSystem,
 };
+use crate::software::SoftwareKind;
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn, LOG_FILE_USE};
@@ -1360,6 +1361,24 @@ impl Entities {
     }
   }
 
+  /// The Electronic Warfare program's DM, for the checks it applies to.
+  ///
+  /// "All electronic warfare actions ... performed from the ship gain a DM to
+  /// their Electronics (sensors) checks equal to the Electronic Warfare
+  /// package's score" (High Guard p. 74). The Core Rulebook's electronic
+  /// warfare actions are jamming an enemy's comms and breaking a sensor lock
+  /// (p. 160), and jamming an incoming salvo is one too -- Broad Spectrum EW
+  /// is described as performing exactly that action automatically. Acquiring
+  /// a lock is a sensor check rather than electronic warfare, and gets
+  /// nothing from this.
+  fn electronic_warfare_mod(&self, ship_name: &str) -> i16 {
+    self
+      .ships
+      .get(ship_name)
+      .and_then(|ship| ship.read().unwrap().running_level(SoftwareKind::ElectronicWarfare))
+      .map_or(0, i16::from)
+  }
+
   fn jam_comms(
     &self, ship_name: &String, target: &str, operator: usize, boost: i16, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
@@ -1368,6 +1387,7 @@ impl Entities {
     let roll = roll_dice(2, rng);
     let dm = self.sensor_quality_modifiers(ship_name, operator)
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + self.electronic_warfare_mod(ship_name)
       + boost;
     let other_roll = roll_dice(2, rng);
     let other_dm = self.sensor_quality_modifiers(target, usize::MAX)
@@ -1413,6 +1433,7 @@ impl Entities {
     let dice = roll_dice(2, rng);
     let dm = self.sensor_quality_modifiers(ship_name, operator)
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + self.electronic_warfare_mod(ship_name)
       + boost;
     let check = i16::from(dice) + dm - 10;
 
@@ -1489,6 +1510,7 @@ impl Entities {
       let roll = roll_dice(2, rng);
       let dm = self.sensor_quality_modifiers(ship_name, operator)
         + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+        + self.electronic_warfare_mod(ship_name)
         + boost;
       let other_dm = self.sensor_quality_modifiers(target, usize::MAX)
         // The ship shaking off the lock benefits from ITS OWN stealth, so the
@@ -5410,6 +5432,11 @@ mod tests {
       // Plant enough to run everything and still jump, which is what the
       // tests below assume a healthy ship can do.
       power: 400,
+      // A jump needs the software that plots it, as well as the drive.
+      software: vec![crate::software::Software::new(
+        crate::software::SoftwareKind::JumpControl,
+        2,
+      )],
       ..ShipDesignTemplate::default()
     });
     entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
@@ -6042,6 +6069,8 @@ mod tests {
           called_shot_system: None,
           firing_kind: None,
           salvo_size: None,
+          fire_control_dm: 0,
+          computer_fired: false,
         }],
       )],
       &[],

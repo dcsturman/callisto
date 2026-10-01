@@ -544,6 +544,48 @@ Two consequences worth knowing:
   only needed when the ship actually initiates a jump", HG p. 16), so it is
   shown on the board but kept out of the running total.
 
+### The ship's computer
+
+Software is bought with the ship and *runs* within the computer's Processing
+score. Owning more than can run at once is normal and is the whole of the
+mechanic: HMS Executor's Evade/1, Fire Control/2 and Jump Control/2 come to 30
+Bandwidth on a Computer/20, so she fights or she jumps.
+
+Computers draw no Power and take no tonnage (CRB p. 180), so they are absent
+from the power board. Choosing what runs is free and takes effect at once: the
+rules put no combat cost on it, and the engineer's one order a round is
+already spoken for.
+
+| Package | What it does here |
+| --- | --- |
+| Jump Control/N | Caps the jump number. Nothing running, no jump at all. |
+| Evade/N | DM−N to every attack on the ship, passive, stacking with a pilot's dodge. |
+| Fire Control/N | N points a round: one point fires a mount with no gunner, or adds +1 to a gunner's shot, in any mix. |
+| Advanced Fire Control/N | DM+N to every attack the ship makes. |
+| Launch Solution/N | DM+N to missile and torpedo salvoes. |
+| Electronic Warfare/N | DM+N to jamming comms, jamming salvoes and breaking locks. |
+| Screen Optimiser | Angles an unstaffed screen at DM+0. |
+| Manoeuvre, Intellect, Library | Free, and always running. |
+| Anti-Hijack, Battle System, Conscious Intelligence, Virtual Crew | Tracked and costed, but about boarders, Tactics checks and crew replacement — none of which a gunnery duel rolls. |
+| Auto-Repair, Broad Spectrum EW, Point Defence, Virtual Gunner, Battle Network | Tracked and costed; effects still to come. |
+
+#### Change — a screen nobody is on does not angle
+Angling a screen is a gunner's reaction, so a screen with no gunner assigned
+contributes nothing — unless Screen Optimiser is running, which performs the
+reaction automatically at DM+0 (High Guard p. 75). Callisto previously rolled
+every screen whether or not anyone was on it.
+
+#### Assumption — Evade software stacks with a pilot's dodge
+The two are different things: one is the computer jinking the ship on its own,
+costing no Thrust and no crew action, the other a pilot spending Thrust. The
+books do not say they combine, and do not say they do not.
+
+#### Note — a ship's software matters to what it can do
+Our designs carry the loadouts their books print. The practical effect is that
+most canon warships fly with Evade running, which makes them a point or two
+harder to hit than they used to be, and that a ship whose Jump Control is shut
+down to free Bandwidth cannot jump until it is started again.
+
 #### Addition — auxiliary systems
 A design can carry powered systems that are neither drives, sensors nor guns:
 the Harrier class projects a holographic hull — a false image of another
