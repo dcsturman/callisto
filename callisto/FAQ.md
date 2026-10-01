@@ -614,15 +614,24 @@ We take the discount reading, which is the one that makes a Computer/20bis
 better than a Computer/20 for a ship that runs anything besides its jump
 software.
 
-#### Note — /fib does nothing here, and that is the book's doing
+#### Decision — /fib computers are recorded and ignored
 A hardened computer "is immune to Ion weapons" (HG p. 20), and the Ion trait
 explains what that means: "if a system is listed as being hardened (as with
 /fib computers, for example), the crew may choose to allocate any Power to it
 before any deductions for Ion weapons are applied" (HG p. 30). The protection
 is an allocation of Power — and a computer draws none, so there is nothing to
-allocate and nothing to protect. The rule is written for hardened systems in
-general and names the one example that cannot benefit from it. We record /fib
-on the designs that have it and give it no effect.
+allocate and nothing to protect.
+
+The suffix is inherited from Classic Traveller, where computers *did* draw
+power (CT High Guard 1980: "energy points are used for four purposes:
+powering weapons, shields, for manoeuvre drives (for agility), and for
+computers") and /fib meant a fibre-optic backup that ignored radiation hits.
+MgT2 kept the suffix, re-pointed it at ion weapons, and wrote the protection
+in terms of a Power line the computer no longer has.
+
+How to read it is still argued over, so Callisto takes no position: /fib is
+recorded on the designs that carry it and has no mechanical effect. Revisit
+when the community settles.
 
 #### Change — a screen nobody is on does not angle
 Angling a screen is a gunner's reaction, so a screen with no gunner assigned
