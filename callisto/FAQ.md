@@ -524,6 +524,46 @@ the power plant 10% of its Power.
 
 ---
 
+### Engineering and power
+
+#### Change — a power budget, with weapons in it
+High Guard prices every system's Power: basic ship systems at 20% of the hull's
+tonnage (HG p. 16), the manoeuvre and jump drives at 10% of the hull per point
+of Thrust or jump number, sensors by grade (HG p. 23), and each weapon by its
+own table (HG pp. 28-33). Callisto now adds these up as a budget the engineer
+can see and manage.
+
+Two consequences worth knowing:
+
+- **Weapons draw Power.** They used to be ignored entirely, with only basic
+  systems and sensors deducted before thrust. A ship whose plant is damaged now
+  has to choose between flying and shooting, which is the choice the rules
+  intend. The three designs in play — Executor, Tai'ao, Threshing Oar — all have
+  Power enough for everything while undamaged.
+- **The jump drive only draws as the ship jumps** ("this Power requirement is
+  only needed when the ship actually initiates a jump", HG p. 16), so it is
+  shown on the board but kept out of the running total.
+
+#### Assumption — Offline System uses the usual engineering target number
+"A successful Engineer (power) check will allow the engineer to shut down any
+number of systems" (CRB p. 171). The book gives no target number, so Callisto
+uses Average (8+), as every other engineering job here does. Shutting one
+system down takes the engineer's action for the round rather than "any number"
+of them, since an action in Callisto belongs to one person and does one thing.
+Bringing a system back takes the round but no check.
+
+Basic ship systems cannot be shut down. They can be run at half, which HG p. 17
+allows in an emergency; Callisto does not yet impose the penalties the book
+lists for a ship that cannot run even half.
+
+#### Omission — quick repairs never lapse
+"These quick repairs will only last for 1D hours" (CRB p. 171). In Callisto a
+repair holds for good. A fight is minutes long, so the difference would almost
+never come up in play, and tracking it would mean undoing a repair mid-scenario
+for reasons no one at the table would see coming.
+
+---
+
 ### Not implemented
 
 Recorded so nobody assumes they were considered and rejected.

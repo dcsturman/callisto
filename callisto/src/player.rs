@@ -842,6 +842,7 @@ impl PlayerManager {
         ShipAction::OverloadDrive { .. }
         | ShipAction::OverloadPlant { .. }
         | ShipAction::Repair { .. }
+        | ShipAction::SetPower { .. }
         | ShipAction::Jump { .. } => (None, None, None, None, Some(action.clone())),
         // LeadershipCheck is consumed in Phase 0 below, so it reaches none of
         // the per-category slices. Nor do the anti-actions, which `merge`

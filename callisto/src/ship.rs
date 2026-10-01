@@ -371,6 +371,26 @@ pub struct Ship {
   /// the wire while every station works.
   #[serde(default, skip_serializing_if = "all_stations_working")]
   pub bridge_stations: [StationStatus; BridgeStation::COUNT],
+  /// Systems the engineer has powered down, by [`PowerSystem`]. Freeing their
+  /// draw is the point: a ship short of Power can shut a weapon off to keep
+  /// flying.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub offline: Vec<PowerSystem>,
+
+  /// Basic ship systems running at half power, which High Guard p. 17 allows
+  /// in an emergency. Uncomfortable, and the only way to find Power on a ship
+  /// with nothing else to shut off.
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub basic_power_halved: bool,
+
+  /// How many times the engineer has overloaded the drive and the plant this
+  /// fight. Each attempt after the first takes a cumulative DM-2 (Core
+  /// Rulebook p. 171), cleared only by maintenance out of combat.
+  #[serde(default, skip_serializing_if = "is_zero_u8")]
+  pub overload_drive_attempts: u8,
+  #[serde(default, skip_serializing_if = "is_zero_u8")]
+  pub overload_plant_attempts: u8,
+
   /// What each critical hit took away, in the order it happened, with the
   /// system and the severity that did it. Repairing a system undoes its own
   /// damage from the end.
@@ -1319,6 +1339,38 @@ impl Display for BridgeStation {
   }
 }
 
+/// A call on the ship's power plant.
+///
+/// The engineer can shut most of these down to free Power for something else
+/// (Core Rulebook p. 171, Offline System). Basic ship systems cannot be shut
+/// off, but High Guard p. 17 allows them to run at half in an emergency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum PowerSystem {
+  /// Life support, gravity, heat and light: 20% of the hull's tonnage.
+  Basic,
+  Sensors,
+  /// The manoeuvre drive, at the Thrust the drive is rated for.
+  Maneuver,
+  /// The jump drive, which only draws when the ship actually jumps.
+  Jump,
+  /// One weapon mount, by its index in the ship's armament.
+  Weapon(usize),
+}
+
+/// One line of a ship's power budget.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PowerLine {
+  pub system: PowerSystem,
+  /// What to call it on a console.
+  pub label: String,
+  /// What it draws when it is running.
+  pub draw: u32,
+  /// Whether it is running. An engineer can switch most things off.
+  pub online: bool,
+  /// Whether it only draws at the moment it is used, as the jump drive does.
+  pub on_demand: bool,
+}
+
 /// Whether a bridge station can be used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub enum StationStatus {
@@ -1399,6 +1451,10 @@ impl Ship {
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
       damage_log: vec![],
+      offline: vec![],
+      basic_power_halved: false,
+      overload_drive_attempts: 0,
+      overload_plant_attempts: 0,
       attack_dm: 0,
       crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
       dodge_thrust: 0,
@@ -1511,7 +1567,14 @@ impl Ship {
 
   #[must_use]
   pub fn max_acceleration(&self) -> u8 {
-    let power_limit = self.design.best_thrust(self.available_power());
+    // Weapons, sensors and basic systems are all drawing on the same plant,
+    // so what is left after them is what the drive has to work with. An
+    // engineer short of Power can shut something down to get thrust back.
+    let power_limit = if self.is_online(PowerSystem::Maneuver) {
+      self.design.thrust_from_power(self.power_for_drive())
+    } else {
+      0
+    };
     let maneuver_limit = self.current_maneuver;
 
     // TODO: Remove this once using a match doesn't trigger the warning about attributes on expressions being experimental.
@@ -1768,6 +1831,19 @@ impl Ship {
     self.transmitting && self.station_working(BridgeStation::Comms)
   }
 
+  /// Power the drive can have: what the plant makes, less everything else
+  /// that is running.
+  #[must_use]
+  pub fn power_for_drive(&self) -> u32 {
+    let others: u32 = self
+      .power_lines()
+      .iter()
+      .filter(|line| line.online && !line.on_demand && line.system != PowerSystem::Maneuver)
+      .map(|line| line.draw)
+      .sum();
+    self.available_power().saturating_sub(others)
+  }
+
   /// The thrust this ship is applying, in whole G, for the detection tables.
   ///
   /// "Target is operating manoeuvre drive: +1 per Thrust". A flight plan may
@@ -1930,6 +2006,110 @@ impl Ship {
     self.dodge_thrust = 0;
     self.dodge_spent = 0;
     self.assist_gunners = false;
+  }
+
+  /// Every call on the power plant, in the order a console should show them.
+  ///
+  /// High Guard pp. 16-17 and the weapon tables: basic systems are 20% of the
+  /// hull, the drives 10% of the hull per point of Thrust or jump number,
+  /// sensors by grade, and each weapon mount what its guns draw.
+  #[must_use]
+  pub fn power_lines(&self) -> Vec<PowerLine> {
+    let hull = self.design.displacement;
+    let mut lines = vec![
+      PowerLine {
+        system: PowerSystem::Basic,
+        label: if self.basic_power_halved {
+          "Basic systems (half)".to_string()
+        } else {
+          "Basic systems".to_string()
+        },
+        draw: if self.basic_power_halved { hull / 10 } else { hull / 5 },
+        // The one thing that cannot be switched off, only turned down.
+        online: true,
+        on_demand: false,
+      },
+      PowerLine {
+        system: PowerSystem::Sensors,
+        label: format!("Sensors ({})", String::from(self.current_sensors)),
+        draw: sensor_power(self.current_sensors),
+        online: self.is_online(PowerSystem::Sensors),
+        on_demand: false,
+      },
+      PowerLine {
+        system: PowerSystem::Maneuver,
+        label: format!("M-drive (thrust {})", self.design.maneuver),
+        draw: hull / 10 * u32::from(self.design.maneuver),
+        online: self.is_online(PowerSystem::Maneuver),
+        on_demand: false,
+      },
+    ];
+    if self.design.jump > 0 {
+      lines.push(PowerLine {
+        system: PowerSystem::Jump,
+        label: format!("J-drive (jump {})", self.design.jump),
+        draw: hull / 10 * u32::from(self.design.jump),
+        online: self.is_online(PowerSystem::Jump),
+        // "This Power requirement is only needed when the ship actually
+        // initiates a jump" (High Guard p. 16).
+        on_demand: true,
+      });
+    }
+    for (index, weapon) in self.weapons().iter().enumerate() {
+      let draw = weapon_mount_power(weapon);
+      if draw == 0 {
+        continue;
+      }
+      lines.push(PowerLine {
+        system: PowerSystem::Weapon(index),
+        label: String::from(weapon),
+        draw,
+        online: self.is_online(PowerSystem::Weapon(index)) && self.active_weapons[index],
+        on_demand: false,
+      });
+    }
+    lines
+  }
+
+  /// Whether the engineer has left this system running.
+  #[must_use]
+  pub fn is_online(&self, system: PowerSystem) -> bool {
+    !self.offline.contains(&system)
+  }
+
+  /// Power everything running draws right now, leaving out the jump drive,
+  /// which only draws as the ship jumps.
+  #[must_use]
+  pub fn power_demand(&self) -> u32 {
+    self
+      .power_lines()
+      .iter()
+      .filter(|line| line.online && !line.on_demand)
+      .map(|line| line.draw)
+      .sum()
+  }
+
+  /// Power left over, or `None` when the ship is drawing more than it makes.
+  #[must_use]
+  pub fn power_spare(&self) -> Option<u32> {
+    self.available_power().checked_sub(self.power_demand())
+  }
+
+  /// Switch a system off, or back on. Basic systems cannot be switched off --
+  /// use [`Ship::set_basic_power_halved`] to turn them down instead.
+  pub fn set_online(&mut self, system: PowerSystem, online: bool) {
+    if system == PowerSystem::Basic {
+      return;
+    }
+    self.offline.retain(|off| *off != system);
+    if !online {
+      self.offline.push(system);
+    }
+  }
+
+  /// Run basic ship systems at half power, or back at full.
+  pub fn set_basic_power_halved(&mut self, halved: bool) {
+    self.basic_power_halved = halved;
   }
 
   /// Thrust left for evasion this round: what the pilot set aside, less what
@@ -2415,7 +2595,46 @@ async fn load_test_ship_templates() -> ShipTemplateTable {
     .expect("Unable to load ship templates directory.")
 }
 
+/// What a sensor suite draws (High Guard p. 23).
+#[must_use]
+pub fn sensor_power(sensors: Sensors) -> u32 {
+  match sensors {
+    Sensors::Basic => 0,
+    Sensors::Civilian => 1,
+    Sensors::Military => 2,
+    Sensors::Improved => 4,
+    Sensors::Advanced => 6,
+  }
+}
+
+/// What one mount draws with everything in it running: the mount itself, plus
+/// each gun bolted into it.
+#[must_use]
+pub fn weapon_mount_power(weapon: &Weapon) -> u32 {
+  let class = MountClass::from(&weapon.mount);
+  let guns: u32 = weapon
+    .guns
+    .iter()
+    .map(|gun| crate::rules_tables::weapon_power(gun.kind, class).unwrap_or(0))
+    .sum();
+  guns + crate::rules_tables::mount_power(class)
+}
+
 impl ShipDesignTemplate {
+  /// The Thrust a given amount of Power will drive, capped by what the drive
+  /// is rated for: 10% of the hull's tonnage per point of Thrust (High Guard
+  /// p. 16).
+  #[must_use]
+  pub fn thrust_from_power(&self, power_for_drive: u32) -> u8 {
+    if self.displacement == 0 {
+      return self.maneuver;
+    }
+    (power_for_drive * 10 / self.displacement)
+      .try_into()
+      .unwrap_or(u8::MAX)
+      .min(self.maneuver)
+  }
+
   // Making this overly simplistic for now.  Assume for power usage that
   // basic systems and sensors are prioritized, and we ignore weapons.
   #[must_use]
@@ -2935,6 +3154,76 @@ fn int_to_digit(code: u8) -> char {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// The power budget, against the figures in High Guard: basic systems are
+  /// 20% of the hull, the drives 10% per point, sensors by grade, and each
+  /// mount what its guns draw.
+  #[test]
+  fn a_ships_power_budget_adds_up() {
+    // Executor's shape: 200 tons, Thrust 6, Advanced sensors, a particle
+    // barbette and a mixed missile/sand turret.
+    let design = Arc::new(ShipDesignTemplate {
+      name: "HMS Executor".to_string(),
+      displacement: 200,
+      power: 260,
+      maneuver: 6,
+      jump: 2,
+      sensors: Sensors::Advanced,
+      weapons: vec![
+        Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
+        Weapon {
+          mount: WeaponMount::Turret,
+          guns: vec![
+            Gun::new(WeaponType::Missile),
+            Gun::new(WeaponType::Missile),
+            Gun::new(WeaponType::Sand),
+          ],
+        },
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    let draw = |ship: &Ship, system: PowerSystem| {
+      ship
+        .power_lines()
+        .into_iter()
+        .find(|line| line.system == system)
+        .map(|line| line.draw)
+    };
+    assert_eq!(draw(&ship, PowerSystem::Basic), Some(40), "20% of 200 tons");
+    assert_eq!(draw(&ship, PowerSystem::Sensors), Some(6), "advanced sensors");
+    assert_eq!(draw(&ship, PowerSystem::Maneuver), Some(120), "10% per Thrust, six of them");
+    assert_eq!(draw(&ship, PowerSystem::Jump), Some(40), "and 10% per jump number");
+    assert_eq!(draw(&ship, PowerSystem::Weapon(0)), Some(15), "a particle barbette");
+    assert_eq!(
+      draw(&ship, PowerSystem::Weapon(1)),
+      Some(1),
+      "racks draw nothing; the turret draws 1"
+    );
+
+    // The jump drive only draws as the ship jumps, so it is not in the
+    // running total.
+    assert_eq!(ship.power_demand(), 40 + 6 + 120 + 15 + 1);
+    assert_eq!(ship.power_spare(), Some(260 - 182));
+    assert_eq!(ship.max_acceleration(), 6, "and there is power enough to fly");
+
+    // Lose most of the plant and the drive is what suffers.
+    ship.current_power = 150;
+    assert!(ship.power_spare().is_none(), "150 cannot run all of it");
+    assert_eq!(ship.max_acceleration(), 4, "the drive gets what is left: 88 of 200");
+
+    // The engineer shuts the barbette down and gets some of it back.
+    ship.set_online(PowerSystem::Weapon(0), false);
+    assert_eq!(ship.max_acceleration(), 5);
+
+    // Basic systems cannot be switched off, only turned down.
+    ship.set_online(PowerSystem::Basic, false);
+    assert_eq!(draw(&ship, PowerSystem::Basic), Some(40));
+    ship.set_basic_power_halved(true);
+    assert_eq!(draw(&ship, PowerSystem::Basic), Some(20), "half, in an emergency");
+    assert_eq!(ship.max_acceleration(), 6);
+  }
 
   /// The pilot's Evade order stands between rounds; only the allowance is
   /// spent. It used to be the same number, so a pilot who dodged two attacks

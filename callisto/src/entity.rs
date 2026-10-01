@@ -30,7 +30,8 @@ use crate::rules_tables::{
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{
-  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem,
+  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, PowerSystem, Range, Ship, ShipDesignTemplate,
+  ShipSystem,
 };
 
 #[allow(unused_imports)]
@@ -158,6 +159,14 @@ fn detection_roll_effect(
     format!(
       "{observer} sensor check on {target} with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against 8: {outcome}."
     ),
+  )
+}
+
+/// " Power spare: 12." or the shortfall, for the end of a power order.
+fn power_note(spare: Option<u32>) -> String {
+  spare.map_or_else(
+    || " The ship is still drawing more Power than it makes.".to_string(),
+    |spare| format!(" Power spare: {spare}."),
   )
 }
 
@@ -1249,6 +1258,7 @@ impl Entities {
           | ShipAction::OverloadDrive { .. }
           | ShipAction::OverloadPlant { .. }
           | ShipAction::Repair { .. }
+          | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
@@ -2314,6 +2324,7 @@ impl Entities {
           | ShipAction::OverloadDrive { .. }
           | ShipAction::OverloadPlant { .. }
           | ShipAction::Repair { .. }
+          | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
           | ShipAction::ClearSensorAction { .. }
           | ShipAction::ClearEngineerAction { .. }
@@ -2398,6 +2409,9 @@ impl Entities {
           ShipAction::OverloadDrive { .. } => self.process_overload_drive(ship_name, engineer, boost, &mut crits, rng),
           ShipAction::OverloadPlant { .. } => self.process_overload_plant(ship_name, engineer, boost, &mut crits, rng),
           ShipAction::Repair { system, .. } => self.process_repair(ship_name, *system, engineer, boost, rng),
+          ShipAction::SetPower { system, online, .. } => {
+            self.process_set_power(ship_name, *system, *online, engineer, boost, rng)
+          }
           ShipAction::Jump { .. } => {
             let (result, jumped) = self.process_jump(ship_name, engineer, boost, rng);
             if jumped {
@@ -2532,11 +2546,20 @@ impl Entities {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).maneuver;
     let target: u8 = 10;
+    // "This check suffers a cumulative DM-2 each time it is attempted after
+    // the first" (Core Rulebook p. 171). The penalty only comes off with 1D
+    // hours of maintenance, which is not something done mid-fight.
+    let attempts = ship.read().unwrap().overload_drive_attempts;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (m-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (m-drive)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("repeated overloads", -2 * i16::from(attempts)),
+      ],
       target,
     );
+    ship.write().unwrap().overload_drive_attempts = attempts.saturating_add(1);
 
     let action = ShipAction::OverloadDrive { engineer };
 
@@ -2596,11 +2619,18 @@ impl Entities {
     let ship = self.ships.get(ship_name).unwrap();
     let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
     let target: u8 = 10;
+    // The same cumulative DM-2 the drive takes, for the same reason.
+    let attempts = ship.read().unwrap().overload_plant_attempts;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (power)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("repeated overloads", -2 * i16::from(attempts)),
+      ],
       target,
     );
+    ship.write().unwrap().overload_plant_attempts = attempts.saturating_add(1);
 
     let action = ShipAction::OverloadPlant { engineer };
 
@@ -2637,6 +2667,94 @@ impl Entities {
         check: total,
         target,
         message: format!("{ship_name} power plant overload {check}: failed."),
+        critical_failure: false,
+      }
+    }
+  }
+
+  /// Power a system down, or bring it back up (Core Rulebook p. 171).
+  ///
+  /// Shutting down takes an Engineer (power) check; the book asks for one and
+  /// gives no target number, so it uses the same Average (8+) every other
+  /// engineering job here does. Bringing a system back takes the round but no
+  /// check -- it is switching it on, not nursing it.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write the ship.
+  fn process_set_power(
+    &mut self, ship_name: &str, system: PowerSystem, online: bool, engineer: usize, boost: i16, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    let action = ShipAction::SetPower {
+      system,
+      online,
+      engineer,
+    };
+    let ship = self.ships.get(ship_name).unwrap();
+
+    // Basic ship systems are the one thing that cannot be switched off. They
+    // can be run at half, which is a different order.
+    if system == PowerSystem::Basic {
+      return EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        check: 0,
+        target: 0,
+        message: format!("{ship_name} cannot shut down basic ship systems; they can only be run at half."),
+        critical_failure: false,
+      };
+    }
+
+    let label = ship
+      .read()
+      .unwrap()
+      .power_lines()
+      .into_iter()
+      .find(|line| line.system == system)
+      .map_or_else(|| format!("{system:?}"), |line| line.label);
+
+    if online {
+      ship.write().unwrap().set_online(system, true);
+      let spare = ship.read().unwrap().power_spare();
+      return EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        check: 0,
+        target: 0,
+        message: format!("{ship_name} brings {label} back online.{}", power_note(spare)),
+        critical_failure: false,
+      };
+    }
+
+    let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
+    let target: u8 = 8;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
+
+    if total >= target {
+      ship.write().unwrap().set_online(system, false);
+      let spare = ship.read().unwrap().power_spare();
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        check: total,
+        target,
+        message: format!("{ship_name} powers down {label} {check}: offline.{}", power_note(spare)),
+        critical_failure: false,
+      }
+    } else {
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        check: total,
+        target,
+        message: format!("{ship_name} powers down {label} {check}: failed, it stays online."),
         critical_failure: false,
       }
     }
@@ -5449,6 +5567,99 @@ mod tests {
     assert!(!ship.station_working(BridgeStation::Pilot));
     ship.undo_damage(ShipSystem::Bridge, 3);
     assert!(ship.station_working(BridgeStation::Pilot));
+  }
+
+  /// Powering a system down frees its draw, and the engineer is told what is
+  /// left. Bringing it back takes a round but no check.
+  #[test]
+  fn an_engineer_can_power_a_system_down() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Thresher".to_string(),
+      displacement: 200,
+      power: 175,
+      maneuver: 6,
+      sensors: crate::ship::Sensors::Military,
+      weapons: vec![crate::ship::Weapon::single(
+        crate::ship::WeaponType::Particle,
+        crate::ship::WeaponMount::Barbette,
+      )],
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Thresher".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    {
+      let mut ship = entities.ships.get("Thresher").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.set_skill(Skills::EngineeringPower, 2);
+      ship.set_crew(crew);
+    }
+
+    let order = |entities: &mut Entities, online: bool, seed: u64| {
+      let mut rng = SmallRng::seed_from_u64(seed);
+      entities.engineer_actions(
+        &[(
+          "Thresher".to_string(),
+          vec![ShipAction::SetPower {
+            system: PowerSystem::Weapon(0),
+            online,
+            engineer: 0,
+          }],
+        )],
+        &BoostMap::default(),
+        &mut rng,
+      )
+    };
+
+    let before = entities.ships.get("Thresher").unwrap().read().unwrap().max_acceleration();
+    let effects = order(&mut entities, false, 4);
+    {
+      let ship = entities.ships.get("Thresher").unwrap().read().unwrap();
+      assert!(!ship.is_online(PowerSystem::Weapon(0)), "{effects:?}");
+      assert!(ship.max_acceleration() > before, "the drive gets the barbette's share");
+    }
+    assert!(format!("{effects:?}").contains("Power spare"), "{effects:?}");
+
+    entities
+      .ships
+      .get("Thresher")
+      .unwrap()
+      .write()
+      .unwrap()
+      .reset_temporary_bonuses();
+    order(&mut entities, true, 4);
+    assert!(entities
+      .ships
+      .get("Thresher")
+      .unwrap()
+      .read()
+      .unwrap()
+      .is_online(PowerSystem::Weapon(0)));
+  }
+
+  /// Overloading again and again gets harder: a cumulative DM-2 each time,
+  /// which the log names so the engineer can see the hole they are in.
+  #[test]
+  fn repeated_overloads_get_harder() {
+    let mut entities = bridge_board();
+    let mut rng = StepRng::new(5, 0);
+    let mut overload = |entities: &mut Entities| {
+      let effects = entities.engineer_actions(
+        &[("Dragon".to_string(), vec![ShipAction::OverloadDrive { engineer: 0 }])],
+        &BoostMap::default(),
+        &mut rng,
+      );
+      entities.ships.get("Dragon").unwrap().write().unwrap().reset_temporary_bonuses();
+      format!("{effects:?}")
+    };
+
+    let first = overload(&mut entities);
+    assert!(!first.contains("repeated overloads"), "nothing to pay the first time: {first}");
+
+    let second = overload(&mut entities);
+    assert!(second.contains("repeated overloads -2"), "{second}");
+
+    let third = overload(&mut entities);
+    assert!(third.contains("repeated overloads -4"), "{third}");
   }
 
   /// Two operators are two people: one can jam while the other locks, in the

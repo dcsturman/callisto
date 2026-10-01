@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::debug;
 use crate::entity::Entities;
-use crate::ship::{Ship, ShipSystem, WeaponType};
+use crate::ship::{PowerSystem, Ship, ShipSystem, WeaponType};
 
 /// Identifies a specific queued action that a captain can boost. Mirrors the
 /// shape of the underlying `ShipAction` for the kinds that are eligible to
@@ -306,6 +306,15 @@ pub enum ShipAction {
     #[serde(default)]
     engineer: usize,
   },
+  /// Offline System (Core Rulebook p. 171): power something down to free its
+  /// draw, or bring it back. The book charges a round either way, and an
+  /// Engineer (power) check to shut things down.
+  SetPower {
+    system: PowerSystem,
+    online: bool,
+    #[serde(default)]
+    engineer: usize,
+  },
   /// Captain-only action queued under the captain's own ship. Bundles the
   /// 2d6+leadership pre-resolution roll and the list of targets to apply +1
   /// boosts to. Resolved in `player.update()` Phase 0 before any other
@@ -348,6 +357,7 @@ pub fn engineer_of(action: &ShipAction) -> Option<usize> {
     ShipAction::OverloadDrive { engineer }
     | ShipAction::OverloadPlant { engineer }
     | ShipAction::Repair { engineer, .. }
+    | ShipAction::SetPower { engineer, .. }
     | ShipAction::Jump { engineer } => Some(*engineer),
     _ => None,
   }
@@ -446,6 +456,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
           ShipAction::OverloadDrive { engineer }
           | ShipAction::OverloadPlant { engineer }
           | ShipAction::Repair { engineer, .. }
+          | ShipAction::SetPower { engineer, .. }
           | ShipAction::Jump { engineer } => {
             current_actions.retain(|action| engineer_of(action) != Some(engineer));
             current_actions.push(next_action.clone());

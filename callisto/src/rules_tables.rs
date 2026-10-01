@@ -31,6 +31,117 @@ pub const fn damage_multiple(mount: MountClass) -> u32 {
 ///
 /// Deliberately a `match` rather than a lookup table: adding a [`WeaponType`]
 /// then fails to compile until every mount is considered, instead of silently
+/// The Power a single weapon of this kind draws in this mount (High Guard
+/// pp. 28-33), or `None` for a pair the book does not sell.
+///
+/// Per weapon, not per mount: a triple turret of pulse lasers draws three
+/// times this. The mount's own draw is [`mount_power`].
+#[must_use]
+pub fn weapon_power(kind: WeaponType, mount: MountClass) -> Option<u32> {
+  use MountClass::{Barbette, Battery, Fixed, LargeBay, MediumBay, SmallBay, Turret};
+  Some(match kind {
+    // Launchers draw nothing in a turret or barbette: the rack is a rack.
+    WeaponType::Missile => match mount {
+      Turret | Fixed | Barbette => 0,
+      SmallBay => 5,
+      MediumBay => 10,
+      LargeBay => 20,
+      Battery => return None,
+    },
+    WeaponType::Torpedo => match mount {
+      // A barbette and a small bay happen to draw the same 2.
+      Barbette | SmallBay => 2,
+      MediumBay => 5,
+      LargeBay => 10,
+      _ => return None,
+    },
+    WeaponType::Sand => match mount {
+      Turret | Fixed => 0,
+      _ => return None,
+    },
+    WeaponType::Beam => match mount {
+      Turret | Fixed => 4,
+      Barbette => 12,
+      _ => return None,
+    },
+    WeaponType::Pulse => match mount {
+      Turret | Fixed => 4,
+      Barbette => 12,
+      _ => return None,
+    },
+    WeaponType::Railgun => match mount {
+      Turret | Fixed => 2,
+      Barbette => 5,
+      SmallBay => 10,
+      MediumBay => 15,
+      LargeBay => 25,
+      Battery => return None,
+    },
+    WeaponType::Fusion => match mount {
+      Turret | Fixed => 12,
+      Barbette => 20,
+      SmallBay => 50,
+      MediumBay => 80,
+      LargeBay => 100,
+      Battery => return None,
+    },
+    WeaponType::Plasma => match mount {
+      Turret | Fixed => 6,
+      Barbette => 12,
+      _ => return None,
+    },
+    WeaponType::Particle => match mount {
+      Turret | Fixed => 8,
+      Barbette => 15,
+      SmallBay => 30,
+      MediumBay => 50,
+      LargeBay => 80,
+      Battery => return None,
+    },
+    WeaponType::Ion => match mount {
+      Barbette => 10,
+      SmallBay => 20,
+      MediumBay => 30,
+      LargeBay => 40,
+      _ => return None,
+    },
+    WeaponType::Meson => match mount {
+      SmallBay => 20,
+      MediumBay => 30,
+      LargeBay => 120,
+      _ => return None,
+    },
+    WeaponType::MassDriver => match mount {
+      SmallBay => 15,
+      MediumBay => 25,
+      LargeBay => 35,
+      _ => return None,
+    },
+    WeaponType::Repulsor => match mount {
+      SmallBay => 50,
+      MediumBay => 100,
+      LargeBay => 200,
+      _ => return None,
+    },
+    // The book prices point-defence batteries by grade rather than by gun.
+    // Treated as a battery's draw rather than a weapon's; see `mount_power`.
+    WeaponType::PointDefense => 0,
+  })
+}
+
+/// The Power the mount itself draws, whatever is bolted into it (High Guard
+/// p. 28). A turret of any size takes one; a fixed mount takes none; bays and
+/// barbettes carry their draw on the weapon.
+#[must_use]
+pub fn mount_power(mount: MountClass) -> u32 {
+  match mount {
+    // A point-defence battery is 20 tons of lasers and capacitors; the book
+    // gives no separate figure for it, so it draws what a turret does.
+    MountClass::Turret | MountClass::Battery => 1,
+    _ => 0,
+  }
+}
+
 /// indexing out of bounds at runtime.
 #[must_use]
 #[allow(clippy::match_same_arms)]
