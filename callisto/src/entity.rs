@@ -2564,15 +2564,18 @@ impl Entities {
     let action = ShipAction::OverloadDrive { engineer };
 
     if total >= target {
-      // Success - set temporary_maneuver = 1
-      ship.write().unwrap().set_temporary_maneuver(1);
+      // House rule: the overload holds for the Effect of the check in rounds,
+      // and an Effect of 0 still buys one. The book gives a single round,
+      // which made a hard check worth very little.
+      let rounds = (total - target).saturating_add(1);
+      ship.write().unwrap().set_temporary_maneuver(1, rounds);
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} maneuver drive overload {check}: success, temporary +1 maneuver."),
+        message: format!("{ship_name} maneuver drive overload {check}: success, +1 thrust for {rounds} round(s)."),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -2635,15 +2638,16 @@ impl Entities {
     let action = ShipAction::OverloadPlant { engineer };
 
     if total >= target {
-      // Success - set temporary_power_multiplier = 1.1
-      ship.write().unwrap().set_temporary_power_multiplier(1.1);
+      // Same house rule as the drive: Effect in rounds, minimum one.
+      let rounds = (total - target).saturating_add(1);
+      ship.write().unwrap().set_temporary_power_multiplier(1.1, rounds);
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} power plant overload {check}: success, temporary +10% power."),
+        message: format!("{ship_name} power plant overload {check}: success, +10% power for {rounds} round(s)."),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -5634,6 +5638,44 @@ mod tests {
       .read()
       .unwrap()
       .is_online(PowerSystem::Weapon(0)));
+  }
+
+  /// House rule: an overload holds for the Effect of the check in rounds, so
+  /// a good roll is worth more than a scraped one.
+  #[test]
+  fn an_overload_holds_for_its_effect_in_rounds() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.set_skill(Skills::EngineeringManeuver, 4);
+      ship.set_crew(crew);
+    }
+
+    // Every die a 6: 12 + 4 against 10 is an Effect of 6, so seven rounds.
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.engineer_actions(
+      &[("Dragon".to_string(), vec![ShipAction::OverloadDrive { engineer: 0 }])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(format!("{effects:?}").contains("for 7 round(s)"), "{effects:?}");
+
+    let ship = entities.ships.get("Dragon").unwrap();
+    assert_eq!(ship.read().unwrap().get_temporary_maneuver(), 1);
+    for remaining in (1..7).rev() {
+      ship.write().unwrap().reset_temporary_bonuses();
+      assert_eq!(
+        ship.read().unwrap().temporary_maneuver_rounds(),
+        remaining,
+        "the overload should still be running"
+      );
+      assert_eq!(ship.read().unwrap().get_temporary_maneuver(), 1);
+    }
+
+    // And the last round spends the last of it.
+    ship.write().unwrap().reset_temporary_bonuses();
+    assert_eq!(ship.read().unwrap().get_temporary_maneuver(), 0, "then it lapses");
   }
 
   /// Overloading again and again gets harder: a cumulative DM-2 each time,

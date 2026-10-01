@@ -13,7 +13,7 @@ import {
   hasEffect,
 } from "lib/entities";
 
-import { RangeSphere, RangeCircle } from "lib/Util";
+import { RangeSphere } from "lib/Util";
 
 import { useAppDispatch } from "state/hooks";
 import { setEntityToShow } from "state/uiSlice";
@@ -69,16 +69,19 @@ export function Planet(args: PlanetProps) {
   function allViewChanges() {
     return (
       <>
-        {/* The 100-diameter limit is a radius, and a radius reads as a circle
-            -- the same silhouette treatment the ship range bands got. The
-            wireframe sphere it replaces drew a 14-segment cage over the whole
-            planet and everything near it. `RangeCircle` takes metres. */}
+        {/* The 100-diameter limit is a shell rather than a circle, because
+            the camera is nearly always inside it: a fight near a planet
+            happens well within 200 radii, and a silhouette circle hides
+            itself when the camera is inside the sphere -- which made the
+            toggle look broken. A shell drawn on its inside faces is visible
+            from within, as the gravity wells beside it are. */}
         {args.controlJumpDistance && (
-          <RangeCircle
+          <RangeSphere
             pos={pos}
             distance={args.planet.radius * 200}
-            label="100 diameter limit"
-            color="#9a9a9a"
+            order={12}
+            color="#9ab0c4"
+            opacity={0.07}
           />
         )}
         {args.controlGravityWell && args.planet.gravity_radius_025 && (

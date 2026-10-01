@@ -556,6 +556,16 @@ Basic ship systems cannot be shut down. They can be run at half, which HG p. 17
 allows in an emergency; Callisto does not yet impose the penalties the book
 lists for a ship that cannot run even half.
 
+#### Change — an overload lasts the Effect of the check in rounds
+RAW gives both overloads a single round: "will increase the ship's Thrust by +1
+during the next round" (CRB p. 171). Against a Difficult (10+) check that
+carries a cumulative DM-2 and a critical hit on a bad failure, one round is
+very little to buy, and the engineer had no reason to take the risk.
+
+In Callisto an overload holds for the Effect of the check in rounds, with an
+Effect of 0 still buying one. A scraped success is the book's single round; a
+good roll is worth the gamble.
+
 #### Omission — quick repairs never lapse
 "These quick repairs will only last for 1D hours" (CRB p. 171). In Callisto a
 repair holds for good. A fight is minutes long, so the difference would almost

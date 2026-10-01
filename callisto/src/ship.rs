@@ -314,6 +314,13 @@ pub struct Ship {
   #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
   temporary_maneuver: u8,
 
+  /// Rounds the overload has left to run, including this one. House rule: an
+  /// overload lasts the Effect of the check in rounds, and an Effect of 0
+  /// still buys one. Per-round scratch, so it is not saved.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
+  temporary_maneuver_rounds: u8,
+
   #[derivative(PartialEq = "ignore")]
   #[serde(
     skip_deserializing,
@@ -321,6 +328,11 @@ pub struct Ship {
     skip_serializing_if = "is_default_power_multiplier"
   )]
   temporary_power_multiplier: f32,
+
+  /// Rounds the plant's overload has left, on the same house rule.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
+  temporary_power_rounds: u8,
 
   #[derivative(PartialEq = "ignore")]
   last_repair_component: Option<ShipSystem>,
@@ -1462,7 +1474,9 @@ impl Ship {
       assist_gunners: false,
       can_jump: false,
       temporary_maneuver: 0,
+      temporary_maneuver_rounds: 0,
       temporary_power_multiplier: 1.0,
+      temporary_power_rounds: 0,
       last_repair_component: None,
       repair_bonus: 0,
       engineer_action_taken: false,
@@ -2200,8 +2214,22 @@ impl Ship {
     self.temporary_maneuver
   }
 
-  pub fn set_temporary_maneuver(&mut self, value: u8) {
+  /// Grant the drive's overload for `rounds` rounds, starting with the next.
+  pub fn set_temporary_maneuver(&mut self, value: u8, rounds: u8) {
     self.temporary_maneuver = value;
+    self.temporary_maneuver_rounds = rounds;
+  }
+
+  /// Rounds of drive overload left, including the one being played.
+  #[must_use]
+  pub fn temporary_maneuver_rounds(&self) -> u8 {
+    self.temporary_maneuver_rounds
+  }
+
+  /// Rounds of plant overload left.
+  #[must_use]
+  pub fn temporary_power_rounds(&self) -> u8 {
+    self.temporary_power_rounds
   }
 
   #[must_use]
@@ -2209,8 +2237,10 @@ impl Ship {
     self.temporary_power_multiplier
   }
 
-  pub fn set_temporary_power_multiplier(&mut self, value: f32) {
+  /// Grant the plant's overload for `rounds` rounds, starting with the next.
+  pub fn set_temporary_power_multiplier(&mut self, value: f32, rounds: u8) {
     self.temporary_power_multiplier = value;
+    self.temporary_power_rounds = rounds;
   }
 
   #[must_use]
@@ -2238,8 +2268,16 @@ impl Ship {
     // p. 171), which is a fresh allowance every round. The order itself stands
     // until the pilot changes it.
     self.dodge_spent = 0;
-    self.temporary_maneuver = 0;
-    self.temporary_power_multiplier = 1.0;
+    // An overload runs for as many rounds as the check's Effect bought, so
+    // the round ending spends one of them rather than ending it outright.
+    self.temporary_maneuver_rounds = self.temporary_maneuver_rounds.saturating_sub(1);
+    if self.temporary_maneuver_rounds == 0 {
+      self.temporary_maneuver = 0;
+    }
+    self.temporary_power_rounds = self.temporary_power_rounds.saturating_sub(1);
+    if self.temporary_power_rounds == 0 {
+      self.temporary_power_multiplier = 1.0;
+    }
     self.engineer_action_taken = false;
     self.evade_boost_used = false;
     self.leadership_points = 0;
