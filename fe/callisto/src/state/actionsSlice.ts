@@ -20,14 +20,14 @@ const initialState = {} as ActionType;
 
 const newShipAction = () => {
   return {
-    sensor: DEFAULT_SENSOR_STATE,
+    sensors: [] as SensorState[],
     fire: [],
     unfire: [],
     pointDefense: [],
-    engineer: null as EngineerState,
+    engineers: [] as EngineerState[],
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
-    clearSensor: false,
-    clearEngineer: false,
+    clearSensors: [] as number[],
+    clearEngineers: [] as number[],
     clearLeadership: false,
   };
 };
@@ -48,13 +48,14 @@ type ShipActionSlot = ActionType[string];
  * deselect Assist Gunner and its boost stayed, and the only way out was to
  * reselect, un-inspire, and deselect again.
  *
- * `weapon_id` narrows a Fire/PointDefense drop to one mount; other kinds have
- * at most one boost per ship and ignore it.
+ * `which` narrows the drop to one mount or one crew member: a weapon id for
+ * Fire and PointDefense, a crew position for Sensor and Engineer. Without it
+ * every boost of those kinds goes.
  */
 const dropBoostsFrom = (
   slot: ShipActionSlot | undefined,
   kinds: BoostTarget["kind"][],
-  weapon_id?: number,
+  which?: number,
 ) => {
   const boosts = slot?.leadershipCheck?.boosts;
   if (slot == null || boosts == null || boosts.length === 0) {
@@ -64,8 +65,14 @@ const dropBoostsFrom = (
     if (!kinds.includes(b.kind)) {
       return true;
     }
-    if (weapon_id !== undefined && "weapon_id" in b) {
-      return b.weapon_id !== weapon_id;
+    if (which !== undefined && "weapon_id" in b) {
+      return b.weapon_id !== which;
+    }
+    if (which !== undefined && "operator" in b) {
+      return b.operator !== which;
+    }
+    if (which !== undefined && "engineer" in b) {
+      return b.engineer !== which;
     }
     return false;
   });
@@ -142,27 +149,46 @@ export const actionsSlice = createSlice({
         state[captainShipName].clearLeadership = localCaptainClearLeadership;
       }
     },
-    setSensorAction: (state, item: PayloadAction<{ shipName: string, action: SensorState}>) => {
-      state[item.payload.shipName] ??= newShipAction();
-      state[item.payload.shipName].sensor = item.payload.action;
-      // Setting None means "clear" — flag the anti-action so the server strips
-      // any sensor action it has queued for this ship. Setting any other
-      // sensor action implicitly replaces, so no clear flag needed.
-      state[item.payload.shipName].clearSensor =
-        item.payload.action.action === SensorAction.None;
-      if (item.payload.action.action === SensorAction.None) {
-        dropBoostsFrom(state[item.payload.shipName], ["Sensor"]);
+    // One operator's action. `operator` is their place in the crew, so a
+    // shipmate's queued action is untouched.
+    setSensorAction: (
+      state,
+      item: PayloadAction<{shipName: string; operator?: number; action: SensorState}>
+    ) => {
+      const {shipName, action} = item.payload;
+      const operator = item.payload.operator ?? 0;
+      state[shipName] ??= newShipAction();
+      const slot = state[shipName];
+      while (slot.sensors.length <= operator) {
+        slot.sensors.push(DEFAULT_SENSOR_STATE);
+      }
+      slot.sensors[operator] = action;
+      // Setting None means "clear" -- name this operator in the anti-action so
+      // the server strips theirs. Anything else replaces, so no flag needed.
+      slot.clearSensors = slot.clearSensors.filter((at) => at !== operator);
+      if (action.action === SensorAction.None) {
+        slot.clearSensors.push(operator);
+        dropBoostsFrom(slot, ["Sensor"], operator);
       }
       updateActions(state);
     },
-    setEngineerAction: (state, item: PayloadAction<{ shipName: string, action: EngineerState}>) => {
-      state[item.payload.shipName] ??= newShipAction();
-      state[item.payload.shipName].engineer = item.payload.action;
-      // null means "clear" — flag the anti-action. Any other engineer action
-      // replaces on the server side via merge.
-      state[item.payload.shipName].clearEngineer = item.payload.action === null;
-      if (item.payload.action === null) {
-        dropBoostsFrom(state[item.payload.shipName], ["Engineer"]);
+    // One engineer's job, on the same terms.
+    setEngineerAction: (
+      state,
+      item: PayloadAction<{shipName: string; engineer?: number; action: EngineerState}>
+    ) => {
+      const {shipName, action} = item.payload;
+      const engineer = item.payload.engineer ?? 0;
+      state[shipName] ??= newShipAction();
+      const slot = state[shipName];
+      while (slot.engineers.length <= engineer) {
+        slot.engineers.push(null);
+      }
+      slot.engineers[engineer] = action;
+      slot.clearEngineers = slot.clearEngineers.filter((at) => at !== engineer);
+      if (action === null) {
+        slot.clearEngineers.push(engineer);
+        dropBoostsFrom(slot, ["Engineer"], engineer);
       }
       updateActions(state);
     },

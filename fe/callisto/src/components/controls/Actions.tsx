@@ -1,23 +1,29 @@
 export type ActionType = {
   [actor: string]: {
-    sensor: SensorState;
+    /**
+     * One slot per sensor operator, by their place in the crew. A ship with
+     * two operators can jam with one and lock with the other, so this is a
+     * list rather than the single action it used to be.
+     */
+    sensors: SensorState[];
     fire: FireState;
     unfire: UnfireState;
     pointDefense: PointDefenseState;
-    engineer: EngineerState;
+    /** One slot per engineer, on the same terms. */
+    engineers: EngineerState[];
     // Captain leadership state. `null` means no LeadershipCheck queued for this
     // ship. When non-null, `boosts` is the set of action targets to boost.
     // The actual roll happens server-side when the captain hits the "Captain
     // Action" button (cached on `ship.leadership_points`); end-of-turn Phase 0
     // truncates this list to the rolled N.
     leadershipCheck: { boosts: BoostTarget[] } | null;
-    // Transient anti-action flags. Set true when the user explicitly clears a
-    // queued sensor/engineer/leadership action; emitted as
-    // `ClearSensorAction` / `ClearEngineerAction` / `ClearLeadershipCheck`
-    // in the next ModifyActions payload so the server strips its queued action.
-    // Reset to false on any subsequent set.
-    clearSensor: boolean;
-    clearEngineer: boolean;
+    // Transient anti-actions. `clearSensors` and `clearEngineers` hold the
+    // crew positions whose queued action the user explicitly cancelled, and
+    // are emitted as `ClearSensorAction` / `ClearEngineerAction` naming that
+    // person, so the server strips theirs and leaves their shipmates' alone.
+    // Cleared again on any subsequent set.
+    clearSensors: number[];
+    clearEngineers: number[];
     clearLeadership: boolean;
   };
 };
@@ -28,12 +34,12 @@ export type ActionType = {
 export type BoostTarget =
   | { kind: "Fire"; ship: string; weapon_id: number }
   | { kind: "PointDefense"; ship: string; weapon_id: number }
-  | { kind: "Sensor"; ship: string }
+  | { kind: "Sensor"; ship: string; operator: number }
   // Backed by no queued action: detection is free and happens every round. The
   // boost names the pair, because a captain concentrates the sensop on finding
   // one particular ship rather than on sensors in general.
   | { kind: "Detection"; ship: string; target: string }
-  | { kind: "Engineer"; ship: string }
+  | { kind: "Engineer"; ship: string; engineer: number }
   | { kind: "Evade"; ship: string }
   | { kind: "AssistGunner"; ship: string };
 
@@ -121,17 +127,23 @@ export function actionPayload(actions: ActionType) {
     if (value.unfire) {
       fire_actions = [...fire_actions, ...value.unfire.map((unfireAction) => unfireActionPayload(unfireAction))];
     }
-    const sensor_action = value.sensor ? sensorActionPayload(value.sensor): null;
-    if (sensor_action) {
-      fire_actions.push(sensor_action);
-    }
+    // One action per operator and per engineer, each naming whose it is.
+    (value.sensors ?? []).forEach((sensor, operator) => {
+      const sensor_action = sensor ? sensorActionPayload(sensor, operator) : null;
+      if (sensor_action) {
+        fire_actions.push(sensor_action);
+      }
+    });
 
-    if (value.engineer) {
-      const engineer_action = engineerActionPayload(value.engineer);
+    (value.engineers ?? []).forEach((engineer, index) => {
+      if (!engineer) {
+        return;
+      }
+      const engineer_action = engineerActionPayload(engineer, index);
       if (engineer_action) {
         fire_actions.push(engineer_action);
       }
-    }
+    });
 
     // Captain leadership check (one per ship; mutually exclusive with
     // `clearLeadership`). Emit whenever there are boosts queued.
@@ -143,12 +155,13 @@ export function actionPayload(actions: ActionType) {
       });
     }
 
-    // Anti-actions: explicit "strip queued sensor/engineer/leadership" intents.
-    if (value.clearSensor) {
-      fire_actions.push("ClearSensorAction");
+    // Anti-actions: explicit "strip queued sensor/engineer/leadership"
+    // intents, each naming the crew member whose action is being withdrawn.
+    for (const operator of value.clearSensors ?? []) {
+      fire_actions.push({ClearSensorAction: {operator}});
     }
-    if (value.clearEngineer) {
-      fire_actions.push("ClearEngineerAction");
+    for (const engineer of value.clearEngineers ?? []) {
+      fire_actions.push({ClearEngineerAction: {engineer}});
     }
     if (value.clearLeadership) {
       fire_actions.push("ClearLeadershipCheck");
@@ -166,11 +179,11 @@ export function boostTargetToWire(b: BoostTarget): object {
     case "PointDefense":
       return { PointDefense: { ship: b.ship, weapon_id: b.weapon_id } };
     case "Sensor":
-      return { Sensor: { ship: b.ship } };
+      return { Sensor: { ship: b.ship, operator: b.operator } };
     case "Detection":
       return { Detection: { ship: b.ship, target: b.target } };
     case "Engineer":
-      return { Engineer: { ship: b.ship } };
+      return { Engineer: { ship: b.ship, engineer: b.engineer } };
     case "Evade":
       return { Evade: { ship: b.ship } };
     case "AssistGunner":
@@ -193,16 +206,16 @@ export function wireToBoostTarget(raw: unknown): BoostTarget | null {
     return { kind: "PointDefense", ship: v.ship, weapon_id: v.weapon_id };
   }
   if (Object.hasOwn(obj, "Sensor")) {
-    const v = obj["Sensor"] as { ship: string };
-    return { kind: "Sensor", ship: v.ship };
+    const v = obj["Sensor"] as { ship: string; operator?: number };
+    return { kind: "Sensor", ship: v.ship, operator: v.operator ?? 0 };
   }
   if (Object.hasOwn(obj, "Detection")) {
     const v = obj["Detection"] as { ship: string; target: string };
     return { kind: "Detection", ship: v.ship, target: v.target };
   }
   if (Object.hasOwn(obj, "Engineer")) {
-    const v = obj["Engineer"] as { ship: string };
-    return { kind: "Engineer", ship: v.ship };
+    const v = obj["Engineer"] as { ship: string; engineer?: number };
+    return { kind: "Engineer", ship: v.ship, engineer: v.engineer ?? 0 };
   }
   if (Object.hasOwn(obj, "Evade")) {
     const v = obj["Evade"] as { ship: string };
@@ -232,34 +245,34 @@ export function boostTargetEquals(a: BoostTarget, b: BoostTarget): boolean {
   return true;
 }
 
-function engineerActionPayload(engineer: EngineerState) {
-  if (engineer === null) {
+function engineerActionPayload(action: EngineerState, engineer: number) {
+  if (action === null) {
     return undefined;
   }
-  switch (engineer.kind) {
+  switch (action.kind) {
     case "OverloadDrive":
-      return "OverloadDrive";
+      return {OverloadDrive: {engineer}};
     case "OverloadPlant":
-      return "OverloadPlant";
+      return {OverloadPlant: {engineer}};
     case "Repair":
-      return {Repair: {system: engineer.system}};
+      return {Repair: {system: action.system, engineer}};
     case "Jump":
-      return "Jump";
+      return {Jump: {engineer}};
   }
 }
 
-function sensorActionPayload(sensor: SensorState) {
+function sensorActionPayload(sensor: SensorState, operator: number) {
   switch (sensor.action) {
     case SensorAction.None:
       return undefined;
     case SensorAction.JamMissiles:
-      return "JamMissiles";
+      return {JamMissiles: {operator}};
     case SensorAction.BreakSensorLock:
-      return {BreakSensorLock: {target: sensor.target}};
+      return {BreakSensorLock: {target: sensor.target, operator}};
     case SensorAction.SensorLock:
-      return {SensorLock: {target: sensor.target}};
+      return {SensorLock: {target: sensor.target, operator}};
     case SensorAction.JamComms:
-      return {JamComms: {target: sensor.target}};
+      return {JamComms: {target: sensor.target, operator}};
   }
 }
 
@@ -358,66 +371,54 @@ export function payloadToAction(payload: object[]): ActionType {
       });
     result[shipName] = {...result[shipName], pointDefense: point_defense_actions};
 
-    // Identify sensor actions explicitly so we don't sweep engineer actions
-    // into the sensor slot.
-    const isSensorAction = (
-      action: string | object
-    ): boolean => {
-      if (typeof action === "string") {
-        return action === "JamMissiles";
+    // Sensor and engineer actions each name the crew member working them, so
+    // they go back into that person's slot. A list with a hole in it is a
+    // watch where somebody has nothing queued.
+    const sensors: SensorState[] = [];
+    const engineers: EngineerState[] = [];
+    const place = <T,>(list: T[], index: number, value: T, empty: T) => {
+      while (list.length <= index) {
+        list.push(empty);
       }
-      return (
-        Object.hasOwn(action, "BreakSensorLock") ||
-        Object.hasOwn(action, "SensorLock") ||
-        Object.hasOwn(action, "JamComms")
-      );
+      list[index] = value;
     };
-    const sensor_action = actions.filter(isSensorAction);
 
-    let s = DEFAULT_SENSOR_STATE;
-    if (sensor_action.length === 1) {
-      const action = sensor_action[0] as string | {[key: string]: {target: string}};
-
-      if (sensor_action[0] === "JamMissiles") {
-        s = {action: SensorAction.JamMissiles, target: ""};
-      } else if (typeof action === "object" && Object.hasOwn(action, "BreakSensorLock")) {
-        s = {action: SensorAction.BreakSensorLock, target: action["BreakSensorLock"].target};
-      } else if (typeof action === "object" && Object.hasOwn(action, "SensorLock")) {
-        s = {action: SensorAction.SensorLock, target: action["SensorLock"].target};
-      } else if (typeof action === "object" && Object.hasOwn(action, "JamComms")) {
-        s = {action: SensorAction.JamComms, target: action["JamComms"].target};
-      } else {
-        console.error(
-          "(payloadToAction) BUG: Should never get here when looking for sensor action " +
-            JSON.stringify(action)
-        );
-      }
-    }
-    result[shipName] = {...result[shipName], sensor: s};
-
-    // Extract engineer action if any (mutually exclusive — only one per ship).
-    // Jump is one of the engineer actions.
-    let engineer: EngineerState = null;
     for (const action of actions) {
-      if (action === "OverloadDrive") {
-        engineer = {kind: "OverloadDrive"};
-        break;
+      if (typeof action === "string") {
+        continue;
       }
-      if (action === "OverloadPlant") {
-        engineer = {kind: "OverloadPlant"};
-        break;
-      }
-      if (action === "Jump") {
-        engineer = {kind: "Jump"};
-        break;
-      }
-      if (typeof action === "object" && Object.hasOwn(action, "Repair")) {
-        const repair = (action as {Repair: {system: string}}).Repair;
-        engineer = {kind: "Repair", system: repair.system};
-        break;
+      if (Object.hasOwn(action, "JamMissiles")) {
+        const {operator} = (action as unknown as {JamMissiles: {operator?: number}}).JamMissiles ?? {};
+        place(sensors, operator ?? 0, {action: SensorAction.JamMissiles, target: ""}, DEFAULT_SENSOR_STATE);
+      } else if (Object.hasOwn(action, "BreakSensorLock")) {
+        const raw = (action as unknown as {BreakSensorLock: {target: string; operator?: number}}).BreakSensorLock;
+        place(
+          sensors,
+          raw.operator ?? 0,
+          {action: SensorAction.BreakSensorLock, target: raw.target},
+          DEFAULT_SENSOR_STATE
+        );
+      } else if (Object.hasOwn(action, "SensorLock")) {
+        const raw = (action as unknown as {SensorLock: {target: string; operator?: number}}).SensorLock;
+        place(sensors, raw.operator ?? 0, {action: SensorAction.SensorLock, target: raw.target}, DEFAULT_SENSOR_STATE);
+      } else if (Object.hasOwn(action, "JamComms")) {
+        const raw = (action as unknown as {JamComms: {target: string; operator?: number}}).JamComms;
+        place(sensors, raw.operator ?? 0, {action: SensorAction.JamComms, target: raw.target}, DEFAULT_SENSOR_STATE);
+      } else if (Object.hasOwn(action, "OverloadDrive")) {
+        const {engineer} = (action as unknown as {OverloadDrive: {engineer?: number}}).OverloadDrive ?? {};
+        place(engineers, engineer ?? 0, {kind: "OverloadDrive"}, null);
+      } else if (Object.hasOwn(action, "OverloadPlant")) {
+        const {engineer} = (action as unknown as {OverloadPlant: {engineer?: number}}).OverloadPlant ?? {};
+        place(engineers, engineer ?? 0, {kind: "OverloadPlant"}, null);
+      } else if (Object.hasOwn(action, "Jump")) {
+        const {engineer} = (action as unknown as {Jump: {engineer?: number}}).Jump ?? {};
+        place(engineers, engineer ?? 0, {kind: "Jump"}, null);
+      } else if (Object.hasOwn(action, "Repair")) {
+        const raw = (action as unknown as {Repair: {system: string; engineer?: number}}).Repair;
+        place(engineers, raw.engineer ?? 0, {kind: "Repair", system: raw.system}, null);
       }
     }
-    result[shipName] = {...result[shipName], engineer};
+    result[shipName] = {...result[shipName], sensors, engineers};
 
     // Extract a queued LeadershipCheck (mutually exclusive — only one per ship).
     let leadershipCheck: ActionType[string]["leadershipCheck"] = null;
@@ -436,8 +437,8 @@ export function payloadToAction(payload: object[]): ActionType {
     // Anti-action flags are transient client-only state; server never echoes them.
     result[shipName] = {
       ...result[shipName],
-      clearSensor: false,
-      clearEngineer: false,
+      clearSensors: [],
+      clearEngineers: [],
       clearLeadership: false,
     };
   }

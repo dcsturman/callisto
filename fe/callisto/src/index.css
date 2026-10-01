@@ -2116,15 +2116,13 @@ input {
     opacity: 0.55;
 }
 
-/* Who is on the station this round. Only drawn when there is a choice. */
-.on-duty-picker {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 9pt;
-    margin-bottom: 2px;
-}
-
-.on-duty-picker select {
-    flex: 1;
+/* Names the crew member a panel belongs to, where a ship carries more than
+   one of them. Quiet: it is a label on someone else's controls. */
+.crew-slot-tag {
+    margin-top: 6px;
+    font-size: 8.5pt;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+    border-top: 1px solid #22303d;
+    padding-top: 3px;
 }

@@ -4,7 +4,6 @@ import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
 import {ViewMode, hasRole} from "lib/view";
 import {SensorStation} from "components/controls/SensorStation";
-import {EngineerPicker, SensorOperatorPicker} from "components/controls/OnDutyPicker";
 
 import {setPlan, setCrewActions, setShipEmissions} from "lib/serverManager";
 import {isUndetected, sameSide} from "lib/contacts";
@@ -330,9 +329,19 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
         {hasRole(roles, ViewMode.Pilot) && pilotActions()}
         {hasRole(roles, ViewMode.Sensors) && (
           <>
-            {/* Who is at the station, when the ship carries more than one. */}
-            <SensorOperatorPicker ship={ship} />
-            <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
+            {/* One station each: a ship with two operators can jam with one
+                and lock with the other, so each gets their own chooser,
+                labelled only when there is more than one to tell apart. */}
+            {crewSlots(ship.crew.sensors?.length).map((operator) => (
+              <React.Fragment key={operator}>
+                {(ship.crew.sensors?.length ?? 0) > 1 && (
+                  <div className="crew-slot-tag">
+                    Operator #{operator + 1} · skill {ship.crew.sensors[operator]}
+                  </div>
+                )}
+                <SensorActionChooser ship={ship} sensorLocks={sensorLocks} operator={operator} />
+              </React.Fragment>
+            ))}
             {/* The sensop's instruments. Theirs alone: the rest of the crew
                 work from what they are told, which is the job. */}
             <SensorStation ship={ship} />
@@ -340,8 +349,14 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
         )}
         {hasRole(roles, ViewMode.Engineer) && (
           <>
-            <EngineerPicker ship={ship} />
-            <EngineerTasks ship={ship} />
+            {crewSlots(ship.crew.engineers?.length).map((engineer) => (
+              <React.Fragment key={engineer}>
+                {(ship.crew.engineers?.length ?? 0) > 1 && (
+                  <div className="crew-slot-tag">Engineer #{engineer + 1}</div>
+                )}
+                <EngineerTasks ship={ship} engineer={engineer} />
+              </React.Fragment>
+            ))}
           </>
         )}
       </div>
@@ -524,12 +539,25 @@ function sensorActionToString(action: SensorState): string {
   }
 }
 
+/**
+ * The crew positions to draw a panel for. A ship with nobody listed at a
+ * station still gets one: the station exists, and somebody unrated can sit at
+ * it, which is how every crew worked before they were listed.
+ */
+const crewSlots = (count: number | undefined): number[] =>
+  Array.from({length: Math.max(1, count ?? 0)}, (_, index) => index);
+
 interface SensorActionChooserProps {
   ship: Ship;
   sensorLocks: string[];
+  /**
+   * Which operator this chooser is for, by their place in the crew. A ship
+   * with several gets one chooser each, and each of them acts in the round.
+   */
+  operator?: number;
 }
 
-const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLocks}) => {
+const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLocks, operator = 0}) => {
   const actions = useAppSelector((state) => state.actions);
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
@@ -539,24 +567,31 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
     if (!computerShipName || !actions[computerShipName]) {
       return newSensorState(SensorAction.None, "");
     }
-    return actions[computerShipName].sensor || newSensorState(SensorAction.None, "");
-  }, [actions, computerShipName]);
+    return actions[computerShipName].sensors[operator] || newSensorState(SensorAction.None, "");
+  }, [actions, computerShipName, operator]);
 
   function handleSensorActionChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     if (value === "none") {
       dispatch(
-        setSensorAction({shipName: ship.name, action: newSensorState(SensorAction.None, "")})
+        setSensorAction({
+          shipName: ship.name,
+          operator,
+          action: newSensorState(SensorAction.None, "")})
       );
       return;
     } else if (value === "jam-missiles") {
       dispatch(
-        setSensorAction({shipName: ship.name, action: newSensorState(SensorAction.JamMissiles, "")})
+        setSensorAction({
+          shipName: ship.name,
+          operator,
+          action: newSensorState(SensorAction.JamMissiles, "")})
       );
     } else if (value.startsWith("bsl-")) {
       dispatch(
         setSensorAction({
           shipName: ship.name,
+          operator,
           action: newSensorState(SensorAction.BreakSensorLock, value.substring(4)),
         })
       );
@@ -564,6 +599,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
       dispatch(
         setSensorAction({
           shipName: ship.name,
+          operator,
           action: newSensorState(SensorAction.SensorLock, value.substring(3)),
         })
       );
@@ -571,6 +607,7 @@ const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLo
       dispatch(
         setSensorAction({
           shipName: ship.name,
+          operator,
           action: newSensorState(SensorAction.JamComms, value.substring(3)),
         })
       );

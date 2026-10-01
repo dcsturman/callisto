@@ -13,8 +13,8 @@ use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetCrewOnDuty, SetPilotActions, SetPlanMsg,
-  SetShipEmissions, SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
+  SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
@@ -621,24 +621,6 @@ impl PlayerManager {
     "Actions added.".to_string()
   }
 
-  /// Put a named crew member on the sensors or in the engine room for this
-  /// round. Only means anything on a ship carrying more than one of either.
-  ///
-  /// # Errors
-  /// Returns an error if there is no such ship.
-  ///
-  /// # Panics
-  /// Panics if the lock cannot be obtained on the entities or if the server
-  /// is not initialized.
-  pub fn set_crew_on_duty(&self, msg: &SetCrewOnDuty) -> Result<String, String> {
-    let entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
-    let Some(ship) = entities.ships.get(&msg.ship_name) else {
-      return Err(format!("Cannot set crew on duty for unknown ship {}.", msg.ship_name));
-    };
-    ship.write().unwrap().set_crew_on_duty(msg.sensor_operator, msg.engineer);
-    Ok(format!("Crew on duty set for {}.", msg.ship_name))
-  }
-
   /// Roll the captain's leadership check immediately. Stores the resulting
   /// points on the ship until `reset_temporary_bonuses` clears them at end
   /// of turn. The captain has up to N boosts to apply; assigning more than
@@ -852,22 +834,23 @@ impl PlayerManager {
           (Some(action.clone()), None, None, None, None)
         }
         ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone()), None),
-        ShipAction::JamMissiles => (None, None, Some(action.clone()), None, None),
+        ShipAction::JamMissiles { .. } => (None, None, Some(action.clone()), None, None),
         ShipAction::BreakSensorLock { .. } | ShipAction::SensorLock { .. } | ShipAction::JamComms { .. } => {
           (None, Some(action.clone()), None, None, None)
         }
         // Engineer actions (including Jump) are deferred to end-of-turn evaluation.
-        ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump => {
-          (None, None, None, None, Some(action.clone()))
-        }
-        // LeadershipCheck is consumed in Phase 0 below; it does not flow into
-        // any of the per-category slices.
-        ShipAction::LeadershipCheck { .. } => (None, None, None, None, None),
-        // Anti-actions are consumed by `merge` and should never reach the queue.
-        // If one slips through, drop it from every slice.
-        ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction | ShipAction::ClearLeadershipCheck => {
-          (None, None, None, None, None)
-        }
+        ShipAction::OverloadDrive { .. }
+        | ShipAction::OverloadPlant { .. }
+        | ShipAction::Repair { .. }
+        | ShipAction::Jump { .. } => (None, None, None, None, Some(action.clone())),
+        // LeadershipCheck is consumed in Phase 0 below, so it reaches none of
+        // the per-category slices. Nor do the anti-actions, which `merge`
+        // consumes and which should never get this far -- but if one slips
+        // through it belongs nowhere either.
+        ShipAction::LeadershipCheck { .. }
+        | ShipAction::ClearSensorAction { .. }
+        | ShipAction::ClearEngineerAction { .. }
+        | ShipAction::ClearLeadershipCheck => (None, None, None, None, None),
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),

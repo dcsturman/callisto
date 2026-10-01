@@ -698,8 +698,10 @@ export function Actions(args: {
    * knows which roles should see them.
    */
   searchTargets: Ship[];
-  sensorAction: SensorState;
-  engineerAction: EngineerState;
+  /** One per sensor operator, by their place in the crew. */
+  sensorActions: SensorState[];
+  /** One per engineer. */
+  engineerActions: EngineerState[];
   pilotState: { dodgeThrust: number; assistGunners: boolean } | null;
   // The acting ship's own armament, not its design's: `weapon_id` indexes this.
   weapons: Weapon[];
@@ -792,61 +794,60 @@ export function Actions(args: {
     );
   };
 
-  const onSensorRowClick = () => {
+  // Clicking a queued action withdraws it -- that operator's or engineer's
+  // alone, since each is a different pair of hands.
+  const onSensorRowClick = (operator: number) => {
     if (!computerShipName) return;
     dispatch(
       setSensorAction({
         shipName: computerShipName,
+        operator,
         action: DEFAULT_SENSOR_STATE,
       }),
     );
   };
 
-  const onEngineerRowClick = () => {
+  const onEngineerRowClick = (engineer: number) => {
     if (!computerShipName) return;
-    dispatch(
-      setEngineerAction({ shipName: computerShipName, action: null }),
-    );
+    dispatch(setEngineerAction({ shipName: computerShipName, engineer, action: null }));
   };
 
-  let sensorLabel: string | null = null;
-  if (args.sensorAction.action !== SensorAction.None) {
-    switch (args.sensorAction.action) {
+  const sensorLabelOf = (sensor: SensorState): string | null => {
+    switch (sensor.action) {
+      case SensorAction.None:
+        return null;
       case SensorAction.JamMissiles:
-        sensorLabel = "Jam Missiles";
-        break;
+        return "Jam Missiles";
       case SensorAction.SensorLock:
-        sensorLabel = "Lock on " + args.sensorAction.target;
-        break;
+        return "Lock on " + sensor.target;
       case SensorAction.BreakSensorLock:
-        sensorLabel = "Break Lock on " + args.sensorAction.target;
-        break;
+        return "Break Lock on " + sensor.target;
       case SensorAction.JamComms:
-        sensorLabel = "Jam " + args.sensorAction.target;
-        break;
+        return "Jam " + sensor.target;
     }
-  }
+  };
 
-  let engineerLabel: string | null = null;
-  if (args.engineerAction != null) {
-    switch (args.engineerAction.kind) {
+  const engineerLabelOf = (action: EngineerState): string | null => {
+    if (action == null) {
+      return null;
+    }
+    switch (action.kind) {
       case "OverloadDrive":
-        engineerLabel = "Overload Drive";
-        break;
+        return "Overload Drive";
       case "OverloadPlant":
-        engineerLabel = "Overload Plant";
-        break;
+        return "Overload Plant";
       case "Repair": {
-        const sys = stringToShipSystem(args.engineerAction.system);
-        engineerLabel =
-          "Repair " + (sys != null ? SYSTEM_NAMES[sys] : args.engineerAction.system);
-        break;
+        const sys = stringToShipSystem(action.system);
+        return "Repair " + (sys != null ? SYSTEM_NAMES[sys] : action.system);
       }
       case "Jump":
-        engineerLabel = "Jump";
-        break;
+        return "Jump";
     }
-  }
+  };
+
+  // Several operators or engineers mean the row has to say whose it is. One
+  // of each says nothing, as before.
+  const crewTag = (index: number, count: number) => (count > 1 ? `#${index + 1} ` : "");
 
   return (
     <div className="control-form">
@@ -1080,35 +1081,57 @@ export function Actions(args: {
         </div>
       )}
 
-      {sensorLabel != null && (
-        <div className="fire-actions-div">
-          <div onClick={onSensorRowClick}>
-            <p>
-              <GiBinoculars
-                className="beam-type-icon"
-                style={{ fill: SENSOR_ICON_COLORS[args.sensorAction.action] }}
-              />{" "}
-              {sensorLabel}
-            </p>
+      {args.sensorActions.map((sensor, operator) => {
+        const label = sensorLabelOf(sensor);
+        if (label == null) {
+          return null;
+        }
+        return (
+          <div className="fire-actions-div" key={`sensor-${operator}`}>
+            <div onClick={() => onSensorRowClick(operator)}>
+              <p>
+                <GiBinoculars
+                  className="beam-type-icon"
+                  style={{ fill: SENSOR_ICON_COLORS[sensor.action] }}
+                />{" "}
+                {crewTag(operator, args.sensorActions.length)}
+                {label}
+              </p>
+            </div>
+            {renderBoostCheckbox({
+              kind: "Sensor",
+              ship: computerShipName ?? "",
+              operator,
+            })}
           </div>
-          {renderBoostCheckbox({ kind: "Sensor", ship: computerShipName ?? "" })}
-        </div>
-      )}
+        );
+      })}
 
-      {engineerLabel != null && (
-        <div className="fire-actions-div">
-          <div onClick={onEngineerRowClick}>
-            <p>
-              <FaCog
-                className="beam-type-icon"
-                style={{ fill: ENGINEER_ICON_COLORS[args.engineerAction!.kind] }}
-              />{" "}
-              {engineerLabel}
-            </p>
+      {args.engineerActions.map((action, engineer) => {
+        const label = engineerLabelOf(action);
+        if (label == null || action == null) {
+          return null;
+        }
+        return (
+          <div className="fire-actions-div" key={`engineer-${engineer}`}>
+            <div onClick={() => onEngineerRowClick(engineer)}>
+              <p>
+                <FaCog
+                  className="beam-type-icon"
+                  style={{ fill: ENGINEER_ICON_COLORS[action.kind] }}
+                />{" "}
+                {crewTag(engineer, args.engineerActions.length)}
+                {label}
+              </p>
+            </div>
+            {renderBoostCheckbox({
+              kind: "Engineer",
+              ship: computerShipName ?? "",
+              engineer,
+            })}
           </div>
-          {renderBoostCheckbox({ kind: "Engineer", ship: computerShipName ?? "" })}
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 }

@@ -26,15 +26,20 @@ export const SYSTEM_NAMES: Record<ShipSystem, string> = {
 
 interface EngineerTasksProps {
   ship: Ship;
+  /**
+   * Which engineer this panel is for, by their place in the crew. A ship with
+   * several gets one panel each, and each of them gets a job in the round.
+   */
+  engineer?: number;
 }
 
-export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
+export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship, engineer = 0 }) => {
   const dispatch = useAppDispatch();
   // Engineer action queued for end-of-turn evaluation. We display the result
   // through the same Effects channel as combat / sensor effects, so this
   // component no longer holds a local result state — it just queues.
   const queuedEngineer = useAppSelector(
-    (state) => state.actions[ship.name]?.engineer ?? null,
+    (state) => state.actions[ship.name]?.engineers[engineer] ?? null,
   );
 
   // Get list of damaged systems (excluding Hull, Armor, and Crew which cannot be repaired)
@@ -86,11 +91,12 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
   ) => {
     const value = e.target.value;
     if (value === "none") {
-      dispatch(setEngineerAction({ shipName: ship.name, action: null }));
+      dispatch(setEngineerAction({ shipName: ship.name, engineer, action: null }));
     } else if (value === "overload-drive") {
       dispatch(
         setEngineerAction({
           shipName: ship.name,
+          engineer,
           action: { kind: "OverloadDrive" },
         }),
       );
@@ -98,6 +104,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
       dispatch(
         setEngineerAction({
           shipName: ship.name,
+          engineer,
           action: { kind: "OverloadPlant" },
         }),
       );
@@ -105,6 +112,7 @@ export const EngineerTasks: React.FC<EngineerTasksProps> = ({ ship }) => {
       dispatch(
         setEngineerAction({
           shipName: ship.name,
+          engineer,
           action: { kind: "Jump" },
         }),
       );

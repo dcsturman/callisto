@@ -1682,6 +1682,7 @@ async fn test_leadership_check_truncates_when_n_below_count() {
     },
     BoostTarget::Sensor {
       ship: "ship1".to_string(),
+      operator: 0,
     },
   ];
   canonical.sort_by_key(boost_target_sort_key);
@@ -2021,7 +2022,8 @@ async fn test_rearming_a_ship_clears_its_weapon_actions() {
   assert_eq!(
     remaining,
     &vec![ShipAction::SensorLock {
-      target: "ship2".to_string()
+      target: "ship2".to_string(),
+      operator: 0
     }],
     "only the weapon-bound actions should have been dropped"
   );

@@ -27,7 +27,7 @@ import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
 import { Actions, FireControl } from "./WeaponUse";
-import { DEFAULT_SENSOR_STATE, SensorAction } from "components/controls/Actions";
+import { SensorAction } from "components/controls/Actions";
 import { ShipComputer } from "./ShipComputer";
 import { CaptainTasks } from "./CaptainTasks";
 import { computeFlightPath } from "lib/serverManager";
@@ -566,10 +566,8 @@ export function Controls() {
             hasRole(roles, ViewMode.Pilot, ViewMode.Captain);
           const fireActions = seeFire ? a?.fire || [] : [];
           const pdActions = seeFire ? a?.pointDefense || [] : [];
-          const sensorAction = seeSensor
-            ? a?.sensor || DEFAULT_SENSOR_STATE
-            : DEFAULT_SENSOR_STATE;
-          const engineerAction = seeEngineer ? a?.engineer ?? null : null;
+          const sensorActions = seeSensor ? (a?.sensors ?? []) : [];
+          const engineerActions = seeEngineer ? (a?.engineers ?? []) : [];
           const dodgeThrust = computerShip?.dodge_thrust ?? 0;
           const assistGunners = computerShip?.assist_gunners ?? false;
           const pilotState = seePilot
@@ -590,8 +588,8 @@ export function Controls() {
           const hasAny =
             fireActions.length > 0 ||
             pdActions.length > 0 ||
-            sensorAction.action !== SensorAction.None ||
-            engineerAction != null ||
+            sensorActions.some((sensor) => sensor.action !== SensorAction.None) ||
+            engineerActions.some((engineer) => engineer != null) ||
             searchTargets.length > 0 ||
             (pilotState != null &&
               (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
@@ -600,8 +598,8 @@ export function Controls() {
             <Actions
               fireActions={fireActions}
               pointDefenseActions={pdActions}
-              sensorAction={sensorAction}
-              engineerAction={engineerAction}
+              sensorActions={sensorActions}
+              engineerActions={engineerActions}
               pilotState={pilotState}
               searchTargets={searchTargets}
               weapons={shipWeapons(computerShip, shipTemplates)}

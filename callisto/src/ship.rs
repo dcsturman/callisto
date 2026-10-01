@@ -288,19 +288,6 @@ pub struct Ship {
 
   /// The thrust the pilot has set aside for dodging, as an order that stands
   /// until they change it.
-  /// Which sensor operator is working the station this round, when the ship
-  /// carries more than one. An index into the crew's operators; out of range
-  /// means "whoever is best", which is what a ship that never chose gets.
-  #[derivative(PartialEq = "ignore")]
-  #[serde(default, skip_serializing_if = "is_zero_usize")]
-  sensor_operator: usize,
-
-  /// Which engineer is taking this round's engineering action, on the same
-  /// terms.
-  #[derivative(PartialEq = "ignore")]
-  #[serde(default, skip_serializing_if = "is_zero_usize")]
-  engineer_on_duty: usize,
-
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   dodge_thrust: u8,
@@ -447,13 +434,6 @@ fn is_default_power_multiplier(value: &f32) -> bool {
 /// the use of a reference a bit funny, but necessary.
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero_u8(value: &u8) -> bool {
-  *value == 0
-}
-
-/// The first of anything is the default, so a ship that never chose who is on
-/// a station says nothing about it.
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_zero_usize(value: &usize) -> bool {
   *value == 0
 }
 
@@ -1421,8 +1401,6 @@ impl Ship {
       damage_log: vec![],
       attack_dm: 0,
       crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
-      sensor_operator: 0,
-      engineer_on_duty: 0,
       dodge_thrust: 0,
       dodge_spent: 0,
       assist_gunners: false,
@@ -1948,29 +1926,6 @@ impl Ship {
   pub fn get_assist_gunners(&self) -> bool {
     self.assist_gunners && self.station_working(BridgeStation::Pilot)
   }
-  /// The sensor operator working this round.
-  #[must_use]
-  pub fn sensor_operator(&self) -> usize {
-    self.sensor_operator
-  }
-
-  /// The engineer taking this round's action.
-  #[must_use]
-  pub fn engineer_on_duty(&self) -> usize {
-    self.engineer_on_duty
-  }
-
-  /// Put one of the crew on a station. An index nobody is at falls back to the
-  /// best aboard, so a stale choice cannot silently break a ship's checks.
-  pub fn set_crew_on_duty(&mut self, sensor_operator: Option<usize>, engineer: Option<usize>) {
-    if let Some(index) = sensor_operator {
-      self.sensor_operator = index;
-    }
-    if let Some(index) = engineer {
-      self.engineer_on_duty = index;
-    }
-  }
-
   pub fn reset_pilot_actions(&mut self) {
     self.dodge_thrust = 0;
     self.dodge_spent = 0;
