@@ -1,6 +1,13 @@
 import {describe, expect, test} from "vitest";
 
-import {PowerBudgetShip, powerDemand, powerLines, weaponMountPower} from "lib/power";
+import {
+  PowerBudgetShip,
+  isPowered,
+  powerDemand,
+  powerLines,
+  powerSpare,
+  weaponMountPower,
+} from "lib/power";
 import {createWeapon} from "lib/weapon";
 
 // Executor's shape: 200 tons, Thrust 6, jump 2, Advanced sensors, a particle
@@ -54,5 +61,36 @@ describe("the power budget", () => {
   test("a weapon knocked out by damage draws nothing", () => {
     const lines = powerLines(ship({active_weapons: [false, true]}), design, weapons);
     expect(lines.find((line) => line.label.includes("Particle"))?.online).toBe(false);
+  });
+});
+
+describe("what the plant can actually feed", () => {
+  // The order is fixed: life support, sensors, weapons, then the drive, which
+  // is the one system a partial share still moves.
+  test("a damaged plant starves what it cannot feed and the drive takes the rest", () => {
+    const lines = powerLines(ship({current_power: 100}), design, weapons);
+    const line = (label: string) => lines.find((l) => l.label.startsWith(label))!;
+
+    expect(line("Basic").received).toBe(40);
+    expect(line("Sensors").received).toBe(6);
+    expect(line("Particle").received).toBe(15);
+    // 100 less life support, sensors, the barbette and the turret's own 1.
+    expect(line("M-drive").received).toBe(38);
+    expect(isPowered(line("M-drive"))).toBe(true);
+  });
+
+  test("a system that cannot have its full draw gets nothing", () => {
+    // 44 runs life support and nothing else: the sensors need 6 and there
+    // are 4 left.
+    const lines = powerLines(ship({current_power: 44}), design, weapons);
+    const sensors = lines.find((l) => l.label.startsWith("Sensors"))!;
+    expect(sensors.received).toBe(0);
+    expect(isPowered(sensors)).toBe(false);
+  });
+
+  test("the jump drive is not counted against the running total", () => {
+    const lines = powerLines(ship(), design, weapons);
+    expect(powerSpare(ship(), lines)).toBe(260 - 182);
+    expect(lines.find((l) => l.label.startsWith("J-drive"))!.received).toBe(0);
   });
 });

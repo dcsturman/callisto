@@ -1256,6 +1256,20 @@ pub fn do_fire_actions<S: BuildHasher>(
         return vec![];
       }
 
+      // A mount the plant is not feeding cannot fire, whether the engineer
+      // switched it off or the damage did it for them.
+      if !attacker.weapon_powered(*weapon_id) {
+        return vec![EffectMsg::about(
+          attacker.get_name(),
+          MessageCategory::Critical,
+          format!(
+            "{}'s {} has no power and cannot fire.",
+            attacker.get_name(),
+            String::from(&attacker.weapons()[*weapon_id])
+          ),
+        )];
+      }
+
       let weapon = attacker.get_weapon(*weapon_id);
       // Which gun in the mount is firing.  A mixed turret may only use one type
       // per round (Core Rulebook p. 166), so the action names it; a uniform
@@ -2596,6 +2610,9 @@ mod tests {
         Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Medium)),
         Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Large)),
       ],
+      // Plant enough to feed all of it: an unpowered mount cannot fire, and
+      // this test is about what the mounts throw, not about the plant.
+      power: 500,
       ..ShipDesignTemplate::default()
     };
 

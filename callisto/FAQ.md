@@ -544,6 +544,29 @@ Two consequences worth knowing:
   only needed when the ship actually initiates a jump", HG p. 16), so it is
   shown on the board but kept out of the running total.
 
+#### Change — a system without its Power does not work
+The books price every system's Power but say little about running one on less
+than it needs. Callisto feeds systems in a fixed order — life support, sensors,
+weapons, then the manoeuvre drive — and a system that cannot have its full
+draw does nothing at all. The drive is the exception: it takes whatever is
+left and flies at the Thrust that buys, since 10% of the hull per point of
+Thrust divides sensibly and a half-powered sensor suite does not.
+
+So a damaged plant now has consequences the engineer manages: sensors with no
+power find nothing and cannot lock or jam, a weapon mount with no power cannot
+fire, and the drive loses Thrust before anything else goes dark.
+
+**Most ships cannot jump with everything running.** That is the books' own
+expectation — "some cheaper vessels might require that weapons and other
+systems are powered off while making a jump" (HG p. 16) — but it is worth
+saying plainly: of the designs in the library, only a handful have Power
+enough for the jump drive on top of the drive, sensors and guns. The engineer
+shuts something down first, and the jump panel says how much is missing.
+
+Three designs cannot run even their own systems at full: the Gazulin is 5
+Power short, the light fighter and the Hraye scout 1 each. They fly a Thrust
+lower than their rating until the engineer sheds something.
+
 #### Assumption — Offline System uses the usual engineering target number
 "A successful Engineer (power) check will allow the engineer to shut down any
 number of systems" (CRB p. 171). The book gives no target number, so Callisto

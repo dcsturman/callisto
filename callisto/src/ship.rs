@@ -1375,12 +1375,34 @@ pub struct PowerLine {
   pub system: PowerSystem,
   /// What to call it on a console.
   pub label: String,
-  /// What it draws when it is running.
+  /// What it needs to run.
   pub draw: u32,
-  /// Whether it is running. An engineer can switch most things off.
+  /// What the plant can actually give it. Equal to `draw` on a healthy ship;
+  /// less when the plant is damaged and the systems ahead of this one in the
+  /// priority have taken what there is.
+  pub received: u32,
+  /// Whether the engineer has left it switched on.
   pub online: bool,
   /// Whether it only draws at the moment it is used, as the jump drive does.
   pub on_demand: bool,
+}
+
+impl PowerLine {
+  /// Whether this system is actually running: switched on and fed.
+  ///
+  /// The drive is the exception and runs on whatever it is given, at reduced
+  /// Thrust. Everything else needs its full draw or does nothing -- a sensor
+  /// suite at half power is not half a sensor suite.
+  #[must_use]
+  pub fn powered(&self) -> bool {
+    if !self.online {
+      return false;
+    }
+    match self.system {
+      PowerSystem::Maneuver => self.received > 0,
+      _ => self.received >= self.draw,
+    }
+  }
 }
 
 /// Whether a bridge station can be used.
@@ -1584,11 +1606,7 @@ impl Ship {
     // Weapons, sensors and basic systems are all drawing on the same plant,
     // so what is left after them is what the drive has to work with. An
     // engineer short of Power can shut something down to get thrust back.
-    let power_limit = if self.is_online(PowerSystem::Maneuver) {
-      self.design.thrust_from_power(self.power_for_drive())
-    } else {
-      0
-    };
+    let power_limit = self.design.thrust_from_power(self.power_for_drive());
     let maneuver_limit = self.current_maneuver;
 
     // TODO: Remove this once using a match doesn't trigger the warning about attributes on expressions being experimental.
@@ -1686,7 +1704,10 @@ impl Ship {
   /// Clear of gravity wells, with astrogation and the computer to plot it.
   #[must_use]
   pub fn can_jump(&self) -> bool {
-    self.can_jump && self.station_working(BridgeStation::Astrogation) && self.station_working(BridgeStation::Computer)
+    self.can_jump
+      && self.station_working(BridgeStation::Astrogation)
+      && self.station_working(BridgeStation::Computer)
+      && self.jump_powered()
   }
 
   #[must_use]
@@ -1845,17 +1866,12 @@ impl Ship {
     self.transmitting && self.station_working(BridgeStation::Comms)
   }
 
-  /// Power the drive can have: what the plant makes, less everything else
-  /// that is running.
+  /// Power the drive is actually getting.
   #[must_use]
   pub fn power_for_drive(&self) -> u32 {
-    let others: u32 = self
-      .power_lines()
-      .iter()
-      .filter(|line| line.online && !line.on_demand && line.system != PowerSystem::Maneuver)
-      .map(|line| line.draw)
-      .sum();
-    self.available_power().saturating_sub(others)
+    self
+      .power_line(PowerSystem::Maneuver)
+      .map_or(0, |line| if line.online { line.received } else { 0 })
   }
 
   /// The thrust this ship is applying, in whole G, for the detection tables.
@@ -2022,11 +2038,17 @@ impl Ship {
     self.assist_gunners = false;
   }
 
-  /// Every call on the power plant, in the order a console should show them.
+  /// Every call on the power plant, in the order a console should show them,
+  /// with what each one needs and what it is actually getting.
   ///
   /// High Guard pp. 16-17 and the weapon tables: basic systems are 20% of the
   /// hull, the drives 10% of the hull per point of Thrust or jump number,
   /// sensors by grade, and each weapon mount what its guns draw.
+  ///
+  /// A plant that cannot meet all of it feeds systems in priority order. Life
+  /// support comes first and the drive last, because the drive is the one
+  /// thing that does something useful with a partial share: everything else
+  /// either runs or does not.
   #[must_use]
   pub fn power_lines(&self) -> Vec<PowerLine> {
     let hull = self.design.displacement;
@@ -2039,6 +2061,7 @@ impl Ship {
           "Basic systems".to_string()
         },
         draw: if self.basic_power_halved { hull / 10 } else { hull / 5 },
+        received: 0,
         // The one thing that cannot be switched off, only turned down.
         online: true,
         on_demand: false,
@@ -2047,28 +2070,11 @@ impl Ship {
         system: PowerSystem::Sensors,
         label: format!("Sensors ({})", String::from(self.current_sensors)),
         draw: sensor_power(self.current_sensors),
+        received: 0,
         online: self.is_online(PowerSystem::Sensors),
         on_demand: false,
       },
-      PowerLine {
-        system: PowerSystem::Maneuver,
-        label: format!("M-drive (thrust {})", self.design.maneuver),
-        draw: hull / 10 * u32::from(self.design.maneuver),
-        online: self.is_online(PowerSystem::Maneuver),
-        on_demand: false,
-      },
     ];
-    if self.design.jump > 0 {
-      lines.push(PowerLine {
-        system: PowerSystem::Jump,
-        label: format!("J-drive (jump {})", self.design.jump),
-        draw: hull / 10 * u32::from(self.design.jump),
-        online: self.is_online(PowerSystem::Jump),
-        // "This Power requirement is only needed when the ship actually
-        // initiates a jump" (High Guard p. 16).
-        on_demand: true,
-      });
-    }
     for (index, weapon) in self.weapons().iter().enumerate() {
       let draw = weapon_mount_power(weapon);
       if draw == 0 {
@@ -2078,11 +2084,65 @@ impl Ship {
         system: PowerSystem::Weapon(index),
         label: String::from(weapon),
         draw,
+        received: 0,
         online: self.is_online(PowerSystem::Weapon(index)) && self.active_weapons[index],
         on_demand: false,
       });
     }
+    lines.push(PowerLine {
+      system: PowerSystem::Maneuver,
+      label: format!("M-drive (thrust {})", self.design.maneuver),
+      draw: hull / 10 * u32::from(self.design.maneuver),
+      received: 0,
+      online: self.is_online(PowerSystem::Maneuver),
+      on_demand: false,
+    });
+    if self.design.jump > 0 {
+      lines.push(PowerLine {
+        system: PowerSystem::Jump,
+        label: format!("J-drive (jump {})", self.design.jump),
+        draw: hull / 10 * u32::from(self.design.jump),
+        received: 0,
+        online: self.is_online(PowerSystem::Jump),
+        // "This Power requirement is only needed when the ship actually
+        // initiates a jump" (High Guard p. 16).
+        on_demand: true,
+      });
+    }
+
+    // Hand out what the plant makes, in order. A system that cannot have its
+    // full draw gets nothing and the next one is still tried: a plant with 20
+    // to spare can run the sensors even when it cannot run the drive.
+    let mut remaining = self.available_power();
+    for line in &mut lines {
+      if !line.online || line.on_demand {
+        continue;
+      }
+      if line.system == PowerSystem::Maneuver {
+        // The drive takes what is left and flies at whatever that buys.
+        line.received = remaining.min(line.draw);
+      } else if remaining >= line.draw {
+        line.received = line.draw;
+      }
+      remaining -= line.received;
+    }
     lines
+  }
+
+  /// One system's line, for asking whether it is running.
+  #[must_use]
+  pub fn power_line(&self, system: PowerSystem) -> Option<PowerLine> {
+    self.power_lines().into_iter().find(|line| line.system == system)
+  }
+
+  /// Whether a system is switched on and fed.
+  ///
+  /// A system with no line draws nothing -- a missile rack is a rack, and a
+  /// Basic sensor suite is a pair of eyes -- so there is nothing to feed and
+  /// nothing that can starve it.
+  #[must_use]
+  pub fn is_powered(&self, system: PowerSystem) -> bool {
+    self.power_line(system).is_none_or(|line| line.powered())
   }
 
   /// Whether the engineer has left this system running.
@@ -2091,8 +2151,8 @@ impl Ship {
     !self.offline.contains(&system)
   }
 
-  /// Power everything running draws right now, leaving out the jump drive,
-  /// which only draws as the ship jumps.
+  /// Power everything running asks for, leaving out the jump drive, which
+  /// only draws as the ship jumps.
   #[must_use]
   pub fn power_demand(&self) -> u32 {
     self
@@ -2101,6 +2161,35 @@ impl Ship {
       .filter(|line| line.online && !line.on_demand)
       .map(|line| line.draw)
       .sum()
+  }
+
+  /// Whether the sensors are running. A suite with no power finds nothing and
+  /// locks onto nothing.
+  #[must_use]
+  pub fn sensors_powered(&self) -> bool {
+    self.is_powered(PowerSystem::Sensors)
+  }
+
+  /// Whether this mount has the power to fire.
+  #[must_use]
+  pub fn weapon_powered(&self, index: usize) -> bool {
+    self.is_powered(PowerSystem::Weapon(index))
+  }
+
+  /// Whether the jump drive is switched on and the plant could find its draw
+  /// on top of everything else running.
+  #[must_use]
+  pub fn jump_powered(&self) -> bool {
+    let Some(jump) = self.power_line(PowerSystem::Jump) else {
+      return false;
+    };
+    let running: u32 = self
+      .power_lines()
+      .iter()
+      .filter(|line| !line.on_demand)
+      .map(|line| line.received)
+      .sum();
+    jump.online && self.available_power().saturating_sub(running) >= jump.draw
   }
 
   /// Power left over, or `None` when the ship is drawing more than it makes.
@@ -3261,6 +3350,54 @@ mod tests {
     ship.set_basic_power_halved(true);
     assert_eq!(draw(&ship, PowerSystem::Basic), Some(20), "half, in an emergency");
     assert_eq!(ship.max_acceleration(), 6);
+  }
+
+  /// A plant that cannot feed everything feeds what it can, in order, and the
+  /// drive takes what is left -- which is the one system that does something
+  /// useful with a partial share.
+  #[test]
+  fn a_damaged_plant_browns_out_what_it_cannot_feed() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Executor".to_string(),
+      displacement: 200,
+      power: 260,
+      maneuver: 6,
+      jump: 2,
+      sensors: Sensors::Advanced,
+      weapons: vec![Weapon::single(WeaponType::Particle, WeaponMount::Barbette)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Healthy: everything runs, and there is room for the jump drive too.
+    assert!(ship.sensors_powered());
+    assert!(ship.weapon_powered(0));
+    assert_eq!(ship.max_acceleration(), 6);
+    assert!(ship.jump_powered());
+
+    // A plant at 100 runs basic systems (40), sensors (6) and the barbette
+    // (15), leaving 39 for a drive that wants 120: a tenth of the hull buys
+    // one Thrust, so 39 buys one.
+    ship.current_power = 100;
+    assert!(ship.sensors_powered());
+    assert!(ship.weapon_powered(0));
+    assert_eq!(ship.max_acceleration(), 1);
+    assert!(!ship.jump_powered(), "nothing like enough left to jump");
+
+    // Switching the barbette off hands its share to the drive.
+    ship.set_online(PowerSystem::Weapon(0), false);
+    assert!(!ship.weapon_powered(0), "and it cannot fire while it is off");
+    assert_eq!(ship.max_acceleration(), 2);
+
+    // At 40 there is nothing for anything but life support.
+    ship.current_power = 40;
+    assert!(!ship.sensors_powered());
+    assert_eq!(ship.max_acceleration(), 0);
+
+    // Half power on basic systems frees twenty, which the sensors take first.
+    ship.set_basic_power_halved(true);
+    assert!(ship.sensors_powered());
+    assert_eq!(ship.max_acceleration(), 0, "but not enough for a tenth of the hull");
   }
 
   /// The pilot's Evade order stands between rounds; only the allowance is

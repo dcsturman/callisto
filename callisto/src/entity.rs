@@ -1198,6 +1198,15 @@ impl Entities {
         effects.push(effect);
         continue;
       }
+      // A suite with no power finds nothing and locks onto nothing.
+      if !self.ships.get(ship_name).unwrap().read().unwrap().sensors_powered() {
+        effects.push(EffectMsg::about(
+          ship_name,
+          MessageCategory::Detection,
+          format!("{ship_name}'s sensors have no power."),
+        ));
+        continue;
+      }
       // One action per operator: a ship with two of them can jam with one and
       // lock with the other. A second action from the same operator is the
       // client asking for more than the crew has hands for.
@@ -1723,6 +1732,14 @@ impl Entities {
 
         let observer = self.ships.get(*observer_name).unwrap().read().unwrap();
         let target = self.ships.get(*target_name).unwrap().read().unwrap();
+
+        // A ship whose sensors have no power acquires nothing. What it
+        // already holds it keeps: the plot does not evaporate because the
+        // engineer pulled a breaker, and High Guard has contact persisting
+        // "under most circumstances".
+        if !observer.sensors_powered() && !observer.contacts.iter().any(|name| name == *target_name) {
+          continue;
+        }
 
         // Team-mates always know where each other are, so there is nothing to
         // acquire and nothing that can be lost.
@@ -2695,16 +2712,25 @@ impl Entities {
     };
     let ship = self.ships.get(ship_name).unwrap();
 
-    // Basic ship systems are the one thing that cannot be switched off. They
-    // can be run at half, which is a different order.
+    // Basic ship systems cannot be switched off, but High Guard p. 17 lets a
+    // desperate crew run them at half. `online` says which way: off means
+    // half, on means back to full. Throwing that switch is a breaker, not a
+    // repair, so it takes the engineer's round but no check.
     if system == PowerSystem::Basic {
+      ship.write().unwrap().set_basic_power_halved(!online);
+      let spare = ship.read().unwrap().power_spare();
+      let state = if online {
+        "back to full power"
+      } else {
+        "at half power -- life support, gravity and heat"
+      };
       return EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
-        success: false,
+        success: true,
         check: 0,
         target: 0,
-        message: format!("{ship_name} cannot shut down basic ship systems; they can only be run at half."),
+        message: format!("{ship_name} runs basic ship systems {state}.{}", power_note(spare)),
         critical_failure: false,
       };
     }
@@ -5352,6 +5378,9 @@ mod tests {
       jump: 2,
       fuel: 100,
       computer: 10,
+      // Plant enough to run everything and still jump, which is what the
+      // tests below assume a healthy ship can do.
+      power: 400,
       ..ShipDesignTemplate::default()
     });
     entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);

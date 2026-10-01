@@ -5,7 +5,15 @@ import {ViewMode, hasRole} from "lib/view";
 import {useAppSelector} from "state/hooks";
 
 import {StationCard} from "components/controls/StationCard";
-import {GiCaptainHatProfile, GiLaserTurret, GiLightningTrio, GiRadarSweep, GiShipWheel, GiSpanner} from "react-icons/gi";
+import {
+  GiCaptainHatProfile,
+  GiJumpAcross,
+  GiLaserTurret,
+  GiLightningTrio,
+  GiRadarSweep,
+  GiShipWheel,
+  GiSpanner,
+} from "react-icons/gi";
 import {FaCog} from "react-icons/fa";
 import {CaptainTasks} from "components/controls/CaptainTasks";
 import {PilotStation, SensorActionChooser} from "components/controls/ShipComputer";
@@ -13,6 +21,7 @@ import {SensorStation} from "components/controls/SensorStation";
 import {EngineerTasks} from "components/controls/EngineerTasks";
 import {PowerBoard} from "components/controls/PowerBoard";
 import {DamageBoard} from "components/controls/DamageBoard";
+import {JumpBoard} from "components/controls/JumpBoard";
 import {FireControl, QueuedOrders} from "components/controls/WeaponUse";
 
 /**
@@ -100,6 +109,10 @@ export function Stations(args: {ship: Ship}) {
           </StationCard>
           <StationCard title="Damage control" icon={<GiSpanner />}>
             <DamageBoard ship={args.ship} />
+          </StationCard>
+          {/* Only for a ship that has a jump drive to be ready or not. */}
+          <StationCard title="Jump" icon={<GiJumpAcross />}>
+            <JumpBoard ship={args.ship} />
           </StationCard>
         </>
       )}

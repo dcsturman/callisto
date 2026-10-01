@@ -2423,6 +2423,69 @@ h3.control-form {
     opacity: 0.85;
 }
 
+/* A system the plant cannot feed: the tube is lit to what it is getting, in
+   the colour of a warning rather than of a system at work. */
+.power-column-starved .power-column-fill {
+    background: #ffb84d;
+    box-shadow: 0 0 6px rgba(255, 184, 77, 0.6);
+}
+
+.power-queued-note {
+    margin-left: 6px;
+    font-size: var(--font-xs);
+    color: #ffb84d;
+}
+
+/* --- Jump readiness --- */
+
+.jump-verdict {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.jump-ready {
+    color: #63c08c;
+}
+
+.jump-not-ready {
+    color: #ff6b6b;
+}
+
+.jump-conditions {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.jump-condition {
+    display: grid;
+    grid-template-columns: 1em auto 1fr;
+    align-items: baseline;
+    gap: 5px;
+    padding: 1px 0;
+}
+
+.jump-condition-mark {
+    color: #63c08c;
+    font-family: "Sono", monospace;
+}
+
+.jump-condition-blocking .jump-condition-mark {
+    color: #ff6b6b;
+}
+
+/* The reason, which is what the engineer reads out: a figure against the
+   figure it has to beat. */
+.jump-condition-detail {
+    text-align: right;
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    opacity: 0.75;
+}
+
 /* --- Damage control --- */
 
 .damage-rows,

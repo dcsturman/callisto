@@ -37,14 +37,25 @@ export type PowerSystem = "Basic" | "Sensors" | "Maneuver" | "Jump" | {Weapon: n
 export interface PowerLine {
   system: PowerSystem;
   label: string;
-  /** What it draws while running. */
+  /** What it needs to run. */
   draw: number;
+  /** What the plant is actually giving it. */
+  received: number;
   online: boolean;
   /** True for the jump drive, which draws only as the ship jumps. */
   onDemand: boolean;
   /** False for basic systems, which can be turned down but not off. */
   switchable: boolean;
 }
+
+/**
+ * Whether a system is running: switched on and fed.
+ *
+ * The drive runs on whatever it is given, at reduced Thrust. Everything else
+ * needs its full draw -- a sensor suite at half power is not half a suite.
+ */
+export const isPowered = (line: PowerLine): boolean =>
+  line.online && (line.system === "Maneuver" ? line.received > 0 : line.received >= line.draw);
 
 /** Whether two system references are the same line. */
 export const samePowerSystem = (a: PowerSystem, b: PowerSystem): boolean =>
@@ -129,12 +140,14 @@ export const powerLines = (
   const isOnline = (system: PowerSystem) =>
     !offline.some((off) => samePowerSystem(off, system));
   const hull = design.displacement;
+  const per = Math.floor(hull / 10);
 
   const lines: PowerLine[] = [
     {
       system: "Basic",
       label: ship.basic_power_halved ? "Basic systems (half)" : "Basic systems",
-      draw: ship.basic_power_halved ? Math.floor(hull / 10) : Math.floor(hull / 5),
+      draw: ship.basic_power_halved ? per : Math.floor(hull / 5),
+      received: 0,
       online: true,
       onDemand: false,
       switchable: false,
@@ -143,30 +156,12 @@ export const powerLines = (
       system: "Sensors",
       label: `Sensors (${ship.current_sensors})`,
       draw: SENSOR_POWER[ship.current_sensors] ?? 0,
+      received: 0,
       online: isOnline("Sensors"),
       onDemand: false,
       switchable: true,
     },
-    {
-      system: "Maneuver",
-      label: `M-drive (thrust ${design.maneuver})`,
-      draw: Math.floor(hull / 10) * design.maneuver,
-      online: isOnline("Maneuver"),
-      onDemand: false,
-      switchable: true,
-    },
   ];
-
-  if (design.jump > 0) {
-    lines.push({
-      system: "Jump",
-      label: `J-drive (jump ${design.jump})`,
-      draw: Math.floor(hull / 10) * design.jump,
-      online: isOnline("Jump"),
-      onDemand: true,
-      switchable: true,
-    });
-  }
 
   weapons.forEach((weapon, index) => {
     const draw = weaponMountPower(weapon);
@@ -177,14 +172,60 @@ export const powerLines = (
       system: {Weapon: index},
       label: weaponToString(weapon),
       draw,
+      received: 0,
       online: isOnline({Weapon: index}) && (ship.active_weapons[index] ?? true),
       onDemand: false,
       switchable: true,
     });
   });
 
+  // The drive is last, because it is the one thing a partial share still
+  // moves: everything ahead of it either runs or does not.
+  lines.push({
+    system: "Maneuver",
+    label: `M-drive (thrust ${design.maneuver})`,
+    draw: per * design.maneuver,
+    received: 0,
+    online: isOnline("Maneuver"),
+    onDemand: false,
+    switchable: true,
+  });
+
+  if (design.jump > 0) {
+    lines.push({
+      system: "Jump",
+      label: `J-drive (jump ${design.jump})`,
+      draw: per * design.jump,
+      received: 0,
+      online: isOnline("Jump"),
+      onDemand: true,
+      switchable: true,
+    });
+  }
+
+  let remaining = availablePower(ship);
+  for (const line of lines) {
+    if (!line.online || line.onDemand) {
+      continue;
+    }
+    if (line.system === "Maneuver") {
+      line.received = Math.min(remaining, line.draw);
+    } else if (remaining >= line.draw) {
+      line.received = line.draw;
+    }
+    remaining -= line.received;
+  }
+
   return lines;
 };
+
+/**
+ * Power left over once everything running has taken its share: what the jump
+ * drive would have to come out of.
+ */
+export const powerSpare = (ship: PowerBudgetShip, lines: PowerLine[]): number =>
+  availablePower(ship) -
+  lines.filter((line) => !line.onDemand).reduce((total, line) => total + line.received, 0);
 
 /** What everything running is drawing, leaving out the jump drive. */
 export const powerDemand = (lines: PowerLine[]): number =>

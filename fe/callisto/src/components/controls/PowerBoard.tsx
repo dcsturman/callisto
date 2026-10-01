@@ -6,8 +6,10 @@ import {
   PowerLine,
   PowerSystem,
   availablePower,
+  isPowered,
   powerDemand,
   powerLines,
+  powerSpare,
   samePowerSystem,
 } from "lib/power";
 import {shipWeapons} from "lib/shipDesignTemplates";
@@ -61,10 +63,8 @@ export function PowerBoard(args: {ship: Ship}) {
 
   const supply = availablePower(args.ship);
   const demand = powerDemand(lines);
-  const spare = supply - demand;
-  // The tallest thing on the board sets the scale, so a drive that dwarfs
-  // everything else does not flatten the rest into nothing.
-  const scale = Math.max(supply, ...lines.map((line) => line.draw), 1);
+  const spare = powerSpare(args.ship, lines);
+  const short = demand - supply;
 
   const order = (system: PowerSystem, online: boolean) => {
     const action: EngineerState = {kind: "SetPower", system, online};
@@ -74,47 +74,47 @@ export function PowerBoard(args: {ship: Ship}) {
   const queuedFor = (system: PowerSystem): boolean =>
     queued?.kind === "SetPower" && samePowerSystem(queued.system, system);
 
+  // A queued order on basic systems: `online: false` is the order to run them
+  // at half. Undefined when no such order is waiting.
+  const halfOrdered =
+    queued?.kind === "SetPower" && queued.system === "Basic" ? !queued.online : null;
+
   return (
     <div className="power-board">
       <div className="power-summary">
         <span className="power-supply">{supply} available</span>
-        <span className={spare < 0 ? "power-spare power-short" : "power-spare"}>
-          {spare < 0 ? `${-spare} short` : `${spare} spare`}
+        <span className={short > 0 ? "power-spare power-short" : "power-spare"}>
+          {short > 0 ? `${short} short` : `${spare} spare`}
         </span>
       </div>
+      {/* Each column is full at its own requirement, so a bar that is not
+          full is a system that is not getting what it needs -- which is the
+          thing the engineer is looking for. */}
       <div className="power-bars">
         {lines.map((line) => (
           <PowerColumn
             key={typeof line.system === "string" ? line.system : `weapon-${line.system.Weapon}`}
             line={line}
-            scale={scale}
             queued={queuedFor(line.system)}
             onToggle={() => order(line.system, !line.online)}
           />
         ))}
       </div>
       {/* Basic systems cannot be shut off, but the rules let a desperate crew
-          run them at half (High Guard p. 17). It is not an action -- it is a
-          switch on the wall -- so it rides with the next order. */}
+          run them at half (High Guard p. 17). Throwing that switch is an
+          engineer's round like any other order, so the box shows the order
+          as queued until the round resolves -- it used to flip back and
+          could not be undone. */}
       <label className="power-half" title="Run life support, gravity and heat at half power">
         <input
           type="checkbox"
-          checked={args.ship.basic_power_halved ?? false}
+          checked={halfOrdered ?? (args.ship.basic_power_halved ?? false)}
           onChange={() =>
-            dispatch(
-              setEngineerAction({
-                shipName: args.ship.name,
-                engineer,
-                action: {
-                  kind: "SetPower",
-                  system: "Basic",
-                  online: !(args.ship.basic_power_halved ?? false),
-                },
-              })
-            )
+            order("Basic", halfOrdered ?? (args.ship.basic_power_halved ?? false))
           }
         />
         Basic systems at half
+        {halfOrdered != null && <span className="power-queued-note">ordered</span>}
       </label>
     </div>
   );
@@ -126,18 +126,23 @@ export function PowerBoard(args: {ship: Ship}) {
  * Height is its draw against the biggest number on the board, and colour says
  * what it is doing: running, shut down, or about to be switched this round.
  */
-function PowerColumn(args: {
-  line: PowerLine;
-  scale: number;
-  queued: boolean;
-  onToggle: () => void;
-}) {
+function PowerColumn(args: {line: PowerLine; queued: boolean; onToggle: () => void}) {
   const {line} = args;
-  const height = Math.max(2, Math.round((line.draw / args.scale) * 100));
-  const state = args.queued ? "queued" : line.online ? "live" : "dark";
+  const share = line.draw === 0 ? 1 : Math.min(1, line.received / line.draw);
+  const height = Math.max(2, Math.round(share * 100));
+  const running = isPowered(line);
+  const state = args.queued ? "queued" : !line.online ? "dark" : running ? "live" : "starved";
   const title = [
-    `${line.label}: ${line.draw} Power`,
-    line.onDemand ? "only while jumping" : line.online ? "running" : "shut down",
+    `${line.label}: needs ${line.draw} Power`,
+    line.onDemand
+      ? "drawn only while jumping"
+      : !line.online
+        ? "shut down"
+        : running
+          ? line.received < line.draw
+            ? `running on ${line.received}`
+            : "running"
+          : `starved -- getting ${line.received} of ${line.draw}`,
     args.queued ? "— order queued this round" : "",
     line.switchable ? "" : "— cannot be shut down",
   ]
