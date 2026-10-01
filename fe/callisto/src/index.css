@@ -1691,3 +1691,440 @@ input {
     border-left: 6px solid transparent;
     pointer-events: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Sensor station: the sensop's instruments. Everything here is read, not
+   operated, so it is dense, quiet, and leans on shape and colour rather than
+   on labels -- the operator is reading it aloud to the rest of the crew.
+   --------------------------------------------------------------------------- */
+
+.sensor-station {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.sensor-block {
+    border: 1px solid #2c3c4c;
+    border-radius: 3px;
+    padding: 4px 6px 6px;
+    background: rgba(12, 20, 28, 0.6);
+}
+
+.sensor-empty {
+    margin: 2px 0 0;
+    font-size: 9pt;
+    font-style: italic;
+    opacity: 0.6;
+}
+
+/* Icons inherit the row's colour, so a lit row and a quiet one differ in one
+   place rather than two. */
+.sensor-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+}
+
+.sensor-icon-fill {
+    fill: currentColor;
+    stroke: none;
+}
+
+.sensor-icon-alarm {
+    color: #ff6b6b;
+}
+
+/* --- Emissions gauge --- */
+
+.emission-gauge-svg {
+    width: 100%;
+    height: 34px;
+}
+
+.emission-step {
+    opacity: 0.85;
+}
+
+.emission-step-quiet { fill: #2f6f4f; }
+.emission-step-faint { fill: #8a8f3a; }
+.emission-step-loud { fill: #b86a2b; }
+.emission-step-blazing { fill: #a33b3b; }
+
+.emission-tick {
+    stroke: rgba(0, 0, 0, 0.55);
+    stroke-width: 1;
+}
+
+.emission-needle {
+    fill: #e8f1f8;
+}
+
+.emission-needle-line {
+    stroke: #e8f1f8;
+    stroke-width: 1.5;
+}
+
+.emission-reading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 9pt;
+}
+
+.emission-total {
+    font-family: "Sono", monospace;
+    font-size: 11pt;
+}
+
+/* The gauge names its own state, and the colour of that name is the state. */
+.emission-quiet .emission-level { color: #63c08c; }
+.emission-faint .emission-level { color: #d8de6a; }
+.emission-loud .emission-level { color: #f0a35e; }
+.emission-blazing .emission-level { color: #ff6b6b; }
+
+.emission-terms {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 1px 6px;
+    font-size: 9pt;
+}
+
+.emission-term {
+    display: contents;
+}
+
+/* A row contributing nothing is still shown: "the transponder is off" is
+   something the operator wants to be able to say. */
+.emission-term-quiet {
+    opacity: 0.45;
+}
+
+.emission-term-value {
+    font-family: "Sono", monospace;
+    text-align: right;
+}
+
+.emission-icon {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+    align-self: center;
+}
+
+.emission-icon-wave {
+    opacity: 0.8;
+}
+
+.emission-icon-lit {
+    color: #ffd43b;
+}
+
+/* --- Eyes on us --- */
+
+.watcher-list,
+.salvo-list,
+.contact-detail-list {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    font-size: 9pt;
+}
+
+.watcher {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 0;
+}
+
+.watcher-state {
+    margin-left: auto;
+    font-size: 8pt;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+
+.watcher-locked .watcher-state {
+    color: #ff6b6b;
+    opacity: 1;
+}
+
+/* --- Inbound salvoes --- */
+
+.salvo {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+}
+
+.salvo-count {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: #ff6b6b;
+}
+
+.salvo-count-number {
+    font-family: "Sono", monospace;
+    font-size: 10pt;
+}
+
+.salvo-range {
+    font-family: "Sono", monospace;
+    text-align: right;
+}
+
+.salvo-band {
+    opacity: 0.6;
+}
+
+.salvo-eta {
+    font-family: "Sono", monospace;
+    text-align: right;
+    min-width: 2.2em;
+}
+
+/* One round out is the last chance to do anything about it. */
+.salvo-eta-now {
+    color: #ff6b6b;
+}
+
+/* --- Squadron picture --- */
+
+.picture-grid {
+    border-collapse: collapse;
+    margin-top: 4px;
+    font-size: 9pt;
+    width: 100%;
+}
+
+.picture-ship {
+    font-family: "Sono", monospace;
+    font-size: 8pt;
+    font-weight: normal;
+    opacity: 0.75;
+    padding: 0 2px;
+    text-align: center;
+}
+
+.picture-contact {
+    font-weight: normal;
+    text-align: left;
+    padding-right: 6px;
+    white-space: nowrap;
+}
+
+.picture-cell {
+    text-align: center;
+    padding: 0 2px;
+}
+
+.picture-mark {
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
+.picture-mark-held {
+    fill: #63c08c;
+}
+
+/* An outline, not a blank: the cell says "this ship is blind to it", which is
+   information, where an empty cell would read as a rendering gap. */
+.picture-mark-blind {
+    fill: none;
+    stroke: #6b7684;
+    stroke-width: 1.2;
+    stroke-dasharray: 2 2;
+}
+
+.picture-mark-lock {
+    fill: none;
+    stroke: #ffd43b;
+    stroke-width: 1.2;
+}
+
+/* A row our side cannot all see is the one worth closing. */
+.picture-row-gap .picture-contact::after {
+    content: " \2022";
+    color: #ffd43b;
+}
+
+/* --- Contact detail --- */
+
+.contact-detail {
+    border-top: 1px solid #22303d;
+    padding: 3px 0;
+}
+
+.contact-detail:first-child {
+    border-top: none;
+}
+
+.contact-detail-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.contact-detail-class {
+    opacity: 0.75;
+}
+
+.contact-detail-tons {
+    margin-left: auto;
+    font-family: "Sono", monospace;
+    opacity: 0.75;
+}
+
+.contact-detail-line {
+    display: flex;
+    gap: 4px;
+    align-items: baseline;
+    font-size: 8.5pt;
+    opacity: 0.85;
+}
+
+.contact-detail-label {
+    opacity: 0.55;
+    text-transform: lowercase;
+}
+
+.contact-detail-label:not(:first-child) {
+    margin-left: 6px;
+}
+
+.contact-weapons {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+
+.contact-weapon {
+    border: 1px solid #2c3c4c;
+    border-radius: 2px;
+    padding: 0 4px;
+    font-size: 8pt;
+    opacity: 0.9;
+}
+
+.contact-weapon-none {
+    border: none;
+    font-style: italic;
+    opacity: 0.55;
+}
+
+/* ---------------------------------------------------------------------------
+   Crew lists: sensor operators and engineers are people, not skills, so each
+   is a row that can be added to or taken off the watch.
+   --------------------------------------------------------------------------- */
+
+.crew-group {
+    margin-top: 6px;
+    border-top: 1px solid #22303d;
+    padding-top: 4px;
+}
+
+.crew-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.crew-group-title {
+    font-size: 9pt;
+    letter-spacing: 0.04em;
+    opacity: 0.8;
+}
+
+.crew-group-empty {
+    margin: 2px 0;
+    font-size: 8.5pt;
+    font-style: italic;
+    opacity: 0.55;
+}
+
+.crew-add,
+.crew-remove {
+    margin-left: auto;
+    background: none;
+    border: 1px solid #2c3c4c;
+    border-radius: 2px;
+    color: inherit;
+    cursor: pointer;
+    font-family: "Sono", monospace;
+    line-height: 1;
+    padding: 0 5px;
+}
+
+.crew-remove {
+    margin-left: 2px;
+    opacity: 0.7;
+}
+
+.crew-add:hover,
+.crew-remove:hover {
+    border-color: #4a6a8a;
+}
+
+.crew-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+.crew-row-label {
+    font-family: "Sono", monospace;
+    font-size: 8.5pt;
+    opacity: 0.6;
+    width: 1.6em;
+}
+
+.crew-row-input {
+    width: 2.6em;
+    text-align: center;
+}
+
+/* The engineer rows are a little table: one column per skill, headed once. */
+.crew-engineer-head {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    margin-top: 3px;
+}
+
+.crew-engineer-skill-label {
+    width: 2.6em;
+    text-align: center;
+    font-size: 7.5pt;
+    opacity: 0.55;
+}
+
+/* Who is on the station this round. Only drawn when there is a choice. */
+.on-duty-picker {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9pt;
+    margin-bottom: 2px;
+}
+
+.on-duty-picker select {
+    flex: 1;
+}

@@ -369,6 +369,16 @@ pub struct EngineerActionResult {
   pub critical_failure: bool,
 }
 
+/// Who is working the sensors and who is in the engine room this round, for a
+/// ship carrying more than one of either.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SetCrewOnDuty {
+  pub ship_name: String,
+  pub sensor_operator: Option<usize>,
+  pub engineer: Option<usize>,
+}
+
 /// Captain hits the "Captain Action" button → server rolls the leadership
 /// check immediately and stores the resulting points on the ship until end
 /// of turn.
@@ -518,6 +528,7 @@ pub enum RequestMsg {
   SetShipEmissions(SetShipEmissions),
   SetShipTeam(SetShipTeam),
   SetRole(ChangeRole),
+  SetCrewOnDuty(SetCrewOnDuty),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
   /// A player saying their orders for this round are in, or taking it back.
@@ -632,10 +643,7 @@ mod tests {
         "design": "Buccaneer",
         "crew": {
             "pilot": 2,
-            "engineering_jump": 3,
-            "engineering_power": 0,
-            "engineering_maneuver": 0,
-            "sensors": 0,
+            "sensors":[],"engineers":[{"jump":3}],
             "gunnery": []
         }
     });

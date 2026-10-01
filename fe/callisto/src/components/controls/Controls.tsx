@@ -20,6 +20,7 @@ import {
 } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
 import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
+import { ENGINEER_SKILLS } from "components/controls/CrewBuilder";
 import { nextRound, setReady, setShipTeam } from "lib/serverManager";
 import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
@@ -229,6 +230,10 @@ function ScenarioBuilderControls(args: {
     </div>
   );
 }
+
+/** "3" for one of them, "3/1" for a watch, "none" for an empty station. */
+const listSkills = (skills: number[] | undefined): string =>
+  skills == null || skills.length === 0 ? "none" : skills.join("/");
 
 export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
@@ -484,15 +489,20 @@ export function Controls() {
                 one line in the body font. Gunners are one number per mount,
                 in mount order. */}
             <h2 className="control-form">Crew</h2>
+            {/* Sensor operators and engineers are listed one per person, in
+                the order they sit in the crew, since the dropdowns that put
+                one of them on a station name them by that position. */}
             <p className="crew-line">
               {[
                 `Pilot - ${computerShip.crew.pilot}`,
-                `Eng-J - ${computerShip.crew.engineering_jump}`,
-                `Eng-P - ${computerShip.crew.engineering_power}`,
-                `Eng-M - ${computerShip.crew.engineering_maneuver}`,
-                `Sensors - ${computerShip.crew.sensors}`,
+                `Sensors - ${listSkills(computerShip.crew.sensors)}`,
+                ...ENGINEER_SKILLS.map(
+                  (skill) =>
+                    `${skill.label} - ${listSkills(
+                      (computerShip.crew.engineers ?? []).map((engineer) => engineer[skill.key] ?? 0),
+                    )}`,
+                ),
                 `Leadership - ${computerShip.crew.leadership ?? 0}`,
-                `Mechanic - ${computerShip.crew.mechanic ?? 0}`,
                 `Gunners - ${shipWeapons(computerShip, shipTemplates)
                   .map((_w, i) => computerShip.crew.gunnery[i] ?? 0)
                   .join(", ") || "none"}`,

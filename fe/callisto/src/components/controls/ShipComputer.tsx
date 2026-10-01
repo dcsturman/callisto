@@ -3,6 +3,8 @@ import {useState, useEffect, useMemo} from "react";
 import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
 import {ViewMode, hasRole} from "lib/view";
+import {SensorStation} from "components/controls/SensorStation";
+import {EngineerPicker, SensorOperatorPicker} from "components/controls/OnDutyPicker";
 
 import {setPlan, setCrewActions, setShipEmissions} from "lib/serverManager";
 import {isUndetected, sameSide} from "lib/contacts";
@@ -327,10 +329,20 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
         )}
         {hasRole(roles, ViewMode.Pilot) && pilotActions()}
         {hasRole(roles, ViewMode.Sensors) && (
-          <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
+          <>
+            {/* Who is at the station, when the ship carries more than one. */}
+            <SensorOperatorPicker ship={ship} />
+            <SensorActionChooser ship={ship} sensorLocks={sensorLocks} />
+            {/* The sensop's instruments. Theirs alone: the rest of the crew
+                work from what they are told, which is the job. */}
+            <SensorStation ship={ship} />
+          </>
         )}
         {hasRole(roles, ViewMode.Engineer) && (
-          <EngineerTasks ship={ship} />
+          <>
+            <EngineerPicker ship={ship} />
+            <EngineerTasks ship={ship} />
+          </>
         )}
       </div>
       <hr />

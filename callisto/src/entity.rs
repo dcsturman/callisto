@@ -1261,10 +1261,13 @@ impl Entities {
     detection_modifiers(observer.design.tl, target.design.tl, target.design.stealth)
   }
 
-  // Quality modifiers are the level of sensors as well as skill of the crew
+  // Quality modifiers are the level of sensors as well as skill of the crew.
+  // A ship with several operators uses whichever one is on the station this
+  // round; one with a single operator has no choice to make and uses them.
   fn sensor_quality_modifiers(&self, ship_name: &str) -> i16 {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
-    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(ship.get_crew().get_sensors())
+    let skill = ship.get_crew().get_sensors_at(ship.sensor_operator());
+    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(skill)
   }
 
   fn sensor_lock(&mut self, ship_name: &String, target: &str, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
@@ -1869,6 +1872,9 @@ impl Entities {
     let observer = self.ships.get(observer_name).unwrap().read().unwrap();
     let mut terms = vec![
       ("sensor grade", SENSOR_QUALITY_MOD[observer.current_sensors as usize]),
+      // Detection is not an action anyone queues, so it is not one operator's
+      // check: the watch as a whole is looking, and the best of them is who
+      // notices.
       ("sensor skill", i16::from(observer.get_crew().get_sensors())),
     ];
     terms.extend(detection_modifier_terms(
@@ -2441,7 +2447,7 @@ impl Entities {
       );
     }
 
-    let skill = ship.get_crew().get_engineering_jump();
+    let skill = ship.get_crew().engineer_at(ship.engineer_on_duty()).jump;
     drop(ship);
 
     let target: u8 = 6;
@@ -2496,7 +2502,10 @@ impl Entities {
     &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
-    let skill = ship.read().unwrap().get_crew().get_engineering_maneuver();
+    let skill = {
+      let ship = ship.read().unwrap();
+      ship.get_crew().engineer_at(ship.engineer_on_duty()).maneuver
+    };
     let target: u8 = 10;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
@@ -2560,7 +2569,10 @@ impl Entities {
     &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
-    let skill = ship.read().unwrap().get_crew().get_engineering_power();
+    let skill = {
+      let ship = ship.read().unwrap();
+      ship.get_crew().engineer_at(ship.engineer_on_duty()).power
+    };
     let target: u8 = 10;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
@@ -2643,12 +2655,12 @@ impl Entities {
 
     // Engineering for the drives and the power plant; Mechanic for the rest of
     // the ship's equipment.
-    let crew = ship_write.get_crew();
+    let engineer = ship_write.get_crew().engineer_at(ship_write.engineer_on_duty());
     let (skill, skill_name) = match system {
-      ShipSystem::Jump => (crew.get_engineering_jump(), "engineering (j-drive)"),
-      ShipSystem::Powerplant => (crew.get_engineering_power(), "engineering (power)"),
-      ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (crew.get_mechanic(), "mechanic"),
-      _ => (crew.get_engineering_maneuver(), "engineering (m-drive)"),
+      ShipSystem::Jump => (engineer.jump, "engineering (j-drive)"),
+      ShipSystem::Powerplant => (engineer.power, "engineering (power)"),
+      ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (engineer.mechanic, "mechanic"),
+      _ => (engineer.maneuver, "engineering (m-drive)"),
     };
 
     // Get current crit level for the system
@@ -3554,7 +3566,7 @@ mod tests {
         "current_computer": 5,
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -3572,7 +3584,7 @@ mod tests {
         "current_computer": 5,
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -3590,7 +3602,7 @@ mod tests {
         "current_computer": 5,
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4752,8 +4764,7 @@ mod tests {
     let overridden = parse(json!({"ships":[
       {"name":"Executor","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"HMS Executor",
-       "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,
-               "engineering_maneuver":0,"sensors":0,"gunnery":[]}}]}));
+       "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]}}]}));
     let ship = overridden.ships.get("Executor").unwrap().read().unwrap();
     assert_eq!(
       ship.get_crew().get_sensors(),
@@ -5412,6 +5423,93 @@ mod tests {
     assert!(!ship.station_working(BridgeStation::Pilot));
     ship.undo_damage(ShipSystem::Bridge, 3);
     assert!(ship.station_working(BridgeStation::Pilot));
+  }
+
+  /// With two engineers aboard, the one on duty is the one who rolls -- not
+  /// the better of them.
+  #[test]
+  fn the_engineer_on_duty_is_the_one_who_rolls() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.add_engineer(crate::crew::Engineer {
+        mechanic: 4,
+        ..crate::crew::Engineer::default()
+      });
+      crew.add_engineer(crate::crew::Engineer {
+        mechanic: 1,
+        ..crate::crew::Engineer::default()
+      });
+      ship.set_crew(crew);
+      ship.crit_level[ShipSystem::Sensors as usize] = 1;
+      // The second engineer takes this one.
+      ship.set_crew_on_duty(None, Some(1));
+    }
+
+    let mut rng = StepRng::new(0, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![ShipAction::Repair {
+          system: ShipSystem::Sensors,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(
+      format!("{effects:?}").contains("mechanic +1"),
+      "the engineer on duty should roll their own skill: {effects:?}"
+    );
+  }
+
+  /// And the sensor operator on duty is the one whose skill the check uses.
+  #[test]
+  fn the_sensor_operator_on_duty_is_the_one_who_rolls() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.add_sensor_operator(4);
+      crew.add_sensor_operator(0);
+      ship.set_crew(crew);
+      ship.set_crew_on_duty(Some(1), None);
+      ship.contacts = vec!["Quarry".to_string()];
+    }
+
+    let lock = |entities: &mut Entities| {
+      let mut rng = StepRng::new(2, 0);
+      let effects = entities.sensor_actions(
+        &[(
+          "Dragon".to_string(),
+          vec![ShipAction::SensorLock {
+            target: "Quarry".to_string(),
+          }],
+        )],
+        &BoostMap::default(),
+        &mut rng,
+      );
+      format!("{effects:?}")
+    };
+
+    // The green operator's 0 on top of the ship's sensor grade, not the
+    // veteran's 4.
+    let green = lock(&mut entities);
+    assert!(
+      green.contains("DM +1"),
+      "the operator on duty should roll their own skill: {green}"
+    );
+
+    entities
+      .ships
+      .get("Dragon")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_crew_on_duty(Some(0), None);
+    let veteran = lock(&mut entities);
+    assert!(veteran.contains("DM +5"), "and the veteran brings their own: {veteran}");
   }
 
   /// Weapons, sensors and the bridge are repaired with Mechanic, not

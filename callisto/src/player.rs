@@ -13,8 +13,8 @@ use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
-  SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetCrewOnDuty, SetPilotActions, SetPlanMsg,
+  SetShipEmissions, SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
@@ -619,6 +619,24 @@ impl PlayerManager {
     merge(&mut entities, actions);
     debug!("(/merge_actions) Resulting actions after merge: {:?}", entities.actions);
     "Actions added.".to_string()
+  }
+
+  /// Put a named crew member on the sensors or in the engine room for this
+  /// round. Only means anything on a ship carrying more than one of either.
+  ///
+  /// # Errors
+  /// Returns an error if there is no such ship.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or if the server
+  /// is not initialized.
+  pub fn set_crew_on_duty(&self, msg: &SetCrewOnDuty) -> Result<String, String> {
+    let entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    let Some(ship) = entities.ships.get(&msg.ship_name) else {
+      return Err(format!("Cannot set crew on duty for unknown ship {}.", msg.ship_name));
+    };
+    ship.write().unwrap().set_crew_on_duty(msg.sensor_operator, msg.engineer);
+    Ok(format!("Crew on duty set for {}.", msg.ship_name))
   }
 
   /// Roll the captain's leadership check immediately. Stores the resulting

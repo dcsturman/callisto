@@ -115,6 +115,13 @@ export interface Ship extends Entity {
   /** Which side the ship is on. Absent means unaligned. */
   team?: Team;
   crew: Crew;
+  /**
+   * Which sensor operator and which engineer are working this round, as
+   * indices into the crew's lists. Absent means the first of them, which is
+   * what a ship with one of each always uses.
+   */
+  sensor_operator?: number;
+  engineer_on_duty?: number;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   /**
    * Each bridge station's state, in the order of {@link BRIDGE_STATIONS}.
@@ -270,6 +277,8 @@ export const defaultShip = () => {
 
 export interface Missile extends Entity {
   acceleration: [number, number, number];
+  /** The ship that launched it. */
+  source: string;
   target: string;
   target_locked: boolean;
   target_sensor_lock: boolean;
@@ -284,6 +293,7 @@ export const defaultMissile = () => {
     name: "New Missile",
     position: [0, 0, 0],
     velocity: [0, 0, 0],
+    source: "",
     target: "",
     target_locked: false,
     target_sensor_lock: false,

@@ -699,6 +699,7 @@ impl Processor {
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
       RequestMsg::RenameEntity(msg) => response_with_update(player, player.rename(&msg)),
       RequestMsg::SetPlan(plan) => response_with_update(player, player.set_plan(&plan)),
+      RequestMsg::SetCrewOnDuty(request) => response_with_update(player, player.set_crew_on_duty(&request)),
       RequestMsg::SetRole(role) => {
         if player.get_email().is_none() {
           error!("(handle_request) Attempt to set role without being logged in.  Ignoring.");

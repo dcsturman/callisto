@@ -501,6 +501,24 @@ export function setReady(ready: boolean) {
   socket.send(JSON.stringify({ SetReady: ready }));
 }
 
+// Put one of the crew on the sensors or in the engine room. Only ever sent by
+// a ship carrying more than one of them -- with one there is no choice to
+// record, and the server falls back to whoever is aboard.
+export function setCrewOnDuty(
+  shipName: string,
+  duty: {sensor_operator?: number; engineer?: number}
+) {
+  socket.send(
+    JSON.stringify({
+      SetCrewOnDuty: {
+        ship_name: shipName,
+        sensor_operator: duty.sensor_operator,
+        engineer: duty.engineer,
+      },
+    })
+  );
+}
+
 export function nextRound() {
   // Flush any locally-held boost state to the server before ending the round.
   // Boost toggles don't round-trip on every click anymore (see
