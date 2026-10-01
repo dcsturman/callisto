@@ -2631,6 +2631,13 @@ h3.control-form {
     opacity: 0.7;
 }
 
+/* A computer with nothing spare cannot work its squadron's hand-offs. */
+.computer-warning {
+    margin: 0 0 6px;
+    font-size: var(--font-xs);
+    color: #ffb84d;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {

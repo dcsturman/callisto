@@ -67,5 +67,6 @@
       "kind": "Manoeuvre",
       "level": 0
     }
-  ]
+  ],
+  "repair_drones": true
 }

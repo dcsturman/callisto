@@ -408,6 +408,17 @@ The only thing HG says a hand-off *requires* is a point of computer Bandwidth at
 each end. There is no check and no step, so it is a standing setting rather than
 something the sensop spends an action on.
 
+#### Canon — a hand-off costs Bandwidth at both ends, and the host pays per ship
+"A hand-off requires one point of available computer Bandwidth from both the
+host and recipient ship", and a host with five points spare "can hand-off its
+sensor data to a maximum of five other ships, provided that each of them also
+has at least 1 Bandwidth available" (High Guard p. 78). *Available* is the
+operative word: a picket running Evade and Fire Control has spent the capacity
+its squadron needed. Computer cores multiply available points by ten for this,
+which is how a capital ship feeds a squadron, and Battle Network drops the
+per-ship cost entirely for allies within Medium (/1) or Long (/2) — the reason
+a carrier with forty fighters out buys the program.
+
 #### Assumption — only transmitting counts as communication; receiving does not
 Sending a hand-off counts as communication for detection purposes, and so adds
 the transponder-or-comms modifier to anyone trying to detect that ship.
@@ -422,11 +433,14 @@ entirely, in both directions, for the round.
 It does not lapse when the link breaks or the host is destroyed. The crew has
 the plot, and killing the ship that gave it to them does not take it back.
 
-#### Change — Jam Comms breaks hand-offs
-RAW lets a target break a squadron's link with an electronic warfare check. We
-attach that to the existing *Jam Comms* action: a jammed ship can neither send
-nor receive for that round. Before this, Jam Comms rolled a check and affected
-nothing at all.
+#### Canon — electronic warfare breaks hand-offs
+Not a house rule: "if the target ship makes a successful electronic warfare
+check against any of the ships in the squadron, that ship loses comms contact
+with the other ships, breaking the hand-off ... It only breaks hand-off
+communications between the ships" (High Guard p. 78). Our *Jam Comms* action
+is that check, and a jammed ship can neither send nor receive for the round.
+The book is explicit that this does not cost anyone a contact they made
+themselves, which is what we do.
 
 ---
 
@@ -566,8 +580,29 @@ already spoken for.
 | Electronic Warfare/N | DM+N to jamming comms, jamming salvoes and breaking locks. |
 | Screen Optimiser | Angles an unstaffed screen at DM+0. |
 | Manoeuvre, Intellect, Library | Free, and always running. |
+| Battle Network/N | The host stops paying a Bandwidth point per ship it feeds, for allies within Medium (/1) or Long (/2). |
+| Auto-Repair/N | DM+N to a repair attempt, if the ship carries repair drones. |
 | Anti-Hijack, Battle System, Conscious Intelligence, Virtual Crew | Tracked and costed, but about boarders, Tactics checks and crew replacement — none of which a gunnery duel rolls. |
-| Auto-Repair, Broad Spectrum EW, Point Defence, Virtual Gunner, Battle Network | Tracked and costed; effects still to come. |
+| Broad Spectrum EW, Point Defence, Virtual Gunner | Tracked and costed; effects still to come. |
+
+#### Canon — the computer carries the software, so a computer hit takes it all
+The bridge critical hit table (CRB p. 170) has three computer results among its
+six: the computer reboots with "all software unavailable this round and next",
+Bandwidth is cut by half, or the computer is destroyed outright. All three now
+bite: software benefits need the Computer bridge station working, a halved
+computer runs only what still fits, and a repair brings back what the ship was
+running rather than making the crew remember it. With Manoeuvre and Jump
+Control gone, a destroyed computer also costs the ship its acceleration and
+its jump, which is what makes the result frightening.
+
+#### Omission — Auto-Repair cannot yet stand in for a crewman
+The program can also "make a number of repair attempts per round", and repair
+drones let a Traveller with Electronics (remote ops) run the Repair System
+action at Engineer 1, or their own remote ops level, whichever is lower
+(CRB p. 163). Callisto has the DM half of both and not the substitution: a
+repair is still an engineer's order. Repair drones are recorded per design,
+and designs sold with Auto-Repair are assumed to carry them, since the
+program requires them.
 
 #### Change — a screen nobody is on does not angle
 Angling a screen is a gunner's reaction, so a screen with no gunner assigned

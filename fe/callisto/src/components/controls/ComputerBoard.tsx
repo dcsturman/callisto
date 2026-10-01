@@ -43,6 +43,11 @@ export function ComputerBoard(args: {ship: Ship}) {
   const processing = args.ship.current_computer;
   const bis = design.computer_bis === true;
   const used = bandwidthUsed(running);
+  const spare = processing - used;
+  // A sensor hand-off needs a point of Bandwidth at each end (High Guard
+  // p. 78), so a computer run right to the limit quietly cuts the ship out
+  // of its squadron's picture. Worth saying, since nothing else would.
+  const battleNetwork = running.some((software) => software.kind === "BattleNetwork");
   const isRunning = (software: Software) => running.some((on) => sameSoftware(on, software));
 
   return (
@@ -65,6 +70,19 @@ export function ComputerBoard(args: {ship: Ship}) {
           style={{width: `${Math.min(100, processing === 0 ? 0 : (used / processing) * 100)}%`}}
         />
       </div>
+      {spare <= 0 && !battleNetwork && (
+        <p className="computer-warning">
+          No Bandwidth spare: this ship can neither send nor receive a sensor hand-off until
+          something is shut down.
+        </p>
+      )}
+      {/* Auto-Repair works through drones, so a ship running it without
+          them is running nothing useful -- worth saying where the tick is. */}
+      {running.some((software) => software.kind === "AutoRepair") && design.repair_drones !== true && (
+        <p className="computer-warning">
+          Auto-Repair has no repair drones to work with: the program does nothing on this hull.
+        </p>
+      )}
       <ul className="software-list">
         {installed.map((software) => {
           const on = isRunning(software);

@@ -2038,10 +2038,13 @@ impl Entities {
         }
         continue;
       }
-      if ship.current_computer == 0 {
+      // Spare Bandwidth, not the rating: a ship whose computer is full of
+      // Evade and Fire Control has nothing left to run the link with, which
+      // is a real decision rather than an accident (High Guard p. 78).
+      if ship.bandwidth_spare() == 0 && ship.running_level(SoftwareKind::BattleNetwork).is_none() {
         // Say so rather than failing quietly. A ship with no Bandwidth left --
-        // a bad enough bridge crit will take it -- looks exactly like one that
-        // is sharing fine, since nothing on screen shows the rating. Only worth
+        // a bad enough bridge crit will take it, and so will running too much
+        // software -- looks exactly like one that is sharing fine. Only worth
         // saying when there is a picture to share.
         if !ship.contacts.is_empty() {
           effects.push(EffectMsg::about(
@@ -2081,11 +2084,33 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write a ship.
+  #[allow(clippy::too_many_lines)]
   pub fn sensor_handoff_pass(&mut self) -> Vec<EffectMsg> {
     let (hosts, mut effects) = self.handoff_hosts();
     if hosts.is_empty() {
       return effects;
     }
+
+    // What each host can still carry. "The ship can hand-off its sensor data
+    // to a maximum of five other ships" on five spare Bandwidth (High Guard
+    // p. 78), so the host's spare is a count of links, not a gate. Battle
+    // Network buys out of that count entirely: the program feeds every allied
+    // ship in range for its own Bandwidth and no more, which is what makes it
+    // worth 10 points to a carrier with forty fighters out.
+    let mut host_links: HashMap<String, u32> = hosts
+      .iter()
+      .map(|(name, _, _)| {
+        let ship = self.ships.get(name).unwrap().read().unwrap();
+        (name.clone(), ship.bandwidth_spare())
+      })
+      .collect();
+    let host_networks: HashMap<String, Option<u8>> = hosts
+      .iter()
+      .map(|(name, _, _)| {
+        let ship = self.ships.get(name).unwrap().read().unwrap();
+        (name.clone(), ship.running_level(SoftwareKind::BattleNetwork))
+      })
+      .collect();
 
     let mut shared = Vec::<(String, String, String)>::new();
     for (recipient_name, recipient) in &self.ships {
@@ -2095,8 +2120,9 @@ impl Entities {
         continue;
       }
       // Same reasoning as the host side: a recipient with no Bandwidth is told
-      // so, but only once something was actually held out to it.
-      let no_bandwidth = recipient_guard.current_computer == 0;
+      // so, but only once something was actually held out to it. A recipient
+      // pays its point whether or not the host is running Battle Network.
+      let no_bandwidth = recipient_guard.bandwidth_spare() == 0;
       let mut missed_a_handoff = false;
       // Hand-offs refused for range, so the crew is told why rather than
       // watching a team-mate hold a contact they never receive. Gathered per
@@ -2115,7 +2141,25 @@ impl Entities {
         }
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let distance = (*host_pos - here).magnitude() as u32;
-        if find_range_band(distance) == Range::Distant {
+        let band = find_range_band(distance);
+
+        // Battle Network/1 reaches every allied ship within Medium, /2 within
+        // Long (High Guard p. 73). Inside that, the link costs the host
+        // nothing further; outside it, or without the program, it spends one
+        // of the host's spare points.
+        let networked = match host_networks.get(host_name).copied().flatten() {
+          Some(1) => band <= Range::Medium,
+          Some(_) => band <= Range::Long,
+          None => false,
+        };
+        if !networked && host_links.get(host_name).copied().unwrap_or(0) == 0 {
+          continue;
+        }
+        // One point buys the link to this ship, however many contacts travel
+        // along it -- the book counts ships fed, not contacts shared.
+        let mut link_paid = networked;
+
+        if band == Range::Distant {
           if host_contacts
             .iter()
             .any(|contact| contact != recipient_name && !recipient_guard.contacts.contains(contact))
@@ -2148,6 +2192,12 @@ impl Entities {
           if no_bandwidth {
             missed_a_handoff = true;
           } else {
+            if !link_paid {
+              if let Some(left) = host_links.get_mut(host_name) {
+                *left = left.saturating_sub(1);
+              }
+              link_paid = true;
+            }
             shared.push((recipient_name.clone(), contact.clone(), host_name.clone()));
           }
         }
@@ -2887,6 +2937,10 @@ impl Entities {
       0
     };
 
+    // Drones and the program that drives them: hands outside the hull, and
+    // a computer telling them where to go.
+    let drones = ship_write.auto_repair_mod();
+
     let target: u8 = 8;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
@@ -2895,6 +2949,7 @@ impl Entities {
         ("earlier attempts", i16::from(repair_bonus)),
         ("captain", boost.max(0)),
         ("damage", -i16::from(crit_level)),
+        ("auto-repair", i16::from(drones)),
       ],
       target,
     );
@@ -3079,6 +3134,7 @@ impl<'de> Deserialize<'de> for Entities {
 #[cfg(test)]
 mod tests {
   use crate::ship::{WeaponMount, WeaponType};
+  use crate::software::Software;
 
   /// The launcher every pre-torpedo test implicitly assumed: a single missile rack.
   fn test_missile_weapon() -> Weapon {
@@ -3876,6 +3932,7 @@ mod tests {
       screens: vec![],
       auxiliary: vec![],
       software: vec![],
+      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 10,
@@ -4787,6 +4844,66 @@ mod tests {
     assert!(
       !holds_contact(&entities, "Mate", "Bogey"),
       "an unaligned ship should get nothing"
+    );
+  }
+
+  /// A host feeds as many ships as it has spare Bandwidth points, and
+  /// software it is running eats into that: "the ship is using 10 Bandwidth
+  /// to run an Evade/1 program, leaving it with five points of available
+  /// Bandwidth. Therefore, the ship can hand-off its sensor data to a maximum
+  /// of five other ships" (High Guard p. 78).
+  #[test]
+  fn running_software_eats_the_bandwidth_a_handoff_needs() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    {
+      let mut picket = entities.ships.get("Picket").unwrap().write().unwrap();
+      picket.current_computer = 10;
+      picket.software = vec![Software::new(SoftwareKind::Evade, 1)];
+      picket.software_running = vec![Software::new(SoftwareKind::Evade, 1)];
+      assert_eq!(picket.bandwidth_spare(), 0, "Evade/1 fills a Computer/10");
+    }
+    let effects = entities.sensor_handoff_pass();
+    assert!(
+      !holds_contact(&entities, "Mate", "Bogey"),
+      "a host with nothing spare cannot share"
+    );
+    assert!(
+      format!("{effects:?}").contains("no computer Bandwidth available"),
+      "{effects:?}"
+    );
+
+    // Shut the program down and the link is there again.
+    entities
+      .ships
+      .get("Picket")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_software_running(Software::new(SoftwareKind::Evade, 1), false);
+    entities.sensor_handoff_pass();
+    assert!(holds_contact(&entities, "Mate", "Bogey"));
+  }
+
+  /// Battle Network "enables a ship to hand off target sensor detection data
+  /// to all desired ships within the specified range" (High Guard p. 73) --
+  /// so the host stops paying a point per ship, which is the whole value of
+  /// it to a carrier with a squadron out.
+  #[test]
+  fn battle_network_feeds_a_squadron_on_one_program() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    {
+      let mut picket = entities.ships.get("Picket").unwrap().write().unwrap();
+      picket.current_computer = 10;
+      // Every point spent on the program itself, so nothing is left to buy
+      // links with the usual rule.
+      picket.software = vec![Software::new(SoftwareKind::BattleNetwork, 2)];
+      picket.software_running = vec![Software::new(SoftwareKind::BattleNetwork, 2)];
+      assert_eq!(picket.bandwidth_spare(), 0);
+    }
+    entities.sensor_handoff_pass();
+    assert!(
+      holds_contact(&entities, "Mate", "Bogey"),
+      "the program feeds the squadron on its own Bandwidth"
     );
   }
 

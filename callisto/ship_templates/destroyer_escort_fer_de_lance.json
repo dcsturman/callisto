@@ -126,5 +126,6 @@
       "level": 0
     }
   ],
-  "computer_fib": true
+  "computer_fib": true,
+  "repair_drones": true
 }

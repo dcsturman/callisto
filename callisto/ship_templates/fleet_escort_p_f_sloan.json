@@ -271,5 +271,6 @@
       "kind": "PointDefence",
       "level": 2
     }
-  ]
+  ],
+  "repair_drones": true
 }

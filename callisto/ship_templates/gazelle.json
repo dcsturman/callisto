@@ -61,5 +61,6 @@
       "level": 0
     }
   ],
-  "computer_bis": true
+  "computer_bis": true,
+  "repair_drones": true
 }

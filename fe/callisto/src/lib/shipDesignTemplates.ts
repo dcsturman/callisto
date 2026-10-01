@@ -63,6 +63,11 @@ export interface ShipDesignTemplate {
   auxiliary?: AuxiliarySystem[];
   /** The software the design is sold with. */
   software?: Software[];
+  /**
+   * Whether the ship carries repair drones. Auto-Repair software needs them:
+   * a program with no drones has nothing to send out.
+   */
+  repair_drones?: boolean;
   /** Jump Control Specialisation: +5 Processing for Jump Control only. */
   computer_bis?: boolean;
   /** Hardened against ion weapons. */

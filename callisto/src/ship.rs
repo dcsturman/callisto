@@ -560,6 +560,14 @@ pub struct ShipDesignTemplate {
   /// The software the design is sold with. A scenario can add to it.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub software: Vec<Software>,
+  /// Whether the ship carries repair drones.
+  ///
+  /// "Carrying repair drones allows a ship to make repairs during combat,
+  /// allowing access to exterior components without risking crew" (Core
+  /// Rulebook p. 163). Auto-Repair software needs them: a program with no
+  /// drones has nothing to send out.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub repair_drones: bool,
   /// Jump Control Specialisation: Processing is +5 for Jump Control software
   /// only (Core Rulebook p. 180). The Type-S scout's Computer/5bis is how it
   /// runs Jump Control/2 on a Processing 5 machine.
@@ -1827,6 +1835,10 @@ impl Ship {
   }
 
   /// A bridge hit at `level` cuts Bandwidth to `bandwidth`, recorded for repair.
+  ///
+  /// Software that no longer fits stops running, but is not forgotten: see
+  /// [`effective_software`](Self::effective_software). Repairing the computer
+  /// brings back whatever fits again, which is what a crew would see.
   pub fn bridge_hit_bandwidth(&mut self, level: u8, bandwidth: u32) {
     let lost = self.current_computer.saturating_sub(bandwidth);
     self.record_damage(ShipSystem::Bridge, level, SystemDamage::Bandwidth(lost));
@@ -2259,10 +2271,39 @@ impl Ship {
     }
   }
 
+  /// What is actually running: the crew's list, less anything the computer
+  /// can no longer carry.
+  ///
+  /// `software_running` is what the crew asked for and survives damage, so a
+  /// bridge hit that halves Bandwidth puts programs out without forgetting
+  /// them, and repairing the computer brings back what fits again. Ordered
+  /// as the crew set it, free software first since it costs nothing.
+  #[must_use]
+  pub fn effective_software(&self) -> Vec<Software> {
+    if !self.station_working(BridgeStation::Computer) {
+      return vec![];
+    }
+    let mut used = 0;
+    let mut running = Vec::new();
+    for package in self
+      .software_running
+      .iter()
+      .filter(|package| package.always_running())
+      .chain(self.software_running.iter().filter(|package| !package.always_running()))
+    {
+      let capacity = self.processing_for(package.kind);
+      if used + package.bandwidth() <= capacity {
+        used += package.bandwidth();
+        running.push(*package);
+      }
+    }
+    running
+  }
+
   /// Bandwidth the running software is using.
   #[must_use]
   pub fn bandwidth_used(&self) -> u32 {
-    self.software_running.iter().map(Software::bandwidth).sum()
+    self.effective_software().iter().map(Software::bandwidth).sum()
   }
 
   /// Whether a package is installed aboard.
@@ -2277,12 +2318,52 @@ impl Ship {
   /// but "is Evade running right now, and at what level".
   #[must_use]
   pub fn running_level(&self, kind: SoftwareKind) -> Option<u8> {
+    // Software runs on the computer, so a computer that has rebooted or been
+    // destroyed takes every program with it (Core Rulebook p. 170: "computer
+    // reboots, all software unavailable this round and next", and "computer
+    // destroyed"). The station carries both states: disabled for the reboot,
+    // destroyed until someone repairs it.
     self
-      .software_running
+      .effective_software()
       .iter()
       .filter(|package| package.kind == kind)
       .map(|package| package.level)
       .max()
+  }
+
+  /// The DM Auto-Repair lends a repair attempt.
+  ///
+  /// The program "can give a positive DM to a repair attempt equal to the
+  /// listed number" and "requires the ship to carry repair drones" (Core
+  /// Rulebook p. 161), which is what the drones are for: they are the hands
+  /// the program works with.
+  #[must_use]
+  pub fn auto_repair_mod(&self) -> u8 {
+    if self.design.repair_drones {
+      self.running_level(SoftwareKind::AutoRepair).unwrap_or(0)
+    } else {
+      0
+    }
+  }
+
+  /// Bandwidth left over, which is what a sensor hand-off needs a point of.
+  ///
+  /// "A hand-off requires one point of available computer Bandwidth from both
+  /// the host and recipient ship", and a host can serve as many ships as it
+  /// has points spare (High Guard p. 78). Computer cores -- the Processing 40
+  /// and up machines capital ships carry -- "multiply available Bandwidth
+  /// points by 10 for this purpose", which is how a carrier feeds a squadron.
+  #[must_use]
+  pub fn bandwidth_spare(&self) -> u32 {
+    if !self.station_working(BridgeStation::Computer) {
+      return 0;
+    }
+    let spare = self.processing().saturating_sub(self.bandwidth_used());
+    if self.processing() >= COMPUTER_CORE_PROCESSING {
+      spare * 10
+    } else {
+      spare
+    }
   }
 
   /// Whether this package could run on top of what is already running.
@@ -2932,6 +3013,11 @@ fn initial_running(design: &ShipDesignTemplate) -> Vec<Software> {
   running
 }
 
+/// Processing at which a computer is one of the cores capital ships carry
+/// (High Guard p. 14). Cores multiply available Bandwidth by ten for sensor
+/// hand-off, which is how a carrier feeds a squadron.
+const COMPUTER_CORE_PROCESSING: u32 = 40;
+
 /// What a sensor suite draws (High Guard p. 23).
 #[must_use]
 pub fn sensor_power(sensors: Sensors) -> u32 {
@@ -3431,6 +3517,7 @@ impl Default for ShipDesignTemplate {
       screens: vec![],
       auxiliary: vec![],
       software: vec![],
+      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 15,
@@ -4004,6 +4091,7 @@ mod tests {
       screens: vec![],
       auxiliary: vec![],
       software: vec![],
+      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 10,
@@ -4589,6 +4677,7 @@ mod tests {
       screens: vec![],
       auxiliary: vec![],
       software: vec![],
+      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 12,
@@ -4730,6 +4819,7 @@ mod tests {
       screens: vec![],
       auxiliary: vec![],
       software: vec![],
+      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 12,
