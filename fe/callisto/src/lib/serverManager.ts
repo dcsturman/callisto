@@ -23,6 +23,7 @@ import {
   ScenarioLoadError,
 } from "state/serverSlice";
 import {
+  setComputerShipName,
   setEvents,
   setProposedPlan,
   setShowResults,
@@ -706,6 +707,36 @@ function handleTemplates(json: object) {
   store.dispatch(setTemplates(templates));
 }
 
+/**
+ * Let go of a ship that is no longer in the scenario.
+ *
+ * A ship that jumps out or is destroyed takes its stations with it. Whoever
+ * was flying it becomes an observer, and a referee's selection simply clears
+ * back to the no-ship-selected state they started in -- rather than leaving a
+ * console bound to a ship the server has never heard of, whose first course
+ * request comes back as an error.
+ */
+function releaseDepartedShip(entities: EntityList) {
+  const state = store.getState();
+  // Only once we are actually in a scenario: an empty list while joining or
+  // leaving one is not a ship being lost.
+  if (state.user.joinedScenario == null) {
+    return;
+  }
+  const aboard = (name: string | null) => name != null && entities.ships.some((ship) => ship.name === name);
+
+  if (state.user.shipName != null && !aboard(state.user.shipName)) {
+    console.warn(`(handleEntities) ${state.user.shipName} has left the scenario; standing down to Observer.`);
+    // Locally and on the server both, the way the role dialog does it.
+    store.dispatch(setRoleShip([[ViewMode.Observer], null]));
+    requestRoleChoice([ViewMode.Observer], null);
+  }
+
+  if (state.ui.computerShipName != null && !aboard(state.ui.computerShipName)) {
+    store.dispatch(setComputerShipName(null));
+  }
+}
+
 function handleEntities(json: object) {
   const entities = json as EntityList;
 
@@ -743,6 +774,7 @@ function handleEntities(json: object) {
   console.groupEnd();
   console.groupEnd();
   store.dispatch(setEntities(entities));
+  releaseDepartedShip(entities);
   // The captain's local leadership boost list is held in Redux only between
   // explicit flushes; thread their shipName into setActions so the reducer
   // can preserve it across this server-driven overwrite. Also pass

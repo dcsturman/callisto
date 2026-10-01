@@ -33,7 +33,6 @@ import {
   Controls,
   ViewControls,
 } from "./components/controls/Controls";
-import { ShipGone } from "components/controls/ShipGone";
 import { ShipSummary } from "./components/controls/ShipSummary";
 import {
   startWebsocket,
@@ -173,11 +172,6 @@ function Simulator() {
           {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
           {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
             <Stations ship={computerShip} />
-          )}
-          {/* A player whose ship has left the scenario: the stations are gone,
-              so say which ship and why rather than leaving a blank column. */}
-          {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && !computerShip && shipName && (
-            <ShipGone shipName={shipName} />
           )}
         </div>
         {/* The ship list and view options are for everyone at the table. They

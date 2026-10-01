@@ -270,3 +270,62 @@ describe("computeFlightPath", () => {
     expect(mockSocket.sent.length).toBe(before);
   });
 });
+
+describe("a ship that leaves the scenario", () => {
+  async function fireEntities(shipNames: string[]) {
+    const sm = await import("lib/serverManager");
+    expect(mockSocket.onmessage).toBeTruthy();
+    mockSocket.onmessage!(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          EntityResponse: {
+            ships: shipNames.map((name) => ({
+              name,
+              position: [0, 0, 0],
+              velocity: [0, 0, 0],
+              plan: [[[0, 0, 0], 0]],
+              design: "Scout/Courier",
+              current_hull: 40,
+              crew: {pilot: 0, sensors: [], engineers: [], gunnery: [], screen_gunnery: []},
+            })),
+            missiles: [],
+            planets: [],
+          },
+        }),
+      }),
+    );
+    return sm;
+  }
+
+  it("stands the player down to Observer and clears the selection", async () => {
+    const {store} = await import("state/store");
+    const {setJoinedScenario, setRoleShip} = await import("state/userSlice");
+    const {setComputerShipName} = await import("state/uiSlice");
+    const {ViewMode} = await import("lib/view");
+
+    store.dispatch(setJoinedScenario("Marduk Encounter"));
+    store.dispatch(setRoleShip([[ViewMode.Pilot], "Dragon"]));
+    store.dispatch(setComputerShipName("Dragon"));
+
+    await fireEntities(["Buccaneer"]);
+
+    expect(store.getState().user.shipName).toBeNull();
+    expect(store.getState().user.roles).toEqual([ViewMode.Observer]);
+    expect(store.getState().ui.computerShipName).toBeNull();
+    expect(mockSocket.sent.some((msg) => msg.includes('"SetRole"') && msg.includes("Observer"))).toBe(true);
+  });
+
+  it("leaves a player alone while their ship is still there", async () => {
+    const {store} = await import("state/store");
+    const {setJoinedScenario, setRoleShip} = await import("state/userSlice");
+    const {ViewMode} = await import("lib/view");
+
+    store.dispatch(setJoinedScenario("Marduk Encounter"));
+    store.dispatch(setRoleShip([[ViewMode.Pilot], "Dragon"]));
+
+    await fireEntities(["Dragon", "Buccaneer"]);
+
+    expect(store.getState().user.shipName).toBe("Dragon");
+    expect(store.getState().user.roles).toEqual([ViewMode.Pilot]);
+  });
+});
