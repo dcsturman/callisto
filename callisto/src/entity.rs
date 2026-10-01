@@ -1227,6 +1227,8 @@ impl Entities {
         let operator = sensor_operator_of(action).unwrap_or(0);
         let boost = boost_for_sensor(boost_map, ship_name, operator);
         effects.append(&mut match action {
+          // Not a sensor action; handled with the engineers' orders.
+          ShipAction::ComputerRepair { .. } => continue,
           ShipAction::JamMissiles { .. } => self.jam_missiles(ship_name, operator, boost, rng),
           ShipAction::BreakSensorLock { target, .. } => {
             self.break_sensor_lock(ship_name, target, operator, &reverse_sensor_locks, boost, rng)
@@ -2417,6 +2419,7 @@ impl Entities {
           | ShipAction::OverloadDrive { .. }
           | ShipAction::OverloadPlant { .. }
           | ShipAction::Repair { .. }
+          | ShipAction::ComputerRepair { .. }
           | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
           | ShipAction::ClearSensorAction { .. }
@@ -2476,9 +2479,35 @@ impl Entities {
       // but neither can be in two places at once.
       let mut worked = HashSet::<usize>::new();
 
+      // The Auto-Repair pool for this round. Each point is either an attempt
+      // the computer makes itself or a DM on someone else's (CRB p. 161).
+      // The attempts are ordered explicitly; whatever is left over goes to
+      // the engineers' own repairs, since an unspent point does nothing.
+      let mut auto_repair_left = self.ships.get(ship_name).unwrap().read().unwrap().auto_repair_mod();
+      for action in ship_actions {
+        if let ShipAction::ComputerRepair { system } = action {
+          if auto_repair_left == 0 {
+            effects.push(EffectMsg::about(
+              ship_name,
+              MessageCategory::Engineering,
+              format!(
+                "{ship_name}'s computer has no Auto-Repair capacity left for the {}.",
+                String::from(*system)
+              ),
+            ));
+            continue;
+          }
+          auto_repair_left -= 1;
+          effects.push(EffectMsg::EngineerAction {
+            result: self.process_computer_repair(ship_name, *system, rng),
+          });
+        }
+      }
+
       for action in ship_actions {
         let Some(engineer) = engineer_of(action) else {
-          // Caller is expected to filter, but be defensive.
+          // Caller is expected to filter, but be defensive. A computer repair
+          // belongs to nobody and was handled above.
           continue;
         };
         if !worked.insert(engineer) {
@@ -2501,7 +2530,11 @@ impl Entities {
         let result = match action {
           ShipAction::OverloadDrive { .. } => self.process_overload_drive(ship_name, engineer, boost, &mut crits, rng),
           ShipAction::OverloadPlant { .. } => self.process_overload_plant(ship_name, engineer, boost, &mut crits, rng),
-          ShipAction::Repair { system, .. } => self.process_repair(ship_name, *system, engineer, boost, rng),
+          ShipAction::Repair { system, .. } => {
+            let lent = auto_repair_left;
+            auto_repair_left = 0;
+            self.process_repair(ship_name, *system, engineer, boost, lent, rng)
+          }
           ShipAction::SetPower { system, online, .. } => {
             self.process_set_power(ship_name, *system, *online, engineer, boost, rng)
           }
@@ -2895,10 +2928,36 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_repair(
-    &mut self, ship_name: &str, system: ShipSystem, engineer: usize, boost: i16, rng: &mut dyn RngCore,
+  /// A repair the computer runs through the ship's drones.
+  ///
+  /// The drones "are considered to have an Engineer skill level of 1 ... in
+  /// all specialities for the Repair System action alone" (Core Rulebook
+  /// p. 159), so this is a skill-1 attempt that costs no one their action --
+  /// and it is why a ship with its engineer dead can still put itself back
+  /// together, slowly.
+  fn process_computer_repair(
+    &mut self, ship_name: &str, system: ShipSystem, rng: &mut dyn RngCore,
   ) -> EngineerActionResult {
-    let action = ShipAction::Repair { system, engineer };
+    self.repair_attempt(ship_name, system, None, 0, 0, rng)
+  }
+
+  fn process_repair(
+    &mut self, ship_name: &str, system: ShipSystem, engineer: usize, boost: i16, auto_repair: u8, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    self.repair_attempt(ship_name, system, Some(engineer), boost, auto_repair, rng)
+  }
+
+  /// One attempt at putting a system right, by a crewman or by the computer.
+  ///
+  /// `engineer` is `None` when the ship's drones are doing it on their own.
+  fn repair_attempt(
+    &mut self, ship_name: &str, system: ShipSystem, engineer: Option<usize>, boost: i16, auto_repair: u8,
+    rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    let action = engineer.map_or(ShipAction::ComputerRepair { system }, |engineer| ShipAction::Repair {
+      system,
+      engineer,
+    });
 
     // Cannot repair Hull
     if system == ShipSystem::Hull {
@@ -2917,13 +2976,19 @@ impl Entities {
     let mut ship_write = ship.write().unwrap();
 
     // Engineering for the drives and the power plant; Mechanic for the rest of
-    // the ship's equipment.
-    let engineer = ship_write.get_crew().engineer_at(engineer);
-    let (skill, skill_name) = match system {
-      ShipSystem::Jump => (engineer.jump, "engineering (j-drive)"),
-      ShipSystem::Powerplant => (engineer.power, "engineering (power)"),
-      ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (engineer.mechanic, "mechanic"),
-      _ => (engineer.maneuver, "engineering (m-drive)"),
+    // the ship's equipment. The drones bring Engineer 1 to anything, which is
+    // all they are rated for.
+    let (skill, skill_name) = match engineer {
+      None => (1, "repair drones"),
+      Some(engineer) => {
+        let engineer = ship_write.get_crew().engineer_at(engineer);
+        match system {
+          ShipSystem::Jump => (engineer.jump, "engineering (j-drive)"),
+          ShipSystem::Powerplant => (engineer.power, "engineering (power)"),
+          ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (engineer.mechanic, "mechanic"),
+          _ => (engineer.maneuver, "engineering (m-drive)"),
+        }
+      }
     };
 
     // Get current crit level for the system
@@ -2937,9 +3002,8 @@ impl Entities {
       0
     };
 
-    // Drones and the program that drives them: hands outside the hull, and
-    // a computer telling them where to go.
-    let drones = ship_write.auto_repair_mod();
+    // Points of the Auto-Repair pool the crew put on this attempt.
+    let drones = auto_repair;
 
     let target: u8 = 8;
     let (total, check) = engineer_check(
@@ -4844,6 +4908,87 @@ mod tests {
       !holds_contact(&entities, "Mate", "Bogey"),
       "an unaligned ship should get nothing"
     );
+  }
+
+  /// Auto-Repair is a pool: each point is either an attempt the computer
+  /// makes itself through the drones, or a DM on someone else's. A ship with
+  /// no engineer left can still put itself back together, slowly.
+  #[test]
+  fn the_computer_repairs_on_its_own_through_the_drones() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Tender".to_string(),
+      displacement: 400,
+      power: 500,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::AutoRepair, 2)],
+      features: vec![crate::ship::ShipFeature {
+        name: "Repair drones".to_string(),
+        power: 0,
+        default_on: false,
+        kind: Some(crate::ship::FeatureKind::RepairDrones),
+      }],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Magenta".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    {
+      let mut ship = entities.ships.get("Magenta").unwrap().write().unwrap();
+      ship.crit_level[ShipSystem::Sensors as usize] = 1;
+      assert_eq!(ship.auto_repair_mod(), 2, "two points a round");
+    }
+
+    // Every die a 6, so the attempt lands: the point is that it happens at
+    // all, without an engineer spending their order.
+    let mut rng = StepRng::new(u64::MAX, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Magenta".to_string(),
+        vec![ShipAction::ComputerRepair {
+          system: ShipSystem::Sensors,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert_eq!(
+      entities.ships.get("Magenta").unwrap().read().unwrap().crit_level[ShipSystem::Sensors as usize],
+      0,
+      "{effects:?}"
+    );
+    assert!(format!("{effects:?}").contains("repair drones"), "{effects:?}");
+  }
+
+  /// No drones, no attempts: the program has nothing to send out.
+  #[test]
+  fn auto_repair_without_drones_does_nothing() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Unfitted".to_string(),
+      displacement: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::AutoRepair, 2)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Bare".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.ships.get("Bare").unwrap().write().unwrap().crit_level[ShipSystem::Sensors as usize] = 1;
+
+    let mut rng = StepRng::new(u64::MAX, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Bare".to_string(),
+        vec![ShipAction::ComputerRepair {
+          system: ShipSystem::Sensors,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert_eq!(
+      entities.ships.get("Bare").unwrap().read().unwrap().crit_level[ShipSystem::Sensors as usize],
+      1,
+      "nothing should have been repaired"
+    );
+    assert!(format!("{effects:?}").contains("no Auto-Repair capacity"), "{effects:?}");
   }
 
   /// A host feeds as many ships as it has spare Bandwidth points, and

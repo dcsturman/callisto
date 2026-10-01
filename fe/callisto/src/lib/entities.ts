@@ -71,6 +71,13 @@ export interface Ship extends Entity {
    * subtract it. Use {@link availablePower} rather than `current_power`.
    */
   ion_power_loss?: number;
+  /**
+   * Bandwidth an ion hit is currently suppressing. Absent when none is.
+   *
+   * House rule: an ion hit spills a tenth of its damage into the computer.
+   * Read the computer's capacity through {@link availableProcessing}.
+   */
+  ion_bandwidth_loss?: number;
   /** Rounds of ion suppression still to run. Absent when none is. */
   ion_rounds?: number;
   current_maneuver: number;

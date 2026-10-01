@@ -331,6 +331,15 @@ pub enum ShipAction {
     #[serde(default)]
     engineer: usize,
   },
+  /// A repair the ship's computer runs itself, through its repair drones.
+  ///
+  /// Auto-Repair "allows the computer to make a number of repair attempts per
+  /// round equal to the listed number" and "requires the ship to carry repair
+  /// drones" (Core Rulebook p. 161). It costs no one their action: the
+  /// drones are the hands, and the program is what sends them.
+  ComputerRepair {
+    system: ShipSystem,
+  },
   /// Offline System (Core Rulebook p. 171): power something down to free its
   /// draw, or bring it back. The book charges a round either way, and an
   /// Engineer (power) check to shut things down.
@@ -422,6 +431,13 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
     if let Some((_, current_actions)) = current.iter_mut().find(|(ship_name, _)| ship_name == &next_ship) {
       for next_action in next_action_list {
         match next_action {
+          // One computer repair per system: ordering it twice is a slip, not
+          // two attempts, and the pool is counted when the round resolves.
+          ShipAction::ComputerRepair { system } => {
+            current_actions
+              .retain(|action| !matches!(action, ShipAction::ComputerRepair { system: s } if *s == system));
+            current_actions.push(next_action.clone());
+          }
           // A sensor action replaces that operator's previous one. Another
           // operator's stands: they are two people, and each gets a turn.
           ShipAction::JamMissiles { operator }

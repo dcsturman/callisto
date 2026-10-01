@@ -1,5 +1,5 @@
 import {updateActions} from "lib/serverManager";
-import {EntityList, findShip} from "lib/entities";
+import {EntityList, ShipSystem, findShip} from "lib/entities";
 import {createSlice, PayloadAction} from "@reduxjs/toolkit";
 import {
   ActionType,
@@ -25,6 +25,7 @@ const newShipAction = () => {
     unfire: [],
     pointDefense: [],
     engineers: [] as EngineerState[],
+    computerRepairs: [] as ShipSystem[],
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
     clearSensors: [] as number[],
     clearEngineers: [] as number[],
@@ -332,6 +333,25 @@ export const actionsSlice = createSlice({
       }
       updateActions(state);
     },
+    /**
+     * Send the repair drones to a system, or call them back.
+     *
+     * One Auto-Repair point each, and no one's action: the computer runs
+     * these itself (Core Rulebook p. 161).
+     */
+    setComputerRepair: (
+      state,
+      item: PayloadAction<{shipName: string; system: ShipSystem; repair: boolean}>
+    ) => {
+      state[item.payload.shipName] ??= newShipAction();
+      const ship = state[item.payload.shipName];
+      ship.computerRepairs ??= [];
+      ship.computerRepairs = ship.computerRepairs.filter((system) => system !== item.payload.system);
+      if (item.payload.repair) {
+        ship.computerRepairs.push(item.payload.system);
+      }
+      updateActions(state);
+    },
     resetServer: () => initialState,
   },
 });
@@ -348,6 +368,7 @@ export const {
   updateFireCalledShot,
   updateFireSalvo,
   updateFireControl,
+  setComputerRepair,
   resetServer,
 } = actionsSlice.actions;
 

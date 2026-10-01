@@ -242,3 +242,13 @@ export const bandwidthUsed = (running: Software[]): number =>
  */
 export const processingFor = (processing: number, bis: boolean, kind: SoftwareKind): number =>
   bis && kind === "JumpControl" ? processing + 5 : processing;
+
+/**
+ * The computer's capacity right now, after any ion suppression.
+ *
+ * Mirrors `Ship::processing`: an ion hit spills a tenth of its damage into
+ * the computer (a house rule -- see FAQ.md), so anything asking what the ship
+ * can run has to subtract it.
+ */
+export const availableProcessing = (ship: {current_computer: number; ion_bandwidth_loss?: number}): number =>
+  Math.max(0, ship.current_computer - (ship.ion_bandwidth_loss ?? 0));

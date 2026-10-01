@@ -902,6 +902,9 @@ impl PlayerManager {
         ShipAction::OverloadDrive { .. }
         | ShipAction::OverloadPlant { .. }
         | ShipAction::Repair { .. }
+        // The computer's own repair rides with the engineers' orders: it is
+        // resolved in the same end-of-turn pass, and costs nobody an action.
+        | ShipAction::ComputerRepair { .. }
         | ShipAction::SetPower { .. }
         | ShipAction::Jump { .. } => (None, None, None, None, Some(action.clone())),
         // LeadershipCheck is consumed in Phase 0 below, so it reaches none of

@@ -3,8 +3,17 @@ import {useMemo} from "react";
 
 import {Ship, ShipSystem, stringToShipSystem} from "lib/entities";
 import {SYSTEM_NAMES} from "components/controls/EngineerTasks";
-import {useAppSelector} from "state/hooks";
+import {useAppDispatch, useAppSelector} from "state/hooks";
 import {templatesSelector} from "state/serverSlice";
+import {setComputerRepair} from "state/actionsSlice";
+import {ShipDesignTemplate} from "lib/shipDesignTemplates";
+
+/** A stable empty list, so the selector does not re-render on every tick. */
+const EMPTY_REPAIRS: ShipSystem[] = [];
+
+/** Whether the hull carries the drones Auto-Repair works through. */
+const hasRepairDrones = (design: ShipDesignTemplate | undefined): boolean =>
+  (design?.features ?? []).some((feature) => feature.kind === "RepairDrones");
 
 /** Severity a hit has to reach before a system is in real trouble. */
 const SEVERE = 4;
@@ -21,6 +30,7 @@ const SEVERE = 4;
 export function DamageBoard(args: {ship: Ship; engineer?: number}) {
   const templates = useAppSelector(templatesSelector);
   const design = templates[args.ship.design];
+  const dispatch = useAppDispatch();
   const engineer = (args.ship.crew.engineers ?? [])[args.engineer ?? 0];
 
   const rows = useMemo(() => {
@@ -49,6 +59,17 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
     return skill + earned - level;
   };
 
+  // Auto-Repair's pool for the round, and what is already ordered out of it.
+  // Whatever is left rides along with an engineer's own repair as a DM, so
+  // nothing is wasted by not spending it here.
+  const autoRepairPool = hasRepairDrones(design)
+    ? (args.ship.software_running?.find((software) => software.kind === "AutoRepair")?.level ?? 0)
+    : 0;
+  const computerRepairs = useAppSelector(
+    (state) => state.actions[args.ship.name]?.computerRepairs ?? EMPTY_REPAIRS
+  );
+  const autoRepairLeft = autoRepairPool - computerRepairs.length;
+
   const overloads = [
     {label: "M-drive", attempts: args.ship.overload_drive_attempts ?? 0},
     {label: "Power plant", attempts: args.ship.overload_plant_attempts ?? 0},
@@ -62,6 +83,7 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
         <ul className="damage-rows">
           {rows.map((row) => {
             const dm = repairDm(row.system, row.level);
+            const ordered = computerRepairs.includes(row.system);
             return (
               <li key={row.system} className="damage-row">
                 <span className="damage-system">{SYSTEM_NAMES[row.system]}</span>
@@ -71,6 +93,36 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
                   title={`A repair rolls 2D ${dm >= 0 ? "+" : ""}${dm} against 8`}>
                   {dm >= 0 ? `+${dm}` : dm}
                 </span>
+                {/* The computer can work a system itself when the ship has
+                    Auto-Repair running and drones to send out -- which is
+                    how a ship with no engineer to spare still gets fixed. */}
+                {autoRepairPool > 0 && row.system !== ShipSystem.Hull && (
+                  <label
+                    className="damage-drones"
+                    title={
+                      ordered
+                        ? "The drones work this system this round, at Engineer 1."
+                        : autoRepairLeft > 0
+                          ? "Send the drones to this system: one Auto-Repair point, at Engineer 1."
+                          : "No Auto-Repair points left this round."
+                    }>
+                    <input
+                      type="checkbox"
+                      checked={ordered}
+                      disabled={!ordered && autoRepairLeft <= 0}
+                      onChange={(event) =>
+                        dispatch(
+                          setComputerRepair({
+                            shipName: args.ship.name,
+                            system: row.system,
+                            repair: event.target.checked,
+                          })
+                        )
+                      }
+                    />
+                    drones
+                  </label>
+                )}
               </li>
             );
           })}

@@ -11,6 +11,12 @@ export type ActionType = {
     pointDefense: PointDefenseState;
     /** One slot per engineer, on the same terms. */
     engineers: EngineerState[];
+    /**
+     * Systems the ship's computer is repairing itself through its drones.
+     * One Auto-Repair point each, and nobody's action, so this is a list
+     * rather than a crew slot.
+     */
+    computerRepairs?: ComputerRepairState;
     // Captain leadership state. `null` means no LeadershipCheck queued for this
     // ship. When non-null, `boosts` is the set of action targets to boost.
     // The actual roll happens server-side when the captain hits the "Captain
@@ -44,6 +50,7 @@ export type BoostTarget =
   | { kind: "AssistGunner"; ship: string };
 
 import {PowerSystem} from "lib/power";
+import {ShipSystem} from "lib/entities";
 
 // All the different action types.
 export type FireAction = {
@@ -75,6 +82,12 @@ export type FireAction = {
 };
 
 export type FireState = FireAction[];
+
+/**
+ * Systems the ship's computer is repairing itself this round, through its
+ * drones. One Auto-Repair point each, and nobody's action.
+ */
+export type ComputerRepairState = ShipSystem[];
 //export type FireActionMsg = {[key: string]: FireState};
 
 export type UnfireAction = {
@@ -157,6 +170,11 @@ export function actionPayload(actions: ActionType) {
         fire_actions.push(engineer_action);
       }
     });
+
+    // The computer's own repairs: one per system, belonging to no one.
+    for (const system of value.computerRepairs ?? []) {
+      fire_actions.push({ComputerRepair: {system}});
+    }
 
     // Captain leadership check (one per ship; mutually exclusive with
     // `clearLeadership`). Emit whenever there are boosts queued.

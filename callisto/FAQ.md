@@ -581,7 +581,7 @@ already spoken for.
 | Screen Optimiser | Angles an unstaffed screen at DM+0. |
 | Manoeuvre, Intellect, Library | Free, and always running. |
 | Battle Network/N | The host stops paying a Bandwidth point per ship it feeds, for allies within Medium (/1) or Long (/2). |
-| Auto-Repair/N | DM+N to a repair attempt, if the ship carries repair drones. |
+| Auto-Repair/N | N points a round: each sends the drones to a system on their own, or adds +1 to an engineer's repair. Needs repair drones aboard. |
 | Anti-Hijack, Battle System, Conscious Intelligence, Virtual Crew | Tracked and costed, but about boarders, Tactics checks and crew replacement — none of which a gunnery duel rolls. |
 | Broad Spectrum EW, Point Defence, Virtual Gunner | Tracked and costed; effects still to come. |
 
@@ -595,15 +595,29 @@ running rather than making the crew remember it. With Manoeuvre and Jump
 Control gone, a destroyed computer also costs the ship its acceleration and
 its jump, which is what makes the result frightening.
 
-#### Omission — Auto-Repair cannot yet stand in for a crewman
-The program can also "make a number of repair attempts per round", and repair
-drones let a Traveller with Electronics (remote ops) run the Repair System
-action — the drones "are considered to have an Engineer skill level of 1 or
-the level the Traveller has in Electronics (remote ops), whichever is lower,
-in all specialities for the Repair System action alone" (CRB p. 159). Callisto
-has the DM half of both and not the substitution: a repair is still an
-engineer's order. Repair drones are recorded per design, and designs sold with
-Auto-Repair are assumed to carry them, since the program requires them.
+#### Auto-Repair — a pool, like Fire Control
+"Allows the computer to make a number of repair attempts per round equal to
+the listed number. Alternatively, it can give a positive DM to a repair
+attempt equal to the listed number or any combination of the two. Requires the
+ship to carry repair drones" (CRB p. 161). So the score is points a round.
+Ticking *drones* against a damaged system spends one and has the computer work
+it; anything unspent rides along with an engineer's own repair as a DM, since
+an unspent point does nothing.
+
+A drone-run attempt rolls at Engineer 1, because that is all the drones are
+rated for: they "are considered to have an Engineer skill level of 1 or the
+level the Traveller has in Electronics (remote ops), whichever is lower, in
+all specialities for the Repair System action alone" (CRB p. 159). It costs
+nobody their action, which is the point — a ship whose engineer is dead can
+still put itself back together, slowly.
+
+Repair drones are a ship feature, and designs sold with Auto-Repair are
+assumed to carry them, since the program requires them.
+
+#### Omission — no remote-ops crewman
+The drones also let a Traveller with Electronics (remote ops) run the Repair
+System action themselves. Callisto has no remote ops skill on the crew, so
+that route does not exist: the drones work for the computer or for nobody.
 
 #### Interpretation — /bis means Jump Control costs five less
 "A computer's Processing score is increased by +5 for the purposes of running
@@ -613,6 +627,19 @@ Control simply costs five less and frees the difference for everything else.
 We take the discount reading, which is the one that makes a Computer/20bis
 better than a Computer/20 for a ship that runs anything besides its jump
 software.
+
+#### House rule — ion damage spills into the computer
+An ion hit deducts its damage from the target's Power. A tenth of that
+damage, rounded up, comes off Bandwidth too, for as long as the Power loss
+lasts — so a hit takes at least one point, which is exactly the point a sensor
+hand-off needs, and a heavy hit can put a program out. A hardened (/fib)
+computer takes none of it.
+
+Not RAW. It exists because the book's own protection for a hardened computer
+is an allocation of Power that a computer never draws (see below), leaving
+/fib meaning nothing at all; this gives it a job, and makes ion weapons worth
+firing at something other than the drives. The programs that go dark are
+remembered and come back with the Power.
 
 #### Decision — /fib computers are recorded and ignored
 A hardened computer "is immune to Ion weapons" (HG p. 20), and the Ion trait
@@ -629,9 +656,10 @@ computers") and /fib meant a fibre-optic backup that ignored radiation hits.
 MgT2 kept the suffix, re-pointed it at ion weapons, and wrote the protection
 in terms of a Power line the computer no longer has.
 
-How to read it is still argued over, so Callisto takes no position: /fib is
-recorded on the designs that carry it and has no mechanical effect. Revisit
-when the community settles.
+How to read it is still argued over, so Callisto takes no position on the
+RAW. What /fib does here comes from our own ion house rule above: a hardened
+computer keeps its Bandwidth when an ion hit lands. Revisit if the community
+settles on something better.
 
 #### Change — a screen nobody is on does not angle
 Angling a screen is a gunner's reaction, so a screen with no gunner assigned

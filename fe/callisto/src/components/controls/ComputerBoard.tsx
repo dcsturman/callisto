@@ -6,6 +6,7 @@ import {
   SOFTWARE,
   Software,
   alwaysRunning,
+  availableProcessing,
   bandwidthOf,
   bandwidthUsed,
   processingFor,
@@ -40,7 +41,8 @@ export function ComputerBoard(args: {ship: Ship}) {
     return null;
   }
 
-  const processing = args.ship.current_computer;
+  const processing = availableProcessing(args.ship);
+  const ionLoss = args.ship.ion_bandwidth_loss ?? 0;
   const bis = design.computer_bis === true;
   const used = bandwidthUsed(running);
   const spare = processing - used;
@@ -53,10 +55,13 @@ export function ComputerBoard(args: {ship: Ship}) {
   return (
     <div className="computer-board">
       <div className="computer-summary">
-        <span className="computer-processing">
-          Computer/{processing}
+        <span
+          className="computer-processing"
+          title={ionLoss > 0 ? `${ionLoss} Bandwidth suppressed by an ion hit` : undefined}>
+          Computer/{args.ship.current_computer}
           {bis ? "bis" : ""}
           {design.computer_fib ? "fib" : ""}
+          {ionLoss > 0 && <span className="computer-ion"> −{ionLoss} ion</span>}
         </span>
         <span className={used > processing ? "computer-spare computer-over" : "computer-spare"}>
           {used} of {processing} bandwidth

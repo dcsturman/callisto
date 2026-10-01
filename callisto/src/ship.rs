@@ -456,6 +456,15 @@ pub struct Ship {
   /// cannon serializes exactly as it did before ion existed.
   #[serde(default, skip_serializing_if = "is_zero_u32")]
   pub ion_power_loss: u32,
+  /// Bandwidth an ion hit is currently suppressing.
+  ///
+  /// House rule: an ion hit spills into the computer as well as the power
+  /// plant, taking a tenth of its damage off Bandwidth for as long as the
+  /// Power loss lasts. See FAQ.md -- it is what gives a hardened (/fib)
+  /// computer something to be hardened against, since the book's own
+  /// protection is an allocation of Power a computer never draws.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub ion_bandwidth_loss: u32,
   /// Rounds of ion suppression still to run.  Zero means none.
   #[serde(default, skip_serializing_if = "is_zero_u8")]
   pub ion_rounds: u8,
@@ -1592,6 +1601,7 @@ impl Ship {
       point_defense_pool: 0,
       screen_pool: vec![],
       ion_power_loss: 0,
+      ion_bandwidth_loss: 0,
       ion_rounds: 0,
     }
   }
@@ -2272,7 +2282,7 @@ impl Ship {
   /// and the software it was running has to be shed.
   #[must_use]
   pub fn processing(&self) -> u32 {
-    self.current_computer
+    self.current_computer.saturating_sub(self.ion_bandwidth_loss)
   }
 
   /// What a package costs this ship to run.
@@ -2730,6 +2740,12 @@ impl Ship {
   pub fn apply_ion_damage(&mut self, amount: u32, rounds: u8) {
     self.ion_power_loss = self.ion_power_loss.saturating_add(amount);
     self.ion_rounds = self.ion_rounds.max(rounds);
+    // A tenth of it spills into the computer, rounded up so that any hit at
+    // all costs a point -- which is the point a sensor hand-off needs. A
+    // hardened computer rides it out.
+    if !self.design.computer_fib && amount > 0 {
+      self.ion_bandwidth_loss = self.ion_bandwidth_loss.saturating_add(amount.div_ceil(10));
+    }
   }
 
   /// Run the ion suppression down by one round, restoring the Power when it
@@ -2737,11 +2753,13 @@ impl Ship {
   pub fn tick_ion_recovery(&mut self) {
     if self.ion_rounds == 0 {
       self.ion_power_loss = 0;
+      self.ion_bandwidth_loss = 0;
       return;
     }
     self.ion_rounds -= 1;
     if self.ion_rounds == 0 {
       self.ion_power_loss = 0;
+      self.ion_bandwidth_loss = 0;
     }
   }
 
@@ -3717,6 +3735,63 @@ mod tests {
     ship.set_online(PowerSystem::Maneuver, false);
     assert!(ship.is_powered(PowerSystem::Feature(0)));
     assert_eq!(ship.max_acceleration(), 0);
+  }
+
+  /// House rule: an ion hit spills a tenth of its damage into the computer,
+  /// which is what gives a hardened computer something to resist.
+  #[test]
+  fn an_ion_hit_takes_bandwidth_as_well_as_power() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      power: 260,
+      computer: 20,
+      software: vec![
+        Software::new(SoftwareKind::Evade, 1),
+        Software::new(SoftwareKind::FireControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.processing(), 20);
+    assert_eq!(ship.running_level(SoftwareKind::Evade), Some(1));
+
+    // 30 Power off the plant takes 3 Bandwidth with it, which is enough to
+    // put one of the two programs out: 20 of capacity, 17 left, and Evade
+    // and Fire Control want 20 between them.
+    ship.apply_ion_damage(30, 2);
+    assert_eq!(ship.processing(), 17);
+    assert_eq!(
+      ship.running_level(SoftwareKind::FireControl),
+      None,
+      "the second program goes dark"
+    );
+    assert_eq!(ship.running_level(SoftwareKind::Evade), Some(1), "the first still fits");
+
+    // It comes back with the Power, and the programs with it: what the crew
+    // asked for is remembered.
+    ship.tick_ion_recovery();
+    ship.tick_ion_recovery();
+    assert_eq!(ship.processing(), 20);
+    assert_eq!(ship.running_level(SoftwareKind::FireControl), Some(2));
+  }
+
+  /// A hardened computer is what the suffix is for, under this house rule.
+  #[test]
+  fn a_hardened_computer_rides_out_an_ion_hit() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Hardened".to_string(),
+      displacement: 200,
+      power: 260,
+      computer: 20,
+      computer_fib: true,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Bastion".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    ship.apply_ion_damage(60, 2);
+    assert_eq!(ship.ion_power_loss, 60, "the plant still suffers");
+    assert_eq!(ship.processing(), 20, "the computer does not");
   }
 
   /// Jump Control is what plots a jump: no software, no jump, whatever the

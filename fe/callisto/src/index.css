@@ -2638,6 +2638,20 @@ h3.control-form {
     color: #ffb84d;
 }
 
+/* Bandwidth an ion hit is holding down. */
+.computer-ion {
+    color: #5aa9e6;
+}
+
+/* The drones the computer can send to a system instead of an engineer. */
+.damage-drones {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {
