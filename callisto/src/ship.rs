@@ -13,6 +13,8 @@ use once_cell::sync::OnceCell;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
+
+use crate::software::{Software, SoftwareKind};
 use strum_macros::{EnumIter, FromRepr};
 
 use futures::stream::{self, StreamExt};
@@ -388,6 +390,14 @@ pub struct Ship {
   /// flying.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub offline: Vec<PowerSystem>,
+  /// Software aboard. The design's, plus anything a scenario added.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub software: Vec<Software>,
+  /// Which of it is running. Bandwidth limits this, not what is installed:
+  /// a ship can own more software than its computer can run at once, and
+  /// choosing is the point.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub software_running: Vec<Software>,
 
   /// Basic ship systems running at half power, which High Guard p. 17 allows
   /// in an emergency. Uncomfortable, and the only way to find Power on a ship
@@ -547,6 +557,17 @@ pub struct ShipDesignTemplate {
   /// holographic hull, say. Omitted from the wire when empty.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub auxiliary: Vec<AuxiliarySystem>,
+  /// The software the design is sold with. A scenario can add to it.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub software: Vec<Software>,
+  /// Jump Control Specialisation: Processing is +5 for Jump Control software
+  /// only (Core Rulebook p. 180). The Type-S scout's Computer/5bis is how it
+  /// runs Jump Control/2 on a Processing 5 machine.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub computer_bis: bool,
+  /// Hardened against electromagnetic attack: immune to ion weapons.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub computer_fib: bool,
   pub tl: u8,
   /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
   /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
@@ -1512,6 +1533,11 @@ impl Ship {
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
       damage_log: vec![],
+      software: design.software.clone(),
+      // Everything the ship owns is running when it arrives, as far as the
+      // computer can manage: a crew does not undock with the fire control
+      // switched off. What will not fit is left for the engineer to sort out.
+      software_running: initial_running(design),
       // A hologram projector is not running when the ship undocks. Whatever
       // the design says starts off, starts off.
       offline: design
@@ -2208,6 +2234,92 @@ impl Ship {
       .sum()
   }
 
+  /// The computer's Processing score, which is what Bandwidth is measured
+  /// against.
+  ///
+  /// Takes the ship's current figure, so a computer hit knocks capacity out
+  /// and the software it was running has to be shed.
+  #[must_use]
+  pub fn processing(&self) -> u32 {
+    self.current_computer
+  }
+
+  /// Processing available to one package.
+  ///
+  /// A /bis computer is worth +5 for Jump Control alone (Core Rulebook
+  /// p. 180): the Type-S scout's Computer/5bis runs Jump Control/2 at
+  /// Bandwidth 10 and nothing else of that size.
+  #[must_use]
+  pub fn processing_for(&self, kind: SoftwareKind) -> u32 {
+    if kind == SoftwareKind::JumpControl && self.design.computer_bis {
+      self.processing() + 5
+    } else {
+      self.processing()
+    }
+  }
+
+  /// Bandwidth the running software is using.
+  #[must_use]
+  pub fn bandwidth_used(&self) -> u32 {
+    self.software_running.iter().map(Software::bandwidth).sum()
+  }
+
+  /// Whether a package is installed aboard.
+  #[must_use]
+  pub fn has_software(&self, kind: SoftwareKind) -> bool {
+    self.software.iter().any(|package| package.kind == kind)
+  }
+
+  /// The level of a package that is currently running, if one is.
+  ///
+  /// This is the question every effect asks: not "does the ship own Evade"
+  /// but "is Evade running right now, and at what level".
+  #[must_use]
+  pub fn running_level(&self, kind: SoftwareKind) -> Option<u8> {
+    self
+      .software_running
+      .iter()
+      .filter(|package| package.kind == kind)
+      .map(|package| package.level)
+      .max()
+  }
+
+  /// Whether this package could run on top of what is already running.
+  #[must_use]
+  pub fn can_run(&self, package: Software) -> bool {
+    if self.software_running.contains(&package) {
+      return true;
+    }
+    self.bandwidth_used() + package.bandwidth() <= self.processing_for(package.kind)
+  }
+
+  /// Start or stop a package. Returns whether the ship obeyed.
+  ///
+  /// Free software is always running and cannot be stopped; anything that
+  /// would overrun the computer is refused.
+  pub fn set_software_running(&mut self, package: Software, running: bool) -> bool {
+    if !self.has_software(package.kind) {
+      return false;
+    }
+    if package.always_running() {
+      // Nothing to free, and nothing sensible to do with the request.
+      return running;
+    }
+    if running {
+      if !self.can_run(package) {
+        return false;
+      }
+      if !self.software_running.contains(&package) {
+        // One level of a package at a time: starting Evade/2 replaces Evade/1.
+        self.software_running.retain(|running| running.kind != package.kind);
+        self.software_running.push(package);
+      }
+    } else {
+      self.software_running.retain(|running| *running != package);
+    }
+    true
+  }
+
   /// Fuel one jump number costs: a tenth of the ship's tonnage, so a jump-2
   /// costs a fifth of the hull (High Guard p. 11).
   ///
@@ -2795,6 +2907,25 @@ async fn load_test_ship_templates() -> ShipTemplateTable {
     .expect("Unable to load ship templates directory.")
 }
 
+/// What a new ship has running: everything it owns that the computer can
+/// manage, free software first, then the rest in the order the design lists.
+fn initial_running(design: &ShipDesignTemplate) -> Vec<Software> {
+  let mut running: Vec<Software> = design.software.iter().copied().filter(Software::always_running).collect();
+  let mut used = 0;
+  for package in design.software.iter().filter(|p| !p.always_running()) {
+    let capacity = if package.kind == SoftwareKind::JumpControl && design.computer_bis {
+      design.computer + 5
+    } else {
+      design.computer
+    };
+    if used + package.bandwidth() <= capacity {
+      used += package.bandwidth();
+      running.push(*package);
+    }
+  }
+  running
+}
+
 /// What a sensor suite draws (High Guard p. 23).
 #[must_use]
 pub fn sensor_power(sensors: Sensors) -> u32 {
@@ -3293,6 +3424,9 @@ impl Default for ShipDesignTemplate {
       ],
       screens: vec![],
       auxiliary: vec![],
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 15,
       role: None,
       source: None,
@@ -3460,6 +3594,78 @@ mod tests {
     ship.set_online(PowerSystem::Maneuver, false);
     assert!(ship.is_powered(PowerSystem::Auxiliary(0)));
     assert_eq!(ship.max_acceleration(), 0);
+  }
+
+  /// Bandwidth, not Power, is what limits a computer -- and a ship can own
+  /// more software than it can run at once. HMS Executor is the case in
+  /// point: Evade/1, Fire Control/2 and Jump Control/2 is 30 Bandwidth on a
+  /// Computer/20, so she fights or she jumps.
+  #[test]
+  fn software_runs_within_bandwidth_not_beyond_it() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      computer: 20,
+      software: vec![
+        Software::new(SoftwareKind::Manoeuvre, 0),
+        Software::new(SoftwareKind::Library, 0),
+        Software::new(SoftwareKind::Evade, 1),
+        Software::new(SoftwareKind::FireControl, 2),
+        Software::new(SoftwareKind::JumpControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // She undocks running what fits, in the order the design lists it: Evade
+    // and Fire Control fill the computer, and Jump Control is left out.
+    assert_eq!(ship.bandwidth_used(), 20);
+    assert_eq!(ship.running_level(SoftwareKind::Evade), Some(1));
+    assert_eq!(ship.running_level(SoftwareKind::FireControl), Some(2));
+    assert_eq!(ship.running_level(SoftwareKind::JumpControl), None);
+
+    // Free software runs whatever else is on: there is no Bandwidth to free
+    // by stopping it.
+    assert!(ship.software_running.contains(&Software::new(SoftwareKind::Manoeuvre, 0)));
+
+    // No room for the jump drive's software until something gives.
+    assert!(!ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+    assert!(ship.set_software_running(Software::new(SoftwareKind::FireControl, 2), false));
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+    assert_eq!(ship.running_level(SoftwareKind::JumpControl), Some(2));
+
+    // And nothing can run software the ship does not have aboard.
+    assert!(!ship.set_software_running(Software::new(SoftwareKind::AutoRepair, 1), true));
+  }
+
+  /// A /bis computer is worth +5 for Jump Control alone, which is how the
+  /// Type-S scout runs Jump Control/2 on a Processing 5 machine.
+  #[test]
+  fn a_bis_computer_counts_for_jump_control_only() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Scout/Courier".to_string(),
+      displacement: 100,
+      computer: 5,
+      computer_bis: true,
+      software: vec![
+        Software::new(SoftwareKind::Library, 0),
+        Software::new(SoftwareKind::JumpControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    assert_eq!(ship.processing(), 5);
+    assert_eq!(ship.processing_for(SoftwareKind::JumpControl), 10);
+    assert_eq!(
+      ship.running_level(SoftwareKind::JumpControl),
+      Some(2),
+      "10 Bandwidth on a /bis 5"
+    );
+
+    // The same 10 Bandwidth spent on anything else does not fit.
+    ship.software.push(Software::new(SoftwareKind::Evade, 1));
+    assert!(!ship.set_software_running(Software::new(SoftwareKind::Evade, 1), true));
   }
 
   /// Jump fuel is a tenth of the ship's *tonnage* per jump number. A
@@ -3762,6 +3968,9 @@ mod tests {
       weapons: vec![],
       screens: vec![],
       auxiliary: vec![],
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 10,
       role: None,
       source: None,
@@ -4344,6 +4553,9 @@ mod tests {
       ],
       screens: vec![],
       auxiliary: vec![],
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 12,
       role: None,
       source: None,
@@ -4482,6 +4694,9 @@ mod tests {
       weapons: vec![],
       screens: vec![],
       auxiliary: vec![],
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 12,
       role: None,
       source: None,

@@ -238,5 +238,28 @@
   ],
   "tl": 15,
   "role": "Transport",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 4
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    },
+    {
+      "kind": "VirtualGunner",
+      "level": 1
+    }
+  ],
+  "computer_bis": true
 }

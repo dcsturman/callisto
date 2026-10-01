@@ -10,6 +10,7 @@ import {
   GiJumpAcross,
   GiLaserTurret,
   GiLightningTrio,
+  GiProcessor,
   GiRadarSweep,
   GiShipWheel,
   GiSpanner,
@@ -21,6 +22,7 @@ import {SensorStation} from "components/controls/SensorStation";
 import {EngineerTasks} from "components/controls/EngineerTasks";
 import {PowerBoard} from "components/controls/PowerBoard";
 import {DamageBoard} from "components/controls/DamageBoard";
+import {ComputerBoard} from "components/controls/ComputerBoard";
 import {JumpBoard} from "components/controls/JumpBoard";
 import {FireControl, QueuedOrders} from "components/controls/WeaponUse";
 
@@ -109,6 +111,11 @@ export function Stations(args: {ship: Ship}) {
           </StationCard>
           <StationCard title="Damage control" icon={<GiSpanner />}>
             <DamageBoard ship={args.ship} />
+          </StationCard>
+          {/* The computer is the engineer's to manage, as the power plant
+              is: both are budgets, and they read side by side. */}
+          <StationCard title="Computer" icon={<GiProcessor />}>
+            <ComputerBoard ship={args.ship} />
           </StationCard>
           {/* Only for a ship that has a jump drive to be ready or not. */}
           <StationCard title="Jump" icon={<GiJumpAcross />}>

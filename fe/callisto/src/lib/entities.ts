@@ -3,6 +3,7 @@ import { Weapon } from "lib/weapon";
 import { Team } from "lib/teams";
 export { availablePower } from "lib/power";
 import { PowerSystem } from "lib/power";
+import {Software} from "lib/software";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -76,6 +77,8 @@ export interface Ship extends Entity {
   current_jump: number;
   current_fuel: number;
   current_crew: number;
+  /** The computer's Processing score, which Bandwidth is measured against. */
+  current_computer: number;
   current_sensors: string;
   active_weapons: boolean[];
   dodge_thrust: number;
@@ -125,6 +128,10 @@ export interface Ship extends Entity {
   engineer_on_duty?: number;
   /** Systems the engineer has powered down. Absent when everything is live. */
   offline?: PowerSystem[];
+  /** Software aboard, which may differ from the design's. */
+  software?: Software[];
+  /** Which of it the computer is running. Bandwidth limits this. */
+  software_running?: Software[];
   /**
    * Auxiliary systems to start running, by index into the design's list.
    *
@@ -237,6 +244,7 @@ const createShip = (
   current_jump: number,
   current_fuel: number,
   current_crew: number,
+  current_computer: number,
   current_sensors: string,
   active_weapons: boolean[],
   dodge_thrust: number,
@@ -257,6 +265,7 @@ const createShip = (
     current_jump,
     current_fuel,
     current_crew,
+    current_computer,
     current_sensors,
     active_weapons,
     dodge_thrust,
@@ -274,6 +283,7 @@ export const defaultShip = () => {
     [0, 0, 0],
     [[[0, 0, 0], 0], null],
     "Buccaneer",
+    0,
     0,
     0,
     0,

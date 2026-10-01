@@ -23,6 +23,26 @@ use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F
 use crate::list_local_or_cloud_dir;
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, MessageCategory, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::player::PlayerManager;
+
+/// A design's software, and what a fresh ship of it is running, for the ship
+/// JSON these tests compare against.
+///
+/// Read from the templates rather than written out: these tests are about
+/// adding ships, fighting and missiles, and should not have to be edited
+/// every time a design's loadout is corrected against the book.
+fn software_of(design: &str) -> serde_json::Value {
+  let templates = crate::ship::get_ship_templates_snapshot();
+  serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
+}
+
+/// The same, for what such a ship has running when it arrives.
+fn software_running_of(design: &str) -> serde_json::Value {
+  let templates = crate::ship::get_ship_templates_snapshot();
+  let template = templates.get(design).unwrap().clone();
+  let ship = crate::ship::Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), &template, None, None);
+  serde_json::to_value(&ship.software_running).unwrap()
+}
+
 use crate::server::Server;
 use crate::ship::{BaySize, ShipDesignTemplate, ShipSystem, Weapon, WeaponMount, WeaponType};
 
@@ -87,7 +107,9 @@ async fn test_add_ship() {
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
-        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "software": software_of("Buccaneer"),
+        "software_running": software_running_of("Buccaneer")
         }],
         "missiles":[],"planets":[],"actions":[]});
 
@@ -132,7 +154,9 @@ async fn test_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -151,7 +175,9 @@ async fn test_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }],
           "missiles":[],
           "planets":[],
@@ -193,7 +219,9 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -212,7 +240,9 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       }]});
 
   assert_json_eq!(result, compare);
@@ -255,7 +285,9 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -274,7 +306,9 @@ async fn test_add_planet_ship() {
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       }]});
 
   assert_json_eq!(&start, &compare);
@@ -389,7 +423,9 @@ async fn test_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship2"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             "software": software_of("System Defense Boat"),
+             "software_running": software_running_of("System Defense Boat")
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -409,7 +445,9 @@ async fn test_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship1"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             "software": software_of("System Defense Boat"),
+             "software_running": software_running_of("System Defense Boat")
             }],
              "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction" :{"weapon_id": 1, "target": "ship2"}}]]]});
 
@@ -958,7 +996,9 @@ async fn test_big_fight() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship2"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "software": software_of("Gazelle"),
+   "software_running": software_running_of("Gazelle")
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -973,7 +1013,9 @@ async fn test_big_fight() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "software": software_of("Gazelle"),
+   "software_running": software_running_of("Gazelle")
   }],
     "missiles":[],
     "planets":[],
@@ -1082,7 +1124,9 @@ async fn test_fight_with_crew() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship2"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "software": software_of("Gazelle"),
+   "software_running": software_running_of("Gazelle")
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1097,7 +1141,9 @@ async fn test_fight_with_crew() {
    "can_jump":false,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "software": software_of("Gazelle"),
+   "software_running": software_running_of("Gazelle")
   }],
     "missiles":[],
     "planets":[],
@@ -1238,6 +1284,7 @@ async fn test_get_entities() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     })
     .unwrap();
 

@@ -20,5 +20,27 @@
   ],
   "tl": 13,
   "role": "Scout",
-  "source": "Ships of the Reach (Aslan)"
+  "source": "Ships of the Reach (Aslan)",
+  "software": [
+    {
+      "kind": "FireControl",
+      "level": 3
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 4
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

@@ -10,6 +10,7 @@ use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
 use super::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+use super::software::Software;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -90,6 +91,12 @@ pub struct AddShipMsg {
   /// approach. Absent means none.
   #[serde(default)]
   pub contacts: Option<Vec<String>>,
+  /// Software aboard, replacing the design's list.
+  ///
+  /// Absent means the design's own. A scenario that fits a raider with Evade
+  /// it was never sold with says so here.
+  #[serde(default)]
+  pub software: Option<Vec<Software>>,
   /// Auxiliary systems the ship starts with running, by index into the
   /// design's `auxiliary` list.
   ///
@@ -98,6 +105,18 @@ pub struct AddShipMsg {
   /// up says so here.
   #[serde(default)]
   pub auxiliary_on: Option<Vec<usize>>,
+}
+
+/// Start or stop one software package.
+///
+/// Not an action: the rules put no combat cost on choosing what the computer
+/// runs, and the engineer already has one order a round to spend. It takes
+/// effect for the round being given.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetSoftwareRunning {
+  pub ship_name: String,
+  pub software: Software,
+  pub running: bool,
 }
 
 #[skip_serializing_none]
@@ -547,6 +566,7 @@ pub enum RequestMsg {
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),
   SetShipEmissions(SetShipEmissions),
+  SetSoftwareRunning(SetSoftwareRunning),
   SetShipTeam(SetShipTeam),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
@@ -627,6 +647,7 @@ mod tests {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     };
     let json = json!({
         "name": "ship1",
@@ -657,6 +678,7 @@ mod tests {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     };
     let json = json!({
         "name": "ship1",

@@ -13,5 +13,32 @@
   "weapons": [],
   "tl": 12,
   "role": "Cruiser",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "FireControl",
+      "level": 2
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_fib": true
 }

@@ -20,5 +20,23 @@
   ],
   "tl": 12,
   "role": "Utility",
-  "source": "Ships of the Reach"
+  "source": "Ships of the Reach",
+  "software": [
+    {
+      "kind": "AutoRepair",
+      "level": 1
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

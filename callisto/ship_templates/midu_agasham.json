@@ -161,5 +161,47 @@
   ],
   "tl": 15,
   "role": "Cruiser",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AdvancedFireControl",
+      "level": 1
+    },
+    {
+      "kind": "AntiHijack",
+      "level": 2
+    },
+    {
+      "kind": "AutoRepair",
+      "level": 1
+    },
+    {
+      "kind": "BroadSpectrumEw",
+      "level": 0
+    },
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 4
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    },
+    {
+      "kind": "PointDefence",
+      "level": 2
+    }
+  ]
 }

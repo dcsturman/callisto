@@ -38,5 +38,23 @@
   ],
   "tl": 12,
   "role": "Trader",
-  "source": "Custom"
+  "source": "Custom",
+  "software": [
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

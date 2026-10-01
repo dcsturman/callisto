@@ -68,5 +68,12 @@
   ],
   "tl": 15,
   "role": "Escort",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_fib": true
 }

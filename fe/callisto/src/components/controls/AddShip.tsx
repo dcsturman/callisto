@@ -46,6 +46,16 @@ import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
 import { Team, TEAMS, TEAM_CSS } from "lib/teams";
 import { samePowerSystem } from "lib/power";
+import {
+  SOFTWARE,
+  SOFTWARE_KINDS,
+  Software,
+  SoftwareKind,
+  isLevelled,
+  bandwidthOf,
+  sameSoftware,
+  softwareLabel,
+} from "lib/software";
 
 /**
  * Which of a design's auxiliary systems start running.
@@ -60,12 +70,105 @@ function defaultAuxiliaryOn(design: ShipDesignTemplate | undefined): number[] {
     .filter((index) => index >= 0);
 }
 
+/** Whether two loadouts are the same set of packages. */
+function sameSoftwareList(a: Software[], b: Software[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((package_) => b.some((other) => sameSoftware(package_, other)))
+  );
+}
+
 /** The same, read back off a ship that already exists. */
 function auxiliaryOnFor(ship: Ship, design: ShipDesignTemplate | undefined): number[] {
   const offline = ship.offline ?? [];
   return (design?.auxiliary ?? [])
     .map((_aux, index) => index)
     .filter((index) => !offline.some((off) => samePowerSystem(off, {Auxiliary: index})));
+}
+
+/**
+ * Which software a ship carries, for the referee building a scenario.
+ *
+ * Installed, not running: a ship can own more than it can run at once, and
+ * which of it is up during the fight is the engineer's problem rather than
+ * the scenario author's.
+ */
+function SoftwareEditor(args: {
+  software: Software[];
+  processing: number;
+  onChange: (software: Software[]) => void;
+}) {
+  const [kind, setKind] = useState<SoftwareKind>("Evade");
+  const [level, setLevel] = useState<number>(SOFTWARE["Evade"].levels[0][0]);
+
+  const add = () => {
+    const addition = { kind, level };
+    // One level of a package at a time: fitting Evade/2 replaces Evade/1.
+    const kept = args.software.filter((installed) => installed.kind !== kind);
+    args.onChange([...kept, addition]);
+  };
+
+  return (
+    <div className="software-editor">
+      <h2>Software</h2>
+      <ul className="software-editor-list">
+        {args.software.length === 0 && (
+          <li className="software-row software-none">none</li>
+        )}
+        {args.software.map((installed) => (
+          <li key={`${installed.kind}-${installed.level}`} className="software-row software-on">
+            <span className="software-name" title={SOFTWARE[installed.kind].blurb}>
+              {softwareLabel(installed)}
+            </span>
+            <span className="software-bandwidth">{bandwidthOf(installed) || "—"}</span>
+            <button
+              type="button"
+              className="software-remove"
+              title={`Remove ${softwareLabel(installed)}`}
+              onClick={() =>
+                args.onChange(args.software.filter((other) => !sameSoftware(other, installed)))
+              }
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="software-add">
+        <select
+          className="control-input"
+          value={kind}
+          onChange={(event) => {
+            const next = event.target.value as SoftwareKind;
+            setKind(next);
+            setLevel(SOFTWARE[next].levels[0][0]);
+          }}
+        >
+          {SOFTWARE_KINDS.map((option) => (
+            <option key={option} value={option}>
+              {SOFTWARE[option].label}
+            </option>
+          ))}
+        </select>
+        {isLevelled(kind) && (
+          <select
+            className="control-input"
+            value={level}
+            onChange={(event) => setLevel(Number(event.target.value))}
+          >
+            {SOFTWARE[kind].levels.map(([option, bandwidth]) => (
+              <option key={option} value={option}>
+                /{option} ({bandwidth} bw)
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="button" className="control-input blue-button" onClick={add}>
+          Add
+        </button>
+      </div>
+    </div>
+  );
 }
 
 import { addShip } from "lib/serverManager";
@@ -140,6 +243,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
       activeSensors: true,
       transmitting: false,
       team: null as Team | null,
+      // The design's loadout, which a scenario can change: a raider refitted
+      // with Evade it was never sold with is a reasonable thing to want.
+      software: (firstDesign.software ?? []) as Software[],
       // A Harrier's holographic hull and the like. Off unless the design says
       // otherwise -- the engineer brings them up.
       auxiliaryOn: defaultAuxiliaryOn(firstDesign),
@@ -173,6 +279,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         activeSensors: current.active_sensors !== false,
         transmitting: current.transmitting === true,
         team: current.team ?? null,
+        software: current.software ?? shipDesignTemplates[current.design]?.software ?? [],
         auxiliaryOn: auxiliaryOnFor(current, shipDesignTemplates[current.design]),
       };
       setAddShipData(template);
@@ -210,6 +317,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
               activeSensors: ship.active_sensors !== false,
               transmitting: ship.transmitting === true,
               team: ship.team ?? null,
+              software: ship.software ?? shipDesignTemplates[ship.design]?.software ?? [],
               auxiliaryOn: auxiliaryOnFor(ship, shipDesignTemplates[ship.design]),
             });
           }
@@ -274,6 +382,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
         active_sensors: addShipData.activeSensors,
         transmitting: addShipData.transmitting,
         team: addShipData.team ?? undefined,
+        // Sent only when it differs from the design's own, so an unmodified
+        // ship keeps inheriting its loadout.
+        software: sameSoftwareList(addShipData.software, shipDesignTemplates[design]?.software ?? [])
+          ? undefined
+          : addShipData.software,
         auxiliary_on: addShipData.auxiliaryOn,
       };
 
@@ -295,6 +408,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         design: design,
         crew,
         armament: buildWeaponRows(design, undefined, crew.gunnery),
+        software: shipDesignTemplates[design]?.software ?? [],
         auxiliaryOn: defaultAuxiliaryOn(shipDesignTemplates[design]),
       });
     },
@@ -442,6 +556,14 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 {aux.name}
               </label>
             ))}
+            {/* The computer's loadout. A design arrives with what the book
+                sold it; a scenario can refit it, and Bandwidth is only
+                checked when the ship tries to run it all at once. */}
+            <SoftwareEditor
+              software={addShipData.software}
+              processing={shipDesignTemplates[addShipData.design]?.computer ?? 0}
+              onChange={(software) => setAddShipData({...addShipData, software})}
+            />
             <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
               Team
               <select

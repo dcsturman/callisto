@@ -41,5 +41,31 @@
   ],
   "tl": 13,
   "role": "Warship",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AutoRepair",
+      "level": 1
+    },
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "FireControl",
+      "level": 2
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

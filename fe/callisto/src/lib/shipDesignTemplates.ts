@@ -5,6 +5,7 @@ import type {Ship} from "./entities";
 // Type-only for the same reason: CrewBuilder reaches back into `lib/entities`.
 import type {Crew} from "components/controls/CrewBuilder";
 import {AuxiliarySystem} from "lib/power";
+import {Software} from "lib/software";
 
 /**
  * Readable names for screen types, which travel the wire as Rust enum variant
@@ -60,6 +61,12 @@ export interface ShipDesignTemplate {
    * from the engineer's power board. Omitted when the design has none.
    */
   auxiliary?: AuxiliarySystem[];
+  /** The software the design is sold with. */
+  software?: Software[];
+  /** Jump Control Specialisation: +5 Processing for Jump Control only. */
+  computer_bis?: boolean;
+  /** Hardened against ion weapons. */
+  computer_fib?: boolean;
   tl: number;
   // Both are free-form and optional on the Rust side (`Option<String>`, omitted
   // from the wire when unset).  Used only to organize the design picker.

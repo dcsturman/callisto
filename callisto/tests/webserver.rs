@@ -55,6 +55,28 @@ const SERVER_PATH: &str = "target/debug/callisto";
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(0);
 
+/// A design's software, and what a fresh ship of it runs, for the ship JSON
+/// these tests compare against. Read from the templates so a corrected
+/// loadout does not break tests that are about the wire protocol.
+fn software_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
+}
+
+fn software_running_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  let template = templates.get(design).unwrap().clone();
+  let ship = callisto::ship::Ship::new(
+    "probe".to_string(),
+    cgmath::Zero::zero(),
+    cgmath::Zero::zero(),
+    &template,
+    None,
+    None,
+  );
+  serde_json::to_value(&ship.software_running).unwrap()
+}
+
 fn get_next_port() -> u16 {
   use std::sync::Once;
   static INIT: Once = Once::new();
@@ -627,6 +649,7 @@ async fn integration_add_ship() {
     team: None,
     contacts: None,
     auxiliary_on: None,
+    software: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -663,7 +686,9 @@ async fn integration_add_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }],
         "missiles":[],
         "planets":[],
@@ -703,6 +728,7 @@ async fn integration_add_planet_ship() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -724,6 +750,7 @@ async fn integration_add_planet_ship() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -750,7 +777,9 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -769,7 +798,9 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }],
           "missiles":[],
           "planets":[],
@@ -826,7 +857,9 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -845,7 +878,9 @@ async fn integration_add_planet_ship() {
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }]});
 
     assert_json_eq!(entities, compare);
@@ -901,7 +936,9 @@ async fn integration_add_planet_ship() {
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
-     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+     "software": software_of("Buccaneer"),
+     "software_running": software_running_of("Buccaneer")
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
      "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -920,7 +957,9 @@ async fn integration_add_planet_ship() {
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
-     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+     "software": software_of("Buccaneer"),
+     "software_running": software_running_of("Buccaneer")
     }]});
 
     assert_json_eq!(&entities, &compare);
@@ -959,6 +998,7 @@ async fn integration_update_ship() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1017,6 +1057,7 @@ async fn integration_update_missile() {
       team: None,
       contacts: Some(vec!["ship2".to_string()]),
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1037,6 +1078,7 @@ async fn integration_update_missile() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1099,7 +1141,9 @@ async fn integration_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship2"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             "software": software_of("System Defense Boat"),
+             "software_running": software_running_of("System Defense Boat")
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -1119,7 +1163,9 @@ async fn integration_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship1"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             "software": software_of("System Defense Boat"),
+             "software_running": software_running_of("System Defense Boat")
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 
@@ -1159,6 +1205,7 @@ async fn integration_remove_ship() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1295,6 +1342,7 @@ async fn integration_set_acceleration() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1359,6 +1407,7 @@ async fn integration_compute_path_basic() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1458,6 +1507,7 @@ async fn integration_compute_path_with_standoff() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1557,6 +1607,7 @@ async fn integration_malformed_requests() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1783,6 +1834,7 @@ async fn integration_set_crew_actions() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1867,6 +1919,7 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1885,6 +1938,7 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1909,6 +1963,7 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       auxiliary_on: None,
+      software: None,
     }),
   )
   .await;

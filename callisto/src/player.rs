@@ -14,7 +14,7 @@ use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
   FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
-  SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
+  SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Weapon, WeaponMount};
@@ -293,6 +293,17 @@ impl PlayerManager {
           added.contacts = contacts;
           added.contacts.sort();
         }
+        if let Some(software) = ship.software {
+          added.software = software;
+          // Keep running only what is still aboard and still fits.
+          let installed = added.software.clone();
+          added.software_running.retain(|package| installed.contains(package));
+          for package in &installed {
+            if package.always_running() && !added.software_running.contains(package) {
+              added.software_running.push(*package);
+            }
+          }
+        }
         if let Some(running) = ship.auxiliary_on {
           for index in 0..added.design.auxiliary.len() {
             added.set_online(PowerSystem::Auxiliary(index), running.contains(&index));
@@ -302,6 +313,44 @@ impl PlayerManager {
     }
 
     Ok("Add ship action executed".to_string())
+  }
+
+  /// Start or stop one of a ship's software packages.
+  ///
+  /// Free, and effective at once: the rules put no combat cost on what the
+  /// computer chooses to run. Bandwidth is the only thing that can refuse it.
+  ///
+  /// # Errors
+  /// Returns an error if the ship is unknown, the package is not installed,
+  /// or there is not enough Bandwidth left to run it.
+  ///
+  /// # Panics
+  /// Panics if the lock on entities cannot be obtained.
+  pub fn set_software_running(&self, msg: &SetSoftwareRunning) -> Result<String, String> {
+    let entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    let ship = entities
+      .ships
+      .get(&msg.ship_name)
+      .ok_or_else(|| format!("Cannot set software on unknown ship named '{}'", msg.ship_name))?;
+    let mut ship = ship.write().unwrap();
+    if ship.set_software_running(msg.software, msg.running) {
+      Ok(format!(
+        "{} {} {}.",
+        msg.ship_name,
+        if msg.running { "runs" } else { "stops" },
+        msg.software
+      ))
+    } else if msg.running {
+      Err(format!(
+        "{} cannot run {}: {} of {} Bandwidth already in use.",
+        msg.ship_name,
+        msg.software,
+        ship.bandwidth_used(),
+        ship.processing_for(msg.software.kind)
+      ))
+    } else {
+      Err(format!("{} does not have {} installed.", msg.ship_name, msg.software))
+    }
   }
 
   /// Sets the crew actions for a ship.

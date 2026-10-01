@@ -24,5 +24,27 @@
   ],
   "tl": 15,
   "role": "Fighter",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "FireControl",
+      "level": 4
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

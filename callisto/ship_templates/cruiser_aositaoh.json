@@ -74,5 +74,23 @@
   ],
   "tl": 12,
   "role": "Cruiser",
-  "source": "Ships of the Reach (Aslan)"
+  "source": "Ships of the Reach (Aslan)",
+  "software": [
+    {
+      "kind": "FireControl",
+      "level": 4
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

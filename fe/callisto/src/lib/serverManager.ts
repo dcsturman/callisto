@@ -34,6 +34,7 @@ import { AppMode, setAppMode } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
+import { Software } from "lib/software";
 import {
   EntityList,
   Ship,
@@ -604,6 +605,24 @@ export function computeFlightPath(
       if (value !== null) {
         return value;
       }
+    }),
+  );
+}
+
+/**
+ * Start or stop a piece of the ship's software.
+ *
+ * Not an action: the rules put no combat cost on what the computer chooses to
+ * run, so this takes effect at once rather than waiting for the round.
+ */
+export function setSoftwareRunning(
+  shipName: string,
+  software: Software,
+  running: boolean,
+) {
+  socket.send(
+    JSON.stringify({
+      SetSoftwareRunning: { ship_name: shipName, software, running },
     }),
   );
 }

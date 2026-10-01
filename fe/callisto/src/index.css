@@ -2488,6 +2488,128 @@ h3.control-form {
     min-width: 0;
 }
 
+/* --- The ship's computer --- */
+
+.computer-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--font-sm);
+}
+
+.computer-processing {
+    font-family: "Sono", monospace;
+    letter-spacing: 0.04em;
+}
+
+.computer-spare {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}
+
+/* Over the computer's Processing score: something has to be shut down. */
+.computer-over {
+    color: #ff6b6b;
+    opacity: 1;
+}
+
+/* Bandwidth is one pool, so it reads as one bar rather than a column per
+   package. */
+.bandwidth-gauge {
+    height: 7px;
+    margin: 5px 0 7px;
+    border: 1px solid #2f3a33;
+    border-radius: 2px;
+    background: #10151a;
+    overflow: hidden;
+}
+
+.bandwidth-gauge-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3f7fbf, #5aa9e6);
+    box-shadow: 0 0 6px rgba(90, 169, 230, 0.5);
+    transition: width 120ms linear;
+}
+
+.software-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.software-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 1px 0;
+    opacity: 0.6;
+}
+
+/* Running software is the thing being read, so it is the thing that is lit. */
+.software-on {
+    opacity: 1;
+}
+
+.software-toggle {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+}
+
+.software-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.software-bandwidth {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    opacity: 0.75;
+}
+
+.software-none {
+    font-style: italic;
+    opacity: 0.55;
+}
+
+/* The referee's loadout editor, in the Add Ship form. */
+.software-editor-list {
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.software-editor-list .software-row {
+    gap: 8px;
+}
+
+.software-remove {
+    border: none;
+    background: none;
+    color: #ff6b6b;
+    cursor: pointer;
+    font-size: var(--font-md);
+    line-height: 1;
+    padding: 0 2px;
+}
+
+.software-add {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.software-add select {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {
