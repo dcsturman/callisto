@@ -22,8 +22,9 @@ import {FireControl, QueuedOrders} from "components/controls/WeaponUse";
  * every station -- got a second copy of the lot in a window of its own while
  * the left column sat empty. Now the referee simply has more cards.
  *
- * Cards flow into as many columns as the space allows, so one station reads
- * as a column and five fill the width.
+ * The cards are siblings of the ship's dossier in one wrapping column: they
+ * fill the space under it first and start a second column only when that one
+ * is full, so the console is never wider than it needs to be.
  */
 export function Stations(args: {ship: Ship}) {
   const roles = useAppSelector((state) => state.user.roles);
@@ -37,7 +38,7 @@ export function Stations(args: {ship: Ship}) {
   const captainHoldsTheOrders = hasRole(roles, ViewMode.Captain);
 
   return (
-    <div className="stations">
+    <>
       {hasRole(roles, ViewMode.Captain) && (
         <StationCard title="Captain" crew={`leadership ${args.ship.crew.leadership ?? 0}`}>
           <CaptainTasks ship={args.ship} />
@@ -106,7 +107,7 @@ export function Stations(args: {ship: Ship}) {
           Showing {args.ship.name}. You are aboard {shipName}.
         </p>
       )}
-    </div>
+    </>
   );
 }
 

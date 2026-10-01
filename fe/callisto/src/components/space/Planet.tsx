@@ -13,7 +13,7 @@ import {
   hasEffect,
 } from "lib/entities";
 
-import { RangeSphere } from "lib/Util";
+import { RangeCircle, RangeSphere } from "lib/Util";
 
 import { useAppDispatch } from "state/hooks";
 import { setEntityToShow } from "state/uiSlice";
@@ -69,20 +69,30 @@ export function Planet(args: PlanetProps) {
   function allViewChanges() {
     return (
       <>
-        {/* The 100-diameter limit is a shell rather than a circle, because
-            the camera is nearly always inside it: a fight near a planet
-            happens well within 200 radii, and a silhouette circle hides
-            itself when the camera is inside the sphere -- which made the
-            toggle look broken. A shell drawn on its inside faces is visible
-            from within, as the gravity wells beside it are. */}
+        {/* The 100-diameter limit is drawn twice, because neither shape
+            works from both sides of it. A silhouette circle reads from
+            outside but hides itself once the camera is within the sphere --
+            which it is for any fight near the planet. A shell drawn on its
+            inside faces reads from within but is nearly nothing from far
+            away, where it is a small faint ball. Together they cover both,
+            and only one of them is ever doing the work. */}
         {args.controlJumpDistance && (
-          <RangeSphere
-            pos={pos}
-            distance={args.planet.radius * 200}
-            order={12}
-            color="#9ab0c4"
-            opacity={0.07}
-          />
+          <>
+            <RangeCircle
+              pos={pos}
+              distance={args.planet.radius * 200}
+              label="100 diameter limit"
+              color="#9ab0c4"
+              opacity={0.7}
+            />
+            <RangeSphere
+              pos={pos}
+              distance={args.planet.radius * 200}
+              order={12}
+              color="#9ab0c4"
+              opacity={0.1}
+            />
+          </>
         )}
         {args.controlGravityWell && args.planet.gravity_radius_025 && (
           <RangeSphere
