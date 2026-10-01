@@ -1272,7 +1272,11 @@ async fn test_get_entities() {
   assert_eq!(planet.get_name(), planet_name);
   assert_eq!(planet.get_position(), planet_position);
   assert_eq!(planet.color, planet_color);
-  assert!(planet.visual_effects.is_empty());
+  assert!(
+    planet.visual_effects.is_empty(),
+    "a quiet planet shows nothing: {:?}",
+    planet.visual_effects
+  );
 
   // Check that there are no missiles
   assert!(entities.missiles.is_empty());
@@ -1534,7 +1538,7 @@ async fn test_leadership_roll_reported_without_boosts() {
 
   let (points, applied) = extract_leadership_effect(&effects, "ship1");
   assert_eq!(points, captain_result.points);
-  assert!(applied.is_empty());
+  assert!(applied.is_empty(), "no boost should have been applied: {applied:?}");
 }
 
 /// Captain rolls leadership with a couple of boosts. Verify that the

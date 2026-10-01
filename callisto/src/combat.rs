@@ -2316,7 +2316,11 @@ mod battery_tests {
     let mut ship = ship_with_screens(vec![ScreenType::Meson], &[0]);
     ship.set_screen_pool(vec![100]);
     ship.clear_point_defense();
-    assert!(ship.screen_pool.is_empty());
+    assert!(
+      ship.screen_pool.is_empty(),
+      "screens should all have been spent: {:?}",
+      ship.screen_pool
+    );
     assert_eq!(ship.apply_screens(WeaponType::Meson, 40), 40);
   }
 
@@ -2712,7 +2716,7 @@ mod tests {
 
     // Check that we have the expected number of effects
     // 1 for beam plus any potential damage messages
-    assert!(!effects.is_empty());
+    assert!(!effects.is_empty(), "the attack should have reported something");
 
     // You might want to add more specific checks based on your exact implementation
     // For example, checking for specific damage amounts or other effect details

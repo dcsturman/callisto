@@ -251,10 +251,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
         .contains("Time to exit")
       {
         process::exit(0);
-      } else {
-        orig_hook(panic_info);
-        process::exit(1);
       }
+      orig_hook(panic_info);
+      process::exit(1);
     }));
   }
 

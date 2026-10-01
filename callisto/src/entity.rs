@@ -2491,7 +2491,19 @@ impl Entities {
       );
     }
 
-    if !ship.can_jump() || ship.current_fuel <= ship.design.hull / 10 {
+    // Fuel is a tenth of the tonnage per jump number, so a ship short of a
+    // full tank still jumps -- just not as far.
+    let jump_range = ship.jump_range_available();
+    if !ship.can_jump() || jump_range == 0 {
+      let reason = if jump_range == 0 {
+        format!(
+          "only {} tons of fuel aboard and a jump-1 needs {}",
+          ship.current_fuel,
+          ship.fuel_per_jump_number()
+        )
+      } else {
+        "not clear of gravity wells, or the drive has no power".to_string()
+      };
       return (
         EngineerActionResult {
           ship_name: ship_name.to_string(),
@@ -2499,12 +2511,13 @@ impl Entities {
           success: false,
           check: 0,
           target: 0,
-          message: format!("{ship_name} cannot jump: insufficient fuel or not clear of gravity wells."),
+          message: format!("{ship_name} cannot jump: {reason}."),
           critical_failure: false,
         },
         false,
       );
     }
+    let short_jump = jump_range < ship.current_jump;
 
     let skill = ship.get_crew().engineer_at(engineer).jump;
     drop(ship);
@@ -2524,7 +2537,11 @@ impl Entities {
           success: true,
           check: total,
           target,
-          message: format!("{ship_name} jump check {check}: jumps successfully."),
+          message: if short_jump {
+            format!("{ship_name} jump check {check}: jumps successfully, jump-{jump_range} on the fuel aboard.")
+          } else {
+            format!("{ship_name} jump check {check}: jumps successfully.")
+          },
           critical_failure: false,
         },
         true,
@@ -4406,7 +4423,11 @@ mod tests {
 
     {
       let attacker = entities.ships.get("attacker").unwrap().read().unwrap();
-      assert!(attacker.sensor_locks.is_empty());
+      assert!(
+        attacker.sensor_locks.is_empty(),
+        "the lock should have been broken: {:?}",
+        attacker.sensor_locks
+      );
     }
 
     let mut rng = StepRng::new(1, 1); // Increment rolls to have attacker win (they roll second)
@@ -5584,7 +5605,11 @@ mod tests {
       ship.undo_damage(ShipSystem::Bridge, 2),
       vec!["computer Bandwidth back to 10".to_string()]
     );
-    assert!(ship.damage_log.is_empty());
+    assert!(
+      ship.damage_log.is_empty(),
+      "an undamaged ship has nothing logged: {:?}",
+      ship.damage_log
+    );
   }
 
   /// Undoing a destroyed station leaves it destroyed if an earlier hit had
@@ -5994,7 +6019,10 @@ mod tests {
       &mut rng,
     );
     assert!(format!("{effects:?}").contains("sensors station is out"), "{effects:?}");
-    assert!(entities.ships.get("Dragon").unwrap().read().unwrap().sensor_locks.is_empty());
+    assert!(
+      entities.ships.get("Dragon").unwrap().read().unwrap().sensor_locks.is_empty(),
+      "Dragon should hold no locks"
+    );
 
     let snapshot = entities.ship_deep_copy();
     let effects = entities.fire_actions(
@@ -6374,7 +6402,11 @@ mod tests {
     entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
     let seeker = entities.ships.get("Seeker").unwrap().read().unwrap();
-    assert!(seeker.contacts.is_empty());
+    assert!(
+      seeker.contacts.is_empty(),
+      "nothing should have been detected: {:?}",
+      seeker.contacts
+    );
     assert!(seeker.sensor_locks.is_empty(), "the lock should go with the contact");
   }
 
@@ -6416,7 +6448,7 @@ mod tests {
     assert_eq!(ship.sensor_locks.len(), 1);
 
     assert!(ship.set_emissions(Some(false), None), "going dark should drop them");
-    assert!(ship.sensor_locks.is_empty());
+    assert!(ship.sensor_locks.is_empty(), "the lock should be gone: {:?}", ship.sensor_locks);
     // Already dark: nothing left to drop, so no second report.
     assert!(!ship.set_emissions(Some(false), None));
   }

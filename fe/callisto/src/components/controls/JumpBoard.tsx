@@ -31,9 +31,17 @@ export function JumpBoard(args: {ship: Ship}) {
     return null;
   }
 
-  // A jump burns a tenth of the hull in fuel (High Guard p. 11), and the
-  // server refuses one that would leave the tanks empty.
-  const fuelNeeded = Math.floor(design.hull / 10);
+  // A jump burns a tenth of the ship's tonnage per jump number, so a jump-2
+  // costs a fifth of the hull (High Guard p. 11). Tonnage, not hull points: a
+  // Scout/Courier is 100 tons with 40 hull points, and its jump-2 costs 20.
+  const fuelPerJump = Math.floor(design.displacement / 10);
+  const fuelNeeded = fuelPerJump * args.ship.current_jump;
+  // The ship jumps as far as it is rated for unless the tanks say otherwise.
+  const jumpAvailable =
+    fuelPerJump === 0
+      ? 0
+      : Math.min(args.ship.current_jump, Math.floor(args.ship.current_fuel / fuelPerJump));
+  const shortJump = jumpAvailable > 0 && jumpAvailable < args.ship.current_jump;
   const jumpDraw = lines.find((line) => line.system === "Jump")?.draw ?? 0;
   const spare = powerSpare(args.ship, lines);
 
@@ -55,11 +63,16 @@ export function JumpBoard(args: {ship: Ship}) {
   const astrogationOut = stations.some((state) => state.startsWith("Astrogation"));
   const computerOut = stations.some((state) => state.startsWith("Computer"));
 
-  const conditions = [
+  const conditions: {label: string; met: boolean; warn?: boolean; detail: string}[] = [
     {
       label: "Fuel",
-      met: args.ship.current_fuel > fuelNeeded,
-      detail: `${args.ship.current_fuel} of ${fuelNeeded} needed`,
+      met: jumpAvailable > 0,
+      // Short of a full tank is not a refusal: the ship jumps less far, which
+      // the engineer should know before the captain picks a destination.
+      warn: shortJump,
+      detail: shortJump
+        ? `${args.ship.current_fuel} aboard — jump-${jumpAvailable} only (jump-${args.ship.current_jump} needs ${fuelNeeded})`
+        : `${args.ship.current_fuel} of ${fuelNeeded} for jump-${args.ship.current_jump}`,
     },
     {
       label: "Clear of gravity",
@@ -87,19 +100,33 @@ export function JumpBoard(args: {ship: Ship}) {
   ];
 
   const ready = conditions.every((condition) => condition.met);
+  const limited = ready && conditions.some((condition) => condition.warn);
 
   return (
     <div className="jump-board">
-      <div className={ready ? "jump-verdict jump-ready" : "jump-verdict jump-not-ready"}>
-        {ready ? "Ready to jump" : "Cannot jump"}
+      <div
+        className={
+          limited
+            ? "jump-verdict jump-limited"
+            : ready
+              ? "jump-verdict jump-ready"
+              : "jump-verdict jump-not-ready"
+        }>
+        {limited ? `Ready — jump-${jumpAvailable} only` : ready ? "Ready to jump" : "Cannot jump"}
       </div>
       <ul className="jump-conditions">
         {conditions.map((condition) => (
           <li
             key={condition.label}
-            className={condition.met ? "jump-condition" : "jump-condition jump-condition-blocking"}>
+            className={
+              !condition.met
+                ? "jump-condition jump-condition-blocking"
+                : condition.warn
+                  ? "jump-condition jump-condition-limited"
+                  : "jump-condition"
+            }>
             <span className="jump-condition-mark" aria-hidden="true">
-              {condition.met ? "✓" : "✕"}
+              {!condition.met ? "✕" : condition.warn ? "⚠" : "✓"}
             </span>
             <span className="jump-condition-label">{condition.label}</span>
             <span className="jump-condition-detail">{condition.detail}</span>

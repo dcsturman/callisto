@@ -2163,6 +2163,34 @@ impl Ship {
       .sum()
   }
 
+  /// Fuel one jump number costs: a tenth of the ship's tonnage, so a jump-2
+  /// costs a fifth of the hull (High Guard p. 11).
+  ///
+  /// Tonnage, not hull points. A Scout/Courier is 100 tons with 40 hull
+  /// points, and its jump-2 costs 20 tons of fuel, not 4.
+  #[must_use]
+  pub fn fuel_per_jump_number(&self) -> u32 {
+    self.design.displacement / 10
+  }
+
+  /// What a full jump costs this ship at its current drive rating.
+  #[must_use]
+  pub fn fuel_for_full_jump(&self) -> u32 {
+    self.fuel_per_jump_number() * u32::from(self.current_jump)
+  }
+
+  /// The furthest this ship can actually jump: what the drive is rated for,
+  /// or what is in the tanks, whichever runs out first.
+  #[must_use]
+  pub fn jump_range_available(&self) -> u8 {
+    let per = self.fuel_per_jump_number();
+    if per == 0 {
+      return 0;
+    }
+    let affordable = u8::try_from(self.current_fuel / per).unwrap_or(u8::MAX);
+    affordable.min(self.current_jump)
+  }
+
   /// Whether the sensors are running. A suite with no power finds nothing and
   /// locks onto nothing.
   #[must_use]
@@ -3350,6 +3378,39 @@ mod tests {
     ship.set_basic_power_halved(true);
     assert_eq!(draw(&ship, PowerSystem::Basic), Some(20), "half, in an emergency");
     assert_eq!(ship.max_acceleration(), 6);
+  }
+
+  /// Jump fuel is a tenth of the ship's *tonnage* per jump number. A
+  /// Scout/Courier is 100 tons with 40 hull points, so its jump-2 costs 20
+  /// tons of fuel -- not the 4 that reading hull points would give.
+  #[test]
+  fn jump_fuel_is_a_tenth_of_the_tonnage_per_jump_number() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Scout/Courier".to_string(),
+      displacement: 100,
+      hull: 40,
+      jump: 2,
+      fuel: 23,
+      power: 60,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    assert_eq!(ship.fuel_per_jump_number(), 10);
+    assert_eq!(ship.fuel_for_full_jump(), 20);
+    assert_eq!(ship.jump_range_available(), 2, "23 tons is enough for a jump-2");
+
+    // Enough for one jump number but not two: the ship still jumps, less far.
+    ship.current_fuel = 19;
+    assert_eq!(ship.jump_range_available(), 1);
+
+    ship.current_fuel = 9;
+    assert_eq!(ship.jump_range_available(), 0, "not enough for a jump-1");
+
+    // A damaged drive caps the range whatever the tanks hold.
+    ship.current_fuel = 23;
+    ship.current_jump = 1;
+    assert_eq!(ship.jump_range_available(), 1);
   }
 
   /// A plant that cannot feed everything feeds what it can, in order, and the

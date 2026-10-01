@@ -2453,6 +2453,17 @@ h3.control-form {
     color: #ff6b6b;
 }
 
+/* Fuel enough to jump, but not as far as the drive is rated for. */
+.jump-limited {
+    color: #ffb84d;
+}
+
+.jump-condition-limited .jump-condition-mark,
+.jump-condition-limited .jump-condition-detail {
+    color: #ffb84d;
+    opacity: 1;
+}
+
 .jump-conditions {
     list-style: none;
     margin: 4px 0 0;
