@@ -63,6 +63,15 @@ export type FireAction = {
    * Omitted for a full salvo, and for anything that is not a launcher.
    */
   salvo_size?: number;
+  /**
+   * Fire Control points spent on this shot as a DM.
+   *
+   * The program's score is a pool each round, spent either on firing a mount
+   * outright or on improving someone else's shot (Core Rulebook p. 161).
+   */
+  fire_control_dm?: number;
+  /** Whether the computer is firing this mount instead of a gunner. */
+  computer_fired?: boolean;
 };
 
 export type FireState = FireAction[];
@@ -292,6 +301,10 @@ function fireActionPayload(fireAction: FireAction) {
       // throw. Both are omitted when there is no choice to record.
       firing_kind: fireAction.firing_kind,
       salvo_size: fireAction.salvo_size,
+      // The computer's share of this shot: zero and false are the usual
+      // case and stay off the wire.
+      fire_control_dm: fireAction.fire_control_dm,
+      computer_fired: fireAction.computer_fired,
     },
   };
 }

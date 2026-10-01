@@ -301,6 +301,37 @@ export const actionsSlice = createSlice({
       }
       updateActions(state);
     },
+    /**
+     * How much of the Fire Control pool this shot draws.
+     *
+     * `computerFired` has the computer fire a mount with no gunner behind
+     * it, which costs one point; `dm` is what it adds to the shot. Both
+     * default to nothing and stay off the wire when unset.
+     */
+    updateFireControl: (
+      state,
+      item: PayloadAction<{shipName: string; index: number; dm?: number; computerFired?: boolean}>
+    ) => {
+      const action = state[item.payload.shipName]?.fire[item.payload.index];
+      if (!action) {
+        return;
+      }
+      if (item.payload.dm != null) {
+        if (item.payload.dm === 0) {
+          delete action.fire_control_dm;
+        } else {
+          action.fire_control_dm = item.payload.dm;
+        }
+      }
+      if (item.payload.computerFired != null) {
+        if (item.payload.computerFired) {
+          action.computer_fired = true;
+        } else {
+          delete action.computer_fired;
+        }
+      }
+      updateActions(state);
+    },
     resetServer: () => initialState,
   },
 });
@@ -316,6 +347,7 @@ export const {
   unfireWeapon,
   updateFireCalledShot,
   updateFireSalvo,
+  updateFireControl,
   resetServer,
 } = actionsSlice.actions;
 

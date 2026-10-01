@@ -28,6 +28,7 @@ import {
 } from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
+  FireAction,
   FireState,
   PointDefenseState,
   SensorAction,
@@ -68,6 +69,7 @@ import {
   unfireWeapon,
   updateFireCalledShot,
   updateFireSalvo,
+  updateFireControl,
   setSensorAction,
   setEngineerAction,
   toggleBoost,
@@ -740,7 +742,88 @@ export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
       pilotState={pilotState}
       searchTargets={searchTargets}
       weapons={shipWeapons(args.ship, templates)}
+      gunnery={args.ship.crew?.gunnery}
     />
+  );
+}
+
+
+/**
+ * How much of the Fire Control pool this shot draws.
+ *
+ * "Allows the computer to fire a number of turrets per round equal to the
+ * listed number. Alternatively, it can give a positive DM to an attack equal
+ * to the listed number or any combination of the two" (Core Rulebook p. 161).
+ * So the score is a pool of points each round: one point fires a mount
+ * outright, and the rest can go on improving shots. A mount with nobody on it
+ * is the usual place to spend the first point, which is why the checkbox says
+ * so when the gunner's seat is empty.
+ */
+function FireControlRow(args: {
+  action: FireAction;
+  index: number;
+  pool: number;
+  spent: number;
+  shipName: string;
+  hasGunner: boolean;
+}) {
+  const dispatch = useAppDispatch();
+  const mine = (args.action.fire_control_dm ?? 0) + (args.action.computer_fired ? 1 : 0);
+  const left = args.pool - args.spent;
+  const dm = args.action.fire_control_dm ?? 0;
+  const choices = Array.from({length: dm + Math.max(0, left) + 1}, (_, value) => value);
+
+  return (
+    <div className="fire-control-row" title={`Fire Control/${args.pool}: ${args.pool - args.spent} of ${args.pool} points unspent`}>
+      <label
+        className="fire-control-toggle"
+        title={
+          args.hasGunner
+            ? "The computer fires this mount instead of its gunner, bringing no skill of its own."
+            : "Nobody is on this mount, so the computer fires it. One Fire Control point."
+        }>
+        <input
+          type="checkbox"
+          checked={args.action.computer_fired === true}
+          disabled={!args.action.computer_fired && left <= 0}
+          onChange={(event) =>
+            dispatch(
+              updateFireControl({
+                shipName: args.shipName,
+                index: args.index,
+                computerFired: event.target.checked,
+              })
+            )
+          }
+        />
+        computer fires
+      </label>
+      <label className="fire-control-dm" title="Fire Control points added to this shot">
+        DM
+        <select
+          className="salvo-select"
+          value={dm}
+          onChange={(event) =>
+            dispatch(
+              updateFireControl({
+                shipName: args.shipName,
+                index: args.index,
+                dm: Number(event.target.value),
+              })
+            )
+          }>
+          {choices.map((value) => (
+            <option key={value} value={value}>
+              {value === 0 ? "—" : `+${value}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="fire-control-left">
+        {mine > 0 ? `${mine} used, ` : ""}
+        {Math.max(0, left)} left
+      </span>
+    </div>
   );
 }
 
@@ -763,6 +846,8 @@ export function Actions(args: {
   pilotState: { dodgeThrust: number; assistGunners: boolean } | null;
   // The acting ship's own armament, not its design's: `weapon_id` indexes this.
   weapons: Weapon[];
+  /** Gunner skill per mount, for spotting the ones with nobody on them. */
+  gunnery?: number[];
 }) {
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
@@ -782,6 +867,28 @@ export function Actions(args: {
     return state.actions[captainShipName]?.leadershipCheck?.boosts ?? [];
   });
   const dispatch = useAppDispatch();
+
+  // The Fire Control pool for the round, and what the orders already drew
+  // from it. The program's score is spent on firing mounts outright and on
+  // improving gunners' shots, in any mix (Core Rulebook p. 161).
+  const actingShip = useMemo(
+    () => (computerShipName ? findShip(entities, computerShipName) : null),
+    [entities, computerShipName]
+  );
+  const fireControlPool = useMemo(
+    () =>
+      actingShip?.software_running?.find((software) => software.kind === "FireControl")?.level ?? 0,
+    [actingShip]
+  );
+  const fireControlSpent = useMemo(
+    () =>
+      args.fireActions.reduce(
+        (total, action) =>
+          total + (action.fire_control_dm ?? 0) + (action.computer_fired ? 1 : 0),
+        0
+      ),
+    [args.fireActions]
+  );
 
   // Captain's leadership cap. The cap is the rolled `leadership_points`, but
   // only after the captain has actually rolled this turn — pre-roll
@@ -1031,6 +1138,19 @@ export function Actions(args: {
                 </select>
               );
             })()}
+            {/* The computer's share of this shot, when the ship is running
+                Fire Control. One point has the computer fire a mount with
+                nobody on it; the rest can be spent improving the shot. */}
+            {fireControlPool > 0 && (
+              <FireControlRow
+                action={action}
+                index={index}
+                pool={fireControlPool}
+                spent={fireControlSpent}
+                shipName={computerShipName ?? ""}
+                hasGunner={(args.gunnery?.[action.weapon_id] ?? 0) > 0}
+              />
+            )}
             {renderBoostCheckbox(
               fireBoostTarget,
               "Launching makes no check, so there is nothing to boost",

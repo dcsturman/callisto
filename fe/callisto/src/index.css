@@ -2610,6 +2610,27 @@ h3.control-form {
     flex: 1 1 auto;
 }
 
+/* The computer's share of a shot, under the fire order it belongs to. */
+.fire-control-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+.fire-control-toggle,
+.fire-control-dm {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+}
+
+.fire-control-left {
+    font-family: "Sono", monospace;
+    opacity: 0.7;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {

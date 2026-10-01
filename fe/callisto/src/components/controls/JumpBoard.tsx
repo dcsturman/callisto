@@ -59,6 +59,9 @@ export function JumpBoard(args: {ship: Ship}) {
     }))
     .sort((a, b) => a.distance / a.limit - b.distance / b.limit)[0];
 
+  const jumpControl =
+    args.ship.software_running?.find((software) => software.kind === "JumpControl")?.level ?? 0;
+
   const stations = stationsDown(args.ship);
   const astrogationOut = stations.some((state) => state.startsWith("Astrogation"));
   const computerOut = stations.some((state) => state.startsWith("Computer"));
@@ -86,6 +89,19 @@ export function JumpBoard(args: {ship: Ship}) {
       label: "Power",
       met: spare >= jumpDraw,
       detail: `${jumpDraw} needed, ${Math.max(0, spare)} spare of ${availablePower(args.ship)}`,
+    },
+    {
+      // Jump Control plots the jump; without it running there is no jump,
+      // whatever the drive is rated for (CRB p. 161).
+      label: "Jump Control",
+      met: jumpControl > 0,
+      warn: jumpControl > 0 && jumpControl < args.ship.current_jump,
+      detail:
+        jumpControl === 0
+          ? "not running"
+          : jumpControl < args.ship.current_jump
+            ? `/${jumpControl} running — plots jump-${jumpControl} only`
+            : `/${jumpControl} running`,
     },
     {
       label: "Astrogation",
