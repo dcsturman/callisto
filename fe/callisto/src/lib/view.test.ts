@@ -28,10 +28,15 @@ describe("hasRole", () => {
 });
 
 describe("isReferee", () => {
-  test("General with no ship runs the board; anything else does not", () => {
+  test("the ship decides, not the role", () => {
     expect(isReferee([ViewMode.General], null)).toBe(true);
     expect(isReferee([ViewMode.General], "Executor")).toBe(false);
-    expect(isReferee([ViewMode.Pilot], null)).toBe(false);
+    // A referee who sits at one station to simplify their screen is still
+    // the referee.
+    expect(isReferee([ViewMode.Pilot], null)).toBe(true);
+    expect(isReferee([ViewMode.Pilot], "Executor")).toBe(false);
+    // Watching is not refereeing.
+    expect(isReferee([ViewMode.Observer], null)).toBe(false);
   });
 });
 

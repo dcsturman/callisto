@@ -204,12 +204,13 @@ fn sensor_check_effect(
   let total = i16::from(roll) + dm;
   // Jamming inbound missiles is the one sensop check with no second ship in it.
   let subject = other.map_or_else(|| action.to_string(), |other| format!("{action} {other}"));
-  EffectMsg::about(
+  EffectMsg::outcome(
     actor,
     MessageCategory::Detection,
     format!(
       "{actor} {subject} with roll {roll} and DM {dm:+} for a total of {total} against {target_number}: {outcome}."
     ),
+    total >= target_number,
   )
 }
 
@@ -237,12 +238,15 @@ fn opposed_check_effect(
   let (other_roll, other_dm) = opposing;
   let mine = i16::from(roll) + dm;
   let theirs = i16::from(other_roll) + other_dm;
-  EffectMsg::about(
+  EffectMsg::outcome(
     actor,
     MessageCategory::Detection,
     format!(
       "{actor} {action} {other} with roll {roll} and DM {dm:+} for {mine}, against roll {other_roll} and DM {other_dm:+} for {theirs}: {outcome}."
     ),
+    // An opposed check is won by beating the other side, ties going to the
+    // ship being acted upon (p. 78).
+    mine > theirs,
   )
 }
 

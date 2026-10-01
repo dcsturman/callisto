@@ -1,6 +1,8 @@
 import * as React from "react";
+import {useId} from "react";
+import {Tooltip} from "react-tooltip";
 
-import {Weapon, WEAPON_COLORS, weaponGuns, weaponToString} from "lib/weapon";
+import {Weapon, WEAPON_COLORS, mountToString, weaponGuns, weaponToString} from "lib/weapon";
 
 import Turret1 from "assets/icons/turret1.svg?react";
 import Turret2 from "assets/icons/turret2.svg?react";
@@ -27,13 +29,30 @@ export function WeaponGlyph(args: {weapon: Weapon}) {
   // A mixed mount has no single colour, so the glyph takes its first gun's
   // and the hover text names the rest.
   const mixed = new Set(guns.map((gun) => gun.kind)).size > 1;
+  const tipId = useId();
+
+  // What the glyph cannot say: the mount in words, and -- for the bar under a
+  // mixed mount -- what the bar means. A native `title` was there before and
+  // was easy to miss; this is the same tooltip the gunner's own buttons use.
+  const tip = [
+    weaponToString(args.weapon),
+    mountToString(args.weapon.mount),
+    mixed ? "mixed mount (marked by the bar)" : "",
+  ]
+    .filter((part) => part !== "")
+    .join(" — ");
 
   return (
-    <span
-      className={mixed ? "weapon-glyph weapon-glyph-mixed" : "weapon-glyph"}
-      title={weaponToString(args.weapon)}>
-      <Icon className="weapon-glyph-icon" style={{fill: WEAPON_COLORS[kind]}} />
-    </span>
+    <>
+      <span
+        className={mixed ? "weapon-glyph weapon-glyph-mixed" : "weapon-glyph"}
+        data-tooltip-id={tipId}
+        data-tooltip-content={tip}
+        data-tooltip-delay-show={300}>
+        <Icon className="weapon-glyph-icon" style={{fill: WEAPON_COLORS[kind]}} />
+      </span>
+      <Tooltip id={tipId} className="tooltip-body weapon-button-tooltip" />
+    </>
   );
 }
 

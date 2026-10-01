@@ -2445,6 +2445,49 @@ h3.control-form {
     color: #ffb84d;
 }
 
+/* Results: a tick or a cross in a fixed gutter, so the text of every line
+   starts at the same column whether it was a check or a statement. */
+.result-line {
+    display: grid;
+    grid-template-columns: 1.2em 1fr;
+    align-items: baseline;
+    gap: 6px;
+    margin: 3px 0;
+}
+
+.result-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 3px;
+    font-size: var(--font-xs);
+    font-weight: 700;
+    line-height: 1;
+    color: #ffffff;
+}
+
+.result-pass {
+    background: #2f8f55;
+}
+
+/* A failure is the thing a referee scans for, so it is the rounder, louder
+   of the two. */
+.result-fail {
+    background: #c0392b;
+    border-radius: 50%;
+}
+
+/* Nothing was checked: the gutter still holds the line's text in place. */
+.result-mark-none {
+    background: none;
+}
+
+.result-text {
+    min-width: 0;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {

@@ -49,7 +49,13 @@ export interface Event {
   // ship taking it for damage. Both optional: the visual event kinds carry
   // neither, and an older server sends messages without them.
   category?: string,
-  ship?: string | null
+  ship?: string | null,
+  /**
+   * Whether the check this message reports passed. Absent on the many
+   * messages that state something rather than resolve something -- a missile
+   * launch, a range band -- which the log leaves unmarked.
+   */
+  succeeded?: boolean | null
 }
 
 export const createEvent = (kind: string, content: string | null, position: [number, number, number] | null, target: string | null, origin: [number, number, number] | null) => {
@@ -266,8 +272,24 @@ export function ResultsWindow() {
       <h1>Results</h1>
       <br></br>
       {messages.length === 0 && <h2>No results</h2>}
+      {/* A tick or a cross against everything that was a check, so a round
+          can be read at a glance. Lines that merely report something are
+          indented to the same text column rather than sitting under the
+          marks. */}
       {messages.length > 0 && messages.map((msg, index) => (
-        <p key={"msg-" + index} style={messageStyle(msg.category)}>{msg.content}</p>
+        <p key={"msg-" + index} className="result-line" style={messageStyle(msg.category)}>
+          {msg.succeeded == null ? (
+            <span className="result-mark result-mark-none" aria-hidden="true" />
+          ) : (
+            <span
+              className={msg.succeeded ? "result-mark result-pass" : "result-mark result-fail"}
+              role="img"
+              aria-label={msg.succeeded ? "succeeded" : "failed"}>
+              {msg.succeeded ? "\u2713" : "\u2715"}
+            </span>
+          )}
+          <span className="result-text">{msg.content}</span>
+        </p>
       ))}
       <button className="control-input control-button blue-button button-next-round" onClick={closeWindow}>Okay!</button>
     </div>

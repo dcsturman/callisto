@@ -44,10 +44,13 @@ struct MembershipTable {
   last_exit: u64,
 }
 
-/// Whether this player is refereeing: no ship of their own, and every station,
-/// which is what the client calls GM. Matches `isReferee` on the client.
+/// Whether this player is refereeing: holding no ship of their own and not
+/// merely watching. Matches `isReferee` on the client.
+///
+/// The ship decides, not the role. A referee may take a single station to cut
+/// their screen down and is still the referee.
 fn is_referee(entry: &MemberEntry) -> bool {
-  entry.ship.is_none() && entry.roles.contains(&Role::General)
+  entry.ship.is_none() && !entry.roles.contains(&Role::Observer)
 }
 
 /// Represents a player's entry in the server membership table.

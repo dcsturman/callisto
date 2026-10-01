@@ -311,10 +311,11 @@ pub fn attack(
       "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and misses.",
       attacker_name, roll, hit_roll
     );
-    return vec![EffectMsg::about(
+    return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Attack,
       format!("{attack_line}, miss."),
+      false,
     )];
   }
 
@@ -375,13 +376,14 @@ pub fn attack(
             defender.get_current_armor()
         );
 
-    return vec![EffectMsg::about(
+    return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Damage,
       format!(
         "{attack_line}, effect {effect}. Damage {} = 0, absorbed by armour.",
         terms.join(" ")
       ),
+      true,
     )];
   };
 
@@ -410,13 +412,14 @@ pub fn attack(
     terms.push(format!("-{screened} screens"));
   }
   if damage == 0 {
-    return vec![EffectMsg::about(
+    return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Damage,
       format!(
         "{attack_line}, effect {effect}. Damage {} = 0, absorbed by screens.",
         terms.join(" ")
       ),
+      true,
     )];
   }
 
@@ -426,10 +429,11 @@ pub fn attack(
   let mut effects = if profile.salvo.is_some() {
     // Create two effects: a message stating the damage and a ship impact on the defender.
     vec![
-      EffectMsg::about(
+      EffectMsg::outcome(
         attacker_name,
         MessageCategory::Damage,
         format!("{attack_line}, effect {effect}. Damage {} = {damage}.", terms.join(" ")),
+        true,
       ),
       EffectMsg::ShipImpact {
         target: defender.get_name().to_string(),
@@ -462,10 +466,11 @@ pub fn attack(
     }
 
     vec![
-      EffectMsg::about(
+      EffectMsg::outcome(
         attacker_name,
         MessageCategory::Damage,
         format!("{attack_line}, effect {effect}. Damage {} = {damage}.", terms.join(" ")),
+        true,
       ),
       EffectMsg::BeamHit {
         origin: attacker.get_position(),

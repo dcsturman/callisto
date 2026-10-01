@@ -866,6 +866,7 @@ function handleEffect(json: object[]) {
         // also name their own category -- the server never sends one for them.
         category: "Engineering",
         ship: result.ship_name,
+        succeeded: result.success,
       } as Event;
     }
     if ((event as LeadershipActionEffect).kind === "LeadershipAction") {
@@ -878,6 +879,9 @@ function handleEffect(json: object[]) {
         origin: null,
         category: "Leadership",
         ship: lead.ship_name,
+        // A round where the captain never rolled is not a failed check, so it
+        // goes unmarked like any other statement.
+        succeeded: lead.roll == null ? undefined : lead.points > 0,
       } as Event;
     }
     return event as Event;

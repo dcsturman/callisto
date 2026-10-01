@@ -269,6 +269,15 @@ pub enum EffectMsg {
     /// no one subject, e.g. a range band, which is about a pair.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ship: Option<String>,
+    /// Whether the check this message reports passed.
+    ///
+    /// `None` for the many messages that state something rather than resolve
+    /// something -- a missile launch, a range band, a ship leaving play. The
+    /// results log puts a tick or a cross against the ones that have an
+    /// answer, so a referee can see how a round went without reading every
+    /// line of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    succeeded: Option<bool>,
   },
   EngineerAction {
     result: EngineerActionResult,
@@ -330,6 +339,7 @@ impl EffectMsg {
       content,
       category: MessageCategory::Info,
       ship: None,
+      succeeded: None,
     }
   }
 
@@ -340,6 +350,18 @@ impl EffectMsg {
       content,
       category,
       ship: Some(ship.to_string()),
+      succeeded: None,
+    }
+  }
+
+  /// A message about one ship that reports how a check came out.
+  #[must_use]
+  pub fn outcome(ship: &str, category: MessageCategory, content: String, succeeded: bool) -> EffectMsg {
+    EffectMsg::Message {
+      content,
+      category,
+      ship: Some(ship.to_string()),
+      succeeded: Some(succeeded),
     }
   }
 
@@ -351,6 +373,7 @@ impl EffectMsg {
       content,
       category,
       ship: None,
+      succeeded: None,
     }
   }
 }
