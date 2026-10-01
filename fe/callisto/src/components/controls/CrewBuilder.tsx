@@ -50,12 +50,12 @@ export const createEngineer = (): Engineer => ({
 });
 
 /** The skills an engineer is rated in, in the order the form shows them. */
-export const ENGINEER_SKILLS: {key: keyof Engineer; label: string}[] = [
-  {key: "maneuver", label: "M-drive"},
-  {key: "power", label: "Power"},
-  {key: "jump", label: "J-drive"},
-  {key: "mechanic", label: "Mech"},
-  {key: "life_support", label: "Life sup"},
+export const ENGINEER_SKILLS: {key: keyof Engineer; label: string; head: string}[] = [
+  {key: "maneuver", label: "M-drive", head: "M-dr"},
+  {key: "power", label: "Power", head: "Pwr"},
+  {key: "jump", label: "J-drive", head: "J-dr"},
+  {key: "mechanic", label: "Mechanic", head: "Mech"},
+  {key: "life_support", label: "Life support", head: "Life"},
 ];
 
 interface CrewBuilderProps {
@@ -126,30 +126,35 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
   return (
     <div className="crew-builder-window">
       <h3>{shipName}&apos;s Crew</h3>
-      <label className="control-label crew-builder-input">
-        Pilot
-        <input
-          className="control-input"
-          name="pilot"
-          type="text"
-          value={customCrew.pilot}
-          onChange={handleChange}
-        />
-      </label>
-      <label className="control-label crew-builder-input">
-        Leadership
-        <input
-          className="control-input"
-          name="leadership"
-          type="text"
-          value={customCrew.leadership ?? 0}
-          onChange={handleChange}
-        />
-      </label>
+      {/* One row per station, label left and value right, all on the same
+          grid so the numbers line up down the panel. */}
+      <div className="crew-skill-rows">
+        <label className="crew-skill-row">
+          <span>Pilot</span>
+          <input
+            className="control-input crew-skill-input"
+            name="pilot"
+            type="text"
+            value={customCrew.pilot}
+            onChange={handleChange}
+          />
+        </label>
+        <label className="crew-skill-row">
+          <span>Leadership</span>
+          <input
+            className="control-input crew-skill-input"
+            name="leadership"
+            type="text"
+            value={customCrew.leadership ?? 0}
+            onChange={handleChange}
+          />
+        </label>
+      </div>
 
       {/* Sensor operators and engineers are crews, not skills: a ship can
-          carry several of each, so each is a row that can be added to and
-          taken away. A ship with one of each looks much as it always did. */}
+          carry several of each, so each is a row that can be added to or
+          taken off the watch. Both use one grid so the heads sit over the
+          boxes they name. */}
       <div className="crew-group">
         <div className="crew-group-head">
           <span className="crew-group-title">Sensor operators</span>
@@ -161,31 +166,43 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
             +
           </button>
         </div>
-        {operators.length === 0 && <p className="crew-group-empty">Nobody at the sensors.</p>}
-        {operators.map((skill, index) => (
-          <div className="crew-row" key={index}>
-            <span className="crew-row-label">#{index + 1}</span>
-            <input
-              className="control-input crew-row-input"
-              type="text"
-              value={skill}
-              aria-label={`Sensor operator ${index + 1} skill`}
-              onChange={(event) =>
-                replace({
-                  ...customCrew,
-                  sensors: operators.map((value, at) => (at === index ? Number(event.target.value) : value)),
-                })
-              }
-            />
-            <button
-              type="button"
-              className="crew-remove"
-              title="Off the watch"
-              onClick={() => replace({...customCrew, sensors: operators.filter((_, at) => at !== index)})}>
-              &times;
-            </button>
+        {operators.length === 0 ? (
+          <p className="crew-group-empty">Nobody at the sensors.</p>
+        ) : (
+          <div className="crew-operator-grid">
+            <span className="crew-row-label" />
+            <span className="crew-column-head">Skill</span>
+            <span />
+            {operators.map((skill, index) => (
+              <React.Fragment key={index}>
+                <span className="crew-row-label">#{index + 1}</span>
+                <input
+                  className="control-input crew-row-input"
+                  type="text"
+                  value={skill}
+                  aria-label={`Sensor operator ${index + 1} skill`}
+                  onChange={(event) =>
+                    replace({
+                      ...customCrew,
+                      sensors: operators.map((value, at) =>
+                        at === index ? Number(event.target.value) : value
+                      ),
+                    })
+                  }
+                />
+                <button
+                  type="button"
+                  className="crew-remove"
+                  title={`Take operator #${index + 1} off the watch`}
+                  onClick={() =>
+                    replace({...customCrew, sensors: operators.filter((_, at) => at !== index)})
+                  }>
+                  &times;
+                </button>
+              </React.Fragment>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       <div className="crew-group">
@@ -199,47 +216,50 @@ export const CrewBuilder: React.FC<CrewBuilderProps> = ({
             +
           </button>
         </div>
-        {engineers.length === 0 && <p className="crew-group-empty">Nobody in the engine room.</p>}
-        {engineers.length > 0 && (
-          <div className="crew-engineer-head">
+        {engineers.length === 0 ? (
+          <p className="crew-group-empty">Nobody in the engine room.</p>
+        ) : (
+          <div className="crew-engineer-grid">
             <span className="crew-row-label" />
             {ENGINEER_SKILLS.map((skill) => (
-              <span key={skill.key} className="crew-engineer-skill-label">
-                {skill.label}
+              <span key={skill.key} className="crew-column-head" title={skill.label}>
+                {skill.head}
               </span>
             ))}
             <span />
+            {engineers.map((engineer, index) => (
+              <React.Fragment key={index}>
+                <span className="crew-row-label">#{index + 1}</span>
+                {ENGINEER_SKILLS.map((skill) => (
+                  <input
+                    key={skill.key}
+                    className="control-input crew-row-input"
+                    type="text"
+                    value={engineer[skill.key] ?? 0}
+                    aria-label={`Engineer ${index + 1} ${skill.label}`}
+                    onChange={(event) =>
+                      replace({
+                        ...customCrew,
+                        engineers: engineers.map((value, at) =>
+                          at === index ? {...value, [skill.key]: Number(event.target.value)} : value
+                        ),
+                      })
+                    }
+                  />
+                ))}
+                <button
+                  type="button"
+                  className="crew-remove"
+                  title={`Take engineer #${index + 1} off the watch`}
+                  onClick={() =>
+                    replace({...customCrew, engineers: engineers.filter((_, at) => at !== index)})
+                  }>
+                  &times;
+                </button>
+              </React.Fragment>
+            ))}
           </div>
         )}
-        {engineers.map((engineer, index) => (
-          <div className="crew-row crew-engineer-row" key={index}>
-            <span className="crew-row-label">#{index + 1}</span>
-            {ENGINEER_SKILLS.map((skill) => (
-              <input
-                key={skill.key}
-                className="control-input crew-row-input"
-                type="text"
-                value={engineer[skill.key] ?? 0}
-                aria-label={`Engineer ${index + 1} ${skill.label}`}
-                onChange={(event) =>
-                  replace({
-                    ...customCrew,
-                    engineers: engineers.map((value, at) =>
-                      at === index ? {...value, [skill.key]: Number(event.target.value)} : value
-                    ),
-                  })
-                }
-              />
-            ))}
-            <button
-              type="button"
-              className="crew-remove"
-              title="Off the watch"
-              onClick={() => replace({...customCrew, engineers: engineers.filter((_, at) => at !== index)})}>
-              &times;
-            </button>
-          </div>
-        ))}
       </div>
 
       <p className="crew-builder-note">

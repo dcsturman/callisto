@@ -24,6 +24,7 @@ import {
   createWeapon,
   weaponToString,
   weaponKindLabel,
+  WEAPON_COLORS,
 } from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
@@ -80,27 +81,6 @@ const PASSIVE_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
 /// Searching gets a colour of its own: it is the only row here that is not an
 /// order, so it should not be mistaken for one of the sensop's actions.
 const SEARCH_ICON_COLOR = "violet";
-
-const WEAPON_COLORS: { [key: string]: string } = {
-  Beam: "red",
-  Pulse: "blue",
-  Missile: "green",
-  Particle: "yellow",
-  Sand: "tan",
-  // Torpedoes sit next to missiles in the launcher family, so they take a
-  // deeper shade of the same hue rather than a colour of their own.
-  Torpedo: "darkgreen",
-  Fusion: "orange",
-  Plasma: "magenta",
-  Railgun: "silver",
-  Meson: "violet",
-  MassDriver: "sienna",
-  Repulsor: "cyan",
-  Ion: "deepskyblue",
-  // Never rendered today -- batteries have no action button -- but present so
-  // a future passive-defences readout does not fall through to undefined.
-  PointDefense: "orange",
-};
 
 const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
   [SensorAction.JamMissiles]: "green",

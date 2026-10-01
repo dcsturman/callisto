@@ -13,7 +13,7 @@ import {
   teamPicture,
   watchersOf,
 } from "lib/sensorPicture";
-import {weaponToString} from "lib/weapon";
+import {WeaponGlyph} from "components/controls/WeaponGlyph";
 import {shipWeapons} from "lib/shipDesignTemplates";
 import {useAppSelector} from "state/hooks";
 import {entitiesSelector, templatesSelector} from "state/serverSlice";
@@ -225,6 +225,13 @@ function ContactDetail(args: {
                 {design != null && <span className="contact-detail-tons">{design.displacement} tons</span>}
               </div>
               <div className="contact-detail-line">
+                {/* Thrust is what a pilot asks about first: what they can do
+                    now, and what the design is rated for. */}
+                <span className="contact-detail-label">thrust</span>
+                <span>
+                  {ship.current_maneuver}
+                  {design != null && design.maneuver !== ship.current_maneuver && `(${design.maneuver})`}
+                </span>
                 <span className="contact-detail-label">sensors</span>
                 <span>{ship.current_sensors}</span>
                 {design?.stealth != null && (
@@ -240,13 +247,15 @@ function ContactDetail(args: {
                   </>
                 )}
               </div>
+              {/* The armament in the gunner's own vocabulary: mount as the
+                  shape, weapon as the colour, the full name on hover. */}
               <ul className="contact-weapons">
                 {weapons.length === 0 ? (
                   <li className="contact-weapon contact-weapon-none">no armament on file</li>
                 ) : (
                   weapons.map((weapon, index) => (
                     <li key={index} className="contact-weapon">
-                      {weaponToString(weapon)}
+                      <WeaponGlyph weapon={weapon} />
                     </li>
                   ))
                 )}

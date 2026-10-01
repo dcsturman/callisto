@@ -77,6 +77,31 @@ export interface Weapon {
   modifiers?: string[];
 }
 
+/**
+ * A colour per weapon kind, used wherever a weapon is drawn: the gunner's
+ * buttons, the beam that comes out of them, and the sensop's reading of
+ * another ship's armament. One vocabulary, so a green glyph means the same
+ * thing in all three places.
+ */
+export const WEAPON_COLORS: {[kind: string]: string} = {
+  Beam: "red",
+  Pulse: "blue",
+  Missile: "green",
+  Particle: "yellow",
+  Sand: "tan",
+  // Torpedoes sit next to missiles in the launcher family, so they take a
+  // deeper shade of the same hue rather than a colour of their own.
+  Torpedo: "darkgreen",
+  Fusion: "orange",
+  Plasma: "magenta",
+  Railgun: "silver",
+  Meson: "violet",
+  MassDriver: "sienna",
+  Repulsor: "cyan",
+  Ion: "deepskyblue",
+  PointDefense: "orange",
+};
+
 /** Readable names for modifiers, which travel the wire as Rust variant names. */
 const MODIFIER_LABELS: {[kind: string]: string} = {
   Accurate: "accurate",

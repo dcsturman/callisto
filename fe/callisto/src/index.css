@@ -345,6 +345,11 @@ input {
     top: 0;
     left: 0px;
     padding-right: 4px;
+    /* A column, not a page. The panel used to be sized by whatever was widest
+       inside it, so the boards and the contact readings stretched it across
+       the view it is meant to sit beside. Matches the left-hand controls. */
+    width: 400px;
+    box-sizing: border-box;
     border: 1px solid #b6bcae;
     z-index: 10;
     /* `mainscreen-container` is `align-items: flex-end`, so this popup is
@@ -870,12 +875,6 @@ input {
     padding-right: 4px;
     display: flex;
     flex-direction: column;
-}
-
-.crew-builder-input {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
 }
 
 .crew-builder-gun-selector {
@@ -1977,6 +1976,7 @@ input {
     display: flex;
     align-items: baseline;
     gap: 6px;
+    flex-wrap: wrap;
 }
 
 .contact-detail-class {
@@ -2016,11 +2016,30 @@ input {
 }
 
 .contact-weapon {
-    border: 1px solid #2c3c4c;
-    border-radius: 2px;
-    padding: 0 4px;
-    font-size: 8pt;
-    opacity: 0.9;
+    display: flex;
+    align-items: center;
+}
+
+/* A mount drawn as the gunner draws it. Smaller here: this is a reading of
+   someone else's ship rather than a button to press. */
+.weapon-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+}
+
+.weapon-glyph-icon {
+    width: 24px;
+    height: auto;
+    background-color: transparent;
+}
+
+/* A mixed mount takes its first gun's colour, so it is marked the way the
+   gunner's own mixed buttons are. */
+.weapon-glyph-mixed {
+    border-bottom: 2px solid #8899aa;
 }
 
 .contact-weapon-none {
@@ -2031,11 +2050,30 @@ input {
 
 /* ---------------------------------------------------------------------------
    Crew lists: sensor operators and engineers are people, not skills, so each
-   is a row that can be added to or taken off the watch.
+   is a row that can be added to or taken off the watch. Every row sits on a
+   grid shared with its heading, so the heads are over the boxes they name.
    --------------------------------------------------------------------------- */
 
+/* Pilot and leadership: one value each, labels left and boxes right. */
+.crew-skill-rows {
+    display: grid;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+.crew-skill-row {
+    display: grid;
+    grid-template-columns: 1fr 3.2em;
+    align-items: center;
+    gap: 6px;
+}
+
+.crew-skill-input {
+    text-align: center;
+}
+
 .crew-group {
-    margin-top: 6px;
+    margin-top: 8px;
     border-top: 1px solid #22303d;
     padding-top: 4px;
 }
@@ -2047,9 +2085,9 @@ input {
 }
 
 .crew-group-title {
-    font-size: 9pt;
+    font-size: 10pt;
     letter-spacing: 0.04em;
-    opacity: 0.8;
+    opacity: 0.85;
 }
 
 .crew-group-empty {
@@ -2061,7 +2099,6 @@ input {
 
 .crew-add,
 .crew-remove {
-    margin-left: auto;
     background: none;
     border: 1px solid #2c3c4c;
     border-radius: 2px;
@@ -2069,51 +2106,59 @@ input {
     cursor: pointer;
     font-family: "Sono", monospace;
     line-height: 1;
-    padding: 0 5px;
+    padding: 1px 5px;
+}
+
+.crew-add {
+    margin-left: auto;
 }
 
 .crew-remove {
-    margin-left: 2px;
-    opacity: 0.7;
+    opacity: 0.75;
 }
 
 .crew-add:hover,
 .crew-remove:hover {
     border-color: #4a6a8a;
+    opacity: 1;
 }
 
-.crew-row {
-    display: flex;
+/* The watch: a number box per skill, the row's number on the left and the
+   button that takes them off it on the right. */
+.crew-operator-grid,
+.crew-engineer-grid {
+    display: grid;
     align-items: center;
-    gap: 3px;
-    margin-top: 2px;
+    gap: 3px 4px;
+    margin-top: 3px;
+    justify-content: start;
+}
+
+.crew-operator-grid {
+    grid-template-columns: 1.8em 3.2em 1.8em;
+}
+
+.crew-engineer-grid {
+    grid-template-columns: 1.8em repeat(5, 3.2em) 1.8em;
+}
+
+.crew-column-head {
+    font-size: 7.5pt;
+    opacity: 0.55;
+    text-align: center;
 }
 
 .crew-row-label {
     font-family: "Sono", monospace;
     font-size: 8.5pt;
     opacity: 0.6;
-    width: 1.6em;
+    text-align: right;
 }
 
 .crew-row-input {
-    width: 2.6em;
+    width: 100%;
     text-align: center;
-}
-
-/* The engineer rows are a little table: one column per skill, headed once. */
-.crew-engineer-head {
-    display: flex;
-    align-items: baseline;
-    gap: 3px;
-    margin-top: 3px;
-}
-
-.crew-engineer-skill-label {
-    width: 2.6em;
-    text-align: center;
-    font-size: 7.5pt;
-    opacity: 0.55;
+    padding: 1px 2px;
 }
 
 /* Names the crew member a panel belongs to, where a ship carries more than
