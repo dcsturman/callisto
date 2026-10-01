@@ -356,9 +356,9 @@ export function addShip(ship: Ship) {
       // a ship deliberately switched on says anything.
       ...(ship.transmitting === true ? { transmitting: true } : {}),
       ...(ship.team ? { team: ship.team } : {}),
-      // Absent means the design's own defaults, which for every auxiliary
-      // system so far means off.
-      ...(ship.auxiliary_on ? { auxiliary_on: ship.auxiliary_on } : {}),
+      // Absent means the design's own defaults, which for every switchable
+      // feature so far means off.
+      ...(ship.features_on ? { features_on: ship.features_on } : {}),
     },
   };
 

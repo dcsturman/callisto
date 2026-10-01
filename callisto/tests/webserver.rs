@@ -648,7 +648,7 @@ async fn integration_add_ship() {
     transmitting: None,
     team: None,
     contacts: None,
-    auxiliary_on: None,
+    features_on: None,
     software: None,
   };
 
@@ -727,7 +727,7 @@ async fn integration_add_planet_ship() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -749,7 +749,7 @@ async fn integration_add_planet_ship() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -997,7 +997,7 @@ async fn integration_update_ship() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1056,7 +1056,7 @@ async fn integration_update_missile() {
       transmitting: None,
       team: None,
       contacts: Some(vec!["ship2".to_string()]),
-      auxiliary_on: None,
+      features_on: None,
       software: Some(vec![]),
     }),
   )
@@ -1077,7 +1077,7 @@ async fn integration_update_missile() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: Some(vec![]),
     }),
   )
@@ -1202,7 +1202,7 @@ async fn integration_remove_ship() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1339,7 +1339,7 @@ async fn integration_set_acceleration() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1404,7 +1404,7 @@ async fn integration_compute_path_basic() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1504,7 +1504,7 @@ async fn integration_compute_path_with_standoff() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1604,7 +1604,7 @@ async fn integration_malformed_requests() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1835,7 +1835,7 @@ async fn integration_set_crew_actions() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1920,7 +1920,7 @@ async fn integration_multi_client_test() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1939,7 +1939,7 @@ async fn integration_multi_client_test() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )
@@ -1964,7 +1964,7 @@ async fn integration_multi_client_test() {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     }),
   )

@@ -95,14 +95,14 @@ describe("what the plant can actually feed", () => {
   });
 });
 
-describe("auxiliary systems", () => {
+describe("ship features that draw power", () => {
   const withHologram = {
     ...design,
-    auxiliary: [{name: "Holographic hull", power: 100, default_on: false}],
+    features: [{name: "Holographic hull", power: 100, default_on: false}],
   };
 
   test("a system that is switched off draws nothing and sits after the drive", () => {
-    const lines = powerLines(ship({offline: [{Auxiliary: 0}]}), withHologram, weapons);
+    const lines = powerLines(ship({offline: [{Feature: 0}]}), withHologram, weapons);
     const hologram = lines.find((l) => l.label === "Holographic hull")!;
     expect(hologram.online).toBe(false);
     expect(hologram.received).toBe(0);

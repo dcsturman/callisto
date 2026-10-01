@@ -4,7 +4,7 @@ import {Weapon, CompressedWeapon, weaponToString, weaponKinds} from "./weapon";
 import type {Ship} from "./entities";
 // Type-only for the same reason: CrewBuilder reaches back into `lib/entities`.
 import type {Crew} from "components/controls/CrewBuilder";
-import {AuxiliarySystem} from "lib/power";
+import {ShipFeature} from "lib/power";
 import {Software} from "lib/software";
 
 /**
@@ -56,18 +56,13 @@ export interface ShipDesignTemplate {
   /** Directed defensive systems. Omitted from the wire when the design has none. */
   screens?: string[];
   /**
-   * Powered systems that are not drives, sensors or guns -- a Harrier's
-   * holographic hull. Off unless the design says otherwise, and switchable
-   * from the engineer's power board. Omitted when the design has none.
+   * Everything else the hull is fitted with: a holographic hull, repair
+   * drones. The ones that draw Power are switchable from the engineer's
+   * power board; the rest are simply aboard.
    */
-  auxiliary?: AuxiliarySystem[];
+  features?: ShipFeature[];
   /** The software the design is sold with. */
   software?: Software[];
-  /**
-   * Whether the ship carries repair drones. Auto-Repair software needs them:
-   * a program with no drones has nothing to send out.
-   */
-  repair_drones?: boolean;
   /** Jump Control Specialisation: +5 Processing for Jump Control only. */
   computer_bis?: boolean;
   /** Hardened against ion weapons. */

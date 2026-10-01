@@ -97,14 +97,14 @@ pub struct AddShipMsg {
   /// it was never sold with says so here.
   #[serde(default)]
   pub software: Option<Vec<Software>>,
-  /// Auxiliary systems the ship starts with running, by index into the
-  /// design's `auxiliary` list.
+  /// Switchable features the ship starts with running, by index into the
+  /// design's `features` list.
   ///
   /// A Harrier's holographic hull is off at the dock, so absent means the
   /// design's own defaults. A scenario that opens with the projector already
   /// up says so here.
   #[serde(default)]
-  pub auxiliary_on: Option<Vec<usize>>,
+  pub features_on: Option<Vec<usize>>,
 }
 
 /// Start or stop one software package.
@@ -646,7 +646,7 @@ mod tests {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     };
     let json = json!({
@@ -677,7 +677,7 @@ mod tests {
       transmitting: None,
       team: None,
       contacts: None,
-      auxiliary_on: None,
+      features_on: None,
       software: None,
     };
     let json = json!({

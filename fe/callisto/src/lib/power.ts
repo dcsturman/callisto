@@ -37,7 +37,7 @@ export type PowerSystem =
   | "Maneuver"
   | "Jump"
   | {Weapon: number}
-  | {Auxiliary: number};
+  | {Feature: number};
 
 /** A stable key for a system, for React lists and lookups. */
 export const powerSystemKey = (system: PowerSystem): string =>
@@ -45,13 +45,22 @@ export const powerSystemKey = (system: PowerSystem): string =>
     ? system
     : "Weapon" in system
       ? `weapon-${system.Weapon}`
-      : `auxiliary-${system.Auxiliary}`;
+      : `feature-${system.Feature}`;
 
-/** A powered system that is not a drive, a sensor suite or a gun. */
-export interface AuxiliarySystem {
+/**
+ * Something a design carries that is not a drive, a sensor suite, a gun or
+ * software.
+ *
+ * A feature that draws Power is a system the engineer can switch and appears
+ * on the power board; one that draws none is a fitting -- repair drones are
+ * aboard or they are not, and there is nothing to switch.
+ */
+export interface ShipFeature {
   name: string;
-  power: number;
+  power?: number;
   default_on?: boolean;
+  /** What the rules know it as, where they know it at all. */
+  kind?: "RepairDrones" | "HolographicHull";
 }
 
 /** One line of the budget. */
@@ -86,8 +95,8 @@ export const samePowerSystem = (a: PowerSystem, b: PowerSystem): boolean => {
   if ("Weapon" in a && "Weapon" in b) {
     return a.Weapon === b.Weapon;
   }
-  if ("Auxiliary" in a && "Auxiliary" in b) {
-    return a.Auxiliary === b.Auxiliary;
+  if ("Feature" in a && "Feature" in b) {
+    return a.Feature === b.Feature;
   }
   return false;
 };
@@ -162,7 +171,7 @@ export interface PowerBudgetShip extends PoweredShip {
  */
 export const powerLines = (
   ship: PowerBudgetShip,
-  design: {displacement: number; maneuver: number; jump: number; auxiliary?: AuxiliarySystem[]},
+  design: {displacement: number; maneuver: number; jump: number; features?: ShipFeature[]},
   weapons: Weapon[]
 ): PowerLine[] => {
   const offline = ship.offline ?? [];
@@ -220,13 +229,17 @@ export const powerLines = (
     switchable: true,
   });
 
-  (design.auxiliary ?? []).forEach((aux, index) => {
+  (design.features ?? []).forEach((feature, index) => {
+    // A fitting with no draw is not a line on the power board.
+    if ((feature.power ?? 0) === 0) {
+      return;
+    }
     lines.push({
-      system: {Auxiliary: index},
-      label: aux.name,
-      draw: aux.power,
+      system: {Feature: index},
+      label: feature.name,
+      draw: feature.power ?? 0,
       received: 0,
-      online: isOnline({Auxiliary: index}),
+      online: isOnline({Feature: index}),
       onDemand: false,
       switchable: true,
     });

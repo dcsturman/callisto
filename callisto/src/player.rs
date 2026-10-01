@@ -281,7 +281,7 @@ impl PlayerManager {
       || ship.transmitting.is_some()
       || ship.team.is_some()
       || ship.contacts.is_some()
-      || ship.auxiliary_on.is_some()
+      || ship.features_on.is_some()
       || ship.software.is_some()
     {
       if let Some(added) = entities.ships.get(&name) {
@@ -305,9 +305,9 @@ impl PlayerManager {
             }
           }
         }
-        if let Some(running) = ship.auxiliary_on {
-          for index in 0..added.design.auxiliary.len() {
-            added.set_online(PowerSystem::Auxiliary(index), running.contains(&index));
+        if let Some(running) = ship.features_on {
+          for index in 0..added.design.features.len() {
+            added.set_online(PowerSystem::Feature(index), running.contains(&index));
           }
         }
       }
@@ -347,7 +347,7 @@ impl PlayerManager {
         msg.ship_name,
         msg.software,
         ship.bandwidth_used(),
-        ship.processing_for(msg.software.kind)
+        ship.processing()
       ))
     } else {
       Err(format!("{} does not have {} installed.", msg.ship_name, msg.software))

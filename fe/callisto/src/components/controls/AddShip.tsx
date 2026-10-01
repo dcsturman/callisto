@@ -64,9 +64,9 @@ import {
  * up, so these are off unless the design says otherwise -- and a scenario can
  * open with one already running by ticking it here.
  */
-function defaultAuxiliaryOn(design: ShipDesignTemplate | undefined): number[] {
-  return (design?.auxiliary ?? [])
-    .map((aux, index) => (aux.default_on ? index : -1))
+function defaultFeaturesOn(design: ShipDesignTemplate | undefined): number[] {
+  return (design?.features ?? [])
+    .map((feature, index) => (feature.default_on ? index : -1))
     .filter((index) => index >= 0);
 }
 
@@ -79,11 +79,11 @@ function sameSoftwareList(a: Software[], b: Software[]): boolean {
 }
 
 /** The same, read back off a ship that already exists. */
-function auxiliaryOnFor(ship: Ship, design: ShipDesignTemplate | undefined): number[] {
+function featuresOnFor(ship: Ship, design: ShipDesignTemplate | undefined): number[] {
   const offline = ship.offline ?? [];
-  return (design?.auxiliary ?? [])
-    .map((_aux, index) => index)
-    .filter((index) => !offline.some((off) => samePowerSystem(off, {Auxiliary: index})));
+  return (design?.features ?? [])
+    .map((_feature, index) => index)
+    .filter((index) => !offline.some((off) => samePowerSystem(off, {Feature: index})));
 }
 
 /**
@@ -248,7 +248,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
       software: (firstDesign.software ?? []) as Software[],
       // A Harrier's holographic hull and the like. Off unless the design says
       // otherwise -- the engineer brings them up.
-      auxiliaryOn: defaultAuxiliaryOn(firstDesign),
+      featuresOn: defaultFeaturesOn(firstDesign),
     };
   }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
@@ -280,7 +280,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         transmitting: current.transmitting === true,
         team: current.team ?? null,
         software: current.software ?? shipDesignTemplates[current.design]?.software ?? [],
-        auxiliaryOn: auxiliaryOnFor(current, shipDesignTemplates[current.design]),
+        featuresOn: featuresOnFor(current, shipDesignTemplates[current.design]),
       };
       setAddShipData(template);
     }
@@ -318,7 +318,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
               transmitting: ship.transmitting === true,
               team: ship.team ?? null,
               software: ship.software ?? shipDesignTemplates[ship.design]?.software ?? [],
-              auxiliaryOn: auxiliaryOnFor(ship, shipDesignTemplates[ship.design]),
+              featuresOn: featuresOnFor(ship, shipDesignTemplates[ship.design]),
             });
           }
         }
@@ -387,7 +387,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         software: sameSoftwareList(addShipData.software, shipDesignTemplates[design]?.software ?? [])
           ? undefined
           : addShipData.software,
-        auxiliary_on: addShipData.auxiliaryOn,
+        features_on: addShipData.featuresOn,
       };
 
       addShip(revision);
@@ -409,7 +409,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         crew,
         armament: buildWeaponRows(design, undefined, crew.gunnery),
         software: shipDesignTemplates[design]?.software ?? [],
-        auxiliaryOn: defaultAuxiliaryOn(shipDesignTemplates[design]),
+        featuresOn: defaultFeaturesOn(shipDesignTemplates[design]),
       });
     },
     [addShipData, setAddShipData, buildWeaponRows, crewForDesign, shipDesignTemplates],
@@ -536,26 +536,33 @@ export const AddShip: React.FC<AddShipProps> = () => {
               />
               Transmit
             </label>
-            {(shipDesignTemplates[addShipData.design]?.auxiliary ?? []).map((aux, index) => (
-              <label
-                key={aux.name}
-                className="emissions-toggle"
-                title={`${aux.name}: draws ${aux.power} Power while it is running.`}>
-                <input
-                  type="checkbox"
-                  checked={addShipData.auxiliaryOn.includes(index)}
-                  onChange={(event) =>
-                    setAddShipData({
-                      ...addShipData,
-                      auxiliaryOn: event.target.checked
-                        ? [...addShipData.auxiliaryOn, index]
-                        : addShipData.auxiliaryOn.filter((on) => on !== index),
-                    })
-                  }
-                />
-                {aux.name}
-              </label>
-            ))}
+            {(shipDesignTemplates[addShipData.design]?.features ?? []).map((feature, index) =>
+              (feature.power ?? 0) > 0 ? (
+                <label
+                  key={feature.name}
+                  className="emissions-toggle"
+                  title={`${feature.name}: draws ${feature.power} Power while it is running.`}>
+                  <input
+                    type="checkbox"
+                    checked={addShipData.featuresOn.includes(index)}
+                    onChange={(event) =>
+                      setAddShipData({
+                        ...addShipData,
+                        featuresOn: event.target.checked
+                          ? [...addShipData.featuresOn, index]
+                          : addShipData.featuresOn.filter((on) => on !== index),
+                      })
+                    }
+                  />
+                  {feature.name}
+                </label>
+              ) : (
+                // A fitting has no switch: say it is aboard and leave it.
+                <span key={feature.name} className="emissions-toggle ship-fitting" title="Fitted to this hull">
+                  {feature.name}
+                </span>
+              )
+            )}
             {/* The computer's loadout. A design arrives with what the book
                 sold it; a scenario can refit it, and Bandwidth is only
                 checked when the ship tries to run it all at once. */}

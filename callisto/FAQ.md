@@ -598,11 +598,31 @@ its jump, which is what makes the result frightening.
 #### Omission — Auto-Repair cannot yet stand in for a crewman
 The program can also "make a number of repair attempts per round", and repair
 drones let a Traveller with Electronics (remote ops) run the Repair System
-action at Engineer 1, or their own remote ops level, whichever is lower
-(CRB p. 163). Callisto has the DM half of both and not the substitution: a
-repair is still an engineer's order. Repair drones are recorded per design,
-and designs sold with Auto-Repair are assumed to carry them, since the
-program requires them.
+action — the drones "are considered to have an Engineer skill level of 1 or
+the level the Traveller has in Electronics (remote ops), whichever is lower,
+in all specialities for the Repair System action alone" (CRB p. 159). Callisto
+has the DM half of both and not the substitution: a repair is still an
+engineer's order. Repair drones are recorded per design, and designs sold with
+Auto-Repair are assumed to carry them, since the program requires them.
+
+#### Interpretation — /bis means Jump Control costs five less
+"A computer's Processing score is increased by +5 for the purposes of running
+Jump Control programs only" (CRB p. 180). Read strictly, that is a separate
+higher ceiling that only Jump Control may reach; read as a discount, Jump
+Control simply costs five less and frees the difference for everything else.
+We take the discount reading, which is the one that makes a Computer/20bis
+better than a Computer/20 for a ship that runs anything besides its jump
+software.
+
+#### Note — /fib does nothing here, and that is the book's doing
+A hardened computer "is immune to Ion weapons" (HG p. 20), and the Ion trait
+explains what that means: "if a system is listed as being hardened (as with
+/fib computers, for example), the crew may choose to allocate any Power to it
+before any deductions for Ion weapons are applied" (HG p. 30). The protection
+is an allocation of Power — and a computer draws none, so there is nothing to
+allocate and nothing to protect. The rule is written for hardened systems in
+general and names the one example that cannot benefit from it. We record /fib
+on the designs that have it and give it no effect.
 
 #### Change — a screen nobody is on does not angle
 Angling a screen is a gunner's reaction, so a screen with no gunner assigned
@@ -621,16 +641,23 @@ most canon warships fly with Evade running, which makes them a point or two
 harder to hit than they used to be, and that a ship whose Jump Control is shut
 down to free Bandwidth cannot jump until it is started again.
 
-#### Addition — auxiliary systems
-A design can carry powered systems that are neither drives, sensors nor guns:
-the Harrier class projects a holographic hull — a false image of another
-ship — which draws 100 Power while it runs. These are off when the ship
-arrives, the engineer switches them on from the power board, and a scenario
-can open with one already running by ticking it in Add Ship.
+#### Addition — ship features
+A design carries a list of *features*: everything the hull is fitted with that
+is not a drive, a sensor suite, a gun or software. Two sorts, told apart by
+what they draw:
 
-They sit last in the power priority, after the manoeuvre drive: a luxury loses
-its share before the ship loses Thrust. The ship's computer will join the same
-table once computers do anything mechanical.
+* **Draws Power** — a system with a switch, which appears on the engineer's
+  power board. The Harrier class projects a holographic hull, 100 Power while
+  it runs. These are off when the ship arrives, and a scenario can open with
+  one running by ticking it in Add Ship. They sit last in the power priority,
+  after the manoeuvre drive: a luxury dims before the ship slows.
+* **Draws nothing** — a fitting, which is simply aboard. Repair drones are the
+  first of these, and Auto-Repair software needs them.
+
+A feature can also carry a `kind` the rules look for (`RepairDrones`,
+`HolographicHull`); most are flavour and a power draw and leave it unset.
+Adding another is a line of data in the design rather than a code change, and
+whether it lands on the power board is decided by whether it draws Power.
 
 #### Change — a system without its Power does not work
 The books price every system's Power but say little about running one on less

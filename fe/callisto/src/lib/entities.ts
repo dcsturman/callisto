@@ -133,12 +133,12 @@ export interface Ship extends Entity {
   /** Which of it the computer is running. Bandwidth limits this. */
   software_running?: Software[];
   /**
-   * Auxiliary systems to start running, by index into the design's list.
+   * Switchable features to start running, by index into the design's list.
    *
    * Only ever set by the Add Ship dialog on its way to the server; a ship
    * coming back from the server reports its switches in `offline` instead.
    */
-  auxiliary_on?: number[];
+  features_on?: number[];
   /** Basic ship systems running at half, which the rules allow in a pinch. */
   basic_power_halved?: boolean;
   /** How many times each overload has been tried; each one past the first costs DM-2. */

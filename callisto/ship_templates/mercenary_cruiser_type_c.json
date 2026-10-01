@@ -41,5 +41,10 @@
     }
   ],
   "computer_fib": true,
-  "repair_drones": true
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ]
 }

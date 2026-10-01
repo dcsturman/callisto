@@ -78,7 +78,7 @@ export function ComputerBoard(args: {ship: Ship}) {
       )}
       {/* Auto-Repair works through drones, so a ship running it without
           them is running nothing useful -- worth saying where the tick is. */}
-      {running.some((software) => software.kind === "AutoRepair") && design.repair_drones !== true && (
+      {running.some((software) => software.kind === "AutoRepair") && !(design.features ?? []).some((feature) => feature.kind === "RepairDrones") && (
         <p className="computer-warning">
           Auto-Repair has no repair drones to work with: the program does nothing on this hull.
         </p>

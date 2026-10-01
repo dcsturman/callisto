@@ -27,13 +27,6 @@
   "tl": 15,
   "role": "Raider",
   "source": "Custom",
-  "auxiliary": [
-    {
-      "name": "Holographic hull",
-      "power": 100,
-      "default_on": false
-    }
-  ],
   "software": [
     {
       "kind": "Evade",
@@ -54,6 +47,13 @@
     {
       "kind": "Manoeuvre",
       "level": 0
+    }
+  ],
+  "features": [
+    {
+      "name": "Holographic hull",
+      "power": 100,
+      "kind": "HolographicHull"
     }
   ]
 }

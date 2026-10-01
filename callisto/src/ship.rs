@@ -553,21 +553,13 @@ pub struct ShipDesignTemplate {
   /// when empty, so every design written before screens existed is unchanged.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub screens: Vec<ScreenType>,
-  /// Powered systems that are not drives, sensors or guns: a Harrier's
-  /// holographic hull, say. Omitted from the wire when empty.
+  /// Everything else the hull is fitted with: a holographic hull, repair
+  /// drones. Omitted from the wire when empty.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
-  pub auxiliary: Vec<AuxiliarySystem>,
+  pub features: Vec<ShipFeature>,
   /// The software the design is sold with. A scenario can add to it.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub software: Vec<Software>,
-  /// Whether the ship carries repair drones.
-  ///
-  /// "Carrying repair drones allows a ship to make repairs during combat,
-  /// allowing access to exterior components without risking crew" (Core
-  /// Rulebook p. 163). Auto-Repair software needs them: a program with no
-  /// drones has nothing to send out.
-  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-  pub repair_drones: bool,
   /// Jump Control Specialisation: Processing is +5 for Jump Control software
   /// only (Core Rulebook p. 180). The Type-S scout's Computer/5bis is how it
   /// runs Jump Control/2 on a Processing 5 machine.
@@ -1402,27 +1394,47 @@ pub enum PowerSystem {
   Weapon(usize),
   /// Anything else the hull carries that draws Power and can be switched: a
   /// Harrier's holographic hull, a cargo lifter, a research suite. Indexed
-  /// into the design's `auxiliary` list.
+  /// into the design's `features` list.
   ///
   /// The ship's computer will join this table once computers do anything;
   /// it is a draw like any other and belongs in the budget beside these.
-  Auxiliary(usize),
+  Feature(usize),
 }
 
-/// A powered system a design carries that is not a drive, a sensor suite or a
-/// gun.
+/// Something a design carries that is not a drive, a sensor suite, a gun or
+/// software: the general slot for everything else a hull is fitted with.
 ///
-/// The Harrier class projects a holographic hull -- a false image of another
-/// ship -- which costs 100 Power while it is running. It is off at the dock
-/// and the engineer brings it up, so these default to off and a scenario can
-/// say otherwise when it adds the ship.
+/// Two kinds in practice, told apart by `power`. A feature that draws Power
+/// is a system the engineer can switch -- a Harrier's holographic hull, 100
+/// Power while it runs -- and appears on the power board. A feature that
+/// draws none is a fitting: repair drones are aboard or they are not, and
+/// there is nothing to switch.
+///
+/// `kind` is how the rules find a feature they care about. Most features are
+/// flavour and a power draw, and leave it unset.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct AuxiliarySystem {
+pub struct ShipFeature {
   pub name: String,
+  /// What it draws while running. Zero for a fitting with no switch.
+  #[serde(default)]
   pub power: u32,
-  /// Whether the ship starts with it running.
+  /// Whether the ship starts with it running. Only means anything for a
+  /// feature that draws Power and so has a switch.
   #[serde(default)]
   pub default_on: bool,
+  /// What the rules know this feature as, where they know it at all.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub kind: Option<FeatureKind>,
+}
+
+/// A feature the rules reach for by name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum FeatureKind {
+  /// Drones that work outside the hull: they let repairs happen during
+  /// combat, and are what Auto-Repair software drives (CRB p. 159).
+  RepairDrones,
+  /// A projected false image of another ship.
+  HolographicHull,
 }
 
 /// One line of a ship's power budget.
@@ -1547,13 +1559,15 @@ impl Ship {
       // switched off. What will not fit is left for the engineer to sort out.
       software_running: initial_running(design),
       // A hologram projector is not running when the ship undocks. Whatever
-      // the design says starts off, starts off.
+      // the design says starts off, starts off -- but only things with a
+      // switch: a fitting that draws no Power, like repair drones, is simply
+      // aboard.
       offline: design
-        .auxiliary
+        .features
         .iter()
         .enumerate()
-        .filter(|(_, aux)| !aux.default_on)
-        .map(|(index, _)| PowerSystem::Auxiliary(index))
+        .filter(|(_, feature)| feature.power > 0 && !feature.default_on)
+        .map(|(index, _)| PowerSystem::Feature(index))
         .collect(),
       basic_power_halved: false,
       overload_drive_attempts: 0,
@@ -2171,13 +2185,17 @@ impl Ship {
       online: self.is_online(PowerSystem::Maneuver),
       on_demand: false,
     });
-    for (index, aux) in self.design.auxiliary.iter().enumerate() {
+    for (index, feature) in self.design.features.iter().enumerate() {
+      // A fitting with no draw is not a line on the power board.
+      if feature.power == 0 {
+        continue;
+      }
       lines.push(PowerLine {
-        system: PowerSystem::Auxiliary(index),
-        label: aux.name.clone(),
-        draw: aux.power,
+        system: PowerSystem::Feature(index),
+        label: feature.name.clone(),
+        draw: feature.power,
         received: 0,
-        online: self.is_online(PowerSystem::Auxiliary(index)),
+        online: self.is_online(PowerSystem::Feature(index)),
         on_demand: false,
       });
     }
@@ -2257,17 +2275,19 @@ impl Ship {
     self.current_computer
   }
 
-  /// Processing available to one package.
+  /// What a package costs this ship to run.
   ///
-  /// A /bis computer is worth +5 for Jump Control alone (Core Rulebook
-  /// p. 180): the Type-S scout's Computer/5bis runs Jump Control/2 at
-  /// Bandwidth 10 and nothing else of that size.
+  /// A /bis computer's Processing "is increased by +5 for the purposes of
+  /// running Jump Control programs only" (Core Rulebook p. 180), which comes
+  /// to the same thing as Jump Control costing five less: the Type-S scout's
+  /// Computer/5bis runs Jump Control/2 for nothing, and the five points it
+  /// would have cost are not taken from anything else either.
   #[must_use]
-  pub fn processing_for(&self, kind: SoftwareKind) -> u32 {
-    if kind == SoftwareKind::JumpControl && self.design.computer_bis {
-      self.processing() + 5
+  pub fn bandwidth_cost(&self, package: Software) -> u32 {
+    if package.kind == SoftwareKind::JumpControl && self.design.computer_bis {
+      package.bandwidth().saturating_sub(5)
     } else {
-      self.processing()
+      package.bandwidth()
     }
   }
 
@@ -2291,19 +2311,23 @@ impl Ship {
       .filter(|package| package.always_running())
       .chain(self.software_running.iter().filter(|package| !package.always_running()))
     {
-      let capacity = self.processing_for(package.kind);
-      if used + package.bandwidth() <= capacity {
-        used += package.bandwidth();
+      let cost = self.bandwidth_cost(*package);
+      if used + cost <= self.processing() {
+        used += cost;
         running.push(*package);
       }
     }
     running
   }
 
-  /// Bandwidth the running software is using.
+  /// Bandwidth the running software is using, as this ship pays for it.
   #[must_use]
   pub fn bandwidth_used(&self) -> u32 {
-    self.effective_software().iter().map(Software::bandwidth).sum()
+    self
+      .effective_software()
+      .iter()
+      .map(|package| self.bandwidth_cost(*package))
+      .sum()
   }
 
   /// Whether a package is installed aboard.
@@ -2339,11 +2363,17 @@ impl Ship {
   /// the program works with.
   #[must_use]
   pub fn auto_repair_mod(&self) -> u8 {
-    if self.design.repair_drones {
+    if self.has_feature(FeatureKind::RepairDrones) {
       self.running_level(SoftwareKind::AutoRepair).unwrap_or(0)
     } else {
       0
     }
+  }
+
+  /// Whether the hull is fitted with this.
+  #[must_use]
+  pub fn has_feature(&self, kind: FeatureKind) -> bool {
+    self.design.features.iter().any(|feature| feature.kind == Some(kind))
   }
 
   /// Bandwidth left over, which is what a sensor hand-off needs a point of.
@@ -2372,7 +2402,7 @@ impl Ship {
     if self.software_running.contains(&package) {
       return true;
     }
-    self.bandwidth_used() + package.bandwidth() <= self.processing_for(package.kind)
+    self.bandwidth_used() + self.bandwidth_cost(package) <= self.processing()
   }
 
   /// Start or stop a package. Returns whether the ship obeyed.
@@ -3515,9 +3545,8 @@ impl Default for ShipDesignTemplate {
         Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
       ],
       screens: vec![],
-      auxiliary: vec![],
+      features: vec![],
       software: vec![],
-      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 15,
@@ -3656,7 +3685,7 @@ mod tests {
   /// A hologram projector is a luxury: it starts off, and when the plant is
   /// short it loses its share before the ship loses Thrust.
   #[test]
-  fn an_auxiliary_system_starts_off_and_gives_way_to_the_drive() {
+  fn a_powered_feature_starts_off_and_gives_way_to_the_drive() {
     let design = Arc::new(ShipDesignTemplate {
       name: "Harrier".to_string(),
       displacement: 200,
@@ -3665,27 +3694,28 @@ mod tests {
       jump: 2,
       sensors: Sensors::Advanced,
       weapons: vec![],
-      auxiliary: vec![AuxiliarySystem {
+      features: vec![ShipFeature {
         name: "Holographic hull".to_string(),
         power: 100,
         default_on: false,
+        kind: Some(FeatureKind::HolographicHull),
       }],
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Harrier".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
 
-    assert!(!ship.is_online(PowerSystem::Auxiliary(0)), "the projector is down at the dock");
+    assert!(!ship.is_online(PowerSystem::Feature(0)), "the projector is down at the dock");
     assert_eq!(ship.max_acceleration(), 6);
 
     // Bring it up: 40 for life support, 6 for the sensors and 120 for the
     // drive leave 94 of 260, which is not the 100 the projector wants.
-    ship.set_online(PowerSystem::Auxiliary(0), true);
-    assert!(!ship.is_powered(PowerSystem::Auxiliary(0)), "not enough left to light it");
+    ship.set_online(PowerSystem::Feature(0), true);
+    assert!(!ship.is_powered(PowerSystem::Feature(0)), "not enough left to light it");
     assert_eq!(ship.max_acceleration(), 6, "and the drive keeps its share");
 
     // Drop the drive and there is room for it.
     ship.set_online(PowerSystem::Maneuver, false);
-    assert!(ship.is_powered(PowerSystem::Auxiliary(0)));
+    assert!(ship.is_powered(PowerSystem::Feature(0)));
     assert_eq!(ship.max_acceleration(), 0);
   }
 
@@ -3775,15 +3805,18 @@ mod tests {
     let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
 
     assert_eq!(ship.processing(), 5);
-    assert_eq!(ship.processing_for(SoftwareKind::JumpControl), 10);
+    // Jump Control/2 is 10 Bandwidth, and costs this ship five.
+    assert_eq!(ship.bandwidth_cost(Software::new(SoftwareKind::JumpControl, 2)), 5);
     assert_eq!(
       ship.running_level(SoftwareKind::JumpControl),
       Some(2),
       "10 Bandwidth on a /bis 5"
     );
 
-    // The same 10 Bandwidth spent on anything else does not fit.
+    // The same 10 Bandwidth spent on anything else does not fit: the bonus
+    // is Jump Control's alone.
     ship.software.push(Software::new(SoftwareKind::Evade, 1));
+    assert_eq!(ship.bandwidth_cost(Software::new(SoftwareKind::Evade, 1)), 10);
     assert!(!ship.set_software_running(Software::new(SoftwareKind::Evade, 1), true));
   }
 
@@ -4089,9 +4122,8 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
-      auxiliary: vec![],
+      features: vec![],
       software: vec![],
-      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 10,
@@ -4675,9 +4707,8 @@ mod tests {
         Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small)),
       ],
       screens: vec![],
-      auxiliary: vec![],
+      features: vec![],
       software: vec![],
-      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 12,
@@ -4817,9 +4848,8 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
-      auxiliary: vec![],
+      features: vec![],
       software: vec![],
-      repair_drones: false,
       computer_bis: false,
       computer_fib: false,
       tl: 12,
