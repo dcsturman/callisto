@@ -352,6 +352,28 @@ export const actionsSlice = createSlice({
       }
       updateActions(state);
     },
+    /**
+     * Point this mount's point defence at a neighbour, or back at our own
+     * ship. Needs Point Defence software and the other ship close by; the
+     * server checks both when the round resolves.
+     */
+    setPointDefenseWard: (
+      state,
+      item: PayloadAction<{shipName: string; weapon_id: number; protecting: string | null}>
+    ) => {
+      const action = state[item.payload.shipName]?.pointDefense.find(
+        (pd) => pd.weapon_id === item.payload.weapon_id
+      );
+      if (!action) {
+        return;
+      }
+      if (item.payload.protecting == null) {
+        delete action.protecting;
+      } else {
+        action.protecting = item.payload.protecting;
+      }
+      updateActions(state);
+    },
     resetServer: () => initialState,
   },
 });
@@ -369,6 +391,7 @@ export const {
   updateFireSalvo,
   updateFireControl,
   setComputerRepair,
+  setPointDefenseWard,
   resetServer,
 } = actionsSlice.actions;
 

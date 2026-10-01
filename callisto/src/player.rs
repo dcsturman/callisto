@@ -961,6 +961,16 @@ impl PlayerManager {
     // until they reach their target.
     effects.append(&mut entities.sensor_actions(&jam_missile_actions, &boost_map, &mut rng));
 
+    // Broad Spectrum EW jams for any ship whose operator did not: the program
+    // takes the same action, without the sensop and without their skill, and
+    // a salvo can only be jammed once (High Guard p. 74).
+    let jammed_by_hand: std::collections::HashSet<String> = jam_missile_actions
+      .iter()
+      .filter(|(_, actions)| !actions.is_empty())
+      .map(|(ship_name, _)| ship_name.clone())
+      .collect();
+    effects.append(&mut entities.broad_spectrum_pass(&jammed_by_hand, &mut rng));
+
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));
 

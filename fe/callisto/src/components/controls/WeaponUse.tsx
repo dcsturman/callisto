@@ -70,6 +70,7 @@ import {
   updateFireCalledShot,
   updateFireSalvo,
   updateFireControl,
+  setPointDefenseWard,
   setSensorAction,
   setEngineerAction,
   toggleBoost,
@@ -890,6 +891,23 @@ export function Actions(args: {
     [args.fireActions]
   );
 
+  // Point Defence software, and who it could cover: a ship running it can
+  // shoot down what is coming at a neighbour rather than at itself.
+  const pointDefenceReach = useMemo(
+    () =>
+      actingShip?.software_running?.find((software) => software.kind === "PointDefence")?.level ?? 0,
+    [actingShip]
+  );
+  const coverable = useMemo(
+    () =>
+      actingShip == null
+        ? []
+        : entities.ships
+            .filter((other) => other.name !== actingShip.name)
+            .map((other) => other.name),
+    [entities.ships, actingShip]
+  );
+
   // Captain's leadership cap. The cap is the rolled `leadership_points`, but
   // only after the captain has actually rolled this turn — pre-roll
   // `leadership_points` is stale from last turn, so gate on `leadership_rolled`.
@@ -1194,6 +1212,31 @@ export function Actions(args: {
                 on Point Defense
               </p>
             </div>
+            {/* A ship running Point Defence software can cover a neighbour
+                instead of itself (High Guard p. 75). Only worth offering
+                when there is a neighbour and the software to do it. */}
+            {pointDefenceReach > 0 && coverable.length > 0 && (
+              <select
+                className="salvo-select"
+                value={action.protecting ?? ""}
+                title={`Point Defence/${pointDefenceReach}: cover another ship nearby instead of this one`}
+                onChange={(event) =>
+                  dispatch(
+                    setPointDefenseWard({
+                      shipName: computerShipName ?? "",
+                      weapon_id: action.weapon_id,
+                      protecting: event.target.value === "" ? null : event.target.value,
+                    })
+                  )
+                }>
+                <option value="">our own ship</option>
+                {coverable.map((name) => (
+                  <option key={name} value={name}>
+                    cover {name}
+                  </option>
+                ))}
+              </select>
+            )}
             {renderBoostCheckbox(pdBoostTarget)}
           </div>
         ) : (

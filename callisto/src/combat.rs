@@ -1350,10 +1350,20 @@ pub fn do_fire_actions<S: BuildHasher>(
       // A mount the computer is firing has no gunner's skill behind it: Fire
       // Control buys the attack, not a gunner (CRB p. 161). One point goes on
       // firing it, and the gunner's own skill does not apply.
+      // A Virtual Gunner stands in where nobody is at the mount: "weapons
+      // controlled by a Virtual Gunner have a skill level equal to the
+      // package's score but they can take advantage of other modifiers such
+      // as Advanced Fire Control" (High Guard p. 76). A real gunner is
+      // always better than being replaced, so they keep their station.
+      let virtual_gunner = if attacker.get_crew().has_gunner(*weapon_id) {
+        None
+      } else {
+        attacker.running_level(SoftwareKind::VirtualGunner)
+      };
       let gunnery_skill = if computer_fired {
         0
       } else {
-        i32::from(attacker.get_crew().get_gunnery(*weapon_id))
+        virtual_gunner.map_or_else(|| i32::from(attacker.get_crew().get_gunnery(*weapon_id)), i32::from)
       };
       // Captain leadership boost for this specific (ship, weapon) fire action.
       let leadership_boost = i32::from(boost_for_fire(boost_map, attacker.get_name(), *weapon_id));
@@ -1637,7 +1647,7 @@ pub fn create_sand_counts<S: BuildHasher>(
         .filter(|(ship_name, _)| ship_name == name)
         .flat_map(|(_, actions)| actions.iter())
         .filter_map(|action| match action {
-          ShipAction::PointDefenseAction { weapon_id } => Some(*weapon_id),
+          ShipAction::PointDefenseAction { weapon_id, .. } => Some(*weapon_id),
           _ => None,
         })
         .collect();
@@ -1852,7 +1862,7 @@ pub fn build_point_defense_tallies(
     .collect::<Vec<u16>>();
 
   for action in actions {
-    let ShipAction::PointDefenseAction { weapon_id } = action else {
+    let ShipAction::PointDefenseAction { weapon_id, .. } = action else {
       warn!("(Ship.add_point_defense) Expected PointDefenseAction but got {:?}.", action);
       continue;
     };
@@ -2118,7 +2128,12 @@ mod battery_tests {
     });
     // Gunnery 0 across the board, so the tally is the turret bonus alone.
     let ship = Ship::new("Gunners".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
-    let actions: Vec<ShipAction> = (0..3).map(|weapon_id| ShipAction::PointDefenseAction { weapon_id }).collect();
+    let actions: Vec<ShipAction> = (0..3)
+      .map(|weapon_id| ShipAction::PointDefenseAction {
+        weapon_id,
+        protecting: None,
+      })
+      .collect();
 
     let tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Gunners");
     let bonus = |id: usize| tallies.iter().find(|(w, _)| *w == id).map(|(_, b)| *b);
@@ -2621,7 +2636,13 @@ mod battery_tests {
     assert_eq!(free["Batteries"].len(), 1, "the sandcaster should be ready: {free:?}");
 
     // Ordering point defence on that mount spends its reaction.
-    let pd = vec![("Batteries".to_string(), vec![ShipAction::PointDefenseAction { weapon_id: 0 }])];
+    let pd = vec![(
+      "Batteries".to_string(),
+      vec![ShipAction::PointDefenseAction {
+        weapon_id: 0,
+        protecting: None,
+      }],
+    )];
     let spent = create_sand_counts(&ships, &pd);
     assert!(
       spent["Batteries"].is_empty(),

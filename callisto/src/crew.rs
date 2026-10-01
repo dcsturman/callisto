@@ -297,6 +297,15 @@ impl Crew {
     self.gunnery[gun]
   }
 
+  /// Whether anyone is actually on this mount.
+  ///
+  /// Distinct from a skill of 0, the way it is for screens: an unmanned
+  /// mount has nobody at it, which is what a Virtual Gunner stands in for.
+  #[must_use]
+  pub fn has_gunner(&self, gun: usize) -> bool {
+    gun < self.gunnery.len()
+  }
+
   /// Gunner (screen) skill for the screen at `screen`, or 0 if unspecified.
   #[must_use]
   pub fn get_screen_gunnery(&self, screen: usize) -> u8 {

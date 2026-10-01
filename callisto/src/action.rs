@@ -208,7 +208,7 @@ pub fn boost_target_alive<S: BuildHasher>(
         if ship_name == ship
           && ship_actions
             .iter()
-            .any(|a| matches!(a, ShipAction::PointDefenseAction { weapon_id: w } if w == weapon_id))
+            .any(|a| matches!(a, ShipAction::PointDefenseAction { weapon_id: w, .. } if w == weapon_id))
         {
           return true;
         }
@@ -286,6 +286,15 @@ pub enum ShipAction {
   },
   PointDefenseAction {
     weapon_id: usize,
+    /// A ship to defend instead of this one.
+    ///
+    /// "A ship running the Point Defence package may use point defence
+    /// batteries and the Point Defence (gunner) reaction to defend any ship
+    /// within Close range. The Point Defence/2 package increases this range
+    /// to Short" (High Guard p. 75). Absent means the usual thing: shooting
+    /// down what is coming at you.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    protecting: Option<String>,
   },
   DeleteFireAction {
     weapon_id: usize,
@@ -448,10 +457,10 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             current_actions.push(next_action.clone());
           }
           // Each fire action is added to the list of fire actions, but only if the weapon is not already in use.
-          ShipAction::FireAction { weapon_id, .. } | ShipAction::PointDefenseAction { weapon_id } => {
+          ShipAction::FireAction { weapon_id, .. } | ShipAction::PointDefenseAction { weapon_id, .. } => {
             current_actions.retain(|action| {
               !matches!(action, ShipAction::FireAction{weapon_id: id, ..} if *id == weapon_id)
-                && !matches!(action, ShipAction::PointDefenseAction{weapon_id: id} if *id == weapon_id)
+                && !matches!(action, ShipAction::PointDefenseAction{weapon_id: id, ..} if *id == weapon_id)
             });
             current_actions.push(next_action.clone());
           }
@@ -469,7 +478,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             let mut sorted_similar_weapon_id = current_actions
               .iter()
               .filter_map(|action| match action {
-                ShipAction::PointDefenseAction { weapon_id } | ShipAction::FireAction { weapon_id, .. } => {
+                ShipAction::PointDefenseAction { weapon_id, .. } | ShipAction::FireAction { weapon_id, .. } => {
                   if current_weapons[*weapon_id] == *weapon {
                     Some(*weapon_id)
                   } else {
@@ -489,7 +498,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             // Retain everything except the FireAction with the highest number of the similar weapon
             current_actions.retain(|action| {
               !matches!(action, ShipAction::FireAction{weapon_id, ..} if max_similar_weapon_id == weapon_id)
-                && !matches!(action, ShipAction::PointDefenseAction{weapon_id} if max_similar_weapon_id == weapon_id)
+                && !matches!(action, ShipAction::PointDefenseAction{weapon_id, ..} if max_similar_weapon_id == weapon_id)
             });
           }
           // One job per engineer, and a new one replaces whatever that

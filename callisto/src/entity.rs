@@ -806,6 +806,7 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
+  #[allow(clippy::too_many_lines)]
   pub fn fire_actions(
     &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
     ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
@@ -892,8 +893,23 @@ impl Entities {
         continue;
       };
 
+      // Point Defence software lets a ship shoot down what is coming at
+      // somebody else: "may use point defence batteries and the Point
+      // Defence (gunner) reaction to defend any ship within Close range",
+      // and /2 "increases this range to Short" (High Guard p. 75). Orders
+      // naming another ship are split out and resolved against it.
+      let (for_others, for_self): (Vec<ShipAction>, Vec<ShipAction>) = actions.iter().cloned().partition(|action| {
+        matches!(
+          action,
+          ShipAction::PointDefenseAction {
+            protecting: Some(_),
+            ..
+          }
+        )
+      });
+
       let mut ship = ship.write().unwrap();
-      let tallies = build_point_defense_tallies(&ship, actions, boost_map, defender);
+      let tallies = build_point_defense_tallies(&ship, &for_self, boost_map, defender);
 
       // Every gunner makes one check per round and their Effects add up
       // (Core Rulebook p. 171), so roll the whole list now rather than one
@@ -903,6 +919,64 @@ impl Entities {
       debug!("(Entities.fire_actions) {defender}'s gunners contribute {pool} point(s) of point defence this round.");
       ship.add_point_defense_pool(pool);
       ship.set_point_defense_list(tallies);
+
+      // Everything aimed at protecting a neighbour, grouped so each escort
+      // rolls its guns once.
+      let reach = ship.running_level(SoftwareKind::PointDefence);
+      let here = ship.get_position();
+      drop(ship);
+      let mut by_ward: HashMap<String, Vec<ShipAction>> = HashMap::new();
+      for action in for_others {
+        if let ShipAction::PointDefenseAction {
+          protecting: Some(ward), ..
+        } = &action
+        {
+          by_ward.entry(ward.clone()).or_default().push(action.clone());
+        }
+      }
+      for (ward, ward_actions) in by_ward {
+        let Some(reach) = reach else {
+          battery_effects.push(EffectMsg::about(
+            defender,
+            MessageCategory::Attack,
+            format!("{defender} has no Point Defence software and cannot cover {ward}."),
+          ));
+          continue;
+        };
+        let Some(ward_ship) = self.ships.get(&ward) else {
+          warn!("(Entities.fire_actions) {defender} cannot cover unknown ship {ward}.");
+          continue;
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let distance = (ward_ship.read().unwrap().get_position() - here).magnitude() as u32;
+        let band = find_range_band(distance);
+        // The book says Close for /1 and Short for /2, and Callisto has no
+        // Close band -- Adjacent and Close collapse into Short here. Keeping
+        // the step rather than the labels: /1 covers Short, /2 one band
+        // further. See FAQ.md.
+        let limit = if reach >= 2 { Range::Medium } else { Range::Short };
+        if band > limit {
+          battery_effects.push(EffectMsg::about(
+            defender,
+            MessageCategory::Attack,
+            format!("{defender} cannot cover {ward} at {band} range: Point Defence/{reach} reaches {limit}."),
+          ));
+          continue;
+        }
+
+        let covering = self.ships.get(defender).unwrap().read().unwrap();
+        let tallies = build_point_defense_tallies(&covering, &ward_actions, boost_map, defender);
+        drop(covering);
+        let pool = roll_point_defense_pool(&tallies, rng);
+        if pool > 0 {
+          ward_ship.write().unwrap().add_point_defense_pool(pool);
+          battery_effects.push(EffectMsg::about(
+            defender,
+            MessageCategory::Attack,
+            format!("{defender} covers {ward}: up to {pool} missile(s) intercepted on its behalf."),
+          ));
+        }
+      }
     }
 
     let effects = fire_actions
@@ -1422,7 +1496,55 @@ impl Entities {
       )]
     }
   }
+  /// Broad Spectrum EW: the computer jams for itself.
+  ///
+  /// The package "continuously scans for hostile missile launches and
+  /// automatically sends disruptive signals ... A single electronic warfare
+  /// action (with no crew skill DM applied) is automatically performed
+  /// against any and all enemy salvoes" (High Guard p. 74). So it is the
+  /// jamming action a sensop would have taken, without the sensop and
+  /// without their skill -- and since "each salvo can still only be
+  /// subjected to one electronic warfare action", a ship whose operator
+  /// already jammed this round gains nothing from it.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  pub fn broad_spectrum_pass(&mut self, already_jammed: &HashSet<String>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let candidates: Vec<String> = self
+      .ships
+      .iter()
+      .filter(|(name, ship)| {
+        let ship = ship.read().unwrap();
+        !already_jammed.contains(*name)
+          && ship.running_level(SoftwareKind::BroadSpectrumEw).is_some()
+          && ship.sensors_powered()
+      })
+      .map(|(name, _)| name.clone())
+      .collect();
+
+    // Only ships with something inbound: the program is always scanning, but
+    // there is nothing to report when nothing was launched at them.
+    let under_fire: Vec<String> = candidates
+      .into_iter()
+      .filter(|name| self.missiles.values().any(|m| m.read().unwrap().target == *name))
+      .collect();
+
+    let mut effects = Vec::new();
+    for name in under_fire {
+      effects.append(&mut self.jam_missiles_check(&name, None, 0, rng));
+    }
+    effects
+  }
+
   fn jam_missiles(&mut self, ship_name: &String, operator: usize, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    self.jam_missiles_check(ship_name, Some(operator), boost, rng)
+  }
+
+  /// One jamming attempt. `operator` is `None` when the computer is doing it
+  /// on its own, which brings no crew skill with it.
+  fn jam_missiles_check(
+    &mut self, ship_name: &String, operator: Option<usize>, boost: i16, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
     let mut effects = Vec::<EffectMsg>::new();
     // Find all missiles targeting this ship.
     let targeting_missiles = self
@@ -1433,7 +1555,16 @@ impl Entities {
       .collect::<Vec<_>>();
 
     let dice = roll_dice(2, rng);
-    let dm = self.sensor_quality_modifiers(ship_name, operator)
+    // No operator means the program is doing it, and brings no skill of its
+    // own -- only the suite's own quality.
+    let quality = operator.map_or_else(
+      || {
+        let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+        SENSOR_QUALITY_MOD[ship.current_sensors as usize]
+      },
+      |operator| self.sensor_quality_modifiers(ship_name, operator),
+    );
+    let dm = quality
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
       + self.electronic_warfare_mod(ship_name)
       + boost;
@@ -1441,14 +1572,18 @@ impl Entities {
 
     debug!(
       "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, sensor_quality mod {}, countermeasures mod {} gives an effect of {check}.",
-      self.sensor_quality_modifiers(ship_name, operator),
+      quality,
       countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures),
     );
 
     if check >= 0 {
       effects.append(&mut vec![sensor_check_effect(
         ship_name,
-        "jams inbound missiles",
+        if operator.is_some() {
+          "jams inbound missiles"
+        } else {
+          "jams inbound missiles automatically (broad spectrum)"
+        },
         None,
         dice,
         dm,
@@ -1485,7 +1620,11 @@ impl Entities {
       // If the EW check failed, just let the users know.
       effects.push(sensor_check_effect(
         ship_name,
-        "jams inbound missiles",
+        if operator.is_some() {
+          "jams inbound missiles"
+        } else {
+          "jams inbound missiles automatically (broad spectrum)"
+        },
         None,
         dice,
         dm,
@@ -4908,6 +5047,74 @@ mod tests {
       !holds_contact(&entities, "Mate", "Bogey"),
       "an unaligned ship should get nothing"
     );
+  }
+
+  /// Broad Spectrum EW jams for a ship whose operator did not, at no skill.
+  #[test]
+  fn broad_spectrum_jams_without_a_sensop() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Picket".to_string(),
+      displacement: 400,
+      computer: 20,
+      sensors: crate::ship::Sensors::Advanced,
+      software: vec![Software::new(SoftwareKind::BroadSpectrumEw, 0)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Picket".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Raider".to_string(),
+      Vec3::new(10000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .unwrap();
+    assert_eq!(entities.missiles.len(), 1);
+
+    // Every die a 6, so the program's own check lands.
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.broad_spectrum_pass(&HashSet::new(), &mut rng);
+    assert!(
+      format!("{effects:?}").contains("broad spectrum"),
+      "the program should say it acted: {effects:?}"
+    );
+    assert_eq!(entities.missiles.len(), 0, "and the salvo should be jammed");
+  }
+
+  /// "Each salvo can still only be subjected to one electronic warfare
+  /// action", so an operator who already jammed leaves nothing for it.
+  #[test]
+  fn broad_spectrum_stands_aside_for_the_sensop() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Picket".to_string(),
+      displacement: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::BroadSpectrumEw, 0)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Picket".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Raider".to_string(),
+      Vec3::new(10000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .unwrap();
+
+    let mut rng = StepRng::new(5, 0);
+    let already: HashSet<String> = std::iter::once("Picket".to_string()).collect();
+    let effects = entities.broad_spectrum_pass(&already, &mut rng);
+    assert!(effects.is_empty(), "nothing to add: {effects:?}");
+    assert_eq!(entities.missiles.len(), 1);
   }
 
   /// Auto-Repair is a pool: each point is either an attempt the computer

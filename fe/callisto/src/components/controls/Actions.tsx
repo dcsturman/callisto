@@ -98,6 +98,14 @@ export type UnfireState = UnfireAction[];
 
 export type PointDefenseAction = {
   weapon_id: number;
+  /**
+   * A ship to cover instead of this one.
+   *
+   * Point Defence software lets a ship shoot down what is coming at a
+   * neighbour, within Close (/1) or Short (/2) range (High Guard p. 75).
+   * Absent means the usual thing: defending yourself.
+   */
+  protecting?: string;
 }
 export type PointDefenseState = PointDefenseAction[];
 
@@ -339,6 +347,7 @@ function pointDefenseActionPayload(pointDefenseAction: PointDefenseAction) {
   return {
     PointDefenseAction: {
       weapon_id: pointDefenseAction.weapon_id,
+      protecting: pointDefenseAction.protecting,
     },
   };
 }
