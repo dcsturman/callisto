@@ -43,7 +43,7 @@ import {
 } from "lib/serverManager";
 import { Users } from "components/UserList";
 
-import { ShipComputer } from "components/controls/ShipComputer";
+import { Stations } from "components/controls/Stations";
 import { ViewMode, hasRole, isReferee } from "lib/view";
 
 import { RoleChooser } from "components/Role";
@@ -190,8 +190,11 @@ function Simulator() {
             )}
           </div>
         </div>
-        {!scenarioBuilderMode && hasRole(roles, ViewMode.General) && computerShip && (
-          <ShipComputer ship={computerShip} />
+        {/* Every station this player works, in one column of cards beside
+            the ship's own numbers. The referee gets the same cards as
+            everyone else, rather than a second window of their own. */}
+        {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
+          <Stations ship={computerShip} />
         )}
         {showResults && (
           <Suspense fallback={null}>

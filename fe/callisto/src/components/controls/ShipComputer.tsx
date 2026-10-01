@@ -2,11 +2,6 @@ import * as React from "react";
 import {useState, useEffect, useMemo} from "react";
 import {DEFAULT_ACCEL_DURATION, POSITION_SCALE} from "lib/universal";
 import {Ship, Acceleration, Entity} from "lib/entities";
-import {ViewMode, hasRole} from "lib/view";
-import {SensorStation} from "components/controls/SensorStation";
-import {PowerBoard} from "components/controls/PowerBoard";
-import {DamageBoard} from "components/controls/DamageBoard";
-import {Accordion} from "lib/Accordion";
 
 import {setPlan, setCrewActions, setShipEmissions} from "lib/serverManager";
 import {isUndetected, sameSide} from "lib/contacts";
@@ -15,8 +10,6 @@ import {EntitySelectorType, EntitySelector} from "lib/EntitySelector";
 import {CourseMode} from "lib/flightPath";
 import {describeCourse} from "lib/courseMode";
 import {findShip} from "lib/entities";
-import {EngineerTasks} from "components/controls/EngineerTasks";
-import {CaptainTasks} from "components/controls/CaptainTasks";
 
 import {useAppSelector, useAppDispatch} from "state/hooks";
 import {entitiesSelector} from "state/serverSlice";
@@ -26,14 +19,13 @@ import {computeFlightPath} from "lib/serverManager";
 // Distance in km for standoff from another ship.
 const DEFAULT_SHIP_STANDOFF_DISTANCE: number = 10;
 
-type ShipComputerProps = {
+/** The pilot's station: their own actions, the burn and the course. */
+type PilotStationProps = {
   ship: Ship;
 };
 
-export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
+export const PilotStation: React.FC<PilotStationProps> = ({ship}) => {
   const entities = useAppSelector(entitiesSelector);
-  const roles = useAppSelector((state) => state.user.roles);
-  const shipName = useAppSelector((state) => state.user.shipName);
   const proposedPlan = useAppSelector((state) => state.ui.proposedPlan);
 
   const initNavigationTargetState = useMemo(() => {
@@ -59,16 +51,6 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
   const [currentNavTarget, setCurrentNavTarget] = useState<string | null>(null);
   const [navigationTarget, setNavigationTarget] = useState(initNavigationTargetState);
 
-  const sensorLocks = useMemo(
-    () =>
-      entities.ships.reduce((acc, s) => {
-        if (s.sensor_locks.includes(ship.name)) {
-          acc.push(s.name);
-        }
-        return acc;
-      }, [] as string[]),
-    [entities, ship.name]
-  );
   const target = useMemo(() => {
     if (currentNavTarget == null) {
       return;
@@ -302,78 +284,12 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
     );
   }
 
-  // The team selector stands in for the word "Controls" in the heading:
-  // the panel is obviously controls, and the row it used to occupy was one
-  // of the things pushing this panel off a laptop screen.
-  const title = ship.name;
-
   // TODO: Full Stop is not correct, but needs server-side functions.  Should just get to 0 velocity and not care about position.
   // Current version tries to stop at the current position.
   return (
-    <div id="computer-window" className="computer-window">
-      <div id="crew-actions-window">
-        {/* The ship's team lives with its other numbers in the left pane,
-            where every station sees it, rather than in this panel, which only
-            some stations open. */}
-        <div className="computer-title-row">
-          {hasRole(roles, ViewMode.General) && <h1>{title}</h1>}
-        </div>
-        {/* Captain only sees the panel on their own ship. General sees it on
-            their assigned ship if any; if General has no ship (GM-style),
-            panel renders on whichever ship's popup they're viewing so they
-            can roll leadership for it. */}
-        {/* General only. A Captain's panel lives in the left pane, and this
-            component is also mounted inside the Pilot/Sensors/Engineer
-            accordion -- so a Captain who is also an Engineer would otherwise
-            get the leadership panel twice. */}
-        {hasRole(roles, ViewMode.General) && (shipName == null || ship.name === shipName) && (
-          <CaptainTasks ship={ship} />
-        )}
-        {hasRole(roles, ViewMode.Pilot) && pilotActions()}
-        {hasRole(roles, ViewMode.Sensors) && (
-          <>
-            {/* One station each: a ship with two operators can jam with one
-                and lock with the other, so each gets their own chooser,
-                labelled only when there is more than one to tell apart. */}
-            {crewSlots(ship.crew.sensors?.length).map((operator) => (
-              <React.Fragment key={operator}>
-                {(ship.crew.sensors?.length ?? 0) > 1 && (
-                  <div className="crew-slot-tag">
-                    Operator #{operator + 1} · skill {ship.crew.sensors[operator]}
-                  </div>
-                )}
-                <SensorActionChooser ship={ship} sensorLocks={sensorLocks} operator={operator} />
-              </React.Fragment>
-            ))}
-            {/* The sensop's instruments. Theirs alone: the rest of the crew
-                work from what they are told, which is the job. */}
-            <SensorStation ship={ship} />
-          </>
-        )}
-        {hasRole(roles, ViewMode.Engineer) && (
-          <>
-            {crewSlots(ship.crew.engineers?.length).map((engineer) => (
-              <React.Fragment key={engineer}>
-                {(ship.crew.engineers?.length ?? 0) > 1 && (
-                  <div className="crew-slot-tag">Engineer #{engineer + 1}</div>
-                )}
-                <EngineerTasks ship={ship} engineer={engineer} />
-              </React.Fragment>
-            ))}
-            {/* The engineer's instruments. Open for them, and foldable for the
-                referee, who has every other ship's to look at as well. */}
-            <Accordion title="Power" initialOpen={!roles.includes(ViewMode.General)}>
-              <PowerBoard ship={ship} />
-            </Accordion>
-            <Accordion title="Damage control" initialOpen={!roles.includes(ViewMode.General)}>
-              <DamageBoard ship={ship} />
-            </Accordion>
-          </>
-        )}
-      </div>
-      <hr />
-      {hasRole(roles, ViewMode.Pilot) && (
-        <>
+    <div className="pilot-station">
+      {pilotActions()}
+      <>
           {accelerationManager()}
           <hr />
           <button
@@ -529,8 +445,7 @@ export const ShipComputer: React.FC<ShipComputerProps> = ({ship}) => {
               </button>
             </div>
           )}
-        </>
-      )}
+      </>
     </div>
   );
 };
@@ -550,14 +465,6 @@ function sensorActionToString(action: SensorState): string {
   }
 }
 
-/**
- * The crew positions to draw a panel for. A ship with nobody listed at a
- * station still gets one: the station exists, and somebody unrated can sit at
- * it, which is how every crew worked before they were listed.
- */
-const crewSlots = (count: number | undefined): number[] =>
-  Array.from({length: Math.max(1, count ?? 0)}, (_, index) => index);
-
 interface SensorActionChooserProps {
   ship: Ship;
   sensorLocks: string[];
@@ -568,7 +475,7 @@ interface SensorActionChooserProps {
   operator?: number;
 }
 
-const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLocks, operator = 0}) => {
+export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLocks, operator = 0}) => {
   const actions = useAppSelector((state) => state.actions);
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);

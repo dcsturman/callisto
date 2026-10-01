@@ -72,7 +72,8 @@ import {
   setEngineerAction,
   toggleBoost,
 } from "state/actionsSlice";
-import { entitiesSelector } from "state/serverSlice";
+import { entitiesSelector, templatesSelector } from "state/serverSlice";
+import { isUndetected, sameSide } from "lib/contacts";
 
 // Consistent set of colors for both type of weapons and fire states.
 /** Kinds the crew never orders, so they never get a fire button of their own. */
@@ -666,6 +667,82 @@ export const FireControl: React.FC<FireControlProps> = () => {
     </>
   );
 };
+
+/**
+ * The round's queued orders for one ship, gathered from the action queue.
+ *
+ * `only` narrows it to one station's orders, which is what a station card
+ * passes. The captain's card passes nothing and gets the lot: they inspire
+ * other people's checks, and hunting five cards for the actions to tick was
+ * unworkable.
+ *
+ * Renders nothing when there is nothing queued, so a quiet card stays quiet.
+ */
+export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
+  const entities = useAppSelector(entitiesSelector);
+  const templates = useAppSelector(templatesSelector);
+  const roles = useAppSelector((state) => state.user.roles);
+  const queued = useAppSelector((state) => state.actions[args.ship.name]);
+
+  // A station card shows its own orders; the captain's shows every station's.
+  // Either way a player only sees what their roles let them see.
+  const shows = (role: ViewMode) =>
+    args.only == null
+      ? hasRole(roles, role, ViewMode.Captain)
+      : args.only.includes(role);
+
+  const fireActions = shows(ViewMode.Gunner) ? (queued?.fire ?? []) : [];
+  const pdActions = shows(ViewMode.Gunner) ? (queued?.pointDefense ?? []) : [];
+  const sensorActions = shows(ViewMode.Sensors) ? (queued?.sensors ?? []) : [];
+  const engineerActions = shows(ViewMode.Engineer) ? (queued?.engineers ?? []) : [];
+  const pilotState = shows(ViewMode.Pilot)
+    ? {
+        dodgeThrust: args.ship.dodge_thrust ?? 0,
+        assistGunners: args.ship.assist_gunners ?? false,
+      }
+    : null;
+
+  // Ships this one could be looking for. Detection is free and needs no
+  // order, so these are not queued actions -- they are here because a captain
+  // can concentrate the sensop on one of them, and that is the only part of
+  // detection leadership reaches.
+  const watchingSensors = shows(ViewMode.Sensors);
+  const searchTargets = useMemo(
+    () =>
+      watchingSensors
+        ? entities.ships.filter(
+            (target) =>
+              target.name !== args.ship.name &&
+              isUndetected(args.ship, target) &&
+              !sameSide(args.ship, target),
+          )
+        : [],
+    [entities.ships, args.ship, watchingSensors],
+  );
+
+  const anything =
+    fireActions.length > 0 ||
+    pdActions.length > 0 ||
+    sensorActions.some((sensor) => sensor.action !== SensorAction.None) ||
+    engineerActions.some((engineer) => engineer != null) ||
+    searchTargets.length > 0 ||
+    (pilotState != null && (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
+  if (!anything) {
+    return null;
+  }
+
+  return (
+    <Actions
+      fireActions={fireActions}
+      pointDefenseActions={pdActions}
+      sensorActions={sensorActions}
+      engineerActions={engineerActions}
+      pilotState={pilotState}
+      searchTargets={searchTargets}
+      weapons={shipWeapons(args.ship, templates)}
+    />
+  );
+}
 
 export function Actions(args: {
   fireActions: FireState;

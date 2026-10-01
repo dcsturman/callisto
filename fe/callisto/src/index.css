@@ -13,22 +13,41 @@ body {
     font-weight: 400;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .axis {
     color: grey;
 }
 
-h1 {
-    font-size: 18pt;
+:root {
+    /* One type scale for the whole console. Sizes were invented per rule as
+       the UI grew -- 2pt, 3px, 0.75em, 14px and 13pt all appeared -- which is
+       why a heading could end up smaller than the text inside it. Everything
+       below picks from here.
+
+       xs  captions, column heads, units
+       sm  body text, inputs, buttons: the default
+       md  a card or section title
+       lg  a panel heading
+       xl  the application's own title */
+    --font-xs: 8.5pt;
+    --font-sm: 9.5pt;
+    --font-md: 11pt;
+    --font-lg: 13pt;
+    --font-xl: 18pt;
 }
+
+h1 {
+    font-size: var(--font-xl);
+}
+
 h2 {
-    font-size: 12pt;
+    font-size: var(--font-lg);
 }
 
 h3 {
-    font-size: 10pt;
+    font-size: var(--font-md);
 }
 
 .ship-list-label {
@@ -85,14 +104,30 @@ input {
 
 .control-input {
     margin: 2px;
-    padding: 2px;
+    padding: 2px 4px;
     width: 50px;
-    height: 30px;
-    border-radius: 5px;
+    height: 26px;
+    box-sizing: border-box;
+    border-radius: 3px;
     color: black;
     background-color: whitesmoke;
     border: 1px solid #333;
-    font-size: 9pt;
+    font-size: var(--font-sm);
+}
+
+/* Dropdowns are inputs too. They used to take the display face at whatever
+   size the browser chose, so a select beside a text box did not match it. */
+select.control-input,
+.select-dropdown {
+    height: 26px;
+    box-sizing: border-box;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid #333;
+    color: black;
+    background-color: whitesmoke;
+    font-family: "Sono", monospace;
+    font-size: var(--font-sm);
 }
 
 .mass-input {
@@ -128,7 +163,7 @@ input {
 }
 
 .entity-list-title {
-    font-size: 14px;
+    font-size: var(--font-md);
     margin: 0 0 4px 0;
 }
 
@@ -147,7 +182,7 @@ input {
 
 .entity-list-kind-icon {
     flex: 0 0 auto;
-    font-size: 16px;
+    font-size: var(--font-md);
     opacity: 0.85;
 }
 
@@ -175,7 +210,7 @@ input {
     cursor: pointer;
     color: inherit;
     padding: 2px 4px;
-    font-size: 12px;
+    font-size: var(--font-sm);
 }
 
 .entity-list-icon-button:hover {
@@ -187,8 +222,9 @@ input {
 }
 
 .control-button {
-    height: 30px;
+    height: 26px;
     width: 100%;
+    font-size: var(--font-sm);
 }
 
 .control-launch-button {
@@ -213,7 +249,7 @@ input {
 .control-label {
     display: flex;
     flex-direction: column;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     margin: 0px;
     padding: 2px;
     color: white;
@@ -221,7 +257,7 @@ input {
 }
 
 .control-label.h2 {
-    font-size: 12pt;
+    font-size: var(--font-lg);
     font-weight: bold;
 }
 
@@ -242,7 +278,7 @@ input {
 }
 .as-label {
     color: white;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     margin: 2px;
 }
 
@@ -278,7 +314,7 @@ input {
     white-space: nowrap;
     font-family: "Orbitron", sans-serif;
     font-weight: 600;
-    font-size: 12pt;
+    font-size: var(--font-lg);
 
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -326,7 +362,7 @@ input {
     font-optical-sizing: auto;
     font-weight: 400;
     font-style: normal;
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-variation-settings: "MONO" 1;
 }
 .ship-info-window {
@@ -345,11 +381,6 @@ input {
     top: 0;
     left: 0px;
     padding-right: 4px;
-    /* A column, not a page. The panel used to be sized by whatever was widest
-       inside it, so the boards and the contact readings stretched it across
-       the view it is meant to sit beside. Matches the left-hand controls. */
-    width: 400px;
-    box-sizing: border-box;
     border: 1px solid #b6bcae;
     z-index: 10;
     /* `mainscreen-container` is `align-items: flex-end`, so this popup is
@@ -377,7 +408,7 @@ input {
    weight -- rather than shouting louder than the box it lives in. Two classes
    so this outranks the shared .accordion-header rule and nothing else. */
 .accordion.camera-keys > .accordion-header {
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-weight: 400;
     letter-spacing: 0;
 }
@@ -390,7 +421,7 @@ input {
     column-gap: 8px;
     row-gap: 2px;
     margin: 2px 0 4px 0;
-    font-size: 0.8em;
+    font-size: var(--font-xs);
 }
 
 .camera-key-list dt,
@@ -407,7 +438,7 @@ input {
     border-radius: 3px;
     padding: 0 3px;
     font-family: inherit;
-    font-size: 0.95em;
+    font-size: var(--font-sm);
     line-height: 1.3;
 }
 
@@ -417,7 +448,7 @@ input {
    are lifted so they are not skimmed past. */
 .course-banner {
     margin: 4px 0 6px 0;
-    font-size: 0.85em;
+    font-size: var(--font-sm);
     line-height: 1.35;
     max-width: 30em;
 }
@@ -439,7 +470,7 @@ input {
    body-sized, wrapping, so a fifteen-mount gunner list is two quiet lines
    rather than a column. */
 .crew-line {
-    font-size: 10pt;
+    font-size: var(--font-md);
     line-height: 1.4;
     margin: 2px 0 4px 2px;
     opacity: 0.85;
@@ -484,7 +515,7 @@ input {
 .fatal-error button {
     margin-top: 6px;
     padding: 6px 18px;
-    font-size: 1em;
+    font-size: var(--font-sm);
     cursor: pointer;
 }
 
@@ -540,7 +571,7 @@ input {
 /* Units live here instead of on every value, which is what pays for the extra
    column. Quiet enough not to compete with the ships themselves. */
 .ship-summary-header {
-    font-size: 0.75em;
+    font-size: var(--font-xs);
     letter-spacing: 0.04em;
     text-transform: uppercase;
     opacity: 0.55;
@@ -621,21 +652,21 @@ input {
 }
 
 .info-icon {
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .tooltip-body {
     z-index: 100;
     padding: 2px !important;
     color: #3dfc32 !important;
-    font-size: 2pt;
+    font-size: var(--font-xs);
 }
 
 #design-tooltip {
     z-index: 100;
     color: #fff;
     background-color: rgb(55, 55, 55);
-    font-size: 8pt;
+    font-size: var(--font-xs);
     padding: 2px;
     padding-left: 6px;
 }
@@ -663,7 +694,7 @@ input {
 
 .weapon-symbol-count {
     background-color: transparent;
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-weight: bold;
     color: white;
     z-index: 3;
@@ -702,7 +733,7 @@ input {
     white-space: nowrap;
     font-family: "Orbitron", sans-serif;
     font-weight: 600;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     height: 35px;
 
     -webkit-font-smoothing: antialiased;
@@ -712,7 +743,7 @@ input {
 .weapon-passive-list {
     /* Defences with no button -- point defence, sand, repulsors.  Listed as
        text so a referee can see a ship carries them. */
-    font-size: 9pt;
+    font-size: var(--font-sm);
     color: #b0b0b0;
     padding: 2px 4px 4px 4px;
     line-height: 1.3;
@@ -794,13 +825,13 @@ input {
     border-radius: 6px;
     padding: 12px 16px;
     font-family: "Orbitron", sans-serif;
-    font-size: 11pt;
+    font-size: var(--font-md);
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
 }
 
 .scenario-load-errors h2 {
     margin: 0 0 6px 0;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     color: #ff9090;
 }
 
@@ -816,7 +847,7 @@ input {
 
 .scenario-load-errors p {
     margin: 6px 0;
-    font-size: 10pt;
+    font-size: var(--font-md);
     opacity: 0.85;
 }
 
@@ -861,7 +892,7 @@ input {
 }
 
 .authentication-blurb {
-    font-size: 12pt;
+    font-size: var(--font-lg);
     width: 40%;
 }
 
@@ -894,7 +925,7 @@ input {
 }
 
 .accordion-header {
-    font-size: 14pt;
+    font-size: var(--font-lg);
     font-weight: bold;
     display: flex;
     flex-direction: row;
@@ -917,7 +948,7 @@ input {
 /* The heading is chrome, not content: at the shared 18pt it was taller than the
    results underneath it. */
 #results-window h1 {
-    font-size: 13pt;
+    font-size: var(--font-lg);
     margin: 0 0 0.35em 0;
 }
 
@@ -957,7 +988,7 @@ input {
     display: inline-block;
     width: 60px;
     text-align: center;
-    font-size: 1em;
+    font-size: var(--font-sm);
     font-weight: 500;
     opacity: 0.9;
 }
@@ -975,7 +1006,7 @@ input {
     /* Absolute pt so the tag's size is consistent regardless of whichever
        parent's font-size context it lands in (e.g. `.control-label` parents
        compute em differently from naked containers). */
-    font-size: 9pt;
+    font-size: var(--font-sm);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -995,7 +1026,7 @@ input {
 #crew-actions-window select,
 #crew-actions-window input,
 #crew-actions-window p {
-    font-size: 11pt;
+    font-size: var(--font-md);
 }
 
 /* Pack Pilot Actions onto a single row: Dodge label/input + Assist Gunner
@@ -1022,7 +1053,7 @@ input {
     background-color: whitesmoke;
     border: 1px solid #333;
     font-family: "Orbitron", sans-serif;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .sensor-action-select {
@@ -1032,7 +1063,7 @@ input {
 }
 
 .role-input {
-    font-size: 8pt;
+    font-size: var(--font-xs);
     height: 20px;
     margin: 0px;
     margin-left: 2px;
@@ -1076,7 +1107,7 @@ input {
 }
 
 .label-scenario-name {
-    font-size: 14pt;
+    font-size: var(--font-lg);
 }
 
 .tutorial-button {
@@ -1111,7 +1142,7 @@ input {
     justify-content: space-between;
     align-items: center;
     padding: 2px;
-    font-size: 3px;
+    font-size: var(--font-xs);
 }
 
 .planet-effect-row label {
@@ -1120,7 +1151,7 @@ input {
     align-items: flex-start;
     margin: 8px;
     cursor: pointer;
-    font-size: 7pt;
+    font-size: var(--font-xs);
 }
 
 .planet-effect-checkbox {
@@ -1150,7 +1181,7 @@ input {
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     padding: 4px 0;
     width: 100%;
 }
@@ -1172,7 +1203,7 @@ input {
     color: black;
     background-color: whitesmoke;
     border: 1px solid #333;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .save-scenario-dialog-backdrop,
@@ -1216,7 +1247,7 @@ input {
     border: 1px solid #333;
     border-radius: 4px;
     padding: 4px 6px;
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-family: "Sono", monospace;
     width: 100%;
     box-sizing: border-box;
@@ -1245,7 +1276,7 @@ input {
     color: white;
     cursor: pointer;
     font-family: "Orbitron", sans-serif;
-    font-size: 10pt;
+    font-size: var(--font-md);
 }
 
 .save-scenario-button-row button:disabled {
@@ -1301,7 +1332,7 @@ input {
 .hardpoint-guns .hardpoint-gun {
     flex: 1 1 0;
     min-width: 0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .weapon-detail-backdrop {
@@ -1327,12 +1358,12 @@ input {
 
 .weapon-detail-dialog h2 {
     margin: 0 0 4px 0;
-    font-size: 13pt;
+    font-size: var(--font-lg);
 }
 
 .weapon-detail-summary {
     color: #b0b0b0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     margin-bottom: 10px;
 }
 
@@ -1348,7 +1379,7 @@ input {
 }
 
 .weapon-detail-gun-label {
-    font-size: 9pt;
+    font-size: var(--font-sm);
     color: #b0b0b0;
     min-width: 44px;
 }
@@ -1361,7 +1392,7 @@ input {
 }
 
 .weapon-detail-modifier {
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -1388,7 +1419,7 @@ input {
 }
 
 .hardpoint-usage {
-    font-size: 12px;
+    font-size: var(--font-sm);
 }
 
 /* Over-allowance is advisory only: the ship is still submittable. */
@@ -1404,12 +1435,12 @@ input {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    font-size: 12px;
+    font-size: var(--font-sm);
     margin-top: 4px;
 }
 
 .hardpoint-column-labels > span {
-    font-size: 10px;
+    font-size: var(--font-xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     opacity: 0.6;
@@ -1477,7 +1508,7 @@ input {
 .hardpoint-guns .hardpoint-gun {
     flex: 1 1 0;
     min-width: 0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .weapon-detail-backdrop {
@@ -1503,12 +1534,12 @@ input {
 
 .weapon-detail-dialog h2 {
     margin: 0 0 4px 0;
-    font-size: 13pt;
+    font-size: var(--font-lg);
 }
 
 .weapon-detail-summary {
     color: #b0b0b0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     margin-bottom: 10px;
 }
 
@@ -1524,7 +1555,7 @@ input {
 }
 
 .weapon-detail-gun-label {
-    font-size: 9pt;
+    font-size: var(--font-sm);
     color: #b0b0b0;
     min-width: 44px;
 }
@@ -1537,7 +1568,7 @@ input {
 }
 
 .weapon-detail-modifier {
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -1549,7 +1580,7 @@ input {
 }
 
 .hardpoint-problem {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: #b00;
     margin-top: 2px;
 }
@@ -1557,7 +1588,7 @@ input {
 /* Gunnery moved to the hardpoint rows; this keeps its absence from reading as
    an oversight. */
 .crew-builder-note {
-    font-size: 12px;
+    font-size: var(--font-sm);
     opacity: 0.7;
     margin: 4px 0 0 0;
 }
@@ -1596,7 +1627,7 @@ input {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     white-space: nowrap;
     cursor: pointer;
 }
@@ -1629,7 +1660,7 @@ input {
     border: 1px solid #555;
     border-radius: 3px;
     font-family: "Sono", monospace;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     padding: 0 2px;
 }
 
@@ -1665,7 +1696,7 @@ input {
     border: 1px solid #555;
     border-radius: 3px;
     font-family: "Sono", monospace;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     padding: 0 2px;
     margin-left: 4px;
 }
@@ -1713,7 +1744,7 @@ input {
 
 .sensor-empty {
     margin: 2px 0 0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     font-style: italic;
     opacity: 0.6;
 }
@@ -1772,12 +1803,12 @@ input {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .emission-total {
     font-family: "Sono", monospace;
-    font-size: 11pt;
+    font-size: var(--font-md);
 }
 
 /* The gauge names its own state, and the colour of that name is the state. */
@@ -1793,7 +1824,7 @@ input {
     display: grid;
     grid-template-columns: auto 1fr auto;
     gap: 1px 6px;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .emission-term {
@@ -1836,7 +1867,7 @@ input {
     list-style: none;
     margin: 4px 0 0;
     padding: 0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .watcher {
@@ -1848,7 +1879,7 @@ input {
 
 .watcher-state {
     margin-left: auto;
-    font-size: 8pt;
+    font-size: var(--font-xs);
     letter-spacing: 0.08em;
     opacity: 0.7;
 }
@@ -1877,7 +1908,7 @@ input {
 
 .salvo-count-number {
     font-family: "Sono", monospace;
-    font-size: 10pt;
+    font-size: var(--font-md);
 }
 
 .salvo-range {
@@ -1905,13 +1936,13 @@ input {
 .picture-grid {
     border-collapse: collapse;
     margin-top: 4px;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     width: 100%;
 }
 
 .picture-ship {
     font-family: "Sono", monospace;
-    font-size: 8pt;
+    font-size: var(--font-xs);
     font-weight: normal;
     opacity: 0.75;
     padding: 0 2px;
@@ -1993,7 +2024,7 @@ input {
     display: flex;
     gap: 4px;
     align-items: baseline;
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     opacity: 0.85;
 }
 
@@ -2085,14 +2116,14 @@ input {
 }
 
 .crew-group-title {
-    font-size: 10pt;
+    font-size: var(--font-md);
     letter-spacing: 0.04em;
     opacity: 0.85;
 }
 
 .crew-group-empty {
     margin: 2px 0;
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     font-style: italic;
     opacity: 0.55;
 }
@@ -2143,14 +2174,14 @@ input {
 }
 
 .crew-column-head {
-    font-size: 7.5pt;
+    font-size: var(--font-xs);
     opacity: 0.55;
     text-align: center;
 }
 
 .crew-row-label {
     font-family: "Sono", monospace;
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     opacity: 0.6;
     text-align: right;
 }
@@ -2165,7 +2196,7 @@ input {
    one of them. Quiet: it is a label on someone else's controls. */
 .crew-slot-tag {
     margin-top: 6px;
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     letter-spacing: 0.04em;
     opacity: 0.6;
     border-top: 1px solid #22303d;
@@ -2190,7 +2221,7 @@ input {
 .power-summary {
     display: flex;
     justify-content: space-between;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     font-family: "Sono", monospace;
 }
 
@@ -2253,7 +2284,7 @@ input {
 
 .power-column-draw {
     font-family: "Sono", monospace;
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
 }
 
 .power-column-switch {
@@ -2263,7 +2294,7 @@ input {
     color: inherit;
     cursor: pointer;
     font-family: "Sono", monospace;
-    font-size: 7pt;
+    font-size: var(--font-xs);
     padding: 0 3px;
 }
 
@@ -2273,7 +2304,7 @@ input {
 }
 
 .power-column-label {
-    font-size: 7pt;
+    font-size: var(--font-xs);
     opacity: 0.7;
     text-align: center;
     max-width: 46px;
@@ -2287,7 +2318,7 @@ input {
     align-items: center;
     gap: 4px;
     margin-top: 6px;
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     opacity: 0.85;
 }
 
@@ -2298,7 +2329,7 @@ input {
     list-style: none;
     margin: 4px 0 0;
     padding: 0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .damage-row {
@@ -2344,14 +2375,109 @@ input {
 }
 
 .damage-overload {
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     color: #ffa94d;
     opacity: 0.9;
 }
 
 .damage-hull {
     margin-top: 4px;
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     font-family: "Sono", monospace;
     opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------------------
+   Stations: one card per crew station the player is working.
+
+   The layout used to depend on which role you held -- a gunner's controls
+   were an accordion in the left column, a pilot's helm a pop-up, and the
+   referee got a second copy of everything in a window of its own. Now every
+   station is the same card, and they flow into as many columns as the space
+   allows: one station reads as a column, five fill the width.
+   --------------------------------------------------------------------------- */
+
+.stations {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(330px, 380px));
+    align-content: start;
+    gap: 6px;
+    padding: 4px;
+    max-height: 100vh;
+    overflow: auto;
+    /* Only as wide as the cards it holds, so the view beside it keeps the
+       rest of the screen. */
+    justify-content: start;
+}
+
+.station-card {
+    border: 1px solid #b6bcae;
+    background-color: rgba(0, 0, 0, 0.85);
+    align-self: start;
+}
+
+/* The heading is the fold control, so it is a button -- but it should read as
+   a title bar, not as something to press for its own sake. */
+.station-card-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    padding: 3px 6px;
+    background: rgba(40, 54, 68, 0.6);
+    border: none;
+    border-bottom: 1px solid #2c3c4c;
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+}
+
+.station-card-head:hover {
+    background: rgba(56, 74, 92, 0.7);
+}
+
+.station-card-title {
+    font-size: var(--font-md);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* Who is working it: a skill, or a position when the ship carries several. */
+.station-card-crew {
+    font-size: var(--font-xs);
+    font-family: "Sono", monospace;
+    opacity: 0.65;
+}
+
+.station-card-chevron {
+    margin-left: auto;
+    opacity: 0.6;
+    font-size: var(--font-sm);
+}
+
+.station-card-body {
+    padding: 4px 6px 6px;
+}
+
+/* A card folded away keeps its heading and nothing else. */
+.station-card-closed .station-card-head {
+    border-bottom: none;
+}
+
+/* The orders a station has queued, at the foot of its own card. The captain's
+   card carries the whole round's instead. */
+.station-orders {
+    margin-top: 6px;
+    border-top: 1px solid #22303d;
+    padding-top: 4px;
+}
+
+.stations-note {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 2px 6px;
+    font-size: var(--font-xs);
+    font-style: italic;
+    opacity: 0.7;
 }

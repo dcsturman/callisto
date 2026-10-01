@@ -19,22 +19,17 @@ import {
   stationsDown,
 } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
-import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
+import { isReferee } from "lib/view";
 import { ENGINEER_SKILLS } from "components/controls/CrewBuilder";
 import { nextRound, setReady, setShipTeam } from "lib/serverManager";
 import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
-import { Actions, FireControl } from "./WeaponUse";
-import { SensorAction } from "components/controls/Actions";
-import { ShipComputer } from "./ShipComputer";
-import { CaptainTasks } from "./CaptainTasks";
 import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { AppMode } from "state/tutorialSlice";
-import { isUndetected, sameSide } from "lib/contacts";
 import { store } from "state/store";
 import {
   setComputerShipName,
@@ -255,7 +250,6 @@ export function Controls() {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
   const shipTemplates = useAppSelector((state) => state.server.templates);
-  const actions = useAppSelector((state) => state.actions);
   const showRange = useAppSelector((state) => state.ui.showRange);
 
   const dispatch = useAppDispatch();
@@ -508,104 +502,8 @@ export function Controls() {
                   .join(", ") || "none"}`,
               ].join(",  ")}
             </p>
-            <hr />
-            {hasRole(roles, ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer) &&
-              !hasRole(roles, ViewMode.General) &&
-              computerShipName && (
-                <Accordion
-                  title={`${computerShipName} ${rolesToString(roles)} Controls`}
-                  initialOpen={true}
-                >
-                  <ShipComputer ship={computerShip} />
-                </Accordion>
-              )}
-            {hasRole(roles, ViewMode.Gunner) && (
-              <div className="control-form">
-                <Accordion
-                  title={`${computerShipName} Fire Controls`}
-                  initialOpen={true}
-                >
-                  <FireControl />
-                </Accordion>
-              </div>
-            )}
           </>
         )}
-        {/* Captain rolls leadership from the left pane (their main UI).
-            General sees the same panel via the ShipComputer popup, so we
-            don't render it here twice.
-
-            The assigned ship if there is one, else the ship being viewed --
-            the same rule the boost checkboxes use. Every other station
-            already works on the viewed ship; requiring an assignment here
-            meant a captain looking at a ship got no leadership button. */}
-        {hasRole(roles, ViewMode.Captain) && !hasRole(roles, ViewMode.General) && (() => {
-          const captainShip = findShip(entities, shipName ?? computerShipName);
-          if (!captainShip) return null;
-          return <CaptainTasks ship={captainShip} />;
-        })()}
-        {computerShip && computerShipName && computerShipDesign && (() => {
-          // Note: don't bail when `actions[computerShipName]` is missing —
-          // pilot state (dodge_thrust / assist_gunners) lives on the ship
-          // itself, not in the actions slice. If the user only sets pilot
-          // actions, the slice has no entry but the Actions list still needs
-          // to render the Evade / Assist Gunner rows.
-          const a = actions[computerShipName];
-          // Per-role visibility. General sees everything; specialist roles see
-          // only their own action category. Pilot / Observer see nothing here.
-          // Captain needs to see ALL queued actions on the selected ship in
-          // order to mark boost checkboxes against them, so Captain is added
-          // to all three of these visibility flags.
-          const seeFire =
-            hasRole(roles, ViewMode.Gunner, ViewMode.Captain);
-          const seeSensor =
-            hasRole(roles, ViewMode.Sensors, ViewMode.Captain);
-          const seeEngineer =
-            hasRole(roles, ViewMode.Engineer, ViewMode.Captain);
-          const seePilot =
-            hasRole(roles, ViewMode.Pilot, ViewMode.Captain);
-          const fireActions = seeFire ? a?.fire || [] : [];
-          const pdActions = seeFire ? a?.pointDefense || [] : [];
-          const sensorActions = seeSensor ? (a?.sensors ?? []) : [];
-          const engineerActions = seeEngineer ? (a?.engineers ?? []) : [];
-          const dodgeThrust = computerShip?.dodge_thrust ?? 0;
-          const assistGunners = computerShip?.assist_gunners ?? false;
-          const pilotState = seePilot
-            ? { dodgeThrust, assistGunners }
-            : null;
-          // Ships this one could be looking for. Detection is free and needs
-          // no order, so these are not queued actions — they are here because
-          // a captain can concentrate the sensop on one of them, and that is
-          // the only part of detection leadership reaches.
-          const searchTargets = seeSensor
-            ? entities.ships.filter(
-                (target) =>
-                  target.name !== computerShip.name &&
-                  isUndetected(computerShip, target) &&
-                  !sameSide(computerShip, target),
-              )
-            : [];
-          const hasAny =
-            fireActions.length > 0 ||
-            pdActions.length > 0 ||
-            sensorActions.some((sensor) => sensor.action !== SensorAction.None) ||
-            engineerActions.some((engineer) => engineer != null) ||
-            searchTargets.length > 0 ||
-            (pilotState != null &&
-              (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
-          if (!hasAny) return null;
-          return (
-            <Actions
-              fireActions={fireActions}
-              pointDefenseActions={pdActions}
-              sensorActions={sensorActions}
-              engineerActions={engineerActions}
-              pilotState={pilotState}
-              searchTargets={searchTargets}
-              weapons={shipWeapons(computerShip, shipTemplates)}
-            />
-          );
-        })()}
       </Accordion>
       {/* The referee ends the round; everyone else says when their orders are
           in. Two people pressing Next Round ends the round before the rest of
