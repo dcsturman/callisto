@@ -1237,6 +1237,7 @@ async fn test_get_entities() {
       transmitting: None,
       team: None,
       contacts: None,
+      auxiliary_on: None,
     })
     .unwrap();
 

@@ -31,7 +31,28 @@ export const availablePower = (ship: PoweredShip): number =>
 // no board.
 
 /** One call on the plant, as the server names them. */
-export type PowerSystem = "Basic" | "Sensors" | "Maneuver" | "Jump" | {Weapon: number};
+export type PowerSystem =
+  | "Basic"
+  | "Sensors"
+  | "Maneuver"
+  | "Jump"
+  | {Weapon: number}
+  | {Auxiliary: number};
+
+/** A stable key for a system, for React lists and lookups. */
+export const powerSystemKey = (system: PowerSystem): string =>
+  typeof system === "string"
+    ? system
+    : "Weapon" in system
+      ? `weapon-${system.Weapon}`
+      : `auxiliary-${system.Auxiliary}`;
+
+/** A powered system that is not a drive, a sensor suite or a gun. */
+export interface AuxiliarySystem {
+  name: string;
+  power: number;
+  default_on?: boolean;
+}
 
 /** One line of the budget. */
 export interface PowerLine {
@@ -58,10 +79,18 @@ export const isPowered = (line: PowerLine): boolean =>
   line.online && (line.system === "Maneuver" ? line.received > 0 : line.received >= line.draw);
 
 /** Whether two system references are the same line. */
-export const samePowerSystem = (a: PowerSystem, b: PowerSystem): boolean =>
-  typeof a === "string" || typeof b === "string"
-    ? a === b
-    : a.Weapon === b.Weapon;
+export const samePowerSystem = (a: PowerSystem, b: PowerSystem): boolean => {
+  if (typeof a === "string" || typeof b === "string") {
+    return a === b;
+  }
+  if ("Weapon" in a && "Weapon" in b) {
+    return a.Weapon === b.Weapon;
+  }
+  if ("Auxiliary" in a && "Auxiliary" in b) {
+    return a.Auxiliary === b.Auxiliary;
+  }
+  return false;
+};
 
 /** What a sensor suite draws (High Guard p. 23). */
 const SENSOR_POWER: {[grade: string]: number} = {
@@ -133,7 +162,7 @@ export interface PowerBudgetShip extends PoweredShip {
  */
 export const powerLines = (
   ship: PowerBudgetShip,
-  design: {displacement: number; maneuver: number; jump: number},
+  design: {displacement: number; maneuver: number; jump: number; auxiliary?: AuxiliarySystem[]},
   weapons: Weapon[]
 ): PowerLine[] => {
   const offline = ship.offline ?? [];
@@ -189,6 +218,18 @@ export const powerLines = (
     online: isOnline("Maneuver"),
     onDemand: false,
     switchable: true,
+  });
+
+  (design.auxiliary ?? []).forEach((aux, index) => {
+    lines.push({
+      system: {Auxiliary: index},
+      label: aux.name,
+      draw: aux.power,
+      received: 0,
+      online: isOnline({Auxiliary: index}),
+      onDemand: false,
+      switchable: true,
+    });
   });
 
   if (design.jump > 0) {

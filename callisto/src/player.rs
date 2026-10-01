@@ -17,7 +17,7 @@ use crate::payloads::{
   SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
-use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
+use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Weapon, WeaponMount};
 use crate::{debug, info, warn};
 
 /// Most weapons we will accept on a single ship.  Generous compared to any real
@@ -277,7 +277,12 @@ impl PlayerManager {
     // Applied after creation rather than threaded through `add_ship`, which
     // already carries six arguments. Absent leaves the normal running state a
     // new ship is built with.
-    if ship.active_sensors.is_some() || ship.transmitting.is_some() || ship.team.is_some() || ship.contacts.is_some() {
+    if ship.active_sensors.is_some()
+      || ship.transmitting.is_some()
+      || ship.team.is_some()
+      || ship.contacts.is_some()
+      || ship.auxiliary_on.is_some()
+    {
       if let Some(added) = entities.ships.get(&name) {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
@@ -287,6 +292,11 @@ impl PlayerManager {
         if let Some(contacts) = ship.contacts {
           added.contacts = contacts;
           added.contacts.sort();
+        }
+        if let Some(running) = ship.auxiliary_on {
+          for index in 0..added.design.auxiliary.len() {
+            added.set_online(PowerSystem::Auxiliary(index), running.contains(&index));
+          }
         }
       }
     }

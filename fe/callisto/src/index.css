@@ -2423,6 +2423,15 @@ h3.control-form {
     opacity: 0.85;
 }
 
+/* A system that draws only when it is used -- the jump drive. Lit its full
+   height when the spare power would cover it, in the cooler colour of
+   something held in reserve rather than something running. */
+.power-column-standby .power-column-fill {
+    background: #5aa9e6;
+    box-shadow: 0 0 6px rgba(90, 169, 230, 0.5);
+    opacity: 0.75;
+}
+
 /* A system the plant cannot feed: the tube is lit to what it is getting, in
    the colour of a warning rather than of a system at work. */
 .power-column-starved .power-column-fill {

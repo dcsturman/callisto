@@ -543,6 +543,10 @@ pub struct ShipDesignTemplate {
   /// when empty, so every design written before screens existed is unchanged.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub screens: Vec<ScreenType>,
+  /// Powered systems that are not drives, sensors or guns: a Harrier's
+  /// holographic hull, say. Omitted from the wire when empty.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub auxiliary: Vec<AuxiliarySystem>,
   pub tl: u8,
   /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
   /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
@@ -1367,6 +1371,29 @@ pub enum PowerSystem {
   Jump,
   /// One weapon mount, by its index in the ship's armament.
   Weapon(usize),
+  /// Anything else the hull carries that draws Power and can be switched: a
+  /// Harrier's holographic hull, a cargo lifter, a research suite. Indexed
+  /// into the design's `auxiliary` list.
+  ///
+  /// The ship's computer will join this table once computers do anything;
+  /// it is a draw like any other and belongs in the budget beside these.
+  Auxiliary(usize),
+}
+
+/// A powered system a design carries that is not a drive, a sensor suite or a
+/// gun.
+///
+/// The Harrier class projects a holographic hull -- a false image of another
+/// ship -- which costs 100 Power while it is running. It is off at the dock
+/// and the engineer brings it up, so these default to off and a scenario can
+/// say otherwise when it adds the ship.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AuxiliarySystem {
+  pub name: String,
+  pub power: u32,
+  /// Whether the ship starts with it running.
+  #[serde(default)]
+  pub default_on: bool,
 }
 
 /// One line of a ship's power budget.
@@ -1485,7 +1512,15 @@ impl Ship {
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
       damage_log: vec![],
-      offline: vec![],
+      // A hologram projector is not running when the ship undocks. Whatever
+      // the design says starts off, starts off.
+      offline: design
+        .auxiliary
+        .iter()
+        .enumerate()
+        .filter(|(_, aux)| !aux.default_on)
+        .map(|(index, _)| PowerSystem::Auxiliary(index))
+        .collect(),
       basic_power_halved: false,
       overload_drive_attempts: 0,
       overload_plant_attempts: 0,
@@ -2097,6 +2132,16 @@ impl Ship {
       online: self.is_online(PowerSystem::Maneuver),
       on_demand: false,
     });
+    for (index, aux) in self.design.auxiliary.iter().enumerate() {
+      lines.push(PowerLine {
+        system: PowerSystem::Auxiliary(index),
+        label: aux.name.clone(),
+        draw: aux.power,
+        received: 0,
+        online: self.is_online(PowerSystem::Auxiliary(index)),
+        on_demand: false,
+      });
+    }
     if self.design.jump > 0 {
       lines.push(PowerLine {
         system: PowerSystem::Jump,
@@ -3247,6 +3292,7 @@ impl Default for ShipDesignTemplate {
         Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
       ],
       screens: vec![],
+      auxiliary: vec![],
       tl: 15,
       role: None,
       source: None,
@@ -3378,6 +3424,42 @@ mod tests {
     ship.set_basic_power_halved(true);
     assert_eq!(draw(&ship, PowerSystem::Basic), Some(20), "half, in an emergency");
     assert_eq!(ship.max_acceleration(), 6);
+  }
+
+  /// A hologram projector is a luxury: it starts off, and when the plant is
+  /// short it loses its share before the ship loses Thrust.
+  #[test]
+  fn an_auxiliary_system_starts_off_and_gives_way_to_the_drive() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      power: 260,
+      maneuver: 6,
+      jump: 2,
+      sensors: Sensors::Advanced,
+      weapons: vec![],
+      auxiliary: vec![AuxiliarySystem {
+        name: "Holographic hull".to_string(),
+        power: 100,
+        default_on: false,
+      }],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Harrier".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    assert!(!ship.is_online(PowerSystem::Auxiliary(0)), "the projector is down at the dock");
+    assert_eq!(ship.max_acceleration(), 6);
+
+    // Bring it up: 40 for life support, 6 for the sensors and 120 for the
+    // drive leave 94 of 260, which is not the 100 the projector wants.
+    ship.set_online(PowerSystem::Auxiliary(0), true);
+    assert!(!ship.is_powered(PowerSystem::Auxiliary(0)), "not enough left to light it");
+    assert_eq!(ship.max_acceleration(), 6, "and the drive keeps its share");
+
+    // Drop the drive and there is room for it.
+    ship.set_online(PowerSystem::Maneuver, false);
+    assert!(ship.is_powered(PowerSystem::Auxiliary(0)));
+    assert_eq!(ship.max_acceleration(), 0);
   }
 
   /// Jump fuel is a tenth of the ship's *tonnage* per jump number. A
@@ -3679,6 +3761,7 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
+      auxiliary: vec![],
       tl: 10,
       role: None,
       source: None,
@@ -4260,6 +4343,7 @@ mod tests {
         Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small)),
       ],
       screens: vec![],
+      auxiliary: vec![],
       tl: 12,
       role: None,
       source: None,
@@ -4397,6 +4481,7 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
+      auxiliary: vec![],
       tl: 12,
       role: None,
       source: None,

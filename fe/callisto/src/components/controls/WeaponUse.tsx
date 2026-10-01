@@ -911,6 +911,9 @@ export function Actions(args: {
     if (typeof system === "string") {
       return system === "Maneuver" ? "the m-drive" : system === "Jump" ? "the j-drive" : system.toLowerCase();
     }
+    if ("Auxiliary" in system) {
+      return `auxiliary system ${system.Auxiliary + 1}`;
+    }
     const weapon = args.weapons[system.Weapon];
     return weapon == null ? `mount ${system.Weapon + 1}` : weaponToString(weapon);
   };

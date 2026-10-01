@@ -45,6 +45,28 @@ import { CiCircleQuestion } from "react-icons/ci";
 import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
 import { Team, TEAMS, TEAM_CSS } from "lib/teams";
+import { samePowerSystem } from "lib/power";
+
+/**
+ * Which of a design's auxiliary systems start running.
+ *
+ * A Harrier's holographic hull is off at the dock and the engineer brings it
+ * up, so these are off unless the design says otherwise -- and a scenario can
+ * open with one already running by ticking it here.
+ */
+function defaultAuxiliaryOn(design: ShipDesignTemplate | undefined): number[] {
+  return (design?.auxiliary ?? [])
+    .map((aux, index) => (aux.default_on ? index : -1))
+    .filter((index) => index >= 0);
+}
+
+/** The same, read back off a ship that already exists. */
+function auxiliaryOnFor(ship: Ship, design: ShipDesignTemplate | undefined): number[] {
+  const offline = ship.offline ?? [];
+  return (design?.auxiliary ?? [])
+    .map((_aux, index) => index)
+    .filter((index) => !offline.some((off) => samePowerSystem(off, {Auxiliary: index})));
+}
 
 import { addShip } from "lib/serverManager";
 import { useAppSelector } from "state/hooks";
@@ -118,6 +140,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
       activeSensors: true,
       transmitting: false,
       team: null as Team | null,
+      // A Harrier's holographic hull and the like. Off unless the design says
+      // otherwise -- the engineer brings them up.
+      auxiliaryOn: defaultAuxiliaryOn(firstDesign),
     };
   }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
@@ -148,6 +173,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         activeSensors: current.active_sensors !== false,
         transmitting: current.transmitting === true,
         team: current.team ?? null,
+        auxiliaryOn: auxiliaryOnFor(current, shipDesignTemplates[current.design]),
       };
       setAddShipData(template);
     }
@@ -184,6 +210,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
               activeSensors: ship.active_sensors !== false,
               transmitting: ship.transmitting === true,
               team: ship.team ?? null,
+              auxiliaryOn: auxiliaryOnFor(ship, shipDesignTemplates[ship.design]),
             });
           }
         }
@@ -247,6 +274,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         active_sensors: addShipData.activeSensors,
         transmitting: addShipData.transmitting,
         team: addShipData.team ?? undefined,
+        auxiliary_on: addShipData.auxiliaryOn,
       };
 
       addShip(revision);
@@ -267,9 +295,10 @@ export const AddShip: React.FC<AddShipProps> = () => {
         design: design,
         crew,
         armament: buildWeaponRows(design, undefined, crew.gunnery),
+        auxiliaryOn: defaultAuxiliaryOn(shipDesignTemplates[design]),
       });
     },
-    [addShipData, setAddShipData, buildWeaponRows, crewForDesign],
+    [addShipData, setAddShipData, buildWeaponRows, crewForDesign, shipDesignTemplates],
   );
 
   const handleWeaponsChange = useCallback(
@@ -393,6 +422,26 @@ export const AddShip: React.FC<AddShipProps> = () => {
               />
               Transmit
             </label>
+            {(shipDesignTemplates[addShipData.design]?.auxiliary ?? []).map((aux, index) => (
+              <label
+                key={aux.name}
+                className="emissions-toggle"
+                title={`${aux.name}: draws ${aux.power} Power while it is running.`}>
+                <input
+                  type="checkbox"
+                  checked={addShipData.auxiliaryOn.includes(index)}
+                  onChange={(event) =>
+                    setAddShipData({
+                      ...addShipData,
+                      auxiliaryOn: event.target.checked
+                        ? [...addShipData.auxiliaryOn, index]
+                        : addShipData.auxiliaryOn.filter((on) => on !== index),
+                    })
+                  }
+                />
+                {aux.name}
+              </label>
+            ))}
             <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
               Team
               <select

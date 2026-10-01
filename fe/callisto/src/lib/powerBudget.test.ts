@@ -94,3 +94,30 @@ describe("what the plant can actually feed", () => {
     expect(lines.find((l) => l.label.startsWith("J-drive"))!.received).toBe(0);
   });
 });
+
+describe("auxiliary systems", () => {
+  const withHologram = {
+    ...design,
+    auxiliary: [{name: "Holographic hull", power: 100, default_on: false}],
+  };
+
+  test("a system that is switched off draws nothing and sits after the drive", () => {
+    const lines = powerLines(ship({offline: [{Auxiliary: 0}]}), withHologram, weapons);
+    const hologram = lines.find((l) => l.label === "Holographic hull")!;
+    expect(hologram.online).toBe(false);
+    expect(hologram.received).toBe(0);
+    // The drive is fed first: a luxury loses its share before the ship loses
+    // Thrust.
+    expect(lines.findIndex((l) => l.system === "Maneuver")).toBeLessThan(
+      lines.findIndex((l) => l.label === "Holographic hull")
+    );
+  });
+
+  test("switched on, it takes what is left and starves if that is not enough", () => {
+    const lines = powerLines(ship(), withHologram, weapons);
+    const hologram = lines.find((l) => l.label === "Holographic hull")!;
+    // 260 less 40 life support, 6 sensors, 16 guns and 120 drive leaves 78.
+    expect(hologram.received).toBe(0);
+    expect(isPowered(hologram)).toBe(false);
+  });
+});

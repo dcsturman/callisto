@@ -90,6 +90,14 @@ pub struct AddShipMsg {
   /// approach. Absent means none.
   #[serde(default)]
   pub contacts: Option<Vec<String>>,
+  /// Auxiliary systems the ship starts with running, by index into the
+  /// design's `auxiliary` list.
+  ///
+  /// A Harrier's holographic hull is off at the dock, so absent means the
+  /// design's own defaults. A scenario that opens with the projector already
+  /// up says so here.
+  #[serde(default)]
+  pub auxiliary_on: Option<Vec<usize>>,
 }
 
 #[skip_serializing_none]
@@ -595,6 +603,7 @@ mod tests {
       transmitting: None,
       team: None,
       contacts: None,
+      auxiliary_on: None,
     };
     let json = json!({
         "name": "ship1",
@@ -624,6 +633,7 @@ mod tests {
       transmitting: None,
       team: None,
       contacts: None,
+      auxiliary_on: None,
     };
     let json = json!({
         "name": "ship1",

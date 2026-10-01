@@ -544,6 +544,17 @@ Two consequences worth knowing:
   only needed when the ship actually initiates a jump", HG p. 16), so it is
   shown on the board but kept out of the running total.
 
+#### Addition — auxiliary systems
+A design can carry powered systems that are neither drives, sensors nor guns:
+the Harrier class projects a holographic hull — a false image of another
+ship — which draws 100 Power while it runs. These are off when the ship
+arrives, the engineer switches them on from the power board, and a scenario
+can open with one already running by ticking it in Add Ship.
+
+They sit last in the power priority, after the manoeuvre drive: a luxury loses
+its share before the ship loses Thrust. The ship's computer will join the same
+table once computers do anything mechanical.
+
 #### Change — a system without its Power does not work
 The books price every system's Power but say little about running one on less
 than it needs. Callisto feeds systems in a fixed order — life support, sensors,

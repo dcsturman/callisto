@@ -49,5 +49,12 @@
   ],
   "tl": 15,
   "role": "Raider",
-  "source": "Custom"
+  "source": "Custom",
+  "auxiliary": [
+    {
+      "name": "Holographic hull",
+      "power": 100,
+      "default_on": false
+    }
+  ]
 }

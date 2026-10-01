@@ -4,6 +4,7 @@ import {Weapon, CompressedWeapon, weaponToString, weaponKinds} from "./weapon";
 import type {Ship} from "./entities";
 // Type-only for the same reason: CrewBuilder reaches back into `lib/entities`.
 import type {Crew} from "components/controls/CrewBuilder";
+import {AuxiliarySystem} from "lib/power";
 
 /**
  * Readable names for screen types, which travel the wire as Rust enum variant
@@ -53,6 +54,12 @@ export interface ShipDesignTemplate {
   weapons: Weapon[];
   /** Directed defensive systems. Omitted from the wire when the design has none. */
   screens?: string[];
+  /**
+   * Powered systems that are not drives, sensors or guns -- a Harrier's
+   * holographic hull. Off unless the design says otherwise, and switchable
+   * from the engineer's power board. Omitted when the design has none.
+   */
+  auxiliary?: AuxiliarySystem[];
   tl: number;
   // Both are free-form and optional on the Rust side (`Option<String>`, omitted
   // from the wire when unset).  Used only to organize the design picker.

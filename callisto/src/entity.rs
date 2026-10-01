@@ -3848,6 +3848,7 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
+      auxiliary: vec![],
       tl: 10,
       role: None,
       source: None,

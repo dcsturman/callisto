@@ -10,6 +10,7 @@ import {
   powerDemand,
   powerLines,
   powerSpare,
+  powerSystemKey,
   samePowerSystem,
 } from "lib/power";
 import {shipWeapons} from "lib/shipDesignTemplates";
@@ -93,8 +94,9 @@ export function PowerBoard(args: {ship: Ship}) {
       <div className="power-bars">
         {lines.map((line) => (
           <PowerColumn
-            key={typeof line.system === "string" ? line.system : `weapon-${line.system.Weapon}`}
+            key={powerSystemKey(line.system)}
             line={line}
+            spare={spare}
             queued={queuedFor(line.system)}
             onToggle={() => order(line.system, !line.online)}
           />
@@ -126,18 +128,41 @@ export function PowerBoard(args: {ship: Ship}) {
  * Height is its draw against the biggest number on the board, and colour says
  * what it is doing: running, shut down, or about to be switched this round.
  */
-function PowerColumn(args: {line: PowerLine; queued: boolean; onToggle: () => void}) {
+function PowerColumn(args: {line: PowerLine; spare: number; queued: boolean; onToggle: () => void}) {
   const {line} = args;
-  const share = line.draw === 0 ? 1 : Math.min(1, line.received / line.draw);
+  // The jump drive draws nothing until the ship jumps, so it has no share to
+  // show. What the engineer needs from its column is whether the spare power
+  // would cover it -- an empty tube next to "78 spare" read as a fault.
+  const standby = line.onDemand;
+  const covered = standby && args.spare >= line.draw;
+  const share = standby
+    ? covered
+      ? 1
+      : Math.min(1, args.spare / Math.max(1, line.draw))
+    : line.draw === 0
+      ? 1
+      : Math.min(1, line.received / line.draw);
   const height = Math.max(2, Math.round(share * 100));
   const running = isPowered(line);
-  const state = args.queued ? "queued" : !line.online ? "dark" : running ? "live" : "starved";
+  const state = args.queued
+    ? "queued"
+    : !line.online
+      ? "dark"
+      : standby
+        ? covered
+          ? "standby"
+          : "starved"
+        : running
+          ? "live"
+          : "starved";
   const title = [
     `${line.label}: needs ${line.draw} Power`,
-    line.onDemand
-      ? "drawn only while jumping"
-      : !line.online
-        ? "shut down"
+    !line.online
+      ? "shut down"
+      : standby
+        ? covered
+          ? `on standby — ${args.spare} spare covers it`
+          : `on standby — only ${args.spare} spare, ${line.draw - args.spare} short`
         : running
           ? line.received < line.draw
             ? `running on ${line.received}`
