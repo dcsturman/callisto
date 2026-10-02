@@ -89,21 +89,32 @@ export function ShotOdds(args: {ship: Ship}) {
       const gunner = args.ship.crew?.gunnery?.[index] ?? 0;
       const manned = (args.ship.crew?.gunnery?.length ?? 0) > index;
       const inReach = reaches(weapon, band);
-      const dm =
-        gunner +
-        (WEAPON_HIT_MOD[kind] ?? 0) +
+      // Itemised the way the results log itemises an attack: a bare -1 is a
+      // riddle, and the gunner's next question is always "why".
+      const terms: [string, number][] = [
+        ["gunner", gunner],
+        ["weapon", WEAPON_HIT_MOD[kind] ?? 0],
         // A salvo is not modified by the range it was launched from.
-        (salvo ? 0 : RANGE_MOD[band]) +
-        (locked ? 2 : 0) +
-        dodge +
-        evadeSoftware +
-        advanced +
-        (salvo ? launchSolution : 0);
+        [salvo ? "range (salvo, so none)" : `range (${band})`, salvo ? 0 : RANGE_MOD[band]],
+        ["sensor lock", locked ? 2 : 0],
+        ["their pilot evading", dodge],
+        ["their Evade software", evadeSoftware],
+        ["Advanced Fire Control", advanced],
+        ["Launch Solution", salvo ? launchSolution : 0],
+      ];
+      const dm = terms.reduce((total, [, value]) => total + value, 0);
+      const named = terms.filter(([, value]) => value !== 0);
+      const why =
+        named.length === 0
+          ? "No modifiers: a plain 2D against 8."
+          : named.map(([name, value]) => `${name} ${value >= 0 ? "+" : ""}${value}`).join(", ");
+
       return {
         label: weaponToString(weapon),
         manned,
         inReach,
         dm,
+        why,
         chance: chanceOf(dm),
       };
     });
@@ -144,11 +155,17 @@ export function ShotOdds(args: {ship: Ship}) {
         {rows.map((row, index) => (
           <li key={index} className={row.manned && row.inReach ? "odds-row" : "odds-row odds-row-dead"}>
             <span className="odds-weapon">{row.label}</span>
-            <span className="odds-dm">
+            <span className="odds-dm" title={row.why}>
               {row.dm >= 0 ? "+" : ""}
               {row.dm}
             </span>
-            <span className="odds-chance">
+            <span
+              className="odds-chance"
+              title={
+                row.manned && row.inReach
+                  ? `2D ${row.dm >= 0 ? "+" : ""}${row.dm} against 8 lands ${row.chance} times in 100`
+                  : undefined
+              }>
               {!row.manned ? "unmanned" : row.inReach ? `${row.chance}%` : "out of reach"}
             </span>
           </li>
