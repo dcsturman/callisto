@@ -140,6 +140,12 @@ export interface Ship extends Entity {
   /** Which of it the computer is running. Bandwidth limits this. */
   software_running?: Software[];
   /**
+   * Missiles, torpedoes and sandcaster barrels still aboard.
+   *
+   * Spent as they are fired and thrown; a reset restocks the ship.
+   */
+  magazine?: {missiles: number; torpedoes: number; sand: number};
+  /**
    * Switchable features to start running, by index into the design's list.
    *
    * Only ever set by the Add Ship dialog on its way to the server; a ship

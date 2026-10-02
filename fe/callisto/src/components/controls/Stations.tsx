@@ -7,6 +7,8 @@ import {useAppSelector} from "state/hooks";
 import {StationCard} from "components/controls/StationCard";
 import {
   GiCaptainHatProfile,
+  GiCrosshair,
+  GiMissileSwarm,
   GiJumpAcross,
   GiLaserTurret,
   GiLightningTrio,
@@ -22,6 +24,10 @@ import {SensorStation} from "components/controls/SensorStation";
 import {EngineerTasks} from "components/controls/EngineerTasks";
 import {PowerBoard} from "components/controls/PowerBoard";
 import {DamageBoard} from "components/controls/DamageBoard";
+import {IncomingBoard} from "components/controls/IncomingBoard";
+import {Magazine} from "components/controls/Magazine";
+import {ShotOdds} from "components/controls/ShotOdds";
+import {TargetBoard} from "components/controls/TargetBoard";
 import {ComputerBoard} from "components/controls/ComputerBoard";
 import {JumpBoard} from "components/controls/JumpBoard";
 import {FireControl, QueuedOrders} from "components/controls/WeaponUse";
@@ -88,10 +94,24 @@ export function Stations(args: {ship: Ship}) {
         ))}
 
       {hasRole(roles, ViewMode.Gunner) && (
-        <StationCard title="Gunner" icon={<GiLaserTurret />} crew={gunnerTag(args.ship)}>
-          <FireControl />
-          {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Gunner]} />}
-        </StationCard>
+        <>
+          <StationCard title="Gunner" icon={<GiLaserTurret />} crew={gunnerTag(args.ship)}>
+            <FireControl />
+            {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Gunner]} />}
+          </StationCard>
+          {/* Range, reach and the target's defences: what the gunner had to
+              assemble from four other places to choose a shot. */}
+          <StationCard title="Targets" icon={<GiCrosshair />}>
+            <TargetBoard ship={args.ship} />
+            <ShotOdds ship={args.ship} />
+          </StationCard>
+          {/* The other half of the job: what is coming, and what is left to
+              meet it with. */}
+          <StationCard title="Incoming" icon={<GiMissileSwarm />}>
+            <IncomingBoard ship={args.ship} />
+            <Magazine ship={args.ship} />
+          </StationCard>
+        </>
       )}
 
       {hasRole(roles, ViewMode.Engineer) && (

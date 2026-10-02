@@ -2658,6 +2658,191 @@ h3.control-form {
     opacity: 0.55;
 }
 
+/* --- The gunner's instruments --- */
+
+.target-rows,
+.incoming-rows,
+.odds-rows,
+.magazine-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.target-row {
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.target-row:last-child {
+    border-bottom: none;
+}
+
+.target-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.target-name {
+    font-weight: 600;
+}
+
+/* A lock is worth DM+2, so it reads as something gained. */
+.target-lock {
+    font-size: var(--font-xs);
+    color: #63c08c;
+    border: 1px solid rgba(99, 192, 140, 0.5);
+    border-radius: 2px;
+    padding: 0 3px;
+}
+
+.target-range {
+    margin-left: auto;
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+.target-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+.target-dm,
+.target-trend {
+    font-family: "Sono", monospace;
+}
+
+/* Warmer as the range closes, matching the roster's colouring. */
+.target-band-short {
+    color: #ff8f5a;
+}
+
+.target-band-medium {
+    color: #ffc14d;
+}
+
+.target-band-long {
+    color: #9ad26a;
+}
+
+.target-band-very-long {
+    color: #5aa9e6;
+}
+
+.target-band-distant {
+    color: #909296;
+}
+
+.target-reach {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+
+/* A mount that cannot reach is dimmed rather than hidden: knowing which gun
+   is useless at this range is the point. */
+.target-reach-no {
+    opacity: 0.25;
+    filter: grayscale(1);
+}
+
+.incoming-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.incoming-count {
+    font-family: "Sono", monospace;
+    font-weight: 700;
+    color: #ff6b6b;
+}
+
+.incoming-eta {
+    margin-left: auto;
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}
+
+/* Arriving now: the thing the gunner has to answer this round. */
+.incoming-now {
+    color: #ff6b6b;
+    opacity: 1;
+}
+
+.incoming-defences {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}
+
+.odds-head {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 3px;
+}
+
+.odds-toggle {
+    font-size: var(--font-xs);
+    padding: 1px 6px;
+}
+
+.odds-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    font-size: var(--font-xs);
+}
+
+.odds-dm,
+.odds-chance {
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Out of reach, or nobody at the mount: no shot to weigh. */
+.odds-row-dead {
+    opacity: 0.45;
+}
+
+.magazine-rows {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.magazine-row {
+    display: flex;
+    gap: 4px;
+    align-items: baseline;
+    font-size: var(--font-xs);
+}
+
+.magazine-count {
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Empty racks, which a gunner should see before ordering a salvo. */
+.magazine-out {
+    color: #ff6b6b;
+}
+
+.magazine-empty {
+    margin: 4px 0 0;
+    font-size: var(--font-xs);
+    color: #ff6b6b;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {

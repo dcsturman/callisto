@@ -95,7 +95,7 @@ describe("station cards", () => {
 
   it("gives a player covering two seats both", () => {
     render([ViewMode.Pilot, ViewMode.Gunner], "HMS Executor");
-    expect(cardTitles()).toEqual(["Pilot", "Gunner"]);
+    expect(cardTitles()).toEqual(["Pilot", "Gunner", "Targets", "Incoming"]);
   });
 });
 
