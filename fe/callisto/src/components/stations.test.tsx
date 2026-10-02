@@ -8,9 +8,11 @@ import {Provider} from "react-redux";
 (globalThis as unknown as {IS_REACT_ACT_ENVIRONMENT?: boolean}).IS_REACT_ACT_ENVIRONMENT = true;
 
 import {Stations} from "components/controls/Stations";
+import {ShipSummary} from "components/controls/ShipSummary";
 import {store} from "state/store";
 import {setRoleShip} from "state/userSlice";
 import {setEntities} from "state/serverSlice";
+import {setComputerShipName} from "state/uiSlice";
 import {ViewMode} from "lib/view";
 import {Ship} from "lib/entities";
 import {createCrew} from "components/controls/CrewBuilder";
@@ -94,5 +96,54 @@ describe("station cards", () => {
   it("gives a player covering two seats both", () => {
     render([ViewMode.Pilot, ViewMode.Gunner], "HMS Executor");
     expect(cardTitles()).toEqual(["Pilot", "Gunner"]);
+  });
+});
+
+describe("the Ships roster", () => {
+  /**
+   * A referee has no ship of their own, but when they open one to give it
+   * orders they are working that hull -- so the roster measures ranges from
+   * it, exactly as it would for the player who flies it.
+   */
+  it("measures range from the selected ship when the viewer has none", () => {
+    store.dispatch(
+      setEntities({
+        ships: [ship, {...ship, name: "Quarry", position: [5_000_000, 0, 0]} as unknown as Ship],
+        missiles: [],
+        planets: [],
+        metadata: {name: "test", description: ""},
+        filename: "",
+      })
+    );
+    store.dispatch(setRoleShip([[ViewMode.General], null]));
+    store.dispatch(setComputerShipName("HMS Executor"));
+
+    act(() => {
+      root.render(
+        <Provider store={store}>
+          <ShipSummary />
+        </Provider>
+      );
+    });
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("range from HMS Executor");
+    // And the other ship's distance is shown rather than a dash.
+    expect(text).toMatch(/5,000|5000/);
+  });
+
+  it("shows no range column when nothing is selected and the viewer has no ship", () => {
+    store.dispatch(setRoleShip([[ViewMode.General], null]));
+    store.dispatch(setComputerShipName(null));
+
+    act(() => {
+      root.render(
+        <Provider store={store}>
+          <ShipSummary />
+        </Provider>
+      );
+    });
+
+    expect(container.textContent ?? "").not.toContain("range");
   });
 });
