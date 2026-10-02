@@ -3,10 +3,10 @@ import {useMemo} from "react";
 
 import {Ship} from "lib/entities";
 import {isUndetected} from "lib/contacts";
-import {Band, RANGE_MOD, reaches} from "lib/gunnery";
+import {Band, RANGE_MOD, WEAPON_HIT_MOD, reaches} from "lib/gunnery";
 import {bandName, rangeBetween} from "lib/range";
 import {shipWeapons} from "lib/shipDesignTemplates";
-import {weaponToString} from "lib/weapon";
+import {weaponGuns, weaponToString} from "lib/weapon";
 import {WeaponGlyph} from "components/controls/WeaponGlyph";
 import {useAppDispatch, useAppSelector} from "state/hooks";
 import {entitiesSelector, templatesSelector} from "state/serverSlice";
@@ -33,6 +33,10 @@ export function TargetBoard(args: {ship: Ship}) {
 
   const weapons = useMemo(() => shipWeapons(args.ship, templates), [args.ship, templates]);
 
+  // What we are doing about being shot at, which applies to every attacker.
+  const ourDodge = args.ship.dodge_thrust > 0 ? -(args.ship.crew?.pilot ?? 0) : 0;
+  const ourEvade = -(args.ship.software_running?.find((s) => s.kind === "Evade")?.level ?? 0);
+
   const rows = useMemo(
     () =>
       entities.ships
@@ -48,6 +52,38 @@ export function TargetBoard(args: {ship: Ship}) {
           const band = bandName(range.now) as Band;
           const endBand = bandName(range.next) as Band;
           const design = templates[other.design];
+
+          // Their armament, and what each kind of gun would roll against us
+          // from where they are. Their gunner's own skill is theirs.
+          const theirLock = other.sensor_locks?.includes(args.ship.name) ?? false;
+          const theirGuns = shipWeapons(other, templates)
+            .filter((weapon) => reaches(weapon, band))
+            .map((weapon) => {
+              const kinds = weaponGuns(weapon).map((gun) => gun.kind).filter((kind) => kind !== "Sand");
+              const kind = kinds[0] ?? "";
+              const salvo = kind === "Missile" || kind === "Torpedo";
+              const terms: [string, number][] = [
+                ["weapon", WEAPON_HIT_MOD[kind] ?? 0],
+                [salvo ? "range (salvo, so none)" : `range (${band})`, salvo ? 0 : RANGE_MOD[band]],
+                ["their sensor lock", theirLock ? 2 : 0],
+                ["our pilot evading", ourDodge],
+                ["our Evade software", ourEvade],
+              ];
+              const dm = terms.reduce((total, [, value]) => total + value, 0);
+              const named = terms.filter(([, value]) => value !== 0);
+              return {
+                weapon,
+                empty: kinds.length === 0,
+                dm,
+                why: `${weaponToString(weapon)} against us: ${
+                  named.length === 0
+                    ? "no modifiers"
+                    : named.map(([name, value]) => `${name} ${value >= 0 ? "+" : ""}${value}`).join(", ")
+                } — their gunner's own skill is not known to us.`,
+              };
+            })
+            .filter((gun) => !gun.empty);
+
           return {
             name: other.name,
             team: other.team,
@@ -58,10 +94,11 @@ export function TargetBoard(args: {ship: Ship}) {
             locked: args.ship.sensor_locks?.includes(other.name) ?? false,
             armour: other.current_armor,
             screens: design?.screens?.length ?? 0,
+            theirGuns,
           };
         })
         .sort((a, b) => a.metres - b.metres),
-    [entities.ships, args.ship, templates, proposedPlan, showAllies]
+    [entities.ships, args.ship, templates, proposedPlan, showAllies, ourDodge, ourEvade]
   );
 
   const allyToggle = (
@@ -120,22 +157,41 @@ export function TargetBoard(args: {ship: Ship}) {
               armour {row.armour}
               {row.screens > 0 ? ` · ${row.screens} screen${row.screens === 1 ? "" : "s"}` : ""}
             </span>
+            {/* Ours, at the end of the line: which mounts can touch it at
+                the band it is in now. A launcher always reaches, since the
+                salvo flies to the target. */}
+            <span className="target-reach">
+              {weapons.map((weapon, index) => {
+                const can = reaches(weapon, row.band);
+                return (
+                  <span
+                    key={index}
+                    className={can ? "target-reach-yes" : "target-reach-no"}
+                    title={`Ours: ${weaponToString(weapon)} — ${
+                      can ? "in reach" : `out of reach at ${row.band}`
+                    }`}>
+                    <WeaponGlyph weapon={weapon} />
+                  </span>
+                );
+              })}
+            </span>
           </div>
-          {/* Which of our mounts can touch it, at the band it is in now.
-              A launcher always reaches: the salvo flies to the target. */}
-          <div className="target-reach">
-            {weapons.map((weapon, index) => {
-              const can = reaches(weapon, row.band);
-              return (
-                <span
-                  key={index}
-                  className={can ? "target-reach-yes" : "target-reach-no"}
-                  title={`${weaponToString(weapon)}: ${can ? "in reach" : `out of reach at ${row.band}`}`}>
-                  <WeaponGlyph weapon={weapon} />
+          {/* Theirs: what can reach us from there, and what it would roll.
+              Drawn the way Contact Detail draws armament, so a turret means
+              the same thing on both cards. */}
+          {row.theirGuns.length > 0 && (
+            <div className="target-theirs" title="What they can shoot back with from this range">
+              {row.theirGuns.map((gun, index) => (
+                <span key={index} className="target-their-gun" title={gun.why}>
+                  <WeaponGlyph weapon={gun.weapon} />
+                  <span className="target-their-dm">
+                    {gun.dm >= 0 ? "+" : ""}
+                    {gun.dm}
+                  </span>
                 </span>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </li>
       ))}
     </ul>

@@ -2825,10 +2825,37 @@ h3.control-form {
     color: #909296;
 }
 
+/* Ours, at the end of the detail line: small, because it is a reminder of
+   what we are carrying rather than the subject of the row. */
 .target-reach {
-    display: flex;
-    gap: 2px;
+    display: inline-flex;
+    gap: 1px;
     align-items: center;
+    margin-left: auto;
+    transform: scale(0.72);
+    transform-origin: right center;
+}
+
+/* Theirs, on a line of its own with what each would roll against us. */
+.target-theirs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 1px;
+}
+
+.target-their-gun {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+}
+
+.target-their-dm {
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--font-xs);
+    color: #ffb84d;
 }
 
 /* A mount that cannot reach is dimmed rather than hidden: knowing which gun

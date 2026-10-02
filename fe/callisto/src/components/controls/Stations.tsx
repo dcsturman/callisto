@@ -179,33 +179,20 @@ export function Stations(args: {ship: Ship}) {
   }
 
   if (hasRole(roles, ViewMode.Gunner)) {
+    // One card with sections, the way the sensop's station is built: the
+    // triggers, then what to point them at, then what is coming back. They
+    // are one job and were three cards for no better reason than that the
+    // engineer's boards are separate.
     cards.push({
       id: "gunner",
       node: (
         <>
           <FireControl />
           {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Gunner]} />}
-        </>
-      ),
-    });
-    // Range, reach and the target's defences: what the gunner had to
-    // assemble from four other places to choose a shot.
-    cards.push({
-      id: "targets",
-      node: (
-        <>
           <TargetBoard ship={args.ship} />
-          <ShotOdds ship={args.ship} />
-        </>
-      ),
-    });
-    // The other half of the job: what is coming, and what is left to meet it.
-    cards.push({
-      id: "incoming",
-      node: (
-        <>
           <IncomingBoard ship={args.ship} />
           <Magazine ship={args.ship} />
+          <ShotOdds ship={args.ship} />
         </>
       ),
     });
