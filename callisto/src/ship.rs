@@ -1582,7 +1582,7 @@ impl Ship {
       overload_drive_attempts: 0,
       overload_plant_attempts: 0,
       attack_dm: 0,
-      crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
+      crew: Some(crewed_or_default(crew, design, num_weapons)),
       dodge_thrust: 0,
       dodge_spent: 0,
       assist_gunners: false,
@@ -1784,9 +1784,16 @@ impl Ship {
   ///
   /// Idempotent, and never overwrites: a scenario that states its own crew
   /// keeps it. Falls back to untrained so `crew` is `Some` from here on.
+  ///
+  /// A crew arrived at this way mans every mount, at skill 0 where nothing
+  /// better is stated: a ship nobody has written a crew for is a crewed ship
+  /// whose names we do not know, not a derelict with empty gun positions.
+  /// Leaving a seat deliberately empty is something a scenario says by
+  /// giving a crew with a shorter gunnery list than the ship has mounts.
   fn resolve_crew(&mut self) {
     if self.crew.is_none() {
-      self.crew = Some(self.design.crew_skills.clone().unwrap_or_default());
+      let mounts = self.weapons().len();
+      self.crew = Some(crewed_or_default(None, &self.design, mounts));
     }
   }
 
@@ -3065,6 +3072,25 @@ fn initial_running(design: &ShipDesignTemplate) -> Vec<Software> {
 /// (High Guard p. 14). Cores multiply available Bandwidth by ten for sensor
 /// hand-off, which is how a carrier feeds a squadron.
 const COMPUTER_CORE_PROCESSING: u32 = 40;
+
+/// The crew a ship sails with: the one it was given, else the design's, else
+/// a nameless one.
+///
+/// A crew arrived at by default mans every mount, at skill 0 where nothing
+/// better is stated -- a ship nobody wrote a crew for is a crewed ship whose
+/// names we do not know, not a derelict with empty gun positions. Leaving a
+/// seat deliberately empty is something a scenario says by giving a crew
+/// whose gunnery list is shorter than the ship has mounts.
+fn crewed_or_default(crew: Option<Crew>, design: &ShipDesignTemplate, mounts: usize) -> Crew {
+  if let Some(crew) = crew {
+    return crew;
+  }
+  let mut crew = design.crew_skills.clone().unwrap_or_default();
+  while crew.gunners() < mounts {
+    crew.add_gunnery(0);
+  }
+  crew
+}
 
 /// What a sensor suite draws (High Guard p. 23).
 #[must_use]

@@ -63,6 +63,14 @@ fn software_of(design: &str) -> serde_json::Value {
   serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
 }
 
+/// A default crew's gunnery: one unskilled gunner per mount, which is what a
+/// ship nobody wrote a crew for sails with.
+fn gunnery_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  let mounts = templates.get(design).unwrap().weapons.len();
+  serde_json::to_value(vec![0u8; mounts]).unwrap()
+}
+
 fn software_running_of(design: &str) -> serde_json::Value {
   let templates = callisto::ship::get_ship_templates_snapshot();
   let template = templates.get(design).unwrap().clone();
@@ -681,7 +689,7 @@ async fn integration_add_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -772,7 +780,7 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -793,7 +801,7 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -852,7 +860,7 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -873,7 +881,7 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -931,7 +939,7 @@ async fn integration_add_planet_ship() {
      "current_computer": 5,
      "current_sensors": "Improved",
      "active_weapons": [true, true, true, true],
-     "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+     "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
      "dodge_thrust":0,
      "assist_gunners":false,
      "can_jump":false,
@@ -952,7 +960,7 @@ async fn integration_add_planet_ship() {
      "current_computer": 5,
      "current_sensors": "Improved",
      "active_weapons": [true, true, true, true],
-     "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+     "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
      "dodge_thrust":0,
      "assist_gunners":false,
      "can_jump":false,
@@ -1137,7 +1145,7 @@ async fn integration_update_missile() {
              "current_computer": 35,
              "current_sensors": "Improved",
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
@@ -1157,7 +1165,7 @@ async fn integration_update_missile() {
              "current_computer": 35,
              "current_sensors": "Improved",
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]},
+             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,

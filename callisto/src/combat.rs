@@ -1350,6 +1350,25 @@ pub fn do_fire_actions<S: BuildHasher>(
       // A mount the computer is firing has no gunner's skill behind it: Fire
       // Control buys the attack, not a gunner (CRB p. 161). One point goes on
       // firing it, and the gunner's own skill does not apply.
+      // Somebody has to be at the mount. A gun fires because a gunner fires
+      // it, or because the computer does -- Fire Control buying the attack
+      // or a Virtual Gunner standing in. An empty position is an empty
+      // position, and saying so is kinder than a silent miss.
+      if !attacker.get_crew().has_gunner(*weapon_id)
+        && !computer_fired
+        && attacker.running_level(SoftwareKind::VirtualGunner).is_none()
+      {
+        return vec![EffectMsg::about(
+          attacker.get_name(),
+          MessageCategory::Attack,
+          format!(
+            "{}'s {} has no gunner: nobody is at the mount, and neither Fire Control nor a Virtual Gunner is covering it.",
+            attacker.get_name(),
+            String::from(&attacker.weapons()[*weapon_id])
+          ),
+        )];
+      }
+
       // A Virtual Gunner stands in where nobody is at the mount: "weapons
       // controlled by a Virtual Gunner have a skill level equal to the
       // package's score but they can take advantage of other modifiers such
@@ -1854,7 +1873,19 @@ pub fn build_point_defense_tallies(
     .enumerate()
     .map(|(index, weapon)| {
       if ship.active_weapons[index] {
-        point_defense_score(weapon) + u16::from(ship.get_crew().get_gunnery(index))
+        // Point defence is a gunner's reaction, so an unmanned mount
+        // contributes nothing -- unless a Virtual Gunner is at it, which is
+        // what the program is for.
+        let virtual_gunner = ship
+          .running_level(SoftwareKind::VirtualGunner)
+          .filter(|_| !ship.get_crew().has_gunner(index));
+        if !ship.get_crew().has_gunner(index) && virtual_gunner.is_none() {
+          // 0 is the "cannot be used for point defence" score.
+          0
+        } else {
+          let skill = virtual_gunner.unwrap_or_else(|| ship.get_crew().get_gunnery(index));
+          point_defense_score(weapon) + u16::from(skill)
+        }
       } else {
         0
       }
@@ -2106,6 +2137,51 @@ mod battery_tests {
     assert!(!ship.take_interception(interception_cost(WeaponType::Torpedo)));
     assert_eq!(ship.point_defense_pool, 1, "the failed attempt must not spend anything");
     assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
+  }
+
+  /// A gun fires because someone fires it. An empty mount says so rather
+  /// than quietly missing.
+  #[test]
+  fn an_unmanned_mount_does_not_fire() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Derelict".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    // A crew stated explicitly with nobody on the gun, which is how a
+    // scenario says the position is empty.
+    let crew = crate::crew::Crew::new();
+    let mut attacker = Ship::new("Derelict".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None);
+    attacker.contacts.push("Target".to_string());
+    let target = Ship::new(
+      "Target".to_string(),
+      Vec3::new(5000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let mut ships: HashMap<String, Arc<RwLock<Ship>>> = HashMap::new();
+    ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+    let snapshot: HashMap<String, Ship> = HashMap::new();
+    let mut sand = create_sand_counts(&snapshot, &[]);
+
+    let actions = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Target".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    }];
+    let mut rng = SmallRng::seed_from_u64(7);
+    let (_, effects) = do_fire_actions(&attacker, &mut ships, &mut sand, &actions, &BoostMap::default(), &mut rng);
+    assert!(
+      format!("{effects:?}").contains("has no gunner"),
+      "the crew should be told why nothing was fired: {effects:?}"
+    );
   }
 
   /// The turret bonus must match the book: DM+0 single, DM+1 double, DM+2 triple
@@ -4289,6 +4365,10 @@ mod tests {
     let make_attacker = || {
       let mut crew = Crew::new();
       crew.set_skill(Skills::Pilot, 2);
+      // A crew stated in full mans what it says it mans, so put someone on
+      // the gun: this test is about the pilot's assist, not about who is at
+      // the mount.
+      crew.add_gunnery(0);
       let mut a = Ship::new(
         "Attacker".to_string(),
         Vec3::new(-1000.0, 0.0, 0.0),

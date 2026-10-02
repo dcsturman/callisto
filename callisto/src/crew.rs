@@ -297,6 +297,12 @@ impl Crew {
     self.gunnery[gun]
   }
 
+  /// How many mounts have someone at them.
+  #[must_use]
+  pub fn gunners(&self) -> usize {
+    self.gunnery.len()
+  }
+
   /// Whether anyone is actually on this mount.
   ///
   /// Distinct from a skill of 0, the way it is for screens: an unmanned

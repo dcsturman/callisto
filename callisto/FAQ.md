@@ -622,7 +622,8 @@ range to Short" (High Guard p. 75). Callisto has no Close band — Adjacent and
 Close both collapse into Short here, as the dogfight rules do — so the labels
 cannot be used as written. We keep the step instead of the names: /1 covers a
 ship at Short, /2 one band further at Medium. More generous than RAW, and the
-only way the second grade means anything at this granularity.
+only way the second grade means anything at this granularity — and Medium is
+the right feel for an escort stationed off a freighter's flank.
 
 #### Assumption — Virtual Gunner only stands in for an absent gunner
 "On a military ship, one virtual gunner may replace the gunner crewing a
@@ -630,10 +631,17 @@ turret, barbette, bay or screen" (HG p. 76). We read that as filling an empty
 seat rather than displacing someone: a mount with a gunner keeps them, and one
 with nobody at it fires at the package's score instead of at nothing.
 
-Note that Callisto still lets an unmanned mount fire at skill 0 without any
-software, which the books do not. Requiring a gunner the way screens now do
-would disarm any scenario ship whose crew was never written out, so it is
-left alone for the moment.
+#### Change — a mount nobody is at does not fire
+A gun fires because a gunner fires it. A mount with nobody at it now does
+nothing, and says so in the results rather than quietly missing — unless the
+computer is covering it, with a Fire Control point or a Virtual Gunner.
+Point defence works the same way: it is a gunner's reaction.
+
+So that this does not silently disarm ships, a crew nobody wrote out mans
+every mount at skill 0: a ship with no stated crew is crewed by people whose
+names we do not know, not a derelict. Leaving a position empty is something a
+scenario says deliberately, by giving a crew whose gunnery list is shorter
+than the ship has mounts.
 
 #### Omission — no remote-ops crewman
 The drones also let a Traveller with Electronics (remote ops) run the Repair
