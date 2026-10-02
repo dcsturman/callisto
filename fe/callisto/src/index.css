@@ -1017,12 +1017,20 @@ h3.control-form {
 }
 
 #results-window {
-    /* Cap the width. This is a flex child that sizes to its widest line, and
-       since detection checks started itemising their DM the widest line is very
-       wide indeed -- the box grew across the viewport and slid under the
-       fixed top-right controls. Long lines wrap instead. */
+    /* Cap the width. This is a popup that sizes to its widest line, and since
+       detection checks started itemising their DM the widest line is very wide
+       indeed -- the box grew across the viewport and slid under the fixed
+       top-right controls. Long lines wrap instead. */
     max-width: min(44rem, 50vw);
     overflow: auto;
+    /* Sit against the console rather than after it in the flow: the console's
+       `max-content` width reserves room for a column it may not be using, and
+       the results box was pushed out as though that column were there.
+       `--console-width` is measured from the rendered console in App.tsx. */
+    position: fixed;
+    bottom: 4px;
+    left: calc(var(--console-width, 0px) + 8px);
+    max-height: calc(100vh - 8px);
 }
 
 /* The heading is chrome, not content: at the shared 18pt it was taller than the
