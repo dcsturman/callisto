@@ -30,6 +30,7 @@ import {ShotOdds} from "components/controls/ShotOdds";
 import {TargetBoard} from "components/controls/TargetBoard";
 import {ComputerBoard} from "components/controls/ComputerBoard";
 import {JumpBoard} from "components/controls/JumpBoard";
+import type {Engineer} from "components/controls/CrewBuilder";
 import {useAppDispatch} from "state/hooks";
 import {moveCard, resetCardOrder} from "state/uiSlice";
 
@@ -88,7 +89,12 @@ export function orderCards<T extends {id: string}>(cards: T[], order: string[]):
 }
 
 /** Who is working this station, where the ship carries more than one. */
-function cardCrew(id: string, ship: Ship, operators: number[], engineers: unknown[]): string | undefined {
+function cardCrew(
+  id: string,
+  ship: Ship,
+  operators: number[],
+  engineers: Engineer[]
+): string | undefined {
   if (id === "captain") {
     return `leadership ${ship.crew.leadership ?? 0}`;
   }
@@ -103,8 +109,8 @@ function cardCrew(id: string, ship: Ship, operators: number[], engineers: unknow
     return crewTag(operator, operators.length, operators[operator]);
   }
   if (id.startsWith("engineer-")) {
-    const engineer = Number(id.slice("engineer-".length));
-    return engineers.length > 1 ? `#${engineer + 1}` : undefined;
+    const index = Number(id.slice("engineer-".length));
+    return engineerTag(index, engineers.length, engineers[index]);
   }
   return undefined;
 }
@@ -271,6 +277,26 @@ const crewSlots = (count: number): number[] =>
 
 const crewTag = (index: number, count: number, skill: number | undefined): string =>
   count > 1 ? `#${index + 1} · skill ${skill ?? 0}` : `skill ${skill ?? 0}`;
+
+/**
+ * An engineer has four ratings that matter, so the card shows them rather
+ * than nothing at all -- which is what it showed before, alone among the
+ * stations.
+ *
+ * Collapsed to one number when the drives are rated alike, which they
+ * usually are; spelled out when they are not, because a crew good with the
+ * power plant and poor with the j-drive is worth knowing about.
+ */
+const engineerTag = (index: number, count: number, engineer: Engineer | undefined): string | undefined => {
+  if (engineer == null) {
+    return count > 1 ? `#${index + 1}` : undefined;
+  }
+  const who = count > 1 ? `#${index + 1} · ` : "";
+  const {jump = 0, power = 0, maneuver = 0, mechanic = 0} = engineer;
+  const drives =
+    jump === power && power === maneuver ? `eng ${jump}` : `j${jump} p${power} m${maneuver}`;
+  return `${who}${drives} · mech ${mechanic}`;
+};
 
 /** Gunners are one per mount, so the card names them as a row of numbers. */
 const gunnerTag = (ship: Ship): string | undefined => {
