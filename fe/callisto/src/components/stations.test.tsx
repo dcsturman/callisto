@@ -7,7 +7,7 @@ import {Provider} from "react-redux";
 
 (globalThis as unknown as {IS_REACT_ACT_ENVIRONMENT?: boolean}).IS_REACT_ACT_ENVIRONMENT = true;
 
-import {Stations} from "components/controls/Stations";
+import {Stations, orderCards} from "components/controls/Stations";
 import {ShipSummary} from "components/controls/ShipSummary";
 import {store} from "state/store";
 import {setRoleShip} from "state/userSlice";
@@ -145,5 +145,27 @@ describe("the Ships roster", () => {
     });
 
     expect(container.textContent ?? "").not.toContain("range");
+  });
+});
+
+describe("arranging the console", () => {
+  /**
+   * A player's arrangement is their own, and a card added in a later version
+   * must still appear -- so anything the stored order has not seen sorts
+   * last rather than being dropped.
+   */
+  it("puts cards in the stored order, with unknown ones after", () => {
+    const cards = [{id: "pilot"}, {id: "gunner"}, {id: "targets"}, {id: "incoming"}];
+    expect(orderCards(cards, ["incoming", "pilot"]).map((c) => c.id)).toEqual([
+      "incoming",
+      "pilot",
+      "gunner",
+      "targets",
+    ]);
+  });
+
+  it("leaves the natural order alone when nothing has been arranged", () => {
+    const cards = [{id: "pilot"}, {id: "gunner"}];
+    expect(orderCards(cards, []).map((c) => c.id)).toEqual(["pilot", "gunner"]);
   });
 });

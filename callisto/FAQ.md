@@ -572,7 +572,7 @@ already spoken for.
 
 | Package | What it does here |
 | --- | --- |
-| Jump Control/N | Caps the jump number. Nothing running, no jump at all. |
+| Jump Control/N | Caps the jump number. Nothing running, no jump at all — and it starts stopped, since jumping is deliberate and the program is expensive. |
 | Evade/N | DM−N to every attack on the ship, passive, stacking with a pilot's dodge. |
 | Fire Control/N | N points a round: one point fires a mount with no gunner, or adds +1 to a gunner's shot, in any mix. |
 | Advanced Fire Control/N | DM+N to every attack the ship makes. |
@@ -586,6 +586,14 @@ already spoken for.
 | Broad Spectrum EW | Jams inbound salvoes automatically, at no crew skill, for a ship whose operator did not. |
 | Point Defence/N | Lets the ship's point defence cover a neighbour instead of itself. |
 | Virtual Gunner/N | Mans a mount nobody is at, at skill N. |
+
+#### Decision — a ship arrives with its jump software off
+Everything else a design carries comes up running, as far as the computer
+will carry it. Jump Control does not: it is the most expensive program most
+ships own — on a Computer/5 it is the whole machine — and a ship that comes
+up running it has no Bandwidth for the fight it is in, nor the point spare
+that a sensor hand-off needs. Jumping is a deliberate act, so the astrogator
+switches it on when there is somewhere to go. One tick on the computer card.
 
 #### Canon — the computer carries the software, so a computer hit takes it all
 The bridge critical hit table (CRB p. 170) has three computer results among its

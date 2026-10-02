@@ -1707,6 +1707,14 @@ impl Ship {
     if self.magazine.is_empty() {
       self.magazine = Magazine::for_design(&self.design);
     }
+    // The same for software: a scenario states none, and a ship with an
+    // empty list has nothing to run and refuses every order to run it --
+    // while the console, which falls back to the design's list, shows a
+    // computer full of programs that cannot be switched on.
+    if self.software.is_empty() {
+      self.software.clone_from(&self.design.software);
+      self.software_running = initial_running(&self.design);
+    }
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
@@ -3115,10 +3123,20 @@ async fn load_test_ship_templates() -> ShipTemplateTable {
 
 /// What a new ship has running: everything it owns that the computer can
 /// manage, free software first, then the rest in the order the design lists.
+///
+/// Jump Control is the exception and starts stopped. Jumping is a deliberate
+/// act and the program is expensive -- on a Computer/5 it is the entire
+/// machine -- so a ship that comes up with it running has no Bandwidth for
+/// the fight it is in, nor a point spare for a sensor hand-off. The
+/// astrogator switches it on when there is somewhere to go.
 fn initial_running(design: &ShipDesignTemplate) -> Vec<Software> {
   let mut running: Vec<Software> = design.software.iter().copied().filter(Software::always_running).collect();
   let mut used = 0;
-  for package in design.software.iter().filter(|p| !p.always_running()) {
+  for package in design
+    .software
+    .iter()
+    .filter(|p| !p.always_running() && p.kind != SoftwareKind::JumpControl)
+  {
     let capacity = if package.kind == SoftwareKind::JumpControl && design.computer_bis {
       design.computer + 5
     } else {
@@ -3885,6 +3903,37 @@ mod tests {
     assert_eq!(ship.processing(), 20, "the computer does not");
   }
 
+  /// Software has the same hole as the magazine did: a scenario states none,
+  /// so the ship had nothing installed while the console showed the design's
+  /// list -- a computer full of programs that refused to be switched on.
+  #[test]
+  fn a_loaded_ship_is_given_the_software_its_design_carries() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      computer: 20,
+      software: vec![
+        Software::new(SoftwareKind::Manoeuvre, 0),
+        Software::new(SoftwareKind::Evade, 1),
+        Software::new(SoftwareKind::FireControl, 2),
+        Software::new(SoftwareKind::JumpControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // What deserialization leaves behind.
+    ship.software = vec![];
+    ship.software_running = vec![];
+    ship.fixup_current_values();
+
+    assert_eq!(ship.software.len(), 4, "the design's programs are aboard");
+    assert!(ship.has_software(SoftwareKind::Evade));
+    // And what fits is running, so the computer is not idle on arrival.
+    assert_eq!(ship.bandwidth_used(), 20);
+    assert!(ship.set_software_running(Software::new(SoftwareKind::Evade, 1), false));
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+  }
+
   /// A ship read from a scenario file carries no magazine on the wire, and
   /// serde fills zeros -- so without a fixup every scenario ship would put to
   /// sea with empty racks. HMS Executor reported exactly that on her first
@@ -3962,6 +4011,7 @@ mod tests {
     });
     let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
     ship.can_jump = true;
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
 
     assert_eq!(ship.jump_range_available(), 2);
     assert!(ship.can_jump());
@@ -4030,6 +4080,9 @@ mod tests {
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    // Jump Control starts stopped, as it does on every ship: jumping is a
+    // deliberate act. The astrogator switches it on.
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
 
     assert_eq!(ship.processing(), 5);
     // Jump Control/2 is 10 Bandwidth, and costs this ship five.
@@ -4065,6 +4118,7 @@ mod tests {
       ..ShipDesignTemplate::default()
     });
     let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true);
 
     assert_eq!(ship.fuel_per_jump_number(), 10);
     assert_eq!(ship.fuel_for_full_jump(), 20);

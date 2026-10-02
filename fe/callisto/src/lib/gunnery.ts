@@ -12,6 +12,15 @@ import {Weapon, WeaponMount, weaponGuns} from "lib/weapon";
 export const BANDS = ["Short", "Medium", "Long", "Very Long", "Distant"] as const;
 export type Band = (typeof BANDS)[number];
 
+/**
+ * The weapon's own to-hit modifier, from the tables the server rolls on
+ * (High Guard pp. 28-33). Everything not listed is +0.
+ */
+export const WEAPON_HIT_MOD: Record<string, number> = {
+  Beam: 4,
+  Pulse: 2,
+};
+
 /** DM to an attack at each band (Core Rulebook p. 169). */
 export const RANGE_MOD: Record<Band, number> = {
   Short: 1,

@@ -5380,6 +5380,16 @@ mod tests {
       assert!(ship.current_computer > 0, "the test design must have a computer");
     }
 
+    // A loaded ship also comes up running its design's software, and a
+    // Buccaneer's Jump Control fills its small computer -- which is the
+    // rule working, not a fault: a point of Bandwidth has to be found at
+    // each end (High Guard p. 78). Shut it down and the link is there.
+    for name in ["Picket", "Mate"] {
+      let mut ship = entities.ships.get(name).unwrap().write().unwrap();
+      ship.software_running.clear();
+      assert!(ship.bandwidth_spare() > 0, "{name} should have Bandwidth free now");
+    }
+
     entities.sensor_handoff_pass();
     assert!(
       holds_contact(&entities, "Mate", "Bogey"),
@@ -5936,6 +5946,9 @@ mod tests {
     );
     let mut dragon = entities.ships.get("Dragon").unwrap().write().unwrap();
     dragon.enable_jump();
+    // Jump Control starts stopped on every ship; this one is meant to be
+    // ready to jump, so its astrogator has switched it on.
+    dragon.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true);
     dragon.contacts = vec!["Quarry".to_string()];
     drop(dragon);
     entities

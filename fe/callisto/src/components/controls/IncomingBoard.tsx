@@ -3,7 +3,7 @@ import {useMemo} from "react";
 
 import {Ship} from "lib/entities";
 import {isUndetected} from "lib/contacts";
-import {Band, reaches} from "lib/gunnery";
+import {Band, RANGE_MOD, WEAPON_HIT_MOD, reaches} from "lib/gunnery";
 import {bandName, rangeBetween} from "lib/range";
 import {vectorDistance} from "lib/Util";
 import {TURN_IN_SECONDS} from "lib/universal";
@@ -69,6 +69,10 @@ export function IncomingBoard(args: {ship: Ship}) {
     return {pointDefence, sandcasters};
   }, [args.ship, templates]);
 
+  // What we are doing about being shot at, which applies to every attacker.
+  const ourDodge = args.ship.dodge_thrust > 0 ? -(args.ship.crew?.pilot ?? 0) : 0;
+  const ourEvade = -(args.ship.software_running?.find((s) => s.kind === "Evade")?.level ?? 0);
+
   /**
    * What the other side can throw at us from where it is standing.
    *
@@ -98,10 +102,38 @@ export function IncomingBoard(args: {ship: Ship}) {
               counts.set(gun.kind, (counts.get(gun.kind) ?? 0) + 1);
             }
           }
-          return {name: other.name, band, counts: [...counts.entries()]};
+
+          // Everything about their shot that we can know: the weapon, the
+          // range, whether they hold a lock on us, and what we are doing
+          // about it. Their gunner's skill is theirs, and is not in here.
+          const theirLock = other.sensor_locks?.includes(args.ship.name) ?? false;
+          const guns = [...counts.entries()].map(([kind, count]) => {
+            const salvo = kind === "Missile" || kind === "Torpedo";
+            const terms: [string, number][] = [
+              ["weapon", WEAPON_HIT_MOD[kind] ?? 0],
+              [salvo ? "range (salvo, so none)" : `range (${band})`, salvo ? 0 : RANGE_MOD[band]],
+              ["their sensor lock", theirLock ? 2 : 0],
+              ["our pilot evading", ourDodge],
+              ["our Evade software", ourEvade],
+            ];
+            const dm = terms.reduce((total, [, value]) => total + value, 0);
+            const named = terms.filter(([, value]) => value !== 0);
+            return {
+              kind,
+              count,
+              dm,
+              why: `${
+                named.length === 0
+                  ? "No modifiers"
+                  : named.map(([name, value]) => `${name} ${value >= 0 ? "+" : ""}${value}`).join(", ")
+              } — their gunner's own skill is not known to us.`,
+            };
+          });
+
+          return {name: other.name, band, guns};
         })
-        .filter((threat) => threat.counts.length > 0),
-    [entities.ships, args.ship, templates]
+        .filter((threat) => threat.guns.length > 0),
+    [entities.ships, args.ship, templates, ourDodge, ourEvade]
   );
 
   const barrels = args.ship.magazine?.sand ?? 0;
@@ -143,9 +175,16 @@ export function IncomingBoard(args: {ship: Ship}) {
               <span className="threat-name">{threat.name}</span>
               <span className="threat-band">{threat.band}</span>
               <span className="threat-guns">
-                {threat.counts
-                  .map(([kind, count]) => `${count}× ${kind.replace(/([a-z])([A-Z])/g, "$1 $2")}`)
-                  .join(", ")}
+                {threat.guns.map((gun, index) => (
+                  <span key={gun.kind} title={gun.why}>
+                    {index > 0 ? ", " : ""}
+                    {gun.count}× {gun.kind.replace(/([a-z])([A-Z])/g, "$1 $2")}{" "}
+                    <span className="threat-dm">
+                      {gun.dm >= 0 ? "+" : ""}
+                      {gun.dm}
+                    </span>
+                  </span>
+                ))}
               </span>
             </li>
           ))}

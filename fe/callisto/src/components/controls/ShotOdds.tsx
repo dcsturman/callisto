@@ -3,7 +3,7 @@ import {useMemo, useState} from "react";
 
 import {Ship} from "lib/entities";
 import {isUndetected} from "lib/contacts";
-import {Band, RANGE_MOD, reaches} from "lib/gunnery";
+import {Band, RANGE_MOD, WEAPON_HIT_MOD, reaches} from "lib/gunnery";
 import {bandName, rangeBetween} from "lib/range";
 import {shipWeapons} from "lib/shipDesignTemplates";
 import {weaponToString, weaponGuns} from "lib/weapon";
@@ -23,23 +23,6 @@ const chanceOf = (dm: number): number => {
   return Math.round((hits / 36) * 100);
 };
 
-/** The weapon's own to-hit modifier, from the tables the server rolls on. */
-const WEAPON_HIT_MOD: Record<string, number> = {
-  Beam: 4,
-  Pulse: 2,
-  Missile: 0,
-  Torpedo: 0,
-  Particle: 0,
-  Fusion: 0,
-  Plasma: 0,
-  Railgun: 0,
-  Meson: 0,
-  MassDriver: 0,
-  Repulsor: 0,
-  Ion: 0,
-  Sand: 0,
-  PointDefense: 0,
-};
 
 /**
  * What each mount would roll against a chosen target, and how often that
