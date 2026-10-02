@@ -31,6 +31,7 @@ import {TargetBoard} from "components/controls/TargetBoard";
 import {ComputerBoard} from "components/controls/ComputerBoard";
 import {JumpBoard} from "components/controls/JumpBoard";
 import type {Engineer} from "components/controls/CrewBuilder";
+import {SectionTag} from "components/controls/SectionTag";
 import {useAppDispatch} from "state/hooks";
 import {moveCard, resetCardOrder} from "state/uiSlice";
 
@@ -60,10 +61,6 @@ const CARD_LOOK: Record<string, {title: string; icon?: React.ReactNode}> = {
   targets: {title: "Targets", icon: <GiCrosshair />},
   incoming: {title: "Incoming", icon: <GiMissileSwarm />},
   engineer: {title: "Engineer", icon: <FaCog />},
-  power: {title: "Power", icon: <GiLightningTrio />},
-  damage: {title: "Damage control", icon: <GiSpanner />},
-  computer: {title: "Computer", icon: <GiProcessor />},
-  jump: {title: "Jump", icon: <GiJumpAcross />},
 };
 
 /**
@@ -199,6 +196,10 @@ export function Stations(args: {ship: Ship}) {
   }
 
   if (hasRole(roles, ViewMode.Engineer)) {
+    // One card per engineer for their orders, and the ship's boards on the
+    // first of them: power, damage, computer and jump belong to the ship
+    // rather than to one of its engineers, the way the sensop's
+    // instruments hang off the first operator's card.
     for (const engineer of crewSlots(engineers.length)) {
       cards.push({
         id: `engineer-${engineer}`,
@@ -206,17 +207,25 @@ export function Stations(args: {ship: Ship}) {
           <>
             <EngineerTasks ship={args.ship} engineer={engineer} />
             {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Engineer]} />}
+            {engineer === 0 && (
+              <>
+                <SectionTag icon={<GiLightningTrio />}>Power</SectionTag>
+                <PowerBoard ship={args.ship} />
+                <SectionTag icon={<GiSpanner />}>Damage control</SectionTag>
+                <DamageBoard ship={args.ship} />
+                {/* The computer is a budget like the power plant, and the
+                    two read side by side. */}
+                <SectionTag icon={<GiProcessor />}>Computer</SectionTag>
+                <ComputerBoard ship={args.ship} />
+                {/* Only says anything on a ship with a jump drive. */}
+                <SectionTag icon={<GiJumpAcross />}>Jump</SectionTag>
+                <JumpBoard ship={args.ship} />
+              </>
+            )}
           </>
         ),
       });
     }
-    cards.push({id: "power", node: <PowerBoard ship={args.ship} />});
-    cards.push({id: "damage", node: <DamageBoard ship={args.ship} />});
-    // The computer is the engineer's to manage, as the power plant is: both
-    // are budgets, and they read side by side.
-    cards.push({id: "computer", node: <ComputerBoard ship={args.ship} />});
-    // Only for a ship that has a jump drive to be ready or not.
-    cards.push({id: "jump", node: <JumpBoard ship={args.ship} />});
   }
 
   const ordered = orderCards(cards, cardOrder);
