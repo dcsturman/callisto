@@ -707,6 +707,22 @@ most canon warships fly with Evade running, which makes them a point or two
 harder to hit than they used to be, and that a ship whose Jump Control is shut
 down to free Bandwidth cannot jump until it is started again.
 
+#### Addition — magazines
+Missiles, torpedoes and sandcaster barrels are finite. A salvo throws what is
+in the rack and no more, a short magazine throws what it has left, and an
+empty one says so; one barrel is spent per sand cloud, and a sandcaster with
+no barrels cannot react at all. A scenario reset restocks.
+
+Fifteen designs state their own load, taken from their write-ups ("Missile
+Storage (60 missiles)", "Sandcaster Barrels x 20"). The rest fall back to
+twelve missiles per rack, twenty barrels per sandcaster and three torpedoes
+per launcher — the load the small ships that do state one carry. A design can
+always say otherwise.
+
+Extracting those fifteen needed the ship's name, tonnage and computer model
+all to agree: matching on tonnage alone gave a 100-ton system defence boat a
+240-missile magazine belonging to some other hull of the same size.
+
 #### Addition — ship features
 A design carries a list of *features*: everything the hull is fitted with that
 is not a drive, a sensor suite, a gun or software. Two sorts, told apart by

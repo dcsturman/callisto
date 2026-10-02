@@ -53,5 +53,10 @@
       "level": 0
     }
   ],
-  "computer_bis": true
+  "computer_bis": true,
+  "magazine": {
+    "missiles": 0,
+    "torpedoes": 0,
+    "sand": 40
+  }
 }

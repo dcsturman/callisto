@@ -468,6 +468,13 @@ pub struct Ship {
   /// Rounds of ion suppression still to run.  Zero means none.
   #[serde(default, skip_serializing_if = "is_zero_u8")]
   pub ion_rounds: u8,
+  /// Missiles, torpedoes and sandcaster barrels still aboard.
+  ///
+  /// Spent as they are fired and thrown, and restored when the scenario is
+  /// reset. A ship that runs out cannot launch or disperse, which is what
+  /// makes a long missile duel a question of stores as well as nerve.
+  #[serde(default)]
+  pub magazine: Magazine,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -566,6 +573,10 @@ pub struct ShipDesignTemplate {
   /// drones. Omitted from the wire when empty.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub features: Vec<ShipFeature>,
+  /// Missiles, torpedoes and sandcaster barrels aboard. Absent means the
+  /// usual load for what the ship is armed with.
+  #[serde(default, skip_serializing_if = "Magazine::is_empty")]
+  pub magazine: Magazine,
   /// The software the design is sold with. A scenario can add to it.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub software: Vec<Software>,
@@ -1436,6 +1447,50 @@ pub struct ShipFeature {
   pub kind: Option<FeatureKind>,
 }
 
+/// What a hull carries to shoot: missiles, torpedoes and sandcaster barrels.
+///
+/// Canon ships state these in their Ammunition line -- "Missile Storage (60
+/// missiles)", "Sandcaster Barrels x 20" -- and the tonnage is bought like
+/// any other system. A design that says nothing gets a sensible load for
+/// what it is armed with (see [`Magazine::for_design`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Magazine {
+  #[serde(default)]
+  pub missiles: u32,
+  #[serde(default)]
+  pub torpedoes: u32,
+  /// Sandcaster barrels, one spent per cloud dispersed.
+  #[serde(default)]
+  pub sand: u32,
+}
+
+impl Magazine {
+  /// Whether the design said nothing at all.
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    *self == Magazine::default()
+  }
+
+  /// What a design carries when its write-up does not say.
+  ///
+  /// Twelve missiles per rack and twenty barrels per sandcaster, which is
+  /// what the small ships that do state a magazine carry; three torpedoes
+  /// per launcher, matching the barbette we already assume holds three.
+  #[must_use]
+  pub fn for_design(design: &ShipDesignTemplate) -> Magazine {
+    if !design.magazine.is_empty() {
+      return design.magazine;
+    }
+    let mut magazine = Magazine::default();
+    for weapon in &design.weapons {
+      magazine.missiles += 12 * u32::from(weapon.count_of(WeaponType::Missile));
+      magazine.torpedoes += 3 * u32::from(weapon.count_of(WeaponType::Torpedo));
+      magazine.sand += 20 * u32::from(weapon.count_of(WeaponType::Sand));
+    }
+    magazine
+  }
+}
+
 /// A feature the rules reach for by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum FeatureKind {
@@ -1603,6 +1658,7 @@ impl Ship {
       ion_power_loss: 0,
       ion_bandwidth_loss: 0,
       ion_rounds: 0,
+      magazine: Magazine::for_design(design),
     }
   }
 
@@ -1623,6 +1679,7 @@ impl Ship {
     self.current_crew = self.design.crew;
     self.current_sensors = self.design.sensors;
     self.current_computer = self.design.computer;
+    self.magazine = Magazine::for_design(&self.design);
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
@@ -3590,6 +3647,7 @@ impl Default for ShipDesignTemplate {
       ],
       screens: vec![],
       features: vec![],
+      magazine: Magazine::default(),
       software: vec![],
       computer_bis: false,
       computer_fib: false,
@@ -3818,6 +3876,37 @@ mod tests {
     ship.apply_ion_damage(60, 2);
     assert_eq!(ship.ion_power_loss, 60, "the plant still suffers");
     assert_eq!(ship.processing(), 20, "the computer does not");
+  }
+
+  /// A design that states its magazine keeps it; one that does not gets a
+  /// load for what it is armed with.
+  #[test]
+  fn a_magazine_comes_from_the_design_or_from_the_armament() {
+    let stated = ShipDesignTemplate {
+      name: "Stated".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3)],
+      magazine: Magazine {
+        missiles: 240,
+        torpedoes: 0,
+        sand: 0,
+      },
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(Magazine::for_design(&stated).missiles, 240, "the book's own figure");
+
+    let silent = ShipDesignTemplate {
+      name: "Silent".to_string(),
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+        Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
+        Weapon::single(WeaponType::Torpedo, WeaponMount::Barbette),
+      ],
+      ..ShipDesignTemplate::default()
+    };
+    let magazine = Magazine::for_design(&silent);
+    assert_eq!(magazine.missiles, 36, "twelve a rack");
+    assert_eq!(magazine.sand, 40, "twenty a caster");
+    assert_eq!(magazine.torpedoes, 3, "three a launcher");
   }
 
   /// Jump Control is what plots a jump: no software, no jump, whatever the
@@ -4224,6 +4313,7 @@ mod tests {
       weapons: vec![],
       screens: vec![],
       features: vec![],
+      magazine: crate::ship::Magazine::default(),
       software: vec![],
       computer_bis: false,
       computer_fib: false,
@@ -4809,6 +4899,7 @@ mod tests {
       ],
       screens: vec![],
       features: vec![],
+      magazine: crate::ship::Magazine::default(),
       software: vec![],
       computer_bis: false,
       computer_fib: false,
@@ -4950,6 +5041,7 @@ mod tests {
       weapons: vec![],
       screens: vec![],
       features: vec![],
+      magazine: crate::ship::Magazine::default(),
       software: vec![],
       computer_bis: false,
       computer_fib: false,

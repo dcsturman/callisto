@@ -989,6 +989,19 @@ impl Entities {
 
         let (missiles, effects) =
           do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
+        // Debit the magazine for what actually left the rails. The snapshot
+        // the fire actions worked from capped the salvo; this is where the
+        // live ship pays for it.
+        if let Some(ship) = self.ships.get(attacker) {
+          let mut ship = ship.write().unwrap();
+          for missile in &missiles {
+            if missile.weapon.has_kind(crate::ship::WeaponType::Torpedo) {
+              ship.magazine.torpedoes = ship.magazine.torpedoes.saturating_sub(1);
+            } else {
+              ship.magazine.missiles = ship.magazine.missiles.saturating_sub(1);
+            }
+          }
+        }
         for missile in missiles {
           if let Err(msg) = self.launch_missile(&missile.source, &missile.target, missile.weapon) {
             warn!("Could not launch missile: {}", msg);
@@ -4039,6 +4052,7 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4057,6 +4071,7 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4075,6 +4090,7 @@ mod tests {
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -4134,6 +4150,7 @@ mod tests {
       weapons: vec![],
       screens: vec![],
       features: vec![],
+      magazine: crate::ship::Magazine::default(),
       software: vec![],
       computer_bis: false,
       computer_fib: false,

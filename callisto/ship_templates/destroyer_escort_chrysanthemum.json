@@ -81,5 +81,10 @@
       "name": "Repair drones",
       "kind": "RepairDrones"
     }
-  ]
+  ],
+  "magazine": {
+    "missiles": 384,
+    "torpedoes": 0,
+    "sand": 100
+  }
 }

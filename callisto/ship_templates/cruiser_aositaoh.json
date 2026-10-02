@@ -92,5 +92,10 @@
       "kind": "Manoeuvre",
       "level": 0
     }
-  ]
+  ],
+  "magazine": {
+    "missiles": 216,
+    "torpedoes": 0,
+    "sand": 120
+  }
 }

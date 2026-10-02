@@ -1240,6 +1240,12 @@ pub fn do_fire_actions<S: BuildHasher>(
   let fire_control_pool = i32::from(attacker.running_level(SoftwareKind::FireControl).unwrap_or(0));
   let mut fire_control_left = fire_control_pool;
 
+  // What is left in the magazine, spent down as this attacker's orders are
+  // worked through. The live ship is debited by the caller from what was
+  // actually launched.
+  let mut missiles_left = attacker.magazine.missiles;
+  let mut torpedoes_left = attacker.magazine.torpedoes;
+
   let mut effects: Vec<EffectMsg> = actions
     .iter()
     .flat_map(|action| {
@@ -1461,6 +1467,28 @@ pub fn do_fire_actions<S: BuildHasher>(
         // Firing fewer is a choice; firing more is not on offer, and asking
         // for none would be an order to do nothing, so one is the floor.
         let count = firing.salvo_limit.map_or(full_salvo, |limit| limit.clamp(1, full_salvo));
+
+        // Nothing leaves the rails that is not in the magazine. A short
+        // magazine throws what it has; an empty one says so.
+        let aboard = if firing.kind == WeaponType::Torpedo {
+          &mut torpedoes_left
+        } else {
+          &mut missiles_left
+        };
+        let count = count.min(u16::try_from(*aboard).unwrap_or(u16::MAX));
+        if count == 0 {
+          return vec![EffectMsg::about(
+            attacker.get_name(),
+            MessageCategory::Attack,
+            format!(
+              "{} has no {}s left to launch.",
+              attacker.get_name(),
+              String::from(&firing.kind).to_lowercase()
+            ),
+          )];
+        }
+        *aboard -= u32::from(count);
+
         for _ in 0..count {
           new_missiles.push(LaunchMissileMsg {
             source: attacker.get_name().to_string(),
@@ -1505,6 +1533,9 @@ pub fn do_fire_actions<S: BuildHasher>(
               // There is a serious error if after checking if the sand_casters list isn't empty
               // it then cannot pop an element. So unwrap() is safe here.
               let modifier = sand_casters.pop().unwrap();
+              // One barrel per cloud dispersed (Core Rulebook p. 166 prices
+              // them by the barrel, and a ship carries a finite number).
+              target.magazine.sand = target.magazine.sand.saturating_sub(1);
               let dice = i32::from(roll_dice(2, rng));
               let effect = dice - STANDARD_ROLL_THRESHOLD + modifier;
               // Same compact shape as an attack line: sand is part of the same
@@ -1680,6 +1711,10 @@ pub fn create_sand_counts<S: BuildHasher>(
           .filter_map(|(index, weapon)| {
             if reacting.contains(&index) {
               debug!("(Combat.create_sand_counts) Mount {index} on {name} is on point defence, so it cannot also disperse sand.");
+              return None;
+            }
+            if ship.magazine.sand == 0 {
+              // Nothing left to throw.
               return None;
             }
             if weapon.has_kind(WeaponType::Sand) && ship.active_weapons[index] {
@@ -2794,6 +2829,13 @@ mod tests {
       // Plant enough to feed all of it: an unpowered mount cannot fire, and
       // this test is about what the mounts throw, not about the plant.
       power: 500,
+      // Likewise a full magazine: the question here is what each mount
+      // throws, not how long the ship can keep throwing it.
+      magazine: crate::ship::Magazine {
+        missiles: 1000,
+        torpedoes: 100,
+        sand: 100,
+      },
       ..ShipDesignTemplate::default()
     };
 

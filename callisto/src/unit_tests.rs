@@ -35,6 +35,12 @@ fn software_of(design: &str) -> serde_json::Value {
   serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
 }
 
+/// What a design's magazine holds when it is fresh from the yard.
+fn magazine_of(design: &str) -> serde_json::Value {
+  let templates = crate::ship::get_ship_templates_snapshot();
+  serde_json::to_value(crate::ship::Magazine::for_design(templates.get(design).unwrap())).unwrap()
+}
+
 /// A default crew's gunnery: one gunner per mount, unskilled.
 ///
 /// A ship nobody wrote a crew for is crewed by people whose names we do not
@@ -114,6 +120,7 @@ async fn test_add_ship() {
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11,
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+        "magazine": magazine_of("Buccaneer"),
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -161,6 +168,7 @@ async fn test_add_planet_ship() {
          "current_computer": 5,
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+         "magazine": magazine_of("Buccaneer"),
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -182,6 +190,7 @@ async fn test_add_planet_ship() {
          "current_computer": 5,
          "active_weapons": [true, true, true, true],
          "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+         "magazine": magazine_of("Buccaneer"),
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
@@ -226,6 +235,7 @@ async fn test_add_planet_ship() {
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -247,6 +257,7 @@ async fn test_add_planet_ship() {
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -292,6 +303,7 @@ async fn test_add_planet_ship() {
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -313,6 +325,7 @@ async fn test_add_planet_ship() {
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
@@ -429,6 +442,8 @@ async fn test_update_missile() {
              "current_computer": 35,
              "active_weapons": [true, true],
              "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
+             // Three missiles away this round, and the magazine shows it.
+             "magazine": {"missiles": 33, "torpedoes": 0, "sand": 0},
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
@@ -449,6 +464,7 @@ async fn test_update_missile() {
              "current_computer": 35,
              "active_weapons": [true, true],
              "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
+             "magazine": magazine_of("System Defense Boat"),
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
@@ -996,6 +1012,7 @@ async fn test_big_fight() {
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,true,true,true],
    "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
+   "magazine": magazine_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
@@ -1011,6 +1028,7 @@ async fn test_big_fight() {
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,true,true,true],
    "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
+   "magazine": magazine_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
@@ -1125,6 +1143,7 @@ async fn test_fight_with_crew() {
    "sensor_locks": [],
    "contacts": ["ship2"],
    "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "magazine": magazine_of("Gazelle")
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1134,6 +1153,7 @@ async fn test_fight_with_crew() {
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,false,false,true],
    "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
+   "magazine": magazine_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":false,

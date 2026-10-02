@@ -65,6 +65,12 @@ fn software_of(design: &str) -> serde_json::Value {
 
 /// A default crew's gunnery: one unskilled gunner per mount, which is what a
 /// ship nobody wrote a crew for sails with.
+/// What a design's magazine holds fresh from the yard.
+fn magazine_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  serde_json::to_value(callisto::ship::Magazine::for_design(templates.get(design).unwrap())).unwrap()
+}
+
 fn gunnery_of(design: &str) -> serde_json::Value {
   let templates = callisto::ship::get_ship_templates_snapshot();
   let mounts = templates.get(design).unwrap().weapons.len();
@@ -695,6 +701,7 @@ async fn integration_add_ship() {
          "can_jump":false,
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }],
@@ -786,6 +793,7 @@ async fn integration_add_planet_ship() {
          "can_jump":false,
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         },
@@ -807,6 +815,7 @@ async fn integration_add_planet_ship() {
          "can_jump":false,
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }],
@@ -866,6 +875,7 @@ async fn integration_add_planet_ship() {
          "can_jump":false,
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         },
@@ -887,6 +897,7 @@ async fn integration_add_planet_ship() {
          "can_jump":false,
          "sensor_locks": [],
          "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
          "software": software_of("Buccaneer"),
          "software_running": software_running_of("Buccaneer")
         }]});
@@ -945,6 +956,7 @@ async fn integration_add_planet_ship() {
      "can_jump":false,
      "sensor_locks": [],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+     "magazine": magazine_of("Buccaneer"),
      "software": software_of("Buccaneer"),
      "software_running": software_running_of("Buccaneer")
     },
@@ -966,6 +978,7 @@ async fn integration_add_planet_ship() {
      "can_jump":false,
      "sensor_locks": [],
      "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+     "magazine": magazine_of("Buccaneer"),
      "software": software_of("Buccaneer"),
      "software_running": software_running_of("Buccaneer")
     }]});
@@ -1151,7 +1164,9 @@ async fn integration_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship2"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             // Three missiles away this round, and the magazine shows it.
+             "magazine": {"missiles": 33, "torpedoes": 0, "sand": 0}
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -1171,7 +1186,8 @@ async fn integration_update_missile() {
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship1"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             "magazine": magazine_of("System Defense Boat")
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 

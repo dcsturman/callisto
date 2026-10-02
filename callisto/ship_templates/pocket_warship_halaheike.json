@@ -104,5 +104,10 @@
       "kind": "Manoeuvre",
       "level": 0
     }
-  ]
+  ],
+  "magazine": {
+    "missiles": 360,
+    "torpedoes": 0,
+    "sand": 240
+  }
 }

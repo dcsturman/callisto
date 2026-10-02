@@ -55,5 +55,10 @@
       "power": 100,
       "kind": "HolographicHull"
     }
-  ]
+  ],
+  "magazine": {
+    "missiles": 12,
+    "torpedoes": 0,
+    "sand": 0
+  }
 }

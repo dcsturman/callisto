@@ -77,5 +77,10 @@
       "kind": "VirtualGunner",
       "level": 0
     }
-  ]
+  ],
+  "magazine": {
+    "missiles": 120,
+    "torpedoes": 0,
+    "sand": 0
+  }
 }
