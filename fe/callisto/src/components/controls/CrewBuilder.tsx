@@ -12,6 +12,13 @@ export interface Engineer {
   maneuver?: number;
   /** Repairs weapons, sensors and the bridge. */
   mechanic?: number;
+  /**
+   * Electronics (remote ops): flying the repair drones.
+   *
+   * Absent is untrained, DM-3. A hull fitted with drones has somebody who
+   * can work them, so its crews come out at 0 rather than untrained.
+   */
+  remote_ops?: number;
   /** Recorded; nothing calls for it yet. */
   life_support?: number;
 }
@@ -46,6 +53,7 @@ export const createEngineer = (): Engineer => ({
   power: 0,
   maneuver: 0,
   mechanic: 0,
+  remote_ops: 0,
   life_support: 0,
 });
 
@@ -55,6 +63,7 @@ export const ENGINEER_SKILLS: {key: keyof Engineer; label: string; head: string}
   {key: "power", label: "Power", head: "Pwr"},
   {key: "jump", label: "J-drive", head: "J-dr"},
   {key: "mechanic", label: "Mechanic", head: "Mech"},
+  {key: "remote_ops", label: "Remote ops", head: "Rem"},
   {key: "life_support", label: "Life support", head: "Life"},
 ];
 

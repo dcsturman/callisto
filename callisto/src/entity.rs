@@ -3094,6 +3094,29 @@ impl Entities {
     self.repair_attempt(ship_name, system, None, 0, 0, rng)
   }
 
+  /// The best pair of hands aboard for flying the repair drones.
+  ///
+  /// Whoever has the most Electronics (remote ops), held to the drones'
+  /// own rating of 1 (Core Rulebook p. 159). Untrained is DM-3, which is
+  /// what a ship with no drones has: nobody has ever needed to learn.
+  fn drone_repair_dm(&self, ship_name: &str) -> i16 {
+    self.ships.get(ship_name).map_or(-3, |ship| {
+      let ship = ship.read().unwrap();
+      let best = (0..ship.get_crew().engineer_count().max(1))
+        .map(|index| ship.get_crew().engineer_at(index).drone_repair_dm())
+        .max()
+        .unwrap_or(-3);
+      // A hull fitted with drones has somebody who can fly them, named in
+      // the crew or not: the fitting implies the training. Without them,
+      // nobody aboard has ever needed to learn.
+      if ship.has_feature(crate::ship::FeatureKind::RepairDrones) {
+        best.max(0)
+      } else {
+        best
+      }
+    })
+  }
+
   fn process_repair(
     &mut self, ship_name: &str, system: ShipSystem, engineer: usize, boost: i16, auto_repair: u8, rng: &mut dyn RngCore,
   ) -> EngineerActionResult {
@@ -3125,21 +3148,28 @@ impl Entities {
       };
     }
 
+    // Read before the write lock, since it reads the crew through the map.
+    let drone_dm = if engineer.is_none() {
+      self.drone_repair_dm(ship_name)
+    } else {
+      0
+    };
+
     let ship = self.ships.get(ship_name).unwrap();
     let mut ship_write = ship.write().unwrap();
 
-    // Engineering for the drives and the power plant; Mechanic for the rest of
-    // the ship's equipment. The drones bring Engineer 1 to anything, which is
-    // all they are rated for.
-    let (skill, skill_name) = match engineer {
-      None => (1, "repair drones"),
+    // Engineering for the drives and the power plant; Mechanic for the rest
+    // of the ship's equipment. A drone run brings whoever is flying them,
+    // held to the drones' own rating.
+    let (skill, skill_name): (i16, &str) = match engineer {
+      None => (drone_dm, "repair drones (remote ops)"),
       Some(engineer) => {
         let engineer = ship_write.get_crew().engineer_at(engineer);
         match system {
-          ShipSystem::Jump => (engineer.jump, "engineering (j-drive)"),
-          ShipSystem::Powerplant => (engineer.power, "engineering (power)"),
-          ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (engineer.mechanic, "mechanic"),
-          _ => (engineer.maneuver, "engineering (m-drive)"),
+          ShipSystem::Jump => (i16::from(engineer.jump), "engineering (j-drive)"),
+          ShipSystem::Powerplant => (i16::from(engineer.power), "engineering (power)"),
+          ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (i16::from(engineer.mechanic), "mechanic"),
+          _ => (i16::from(engineer.maneuver), "engineering (m-drive)"),
         }
       }
     };
@@ -3162,7 +3192,7 @@ impl Entities {
     let (total, check) = engineer_check(
       roll_dice(2, rng),
       &[
-        (skill_name, i16::from(skill)),
+        (skill_name, skill),
         ("earlier attempts", i16::from(repair_bonus)),
         ("captain", boost.max(0)),
         ("damage", -i16::from(crit_level)),
@@ -5160,6 +5190,13 @@ mod tests {
       let mut ship = entities.ships.get("Magenta").unwrap().write().unwrap();
       ship.crit_level[ShipSystem::Sensors as usize] = 1;
       assert_eq!(ship.auto_repair_mod(), 2, "two points a round");
+      // Somebody aboard who can actually fly them, which the drones hold to
+      // their own rating of 1.
+      let mut crew = ship.get_crew().clone();
+      let mut engineer = crew.engineer_at(0);
+      engineer.remote_ops = Some(2);
+      crew.set_engineer(0, engineer);
+      ship.set_crew(crew);
     }
 
     // Every die a 6, so the attempt lands: the point is that it happens at
@@ -5181,6 +5218,58 @@ mod tests {
       "{effects:?}"
     );
     assert!(format!("{effects:?}").contains("repair drones"), "{effects:?}");
+  }
+
+  /// The drones are flown by whoever has Electronics (remote ops), held to
+  /// the drones' own rating of 1. A hull fitted with them trains someone,
+  /// so its crew is a green 0 rather than untrained.
+  #[test]
+  fn drone_repairs_roll_on_remote_ops() {
+    let drones = crate::ship::ShipFeature {
+      name: "Repair drones".to_string(),
+      power: 0,
+      default_on: false,
+      kind: Some(crate::ship::FeatureKind::RepairDrones),
+    };
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Tender".to_string(),
+      displacement: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::AutoRepair, 1)],
+      features: vec![drones],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Magenta".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(
+      entities.drone_repair_dm("Magenta"),
+      0,
+      "a ship with drones has someone trained to fly them"
+    );
+
+    // Someone who actually knows the job is still held to the drones.
+    {
+      let mut ship = entities.ships.get("Magenta").unwrap().write().unwrap();
+      let mut crew = ship.get_crew().clone();
+      let mut engineer = crew.engineer_at(0);
+      engineer.remote_ops = Some(3);
+      crew.set_engineer(0, engineer);
+      ship.set_crew(crew);
+    }
+    assert_eq!(
+      entities.drone_repair_dm("Magenta"),
+      1,
+      "the drones are rated 1, whoever flies them"
+    );
+
+    // And a hull with no drones has nobody who has ever needed to learn.
+    let bare = Arc::new(ShipDesignTemplate {
+      name: "Bare".to_string(),
+      displacement: 400,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Bare".to_string(), Vec3::zero(), Vec3::zero(), &bare, None, None);
+    assert_eq!(entities.drone_repair_dm("Bare"), -3, "untrained");
   }
 
   /// No drones, no attempts: the program has nothing to send out.
