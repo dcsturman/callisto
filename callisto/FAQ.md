@@ -507,6 +507,10 @@ power. Untrained does not arise: the skill has no use on a ship with no drones,
 and a ship that has them has someone who can work them. A rating above 1 is
 still held to the drones' own rating.
 
+So a drone-run repair usually rolls at DM+0 rather than the drones' rated 1,
+since no design states a rating. That is the book's cap read as written — 1 is
+the ceiling, not the floor — and a crew that wants the full 1 says so.
+
 #### Interpretation — /bis means Jump Control costs five less
 "+5 to the Bandwidth of the jump control software" (CRB p. 180) could mean a
 bigger computer or a cheaper program. Callisto reads it as the program costing
