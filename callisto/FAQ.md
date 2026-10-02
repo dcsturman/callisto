@@ -34,7 +34,8 @@ Everything below is a smaller deviation within the tonnage we do support.
 * The entire "dogfight" system is ignored in Callisto.  There's no special dogfight rules or _adjacent_ range band.
 * Skills are still a work-in-progress and in some cases do not always have impact:
   * Moves are simultaneous for all ships.  Therefore there is no initiative between sides, and no impact from _Tactics_ or _Leadership_ skill. 
-  * _Engineering_ skills, while supported during ship construction, have not yet been implemented in play with the exception of _engineering (jump)_.
+  * _Engineering_ skills now carry repairs of their own systems, _Mechanic_ repairs everything else,
+    and _Electronics (remote ops)_ flies the repair drones.
 * Weapons:
   * Supported: beam and pulse lasers, missiles, torpedoes, sandcasters, particle beams, fusion guns, plasma
     guns, railguns, meson guns, mass drivers, ion cannons, repulsors and point defence laser batteries.
@@ -46,7 +47,8 @@ Everything below is a smaller deviation within the tonnage we do support.
   * **Repulsors** can be fitted but do nothing yet.  The book gives them "Special" damage because they deflect
     rather than destroy, and that mechanic is not implemented.
   * **Ion cannons** drain a target's Power rather than damaging its hull, and that Power returns after a round
-    or two.  Hardened systems, which the book lets a crew shield from ion damage, are not modelled.
+    or two.  A house rule spills a tenth of that into the computer's Bandwidth, which a hardened
+    (/fib) computer shrugs off -- the only thing hardening does here.
   * **Weapon modifications** -- accurate, high yield, long range, energy efficient and so on -- have nowhere to
     live in a design and are silently dropped.
   * **Mixed turrets** are supported: a turret may hold different weapons, and "only one type may be used in a
@@ -181,12 +183,18 @@ Ships can be assigned to one of four colour-coded teams, or left unaligned.
 
 ## Rules decisions and assumptions
 
-The sections above describe *what* Callisto does. This one records *why*, with
-the citation and the reasoning, so a call can be revisited later without having
-to re-derive it. Three kinds of entry:
+Every place Callisto parts company with the book, with the citation and the
+reasoning, so a call can be revisited later without re-deriving it. Rules we
+follow as written are not listed: if a mechanic is missing from this section,
+Callisto does what Mongoose says.
 
 - **Change** — we do something the book does not say, or contradicts.
 - **Assumption** — the book is silent or ambiguous and we had to pick.
+- **Interpretation** / **Decision** — the book admits two readings, or leaves
+  the choice to the table, and we made one.
+- **House rule** — a deliberate departure, for play reasons.
+- **Addition** — something the book leaves to the referee that Callisto has to
+  track to run at all.
 - **Omission** — a rule exists and we have not implemented it.
 
 Add to this whenever a rules call is made. Citations are Mongoose Traveller 2nd
@@ -218,91 +226,36 @@ case where the exemption would actually matter.
 ### Movement and range
 
 #### Change — movement is Newtonian, not the Core Rulebook's Thrust-cost table
-The distances are the book's exactly (CRB p. 167): Short to 1,250 km, Medium to
-10,000, Long to 25,000, Very Long to 50,000, Distant beyond. What differs is how
-ships get between them.
+The range bands are the book's exactly (CRB p. 167). What differs is how ships
+get between them. The CRB prices each band as a Thrust cost paid over as many
+rounds as it takes, with no momentum, so a ship that stops thrusting stops
+changing range; Callisto integrates real kinematics over the round, so velocity
+accumulates and is kept.
 
-The CRB does not simulate motion. Its *Ship Movement* table prices each band as
-a Thrust cost — Short 2, Medium 5, Long 10, Very Long 25, Distant 50 — paid over
-as many rounds as it takes. **There is no momentum.** Each band is a fresh bill,
-and a ship that stops thrusting stops changing range.
-
-Callisto integrates real kinematics over the 360-second round, so velocity
-accumulates and is kept. From rest at Thrust 2, burning straight away:
-
-| leave band | CRB | Callisto |
-| --- | --- | --- |
-| Short (1,250 km) | 1 round | 1 round |
-| Medium (10,000 km) | 4 | 3 |
-| Long (25,000 km) | 9 | 5 |
-| Very Long (50,000 km) | 21 | 7 |
-
-The marginal cost is where the models really part. Per band, the CRB charges
-1 / 3 / 5 / 12 rounds — geometrically worse — while Callisto stays near two
-rounds throughout, because the bands roughly double in width just as the ship's
-speed keeps climbing. After six rounds at Thrust 2 a ship is making 42 km/s and
-would cross a whole band on coasting alone; under the CRB that round produces no
-change at all.
-
-So disengagement is far easier here than at the table. Running from Medium to
-Distant at Thrust 2 is 21 rounds by the book and 7 in Callisto.
-
-This is not a house invention. The *Traveller Companion* replaces the Thrust-cost
-table with **Vector-Based Space Combat** (pp. 170–178), which tracks position,
-applies Thrust as a change to a persistent velocity vector, and keeps the range
-bands unchanged — the same model Callisto uses, arrived at independently. Its map
-scale of 648 km per space is simply the CRB bands re-expressed: 15 spaces is
-9,720 km against the book's 10,000, 38 is 24,624 against 25,000, 77 is 49,896
-against 50,000.
-
-One caveat if comparing directly against the Companion. It sets one space to
-"the distance travelled accelerating at 1G for one round", 648 km, and then also
-credits one point of Thrust with +1 space per round of *speed*. Those are not the
-same quantity: a 1G burn over 360 s covers 636 km but leaves the ship at
-3,531 m/s, which coasts 1,271 km — nearly two spaces — in the next round. The
-Companion therefore accumulates velocity at about half the physical rate, and its
-ships fall progressively behind Callisto's: level at round one, 1.3x by round two,
-1.8x by round ten. Callisto follows the physics rather than the discretisation.
+Disengagement is the practical difference, and it is far easier here: Medium to
+Distant at Thrust 2 is 21 rounds by the book and 7 in Callisto. This is not a
+house invention — the *Traveller Companion*'s Vector-Based Space Combat
+(pp. 170-178) is the same model with the same bands, though it accumulates
+velocity at about half the physical rate.
 
 ---
 
 ### Sensors and detection
 
 #### Change — the two detection tables are treated as one, and the rows stack
-HG prints **Initial Detection** (p. 76) and **Stealthed Ships** (p. 77) as
-separate tables. Four rows are word-for-word identical between them, including
-the same worked example, and the rows that differ do so only because of *when*
-each table is used: the first describes an approach, where nothing is shooting
-and nothing has taken a critical; the second describes a ship that has already
-gone dark, so its power plant is off by assumption.
+HG prints Initial Detection (p. 76) and Stealthed Ships (p. 77) as separate
+tables. Four rows are word-for-word identical, and the rows that differ do so
+only because of *when* each table is used. Callisto uses the union for every
+check, rows stacking: the first table gains *fires weapons, +2* and *damaged,
++1 per Severity*, the second gains *power plant, +1*.
 
-The book collapses them itself in prose, listing the giveaways as one set: a
-powered-down ship stays hidden *"until they reveal themselves with a tell-tale
-sign: use of active sensors, transponder, manoeuvre drives or firing a weapon,
-just to name a few."*
+The firing row is the one that matters. While it belonged only to the
+reacquisition table, a stealthed ship could run dark and fire every round with
+its target having no chance at all — not a poor chance, but a DM low enough
+that the best possible 2D roll could not reach 8.
 
-Callisto uses the union for every check. Precisely what each table gained:
-
-| Row | Initial Detection | Stealthed Ships |
-|---|---|---|
-| TL difference, +1 per higher TL | had it | had it |
-| Active sensors, +2 | had it | had it |
-| Manoeuvre drive, +1 per Thrust | had it | had it |
-| Transponder or comms, +6 | had it | had it |
-| Power plant, +1 | had it | **gained** |
-| Fires weapons, +2 | **gained** | had it |
-| Damaged, +1 per Severity | **gained** | had it |
-| Stealth coating, −2/−4/−6 | had it | applied to both already |
-
-Rows stack, since the book lists them separately.
-
-The firing row is the one that matters. While it appeared only on the
-reacquisition table, a stealthed ship could run dark and fire every round at a
-contact it already held with its target having *no chance at all* — not a poor
-chance, but a DM low enough that the best possible 2D roll could not reach 8.
-
-Two rows are still unmodelled: **extended sensor array, +2** (arrays are not
-built), and *"passive sensors only, +0"*, which is a no-op by definition.
+Two rows are unmodelled: *extended sensor array, +2* (arrays are not built),
+and *passive sensors only, +0*, a no-op by definition.
 
 #### Assumption — active sensors are needed to acquire a contact, not to keep one
 HG p. 77 is explicit that *"attempting to locate a ship with this level of
@@ -408,17 +361,6 @@ The only thing HG says a hand-off *requires* is a point of computer Bandwidth at
 each end. There is no check and no step, so it is a standing setting rather than
 something the sensop spends an action on.
 
-#### Canon — a hand-off costs Bandwidth at both ends, and the host pays per ship
-"A hand-off requires one point of available computer Bandwidth from both the
-host and recipient ship", and a host with five points spare "can hand-off its
-sensor data to a maximum of five other ships, provided that each of them also
-has at least 1 Bandwidth available" (High Guard p. 78). *Available* is the
-operative word: a picket running Evade and Fire Control has spent the capacity
-its squadron needed. Computer cores multiply available points by ten for this,
-which is how a capital ship feeds a squadron, and Battle Network drops the
-per-ship cost entirely for allies within Medium (/1) or Long (/2) — the reason
-a carrier with forty fighters out buys the program.
-
 #### Assumption — only transmitting counts as communication; receiving does not
 Sending a hand-off counts as communication for detection purposes, and so adds
 the transponder-or-comms modifier to anyone trying to detect that ship.
@@ -432,15 +374,6 @@ entirely, in both directions, for the round.
 #### Assumption — an inherited contact belongs to the receiver outright
 It does not lapse when the link breaks or the host is destroyed. The crew has
 the plot, and killing the ship that gave it to them does not take it back.
-
-#### Canon — electronic warfare breaks hand-offs
-Not a house rule: "if the target ship makes a successful electronic warfare
-check against any of the ships in the squadron, that ship loses comms contact
-with the other ships, breaking the hand-off ... It only breaks hand-off
-communications between the ships" (High Guard p. 78). Our *Jam Comms* action
-is that check, and a jammed ship can neither send nor receive for the round.
-The book is explicit that this does not cost anyone a contact they made
-themselves, which is what we do.
 
 ---
 
@@ -456,30 +389,14 @@ individually, rather than salvoes tracked as units. Point defence and the
 torpedo halving are re-expressed to match; see `FAQ.md`.
 
 #### Omission — detecting missile launch
-Callisto shows every launch to everyone. The rule as written:
-
-> When a ship launches missiles, sensor operators on board other ships may make
-> an immediate **Routine (6+)** Electronics (sensors) check in order to detect
-> them. If the firing ship has not been detected itself, this becomes an
-> **Average (8+)** check. DM+1 is applied for every full 10 missiles in the
-> salvo, up to a maximum of DM+6. Undetected missiles may be picked up by the
-> sensor operator at the start of every combat round with an Average (8+) check.
-
-Held deliberately, and the blocker is presentation rather than rules. Ship
-contacts are per-observer and the display already copes with that — a ship you
-cannot see is dimmed, greyed in the roster, unselectable as a target. Missiles
-would need the same treatment, and it is not yet clear how to show *which
-missiles are visible to whom* without the view becoming unreadable, particularly
-for a referee looking at every side at once. Until there is a good answer to
-that, showing every missile to everyone is the honest simplification.
-
-It would also need salvo grouping, since the DM scales with salvo size and
-Callisto tracks missiles individually. That is the smaller problem of the two.
-
-Note the interlock, for when it is picked up: *"if the firing ship has not been
-detected itself"* reads straight off the contact state that already exists, so
-shooting from stealth would make the missiles harder to spot as a consequence
-rather than as a special case.
+A launch can be missed and picked up later (HG p. 76: Routine 6+, or Average 8+
+if the firing ship is itself undetected, DM+1 per full 10 missiles). Callisto
+shows every launch to everyone. The blocker is presentation rather than rules:
+ship contacts are already per-observer, but it is not clear how to show *which
+missiles are visible to whom* without the view becoming unreadable, least of
+all for a referee watching every side at once. It would also need salvo
+grouping, since the DM scales with salvo size and missiles are tracked
+individually.
 
 ---
 
@@ -487,48 +404,32 @@ rather than as a special case.
 
 #### Assumption — what a "bridge station" is
 The CRB's Bridge row (p. 170) disables or destroys a "random bridge station"
-and never says what the stations are. HG's Fleet Battles table (p. 120) uses the
-same words and doesn't say either. Callisto rolls 1D on this list:
+and never says what the stations are; HG's Fleet Battles table (p. 120) uses
+the same words and is no more specific. Callisto rolls 1D on this list:
 
 | 1D | Station | While it is out |
 | --- | --- | --- |
 | 1 | Comms | Cannot transmit, or send or receive a sensor hand-off |
 | 2 | Sensors | No sensor actions: lock, break lock, jam comms, jam missiles |
-| 3 | Computer | No acceleration, jump or sensor hand-off |
+| 3 | Computer | No acceleration, jump, sensor hand-off or software |
 | 4 | Astrogation | No jump |
-| 5 | Fire control | No weapons fire, point defence (gunners or batteries) or sand |
+| 5 | Fire control | No weapons fire, point defence or sand |
 | 6 | Pilot | No acceleration, evasion or assisting gunners |
 
-A **disabled** station is out for the rest of the round it was hit in and all of
-the next, then comes back by itself. A **destroyed** station is out until an
-engineer repairs it.
+A disabled station is out for the rest of the round it was hit in and all of
+the next, then returns by itself; a destroyed one waits for an engineer.
+Gunners are not on the list: gunnery control is dispersed through the ship
+(HG p. 91), but the fire control that directs it is on the bridge.
 
-Gunners are not on the list. HG p. 91 has gunnery control dispersed through a
-ship, one "with its bridge destroyed can still be lethal as long as its guns
-keep firing", but the fire control that directs them is on the bridge.
+Two rows of the CRB table are then read rather than taken literally. Severity 2
+("computer reboots, all software unavailable this round and next") is the
+Computer station disabled, and severity 5 ("computer destroyed") destroys that
+station and takes Bandwidth to 0. The 1D×1D injury to a destroyed station's
+occupant is reported but not tracked.
 
-A ship that cannot accelerate coasts and keeps its flight plan, and picks it up
-again once the station is back. A computer is expected to run software as well;
-when software exists, a computer that is out should stop it too.
-
-The Bridge row then reads:
-
-| Severity | CRB | Callisto |
-| --- | --- | --- |
-| 1 | Random bridge station disabled | As written |
-| 2 | Computer reboots, all software unavailable this round and next | Computer station disabled |
-| 3 | Computer damaged, Bandwidth −50% | As written |
-| 4 | Random bridge station destroyed, occupant takes 1D×1D | As written; the injury is reported but not tracked |
-| 5 | Computer destroyed | Computer station destroyed, Bandwidth 0 |
-| 6 | Random bridge station destroyed, occupant takes 1D×1D, Hull Severity +1 | As written |
-
-**Repair.** Bridge damage is recorded in the order it lands. A successful
-Repair of the Bridge lowers its severity by one, as for any system, and undoes
-the damage done at the severity it has just left, most recent first. For
-example, repairing from 4 to 3 brings back the station the level 4 hit
-destroyed. Lost Bandwidth comes back the same way. Injuries to the crew are not
-undone. A station an earlier hit had already destroyed stays destroyed until
-that earlier hit's severity is repaired too.
+Repairing the Bridge undoes the damage in reverse order: each severity
+recovered brings back what that level's hit took, most recent first, lost
+Bandwidth included. Injuries are not undone.
 
 #### Change — a critically failed overload is a critical hit
 Failing an overload by 6 or more applies a severity +1 critical hit to that
@@ -541,51 +442,26 @@ the power plant 10% of its Power.
 ### Engineering and power
 
 #### Change — a power budget, with weapons in it
-High Guard prices every system's Power: basic ship systems at 20% of the hull's
-tonnage (HG p. 16), the manoeuvre and jump drives at 10% of the hull per point
-of Thrust or jump number, sensors by grade (HG p. 23), and each weapon by its
-own table (HG pp. 28-33). Callisto now adds these up as a budget the engineer
-can see and manage.
-
-Two consequences worth knowing:
-
-- **Weapons draw Power.** They used to be ignored entirely, with only basic
-  systems and sensors deducted before thrust. A ship whose plant is damaged now
-  has to choose between flying and shooting, which is the choice the rules
-  intend. The three designs in play — Executor, Tai'ao, Threshing Oar — all have
-  Power enough for everything while undamaged.
-- **The jump drive only draws as the ship jumps** ("this Power requirement is
-  only needed when the ship actually initiates a jump", HG p. 16), so it is
-  shown on the board but kept out of the running total.
+High Guard prices every system's Power (pp. 16, 23, 28-33) and Callisto now
+adds it up as a budget the engineer can see and manage. **Weapons are in it**,
+where they used to be ignored entirely, so a ship whose plant is damaged has to
+choose between flying and shooting. The jump drive draws only as the ship jumps
+(HG p. 16), so it is shown on the board but kept out of the running total.
 
 ### The ship's computer
 
 Software is bought with the ship and *runs* within the computer's Processing
 score. Owning more than can run at once is normal and is the whole of the
 mechanic: HMS Executor's Evade/1, Fire Control/2 and Jump Control/2 come to 30
-Bandwidth on a Computer/20, so she fights or she jumps.
+Bandwidth on a Computer/20, so she fights or she jumps. Computers draw no Power
+and take no tonnage (CRB p. 180), so they are absent from the power board, and
+changing what runs is free and takes effect at once.
 
-Computers draw no Power and take no tonnage (CRB p. 180), so they are absent
-from the power board. Choosing what runs is free and takes effect at once: the
-rules put no combat cost on it, and the engineer's one order a round is
-already spoken for.
-
-| Package | What it does here |
-| --- | --- |
-| Jump Control/N | Caps the jump number. Nothing running, no jump at all — and it starts stopped, since jumping is deliberate and the program is expensive. |
-| Evade/N | DM−N to every attack on the ship, passive, stacking with a pilot's dodge. |
-| Fire Control/N | N points a round: one point fires a mount with no gunner, or adds +1 to a gunner's shot, in any mix. |
-| Advanced Fire Control/N | DM+N to every attack the ship makes. |
-| Launch Solution/N | DM+N to missile and torpedo salvoes. |
-| Electronic Warfare/N | DM+N to jamming comms, jamming salvoes and breaking locks. |
-| Screen Optimiser | Angles an unstaffed screen at DM+0. |
-| Manoeuvre, Intellect, Library | Free, and always running. |
-| Battle Network/N | The host stops paying a Bandwidth point per ship it feeds, for allies within Medium (/1) or Long (/2). |
-| Auto-Repair/N | N points a round: each sends the drones to a system on their own, or adds +1 to an engineer's repair. Needs repair drones aboard. |
-| Anti-Hijack, Battle System, Conscious Intelligence, Virtual Crew | Tracked and costed, but about boarders, Tactics checks and crew replacement — none of which a gunnery duel rolls. |
-| Broad Spectrum EW | Jams inbound salvoes automatically, at no crew skill, for a ship whose operator did not. |
-| Point Defence/N | Lets the ship's point defence cover a neighbour instead of itself. |
-| Virtual Gunner/N | Mans a mount nobody is at, at skill N. |
+Every package in the two lists (CRB p. 161, HG pp. 73-76) is costed and can be
+run, and each behaves as written except where noted below. Four do nothing
+here — **Anti-Hijack, Battle System, Conscious Intelligence and Virtual
+Crew** — because they turn on boarders, Tactics checks and replacing crew, none
+of which a gunnery duel rolls.
 
 #### Decision — a ship arrives with its jump software off
 Everything else a design carries comes up running, as far as the computer
@@ -594,35 +470,6 @@ ships own — on a Computer/5 it is the whole machine — and a ship that comes
 up running it has no Bandwidth for the fight it is in, nor the point spare
 that a sensor hand-off needs. Jumping is a deliberate act, so the astrogator
 switches it on when there is somewhere to go. One tick on the computer card.
-
-#### Canon — the computer carries the software, so a computer hit takes it all
-The bridge critical hit table (CRB p. 170) has three computer results among its
-six: the computer reboots with "all software unavailable this round and next",
-Bandwidth is cut by half, or the computer is destroyed outright. All three now
-bite: software benefits need the Computer bridge station working, a halved
-computer runs only what still fits, and a repair brings back what the ship was
-running rather than making the crew remember it. With Manoeuvre and Jump
-Control gone, a destroyed computer also costs the ship its acceleration and
-its jump, which is what makes the result frightening.
-
-#### Auto-Repair — a pool, like Fire Control
-"Allows the computer to make a number of repair attempts per round equal to
-the listed number. Alternatively, it can give a positive DM to a repair
-attempt equal to the listed number or any combination of the two. Requires the
-ship to carry repair drones" (CRB p. 161). So the score is points a round.
-Ticking *drones* against a damaged system spends one and has the computer work
-it; anything unspent rides along with an engineer's own repair as a DM, since
-an unspent point does nothing.
-
-A drone-run attempt rolls at Engineer 1, because that is all the drones are
-rated for: they "are considered to have an Engineer skill level of 1 or the
-level the Traveller has in Electronics (remote ops), whichever is lower, in
-all specialities for the Repair System action alone" (CRB p. 159). It costs
-nobody their action, which is the point — a ship whose engineer is dead can
-still put itself back together, slowly.
-
-Repair drones are a ship feature, and designs sold with Auto-Repair are
-assumed to carry them, since the program requires them.
 
 #### Change — Point Defence reaches one band, then two
 The package covers another ship "within Close range", and /2 "increases this
@@ -651,19 +498,23 @@ names we do not know, not a derelict. Leaving a position empty is something a
 scenario says deliberately, by giving a crew whose gunnery list is shorter
 than the ship has mounts.
 
-#### Omission — no remote-ops crewman
-The drones also let a Traveller with Electronics (remote ops) run the Repair
-System action themselves. Callisto has no remote ops skill on the crew, so
-that route does not exist: the drones work for the computer or for nobody.
+#### Assumption — Electronics (remote ops) reads like the other engineering skills
+The drones work at "an Engineer skill level of 1 or the level the Traveller has
+in Electronics (remote ops), whichever is lower" (CRB p. 159), and the books
+never say who aboard has that skill. Engineers carry a remote ops rating, and a
+crew that says nothing about it is rated 0 at it, exactly as it is at j-drive or
+power. Untrained does not arise: the skill has no use on a ship with no drones,
+and a ship that has them has someone who can work them. A rating above 1 is
+still held to the drones' own rating.
+
+So a drone-run repair usually rolls at DM+0 rather than the drones' rated 1,
+since no design states a rating. That is the book's cap read as written — 1 is
+the ceiling, not the floor — and a crew that wants the full 1 says so.
 
 #### Interpretation — /bis means Jump Control costs five less
-"A computer's Processing score is increased by +5 for the purposes of running
-Jump Control programs only" (CRB p. 180). Read strictly, that is a separate
-higher ceiling that only Jump Control may reach; read as a discount, Jump
-Control simply costs five less and frees the difference for everything else.
-We take the discount reading, which is the one that makes a Computer/20bis
-better than a Computer/20 for a ship that runs anything besides its jump
-software.
+"+5 to the Bandwidth of the jump control software" (CRB p. 180) could mean a
+bigger computer or a cheaper program. Callisto reads it as the program costing
+five less, so the saving cannot be spent on anything else.
 
 #### House rule — ion damage spills into the computer
 An ion hit deducts its damage from the target's Power. A tenth of that
@@ -679,24 +530,11 @@ firing at something other than the drives. The programs that go dark are
 remembered and come back with the Power.
 
 #### Decision — /fib computers are recorded and ignored
-A hardened computer "is immune to Ion weapons" (HG p. 20), and the Ion trait
-explains what that means: "if a system is listed as being hardened (as with
-/fib computers, for example), the crew may choose to allocate any Power to it
-before any deductions for Ion weapons are applied" (HG p. 30). The protection
-is an allocation of Power — and a computer draws none, so there is nothing to
-allocate and nothing to protect.
-
-The suffix is inherited from Classic Traveller, where computers *did* draw
-power (CT High Guard 1980: "energy points are used for four purposes:
-powering weapons, shields, for manoeuvre drives (for agility), and for
-computers") and /fib meant a fibre-optic backup that ignored radiation hits.
-MgT2 kept the suffix, re-pointed it at ion weapons, and wrote the protection
-in terms of a Power line the computer no longer has.
-
-How to read it is still argued over, so Callisto takes no position on the
-RAW. What /fib does here comes from our own ion house rule above: a hardened
-computer keeps its Bandwidth when an ion hit lands. Revisit if the community
-settles on something better.
+A hardened computer is written as immune to ion weapons and to Power loss
+(HG p. 20), but computers in MgT2 draw no Power, so the clause has nothing to
+attach to — a leftover from Classic Traveller, where computers did consume
+energy points. The notation is costed and displayed; the protection does
+nothing except against the ion house rule above.
 
 #### Change — a screen nobody is on does not angle
 Angling a screen is a gunner's reaction, so a screen with no gunner assigned
@@ -709,68 +547,36 @@ The two are different things: one is the computer jinking the ship on its own,
 costing no Thrust and no crew action, the other a pilot spending Thrust. The
 books do not say they combine, and do not say they do not.
 
-#### Note — a ship's software matters to what it can do
-Our designs carry the loadouts their books print. The practical effect is that
-most canon warships fly with Evade running, which makes them a point or two
-harder to hit than they used to be, and that a ship whose Jump Control is shut
-down to free Bandwidth cannot jump until it is started again.
-
 #### Addition — magazines
-Missiles, torpedoes and sandcaster barrels are finite. A salvo throws what is
-in the rack and no more, a short magazine throws what it has left, and an
-empty one says so; one barrel is spent per sand cloud, and a sandcaster with
-no barrels cannot react at all. A scenario reset restocks.
-
-Fifteen designs state their own load, taken from their write-ups ("Missile
-Storage (60 missiles)", "Sandcaster Barrels x 20"). The rest fall back to
-twelve missiles per rack, twenty barrels per sandcaster and three torpedoes
-per launcher — the load the small ships that do state one carry. A design can
-always say otherwise.
-
-Extracting those fifteen needed the ship's name, tonnage and computer model
-all to agree: matching on tonnage alone gave a 100-ton system defence boat a
-240-missile magazine belonging to some other hull of the same size.
+Missiles, torpedoes and sand barrels are finite: a salvo throws what is in the
+rack, an empty magazine says so, a sandcaster with no barrels cannot react, and
+a scenario reset restocks. Fifteen designs state their own load in their
+write-ups; the rest fall back to twelve missiles per rack, twenty barrels per
+sandcaster and three torpedoes per launcher, which is what the small ships that
+do state a load carry.
 
 #### Addition — ship features
-A design carries a list of *features*: everything the hull is fitted with that
-is not a drive, a sensor suite, a gun or software. Two sorts, told apart by
-what they draw:
-
-* **Draws Power** — a system with a switch, which appears on the engineer's
-  power board. The Harrier class projects a holographic hull, 100 Power while
-  it runs. These are off when the ship arrives, and a scenario can open with
-  one running by ticking it in Add Ship. They sit last in the power priority,
-  after the manoeuvre drive: a luxury dims before the ship slows.
-* **Draws nothing** — a fitting, which is simply aboard. Repair drones are the
-  first of these, and Auto-Repair software needs them.
-
-A feature can also carry a `kind` the rules look for (`RepairDrones`,
-`HolographicHull`); most are flavour and a power draw and leave it unset.
-Adding another is a line of data in the design rather than a code change, and
-whether it lands on the power board is decided by whether it draws Power.
+A design carries a list of *features*: whatever the hull is fitted with that is
+not a drive, a sensor suite, a gun or software. One that draws Power appears on
+the engineer's power board with a switch, arrives off, and sits last in the
+power priority — a luxury dims before the ship slows. The Harrier class's
+holographic hull, 100 Power, is the example. One that draws nothing is simply
+aboard, as repair drones are. Adding another is a line of data in the design
+rather than a code change.
 
 #### Change — a system without its Power does not work
 The books price every system's Power but say little about running one on less
 than it needs. Callisto feeds systems in a fixed order — life support, sensors,
-weapons, then the manoeuvre drive — and a system that cannot have its full
-draw does nothing at all. The drive is the exception: it takes whatever is
-left and flies at the Thrust that buys, since 10% of the hull per point of
-Thrust divides sensibly and a half-powered sensor suite does not.
+weapons, then the manoeuvre drive — and one that cannot have its full draw does
+nothing at all: unpowered sensors find nothing, an unpowered mount cannot fire.
+The drive is the exception, taking what is left and flying at the Thrust that
+buys.
 
-So a damaged plant now has consequences the engineer manages: sensors with no
-power find nothing and cannot lock or jam, a weapon mount with no power cannot
-fire, and the drive loses Thrust before anything else goes dark.
-
-**Most ships cannot jump with everything running.** That is the books' own
-expectation — "some cheaper vessels might require that weapons and other
-systems are powered off while making a jump" (HG p. 16) — but it is worth
-saying plainly: of the designs in the library, only a handful have Power
-enough for the jump drive on top of the drive, sensors and guns. The engineer
-shuts something down first, and the jump panel says how much is missing.
-
-Three designs cannot run even their own systems at full: the Gazulin is 5
-Power short, the light fighter and the Hraye scout 1 each. They fly a Thrust
-lower than their rating until the engineer sheds something.
+Most ships cannot jump with everything running, which is the books' own
+expectation (HG p. 16); the engineer sheds something first and the jump panel
+says how much is missing. Three designs cannot run even their own systems at
+full — the Gazulin is 5 Power short, the light fighter and the Hraye scout 1
+each — and fly a Thrust lower until the engineer shuts something down.
 
 #### Assumption — Offline System uses the usual engineering target number
 "A successful Engineer (power) check will allow the engineer to shut down any
@@ -811,17 +617,6 @@ Recorded so nobody assumes they were considered and rejected.
   to cutting communications. Jamming comms *is* implemented and does break
   hand-offs; what is missing is EW that makes a ship harder to find in the first
   place.
-- **Computer software.** A ship's computer is a single Bandwidth number and
-  nothing runs on it. There are no software packages to buy, install, or run,
-  and so nothing consumes Bandwidth except the sensor hand-off below. Until
-  software exists there is no such thing as *available* Bandwidth as distinct
-  from the rating, which is why neither figure is shown anywhere: a max and an
-  available that are always equal tell a player nothing. When software lands,
-  both belong on the ship's display.
-- **Squadron hand-off limits by Bandwidth count** — the cost of one point at each
-  end is enforced, but a host is not capped at the number of recipients its
-  spare Bandwidth allows. Meaningless before software, since nothing else is
-  competing for the points.
 - **Sensor hand-off relaying.** The single-hop rule *is* enforced.
 
 ---

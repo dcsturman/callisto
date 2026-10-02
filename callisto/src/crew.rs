@@ -38,9 +38,25 @@ pub struct Engineer {
   /// sensors and the bridge.
   #[serde(default, skip_serializing_if = "is_zero")]
   pub mechanic: u8,
+  /// Electronics (remote ops): working the repair drones.
+  #[serde(default, skip_serializing_if = "is_zero")]
+  pub remote_ops: u8,
   /// Recorded for completeness. Nothing in Callisto calls for it yet.
   #[serde(default, skip_serializing_if = "is_zero")]
   pub life_support: u8,
+}
+
+impl Engineer {
+  /// The DM this engineer brings to a repair run through the drones.
+  ///
+  /// The drones "are considered to have an Engineer skill level of 1 or the
+  /// level the Traveller has in Electronics (remote ops), whichever is
+  /// lower" (Core Rulebook p. 159), so a skilled operator is still held to
+  /// the drones' own rating.
+  #[must_use]
+  pub fn drone_repair_dm(&self) -> i16 {
+    i16::from(self.remote_ops.min(1))
+  }
 }
 
 /// The crew aboard: who is at each station and how good they are.
@@ -116,6 +132,7 @@ impl From<CrewWire> for Crew {
         power: wire.engineering_power.unwrap_or(0),
         maneuver: wire.engineering_maneuver.unwrap_or(0),
         mechanic: wire.mechanic.unwrap_or(0),
+        remote_ops: 0,
         life_support: 0,
       };
       // A crew written before engineers were listed has one if it had any
@@ -260,6 +277,7 @@ impl Crew {
       power: self.get_engineering_power(),
       maneuver: self.get_engineering_maneuver(),
       mechanic: self.get_mechanic(),
+      remote_ops: 0,
       life_support: 0,
     })
   }
@@ -380,6 +398,14 @@ impl Crew {
   }
 
   /// Add an engineer to the watch.
+  /// Replace one engineer's skills, extending the engine room if need be.
+  pub fn set_engineer(&mut self, index: usize, engineer: Engineer) {
+    while self.engineers.len() <= index {
+      self.engineers.push(Engineer::default());
+    }
+    self.engineers[index] = engineer;
+  }
+
   pub fn add_engineer(&mut self, engineer: Engineer) {
     self.engineers.push(engineer);
   }
@@ -500,6 +526,7 @@ mod tests {
       power: 0,
       maneuver: 1,
       mechanic: 0,
+      remote_ops: 0,
       life_support: 0,
     });
     crew.add_engineer(Engineer {
@@ -507,6 +534,7 @@ mod tests {
       power: 2,
       maneuver: 0,
       mechanic: 4,
+      remote_ops: 0,
       life_support: 1,
     });
 
