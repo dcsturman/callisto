@@ -109,9 +109,15 @@ export function ShotOdds(args: {ship: Ship}) {
     });
   }, [args.ship, target, templates]);
 
+  // Nothing to weigh with nothing to shoot at, and an offer to work out the
+  // odds against no one reads as a fault.
+  if (target == null) {
+    return null;
+  }
+
   if (!shown) {
     return (
-      <button type="button" className="control-input odds-toggle" onClick={() => setShown(true)}>
+      <button type="button" className="odds-toggle" onClick={() => setShown(true)}>
         Show shot odds
       </button>
     );
@@ -130,28 +136,24 @@ export function ShotOdds(args: {ship: Ship}) {
             </option>
           ))}
         </select>
-        <button type="button" className="control-input odds-toggle" onClick={() => setShown(false)}>
+        <button type="button" className="odds-toggle" onClick={() => setShown(false)}>
           hide
         </button>
       </div>
-      {target == null ? (
-        <p className="sensor-empty">No contacts.</p>
-      ) : (
-        <ul className="odds-rows">
-          {rows.map((row, index) => (
-            <li key={index} className={row.manned && row.inReach ? "odds-row" : "odds-row odds-row-dead"}>
-              <span className="odds-weapon">{row.label}</span>
-              <span className="odds-dm">
-                {row.dm >= 0 ? "+" : ""}
-                {row.dm}
-              </span>
-              <span className="odds-chance">
-                {!row.manned ? "unmanned" : row.inReach ? `${row.chance}%` : "out of reach"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="odds-rows">
+        {rows.map((row, index) => (
+          <li key={index} className={row.manned && row.inReach ? "odds-row" : "odds-row odds-row-dead"}>
+            <span className="odds-weapon">{row.label}</span>
+            <span className="odds-dm">
+              {row.dm >= 0 ? "+" : ""}
+              {row.dm}
+            </span>
+            <span className="odds-chance">
+              {!row.manned ? "unmanned" : row.inReach ? `${row.chance}%` : "out of reach"}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

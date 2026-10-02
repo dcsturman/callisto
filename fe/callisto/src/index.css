@@ -2791,9 +2791,23 @@ h3.control-form {
     margin-bottom: 3px;
 }
 
+/* A quiet control, in the console's own tone: the white input styling it
+   borrowed was a white slab with its label clipped. */
 .odds-toggle {
     font-size: var(--font-xs);
-    padding: 1px 6px;
+    padding: 1px 7px;
+    color: #c8cdc1;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    width: auto;
+    margin-top: 4px;
+}
+
+.odds-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
 }
 
 .odds-row {
