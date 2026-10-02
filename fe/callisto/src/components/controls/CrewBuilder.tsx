@@ -12,12 +12,7 @@ export interface Engineer {
   maneuver?: number;
   /** Repairs weapons, sensors and the bridge. */
   mechanic?: number;
-  /**
-   * Electronics (remote ops): flying the repair drones.
-   *
-   * Absent is untrained, DM-3. A hull fitted with drones has somebody who
-   * can work them, so its crews come out at 0 rather than untrained.
-   */
+  /** Electronics (remote ops): flying the repair drones. */
   remote_ops?: number;
   /** Recorded; nothing calls for it yet. */
   life_support?: number;

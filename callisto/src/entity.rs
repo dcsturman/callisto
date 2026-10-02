@@ -3097,17 +3097,15 @@ impl Entities {
   /// The best pair of hands aboard for flying the repair drones.
   ///
   /// Whoever has the most Electronics (remote ops), held to the drones' own
-  /// rating of 1 (Core Rulebook p. 159). Nobody trained is DM-3, like any
-  /// other skill no one has: a crew we made up for a hull with drones comes
-  /// with an operator in it, but a crew the scenario wrote is whoever it
-  /// wrote.
+  /// rating of 1 (Core Rulebook p. 159). A crew that says nothing is rated 0
+  /// at it, as it is at every other engineering skill.
   fn drone_repair_dm(&self, ship_name: &str) -> i16 {
-    self.ships.get(ship_name).map_or(-3, |ship| {
+    self.ships.get(ship_name).map_or(0, |ship| {
       let crew = ship.read().unwrap().get_crew().clone();
       (0..crew.engineer_count().max(1))
         .map(|index| crew.engineer_at(index).drone_repair_dm())
         .max()
-        .unwrap_or(-3)
+        .unwrap_or(0)
     })
   }
 
@@ -5188,7 +5186,7 @@ mod tests {
       // their own rating of 1.
       let mut crew = ship.get_crew().clone();
       let mut engineer = crew.engineer_at(0);
-      engineer.remote_ops = Some(2);
+      engineer.remote_ops = 2;
       crew.set_engineer(0, engineer);
       ship.set_crew(crew);
     }
@@ -5215,9 +5213,8 @@ mod tests {
   }
 
   /// The drones are flown by whoever has Electronics (remote ops), held to
-  /// the drones' own rating of 1. A captain who paid for drones hires
-  /// somebody who can fly them, so a crew we make up has an operator in it
-  /// -- but a crew the scenario wrote is whoever it wrote.
+  /// the drones' own rating of 1. A crew that says nothing about it is rated
+  /// 0, as it is at every other engineering skill.
   #[test]
   fn drone_repairs_roll_on_remote_ops() {
     let drones = crate::ship::ShipFeature {
@@ -5236,18 +5233,14 @@ mod tests {
     });
     let mut entities = Entities::default();
     entities.add_ship("Magenta".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
-    assert_eq!(
-      entities.drone_repair_dm("Magenta"),
-      0,
-      "a made-up crew for a hull with drones has somebody aboard who can fly them"
-    );
+    assert_eq!(entities.drone_repair_dm("Magenta"), 0, "a crew that says nothing is rated 0");
 
     // Someone who actually knows the job is still held to the drones.
     {
       let mut ship = entities.ships.get("Magenta").unwrap().write().unwrap();
       let mut crew = ship.get_crew().clone();
       let mut engineer = crew.engineer_at(0);
-      engineer.remote_ops = Some(3);
+      engineer.remote_ops = 3;
       crew.set_engineer(0, engineer);
       ship.set_crew(crew);
     }
@@ -5256,33 +5249,6 @@ mod tests {
       1,
       "the drones are rated 1, whoever flies them"
     );
-
-    // A crew the scenario wrote is taken as written: this engineer never
-    // learned the drones, aboard or not.
-    let mut stated = Crew::default();
-    stated.set_engineer(
-      0,
-      crate::crew::Engineer {
-        power: 2,
-        maneuver: 2,
-        ..crate::crew::Engineer::default()
-      },
-    );
-    entities.add_ship("Scratch".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(stated), None);
-    assert_eq!(
-      entities.drone_repair_dm("Scratch"),
-      -3,
-      "nobody the scenario named has Electronics (remote ops)"
-    );
-
-    // And a hull with no drones has nobody who has ever needed to learn.
-    let bare = Arc::new(ShipDesignTemplate {
-      name: "Bare".to_string(),
-      displacement: 400,
-      ..ShipDesignTemplate::default()
-    });
-    entities.add_ship("Bare".to_string(), Vec3::zero(), Vec3::zero(), &bare, None, None);
-    assert_eq!(entities.drone_repair_dm("Bare"), -3, "untrained");
   }
 
   /// No drones, no attempts: the program has nothing to send out.

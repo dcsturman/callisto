@@ -3171,13 +3171,6 @@ fn crewed_or_default(crew: Option<Crew>, design: &ShipDesignTemplate, mounts: us
   while crew.gunners() < mounts {
     crew.add_gunnery(0);
   }
-  if design
-    .features
-    .iter()
-    .any(|feature| feature.kind == Some(FeatureKind::RepairDrones))
-  {
-    crew.hire_a_drone_operator();
-  }
   crew
 }
 

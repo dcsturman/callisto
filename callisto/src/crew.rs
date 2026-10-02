@@ -39,12 +39,8 @@ pub struct Engineer {
   #[serde(default, skip_serializing_if = "is_zero")]
   pub mechanic: u8,
   /// Electronics (remote ops): working the repair drones.
-  ///
-  /// `None` is untrained, which is DM-3 like any other skill nobody has.
-  /// A ship fitted with drones trains someone to fly them, so its crew
-  /// defaults to 0 rather than untrained -- see `Crew::qualify_for_drones`.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub remote_ops: Option<u8>,
+  #[serde(default, skip_serializing_if = "is_zero")]
+  pub remote_ops: u8,
   /// Recorded for completeness. Nothing in Callisto calls for it yet.
   #[serde(default, skip_serializing_if = "is_zero")]
   pub life_support: u8,
@@ -56,10 +52,10 @@ impl Engineer {
   /// The drones "are considered to have an Engineer skill level of 1 or the
   /// level the Traveller has in Electronics (remote ops), whichever is
   /// lower" (Core Rulebook p. 159), so a skilled operator is still held to
-  /// the drones' own rating. Untrained is DM-3, as ever.
+  /// the drones' own rating.
   #[must_use]
   pub fn drone_repair_dm(&self) -> i16 {
-    self.remote_ops.map_or(-3, |skill| i16::from(skill.min(1)))
+    i16::from(self.remote_ops.min(1))
   }
 }
 
@@ -107,8 +103,6 @@ pub struct CrewWire {
   engineering_maneuver: Option<u8>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   mechanic: Option<u8>,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  remote_ops: Option<u8>,
   #[serde(default = "default_gunnery")]
   gunnery: Vec<u8>,
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -138,7 +132,7 @@ impl From<CrewWire> for Crew {
         power: wire.engineering_power.unwrap_or(0),
         maneuver: wire.engineering_maneuver.unwrap_or(0),
         mechanic: wire.mechanic.unwrap_or(0),
-        remote_ops: wire.remote_ops,
+        remote_ops: 0,
         life_support: 0,
       };
       // A crew written before engineers were listed has one if it had any
@@ -170,7 +164,6 @@ impl From<Crew> for CrewWire {
       engineering_power: None,
       engineering_maneuver: None,
       mechanic: None,
-      remote_ops: None,
       gunnery: crew.gunnery,
       screen_gunnery: crew.screen_gunnery,
       leadership: crew.leadership,
@@ -284,7 +277,7 @@ impl Crew {
       power: self.get_engineering_power(),
       maneuver: self.get_engineering_maneuver(),
       mechanic: self.get_mechanic(),
-      remote_ops: None,
+      remote_ops: 0,
       life_support: 0,
     })
   }
@@ -413,24 +406,6 @@ impl Crew {
     self.engineers[index] = engineer;
   }
 
-  /// Sign on somebody who can work the ship's repair drones.
-  ///
-  /// A captain who paid for drones hires a hand who can fly them, so the
-  /// crew we make up for a design that carries them has Electronics
-  /// (remote ops) 0 in the engine room -- trained rather than fumbling.
-  /// This fills out a crew nobody wrote; a scenario that names its own
-  /// crew gets exactly the people it named.
-  pub fn hire_a_drone_operator(&mut self) {
-    if self.engineers.is_empty() {
-      self.engineers.push(Engineer::default());
-    }
-    for engineer in &mut self.engineers {
-      if engineer.remote_ops.is_none() {
-        engineer.remote_ops = Some(0);
-      }
-    }
-  }
-
   pub fn add_engineer(&mut self, engineer: Engineer) {
     self.engineers.push(engineer);
   }
@@ -551,7 +526,7 @@ mod tests {
       power: 0,
       maneuver: 1,
       mechanic: 0,
-      remote_ops: None,
+      remote_ops: 0,
       life_support: 0,
     });
     crew.add_engineer(Engineer {
@@ -559,7 +534,7 @@ mod tests {
       power: 2,
       maneuver: 0,
       mechanic: 4,
-      remote_ops: None,
+      remote_ops: 0,
       life_support: 1,
     });
 
