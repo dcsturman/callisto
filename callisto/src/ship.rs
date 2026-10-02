@@ -1700,6 +1700,13 @@ impl Ship {
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
     self.current_computer = u32::max(self.current_computer, self.design.computer);
+    // A ship read from a scenario has no magazine on the wire, and serde
+    // fills zeros -- which would put every scenario ship to sea with empty
+    // racks. An empty magazine here means "not stated", so it is loaded from
+    // the design the same way a new ship's is.
+    if self.magazine.is_empty() {
+      self.magazine = Magazine::for_design(&self.design);
+    }
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
@@ -3876,6 +3883,36 @@ mod tests {
     ship.apply_ion_damage(60, 2);
     assert_eq!(ship.ion_power_loss, 60, "the plant still suffers");
     assert_eq!(ship.processing(), 20, "the computer does not");
+  }
+
+  /// A ship read from a scenario file carries no magazine on the wire, and
+  /// serde fills zeros -- so without a fixup every scenario ship would put to
+  /// sea with empty racks. HMS Executor reported exactly that on her first
+  /// launch.
+  #[test]
+  fn a_loaded_ship_is_given_the_magazine_its_design_carries() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)],
+      magazine: Magazine {
+        missiles: 12,
+        torpedoes: 0,
+        sand: 0,
+      },
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // What deserialization leaves behind.
+    ship.magazine = Magazine::default();
+    ship.fixup_current_values();
+    assert_eq!(ship.magazine.missiles, 12, "the racks are full again");
+
+    // A magazine that was spent down is left alone: only an empty one means
+    // "the file did not say".
+    ship.magazine.missiles = 4;
+    ship.fixup_current_values();
+    assert_eq!(ship.magazine.missiles, 4, "a part-spent magazine is not refilled");
   }
 
   /// A design that states its magazine keeps it; one that does not gets a

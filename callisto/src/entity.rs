@@ -154,12 +154,13 @@ fn detection_roll_effect(
   // but ends on the total against the target number rather than on Effect.
   // Detection is pass or fail: the margin buys nothing here, unlike jamming,
   // where Effect decides how many missiles die.
-  EffectMsg::about(
+  EffectMsg::outcome(
     observer,
     MessageCategory::Detection,
     format!(
       "{observer} sensor check on {target} with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against 8: {outcome}."
     ),
+    total >= 8,
   )
 }
 
