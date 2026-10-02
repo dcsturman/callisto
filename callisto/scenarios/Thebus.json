@@ -253,7 +253,7 @@
       }
     },
     {
-      "name": "Harrier",
+      "name": "HMS Executor",
       "position": [
         600000000.0,
         22000000.0,
@@ -274,21 +274,8 @@
           50000
         ]
       ],
-      "design": "Harrier",
-      "team": "Red",
-      "crew": {
-        "pilot": 2,
-        "engineering_jump": 2,
-        "engineering_power": 2,
-        "engineering_maneuver": 2,
-        "mechanic": 2,
-        "sensors": 2,
-        "gunnery": [
-          2,
-          2
-        ],
-        "leadership": 2
-      }
+      "design": "HMS Executor",
+      "team": "Red"
     }
   ]
 }
