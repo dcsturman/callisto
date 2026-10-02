@@ -20,17 +20,27 @@ export function Magazine(args: {ship: Ship}) {
   const templates = useAppSelector(templatesSelector);
   const magazine = args.ship.magazine;
 
-  const casters = useMemo(() => {
+  // What this hull can actually throw. A ship with no launcher has nothing
+  // to say about missiles, and saying "missiles 0" about it reads as a ship
+  // that has run dry rather than one that never carried any.
+  const {casters, carries} = useMemo(() => {
     let crewed = 0;
     let total = 0;
+    const carries = {missiles: false, torpedoes: false, sand: false};
     shipWeapons(args.ship, templates).forEach((weapon, index) => {
-      const sand = weaponGuns(weapon).filter((gun) => gun.kind === "Sand").length;
+      const kinds = weaponGuns(weapon).map((gun) => gun.kind);
+      carries.missiles ||= kinds.includes("Missile");
+      carries.torpedoes ||= kinds.includes("Torpedo");
+      const sand = kinds.filter((kind) => kind === "Sand").length;
+      if (sand > 0) {
+        carries.sand = true;
+      }
       total += sand;
       if ((args.ship.crew?.gunnery?.length ?? 0) > index) {
         crewed += sand;
       }
     });
-    return {crewed, total};
+    return {casters: {crewed, total}, carries};
   }, [args.ship, templates]);
 
   if (magazine == null) {
@@ -38,10 +48,11 @@ export function Magazine(args: {ship: Ship}) {
   }
 
   const rows = [
-    {label: "missiles", count: magazine.missiles, suffix: ""},
-    {label: "torpedoes", count: magazine.torpedoes, suffix: ""},
+    {label: "missiles", count: magazine.missiles, suffix: "", carried: carries.missiles},
+    {label: "torpedoes", count: magazine.torpedoes, suffix: "", carried: carries.torpedoes},
     {
       label: "sand",
+      carried: carries.sand,
       count: magazine.sand,
       // An unmanned caster cannot throw, so say how many are actually
       // crewed when that is fewer than the ship carries.
@@ -52,10 +63,11 @@ export function Magazine(args: {ship: Ship}) {
             ? ` · ${casters.total} caster${casters.total === 1 ? "" : "s"}`
             : ` · ${casters.crewed} of ${casters.total} casters crewed`,
     },
-  ].filter((row) => row.count > 0 || row.label === "missiles");
+  ].filter((row) => row.carried);
 
-  if (rows.every((row) => row.count === 0) && casters.total === 0) {
-    return <p className="magazine-empty">Magazine empty.</p>;
+  // Nothing to carry, nothing to say.
+  if (rows.length === 0) {
+    return null;
   }
 
   return (
