@@ -2652,6 +2652,12 @@ h3.control-form {
     opacity: 0.85;
 }
 
+/* A mount nobody is at. Dimmed as well as greyed, so it reads as out of
+   action next to the guns that are crewed. */
+.weapon-button-unmanned {
+    opacity: 0.55;
+}
+
 /* --- Jump readiness --- */
 
 .jump-verdict {

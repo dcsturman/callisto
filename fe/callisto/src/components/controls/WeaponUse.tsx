@@ -100,6 +100,9 @@ const ENGINEER_ICON_COLORS: { [kind: string]: string } = {
   Jump: "magenta",
 };
 
+/** A mount nobody is at: drawn as out of action rather than as its gun. */
+const UNMANNED_COLOR = "#6b7280";
+
 const PILOT_ICON_COLORS = {
   Evade: "cyan",
   AssistGunner: "purple",
@@ -121,19 +124,35 @@ export const WeaponButton = (props: {
    * marking the button, tells them apart.
    */
   alongside?: string[];
+  /** Nobody is at this mount, and no program is covering it. */
+  unmanned?: boolean;
 }) => {
   // Tooltips name the weapon for a person, so they use the readable label
   // rather than the wire identifier.  Colours are still keyed off the raw kind.
   const label = weaponKindLabel(props.weapon);
 
   const mixed = props.alongside != null && props.alongside.length > 0;
-  const tip = (text: string) =>
-    mixed
+  const tip = (text: string) => {
+    const shared = mixed
       ? `${text} — shares the mount with ${props.alongside!
           .map(weaponKindLabel)
           .join(", ")}`
       : text;
-  const buttonClass = mixed ? "weapon-button weapon-button-mixed" : "weapon-button";
+    return props.unmanned
+      ? `${shared} — nobody is at this mount, so it cannot fire. A gunner, Fire Control or a Virtual Gunner would change that.`
+      : shared;
+  };
+  const buttonClass = [
+    "weapon-button",
+    mixed ? "weapon-button-mixed" : "",
+    props.unmanned ? "weapon-button-unmanned" : "",
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+
+  // An unmanned mount is drawn in the colour of a thing that is not working,
+  // rather than in the colour of the gun it is.
+  const fill = props.unmanned ? UNMANNED_COLOR : WEAPON_COLORS[props.weapon];
 
   // FixedMount is a bare string like Barbette, so it has to be matched first or
   // it falls into the Barbette arm and draws the wrong weapon entirely.
@@ -152,7 +171,7 @@ export const WeaponButton = (props: {
           <FixedMount
             className="weapon-symbol fixed-mount-button"
             style={{
-              fill: WEAPON_COLORS[props.weapon],
+              fill,
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
@@ -179,7 +198,7 @@ export const WeaponButton = (props: {
           <Barbette
             className="weapon-symbol barbette-button"
             style={{
-              fill: WEAPON_COLORS[props.weapon],
+              fill,
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
@@ -208,7 +227,7 @@ export const WeaponButton = (props: {
             <SmallBay
               className="weapon-symbol bay-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -234,7 +253,7 @@ export const WeaponButton = (props: {
             <MediumBay
               className="weapon-symbol bay-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -260,7 +279,7 @@ export const WeaponButton = (props: {
             <LargeBay
               className="weapon-symbol bay-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -289,7 +308,7 @@ export const WeaponButton = (props: {
             <Turret1
               className="weapon-symbol turret-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -316,7 +335,7 @@ export const WeaponButton = (props: {
             <Turret2
               className="weapon-symbol turret-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -342,7 +361,7 @@ export const WeaponButton = (props: {
           <Turret3
             className="weapon-symbol turret-button"
             style={{
-              fill: WEAPON_COLORS[props.weapon],
+              fill,
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
@@ -455,6 +474,28 @@ export const FireControl: React.FC<FireControlProps> = () => {
     }
     return available;
   }, [computerShipName, computerShipWeapons, weaponDetails, actions]);
+
+  /**
+   * How many mounts of each group have someone at them.
+   *
+   * A gun fires because a gunner fires it, so a mount with nobody at it is
+   * dead weight -- unless the computer is covering it, which Virtual Gunner
+   * does for every mount at once and Fire Control does a point at a time.
+   * The buttons go grey rather than silently failing when the order is given.
+   */
+  const mannedCounts = useMemo(() => {
+    const ship = computerShipName ? findShip(entities, computerShipName) : null;
+    const gunnery = ship?.crew?.gunnery ?? [];
+    const covered =
+      (ship?.software_running?.some((software) => software.kind === "VirtualGunner") ?? false) ||
+      (ship?.software_running?.find((software) => software.kind === "FireControl")?.level ?? 0) > 0;
+    const manned = {} as {[key: string]: number};
+    computerShipWeapons.forEach((weapon, index) => {
+      const name = getWeaponName(computerShipWeapons, index);
+      manned[name] = (manned[name] ?? 0) + (covered || index < gunnery.length ? 1 : 0);
+    });
+    return manned;
+  }, [computerShipName, computerShipWeapons, entities]);
 
   const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
@@ -595,7 +636,14 @@ export const FireControl: React.FC<FireControlProps> = () => {
               onClick={() =>
                 handleWeaponClick(weapon_name, mixed ? kind : undefined)
               }
-              disabled={isWeaponDisabled({ kind, mount: weapon.mount })}
+              disabled={
+                isWeaponDisabled({ kind, mount: weapon.mount }) ||
+                (mannedCounts[weapon_name] ?? 0) === 0
+              }
+              // Grey rather than the weapon's own colour when nobody is at
+              // the mount: it cannot fire, and the reason should be visible
+              // before the order is given rather than after it fails.
+              unmanned={(mannedCounts[weapon_name] ?? 0) === 0}
               // Everything else in the mount, including the guns that cannot be
               // fired: sand is exactly what distinguishes a mixed turret from a
               // plain one, and it never gets a button of its own.
