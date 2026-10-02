@@ -55,7 +55,8 @@
           0,
           0,
           0
-        ]
+        ],
+        "mechanic": 0
       },
       "dodge_thrust": 0,
       "assist_gunners": false,
@@ -90,7 +91,7 @@
       ],
       "color": "#ADD8a6",
       "radius": 5500000.0,
-      "mass": 3.557e24,
+      "mass": 3.557e+24,
       "gravity_radius_05": 6957960.259426239,
       "gravity_radius_025": 9840041.765333606,
       "visual_effects": [
