@@ -47,31 +47,9 @@ export function IncomingBoard(args: {ship: Ship}) {
     [entities.missiles, args.ship]
   );
 
-  const defences = useMemo(() => {
-    const weapons = shipWeapons(args.ship, templates);
-    let pointDefence = 0;
-    let sandcasters = 0;
-    weapons.forEach((weapon, index) => {
-      const kinds = weaponGuns(weapon).map((gun) => gun.kind);
-      // Lasers only for point defence (High Guard p. 30), and a mount nobody
-      // is at does nothing at all.
-      const manned = (args.ship.crew?.gunnery?.length ?? 0) > index;
-      if (!manned) {
-        return;
-      }
-      if (kinds.some((kind) => kind === "Beam" || kind === "Pulse" || kind === "PointDefense")) {
-        pointDefence += 1;
-      }
-      if (kinds.includes("Sand")) {
-        sandcasters += 1;
-      }
-    });
-    return {pointDefence, sandcasters};
-  }, [args.ship, templates]);
-
   // What we are doing about being shot at, which applies to every attacker.
   const ourDodge = args.ship.dodge_thrust > 0 ? -(args.ship.crew?.pilot ?? 0) : 0;
-  const ourEvade = -(args.ship.software_running?.find((s) => s.kind === "Evade")?.level ?? 0);
+  const ourEvade = -(args.ship.software_running?.find((software) => software.kind === "Evade")?.level ?? 0);
 
   /**
    * What the other side can throw at us from where it is standing.
@@ -136,7 +114,6 @@ export function IncomingBoard(args: {ship: Ship}) {
     [entities.ships, args.ship, templates, ourDodge, ourEvade]
   );
 
-  const barrels = args.ship.magazine?.sand ?? 0;
   const byRound = useMemo(() => {
     const groups = new Map<number, {count: number; sources: Set<string>}>();
     for (const missile of inbound) {
@@ -192,16 +169,6 @@ export function IncomingBoard(args: {ship: Ship}) {
       )}
       {/* What is available to meet it. Point defence intercepts; sand only
           softens a hit, and each cloud costs a barrel. */}
-      <h3 className="incoming-heading">Ours to answer with</h3>
-      <div className="incoming-defences">
-        <span title="Laser mounts that could be put on point defence, with someone at them">
-          {defences.pointDefence} PD mount{defences.pointDefence === 1 ? "" : "s"}
-        </span>
-        <span title="Sandcasters crewed, and barrels left to throw">
-          {defences.sandcasters} caster{defences.sandcasters === 1 ? "" : "s"} · {barrels} barrel
-          {barrels === 1 ? "" : "s"}
-        </span>
-      </div>
     </div>
   );
 }

@@ -26,6 +26,14 @@ export interface UISlice {
      */
     cardOrder: string[];
     /**
+     * Whether the targets board leaves out our own side.
+     *
+     * A gunner is not shooting at their squadron, so the default is to
+     * leave them off and keep the card for the ships that matter. A referee
+     * reading the board for everyone can tick them back on.
+     */
+    showAlliesOnTargets: boolean;
+    /**
      * Whether the Scenario Builder holds edits that have not been saved.
      *
      * Set by the scenario-mutating requests in serverManager, cleared on a
@@ -48,6 +56,7 @@ const initialState: UISlice  = {
     showRange: null,
     computerShipName: null,
     cardOrder: [],
+    showAlliesOnTargets: false,
     scenarioDirty: false,
 }
 
@@ -121,6 +130,9 @@ export const uiSlice = createSlice({
       order.splice(to, 0, moved);
       state.cardOrder = order;
     },
+    setShowAlliesOnTargets: (state, action: PayloadAction<boolean>) => {
+      state.showAlliesOnTargets = action.payload;
+    },
     /** Back to the order the cards come in. */
     resetCardOrder: (state) => {
       state.cardOrder = [];
@@ -129,6 +141,6 @@ export const uiSlice = createSlice({
   }
 });
 
-export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;

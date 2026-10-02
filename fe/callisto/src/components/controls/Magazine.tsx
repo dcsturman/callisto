@@ -1,28 +1,60 @@
 import * as React from "react";
+import {useMemo} from "react";
 
 import {Ship} from "lib/entities";
+import {shipWeapons} from "lib/shipDesignTemplates";
+import {weaponGuns} from "lib/weapon";
+import {useAppSelector} from "state/hooks";
+import {templatesSelector} from "state/serverSlice";
 
 /**
- * What is left to shoot.
+ * What is left to shoot, and what throws it.
  *
  * Missiles and torpedoes come out of the magazine as they are launched, and
- * a barrel goes with every sand cloud. A gunner planning a salvo wants to
- * know what that leaves, and a captain deciding whether to press an
- * engagement wants to know when the racks run dry.
+ * a barrel goes with every sand cloud. The sandcaster count rides with the
+ * barrels because the two are one question -- how many clouds can we put up
+ * this round, and for how many rounds -- while the gunner's own mounts are
+ * already in front of them on the firing card.
  */
 export function Magazine(args: {ship: Ship}) {
+  const templates = useAppSelector(templatesSelector);
   const magazine = args.ship.magazine;
+
+  const casters = useMemo(() => {
+    let crewed = 0;
+    let total = 0;
+    shipWeapons(args.ship, templates).forEach((weapon, index) => {
+      const sand = weaponGuns(weapon).filter((gun) => gun.kind === "Sand").length;
+      total += sand;
+      if ((args.ship.crew?.gunnery?.length ?? 0) > index) {
+        crewed += sand;
+      }
+    });
+    return {crewed, total};
+  }, [args.ship, templates]);
+
   if (magazine == null) {
     return null;
   }
 
   const rows = [
-    {label: "missiles", count: magazine.missiles},
-    {label: "torpedoes", count: magazine.torpedoes},
-    {label: "sand", count: magazine.sand},
+    {label: "missiles", count: magazine.missiles, suffix: ""},
+    {label: "torpedoes", count: magazine.torpedoes, suffix: ""},
+    {
+      label: "sand",
+      count: magazine.sand,
+      // An unmanned caster cannot throw, so say how many are actually
+      // crewed when that is fewer than the ship carries.
+      suffix:
+        casters.total === 0
+          ? ""
+          : casters.crewed === casters.total
+            ? ` · ${casters.total} caster${casters.total === 1 ? "" : "s"}`
+            : ` · ${casters.crewed} of ${casters.total} casters crewed`,
+    },
   ].filter((row) => row.count > 0 || row.label === "missiles");
 
-  if (rows.every((row) => row.count === 0)) {
+  if (rows.every((row) => row.count === 0) && casters.total === 0) {
     return <p className="magazine-empty">Magazine empty.</p>;
   }
 
@@ -31,7 +63,10 @@ export function Magazine(args: {ship: Ship}) {
       {rows.map((row) => (
         <li key={row.label} className={row.count === 0 ? "magazine-row magazine-out" : "magazine-row"}>
           <span className="magazine-label">{row.label}</span>
-          <span className="magazine-count">{row.count}</span>
+          <span className="magazine-count">
+            {row.count}
+            {row.suffix}
+          </span>
         </li>
       ))}
     </ul>

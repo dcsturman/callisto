@@ -8,8 +8,9 @@ import {bandName, rangeBetween} from "lib/range";
 import {shipWeapons} from "lib/shipDesignTemplates";
 import {weaponToString} from "lib/weapon";
 import {WeaponGlyph} from "components/controls/WeaponGlyph";
-import {useAppSelector} from "state/hooks";
+import {useAppDispatch, useAppSelector} from "state/hooks";
 import {entitiesSelector, templatesSelector} from "state/serverSlice";
+import {setShowAlliesOnTargets} from "state/uiSlice";
 
 /**
  * What the gunner needs before pressing a button.
@@ -25,6 +26,10 @@ export function TargetBoard(args: {ship: Ship}) {
   const entities = useAppSelector(entitiesSelector);
   const templates = useAppSelector(templatesSelector);
   const proposedPlan = useAppSelector((state) => state.ui.proposedPlan);
+  // Our own squadron is not what a gunner is looking at, so it is off by
+  // default and one tick away when a referee wants the whole picture.
+  const showAllies = useAppSelector((state) => state.ui.showAlliesOnTargets ?? false);
+  const dispatch = useAppDispatch();
 
   const weapons = useMemo(() => shipWeapons(args.ship, templates), [args.ship, templates]);
 
@@ -32,6 +37,10 @@ export function TargetBoard(args: {ship: Ship}) {
     () =>
       entities.ships
         .filter((other) => other.name !== args.ship.name)
+        .filter(
+          (other) =>
+            showAllies || args.ship.team == null || other.team !== args.ship.team
+        )
         // Nothing can be fired at what has not been found.
         .filter((other) => !isUndetected(args.ship, other))
         .map((other) => {
@@ -52,14 +61,31 @@ export function TargetBoard(args: {ship: Ship}) {
           };
         })
         .sort((a, b) => a.metres - b.metres),
-    [entities.ships, args.ship, templates, proposedPlan]
+    [entities.ships, args.ship, templates, proposedPlan, showAllies]
+  );
+
+  const allyToggle = (
+    <label className="target-allies" title="Show the ships on our own side as well">
+      <input
+        type="checkbox"
+        checked={showAllies}
+        onChange={(event) => dispatch(setShowAlliesOnTargets(event.target.checked))}
+      />
+      allies
+    </label>
   );
 
   if (rows.length === 0) {
-    return <p className="sensor-empty">No contacts.</p>;
+    return (
+      <>
+        <p className="sensor-empty">{showAllies ? "No contacts." : "No hostile contacts."}</p>
+        {allyToggle}
+      </>
+    );
   }
 
   return (
+    <>
     <ul className="target-rows">
       {rows.map((row) => (
         <li key={row.name} className="target-row">
@@ -113,6 +139,8 @@ export function TargetBoard(args: {ship: Ship}) {
         </li>
       ))}
     </ul>
+    {allyToggle}
+    </>
   );
 }
 

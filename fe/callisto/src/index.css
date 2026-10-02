@@ -2737,6 +2737,16 @@ h3.control-form {
 
 /* --- The gunner's instruments --- */
 
+/* A quiet switch under the board rather than a control competing with it. */
+.target-allies {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-top: 3px;
+    font-size: var(--font-xs);
+    opacity: 0.7;
+}
+
 .target-rows,
 .incoming-rows,
 .odds-rows,
