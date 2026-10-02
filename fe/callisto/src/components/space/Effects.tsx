@@ -291,7 +291,13 @@ export function ResultsWindow() {
           <span className="result-text">{msg.content}</span>
         </p>
       ))}
-      <button className="control-input control-button blue-button button-next-round" onClick={closeWindow}>Okay!</button>
+      {/* Pinned, because the panel scrolls: a round with twenty checks in
+          it should not hide the way to dismiss them. */}
+      <button
+        className="control-input control-button blue-button button-next-round results-dismiss"
+        onClick={closeWindow}>
+        Okay!
+      </button>
     </div>
   )
 }

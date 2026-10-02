@@ -418,8 +418,12 @@ select.control-input,
     right: 0px;
     display: flex;
     flex-direction: column;
+    align-items: flex-end;
     gap: 4px;
     z-index: 12;
+    /* Three panels can outgrow a laptop screen, and the results are the one
+       that scrolls rather than the stack. */
+    max-height: 100vh;
 }
 
 /* The reference's own title. It is a disclosure line inside View Controls, not
@@ -1016,21 +1020,33 @@ h3.control-form {
     padding-right: 4px;
 }
 
+/* Results sit in the top-right stack under the view controls: a panel of a
+   settled size in a settled place. They used to float beside the console,
+   which moved them every time the console gained or lost a column, and they
+   size to their widest line -- since detection checks started itemising
+   their DM, that line is very wide indeed. */
 #results-window {
-    /* Cap the width. This is a popup that sizes to its widest line, and since
-       detection checks started itemising their DM the widest line is very wide
-       indeed -- the box grew across the viewport and slid under the fixed
-       top-right controls. Long lines wrap instead. */
-    max-width: min(44rem, 50vw);
-    overflow: auto;
-    /* Sit against the console rather than after it in the flow: the console's
-       `max-content` width reserves room for a column it may not be using, and
-       the results box was pushed out as though that column were there.
-       `--console-width` is measured from the rendered console in App.tsx. */
-    position: fixed;
-    bottom: 4px;
-    left: calc(var(--console-width, 0px) + 8px);
-    max-height: calc(100vh - 8px);
+    width: 30rem;
+    max-width: 96vw;
+    max-height: 45vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.results-dismiss {
+    position: sticky;
+    bottom: 0;
+    /* Over the lines it is sitting on top of. */
+    background: #1b1f24;
+    z-index: 1;
+}
+
+/* The heading stays put as the results scroll under it. */
+#results-window h1 {
+    position: sticky;
+    top: 0;
+    background: #1b1f24;
+    z-index: 1;
 }
 
 /* The heading is chrome, not content: at the shared 18pt it was taller than the

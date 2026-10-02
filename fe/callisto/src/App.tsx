@@ -153,30 +153,6 @@ function Simulator() {
   // const [stepIndex, setStepIndex] = useState(0);
   // const [runTutorial, setRunTutorial] = useState<boolean>(true);
 
-  // How wide the console actually is, published as a custom property.
-  //
-  // The console is a wrapping flex column whose `max-content` width reserves
-  // room for a column it may not be using, so anything laid out after it --
-  // the results popup -- was pushed out as though a third column existed.
-  // Measuring the rendered element is the only honest answer.
-  const consoleRef = React.useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const element = consoleRef.current;
-    if (element == null) {
-      return;
-    }
-    const publish = () => {
-      document.documentElement.style.setProperty(
-        "--console-width",
-        `${Math.round(element.getBoundingClientRect().width)}px`
-      );
-    };
-    publish();
-    const observer = new ResizeObserver(publish);
-    observer.observe(element);
-    return () => observer.disconnect();
-  });
-
   const computerShip = useMemo(() => {
     return (
       entities.ships.find((ship) => ship.name === computerShipName) || null
@@ -192,7 +168,7 @@ function Simulator() {
             when the first is full. Screen space is the scarce thing on a
             laptop, and the old layout reserved a column whether it had
             anything to put in it or not. */}
-        <div className="console" ref={consoleRef}>
+        <div className="console">
           {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
           {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
             <Stations ship={computerShip} />
@@ -205,6 +181,14 @@ function Simulator() {
         <div className="top-right-stack">
           <ShipSummary />
           <ViewControls />
+          {/* Results belong with the other reference panels rather than
+              floating beside the console, where their width moved them
+              every time the console gained or lost a column. */}
+          {showResults && (
+            <Suspense fallback={null}>
+              <ResultsWindow />
+            </Suspense>
+          )}
         </div>
         <div className="admin-button-window">
           <h2>
@@ -224,11 +208,6 @@ function Simulator() {
             )}
           </div>
         </div>
-        {showResults && (
-          <Suspense fallback={null}>
-            <ResultsWindow />
-          </Suspense>
-        )}
         <Canvas
           style={{ position: "absolute" }}
           id="main-canvas"
