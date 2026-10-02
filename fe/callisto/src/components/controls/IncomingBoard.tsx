@@ -2,6 +2,9 @@ import * as React from "react";
 import {useMemo} from "react";
 
 import {Ship} from "lib/entities";
+import {isUndetected} from "lib/contacts";
+import {Band, reaches} from "lib/gunnery";
+import {bandName, rangeBetween} from "lib/range";
 import {vectorDistance} from "lib/Util";
 import {TURN_IN_SECONDS} from "lib/universal";
 import {useAppSelector} from "state/hooks";
@@ -66,6 +69,41 @@ export function IncomingBoard(args: {ship: Ship}) {
     return {pointDefence, sandcasters};
   }, [args.ship, templates]);
 
+  /**
+   * What the other side can throw at us from where it is standing.
+   *
+   * Missiles in flight are only half the threat, and the quieter half: a
+   * ship at Short range with three pulse turrets is the thing that actually
+   * kills you this round. Counts only mounts that reach us at the band they
+   * are at now, since a laser out of its range is not a threat at all.
+   */
+  const threats = useMemo(
+    () =>
+      entities.ships
+        .filter((other) => other.name !== args.ship.name)
+        .filter((other) => other.team == null || other.team !== args.ship.team)
+        .filter((other) => !isUndetected(args.ship, other))
+        .map((other) => {
+          const band = bandName(rangeBetween(args.ship, other).now) as Band;
+          const counts = new Map<string, number>();
+          for (const weapon of shipWeapons(other, templates)) {
+            if (!reaches(weapon, band)) {
+              continue;
+            }
+            for (const gun of weaponGuns(weapon)) {
+              // Sand is defensive; it is not pointed at us.
+              if (gun.kind === "Sand") {
+                continue;
+              }
+              counts.set(gun.kind, (counts.get(gun.kind) ?? 0) + 1);
+            }
+          }
+          return {name: other.name, band, counts: [...counts.entries()]};
+        })
+        .filter((threat) => threat.counts.length > 0),
+    [entities.ships, args.ship, templates]
+  );
+
   const barrels = args.ship.magazine?.sand ?? 0;
   const byRound = useMemo(() => {
     const groups = new Map<number, {count: number; sources: Set<string>}>();
@@ -80,6 +118,7 @@ export function IncomingBoard(args: {ship: Ship}) {
 
   return (
     <div className="incoming-board">
+      <h3 className="incoming-heading">Salvoes</h3>
       {inbound.length === 0 ? (
         <p className="sensor-empty">Nothing inbound.</p>
       ) : (
@@ -95,8 +134,26 @@ export function IncomingBoard(args: {ship: Ship}) {
           ))}
         </ul>
       )}
+      {/* Who can shoot at us from where they are, and with what. */}
+      {threats.length > 0 && <h3 className="incoming-heading">Guns that reach us</h3>}
+      {threats.length > 0 && (
+        <ul className="threat-rows">
+          {threats.map((threat) => (
+            <li key={threat.name} className="threat-row">
+              <span className="threat-name">{threat.name}</span>
+              <span className="threat-band">{threat.band}</span>
+              <span className="threat-guns">
+                {threat.counts
+                  .map(([kind, count]) => `${count}× ${kind.replace(/([a-z])([A-Z])/g, "$1 $2")}`)
+                  .join(", ")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       {/* What is available to meet it. Point defence intercepts; sand only
           softens a hit, and each cloud costs a barrel. */}
+      <h3 className="incoming-heading">Ours to answer with</h3>
       <div className="incoming-defences">
         <span title="Laser mounts that could be put on point defence, with someone at them">
           {defences.pointDefence} PD mount{defences.pointDefence === 1 ? "" : "s"}
