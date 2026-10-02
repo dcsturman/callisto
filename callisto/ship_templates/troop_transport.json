@@ -25,5 +25,24 @@
   ],
   "tl": 15,
   "role": "Small Craft",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "FireControl",
+      "level": 2
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "magazine": {
+    "missiles": 18,
+    "torpedoes": 0,
+    "sand": 20
+  }
 }

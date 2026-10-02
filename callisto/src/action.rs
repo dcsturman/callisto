@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::debug;
 use crate::entity::Entities;
-use crate::ship::{Ship, ShipSystem, WeaponType};
+use crate::ship::{PowerSystem, Ship, ShipSystem, WeaponType};
 
 /// Identifies a specific queued action that a captain can boost. Mirrors the
 /// shape of the underlying `ShipAction` for the kinds that are eligible to
@@ -28,6 +28,9 @@ pub enum BoostTarget {
   },
   Sensor {
     ship: String,
+    /// Which operator's check is being inspired.
+    #[serde(default)]
+    operator: usize,
   },
   /// A captain concentrating the sensop on finding one particular ship.
   ///
@@ -41,6 +44,9 @@ pub enum BoostTarget {
   },
   Engineer {
     ship: String,
+    /// Which engineer's check is being inspired.
+    #[serde(default)]
+    engineer: usize,
   },
   Evade {
     ship: String,
@@ -69,16 +75,18 @@ pub fn boost_for_detection(map: &BoostMap, observer: &str, target: &str) -> i16 
 /// Returns the boost (`+1` if present, else `0`) for a sensor-class action on
 /// `ship_name`. Helper used by the sensor / engineer / jump resolvers.
 #[must_use]
-pub fn boost_for_sensor(map: &BoostMap, ship_name: &str) -> i16 {
+pub fn boost_for_sensor(map: &BoostMap, ship_name: &str, operator: usize) -> i16 {
   i16::from(map.contains(&BoostTarget::Sensor {
     ship: ship_name.to_string(),
+    operator,
   }))
 }
 
 #[must_use]
-pub fn boost_for_engineer(map: &BoostMap, ship_name: &str) -> i16 {
+pub fn boost_for_engineer(map: &BoostMap, ship_name: &str, engineer: usize) -> i16 {
   i16::from(map.contains(&BoostTarget::Engineer {
     ship: ship_name.to_string(),
+    engineer,
   }))
 }
 
@@ -135,8 +143,8 @@ pub fn boost_target_kind_ord(t: &BoostTarget) -> u8 {
 pub fn boost_target_sort_key(t: &BoostTarget) -> (String, u8, usize) {
   let (ship, weapon) = match t {
     BoostTarget::Fire { ship, weapon_id } | BoostTarget::PointDefense { ship, weapon_id } => (ship.clone(), *weapon_id),
-    BoostTarget::Sensor { ship }
-    | BoostTarget::Engineer { ship }
+    BoostTarget::Sensor { ship, .. }
+    | BoostTarget::Engineer { ship, .. }
     | BoostTarget::Evade { ship }
     | BoostTarget::AssistGunner { ship }
     | BoostTarget::Detection { ship, .. } => (ship.clone(), 0),
@@ -200,28 +208,20 @@ pub fn boost_target_alive<S: BuildHasher>(
         if ship_name == ship
           && ship_actions
             .iter()
-            .any(|a| matches!(a, ShipAction::PointDefenseAction { weapon_id: w } if w == weapon_id))
+            .any(|a| matches!(a, ShipAction::PointDefenseAction { weapon_id: w, .. } if w == weapon_id))
         {
           return true;
         }
       }
-      BoostTarget::Sensor { ship } => {
-        if ship_name == ship
-          && ship_actions.iter().any(|a| {
-            matches!(
-              a,
-              ShipAction::JamMissiles
-                | ShipAction::BreakSensorLock { .. }
-                | ShipAction::SensorLock { .. }
-                | ShipAction::JamComms { .. }
-            )
-          })
-        {
+      // A boost belongs to one person's check, so it is alive only while
+      // that operator or engineer still has something queued.
+      BoostTarget::Sensor { ship, operator } => {
+        if ship_name == ship && ship_actions.iter().any(|action| sensor_operator_of(action) == Some(*operator)) {
           return true;
         }
       }
-      BoostTarget::Engineer { ship } => {
-        if ship_name == ship && ship_actions.iter().any(is_engineer_action) {
+      BoostTarget::Engineer { ship, engineer } => {
+        if ship_name == ship && ship_actions.iter().any(|action| engineer_of(action) == Some(*engineer)) {
           return true;
         }
       }
@@ -230,6 +230,15 @@ pub fn boost_target_alive<S: BuildHasher>(
     }
   }
   false
+}
+
+/// Serde helper: a Fire Control allocation of zero is the usual case and
+/// stays off the wire.
+///
+/// Takes a reference because that is the shape `skip_serializing_if` calls.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u8(value: &u8) -> bool {
+  *value == 0
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -251,29 +260,103 @@ pub enum ShipAction {
     /// before mixed turrets existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     firing_kind: Option<WeaponType>,
+
+    /// How many missiles or torpedoes to launch, when fewer than the mount
+    /// throws by default -- a warning shot, or holding some back. `None` means
+    /// the full salvo, which is what every action written before this said.
+    /// Ignored by anything that is not a launcher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    salvo_size: Option<u16>,
+
+    /// Fire Control points spent on this attack as a DM.
+    ///
+    /// "Allows the computer to fire a number of turrets per round equal to
+    /// the listed number. Alternatively, it can give a positive DM to an
+    /// attack equal to the listed number or any combination of the two"
+    /// (Core Rulebook p. 161). So the program's score is a pool of points
+    /// each round, and this is what this mount drew from it.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    fire_control_dm: u8,
+
+    /// Whether the computer is firing this mount rather than a gunner.
+    ///
+    /// Costs one Fire Control point and brings no gunnery skill of its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    computer_fired: bool,
   },
   PointDefenseAction {
     weapon_id: usize,
+    /// A ship to defend instead of this one.
+    ///
+    /// "A ship running the Point Defence package may use point defence
+    /// batteries and the Point Defence (gunner) reaction to defend any ship
+    /// within Close range. The Point Defence/2 package increases this range
+    /// to Short" (High Guard p. 75). Absent means the usual thing: shooting
+    /// down what is coming at you.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    protecting: Option<String>,
   },
   DeleteFireAction {
     weapon_id: usize,
   },
-  JamMissiles,
+  // Sensor actions. `operator` is which of the ship's sensor operators is
+  // working it: one action each, so a ship with two operators can jam and lock
+  // in the same round. Defaulted, so a ship with one operator need not say.
+  JamMissiles {
+    #[serde(default)]
+    operator: usize,
+  },
   BreakSensorLock {
     target: String,
+    #[serde(default)]
+    operator: usize,
   },
   SensorLock {
     target: String,
+    #[serde(default)]
+    operator: usize,
   },
   JamComms {
     target: String,
+    #[serde(default)]
+    operator: usize,
   },
-  Jump,
-  // Engineer actions
-  OverloadDrive,
-  OverloadPlant,
+  // Engineer actions, including Jump. `engineer` is which of them is on the
+  // job, on the same terms as `operator` above.
+  Jump {
+    #[serde(default)]
+    engineer: usize,
+  },
+  OverloadDrive {
+    #[serde(default)]
+    engineer: usize,
+  },
+  OverloadPlant {
+    #[serde(default)]
+    engineer: usize,
+  },
   Repair {
     system: ShipSystem,
+    #[serde(default)]
+    engineer: usize,
+  },
+  /// A repair the ship's computer runs itself, through its repair drones.
+  ///
+  /// Auto-Repair "allows the computer to make a number of repair attempts per
+  /// round equal to the listed number" and "requires the ship to carry repair
+  /// drones" (Core Rulebook p. 161). It costs no one their action: the
+  /// drones are the hands, and the program is what sends them.
+  ComputerRepair {
+    system: ShipSystem,
+  },
+  /// Offline System (Core Rulebook p. 171): power something down to free its
+  /// draw, or bring it back. The book charges a round either way, and an
+  /// Engineer (power) check to shut things down.
+  SetPower {
+    system: PowerSystem,
+    online: bool,
+    #[serde(default)]
+    engineer: usize,
   },
   /// Captain-only action queued under the captain's own ship. Bundles the
   /// 2d6+leadership pre-resolution roll and the list of targets to apply +1
@@ -286,8 +369,14 @@ pub enum ShipAction {
   // Sent by the client when the user cancels a queued action (chooser → none,
   // or click-to-remove from the Actions list). Consumed in `merge`; never
   // stored in the queue.
-  ClearSensorAction,
-  ClearEngineerAction,
+  ClearSensorAction {
+    #[serde(default)]
+    operator: usize,
+  },
+  ClearEngineerAction {
+    #[serde(default)]
+    engineer: usize,
+  },
   /// Anti-action mirroring `ClearSensorAction` / `ClearEngineerAction`. When
   /// merged, strips any prior `LeadershipCheck` from the queue and is itself
   /// dropped.
@@ -301,10 +390,33 @@ pub enum ShipAction {
 /// resolved alongside them in `engineer_actions`.
 #[must_use]
 pub fn is_engineer_action(action: &ShipAction) -> bool {
-  matches!(
-    action,
-    ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump
-  )
+  engineer_of(action).is_some()
+}
+
+/// Which engineer an action belongs to, or `None` if it is not one of theirs.
+#[must_use]
+pub fn engineer_of(action: &ShipAction) -> Option<usize> {
+  match action {
+    ShipAction::OverloadDrive { engineer }
+    | ShipAction::OverloadPlant { engineer }
+    | ShipAction::Repair { engineer, .. }
+    | ShipAction::SetPower { engineer, .. }
+    | ShipAction::Jump { engineer } => Some(*engineer),
+    _ => None,
+  }
+}
+
+/// Which sensor operator an action belongs to, or `None` if it is not one of
+/// theirs.
+#[must_use]
+pub fn sensor_operator_of(action: &ShipAction) -> Option<usize> {
+  match action {
+    ShipAction::JamMissiles { operator }
+    | ShipAction::BreakSensorLock { operator, .. }
+    | ShipAction::SensorLock { operator, .. }
+    | ShipAction::JamComms { operator, .. } => Some(*operator),
+    _ => None,
+  }
 }
 
 pub type ShipActionList = Vec<(String, Vec<ShipAction>)>;
@@ -328,28 +440,27 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
     if let Some((_, current_actions)) = current.iter_mut().find(|(ship_name, _)| ship_name == &next_ship) {
       for next_action in next_action_list {
         match next_action {
-          // Each sensor action replaces the previous sensor action (there can only be one per ship)
-          ShipAction::JamMissiles
-          | ShipAction::BreakSensorLock { .. }
-          | ShipAction::SensorLock { .. }
-          | ShipAction::JamComms { .. } => {
-            // Strip out all sensor actions, leaving just the non-sensor actions
-            current_actions.retain(|action| {
-              !matches!(
-                action,
-                ShipAction::JamMissiles
-                  | ShipAction::BreakSensorLock { .. }
-                  | ShipAction::SensorLock { .. }
-                  | ShipAction::JamComms { .. }
-              )
-            });
+          // One computer repair per system: ordering it twice is a slip, not
+          // two attempts, and the pool is counted when the round resolves.
+          ShipAction::ComputerRepair { system } => {
+            current_actions
+              .retain(|action| !matches!(action, ShipAction::ComputerRepair { system: s } if *s == system));
+            current_actions.push(next_action.clone());
+          }
+          // A sensor action replaces that operator's previous one. Another
+          // operator's stands: they are two people, and each gets a turn.
+          ShipAction::JamMissiles { operator }
+          | ShipAction::BreakSensorLock { operator, .. }
+          | ShipAction::SensorLock { operator, .. }
+          | ShipAction::JamComms { operator, .. } => {
+            current_actions.retain(|action| sensor_operator_of(action) != Some(operator));
             current_actions.push(next_action.clone());
           }
           // Each fire action is added to the list of fire actions, but only if the weapon is not already in use.
-          ShipAction::FireAction { weapon_id, .. } | ShipAction::PointDefenseAction { weapon_id } => {
+          ShipAction::FireAction { weapon_id, .. } | ShipAction::PointDefenseAction { weapon_id, .. } => {
             current_actions.retain(|action| {
               !matches!(action, ShipAction::FireAction{weapon_id: id, ..} if *id == weapon_id)
-                && !matches!(action, ShipAction::PointDefenseAction{weapon_id: id} if *id == weapon_id)
+                && !matches!(action, ShipAction::PointDefenseAction{weapon_id: id, ..} if *id == weapon_id)
             });
             current_actions.push(next_action.clone());
           }
@@ -367,7 +478,7 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             let mut sorted_similar_weapon_id = current_actions
               .iter()
               .filter_map(|action| match action {
-                ShipAction::PointDefenseAction { weapon_id } | ShipAction::FireAction { weapon_id, .. } => {
+                ShipAction::PointDefenseAction { weapon_id, .. } | ShipAction::FireAction { weapon_id, .. } => {
                   if current_weapons[*weapon_id] == *weapon {
                     Some(*weapon_id)
                   } else {
@@ -387,14 +498,17 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             // Retain everything except the FireAction with the highest number of the similar weapon
             current_actions.retain(|action| {
               !matches!(action, ShipAction::FireAction{weapon_id, ..} if max_similar_weapon_id == weapon_id)
-                && !matches!(action, ShipAction::PointDefenseAction{weapon_id} if max_similar_weapon_id == weapon_id)
+                && !matches!(action, ShipAction::PointDefenseAction{weapon_id, ..} if max_similar_weapon_id == weapon_id)
             });
           }
-          // Engineer actions are mutually exclusive - only one engineer action per turn.
-          // A new engineer action replaces any existing engineer action.
-          // Jump is treated as an engineer action.
-          ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump => {
-            current_actions.retain(|action| !is_engineer_action(action));
+          // One job per engineer, and a new one replaces whatever that
+          // engineer was going to do. Jump is an engineer action.
+          ShipAction::OverloadDrive { engineer }
+          | ShipAction::OverloadPlant { engineer }
+          | ShipAction::Repair { engineer, .. }
+          | ShipAction::SetPower { engineer, .. }
+          | ShipAction::Jump { engineer } => {
+            current_actions.retain(|action| engineer_of(action) != Some(engineer));
             current_actions.push(next_action.clone());
           }
           // Each leadership check replaces the previous one (only one per ship per turn).
@@ -403,19 +517,11 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
             current_actions.push(next_action.clone());
           }
           // Anti-actions: strip the matching kind, don't push anything.
-          ShipAction::ClearSensorAction => {
-            current_actions.retain(|action| {
-              !matches!(
-                action,
-                ShipAction::JamMissiles
-                  | ShipAction::BreakSensorLock { .. }
-                  | ShipAction::SensorLock { .. }
-                  | ShipAction::JamComms { .. }
-              )
-            });
+          ShipAction::ClearSensorAction { operator } => {
+            current_actions.retain(|action| sensor_operator_of(action) != Some(operator));
           }
-          ShipAction::ClearEngineerAction => {
-            current_actions.retain(|action| !is_engineer_action(action));
+          ShipAction::ClearEngineerAction { engineer } => {
+            current_actions.retain(|action| engineer_of(action) != Some(engineer));
           }
           ShipAction::ClearLeadershipCheck => {
             current_actions.retain(|action| !matches!(action, ShipAction::LeadershipCheck { .. }));
@@ -436,8 +542,8 @@ pub fn merge(entities: &mut Entities, new_actions: ShipActionList) {
         .filter(|a| {
           !matches!(
             a,
-            ShipAction::ClearSensorAction
-              | ShipAction::ClearEngineerAction
+            ShipAction::ClearSensorAction { .. }
+              | ShipAction::ClearEngineerAction { .. }
               | ShipAction::ClearLeadershipCheck
               | ShipAction::DeleteFireAction { .. }
           )

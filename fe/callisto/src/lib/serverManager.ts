@@ -23,6 +23,7 @@ import {
   ScenarioLoadError,
 } from "state/serverSlice";
 import {
+  setComputerShipName,
   setEvents,
   setProposedPlan,
   setShowResults,
@@ -33,6 +34,7 @@ import { AppMode, setAppMode } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
+import { Software } from "lib/software";
 import {
   EntityList,
   Ship,
@@ -282,6 +284,13 @@ const handleMessage = (event: MessageEvent) => {
       store.dispatch(setAuthBanner(json.Error));
       return;
     }
+    // A request about a ship that has just left the scenario -- jumped out,
+    // blown up -- is a race, not something the player did wrong. The console
+    // disables itself; a modal demanding an OK does not belong here.
+    if (/unknown ship named/i.test(json.Error)) {
+      console.warn("Received Error for a ship no longer in the scenario: " + json.Error);
+      return;
+    }
     console.error("Received Error: " + json.Error);
     alert(json.Error);
   }
@@ -347,6 +356,9 @@ export function addShip(ship: Ship) {
       // a ship deliberately switched on says anything.
       ...(ship.transmitting === true ? { transmitting: true } : {}),
       ...(ship.team ? { team: ship.team } : {}),
+      // Absent means the design's own defaults, which for every switchable
+      // feature so far means off.
+      ...(ship.features_on ? { features_on: ship.features_on } : {}),
     },
   };
 
@@ -493,6 +505,32 @@ export function updateActions(actions: ActionType) {
   socket.send(JSON.stringify(payload));
 }
 
+// A player saying their orders are in. Their queued actions go up with it, so
+// the referee is looking at what the player actually meant when they advance
+// the round.
+export function setReady(ready: boolean) {
+  updateActions(store.getState().actions);
+  socket.send(JSON.stringify({ SetReady: ready }));
+}
+
+// Put one of the crew on the sensors or in the engine room. Only ever sent by
+// a ship carrying more than one of them -- with one there is no choice to
+// record, and the server falls back to whoever is aboard.
+export function setCrewOnDuty(
+  shipName: string,
+  duty: {sensor_operator?: number; engineer?: number}
+) {
+  socket.send(
+    JSON.stringify({
+      SetCrewOnDuty: {
+        ship_name: shipName,
+        sensor_operator: duty.sensor_operator,
+        engineer: duty.engineer,
+      },
+    })
+  );
+}
+
 export function nextRound() {
   // Flush any locally-held boost state to the server before ending the round.
   // Boost toggles don't round-trip on every click anymore (see
@@ -529,6 +567,15 @@ export function computeFlightPath(
     return;
   }
 
+  // A ship that jumped out or was destroyed is no longer in the scenario, and
+  // the server answers a course request for it with an error. Asking at all is
+  // the bug: the console has nothing left to fly.
+  if (!store.getState().server.entities.ships.some((ship) => ship.name === entity_name)) {
+    store.dispatch(setProposedPlan(null));
+    console.warn(`(computeFlightPath) ${entity_name} is no longer in the scenario; no course plotted.`);
+    return;
+  }
+
   // If there is a target acceleration, convert it to m/s^2 from G's
   if (target_accel != null) {
     target_accel = [
@@ -558,6 +605,24 @@ export function computeFlightPath(
       if (value !== null) {
         return value;
       }
+    }),
+  );
+}
+
+/**
+ * Start or stop a piece of the ship's software.
+ *
+ * Not an action: the rules put no combat cost on what the computer chooses to
+ * run, so this takes effect at once rather than waiting for the round.
+ */
+export function setSoftwareRunning(
+  shipName: string,
+  software: Software,
+  running: boolean,
+) {
+  socket.send(
+    JSON.stringify({
+      SetSoftwareRunning: { ship_name: shipName, software, running },
     }),
   );
 }
@@ -664,6 +729,36 @@ function handleTemplates(json: object) {
   store.dispatch(setTemplates(templates));
 }
 
+/**
+ * Let go of a ship that is no longer in the scenario.
+ *
+ * A ship that jumps out or is destroyed takes its stations with it. Whoever
+ * was flying it becomes an observer, and a referee's selection simply clears
+ * back to the no-ship-selected state they started in -- rather than leaving a
+ * console bound to a ship the server has never heard of, whose first course
+ * request comes back as an error.
+ */
+function releaseDepartedShip(entities: EntityList) {
+  const state = store.getState();
+  // Only once we are actually in a scenario: an empty list while joining or
+  // leaving one is not a ship being lost.
+  if (state.user.joinedScenario == null) {
+    return;
+  }
+  const aboard = (name: string | null) => name != null && entities.ships.some((ship) => ship.name === name);
+
+  if (state.user.shipName != null && !aboard(state.user.shipName)) {
+    console.warn(`(handleEntities) ${state.user.shipName} has left the scenario; standing down to Observer.`);
+    // Locally and on the server both, the way the role dialog does it.
+    store.dispatch(setRoleShip([[ViewMode.Observer], null]));
+    requestRoleChoice([ViewMode.Observer], null);
+  }
+
+  if (state.ui.computerShipName != null && !aboard(state.ui.computerShipName)) {
+    store.dispatch(setComputerShipName(null));
+  }
+}
+
 function handleEntities(json: object) {
   const entities = json as EntityList;
 
@@ -701,6 +796,7 @@ function handleEntities(json: object) {
   console.groupEnd();
   console.groupEnd();
   store.dispatch(setEntities(entities));
+  releaseDepartedShip(entities);
   // The captain's local leadership boost list is held in Redux only between
   // explicit flushes; thread their shipName into setActions so the reducer
   // can preserve it across this server-driven overwrite. Also pass
@@ -789,6 +885,7 @@ function handleEffect(json: object[]) {
         // also name their own category -- the server never sends one for them.
         category: "Engineering",
         ship: result.ship_name,
+        succeeded: result.success,
       } as Event;
     }
     if ((event as LeadershipActionEffect).kind === "LeadershipAction") {
@@ -801,6 +898,9 @@ function handleEffect(json: object[]) {
         origin: null,
         category: "Leadership",
         ship: lead.ship_name,
+        // A round where the captain never rolled is not a failed check, so it
+        // goes unmarked like any other statement.
+        succeeded: lead.roll == null ? undefined : lead.points > 0,
       } as Event;
     }
     return event as Event;
@@ -886,6 +986,7 @@ function handleUsers(json: [UserContext]) {
     const raw = user as unknown as { roles?: unknown; role?: unknown };
     c.roles = parseRoles(raw.roles ?? raw.role);
     c.ship = user.ship;
+    c.ready = user.ready ?? false;
     users.push(c);
   }
   store.dispatch(setUsers(users));

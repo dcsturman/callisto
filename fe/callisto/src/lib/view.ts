@@ -54,8 +54,17 @@ export const hasRole = (roles: ViewMode[], ...wanted: ViewMode[]): boolean =>
  * The referee: running the whole board rather than any one ship. General
  * with no ship, which is the same test the server applies to a reset.
  */
+/**
+ * Whether this seat runs the table rather than flying a ship.
+ *
+ * It is the ship that decides, not the role. A referee may sit at the
+ * engineer's station to cut their screen down to one panel and is still the
+ * referee; anyone holding a ship is a player, and says Ready instead of
+ * ending the round for everyone else. An observer is watching and does
+ * neither.
+ */
 export const isReferee = (roles: ViewMode[], shipName: string | null): boolean =>
-  shipName == null && roles.includes(ViewMode.General);
+  shipName == null && !roles.includes(ViewMode.Observer);
 
 /** "Captain, Gunner" -- names in the order they were chosen. */
 export const rolesToString = (roles: ViewMode[]): string =>

@@ -77,6 +77,31 @@ export interface Weapon {
   modifiers?: string[];
 }
 
+/**
+ * A colour per weapon kind, used wherever a weapon is drawn: the gunner's
+ * buttons, the beam that comes out of them, and the sensop's reading of
+ * another ship's armament. One vocabulary, so a green glyph means the same
+ * thing in all three places.
+ */
+export const WEAPON_COLORS: {[kind: string]: string} = {
+  Beam: "red",
+  Pulse: "blue",
+  Missile: "green",
+  Particle: "yellow",
+  Sand: "tan",
+  // Torpedoes sit next to missiles in the launcher family, so they take a
+  // deeper shade of the same hue rather than a colour of their own.
+  Torpedo: "darkgreen",
+  Fusion: "orange",
+  Plasma: "magenta",
+  Railgun: "silver",
+  Meson: "violet",
+  MassDriver: "sienna",
+  Repulsor: "cyan",
+  Ion: "deepskyblue",
+  PointDefense: "orange",
+};
+
 /** Readable names for modifiers, which travel the wire as Rust variant names. */
 const MODIFIER_LABELS: {[kind: string]: string} = {
   Accurate: "accurate",
@@ -105,6 +130,60 @@ const LAUNCHER_KINDS = new Set(["Missile", "Torpedo"]);
 /** Whether this weapon launches an object that travels to its target. */
 export const isLauncherKind = (kind: string): boolean =>
   LAUNCHER_KINDS.has(kind);
+
+/**
+ * How many objects a launcher throws in one round, at full salvo.
+ *
+ * Mirrors the server's table (`rules_tables.rs`): a missile turret throws one
+ * per rack, every other mount a fixed number. Returns null for anything that
+ * is not a launcher, and for a launcher in a mount the rules do not allow.
+ */
+export const fullSalvo = (weapon: Weapon, kind: string): number | null => {
+  if (!isLauncherKind(kind)) {
+    return null;
+  }
+  const mount = weapon.mount;
+  if (kind === "Missile") {
+    if (typeof mount === "object" && "Turret" in mount) {
+      return countOfKind(weapon, kind);
+    }
+    if (mount === "FixedMount") return 1;
+    if (mount === "Barbette") return 5;
+    if (typeof mount === "object" && "Bay" in mount) {
+      return {Small: 12, Medium: 24, Large: 120}[mount.Bay];
+    }
+    return null;
+  }
+  // Torpedoes are too large for a turret: barbette and bays only.
+  if (mount === "Barbette") return 1;
+  if (typeof mount === "object" && "Bay" in mount) {
+    return {Small: 3, Medium: 6, Large: 30}[mount.Bay];
+  }
+  return null;
+};
+
+/**
+ * The sizes offered for a short salvo, smallest first, always ending at the
+ * full salvo.
+ *
+ * Every number up to a dozen, which covers turrets, barbettes and a small bay.
+ * A large missile bay throws 120, and a list that long is no use to anyone, so
+ * bigger mounts step through useful fractions instead.
+ */
+export const salvoChoices = (full: number): number[] => {
+  if (full <= 12) {
+    return Array.from({length: full}, (_, i) => i + 1);
+  }
+  const steps = [
+    1,
+    Math.round(full / 8),
+    Math.round(full / 4),
+    Math.round(full / 2),
+    Math.round((full * 3) / 4),
+    full,
+  ];
+  return [...new Set(steps)].filter((n) => n >= 1 && n <= full).sort((a, b) => a - b);
+};
 
 /** Whether this weapon is a laser, which is what point defence requires. */
 export const isLaserKind = (kind: string): boolean =>

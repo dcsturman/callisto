@@ -19,20 +19,19 @@ import {
   stationsDown,
 } from "lib/entities";
 import { shipWeapons } from "lib/shipDesignTemplates";
-import { ViewMode, hasRole, isReferee, rolesToString } from "lib/view";
-import { nextRound } from "lib/serverManager";
+import { isReferee } from "lib/view";
+import { SectionTag } from "components/controls/SectionTag";
+import { FaUsers, FaExclamationTriangle } from "react-icons/fa";
+import { ENGINEER_SKILLS } from "components/controls/CrewBuilder";
+import { nextRound, setReady, setShipTeam } from "lib/serverManager";
+import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
-import { Actions, FireControl } from "./WeaponUse";
-import { DEFAULT_SENSOR_STATE, SensorAction } from "components/controls/Actions";
-import { ShipComputer } from "./ShipComputer";
-import { CaptainTasks } from "./CaptainTasks";
 import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 import { AppMode } from "state/tutorialSlice";
-import { isUndetected, sameSide } from "lib/contacts";
 import { store } from "state/store";
 import {
   setComputerShipName,
@@ -229,9 +228,23 @@ function ScenarioBuilderControls(args: {
   );
 }
 
+/** "3" for one of them, "3/1" for a watch, "none" for an empty station. */
+const listSkills = (skills: number[] | undefined): string =>
+  skills == null || skills.length === 0 ? "none" : skills.join("/");
+
 export function Controls() {
   const shipName = useAppSelector((state) => state.user.shipName);
   const roles = useAppSelector((state) => state.user.roles);
+  // My own entry in the user list, to show whether I have readied up. The
+  // server names players by the local part of their email, as it does for
+  // everyone else in the list.
+  const email = useAppSelector((state) => state.user.email);
+  const users = useAppSelector((state) => state.server.users);
+  const amReady = useMemo(() => {
+    const me = email ? email.split("@")[0] : null;
+    return users.some((user) => user.display_name === me && user.ready);
+  }, [users, email]);
+
   const isScenarioBuilder = useAppSelector(
     (state) => state.tutorial.appMode === AppMode.ScenarioBuilder,
   );
@@ -239,7 +252,6 @@ export function Controls() {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
   const shipTemplates = useAppSelector((state) => state.server.templates);
-  const actions = useAppSelector((state) => state.actions);
   const showRange = useAppSelector((state) => state.ui.showRange);
 
   const dispatch = useAppDispatch();
@@ -297,6 +309,31 @@ export function Controls() {
               <div className="stats-bloc-entry">
                 <h2>Design</h2>
                 <pre className="plan-accel-text">{computerShip.design}</pre>
+              </div>
+              {/* Which side the ship is on belongs to the ship, not to any one
+                  crew station, so it sits with the ship's other numbers where
+                  every role can see and set it. */}
+              <div className="stats-bloc-entry">
+                <h2>Team</h2>
+                <select
+                  className="team-select"
+                  value={computerShip.team ?? ""}
+                  style={{ color: teamLabelColor(computerShip.team, {}) }}
+                  title="Which side this ship is on. Teams are colour-coded in the view, always know where each other are, and will not fire on one another."
+                  onChange={(event) =>
+                    setShipTeam(
+                      computerShip.name,
+                      (event.target.value || null) as Team | null,
+                    )
+                  }
+                >
+                  <option value="">Unaligned</option>
+                  {TEAMS.map((team) => (
+                    <option key={team} value={team}>
+                      {team}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="stats-bloc-entry">
                 <h2>Hull</h2>
@@ -405,7 +442,7 @@ export function Controls() {
               computerShip.crit_level.some((c) => c > 0)) ||
               stationsDown(computerShip).length > 0) && (
                 <div id="crits-display">
-                  <h2 className="control-form">Critical Hits</h2>
+                  <SectionTag icon={<FaExclamationTriangle />}>Critical Hits</SectionTag>
                   <pre className="plan-accel-text">
                     {(() => {
                       const systems = [
@@ -447,123 +484,33 @@ export function Controls() {
             {/* Bottom of the box, one heading in the section-title style and
                 one line in the body font. Gunners are one number per mount,
                 in mount order. */}
-            <h2 className="control-form">Crew</h2>
+            <SectionTag icon={<FaUsers />}>Crew</SectionTag>
+            {/* Sensor operators and engineers are listed one per person, in
+                the order they sit in the crew, since the dropdowns that put
+                one of them on a station name them by that position. */}
             <p className="crew-line">
               {[
                 `Pilot - ${computerShip.crew.pilot}`,
-                `Eng-J - ${computerShip.crew.engineering_jump}`,
-                `Eng-P - ${computerShip.crew.engineering_power}`,
-                `Eng-M - ${computerShip.crew.engineering_maneuver}`,
-                `Sensors - ${computerShip.crew.sensors}`,
+                `Sensors - ${listSkills(computerShip.crew.sensors)}`,
+                ...ENGINEER_SKILLS.map(
+                  (skill) =>
+                    `${skill.label} - ${listSkills(
+                      (computerShip.crew.engineers ?? []).map((engineer) => engineer[skill.key] ?? 0),
+                    )}`,
+                ),
                 `Leadership - ${computerShip.crew.leadership ?? 0}`,
-                `Mechanic - ${computerShip.crew.mechanic ?? 0}`,
                 `Gunners - ${shipWeapons(computerShip, shipTemplates)
                   .map((_w, i) => computerShip.crew.gunnery[i] ?? 0)
                   .join(", ") || "none"}`,
               ].join(",  ")}
             </p>
-            <hr />
-            {hasRole(roles, ViewMode.Pilot, ViewMode.Sensors, ViewMode.Engineer) &&
-              !hasRole(roles, ViewMode.General) &&
-              computerShipName && (
-                <Accordion
-                  title={`${computerShipName} ${rolesToString(roles)} Controls`}
-                  initialOpen={true}
-                >
-                  <ShipComputer ship={computerShip} />
-                </Accordion>
-              )}
-            {hasRole(roles, ViewMode.Gunner) && (
-              <div className="control-form">
-                <Accordion
-                  title={`${computerShipName} Fire Controls`}
-                  initialOpen={true}
-                >
-                  <FireControl />
-                </Accordion>
-              </div>
-            )}
           </>
         )}
-        {/* Captain rolls leadership from the left pane (their main UI).
-            General sees the same panel via the ShipComputer popup, so we
-            don't render it here twice.
-
-            The assigned ship if there is one, else the ship being viewed --
-            the same rule the boost checkboxes use. Every other station
-            already works on the viewed ship; requiring an assignment here
-            meant a captain looking at a ship got no leadership button. */}
-        {hasRole(roles, ViewMode.Captain) && !hasRole(roles, ViewMode.General) && (() => {
-          const captainShip = findShip(entities, shipName ?? computerShipName);
-          if (!captainShip) return null;
-          return <CaptainTasks ship={captainShip} />;
-        })()}
-        {computerShip && computerShipName && computerShipDesign && (() => {
-          // Note: don't bail when `actions[computerShipName]` is missing —
-          // pilot state (dodge_thrust / assist_gunners) lives on the ship
-          // itself, not in the actions slice. If the user only sets pilot
-          // actions, the slice has no entry but the Actions list still needs
-          // to render the Evade / Assist Gunner rows.
-          const a = actions[computerShipName];
-          // Per-role visibility. General sees everything; specialist roles see
-          // only their own action category. Pilot / Observer see nothing here.
-          // Captain needs to see ALL queued actions on the selected ship in
-          // order to mark boost checkboxes against them, so Captain is added
-          // to all three of these visibility flags.
-          const seeFire =
-            hasRole(roles, ViewMode.Gunner, ViewMode.Captain);
-          const seeSensor =
-            hasRole(roles, ViewMode.Sensors, ViewMode.Captain);
-          const seeEngineer =
-            hasRole(roles, ViewMode.Engineer, ViewMode.Captain);
-          const seePilot =
-            hasRole(roles, ViewMode.Pilot, ViewMode.Captain);
-          const fireActions = seeFire ? a?.fire || [] : [];
-          const pdActions = seeFire ? a?.pointDefense || [] : [];
-          const sensorAction = seeSensor
-            ? a?.sensor || DEFAULT_SENSOR_STATE
-            : DEFAULT_SENSOR_STATE;
-          const engineerAction = seeEngineer ? a?.engineer ?? null : null;
-          const dodgeThrust = computerShip?.dodge_thrust ?? 0;
-          const assistGunners = computerShip?.assist_gunners ?? false;
-          const pilotState = seePilot
-            ? { dodgeThrust, assistGunners }
-            : null;
-          // Ships this one could be looking for. Detection is free and needs
-          // no order, so these are not queued actions — they are here because
-          // a captain can concentrate the sensop on one of them, and that is
-          // the only part of detection leadership reaches.
-          const searchTargets = seeSensor
-            ? entities.ships.filter(
-                (target) =>
-                  target.name !== computerShip.name &&
-                  isUndetected(computerShip, target) &&
-                  !sameSide(computerShip, target),
-              )
-            : [];
-          const hasAny =
-            fireActions.length > 0 ||
-            pdActions.length > 0 ||
-            sensorAction.action !== SensorAction.None ||
-            engineerAction != null ||
-            searchTargets.length > 0 ||
-            (pilotState != null &&
-              (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
-          if (!hasAny) return null;
-          return (
-            <Actions
-              fireActions={fireActions}
-              pointDefenseActions={pdActions}
-              sensorAction={sensorAction}
-              engineerAction={engineerAction}
-              pilotState={pilotState}
-              searchTargets={searchTargets}
-              weapons={shipWeapons(computerShip, shipTemplates)}
-            />
-          );
-        })()}
       </Accordion>
-      {hasRole(roles, ViewMode.Captain) && (
+      {/* The referee ends the round; everyone else says when their orders are
+          in. Two people pressing Next Round ends the round before the rest of
+          the table has finished giving theirs. */}
+      {isReferee(roles, shipName) ? (
         <button
           className="control-input control-button blue-button button-next-round"
           // Reset the computer and route on the next round.  If this gets any more complex move it into its
@@ -577,6 +524,18 @@ export function Controls() {
           }}
         >
           Next Round
+        </button>
+      ) : (
+        <button
+          className="control-input control-button blue-button button-next-round"
+          title={
+            amReady
+              ? "Take it back if you still have orders to give"
+              : "Tell the GM your orders are in"
+          }
+          onClick={() => setReady(!amReady)}
+        >
+          {amReady ? "Not Ready" : "Ready"}
         </button>
       )}
     </div>

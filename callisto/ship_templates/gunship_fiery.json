@@ -36,5 +36,38 @@
   ],
   "tl": 12,
   "role": "Gunship",
-  "source": "Ships of the Reach"
+  "source": "Ships of the Reach",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "FireControl",
+      "level": 3
+    },
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ],
+  "magazine": {
+    "missiles": 0,
+    "torpedoes": 0,
+    "sand": 40
+  }
 }

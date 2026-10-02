@@ -13,6 +13,8 @@ use once_cell::sync::OnceCell;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
+
+use crate::software::{Software, SoftwareKind};
 use strum_macros::{EnumIter, FromRepr};
 
 use futures::stream::{self, StreamExt};
@@ -286,9 +288,20 @@ pub struct Ship {
   #[serde(default)]
   crew: Option<Crew>,
 
+  /// The thrust the pilot has set aside for dodging, as an order that stands
+  /// until they change it.
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
   dodge_thrust: u8,
+
+  /// How much of that order has been used this round. Kept apart from the
+  /// order itself: spending it used to eat the order, so a pilot who dodged
+  /// two attacks stopped dodging -- that round and every round after -- until
+  /// they noticed and typed the number in again. Per-round scratch, so it is
+  /// neither saved nor sent.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip)]
+  dodge_spent: u8,
 
   #[derivative(PartialEq = "ignore")]
   #[serde(default)]
@@ -303,6 +316,13 @@ pub struct Ship {
   #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
   temporary_maneuver: u8,
 
+  /// Rounds the overload has left to run, including this one. House rule: an
+  /// overload lasts the Effect of the check in rounds, and an Effect of 0
+  /// still buys one. Per-round scratch, so it is not saved.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
+  temporary_maneuver_rounds: u8,
+
   #[derivative(PartialEq = "ignore")]
   #[serde(
     skip_deserializing,
@@ -310,6 +330,11 @@ pub struct Ship {
     skip_serializing_if = "is_default_power_multiplier"
   )]
   temporary_power_multiplier: f32,
+
+  /// Rounds the plant's overload has left, on the same house rule.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
+  temporary_power_rounds: u8,
 
   #[derivative(PartialEq = "ignore")]
   last_repair_component: Option<ShipSystem>,
@@ -360,11 +385,47 @@ pub struct Ship {
   /// the wire while every station works.
   #[serde(default, skip_serializing_if = "all_stations_working")]
   pub bridge_stations: [StationStatus; BridgeStation::COUNT],
-  /// Bridge damage in the order it was done, each with the severity that did
-  /// it. A Bridge repair undoes it from the end. Injuries to the crew are not
-  /// on here: repairing the bridge does not heal anyone.
+  /// Systems the engineer has powered down, by [`PowerSystem`]. Freeing their
+  /// draw is the point: a ship short of Power can shut a weapon off to keep
+  /// flying.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
-  pub bridge_damage: Vec<(u8, BridgeDamage)>,
+  pub offline: Vec<PowerSystem>,
+  /// Software aboard. The design's, plus anything a scenario added.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub software: Vec<Software>,
+  /// Which of it is running. Bandwidth limits this, not what is installed:
+  /// a ship can own more software than its computer can run at once, and
+  /// choosing is the point.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub software_running: Vec<Software>,
+
+  /// Basic ship systems running at half power, which High Guard p. 17 allows
+  /// in an emergency. Uncomfortable, and the only way to find Power on a ship
+  /// with nothing else to shut off.
+  #[serde(default, skip_serializing_if = "is_false")]
+  pub basic_power_halved: bool,
+
+  /// How many times the engineer has overloaded the drive and the plant this
+  /// fight. Each attempt after the first takes a cumulative DM-2 (Core
+  /// Rulebook p. 171), cleared only by maintenance out of combat.
+  #[serde(default, skip_serializing_if = "is_zero_u8")]
+  pub overload_drive_attempts: u8,
+  #[serde(default, skip_serializing_if = "is_zero_u8")]
+  pub overload_plant_attempts: u8,
+
+  /// What each critical hit took away, in the order it happened, with the
+  /// system and the severity that did it. Repairing a system undoes its own
+  /// damage from the end.
+  ///
+  /// Hull, armour, fuel, cargo and crew are not on here. None of them is
+  /// repaired in flight: a hole is a hole, spent fuel is spent, and a repair
+  /// does not heal anyone.
+  ///
+  /// Server-side bookkeeping: the client is told each system's severity and
+  /// what the ship can currently do, which is all it can show. Kept off the
+  /// wire and out of saved scenarios for that reason.
+  #[serde(skip)]
+  pub damage_log: Vec<(ShipSystem, u8, SystemDamage)>,
   #[serde(skip)]
   pub attack_dm: i32,
   #[serde(skip)]
@@ -395,9 +456,25 @@ pub struct Ship {
   /// cannon serializes exactly as it did before ion existed.
   #[serde(default, skip_serializing_if = "is_zero_u32")]
   pub ion_power_loss: u32,
+  /// Bandwidth an ion hit is currently suppressing.
+  ///
+  /// House rule: an ion hit spills into the computer as well as the power
+  /// plant, taking a tenth of its damage off Bandwidth for as long as the
+  /// Power loss lasts. See FAQ.md -- it is what gives a hardened (/fib)
+  /// computer something to be hardened against, since the book's own
+  /// protection is an allocation of Power a computer never draws.
+  #[serde(default, skip_serializing_if = "is_zero_u32")]
+  pub ion_bandwidth_loss: u32,
   /// Rounds of ion suppression still to run.  Zero means none.
   #[serde(default, skip_serializing_if = "is_zero_u8")]
   pub ion_rounds: u8,
+  /// Missiles, torpedoes and sandcaster barrels still aboard.
+  ///
+  /// Spent as they are fired and thrown, and restored when the scenario is
+  /// reset. A ship that runs out cannot launch or disperse, which is what
+  /// makes a long missile duel a question of stores as well as nerve.
+  #[serde(default)]
+  pub magazine: Magazine,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -492,6 +569,25 @@ pub struct ShipDesignTemplate {
   /// when empty, so every design written before screens existed is unchanged.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub screens: Vec<ScreenType>,
+  /// Everything else the hull is fitted with: a holographic hull, repair
+  /// drones. Omitted from the wire when empty.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub features: Vec<ShipFeature>,
+  /// Missiles, torpedoes and sandcaster barrels aboard. Absent means the
+  /// usual load for what the ship is armed with.
+  #[serde(default, skip_serializing_if = "Magazine::is_empty")]
+  pub magazine: Magazine,
+  /// The software the design is sold with. A scenario can add to it.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub software: Vec<Software>,
+  /// Jump Control Specialisation: Processing is +5 for Jump Control software
+  /// only (Core Rulebook p. 180). The Type-S scout's Computer/5bis is how it
+  /// runs Jump Control/2 on a Processing 5 machine.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub computer_bis: bool,
+  /// Hardened against electromagnetic attack: immune to ion weapons.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub computer_fib: bool,
   pub tl: u8,
   /// Broad role used to group designs in the ship-design picker, e.g. "Trader",
   /// "Escort", "Small Craft".  Purely presentational; absent on older designs.
@@ -594,6 +690,9 @@ pub struct Firing<'a> {
   pub modifiers: &'a [WeaponModifier],
   /// Guns of this type in the mount, for the same-type damage bonus.
   pub count: u8,
+  /// A gunner's cap on the salvo, when they chose to throw fewer than the
+  /// mount holds. `None` is the whole salvo. Means nothing to direct fire.
+  pub salvo_limit: Option<u16>,
 }
 
 /// One weapon mount and everything bolted into it.
@@ -690,6 +789,7 @@ impl Weapon {
       mount: &self.mount,
       modifiers,
       count,
+      salvo_limit: None,
     })
   }
 
@@ -1296,6 +1396,147 @@ impl Display for BridgeStation {
   }
 }
 
+/// A call on the ship's power plant.
+///
+/// The engineer can shut most of these down to free Power for something else
+/// (Core Rulebook p. 171, Offline System). Basic ship systems cannot be shut
+/// off, but High Guard p. 17 allows them to run at half in an emergency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum PowerSystem {
+  /// Life support, gravity, heat and light: 20% of the hull's tonnage.
+  Basic,
+  Sensors,
+  /// The manoeuvre drive, at the Thrust the drive is rated for.
+  Maneuver,
+  /// The jump drive, which only draws when the ship actually jumps.
+  Jump,
+  /// One weapon mount, by its index in the ship's armament.
+  Weapon(usize),
+  /// Anything else the hull carries that draws Power and can be switched: a
+  /// Harrier's holographic hull, a cargo lifter, a research suite. Indexed
+  /// into the design's `features` list.
+  ///
+  /// The ship's computer will join this table once computers do anything;
+  /// it is a draw like any other and belongs in the budget beside these.
+  Feature(usize),
+}
+
+/// Something a design carries that is not a drive, a sensor suite, a gun or
+/// software: the general slot for everything else a hull is fitted with.
+///
+/// Two kinds in practice, told apart by `power`. A feature that draws Power
+/// is a system the engineer can switch -- a Harrier's holographic hull, 100
+/// Power while it runs -- and appears on the power board. A feature that
+/// draws none is a fitting: repair drones are aboard or they are not, and
+/// there is nothing to switch.
+///
+/// `kind` is how the rules find a feature they care about. Most features are
+/// flavour and a power draw, and leave it unset.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ShipFeature {
+  pub name: String,
+  /// What it draws while running. Zero for a fitting with no switch.
+  #[serde(default)]
+  pub power: u32,
+  /// Whether the ship starts with it running. Only means anything for a
+  /// feature that draws Power and so has a switch.
+  #[serde(default)]
+  pub default_on: bool,
+  /// What the rules know this feature as, where they know it at all.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub kind: Option<FeatureKind>,
+}
+
+/// What a hull carries to shoot: missiles, torpedoes and sandcaster barrels.
+///
+/// Canon ships state these in their Ammunition line -- "Missile Storage (60
+/// missiles)", "Sandcaster Barrels x 20" -- and the tonnage is bought like
+/// any other system. A design that says nothing gets a sensible load for
+/// what it is armed with (see [`Magazine::for_design`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Magazine {
+  #[serde(default)]
+  pub missiles: u32,
+  #[serde(default)]
+  pub torpedoes: u32,
+  /// Sandcaster barrels, one spent per cloud dispersed.
+  #[serde(default)]
+  pub sand: u32,
+}
+
+impl Magazine {
+  /// Whether the design said nothing at all.
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    *self == Magazine::default()
+  }
+
+  /// What a design carries when its write-up does not say.
+  ///
+  /// Twelve missiles per rack and twenty barrels per sandcaster, which is
+  /// what the small ships that do state a magazine carry; three torpedoes
+  /// per launcher, matching the barbette we already assume holds three.
+  #[must_use]
+  pub fn for_design(design: &ShipDesignTemplate) -> Magazine {
+    if !design.magazine.is_empty() {
+      return design.magazine;
+    }
+    let mut magazine = Magazine::default();
+    for weapon in &design.weapons {
+      magazine.missiles += 12 * u32::from(weapon.count_of(WeaponType::Missile));
+      magazine.torpedoes += 3 * u32::from(weapon.count_of(WeaponType::Torpedo));
+      magazine.sand += 20 * u32::from(weapon.count_of(WeaponType::Sand));
+    }
+    magazine
+  }
+}
+
+/// A feature the rules reach for by name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum FeatureKind {
+  /// Drones that work outside the hull: they let repairs happen during
+  /// combat, and are what Auto-Repair software drives (CRB p. 159).
+  RepairDrones,
+  /// A projected false image of another ship.
+  HolographicHull,
+}
+
+/// One line of a ship's power budget.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PowerLine {
+  pub system: PowerSystem,
+  /// What to call it on a console.
+  pub label: String,
+  /// What it needs to run.
+  pub draw: u32,
+  /// What the plant can actually give it. Equal to `draw` on a healthy ship;
+  /// less when the plant is damaged and the systems ahead of this one in the
+  /// priority have taken what there is.
+  pub received: u32,
+  /// Whether the engineer has left it switched on.
+  pub online: bool,
+  /// Whether it only draws at the moment it is used, as the jump drive does.
+  pub on_demand: bool,
+}
+
+impl PowerLine {
+  /// Whether this system is actually running: switched on and fed.
+  ///
+  /// The drive is the exception and runs on whatever it is given, at reduced
+  /// Thrust. Everything else needs its full draw or does nothing -- a sensor
+  /// suite at half power is not half a sensor suite.
+  #[must_use]
+  pub fn powered(&self) -> bool {
+    if !self.online {
+      return false;
+    }
+    match self.system {
+      PowerSystem::Maneuver => self.received > 0,
+      _ => self.received >= self.draw,
+    }
+  }
+}
+
 /// Whether a bridge station can be used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub enum StationStatus {
@@ -1308,14 +1549,31 @@ pub enum StationStatus {
   Destroyed,
 }
 
-/// One undoable piece of bridge damage, recorded against the severity that
-/// did it so a repair can take the most recent back off first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-pub enum BridgeDamage {
-  /// A station knocked out for a round or two.
+/// One undoable piece of damage, recorded against the severity that did it so
+/// a repair can take the most recent back off first.
+///
+/// A crit's effect is not a function of its severity alone -- a power plant
+/// loses a tenth of its rating each time, a sensor suite drops a grade -- so
+/// what was lost has to be written down when it is taken, or a repair has
+/// nothing to give back.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum SystemDamage {
+  /// Thrust lost.
+  Thrust(u8),
+  /// Power lost.
+  Power(u32),
+  /// Jump rating lost.
+  Jump(u8),
+  /// The sensor grade held before the hit knocked it down one.
+  SensorGrade(Sensors),
+  /// Points taken off the ship's attack DM.
+  AttackDm(i32),
+  /// Weapon mounts switched off, by index.
+  WeaponsOff(Vec<usize>),
+  /// A bridge station knocked out for a round or two.
   Disabled(BridgeStation),
-  /// A station destroyed, and what it was before, so undoing it cannot bring
-  /// back a station an earlier hit had already destroyed.
+  /// A bridge station destroyed, and what it was before, so undoing it cannot
+  /// bring back a station an earlier hit had already destroyed.
   Destroyed { station: BridgeStation, was: StationStatus },
   /// Computer Bandwidth lost.
   Bandwidth(u32),
@@ -1358,14 +1616,36 @@ impl Ship {
       team: None,
       crit_level: [0; 11],
       bridge_stations: [StationStatus::Working; BridgeStation::COUNT],
-      bridge_damage: vec![],
+      damage_log: vec![],
+      software: design.software.clone(),
+      // Everything the ship owns is running when it arrives, as far as the
+      // computer can manage: a crew does not undock with the fire control
+      // switched off. What will not fit is left for the engineer to sort out.
+      software_running: initial_running(design),
+      // A hologram projector is not running when the ship undocks. Whatever
+      // the design says starts off, starts off -- but only things with a
+      // switch: a fitting that draws no Power, like repair drones, is simply
+      // aboard.
+      offline: design
+        .features
+        .iter()
+        .enumerate()
+        .filter(|(_, feature)| feature.power > 0 && !feature.default_on)
+        .map(|(index, _)| PowerSystem::Feature(index))
+        .collect(),
+      basic_power_halved: false,
+      overload_drive_attempts: 0,
+      overload_plant_attempts: 0,
       attack_dm: 0,
-      crew: Some(crew.or_else(|| design.crew_skills.clone()).unwrap_or_default()),
+      crew: Some(crewed_or_default(crew, design, num_weapons)),
       dodge_thrust: 0,
+      dodge_spent: 0,
       assist_gunners: false,
       can_jump: false,
       temporary_maneuver: 0,
+      temporary_maneuver_rounds: 0,
       temporary_power_multiplier: 1.0,
+      temporary_power_rounds: 0,
       last_repair_component: None,
       repair_bonus: 0,
       engineer_action_taken: false,
@@ -1376,7 +1656,9 @@ impl Ship {
       point_defense_pool: 0,
       screen_pool: vec![],
       ion_power_loss: 0,
+      ion_bandwidth_loss: 0,
       ion_rounds: 0,
+      magazine: Magazine::for_design(design),
     }
   }
 
@@ -1397,13 +1679,15 @@ impl Ship {
     self.current_crew = self.design.crew;
     self.current_sensors = self.design.sensors;
     self.current_computer = self.design.computer;
+    self.magazine = Magazine::for_design(&self.design);
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
-    self.bridge_damage.clear();
+    self.damage_log.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
+    self.dodge_spent = 0;
   }
 
   pub fn fixup_current_values(&mut self) {
@@ -1416,11 +1700,26 @@ impl Ship {
     self.current_crew = u32::max(self.current_crew, self.design.crew);
     self.current_sensors = Sensors::max(self.current_sensors, self.design.sensors);
     self.current_computer = u32::max(self.current_computer, self.design.computer);
+    // A ship read from a scenario has no magazine on the wire, and serde
+    // fills zeros -- which would put every scenario ship to sea with empty
+    // racks. An empty magazine here means "not stated", so it is loaded from
+    // the design the same way a new ship's is.
+    if self.magazine.is_empty() {
+      self.magazine = Magazine::for_design(&self.design);
+    }
+    // The same for software: a scenario states none, and a ship with an
+    // empty list has nothing to run and refuses every order to run it --
+    // while the console, which falls back to the design's list, shows a
+    // computer full of programs that cannot be switched on.
+    if self.software.is_empty() {
+      self.software.clone_from(&self.design.software);
+      self.software_running = initial_running(&self.design);
+    }
     self.resolve_crew();
     self.active_weapons = vec![true; self.weapons().len()];
     self.crit_level = [0; 11];
     self.bridge_stations = [StationStatus::Working; BridgeStation::COUNT];
-    self.bridge_damage.clear();
+    self.damage_log.clear();
     self.attack_dm = 0;
     self.dodge_thrust = 0;
   }
@@ -1469,7 +1768,10 @@ impl Ship {
 
   #[must_use]
   pub fn max_acceleration(&self) -> u8 {
-    let power_limit = self.design.best_thrust(self.available_power());
+    // Weapons, sensors and basic systems are all drawing on the same plant,
+    // so what is left after them is what the drive has to work with. An
+    // engineer short of Power can shut something down to get thrust back.
+    let power_limit = self.design.thrust_from_power(self.power_for_drive());
     let maneuver_limit = self.current_maneuver;
 
     // TODO: Remove this once using a match doesn't trigger the warning about attributes on expressions being experimental.
@@ -1554,9 +1856,16 @@ impl Ship {
   ///
   /// Idempotent, and never overwrites: a scenario that states its own crew
   /// keeps it. Falls back to untrained so `crew` is `Some` from here on.
+  ///
+  /// A crew arrived at this way mans every mount, at skill 0 where nothing
+  /// better is stated: a ship nobody has written a crew for is a crewed ship
+  /// whose names we do not know, not a derelict with empty gun positions.
+  /// Leaving a seat deliberately empty is something a scenario says by
+  /// giving a crew with a shorter gunnery list than the ship has mounts.
   fn resolve_crew(&mut self) {
     if self.crew.is_none() {
-      self.crew = Some(self.design.crew_skills.clone().unwrap_or_default());
+      let mounts = self.weapons().len();
+      self.crew = Some(crewed_or_default(None, &self.design, mounts));
     }
   }
 
@@ -1567,7 +1876,11 @@ impl Ship {
   /// Clear of gravity wells, with astrogation and the computer to plot it.
   #[must_use]
   pub fn can_jump(&self) -> bool {
-    self.can_jump && self.station_working(BridgeStation::Astrogation) && self.station_working(BridgeStation::Computer)
+    self.can_jump
+      && self.station_working(BridgeStation::Astrogation)
+      && self.station_working(BridgeStation::Computer)
+      && self.jump_powered()
+      && self.running_level(SoftwareKind::JumpControl).is_some_and(|level| level > 0)
   }
 
   #[must_use]
@@ -1605,34 +1918,86 @@ impl Ship {
     }
   }
 
+  /// Note what a hit at `level` took from `system`, so a repair can give it
+  /// back.
+  pub fn record_damage(&mut self, system: ShipSystem, level: u8, damage: SystemDamage) {
+    self.damage_log.push((system, level, damage));
+  }
+
   /// A bridge hit at `level` disables `station`, recorded for repair.
   pub fn bridge_hit_disable(&mut self, level: u8, station: BridgeStation) {
-    self.bridge_damage.push((level, BridgeDamage::Disabled(station)));
+    self.record_damage(ShipSystem::Bridge, level, SystemDamage::Disabled(station));
     self.disable_station(station);
   }
 
   /// A bridge hit at `level` destroys `station`, recorded for repair.
   pub fn bridge_hit_destroy(&mut self, level: u8, station: BridgeStation) {
     let was = self.station_status(station);
-    self.bridge_damage.push((level, BridgeDamage::Destroyed { station, was }));
+    self.record_damage(ShipSystem::Bridge, level, SystemDamage::Destroyed { station, was });
     self.destroy_station(station);
   }
 
   /// A bridge hit at `level` cuts Bandwidth to `bandwidth`, recorded for repair.
+  ///
+  /// Software that no longer fits stops running, but is not forgotten: see
+  /// [`effective_software`](Self::effective_software). Repairing the computer
+  /// brings back whatever fits again, which is what a crew would see.
   pub fn bridge_hit_bandwidth(&mut self, level: u8, bandwidth: u32) {
     let lost = self.current_computer.saturating_sub(bandwidth);
-    self.bridge_damage.push((level, BridgeDamage::Bandwidth(lost)));
+    self.record_damage(ShipSystem::Bridge, level, SystemDamage::Bandwidth(lost));
     self.current_computer = bandwidth;
   }
 
-  /// Undo bridge damage done above severity `level`, most recent first, for a
-  /// repair that has just brought the bridge down to it. Returns what came
-  /// back, to tell the engineer.
-  pub fn undo_bridge_damage(&mut self, level: u8) -> Vec<String> {
+  /// Undo the damage a system took above severity `level`, most recent first,
+  /// for a repair that has just brought it down to that level. Returns what
+  /// came back, to tell the engineer.
+  ///
+  /// Nothing is capped above the design: a repair restores what a hit took,
+  /// and cannot build a better ship than the yard did.
+  pub fn undo_damage(&mut self, system: ShipSystem, level: u8) -> Vec<String> {
+    // Newest first, and only this system's: another system's damage may have
+    // landed in between, and is not this engineer's to undo.
+    let mut undoing = Vec::new();
+    let mut index = self.damage_log.len();
+    while index > 0 {
+      index -= 1;
+      if self.damage_log[index].0 == system && self.damage_log[index].1 > level {
+        undoing.push(self.damage_log.remove(index).2);
+      }
+    }
+
     let mut restored = Vec::new();
-    while let Some((_, damage)) = self.bridge_damage.pop_if(|(done_at, _)| *done_at > level) {
+    for damage in undoing {
       match damage {
-        BridgeDamage::Disabled(station) => {
+        SystemDamage::Thrust(lost) => {
+          self.current_maneuver = (self.current_maneuver + lost).min(self.design.maneuver);
+          restored.push(format!("thrust back to {}", self.current_maneuver));
+        }
+        SystemDamage::Power(lost) => {
+          self.current_power = (self.current_power + lost).min(self.design.power);
+          restored.push(format!("power back to {}", self.current_power));
+        }
+        SystemDamage::Jump(lost) => {
+          self.current_jump = (self.current_jump + lost).min(self.design.jump);
+          restored.push(format!("jump back to {}", self.current_jump));
+        }
+        SystemDamage::SensorGrade(was) => {
+          self.current_sensors = Sensors::max(self.current_sensors, was);
+          restored.push(format!("sensors back to {}", String::from(self.current_sensors)));
+        }
+        SystemDamage::AttackDm(lost) => {
+          self.attack_dm += lost;
+          restored.push("attack DM restored".to_string());
+        }
+        SystemDamage::WeaponsOff(indices) => {
+          for index in indices {
+            if let Some(active) = self.active_weapons.get_mut(index) {
+              *active = true;
+            }
+          }
+          restored.push("weapons back online".to_string());
+        }
+        SystemDamage::Disabled(station) => {
           if matches!(self.station_status(station), StationStatus::Disabled(_)) {
             self.bridge_stations[station as usize] = StationStatus::Working;
             restored.push(format!("{station} station back up"));
@@ -1640,13 +2005,13 @@ impl Ship {
         }
         // Back to working unless an earlier hit had already destroyed it. A
         // disable from before is not put back: it would have run out by now.
-        BridgeDamage::Destroyed { station, was } => {
+        SystemDamage::Destroyed { station, was } => {
           if was != StationStatus::Destroyed {
             self.bridge_stations[station as usize] = StationStatus::Working;
             restored.push(format!("{station} station working again"));
           }
         }
-        BridgeDamage::Bandwidth(lost) => {
+        SystemDamage::Bandwidth(lost) => {
           self.current_computer = (self.current_computer + lost).min(self.design.computer);
           restored.push(format!("computer Bandwidth back to {}", self.current_computer));
         }
@@ -1676,6 +2041,14 @@ impl Ship {
   #[must_use]
   pub fn is_transmitting(&self) -> bool {
     self.transmitting && self.station_working(BridgeStation::Comms)
+  }
+
+  /// Power the drive is actually getting.
+  #[must_use]
+  pub fn power_for_drive(&self) -> u32 {
+    self
+      .power_line(PowerSystem::Maneuver)
+      .map_or(0, |line| if line.online { line.received } else { 0 })
   }
 
   /// The thrust this ship is applying, in whole G, for the detection tables.
@@ -1823,11 +2196,12 @@ impl Ship {
     }
   }
 
+  /// Spend one point of the pilot's dodge on an attack.
   pub fn decrement_dodge_thrust(&mut self) {
-    if self.dodge_thrust == 0 {
+    if self.get_dodge_thrust() == 0 {
       warn!("(Ship.decrement_dodge_thrust) Attempting to decrement a 0 dodge thrust; should never happen.");
     }
-    self.dodge_thrust = u8::saturating_sub(self.dodge_thrust, 1);
+    self.dodge_spent = self.dodge_spent.saturating_add(1);
   }
 
   /// Assisting the gunners takes a pilot at their station.
@@ -1837,14 +2211,407 @@ impl Ship {
   }
   pub fn reset_pilot_actions(&mut self) {
     self.dodge_thrust = 0;
+    self.dodge_spent = 0;
     self.assist_gunners = false;
   }
 
-  /// Thrust left for evasion. None without a pilot at their station.
+  /// Every call on the power plant, in the order a console should show them,
+  /// with what each one needs and what it is actually getting.
+  ///
+  /// High Guard pp. 16-17 and the weapon tables: basic systems are 20% of the
+  /// hull, the drives 10% of the hull per point of Thrust or jump number,
+  /// sensors by grade, and each weapon mount what its guns draw.
+  ///
+  /// A plant that cannot meet all of it feeds systems in priority order. Life
+  /// support comes first and the drive last, because the drive is the one
+  /// thing that does something useful with a partial share: everything else
+  /// either runs or does not.
+  #[must_use]
+  pub fn power_lines(&self) -> Vec<PowerLine> {
+    let hull = self.design.displacement;
+    let mut lines = vec![
+      PowerLine {
+        system: PowerSystem::Basic,
+        label: if self.basic_power_halved {
+          "Basic systems (half)".to_string()
+        } else {
+          "Basic systems".to_string()
+        },
+        draw: if self.basic_power_halved { hull / 10 } else { hull / 5 },
+        received: 0,
+        // The one thing that cannot be switched off, only turned down.
+        online: true,
+        on_demand: false,
+      },
+      PowerLine {
+        system: PowerSystem::Sensors,
+        label: format!("Sensors ({})", String::from(self.current_sensors)),
+        draw: sensor_power(self.current_sensors),
+        received: 0,
+        online: self.is_online(PowerSystem::Sensors),
+        on_demand: false,
+      },
+    ];
+    for (index, weapon) in self.weapons().iter().enumerate() {
+      let draw = weapon_mount_power(weapon);
+      if draw == 0 {
+        continue;
+      }
+      lines.push(PowerLine {
+        system: PowerSystem::Weapon(index),
+        label: String::from(weapon),
+        draw,
+        received: 0,
+        online: self.is_online(PowerSystem::Weapon(index)) && self.active_weapons[index],
+        on_demand: false,
+      });
+    }
+    lines.push(PowerLine {
+      system: PowerSystem::Maneuver,
+      label: format!("M-drive (thrust {})", self.design.maneuver),
+      draw: hull / 10 * u32::from(self.design.maneuver),
+      received: 0,
+      online: self.is_online(PowerSystem::Maneuver),
+      on_demand: false,
+    });
+    for (index, feature) in self.design.features.iter().enumerate() {
+      // A fitting with no draw is not a line on the power board.
+      if feature.power == 0 {
+        continue;
+      }
+      lines.push(PowerLine {
+        system: PowerSystem::Feature(index),
+        label: feature.name.clone(),
+        draw: feature.power,
+        received: 0,
+        online: self.is_online(PowerSystem::Feature(index)),
+        on_demand: false,
+      });
+    }
+    if self.design.jump > 0 {
+      lines.push(PowerLine {
+        system: PowerSystem::Jump,
+        label: format!("J-drive (jump {})", self.design.jump),
+        draw: hull / 10 * u32::from(self.design.jump),
+        received: 0,
+        online: self.is_online(PowerSystem::Jump),
+        // "This Power requirement is only needed when the ship actually
+        // initiates a jump" (High Guard p. 16).
+        on_demand: true,
+      });
+    }
+
+    // Hand out what the plant makes, in order. A system that cannot have its
+    // full draw gets nothing and the next one is still tried: a plant with 20
+    // to spare can run the sensors even when it cannot run the drive.
+    let mut remaining = self.available_power();
+    for line in &mut lines {
+      if !line.online || line.on_demand {
+        continue;
+      }
+      if line.system == PowerSystem::Maneuver {
+        // The drive takes what is left and flies at whatever that buys.
+        line.received = remaining.min(line.draw);
+      } else if remaining >= line.draw {
+        line.received = line.draw;
+      }
+      remaining -= line.received;
+    }
+    lines
+  }
+
+  /// One system's line, for asking whether it is running.
+  #[must_use]
+  pub fn power_line(&self, system: PowerSystem) -> Option<PowerLine> {
+    self.power_lines().into_iter().find(|line| line.system == system)
+  }
+
+  /// Whether a system is switched on and fed.
+  ///
+  /// A system with no line draws nothing -- a missile rack is a rack, and a
+  /// Basic sensor suite is a pair of eyes -- so there is nothing to feed and
+  /// nothing that can starve it.
+  #[must_use]
+  pub fn is_powered(&self, system: PowerSystem) -> bool {
+    self.power_line(system).is_none_or(|line| line.powered())
+  }
+
+  /// Whether the engineer has left this system running.
+  #[must_use]
+  pub fn is_online(&self, system: PowerSystem) -> bool {
+    !self.offline.contains(&system)
+  }
+
+  /// Power everything running asks for, leaving out the jump drive, which
+  /// only draws as the ship jumps.
+  #[must_use]
+  pub fn power_demand(&self) -> u32 {
+    self
+      .power_lines()
+      .iter()
+      .filter(|line| line.online && !line.on_demand)
+      .map(|line| line.draw)
+      .sum()
+  }
+
+  /// The computer's Processing score, which is what Bandwidth is measured
+  /// against.
+  ///
+  /// Takes the ship's current figure, so a computer hit knocks capacity out
+  /// and the software it was running has to be shed.
+  #[must_use]
+  pub fn processing(&self) -> u32 {
+    self.current_computer.saturating_sub(self.ion_bandwidth_loss)
+  }
+
+  /// What a package costs this ship to run.
+  ///
+  /// A /bis computer's Processing "is increased by +5 for the purposes of
+  /// running Jump Control programs only" (Core Rulebook p. 180), which comes
+  /// to the same thing as Jump Control costing five less: the Type-S scout's
+  /// Computer/5bis runs Jump Control/2 for nothing, and the five points it
+  /// would have cost are not taken from anything else either.
+  #[must_use]
+  pub fn bandwidth_cost(&self, package: Software) -> u32 {
+    if package.kind == SoftwareKind::JumpControl && self.design.computer_bis {
+      package.bandwidth().saturating_sub(5)
+    } else {
+      package.bandwidth()
+    }
+  }
+
+  /// What is actually running: the crew's list, less anything the computer
+  /// can no longer carry.
+  ///
+  /// `software_running` is what the crew asked for and survives damage, so a
+  /// bridge hit that halves Bandwidth puts programs out without forgetting
+  /// them, and repairing the computer brings back what fits again. Ordered
+  /// as the crew set it, free software first since it costs nothing.
+  #[must_use]
+  pub fn effective_software(&self) -> Vec<Software> {
+    if !self.station_working(BridgeStation::Computer) {
+      return vec![];
+    }
+    let mut used = 0;
+    let mut running = Vec::new();
+    for package in self
+      .software_running
+      .iter()
+      .filter(|package| package.always_running())
+      .chain(self.software_running.iter().filter(|package| !package.always_running()))
+    {
+      let cost = self.bandwidth_cost(*package);
+      if used + cost <= self.processing() {
+        used += cost;
+        running.push(*package);
+      }
+    }
+    running
+  }
+
+  /// Bandwidth the running software is using, as this ship pays for it.
+  #[must_use]
+  pub fn bandwidth_used(&self) -> u32 {
+    self
+      .effective_software()
+      .iter()
+      .map(|package| self.bandwidth_cost(*package))
+      .sum()
+  }
+
+  /// Whether a package is installed aboard.
+  #[must_use]
+  pub fn has_software(&self, kind: SoftwareKind) -> bool {
+    self.software.iter().any(|package| package.kind == kind)
+  }
+
+  /// The level of a package that is currently running, if one is.
+  ///
+  /// This is the question every effect asks: not "does the ship own Evade"
+  /// but "is Evade running right now, and at what level".
+  #[must_use]
+  pub fn running_level(&self, kind: SoftwareKind) -> Option<u8> {
+    // Software runs on the computer, so a computer that has rebooted or been
+    // destroyed takes every program with it (Core Rulebook p. 170: "computer
+    // reboots, all software unavailable this round and next", and "computer
+    // destroyed"). The station carries both states: disabled for the reboot,
+    // destroyed until someone repairs it.
+    self
+      .effective_software()
+      .iter()
+      .filter(|package| package.kind == kind)
+      .map(|package| package.level)
+      .max()
+  }
+
+  /// The DM Auto-Repair lends a repair attempt.
+  ///
+  /// The program "can give a positive DM to a repair attempt equal to the
+  /// listed number" and "requires the ship to carry repair drones" (Core
+  /// Rulebook p. 161), which is what the drones are for: they are the hands
+  /// the program works with.
+  #[must_use]
+  pub fn auto_repair_mod(&self) -> u8 {
+    if self.has_feature(FeatureKind::RepairDrones) {
+      self.running_level(SoftwareKind::AutoRepair).unwrap_or(0)
+    } else {
+      0
+    }
+  }
+
+  /// Whether the hull is fitted with this.
+  #[must_use]
+  pub fn has_feature(&self, kind: FeatureKind) -> bool {
+    self.design.features.iter().any(|feature| feature.kind == Some(kind))
+  }
+
+  /// Bandwidth left over, which is what a sensor hand-off needs a point of.
+  ///
+  /// "A hand-off requires one point of available computer Bandwidth from both
+  /// the host and recipient ship", and a host can serve as many ships as it
+  /// has points spare (High Guard p. 78). Computer cores -- the Processing 40
+  /// and up machines capital ships carry -- "multiply available Bandwidth
+  /// points by 10 for this purpose", which is how a carrier feeds a squadron.
+  #[must_use]
+  pub fn bandwidth_spare(&self) -> u32 {
+    if !self.station_working(BridgeStation::Computer) {
+      return 0;
+    }
+    let spare = self.processing().saturating_sub(self.bandwidth_used());
+    if self.processing() >= COMPUTER_CORE_PROCESSING {
+      spare * 10
+    } else {
+      spare
+    }
+  }
+
+  /// Whether this package could run on top of what is already running.
+  #[must_use]
+  pub fn can_run(&self, package: Software) -> bool {
+    if self.software_running.contains(&package) {
+      return true;
+    }
+    self.bandwidth_used() + self.bandwidth_cost(package) <= self.processing()
+  }
+
+  /// Start or stop a package. Returns whether the ship obeyed.
+  ///
+  /// Free software is always running and cannot be stopped; anything that
+  /// would overrun the computer is refused.
+  pub fn set_software_running(&mut self, package: Software, running: bool) -> bool {
+    if !self.has_software(package.kind) {
+      return false;
+    }
+    if package.always_running() {
+      // Nothing to free, and nothing sensible to do with the request.
+      return running;
+    }
+    if running {
+      if !self.can_run(package) {
+        return false;
+      }
+      if !self.software_running.contains(&package) {
+        // One level of a package at a time: starting Evade/2 replaces Evade/1.
+        self.software_running.retain(|running| running.kind != package.kind);
+        self.software_running.push(package);
+      }
+    } else {
+      self.software_running.retain(|running| *running != package);
+    }
+    true
+  }
+
+  /// Fuel one jump number costs: a tenth of the ship's tonnage, so a jump-2
+  /// costs a fifth of the hull (High Guard p. 11).
+  ///
+  /// Tonnage, not hull points. A Scout/Courier is 100 tons with 40 hull
+  /// points, and its jump-2 costs 20 tons of fuel, not 4.
+  #[must_use]
+  pub fn fuel_per_jump_number(&self) -> u32 {
+    self.design.displacement / 10
+  }
+
+  /// What a full jump costs this ship at its current drive rating.
+  #[must_use]
+  pub fn fuel_for_full_jump(&self) -> u32 {
+    self.fuel_per_jump_number() * u32::from(self.current_jump)
+  }
+
+  /// The furthest this ship can actually jump: what the drive is rated for,
+  /// or what is in the tanks, whichever runs out first.
+  #[must_use]
+  pub fn jump_range_available(&self) -> u8 {
+    let per = self.fuel_per_jump_number();
+    if per == 0 {
+      return 0;
+    }
+    let affordable = u8::try_from(self.current_fuel / per).unwrap_or(u8::MAX);
+    // Jump Control is what plots the jump: "allows jumps of up to the
+    // specified number. Incorporates astrogation software and jump engine
+    // management" (CRB p. 161). Without it running there is no jump at all,
+    // whatever the drive is rated for or the tanks hold.
+    let plotted = self.running_level(SoftwareKind::JumpControl).unwrap_or(0);
+    affordable.min(self.current_jump).min(plotted)
+  }
+
+  /// Whether the sensors are running. A suite with no power finds nothing and
+  /// locks onto nothing.
+  #[must_use]
+  pub fn sensors_powered(&self) -> bool {
+    self.is_powered(PowerSystem::Sensors)
+  }
+
+  /// Whether this mount has the power to fire.
+  #[must_use]
+  pub fn weapon_powered(&self, index: usize) -> bool {
+    self.is_powered(PowerSystem::Weapon(index))
+  }
+
+  /// Whether the jump drive is switched on and the plant could find its draw
+  /// on top of everything else running.
+  #[must_use]
+  pub fn jump_powered(&self) -> bool {
+    let Some(jump) = self.power_line(PowerSystem::Jump) else {
+      return false;
+    };
+    let running: u32 = self
+      .power_lines()
+      .iter()
+      .filter(|line| !line.on_demand)
+      .map(|line| line.received)
+      .sum();
+    jump.online && self.available_power().saturating_sub(running) >= jump.draw
+  }
+
+  /// Power left over, or `None` when the ship is drawing more than it makes.
+  #[must_use]
+  pub fn power_spare(&self) -> Option<u32> {
+    self.available_power().checked_sub(self.power_demand())
+  }
+
+  /// Switch a system off, or back on. Basic systems cannot be switched off --
+  /// use [`Ship::set_basic_power_halved`] to turn them down instead.
+  pub fn set_online(&mut self, system: PowerSystem, online: bool) {
+    if system == PowerSystem::Basic {
+      return;
+    }
+    self.offline.retain(|off| *off != system);
+    if !online {
+      self.offline.push(system);
+    }
+  }
+
+  /// Run basic ship systems at half power, or back at full.
+  pub fn set_basic_power_halved(&mut self, halved: bool) {
+    self.basic_power_halved = halved;
+  }
+
+  /// Thrust left for evasion this round: what the pilot set aside, less what
+  /// has already been dodged. None without a pilot at their station.
   #[must_use]
   pub fn get_dodge_thrust(&self) -> u8 {
     if self.station_working(BridgeStation::Pilot) {
-      self.dodge_thrust
+      self.dodge_thrust.saturating_sub(self.dodge_spent)
     } else {
       0
     }
@@ -1927,8 +2694,22 @@ impl Ship {
     self.temporary_maneuver
   }
 
-  pub fn set_temporary_maneuver(&mut self, value: u8) {
+  /// Grant the drive's overload for `rounds` rounds, starting with the next.
+  pub fn set_temporary_maneuver(&mut self, value: u8, rounds: u8) {
     self.temporary_maneuver = value;
+    self.temporary_maneuver_rounds = rounds;
+  }
+
+  /// Rounds of drive overload left, including the one being played.
+  #[must_use]
+  pub fn temporary_maneuver_rounds(&self) -> u8 {
+    self.temporary_maneuver_rounds
+  }
+
+  /// Rounds of plant overload left.
+  #[must_use]
+  pub fn temporary_power_rounds(&self) -> u8 {
+    self.temporary_power_rounds
   }
 
   #[must_use]
@@ -1936,8 +2717,10 @@ impl Ship {
     self.temporary_power_multiplier
   }
 
-  pub fn set_temporary_power_multiplier(&mut self, value: f32) {
+  /// Grant the plant's overload for `rounds` rounds, starting with the next.
+  pub fn set_temporary_power_multiplier(&mut self, value: f32, rounds: u8) {
     self.temporary_power_multiplier = value;
+    self.temporary_power_rounds = rounds;
   }
 
   #[must_use]
@@ -1960,8 +2743,21 @@ impl Ship {
 
   /// Resets temporary bonuses from engineer overload actions and action tracking.
   pub fn reset_temporary_bonuses(&mut self) {
-    self.temporary_maneuver = 0;
-    self.temporary_power_multiplier = 1.0;
+    // A new round brings the pilot's spare thrust back: "each point of unspent
+    // Thrust will allow the spacecraft to attempt to dodge one attack" (CRB
+    // p. 171), which is a fresh allowance every round. The order itself stands
+    // until the pilot changes it.
+    self.dodge_spent = 0;
+    // An overload runs for as many rounds as the check's Effect bought, so
+    // the round ending spends one of them rather than ending it outright.
+    self.temporary_maneuver_rounds = self.temporary_maneuver_rounds.saturating_sub(1);
+    if self.temporary_maneuver_rounds == 0 {
+      self.temporary_maneuver = 0;
+    }
+    self.temporary_power_rounds = self.temporary_power_rounds.saturating_sub(1);
+    if self.temporary_power_rounds == 0 {
+      self.temporary_power_multiplier = 1.0;
+    }
     self.engineer_action_taken = false;
     self.evade_boost_used = false;
     self.leadership_points = 0;
@@ -2023,6 +2819,12 @@ impl Ship {
   pub fn apply_ion_damage(&mut self, amount: u32, rounds: u8) {
     self.ion_power_loss = self.ion_power_loss.saturating_add(amount);
     self.ion_rounds = self.ion_rounds.max(rounds);
+    // A tenth of it spills into the computer, rounded up so that any hit at
+    // all costs a point -- which is the point a sensor hand-off needs. A
+    // hardened computer rides it out.
+    if !self.design.computer_fib && amount > 0 {
+      self.ion_bandwidth_loss = self.ion_bandwidth_loss.saturating_add(amount.div_ceil(10));
+    }
   }
 
   /// Run the ion suppression down by one round, restoring the Power when it
@@ -2030,11 +2832,13 @@ impl Ship {
   pub fn tick_ion_recovery(&mut self) {
     if self.ion_rounds == 0 {
       self.ion_power_loss = 0;
+      self.ion_bandwidth_loss = 0;
       return;
     }
     self.ion_rounds -= 1;
     if self.ion_rounds == 0 {
       self.ion_power_loss = 0;
+      self.ion_bandwidth_loss = 0;
     }
   }
 
@@ -2181,7 +2985,9 @@ serde_with::serde_conv!(
 );
 
 enum ShipTemplateFileOutcome {
-  Loaded(ShipDesignTemplate),
+  // Boxed: a design is far larger than an error pair, and an enum is as big as
+  // its largest variant however rare that variant's size is.
+  Loaded(Box<ShipDesignTemplate>),
   ParseError(String, String),
   ReadError(String, String),
 }
@@ -2220,7 +3026,7 @@ pub async fn load_ship_templates_from_dir(
       async move {
         match read_local_or_cloud_file(&path).await {
           Ok(body) => match serde_json::from_slice::<ShipDesignTemplate>(&body) {
-            Ok(template) => ShipTemplateFileOutcome::Loaded(template),
+            Ok(template) => ShipTemplateFileOutcome::Loaded(Box::new(template)),
             Err(e) => ShipTemplateFileOutcome::ParseError(path, format!("parse error: {e}")),
           },
           Err(e) => ShipTemplateFileOutcome::ReadError(path, format!("read error: {e}")),
@@ -2236,7 +3042,7 @@ pub async fn load_ship_templates_from_dir(
   for r in results {
     match r {
       ShipTemplateFileOutcome::Loaded(template) => {
-        table.insert(template.name.clone(), Arc::new(template));
+        table.insert(template.name.clone(), Arc::new(*template));
       }
       ShipTemplateFileOutcome::ParseError(path, msg) => {
         warn!("(load_ship_templates_from_dir) Skipping {path}: {msg}");
@@ -2315,7 +3121,99 @@ async fn load_test_ship_templates() -> ShipTemplateTable {
     .expect("Unable to load ship templates directory.")
 }
 
+/// What a new ship has running: everything it owns that the computer can
+/// manage, free software first, then the rest in the order the design lists.
+///
+/// Jump Control is the exception and starts stopped. Jumping is a deliberate
+/// act and the program is expensive -- on a Computer/5 it is the entire
+/// machine -- so a ship that comes up with it running has no Bandwidth for
+/// the fight it is in, nor a point spare for a sensor hand-off. The
+/// astrogator switches it on when there is somewhere to go.
+fn initial_running(design: &ShipDesignTemplate) -> Vec<Software> {
+  let mut running: Vec<Software> = design.software.iter().copied().filter(Software::always_running).collect();
+  let mut used = 0;
+  for package in design
+    .software
+    .iter()
+    .filter(|p| !p.always_running() && p.kind != SoftwareKind::JumpControl)
+  {
+    let capacity = if package.kind == SoftwareKind::JumpControl && design.computer_bis {
+      design.computer + 5
+    } else {
+      design.computer
+    };
+    if used + package.bandwidth() <= capacity {
+      used += package.bandwidth();
+      running.push(*package);
+    }
+  }
+  running
+}
+
+/// Processing at which a computer is one of the cores capital ships carry
+/// (High Guard p. 14). Cores multiply available Bandwidth by ten for sensor
+/// hand-off, which is how a carrier feeds a squadron.
+const COMPUTER_CORE_PROCESSING: u32 = 40;
+
+/// The crew a ship sails with: the one it was given, else the design's, else
+/// a nameless one.
+///
+/// A crew arrived at by default mans every mount, at skill 0 where nothing
+/// better is stated -- a ship nobody wrote a crew for is a crewed ship whose
+/// names we do not know, not a derelict with empty gun positions. Leaving a
+/// seat deliberately empty is something a scenario says by giving a crew
+/// whose gunnery list is shorter than the ship has mounts.
+fn crewed_or_default(crew: Option<Crew>, design: &ShipDesignTemplate, mounts: usize) -> Crew {
+  if let Some(crew) = crew {
+    return crew;
+  }
+  let mut crew = design.crew_skills.clone().unwrap_or_default();
+  while crew.gunners() < mounts {
+    crew.add_gunnery(0);
+  }
+  crew
+}
+
+/// What a sensor suite draws (High Guard p. 23).
+#[must_use]
+pub fn sensor_power(sensors: Sensors) -> u32 {
+  match sensors {
+    Sensors::Basic => 0,
+    Sensors::Civilian => 1,
+    Sensors::Military => 2,
+    Sensors::Improved => 4,
+    Sensors::Advanced => 6,
+  }
+}
+
+/// What one mount draws with everything in it running: the mount itself, plus
+/// each gun bolted into it.
+#[must_use]
+pub fn weapon_mount_power(weapon: &Weapon) -> u32 {
+  let class = MountClass::from(&weapon.mount);
+  let guns: u32 = weapon
+    .guns
+    .iter()
+    .map(|gun| crate::rules_tables::weapon_power(gun.kind, class).unwrap_or(0))
+    .sum();
+  guns + crate::rules_tables::mount_power(class)
+}
+
 impl ShipDesignTemplate {
+  /// The Thrust a given amount of Power will drive, capped by what the drive
+  /// is rated for: 10% of the hull's tonnage per point of Thrust (High Guard
+  /// p. 16).
+  #[must_use]
+  pub fn thrust_from_power(&self, power_for_drive: u32) -> u8 {
+    if self.displacement == 0 {
+      return self.maneuver;
+    }
+    (power_for_drive * 10 / self.displacement)
+      .try_into()
+      .unwrap_or(u8::MAX)
+      .min(self.maneuver)
+  }
+
   // Making this overly simplistic for now.  Assume for power usage that
   // basic systems and sensors are prioritized, and we ignore weapons.
   #[must_use]
@@ -2773,6 +3671,11 @@ impl Default for ShipDesignTemplate {
         Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
       ],
       screens: vec![],
+      features: vec![],
+      magazine: Magazine::default(),
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 15,
       role: None,
       source: None,
@@ -2835,6 +3738,475 @@ fn int_to_digit(code: u8) -> char {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// The power budget, against the figures in High Guard: basic systems are
+  /// 20% of the hull, the drives 10% per point, sensors by grade, and each
+  /// mount what its guns draw.
+  #[test]
+  fn a_ships_power_budget_adds_up() {
+    // Executor's shape: 200 tons, Thrust 6, Advanced sensors, a particle
+    // barbette and a mixed missile/sand turret.
+    let design = Arc::new(ShipDesignTemplate {
+      name: "HMS Executor".to_string(),
+      displacement: 200,
+      power: 260,
+      maneuver: 6,
+      jump: 2,
+      sensors: Sensors::Advanced,
+      weapons: vec![
+        Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
+        Weapon {
+          mount: WeaponMount::Turret,
+          guns: vec![
+            Gun::new(WeaponType::Missile),
+            Gun::new(WeaponType::Missile),
+            Gun::new(WeaponType::Sand),
+          ],
+        },
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    let draw = |ship: &Ship, system: PowerSystem| {
+      ship
+        .power_lines()
+        .into_iter()
+        .find(|line| line.system == system)
+        .map(|line| line.draw)
+    };
+    assert_eq!(draw(&ship, PowerSystem::Basic), Some(40), "20% of 200 tons");
+    assert_eq!(draw(&ship, PowerSystem::Sensors), Some(6), "advanced sensors");
+    assert_eq!(draw(&ship, PowerSystem::Maneuver), Some(120), "10% per Thrust, six of them");
+    assert_eq!(draw(&ship, PowerSystem::Jump), Some(40), "and 10% per jump number");
+    assert_eq!(draw(&ship, PowerSystem::Weapon(0)), Some(15), "a particle barbette");
+    assert_eq!(
+      draw(&ship, PowerSystem::Weapon(1)),
+      Some(1),
+      "racks draw nothing; the turret draws 1"
+    );
+
+    // The jump drive only draws as the ship jumps, so it is not in the
+    // running total.
+    assert_eq!(ship.power_demand(), 40 + 6 + 120 + 15 + 1);
+    assert_eq!(ship.power_spare(), Some(260 - 182));
+    assert_eq!(ship.max_acceleration(), 6, "and there is power enough to fly");
+
+    // Lose most of the plant and the drive is what suffers.
+    ship.current_power = 150;
+    assert!(ship.power_spare().is_none(), "150 cannot run all of it");
+    assert_eq!(ship.max_acceleration(), 4, "the drive gets what is left: 88 of 200");
+
+    // The engineer shuts the barbette down and gets some of it back.
+    ship.set_online(PowerSystem::Weapon(0), false);
+    assert_eq!(ship.max_acceleration(), 5);
+
+    // Basic systems cannot be switched off, only turned down.
+    ship.set_online(PowerSystem::Basic, false);
+    assert_eq!(draw(&ship, PowerSystem::Basic), Some(40));
+    ship.set_basic_power_halved(true);
+    assert_eq!(draw(&ship, PowerSystem::Basic), Some(20), "half, in an emergency");
+    assert_eq!(ship.max_acceleration(), 6);
+  }
+
+  /// A hologram projector is a luxury: it starts off, and when the plant is
+  /// short it loses its share before the ship loses Thrust.
+  #[test]
+  fn a_powered_feature_starts_off_and_gives_way_to_the_drive() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      power: 260,
+      maneuver: 6,
+      jump: 2,
+      sensors: Sensors::Advanced,
+      weapons: vec![],
+      features: vec![ShipFeature {
+        name: "Holographic hull".to_string(),
+        power: 100,
+        default_on: false,
+        kind: Some(FeatureKind::HolographicHull),
+      }],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Harrier".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    assert!(!ship.is_online(PowerSystem::Feature(0)), "the projector is down at the dock");
+    assert_eq!(ship.max_acceleration(), 6);
+
+    // Bring it up: 40 for life support, 6 for the sensors and 120 for the
+    // drive leave 94 of 260, which is not the 100 the projector wants.
+    ship.set_online(PowerSystem::Feature(0), true);
+    assert!(!ship.is_powered(PowerSystem::Feature(0)), "not enough left to light it");
+    assert_eq!(ship.max_acceleration(), 6, "and the drive keeps its share");
+
+    // Drop the drive and there is room for it.
+    ship.set_online(PowerSystem::Maneuver, false);
+    assert!(ship.is_powered(PowerSystem::Feature(0)));
+    assert_eq!(ship.max_acceleration(), 0);
+  }
+
+  /// House rule: an ion hit spills a tenth of its damage into the computer,
+  /// which is what gives a hardened computer something to resist.
+  #[test]
+  fn an_ion_hit_takes_bandwidth_as_well_as_power() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      power: 260,
+      computer: 20,
+      software: vec![
+        Software::new(SoftwareKind::Evade, 1),
+        Software::new(SoftwareKind::FireControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.processing(), 20);
+    assert_eq!(ship.running_level(SoftwareKind::Evade), Some(1));
+
+    // 30 Power off the plant takes 3 Bandwidth with it, which is enough to
+    // put one of the two programs out: 20 of capacity, 17 left, and Evade
+    // and Fire Control want 20 between them.
+    ship.apply_ion_damage(30, 2);
+    assert_eq!(ship.processing(), 17);
+    assert_eq!(
+      ship.running_level(SoftwareKind::FireControl),
+      None,
+      "the second program goes dark"
+    );
+    assert_eq!(ship.running_level(SoftwareKind::Evade), Some(1), "the first still fits");
+
+    // It comes back with the Power, and the programs with it: what the crew
+    // asked for is remembered.
+    ship.tick_ion_recovery();
+    ship.tick_ion_recovery();
+    assert_eq!(ship.processing(), 20);
+    assert_eq!(ship.running_level(SoftwareKind::FireControl), Some(2));
+  }
+
+  /// A hardened computer is what the suffix is for, under this house rule.
+  #[test]
+  fn a_hardened_computer_rides_out_an_ion_hit() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Hardened".to_string(),
+      displacement: 200,
+      power: 260,
+      computer: 20,
+      computer_fib: true,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Bastion".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    ship.apply_ion_damage(60, 2);
+    assert_eq!(ship.ion_power_loss, 60, "the plant still suffers");
+    assert_eq!(ship.processing(), 20, "the computer does not");
+  }
+
+  /// Software has the same hole as the magazine did: a scenario states none,
+  /// so the ship had nothing installed while the console showed the design's
+  /// list -- a computer full of programs that refused to be switched on.
+  #[test]
+  fn a_loaded_ship_is_given_the_software_its_design_carries() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      computer: 20,
+      software: vec![
+        Software::new(SoftwareKind::Manoeuvre, 0),
+        Software::new(SoftwareKind::Evade, 1),
+        Software::new(SoftwareKind::FireControl, 2),
+        Software::new(SoftwareKind::JumpControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // What deserialization leaves behind.
+    ship.software = vec![];
+    ship.software_running = vec![];
+    ship.fixup_current_values();
+
+    assert_eq!(ship.software.len(), 4, "the design's programs are aboard");
+    assert!(ship.has_software(SoftwareKind::Evade));
+    // And what fits is running, so the computer is not idle on arrival.
+    assert_eq!(ship.bandwidth_used(), 20);
+    assert!(ship.set_software_running(Software::new(SoftwareKind::Evade, 1), false));
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+  }
+
+  /// A ship read from a scenario file carries no magazine on the wire, and
+  /// serde fills zeros -- so without a fixup every scenario ship would put to
+  /// sea with empty racks. HMS Executor reported exactly that on her first
+  /// launch.
+  #[test]
+  fn a_loaded_ship_is_given_the_magazine_its_design_carries() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1)],
+      magazine: Magazine {
+        missiles: 12,
+        torpedoes: 0,
+        sand: 0,
+      },
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // What deserialization leaves behind.
+    ship.magazine = Magazine::default();
+    ship.fixup_current_values();
+    assert_eq!(ship.magazine.missiles, 12, "the racks are full again");
+
+    // A magazine that was spent down is left alone: only an empty one means
+    // "the file did not say".
+    ship.magazine.missiles = 4;
+    ship.fixup_current_values();
+    assert_eq!(ship.magazine.missiles, 4, "a part-spent magazine is not refilled");
+  }
+
+  /// A design that states its magazine keeps it; one that does not gets a
+  /// load for what it is armed with.
+  #[test]
+  fn a_magazine_comes_from_the_design_or_from_the_armament() {
+    let stated = ShipDesignTemplate {
+      name: "Stated".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3)],
+      magazine: Magazine {
+        missiles: 240,
+        torpedoes: 0,
+        sand: 0,
+      },
+      ..ShipDesignTemplate::default()
+    };
+    assert_eq!(Magazine::for_design(&stated).missiles, 240, "the book's own figure");
+
+    let silent = ShipDesignTemplate {
+      name: "Silent".to_string(),
+      weapons: vec![
+        Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3),
+        Weapon::uniform(WeaponType::Sand, WeaponMount::Turret, 2),
+        Weapon::single(WeaponType::Torpedo, WeaponMount::Barbette),
+      ],
+      ..ShipDesignTemplate::default()
+    };
+    let magazine = Magazine::for_design(&silent);
+    assert_eq!(magazine.missiles, 36, "twelve a rack");
+    assert_eq!(magazine.sand, 40, "twenty a caster");
+    assert_eq!(magazine.torpedoes, 3, "three a launcher");
+  }
+
+  /// Jump Control is what plots a jump: no software, no jump, whatever the
+  /// drive is rated for.
+  #[test]
+  fn a_jump_needs_the_software_that_plots_it() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      jump: 2,
+      fuel: 100,
+      power: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::JumpControl, 2)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.can_jump = true;
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+
+    assert_eq!(ship.jump_range_available(), 2);
+    assert!(ship.can_jump());
+
+    // Shut the software down and the drive has nothing to follow.
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), false));
+    assert_eq!(ship.jump_range_available(), 0);
+    assert!(!ship.can_jump());
+  }
+
+  /// Bandwidth, not Power, is what limits a computer -- and a ship can own
+  /// more software than it can run at once. HMS Executor is the case in
+  /// point: Evade/1, Fire Control/2 and Jump Control/2 is 30 Bandwidth on a
+  /// Computer/20, so she fights or she jumps.
+  #[test]
+  fn software_runs_within_bandwidth_not_beyond_it() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Harrier".to_string(),
+      displacement: 200,
+      computer: 20,
+      software: vec![
+        Software::new(SoftwareKind::Manoeuvre, 0),
+        Software::new(SoftwareKind::Library, 0),
+        Software::new(SoftwareKind::Evade, 1),
+        Software::new(SoftwareKind::FireControl, 2),
+        Software::new(SoftwareKind::JumpControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // She undocks running what fits, in the order the design lists it: Evade
+    // and Fire Control fill the computer, and Jump Control is left out.
+    assert_eq!(ship.bandwidth_used(), 20);
+    assert_eq!(ship.running_level(SoftwareKind::Evade), Some(1));
+    assert_eq!(ship.running_level(SoftwareKind::FireControl), Some(2));
+    assert_eq!(ship.running_level(SoftwareKind::JumpControl), None);
+
+    // Free software runs whatever else is on: there is no Bandwidth to free
+    // by stopping it.
+    assert!(ship.software_running.contains(&Software::new(SoftwareKind::Manoeuvre, 0)));
+
+    // No room for the jump drive's software until something gives.
+    assert!(!ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+    assert!(ship.set_software_running(Software::new(SoftwareKind::FireControl, 2), false));
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+    assert_eq!(ship.running_level(SoftwareKind::JumpControl), Some(2));
+
+    // And nothing can run software the ship does not have aboard.
+    assert!(!ship.set_software_running(Software::new(SoftwareKind::AutoRepair, 1), true));
+  }
+
+  /// A /bis computer is worth +5 for Jump Control alone, which is how the
+  /// Type-S scout runs Jump Control/2 on a Processing 5 machine.
+  #[test]
+  fn a_bis_computer_counts_for_jump_control_only() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Scout/Courier".to_string(),
+      displacement: 100,
+      computer: 5,
+      computer_bis: true,
+      software: vec![
+        Software::new(SoftwareKind::Library, 0),
+        Software::new(SoftwareKind::JumpControl, 2),
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    // Jump Control starts stopped, as it does on every ship: jumping is a
+    // deliberate act. The astrogator switches it on.
+    assert!(ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true));
+
+    assert_eq!(ship.processing(), 5);
+    // Jump Control/2 is 10 Bandwidth, and costs this ship five.
+    assert_eq!(ship.bandwidth_cost(Software::new(SoftwareKind::JumpControl, 2)), 5);
+    assert_eq!(
+      ship.running_level(SoftwareKind::JumpControl),
+      Some(2),
+      "10 Bandwidth on a /bis 5"
+    );
+
+    // The same 10 Bandwidth spent on anything else does not fit: the bonus
+    // is Jump Control's alone.
+    ship.software.push(Software::new(SoftwareKind::Evade, 1));
+    assert_eq!(ship.bandwidth_cost(Software::new(SoftwareKind::Evade, 1)), 10);
+    assert!(!ship.set_software_running(Software::new(SoftwareKind::Evade, 1), true));
+  }
+
+  /// Jump fuel is a tenth of the ship's *tonnage* per jump number. A
+  /// Scout/Courier is 100 tons with 40 hull points, so its jump-2 costs 20
+  /// tons of fuel -- not the 4 that reading hull points would give.
+  #[test]
+  fn jump_fuel_is_a_tenth_of_the_tonnage_per_jump_number() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Scout/Courier".to_string(),
+      displacement: 100,
+      hull: 40,
+      jump: 2,
+      fuel: 23,
+      power: 60,
+      computer: 5,
+      computer_bis: true,
+      software: vec![Software::new(SoftwareKind::JumpControl, 2)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true);
+
+    assert_eq!(ship.fuel_per_jump_number(), 10);
+    assert_eq!(ship.fuel_for_full_jump(), 20);
+    assert_eq!(ship.jump_range_available(), 2, "23 tons is enough for a jump-2");
+
+    // Enough for one jump number but not two: the ship still jumps, less far.
+    ship.current_fuel = 19;
+    assert_eq!(ship.jump_range_available(), 1);
+
+    ship.current_fuel = 9;
+    assert_eq!(ship.jump_range_available(), 0, "not enough for a jump-1");
+
+    // A damaged drive caps the range whatever the tanks hold.
+    ship.current_fuel = 23;
+    ship.current_jump = 1;
+    assert_eq!(ship.jump_range_available(), 1);
+  }
+
+  /// A plant that cannot feed everything feeds what it can, in order, and the
+  /// drive takes what is left -- which is the one system that does something
+  /// useful with a partial share.
+  #[test]
+  fn a_damaged_plant_browns_out_what_it_cannot_feed() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Executor".to_string(),
+      displacement: 200,
+      power: 260,
+      maneuver: 6,
+      jump: 2,
+      sensors: Sensors::Advanced,
+      weapons: vec![Weapon::single(WeaponType::Particle, WeaponMount::Barbette)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Healthy: everything runs, and there is room for the jump drive too.
+    assert!(ship.sensors_powered());
+    assert!(ship.weapon_powered(0));
+    assert_eq!(ship.max_acceleration(), 6);
+    assert!(ship.jump_powered());
+
+    // A plant at 100 runs basic systems (40), sensors (6) and the barbette
+    // (15), leaving 39 for a drive that wants 120: a tenth of the hull buys
+    // one Thrust, so 39 buys one.
+    ship.current_power = 100;
+    assert!(ship.sensors_powered());
+    assert!(ship.weapon_powered(0));
+    assert_eq!(ship.max_acceleration(), 1);
+    assert!(!ship.jump_powered(), "nothing like enough left to jump");
+
+    // Switching the barbette off hands its share to the drive.
+    ship.set_online(PowerSystem::Weapon(0), false);
+    assert!(!ship.weapon_powered(0), "and it cannot fire while it is off");
+    assert_eq!(ship.max_acceleration(), 2);
+
+    // At 40 there is nothing for anything but life support.
+    ship.current_power = 40;
+    assert!(!ship.sensors_powered());
+    assert_eq!(ship.max_acceleration(), 0);
+
+    // Half power on basic systems frees twenty, which the sensors take first.
+    ship.set_basic_power_halved(true);
+    assert!(ship.sensors_powered());
+    assert_eq!(ship.max_acceleration(), 0, "but not enough for a tenth of the hull");
+  }
+
+  /// The pilot's Evade order stands between rounds; only the allowance is
+  /// spent. It used to be the same number, so a pilot who dodged two attacks
+  /// silently stopped dodging from then on.
+  #[test]
+  fn a_dodge_order_survives_the_round_it_is_spent_in() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Executor".to_string(),
+      maneuver: 6,
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Executor".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    ship.set_pilot_actions(Some(2), None).expect("a 6G hull can spare 2G");
+
+    ship.decrement_dodge_thrust();
+    assert_eq!(ship.get_dodge_thrust(), 1, "one attack dodged, one left");
+    ship.decrement_dodge_thrust();
+    assert_eq!(ship.get_dodge_thrust(), 0, "the round's allowance is spent");
+
+    ship.reset_temporary_bonuses();
+    assert_eq!(ship.get_dodge_thrust(), 2, "and it comes back next round");
+  }
   use crate::crew::Skills;
   use cgmath::assert_ulps_eq;
 
@@ -3031,6 +4403,11 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
+      features: vec![],
+      magazine: crate::ship::Magazine::default(),
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 10,
       role: None,
       source: None,
@@ -3612,6 +4989,11 @@ mod tests {
         Weapon::single(WeaponType::Pulse, WeaponMount::Bay(BaySize::Small)),
       ],
       screens: vec![],
+      features: vec![],
+      magazine: crate::ship::Magazine::default(),
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 12,
       role: None,
       source: None,
@@ -3749,6 +5131,11 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
+      features: vec![],
+      magazine: crate::ship::Magazine::default(),
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 12,
       role: None,
       source: None,

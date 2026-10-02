@@ -18,13 +18,17 @@ import {
   isLaserKind,
   isLauncherKind,
   isPassiveWeapon,
+  fullSalvo,
+  salvoChoices,
   weaponKinds,
   createWeapon,
   weaponToString,
   weaponKindLabel,
+  WEAPON_COLORS,
 } from "lib/weapon";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import {
+  FireAction,
   FireState,
   PointDefenseState,
   SensorAction,
@@ -35,6 +39,7 @@ import {
   boostTargetEquals,
 } from "components/controls/Actions";
 import { ViewMode, hasRole } from "lib/view";
+import { PowerSystem } from "lib/power";
 import { SYSTEM_NAMES } from "components/controls/EngineerTasks";
 import { setCrewActions } from "lib/serverManager";
 
@@ -63,11 +68,15 @@ import {
   fireWeapon,
   unfireWeapon,
   updateFireCalledShot,
+  updateFireSalvo,
+  updateFireControl,
+  setPointDefenseWard,
   setSensorAction,
   setEngineerAction,
   toggleBoost,
 } from "state/actionsSlice";
-import { entitiesSelector } from "state/serverSlice";
+import { entitiesSelector, templatesSelector } from "state/serverSlice";
+import { isUndetected, sameSide } from "lib/contacts";
 
 // Consistent set of colors for both type of weapons and fire states.
 /** Kinds the crew never orders, so they never get a fire button of their own. */
@@ -76,27 +85,6 @@ const PASSIVE_KINDS = new Set(["Sand", "PointDefense", "Repulsor"]);
 /// Searching gets a colour of its own: it is the only row here that is not an
 /// order, so it should not be mistaken for one of the sensop's actions.
 const SEARCH_ICON_COLOR = "violet";
-
-const WEAPON_COLORS: { [key: string]: string } = {
-  Beam: "red",
-  Pulse: "blue",
-  Missile: "green",
-  Particle: "yellow",
-  Sand: "tan",
-  // Torpedoes sit next to missiles in the launcher family, so they take a
-  // deeper shade of the same hue rather than a colour of their own.
-  Torpedo: "darkgreen",
-  Fusion: "orange",
-  Plasma: "magenta",
-  Railgun: "silver",
-  Meson: "violet",
-  MassDriver: "sienna",
-  Repulsor: "cyan",
-  Ion: "deepskyblue",
-  // Never rendered today -- batteries have no action button -- but present so
-  // a future passive-defences readout does not fall through to undefined.
-  PointDefense: "orange",
-};
 
 const SENSOR_ICON_COLORS: { [key in SensorAction]?: string } = {
   [SensorAction.JamMissiles]: "green",
@@ -111,6 +99,9 @@ const ENGINEER_ICON_COLORS: { [kind: string]: string } = {
   Repair: "blue",
   Jump: "magenta",
 };
+
+/** A mount nobody is at: drawn as out of action rather than as its gun. */
+const UNMANNED_COLOR = "#6b7280";
 
 const PILOT_ICON_COLORS = {
   Evade: "cyan",
@@ -133,19 +124,35 @@ export const WeaponButton = (props: {
    * marking the button, tells them apart.
    */
   alongside?: string[];
+  /** Nobody is at this mount, and no program is covering it. */
+  unmanned?: boolean;
 }) => {
   // Tooltips name the weapon for a person, so they use the readable label
   // rather than the wire identifier.  Colours are still keyed off the raw kind.
   const label = weaponKindLabel(props.weapon);
 
   const mixed = props.alongside != null && props.alongside.length > 0;
-  const tip = (text: string) =>
-    mixed
+  const tip = (text: string) => {
+    const shared = mixed
       ? `${text} — shares the mount with ${props.alongside!
           .map(weaponKindLabel)
           .join(", ")}`
       : text;
-  const buttonClass = mixed ? "weapon-button weapon-button-mixed" : "weapon-button";
+    return props.unmanned
+      ? `${shared} — nobody is at this mount, so it cannot fire. A gunner, Fire Control or a Virtual Gunner would change that.`
+      : shared;
+  };
+  const buttonClass = [
+    "weapon-button",
+    mixed ? "weapon-button-mixed" : "",
+    props.unmanned ? "weapon-button-unmanned" : "",
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+
+  // An unmanned mount is drawn in the colour of a thing that is not working,
+  // rather than in the colour of the gun it is.
+  const fill = props.unmanned ? UNMANNED_COLOR : WEAPON_COLORS[props.weapon];
 
   // FixedMount is a bare string like Barbette, so it has to be matched first or
   // it falls into the Barbette arm and draws the wrong weapon entirely.
@@ -164,7 +171,7 @@ export const WeaponButton = (props: {
           <FixedMount
             className="weapon-symbol fixed-mount-button"
             style={{
-              fill: WEAPON_COLORS[props.weapon],
+              fill,
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
@@ -191,7 +198,7 @@ export const WeaponButton = (props: {
           <Barbette
             className="weapon-symbol barbette-button"
             style={{
-              fill: WEAPON_COLORS[props.weapon],
+              fill,
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
@@ -220,7 +227,7 @@ export const WeaponButton = (props: {
             <SmallBay
               className="weapon-symbol bay-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -246,7 +253,7 @@ export const WeaponButton = (props: {
             <MediumBay
               className="weapon-symbol bay-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -272,7 +279,7 @@ export const WeaponButton = (props: {
             <LargeBay
               className="weapon-symbol bay-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -301,7 +308,7 @@ export const WeaponButton = (props: {
             <Turret1
               className="weapon-symbol turret-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -328,7 +335,7 @@ export const WeaponButton = (props: {
             <Turret2
               className="weapon-symbol turret-button"
               style={{
-                fill: WEAPON_COLORS[props.weapon],
+                fill,
               }}
             />
             <span className="weapon-symbol-count">{props.count}</span>
@@ -354,7 +361,7 @@ export const WeaponButton = (props: {
           <Turret3
             className="weapon-symbol turret-button"
             style={{
-              fill: WEAPON_COLORS[props.weapon],
+              fill,
             }}
           />
           <span className="weapon-symbol-count">{props.count}</span>
@@ -467,6 +474,28 @@ export const FireControl: React.FC<FireControlProps> = () => {
     }
     return available;
   }, [computerShipName, computerShipWeapons, weaponDetails, actions]);
+
+  /**
+   * How many mounts of each group have someone at them.
+   *
+   * A gun fires because a gunner fires it, so a mount with nobody at it is
+   * dead weight -- unless the computer is covering it, which Virtual Gunner
+   * does for every mount at once and Fire Control does a point at a time.
+   * The buttons go grey rather than silently failing when the order is given.
+   */
+  const mannedCounts = useMemo(() => {
+    const ship = computerShipName ? findShip(entities, computerShipName) : null;
+    const gunnery = ship?.crew?.gunnery ?? [];
+    const covered =
+      (ship?.software_running?.some((software) => software.kind === "VirtualGunner") ?? false) ||
+      (ship?.software_running?.find((software) => software.kind === "FireControl")?.level ?? 0) > 0;
+    const manned = {} as {[key: string]: number};
+    computerShipWeapons.forEach((weapon, index) => {
+      const name = getWeaponName(computerShipWeapons, index);
+      manned[name] = (manned[name] ?? 0) + (covered || index < gunnery.length ? 1 : 0);
+    });
+    return manned;
+  }, [computerShipName, computerShipWeapons, entities]);
 
   const [fireTarget, setFireTarget] = useState<Entity | null>(null);
 
@@ -607,7 +636,14 @@ export const FireControl: React.FC<FireControlProps> = () => {
               onClick={() =>
                 handleWeaponClick(weapon_name, mixed ? kind : undefined)
               }
-              disabled={isWeaponDisabled({ kind, mount: weapon.mount })}
+              disabled={
+                isWeaponDisabled({ kind, mount: weapon.mount }) ||
+                (mannedCounts[weapon_name] ?? 0) === 0
+              }
+              // Grey rather than the weapon's own colour when nobody is at
+              // the mount: it cannot fire, and the reason should be visible
+              // before the order is given rather than after it fails.
+              unmanned={(mannedCounts[weapon_name] ?? 0) === 0}
               // Everything else in the mount, including the guns that cannot be
               // fired: sand is exactly what distinguishes a mixed turret from a
               // plain one, and it never gets a button of its own.
@@ -683,6 +719,163 @@ export const FireControl: React.FC<FireControlProps> = () => {
   );
 };
 
+/**
+ * The round's queued orders for one ship, gathered from the action queue.
+ *
+ * `only` narrows it to one station's orders, which is what a station card
+ * passes. The captain's card passes nothing and gets the lot: they inspire
+ * other people's checks, and hunting five cards for the actions to tick was
+ * unworkable.
+ *
+ * Renders nothing when there is nothing queued, so a quiet card stays quiet.
+ */
+export function QueuedOrders(args: {ship: Ship; only?: ViewMode[]}) {
+  const entities = useAppSelector(entitiesSelector);
+  const templates = useAppSelector(templatesSelector);
+  const roles = useAppSelector((state) => state.user.roles);
+  const queued = useAppSelector((state) => state.actions[args.ship.name]);
+
+  // A station card shows its own orders; the captain's shows every station's.
+  // Either way a player only sees what their roles let them see.
+  const shows = (role: ViewMode) =>
+    args.only == null
+      ? hasRole(roles, role, ViewMode.Captain)
+      : args.only.includes(role);
+
+  const fireActions = shows(ViewMode.Gunner) ? (queued?.fire ?? []) : [];
+  const pdActions = shows(ViewMode.Gunner) ? (queued?.pointDefense ?? []) : [];
+  const sensorActions = shows(ViewMode.Sensors) ? (queued?.sensors ?? []) : [];
+  const engineerActions = shows(ViewMode.Engineer) ? (queued?.engineers ?? []) : [];
+  const pilotState = shows(ViewMode.Pilot)
+    ? {
+        dodgeThrust: args.ship.dodge_thrust ?? 0,
+        assistGunners: args.ship.assist_gunners ?? false,
+      }
+    : null;
+
+  // Ships this one could be looking for. Detection is free and needs no
+  // order, so these are not queued actions -- they are here because a captain
+  // can concentrate the sensop on one of them, and that is the only part of
+  // detection leadership reaches.
+  const watchingSensors = shows(ViewMode.Sensors);
+  const searchTargets = useMemo(
+    () =>
+      watchingSensors
+        ? entities.ships.filter(
+            (target) =>
+              target.name !== args.ship.name &&
+              isUndetected(args.ship, target) &&
+              !sameSide(args.ship, target),
+          )
+        : [],
+    [entities.ships, args.ship, watchingSensors],
+  );
+
+  const anything =
+    fireActions.length > 0 ||
+    pdActions.length > 0 ||
+    sensorActions.some((sensor) => sensor.action !== SensorAction.None) ||
+    engineerActions.some((engineer) => engineer != null) ||
+    searchTargets.length > 0 ||
+    (pilotState != null && (pilotState.dodgeThrust > 0 || pilotState.assistGunners));
+  if (!anything) {
+    return null;
+  }
+
+  return (
+    <Actions
+      fireActions={fireActions}
+      pointDefenseActions={pdActions}
+      sensorActions={sensorActions}
+      engineerActions={engineerActions}
+      pilotState={pilotState}
+      searchTargets={searchTargets}
+      weapons={shipWeapons(args.ship, templates)}
+      gunnery={args.ship.crew?.gunnery}
+    />
+  );
+}
+
+
+/**
+ * How much of the Fire Control pool this shot draws.
+ *
+ * "Allows the computer to fire a number of turrets per round equal to the
+ * listed number. Alternatively, it can give a positive DM to an attack equal
+ * to the listed number or any combination of the two" (Core Rulebook p. 161).
+ * So the score is a pool of points each round: one point fires a mount
+ * outright, and the rest can go on improving shots. A mount with nobody on it
+ * is the usual place to spend the first point, which is why the checkbox says
+ * so when the gunner's seat is empty.
+ */
+function FireControlRow(args: {
+  action: FireAction;
+  index: number;
+  pool: number;
+  spent: number;
+  shipName: string;
+  hasGunner: boolean;
+}) {
+  const dispatch = useAppDispatch();
+  const mine = (args.action.fire_control_dm ?? 0) + (args.action.computer_fired ? 1 : 0);
+  const left = args.pool - args.spent;
+  const dm = args.action.fire_control_dm ?? 0;
+  const choices = Array.from({length: dm + Math.max(0, left) + 1}, (_, value) => value);
+
+  return (
+    <div className="fire-control-row" title={`Fire Control/${args.pool}: ${args.pool - args.spent} of ${args.pool} points unspent`}>
+      <label
+        className="fire-control-toggle"
+        title={
+          args.hasGunner
+            ? "The computer fires this mount instead of its gunner, bringing no skill of its own."
+            : "Nobody is on this mount, so the computer fires it. One Fire Control point."
+        }>
+        <input
+          type="checkbox"
+          checked={args.action.computer_fired === true}
+          disabled={!args.action.computer_fired && left <= 0}
+          onChange={(event) =>
+            dispatch(
+              updateFireControl({
+                shipName: args.shipName,
+                index: args.index,
+                computerFired: event.target.checked,
+              })
+            )
+          }
+        />
+        computer fires
+      </label>
+      <label className="fire-control-dm" title="Fire Control points added to this shot">
+        DM
+        <select
+          className="salvo-select"
+          value={dm}
+          onChange={(event) =>
+            dispatch(
+              updateFireControl({
+                shipName: args.shipName,
+                index: args.index,
+                dm: Number(event.target.value),
+              })
+            )
+          }>
+          {choices.map((value) => (
+            <option key={value} value={value}>
+              {value === 0 ? "—" : `+${value}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="fire-control-left">
+        {mine > 0 ? `${mine} used, ` : ""}
+        {Math.max(0, left)} left
+      </span>
+    </div>
+  );
+}
+
 export function Actions(args: {
   fireActions: FireState;
   pointDefenseActions: PointDefenseState;
@@ -695,11 +888,15 @@ export function Actions(args: {
    * knows which roles should see them.
    */
   searchTargets: Ship[];
-  sensorAction: SensorState;
-  engineerAction: EngineerState;
+  /** One per sensor operator, by their place in the crew. */
+  sensorActions: SensorState[];
+  /** One per engineer. */
+  engineerActions: EngineerState[];
   pilotState: { dodgeThrust: number; assistGunners: boolean } | null;
   // The acting ship's own armament, not its design's: `weapon_id` indexes this.
   weapons: Weapon[];
+  /** Gunner skill per mount, for spotting the ones with nobody on them. */
+  gunnery?: number[];
 }) {
   const entities = useAppSelector(entitiesSelector);
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
@@ -719,6 +916,45 @@ export function Actions(args: {
     return state.actions[captainShipName]?.leadershipCheck?.boosts ?? [];
   });
   const dispatch = useAppDispatch();
+
+  // The Fire Control pool for the round, and what the orders already drew
+  // from it. The program's score is spent on firing mounts outright and on
+  // improving gunners' shots, in any mix (Core Rulebook p. 161).
+  const actingShip = useMemo(
+    () => (computerShipName ? findShip(entities, computerShipName) : null),
+    [entities, computerShipName]
+  );
+  const fireControlPool = useMemo(
+    () =>
+      actingShip?.software_running?.find((software) => software.kind === "FireControl")?.level ?? 0,
+    [actingShip]
+  );
+  const fireControlSpent = useMemo(
+    () =>
+      args.fireActions.reduce(
+        (total, action) =>
+          total + (action.fire_control_dm ?? 0) + (action.computer_fired ? 1 : 0),
+        0
+      ),
+    [args.fireActions]
+  );
+
+  // Point Defence software, and who it could cover: a ship running it can
+  // shoot down what is coming at a neighbour rather than at itself.
+  const pointDefenceReach = useMemo(
+    () =>
+      actingShip?.software_running?.find((software) => software.kind === "PointDefence")?.level ?? 0,
+    [actingShip]
+  );
+  const coverable = useMemo(
+    () =>
+      actingShip == null
+        ? []
+        : entities.ships
+            .filter((other) => other.name !== actingShip.name)
+            .map((other) => other.name),
+    [entities.ships, actingShip]
+  );
 
   // Captain's leadership cap. The cap is the rolled `leadership_points`, but
   // only after the captain has actually rolled this turn — pre-roll
@@ -789,61 +1025,75 @@ export function Actions(args: {
     );
   };
 
-  const onSensorRowClick = () => {
+  // Clicking a queued action withdraws it -- that operator's or engineer's
+  // alone, since each is a different pair of hands.
+  const onSensorRowClick = (operator: number) => {
     if (!computerShipName) return;
     dispatch(
       setSensorAction({
         shipName: computerShipName,
+        operator,
         action: DEFAULT_SENSOR_STATE,
       }),
     );
   };
 
-  const onEngineerRowClick = () => {
+  const onEngineerRowClick = (engineer: number) => {
     if (!computerShipName) return;
-    dispatch(
-      setEngineerAction({ shipName: computerShipName, action: null }),
-    );
+    dispatch(setEngineerAction({ shipName: computerShipName, engineer, action: null }));
   };
 
-  let sensorLabel: string | null = null;
-  if (args.sensorAction.action !== SensorAction.None) {
-    switch (args.sensorAction.action) {
+  const sensorLabelOf = (sensor: SensorState): string | null => {
+    switch (sensor.action) {
+      case SensorAction.None:
+        return null;
       case SensorAction.JamMissiles:
-        sensorLabel = "Jam Missiles";
-        break;
+        return "Jam Missiles";
       case SensorAction.SensorLock:
-        sensorLabel = "Lock on " + args.sensorAction.target;
-        break;
+        return "Lock on " + sensor.target;
       case SensorAction.BreakSensorLock:
-        sensorLabel = "Break Lock on " + args.sensorAction.target;
-        break;
+        return "Break Lock on " + sensor.target;
       case SensorAction.JamComms:
-        sensorLabel = "Jam " + args.sensorAction.target;
-        break;
+        return "Jam " + sensor.target;
     }
-  }
+  };
 
-  let engineerLabel: string | null = null;
-  if (args.engineerAction != null) {
-    switch (args.engineerAction.kind) {
+  const engineerLabelOf = (action: EngineerState): string | null => {
+    if (action == null) {
+      return null;
+    }
+    switch (action.kind) {
       case "OverloadDrive":
-        engineerLabel = "Overload Drive";
-        break;
+        return "Overload Drive";
       case "OverloadPlant":
-        engineerLabel = "Overload Plant";
-        break;
+        return "Overload Plant";
       case "Repair": {
-        const sys = stringToShipSystem(args.engineerAction.system);
-        engineerLabel =
-          "Repair " + (sys != null ? SYSTEM_NAMES[sys] : args.engineerAction.system);
-        break;
+        const sys = stringToShipSystem(action.system);
+        return "Repair " + (sys != null ? SYSTEM_NAMES[sys] : action.system);
       }
       case "Jump":
-        engineerLabel = "Jump";
-        break;
+        return "Jump";
+      case "SetPower":
+        return `${action.online ? "Power up" : "Power down"} ${powerSystemLabel(action.system)}`;
     }
-  }
+  };
+
+  // A power order names what it is switching. A weapon is named by its mount,
+  // which is how the rest of the console refers to it.
+  const powerSystemLabel = (system: PowerSystem): string => {
+    if (typeof system === "string") {
+      return system === "Maneuver" ? "the m-drive" : system === "Jump" ? "the j-drive" : system.toLowerCase();
+    }
+    if ("Feature" in system) {
+      return `ship feature ${system.Feature + 1}`;
+    }
+    const weapon = args.weapons[system.Weapon];
+    return weapon == null ? `mount ${system.Weapon + 1}` : weaponToString(weapon);
+  };
+
+  // Several operators or engineers mean the row has to say whose it is. One
+  // of each says nothing, as before.
+  const crewTag = (index: number, count: number) => (count > 1 ? `#${index + 1} ` : "");
 
   return (
     <div className="control-form">
@@ -921,6 +1171,52 @@ export function Actions(args: {
                 to {action.target}
               </p>
             </div>
+            {/* How much of the rack to throw. A full salvo is the default;
+                a gunner may want one away as a warning shot, or to keep the
+                rest for a second target. */}
+            {(() => {
+              const full = fullSalvo(args.weapons[action.weapon_id], kind);
+              if (full == null || full <= 1) {
+                return null;
+              }
+              const chosen = action.salvo_size ?? full;
+              return (
+                <select
+                  className="salvo-select"
+                  value={chosen}
+                  title={`How many to launch, of ${full}`}
+                  onChange={(event) => {
+                    const size = Number(event.target.value);
+                    dispatch(
+                      updateFireSalvo({
+                        shipName: computerShipName!,
+                        index: index,
+                        size: size === full ? null : size,
+                      }),
+                    );
+                  }}
+                >
+                  {salvoChoices(full).map((size) => (
+                    <option key={size} value={size}>
+                      {size === full ? `all ${size}` : size}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
+            {/* The computer's share of this shot, when the ship is running
+                Fire Control. One point has the computer fire a mount with
+                nobody on it; the rest can be spent improving the shot. */}
+            {fireControlPool > 0 && (
+              <FireControlRow
+                action={action}
+                index={index}
+                pool={fireControlPool}
+                spent={fireControlSpent}
+                shipName={computerShipName ?? ""}
+                hasGunner={(args.gunnery?.[action.weapon_id] ?? 0) > 0}
+              />
+            )}
             {renderBoostCheckbox(
               fireBoostTarget,
               "Launching makes no check, so there is nothing to boost",
@@ -964,6 +1260,31 @@ export function Actions(args: {
                 on Point Defense
               </p>
             </div>
+            {/* A ship running Point Defence software can cover a neighbour
+                instead of itself (High Guard p. 75). Only worth offering
+                when there is a neighbour and the software to do it. */}
+            {pointDefenceReach > 0 && coverable.length > 0 && (
+              <select
+                className="salvo-select"
+                value={action.protecting ?? ""}
+                title={`Point Defence/${pointDefenceReach}: cover another ship nearby instead of this one`}
+                onChange={(event) =>
+                  dispatch(
+                    setPointDefenseWard({
+                      shipName: computerShipName ?? "",
+                      weapon_id: action.weapon_id,
+                      protecting: event.target.value === "" ? null : event.target.value,
+                    })
+                  )
+                }>
+                <option value="">our own ship</option>
+                {coverable.map((name) => (
+                  <option key={name} value={name}>
+                    cover {name}
+                  </option>
+                ))}
+              </select>
+            )}
             {renderBoostCheckbox(pdBoostTarget)}
           </div>
         ) : (
@@ -1044,35 +1365,57 @@ export function Actions(args: {
         </div>
       )}
 
-      {sensorLabel != null && (
-        <div className="fire-actions-div">
-          <div onClick={onSensorRowClick}>
-            <p>
-              <GiBinoculars
-                className="beam-type-icon"
-                style={{ fill: SENSOR_ICON_COLORS[args.sensorAction.action] }}
-              />{" "}
-              {sensorLabel}
-            </p>
+      {args.sensorActions.map((sensor, operator) => {
+        const label = sensorLabelOf(sensor);
+        if (label == null) {
+          return null;
+        }
+        return (
+          <div className="fire-actions-div" key={`sensor-${operator}`}>
+            <div onClick={() => onSensorRowClick(operator)}>
+              <p>
+                <GiBinoculars
+                  className="beam-type-icon"
+                  style={{ fill: SENSOR_ICON_COLORS[sensor.action] }}
+                />{" "}
+                {crewTag(operator, args.sensorActions.length)}
+                {label}
+              </p>
+            </div>
+            {renderBoostCheckbox({
+              kind: "Sensor",
+              ship: computerShipName ?? "",
+              operator,
+            })}
           </div>
-          {renderBoostCheckbox({ kind: "Sensor", ship: computerShipName ?? "" })}
-        </div>
-      )}
+        );
+      })}
 
-      {engineerLabel != null && (
-        <div className="fire-actions-div">
-          <div onClick={onEngineerRowClick}>
-            <p>
-              <FaCog
-                className="beam-type-icon"
-                style={{ fill: ENGINEER_ICON_COLORS[args.engineerAction!.kind] }}
-              />{" "}
-              {engineerLabel}
-            </p>
+      {args.engineerActions.map((action, engineer) => {
+        const label = engineerLabelOf(action);
+        if (label == null || action == null) {
+          return null;
+        }
+        return (
+          <div className="fire-actions-div" key={`engineer-${engineer}`}>
+            <div onClick={() => onEngineerRowClick(engineer)}>
+              <p>
+                <FaCog
+                  className="beam-type-icon"
+                  style={{ fill: ENGINEER_ICON_COLORS[action.kind] }}
+                />{" "}
+                {crewTag(engineer, args.engineerActions.length)}
+                {label}
+              </p>
+            </div>
+            {renderBoostCheckbox({
+              kind: "Engineer",
+              ship: computerShipName ?? "",
+              engineer,
+            })}
           </div>
-          {renderBoostCheckbox({ kind: "Engineer", ship: computerShipName ?? "" })}
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 }

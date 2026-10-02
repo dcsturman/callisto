@@ -694,6 +694,7 @@ impl Processor {
       RequestMsg::AddShip(ship) => response_with_update(player, player.add_ship(ship)),
       RequestMsg::SetPilotActions(request) => response_with_update(player, player.set_pilot_actions(&request)),
       RequestMsg::SetShipEmissions(request) => response_with_update(player, player.set_ship_emissions(&request)),
+      RequestMsg::SetSoftwareRunning(request) => response_with_update(player, player.set_software_running(&request)),
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
@@ -741,10 +742,44 @@ impl Processor {
           Err(e) => entity_clone_failure_response(&e),
         }
       }
+      RequestMsg::SetReady(ready) => {
+        let Some((server_id, session_key)) = player.server_and_session() else {
+          error!("(handle_request) Attempt to set ready outside a scenario.  Ignoring.");
+          return error_msg("Cannot say you are ready before joining a scenario.".to_string());
+        };
+        if self.members.set_ready(&server_id, &session_key, ready) {
+          vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
+        } else {
+          error_msg("Cannot say you are ready: you are not in this scenario.".to_string())
+        }
+      }
       RequestMsg::Update => {
+        // The referee advances the round. Everyone else says Ready and waits:
+        // two players pressing it would end the round before the rest of the
+        // table had finished giving orders. A scenario with nobody refereeing
+        // -- one player, or a group who all took ships -- has no such problem,
+        // so anyone may advance it.
+        let (own_roles, own_ship) = player.get_roles();
+        // The ship decides, not the role: a referee who takes a single station
+        // to simplify their screen still runs the round.
+        let refereeing = own_ship.is_none() && !own_roles.contains(&crate::payloads::Role::Observer);
+        let server_id = player.server.as_ref().map(|server| server.get_id().to_string());
+        if !refereeing && server_id.as_ref().is_some_and(|id| self.members.has_referee(id)) {
+          return error_msg("Only the GM can advance the round.".to_string());
+        }
+
         let effects = player.update();
+        if let Some(server_id) = &server_id {
+          self.members.clear_ready(server_id);
+        }
         match player.clone_entities() {
-          Ok(entities) => vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities)],
+          Ok(entities) => {
+            let mut msgs = vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities)];
+            if let Some(server_id) = &server_id {
+              msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
+            }
+            msgs
+          }
           Err(e) => entity_clone_failure_response(&e),
         }
       }
@@ -1126,10 +1161,18 @@ impl Processor {
 
 // Utility functions to help build messages etc.
 
+/// Whether everyone in the scenario should see this, rather than only the
+/// player whose request produced it.
+///
+/// Effects are the round's results and the explosions and beams that go with
+/// them: they describe what happened to the whole board, so sending them only
+/// to whoever pressed Next Round left every other player with an empty log and
+/// a silent screen.
 fn is_broadcast_message(message: &ResponseMsg) -> bool {
-  matches!(message, ResponseMsg::EntityResponse(_))
-    || matches!(message, ResponseMsg::Users(_))
-    || matches!(message, ResponseMsg::Scenarios(_))
+  matches!(
+    message,
+    ResponseMsg::EntityResponse(_) | ResponseMsg::Users(_) | ResponseMsg::Scenarios(_) | ResponseMsg::Effects(_)
+  )
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -1217,7 +1260,7 @@ async fn send_response(stream: &mut WebSocketStream<SubStream>, message: &Respon
 
 #[cfg(test)]
 mod idle_tests {
-  use super::{all_connections_idle, IDLE_TIMEOUT};
+  use super::{all_connections_idle, is_broadcast_message, ResponseMsg, IDLE_TIMEOUT};
   use std::time::{Duration, Instant};
 
   #[test]
@@ -1248,6 +1291,14 @@ mod idle_tests {
       .checked_sub(IDLE_TIMEOUT.checked_sub(Duration::from_secs(1)).unwrap())
       .unwrap();
     assert!(!all_connections_idle(&[recent], now, IDLE_TIMEOUT));
+  }
+
+  /// The round's results and its explosions belong to everyone at the table,
+  /// not only whoever pressed Next Round.
+  #[test]
+  fn effects_go_to_the_whole_scenario() {
+    assert!(is_broadcast_message(&ResponseMsg::Effects(vec![])));
+    assert!(!is_broadcast_message(&ResponseMsg::SimpleMsg("done".to_string())));
   }
 
   #[test]

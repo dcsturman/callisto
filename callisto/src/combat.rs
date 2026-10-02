@@ -12,9 +12,10 @@ use crate::entity::{no_contact_effect, Entity};
 use crate::payloads::{EffectMsg, LaunchMissileMsg, MessageCategory};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS, RANGE_MOD};
 use crate::ship::{
-  BridgeStation, Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile,
-  WeaponType,
+  BridgeStation, Firing, MountClass, Range, Salvo, Sensors, Ship, ShipSystem, SystemDamage, Weapon, WeaponMount,
+  WeaponProfile, WeaponType,
 };
+use crate::software::SoftwareKind;
 use crate::{debug, error, info, warn};
 use tracing::event;
 use tracing::Level;
@@ -78,6 +79,12 @@ pub struct HitMods {
   /// A launched object resolves as the gun that threw it, so this is the
   /// attacker-side term for a missile, where there is no gunner at impact.
   pub smart: i32,
+  /// Fire Control points the gunner spent on this shot as a DM.
+  ///
+  /// The program's score is a pool each round, spent either on firing a
+  /// mount outright or on improving someone else's shot (CRB p. 161); this
+  /// is the second of those.
+  pub fire_control: i32,
 }
 
 impl HitMods {
@@ -90,6 +97,7 @@ impl HitMods {
       captain_assist: 0,
       captain_fire: 0,
       smart: 0,
+      fire_control: 0,
     }
   }
 
@@ -188,7 +196,8 @@ pub fn attack(
   // the pilot and captain each want to see: the pilot's skill is why the shot
   // was harder, and the captain's inspire -- spent on this one attack -- is
   // why it was harder still.
-  let (evade_mod, captain_mod) = if defender.get_dodge_thrust() > 0 {
+  let evading = defender.get_dodge_thrust() > 0;
+  let (evade_mod, captain_mod) = if evading {
     debug!(
       "(Combat.attack) {} has dodge thrust {}, so defensive modifier is -{} (with evade boost {}).",
       defender.get_name(),
@@ -201,7 +210,26 @@ pub fn attack(
   } else {
     (0, 0)
   };
-  let defensive_modifier = evade_mod + captain_mod;
+  // Evade software flies the ship evasively on its own: "a negative DM equal
+  // to the Evade program's score to all attacks" (CRB p. 161). It needs no
+  // Thrust and no pilot, so it stacks with a pilot who is also dodging --
+  // the book gives no reason it should not, and the two are different
+  // things: one is the computer jinking, the other a pilot spending Thrust.
+  let evade_software = -i32::from(defender.running_level(SoftwareKind::Evade).unwrap_or(0));
+
+  // Advanced Fire Control adds its score to every attack the ship makes
+  // (High Guard p. 73), with no automated fire of its own.
+  let advanced_fire_control = i32::from(attacker.running_level(SoftwareKind::AdvancedFireControl).unwrap_or(0));
+
+  // Launch Solution does the same for missile and torpedo salvoes only
+  // (High Guard p. 75).
+  let launch_solution = if profile.salvo.is_some() {
+    i32::from(attacker.running_level(SoftwareKind::LaunchSolution).unwrap_or(0))
+  } else {
+    0
+  };
+
+  let defensive_modifier = evade_mod + captain_mod + evade_software;
 
   // Launchers have "Special" range: the salvo flies to the target, so the
   // firing range never modifies the roll and never rules the shot out.
@@ -262,7 +290,7 @@ pub fn attack(
   // gets, and for the same reason. Zero terms are dropped so an ordinary
   // shot stays short.
   let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
-  let terms: [(&str, i32); 12] = [
+  let terms: [(&str, i32); 16] = [
     gunner,
     assist,
     captain_assist,
@@ -275,15 +303,25 @@ pub fn attack(
     ("sensor lock", lock_mod),
     ("evade", evade_mod),
     ("captain evade", captain_mod),
+    ("evade software", evade_software),
+    ("fire control", hit.fire_control),
+    ("adv fire control", advanced_fire_control),
+    ("launch solution", launch_solution),
   ];
   let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
-  let breakdown = terms
+  let mut named: Vec<String> = terms
     .iter()
-    .filter(|(_, value)| *value != 0)
+    .filter(|(name, value)| *value != 0 || *name == "evade")
     .map(|(name, value)| format!("{name} {value:+}"))
-    .collect::<Vec<_>>()
-    .join(", ");
+    .collect();
+  // A ship that dodged says so even when its pilot's skill is 0 and the dodge
+  // bought nothing. Otherwise the line is identical to one where nobody
+  // evaded, and a pilot cannot tell the order was carried out.
+  if !evading {
+    named.retain(|term| !term.starts_with("evade "));
+  }
+  let breakdown = named.join(", ");
   let breakdown = if breakdown.is_empty() {
     String::new()
   } else {
@@ -304,10 +342,11 @@ pub fn attack(
       "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and misses.",
       attacker_name, roll, hit_roll
     );
-    return vec![EffectMsg::about(
+    return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Attack,
       format!("{attack_line}, miss."),
+      false,
     )];
   }
 
@@ -368,13 +407,14 @@ pub fn attack(
             defender.get_current_armor()
         );
 
-    return vec![EffectMsg::about(
+    return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Damage,
       format!(
         "{attack_line}, effect {effect}. Damage {} = 0, absorbed by armour.",
         terms.join(" ")
       ),
+      true,
     )];
   };
 
@@ -403,13 +443,14 @@ pub fn attack(
     terms.push(format!("-{screened} screens"));
   }
   if damage == 0 {
-    return vec![EffectMsg::about(
+    return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Damage,
       format!(
         "{attack_line}, effect {effect}. Damage {} = 0, absorbed by screens.",
         terms.join(" ")
       ),
+      true,
     )];
   }
 
@@ -419,10 +460,11 @@ pub fn attack(
   let mut effects = if profile.salvo.is_some() {
     // Create two effects: a message stating the damage and a ship impact on the defender.
     vec![
-      EffectMsg::about(
+      EffectMsg::outcome(
         attacker_name,
         MessageCategory::Damage,
         format!("{attack_line}, effect {effect}. Damage {} = {damage}.", terms.join(" ")),
+        true,
       ),
       EffectMsg::ShipImpact {
         target: defender.get_name().to_string(),
@@ -455,10 +497,11 @@ pub fn attack(
     }
 
     vec![
-      EffectMsg::about(
+      EffectMsg::outcome(
         attacker_name,
         MessageCategory::Damage,
         format!("{attack_line}, effect {effect}. Damage {} = {damage}.", terms.join(" ")),
+        true,
       ),
       EffectMsg::BeamHit {
         origin: attacker.get_position(),
@@ -565,6 +608,17 @@ fn do_critical(
   effects
 }
 
+/// The mounts still switched on, so a hit that silences the ship can put them
+/// all back when it is repaired.
+fn live_weapons(ship: &Ship) -> Vec<usize> {
+  ship
+    .active_weapons
+    .iter()
+    .enumerate()
+    .filter_map(|(index, active)| active.then_some(index))
+    .collect()
+}
+
 /// Apply one critical hit at `location`, raising its severity by at least one.
 ///
 /// Also the path for self-inflicted damage, such as a critically failed
@@ -621,6 +675,7 @@ pub(crate) fn apply_crit(
       // I take some liberties with interpreting Sensors impact to make it a bit structured
       (ShipSystem::Sensors, 1) => {
         defender.attack_dm -= 1;
+        defender.record_damage(location, level, SystemDamage::AttackDm(1));
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -631,6 +686,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Sensors, 6) => {
+        defender.record_damage(location, level, SystemDamage::WeaponsOff(live_weapons(defender)));
         defender.active_weapons = vec![false; defender.active_weapons.len()];
         vec![EffectMsg::about(
           &crit_ship,
@@ -643,6 +699,7 @@ pub(crate) fn apply_crit(
       }
       (ShipSystem::Sensors, _) => {
         if defender.current_sensors == Sensors::Basic {
+          defender.record_damage(location, level, SystemDamage::WeaponsOff(live_weapons(defender)));
           defender.active_weapons = vec![false; defender.active_weapons.len()];
           vec![EffectMsg::about(
             &crit_ship,
@@ -653,6 +710,7 @@ pub(crate) fn apply_crit(
             ),
           )]
         } else {
+          defender.record_damage(location, level, SystemDamage::SensorGrade(defender.current_sensors));
           defender.current_sensors = defender.current_sensors - 1;
           vec![EffectMsg::about(
             &crit_ship,
@@ -666,7 +724,9 @@ pub(crate) fn apply_crit(
         }
       }
       (ShipSystem::Powerplant, 3) => {
-        defender.current_power = u32::saturating_sub(defender.current_power, defender.design.power / 2);
+        let lost = defender.current_power.min(defender.design.power / 2);
+        defender.record_damage(location, level, SystemDamage::Power(lost));
+        defender.current_power -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -677,6 +737,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Powerplant, 4) => {
+        defender.record_damage(location, level, SystemDamage::Power(defender.current_power));
         defender.current_power = 0;
         vec![EffectMsg::about(
           &crit_ship,
@@ -685,7 +746,9 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Powerplant, level) if level < 3 => {
-        defender.current_power = u32::saturating_sub(defender.current_power, defender.design.power / 10);
+        let lost = defender.current_power.min(defender.design.power / 10);
+        defender.record_damage(location, level, SystemDamage::Power(lost));
+        defender.current_power -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -696,6 +759,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Powerplant, level) => {
+        defender.record_damage(location, level, SystemDamage::Power(defender.current_power));
         defender.current_power = 0;
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
@@ -748,6 +812,7 @@ pub(crate) fn apply_crit(
       }
       (ShipSystem::Weapon, 1) => {
         defender.attack_dm -= 1;
+        defender.record_damage(location, level, SystemDamage::AttackDm(1));
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -782,6 +847,7 @@ pub(crate) fn apply_crit(
 
           // Name the weapon before disabling it: `weapons()` borrows the ship.
           let disabled = String::from(&defender.weapons()[selected_index]);
+          defender.record_damage(location, level, SystemDamage::WeaponsOff(vec![selected_index]));
           defender.active_weapons[selected_index] = false;
           vec![EffectMsg::about(
             &crit_ship,
@@ -845,6 +911,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Maneuver, 5) => {
+        defender.record_damage(location, level, SystemDamage::Thrust(defender.current_maneuver));
         defender.current_maneuver = 0;
         vec![EffectMsg::about(
           &crit_ship,
@@ -853,6 +920,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Maneuver, 6) => {
+        defender.record_damage(location, level, SystemDamage::Thrust(defender.current_maneuver));
         defender.current_maneuver = 0;
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
@@ -863,7 +931,9 @@ pub(crate) fn apply_crit(
         effects
       }
       (ShipSystem::Maneuver, _) => {
-        defender.current_maneuver = u8::saturating_sub(defender.current_maneuver, 1);
+        let lost = defender.current_maneuver.min(1);
+        defender.record_damage(location, level, SystemDamage::Thrust(lost));
+        defender.current_maneuver -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -882,7 +952,7 @@ pub(crate) fn apply_crit(
         ),
       )],
       (ShipSystem::Cargo, 2) => {
-        let percent_destroyed = format!("{}%", 10 * roll(rng));
+        let percent_destroyed = 10 * roll(rng);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -893,7 +963,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Cargo, 3) => {
-        let percent_destroyed = format!("{}%", roll_dice(2, rng).min(10) * 10);
+        let percent_destroyed = roll_dice(2, rng).min(10) * 10;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -924,7 +994,9 @@ pub(crate) fn apply_crit(
         effects
       }
       (ShipSystem::Jump, 1) => {
-        defender.current_jump = u8::saturating_sub(defender.current_jump, 1);
+        let lost = defender.current_jump.min(1);
+        defender.record_damage(location, level, SystemDamage::Jump(lost));
+        defender.current_jump -= lost;
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
@@ -932,6 +1004,7 @@ pub(crate) fn apply_crit(
         )]
       }
       (ShipSystem::Jump, level) => {
+        defender.record_damage(location, level, SystemDamage::Jump(defender.current_jump));
         defender.current_jump = 0;
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
@@ -1160,6 +1233,19 @@ pub fn do_fire_actions<S: BuildHasher>(
   // attacker's weapons), so a ship-level flag would be redundant.
   let mut first_assist_consumed = false;
 
+  // The Fire Control pool for this round. The program's score is spent on
+  // firing mounts outright and on improving gunners' shots, in any mix
+  // (CRB p. 161); a crew that orders more than it has gets what the pool
+  // covers, in the order the mounts were given.
+  let fire_control_pool = i32::from(attacker.running_level(SoftwareKind::FireControl).unwrap_or(0));
+  let mut fire_control_left = fire_control_pool;
+
+  // What is left in the magazine, spent down as this attacker's orders are
+  // worked through. The live ship is debited by the caller from what was
+  // actually launched.
+  let mut missiles_left = attacker.magazine.missiles;
+  let mut torpedoes_left = attacker.magazine.torpedoes;
+
   let mut effects: Vec<EffectMsg> = actions
     .iter()
     .flat_map(|action| {
@@ -1168,6 +1254,9 @@ pub fn do_fire_actions<S: BuildHasher>(
         target,
         called_shot_system,
         firing_kind,
+        salvo_size,
+        fire_control_dm,
+        computer_fired,
       } = action
       else {
         error!("(Combat.do_fire_actions) Expected FireAction but got {:?}.", action);
@@ -1218,6 +1307,20 @@ pub fn do_fire_actions<S: BuildHasher>(
         return vec![];
       }
 
+      // A mount the plant is not feeding cannot fire, whether the engineer
+      // switched it off or the damage did it for them.
+      if !attacker.weapon_powered(*weapon_id) {
+        return vec![EffectMsg::about(
+          attacker.get_name(),
+          MessageCategory::Critical,
+          format!(
+            "{}'s {} has no power and cannot fire.",
+            attacker.get_name(),
+            String::from(&attacker.weapons()[*weapon_id])
+          ),
+        )];
+      }
+
       let weapon = attacker.get_weapon(*weapon_id);
       // Which gun in the mount is firing.  A mixed turret may only use one type
       // per round (Core Rulebook p. 166), so the action names it; a uniform
@@ -1226,6 +1329,12 @@ pub fn do_fire_actions<S: BuildHasher>(
         Some(kind) => weapon.firing(*kind),
         None => weapon.firing_default(),
       };
+      // A gunner may throw fewer than the mount holds -- a warning shot, or
+      // keeping some in the racks. Never more, whatever the client asks for.
+      let firing = firing.map(|firing| Firing {
+        salvo_limit: *salvo_size,
+        ..firing
+      });
       let Some(firing) = firing else {
         debug!(
           "(Combat.do_fire_actions) Weapon {} cannot fire {:?}; it holds {:?}.",
@@ -1235,7 +1344,52 @@ pub fn do_fire_actions<S: BuildHasher>(
         );
         return vec![];
       };
-      let gunnery_skill = i32::from(attacker.get_crew().get_gunnery(*weapon_id));
+      // Draw this mount's share of the pool: one point to have the computer
+      // fire it, plus whatever the gunner asked it to add to the shot.
+      let computer_fired = *computer_fired && fire_control_left > 0;
+      if computer_fired {
+        fire_control_left -= 1;
+      }
+      let fire_control_points = i32::from(*fire_control_dm).min(fire_control_left.max(0));
+      fire_control_left -= fire_control_points;
+
+      // A mount the computer is firing has no gunner's skill behind it: Fire
+      // Control buys the attack, not a gunner (CRB p. 161). One point goes on
+      // firing it, and the gunner's own skill does not apply.
+      // Somebody has to be at the mount. A gun fires because a gunner fires
+      // it, or because the computer does -- Fire Control buying the attack
+      // or a Virtual Gunner standing in. An empty position is an empty
+      // position, and saying so is kinder than a silent miss.
+      if !attacker.get_crew().has_gunner(*weapon_id)
+        && !computer_fired
+        && attacker.running_level(SoftwareKind::VirtualGunner).is_none()
+      {
+        return vec![EffectMsg::about(
+          attacker.get_name(),
+          MessageCategory::Attack,
+          format!(
+            "{}'s {} has no gunner: nobody is at the mount, and neither Fire Control nor a Virtual Gunner is covering it.",
+            attacker.get_name(),
+            String::from(&attacker.weapons()[*weapon_id])
+          ),
+        )];
+      }
+
+      // A Virtual Gunner stands in where nobody is at the mount: "weapons
+      // controlled by a Virtual Gunner have a skill level equal to the
+      // package's score but they can take advantage of other modifiers such
+      // as Advanced Fire Control" (High Guard p. 76). A real gunner is
+      // always better than being replaced, so they keep their station.
+      let virtual_gunner = if attacker.get_crew().has_gunner(*weapon_id) {
+        None
+      } else {
+        attacker.running_level(SoftwareKind::VirtualGunner)
+      };
+      let gunnery_skill = if computer_fired {
+        0
+      } else {
+        virtual_gunner.map_or_else(|| i32::from(attacker.get_crew().get_gunnery(*weapon_id)), i32::from)
+      };
       // Captain leadership boost for this specific (ship, weapon) fire action.
       let leadership_boost = i32::from(boost_for_fire(boost_map, attacker.get_name(), *weapon_id));
       debug!(
@@ -1304,12 +1458,37 @@ pub fn do_fire_actions<S: BuildHasher>(
         // Launched weapons don't attack when fired.  Each object comes back and
         // calls attack() on impact, carrying the weapon that threw it so a
         // torpedo resolves as a torpedo rather than as a missile.
-        let count = match salvo {
+        let full_salvo = match salvo {
           // One object per launcher gun, which in a mixed turret is the number
           // of racks in it rather than the size of the turret.
           Salvo::PerGun => u16::from(firing.count),
           Salvo::Fixed(n) => n,
         };
+        // Firing fewer is a choice; firing more is not on offer, and asking
+        // for none would be an order to do nothing, so one is the floor.
+        let count = firing.salvo_limit.map_or(full_salvo, |limit| limit.clamp(1, full_salvo));
+
+        // Nothing leaves the rails that is not in the magazine. A short
+        // magazine throws what it has; an empty one says so.
+        let aboard = if firing.kind == WeaponType::Torpedo {
+          &mut torpedoes_left
+        } else {
+          &mut missiles_left
+        };
+        let count = count.min(u16::try_from(*aboard).unwrap_or(u16::MAX));
+        if count == 0 {
+          return vec![EffectMsg::about(
+            attacker.get_name(),
+            MessageCategory::Attack,
+            format!(
+              "{} has no {}s left to launch.",
+              attacker.get_name(),
+              String::from(&firing.kind).to_lowercase()
+            ),
+          )];
+        }
+        *aboard -= u32::from(count);
+
         for _ in 0..count {
           new_missiles.push(LaunchMissileMsg {
             source: attacker.get_name().to_string(),
@@ -1354,6 +1533,9 @@ pub fn do_fire_actions<S: BuildHasher>(
               // There is a serious error if after checking if the sand_casters list isn't empty
               // it then cannot pop an element. So unwrap() is safe here.
               let modifier = sand_casters.pop().unwrap();
+              // One barrel per cloud dispersed (Core Rulebook p. 166 prices
+              // them by the barrel, and a ship carries a finite number).
+              target.magazine.sand = target.magazine.sand.saturating_sub(1);
               let dice = i32::from(roll_dice(2, rng));
               let effect = dice - STANDARD_ROLL_THRESHOLD + modifier;
               // Same compact shape as an attack line: sand is part of the same
@@ -1432,6 +1614,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             captain_assist,
             captain_fire: leadership_boost,
             smart: 0,
+            fire_control: fire_control_points,
           };
 
           effects.append(&mut attack(
@@ -1473,6 +1656,7 @@ pub fn do_fire_actions<S: BuildHasher>(
             captain_assist,
             captain_fire: leadership_boost,
             smart: 0,
+            fire_control: fire_control_points,
           };
 
           attack(
@@ -1513,7 +1697,7 @@ pub fn create_sand_counts<S: BuildHasher>(
         .filter(|(ship_name, _)| ship_name == name)
         .flat_map(|(_, actions)| actions.iter())
         .filter_map(|action| match action {
-          ShipAction::PointDefenseAction { weapon_id } => Some(*weapon_id),
+          ShipAction::PointDefenseAction { weapon_id, .. } => Some(*weapon_id),
           _ => None,
         })
         .collect();
@@ -1527,6 +1711,10 @@ pub fn create_sand_counts<S: BuildHasher>(
           .filter_map(|(index, weapon)| {
             if reacting.contains(&index) {
               debug!("(Combat.create_sand_counts) Mount {index} on {name} is on point defence, so it cannot also disperse sand.");
+              return None;
+            }
+            if ship.magazine.sand == 0 {
+              // Nothing left to throw.
               return None;
             }
             if weapon.has_kind(WeaponType::Sand) && ship.active_weapons[index] {
@@ -1624,6 +1812,18 @@ pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
     .iter()
     .enumerate()
     .map(|(index, screen)| {
+      // Angling a screen is a gunner's reaction, so an unstaffed screen does
+      // nothing -- unless Screen Optimiser is running, which "automatically
+      // performs the Angle Screens (gunner) action with a total DM+0 ... and
+      // can use any number of screens simultaneously" (High Guard p. 75).
+      // A staffed screen keeps its gunner, who is better than DM+0.
+      //
+      // The dice are rolled either way and the result discarded when nobody
+      // angled it: a scenario's outcome should not depend on how many rolls
+      // were skipped, and the seeded runs the tests rely on would shift
+      // under a short-circuit here.
+      let angled =
+        ship.get_crew().has_screen_gunner(index) || ship.running_level(SoftwareKind::ScreenOptimiser).is_some();
       let skill = ship.get_crew().get_screen_gunnery(index);
       let effect = i32::from(roll_dice(2, rng)) + i32::from(skill) - STANDARD_ROLL_THRESHOLD;
       if effect < 0 {
@@ -1632,7 +1832,12 @@ pub fn roll_screen_pool(ship: &Ship, rng: &mut dyn RngCore) -> Vec<u32> {
       #[allow(clippy::cast_sign_loss)]
       let effect = (effect as u32).max(1);
       let (dice, factor) = screen.reduction_dice();
-      u32::from(roll_dice(dice, rng)) * factor * effect
+      let absorbed = u32::from(roll_dice(dice, rng)) * factor * effect;
+      if angled {
+        absorbed
+      } else {
+        0
+      }
     })
     .collect()
 }
@@ -1703,7 +1908,19 @@ pub fn build_point_defense_tallies(
     .enumerate()
     .map(|(index, weapon)| {
       if ship.active_weapons[index] {
-        point_defense_score(weapon) + u16::from(ship.get_crew().get_gunnery(index))
+        // Point defence is a gunner's reaction, so an unmanned mount
+        // contributes nothing -- unless a Virtual Gunner is at it, which is
+        // what the program is for.
+        let virtual_gunner = ship
+          .running_level(SoftwareKind::VirtualGunner)
+          .filter(|_| !ship.get_crew().has_gunner(index));
+        if !ship.get_crew().has_gunner(index) && virtual_gunner.is_none() {
+          // 0 is the "cannot be used for point defence" score.
+          0
+        } else {
+          let skill = virtual_gunner.unwrap_or_else(|| ship.get_crew().get_gunnery(index));
+          point_defense_score(weapon) + u16::from(skill)
+        }
       } else {
         0
       }
@@ -1711,7 +1928,7 @@ pub fn build_point_defense_tallies(
     .collect::<Vec<u16>>();
 
   for action in actions {
-    let ShipAction::PointDefenseAction { weapon_id } = action else {
+    let ShipAction::PointDefenseAction { weapon_id, .. } = action else {
       warn!("(Ship.add_point_defense) Expected PointDefenseAction but got {:?}.", action);
       continue;
     };
@@ -1957,6 +2174,51 @@ mod battery_tests {
     assert!(ship.take_interception(interception_cost(WeaponType::Missile)));
   }
 
+  /// A gun fires because someone fires it. An empty mount says so rather
+  /// than quietly missing.
+  #[test]
+  fn an_unmanned_mount_does_not_fire() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Derelict".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    // A crew stated explicitly with nobody on the gun, which is how a
+    // scenario says the position is empty.
+    let crew = crate::crew::Crew::new();
+    let mut attacker = Ship::new("Derelict".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(crew), None);
+    attacker.contacts.push("Target".to_string());
+    let target = Ship::new(
+      "Target".to_string(),
+      Vec3::new(5000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let mut ships: HashMap<String, Arc<RwLock<Ship>>> = HashMap::new();
+    ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+    let snapshot: HashMap<String, Ship> = HashMap::new();
+    let mut sand = create_sand_counts(&snapshot, &[]);
+
+    let actions = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Target".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    }];
+    let mut rng = SmallRng::seed_from_u64(7);
+    let (_, effects) = do_fire_actions(&attacker, &mut ships, &mut sand, &actions, &BoostMap::default(), &mut rng);
+    assert!(
+      format!("{effects:?}").contains("has no gunner"),
+      "the crew should be told why nothing was fired: {effects:?}"
+    );
+  }
+
   /// The turret bonus must match the book: DM+0 single, DM+1 double, DM+2 triple
   /// (Core Rulebook p. 171), plus the gunner's skill.
   ///
@@ -1977,7 +2239,12 @@ mod battery_tests {
     });
     // Gunnery 0 across the board, so the tally is the turret bonus alone.
     let ship = Ship::new("Gunners".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
-    let actions: Vec<ShipAction> = (0..3).map(|weapon_id| ShipAction::PointDefenseAction { weapon_id }).collect();
+    let actions: Vec<ShipAction> = (0..3)
+      .map(|weapon_id| ShipAction::PointDefenseAction {
+        weapon_id,
+        protecting: None,
+      })
+      .collect();
 
     let tallies = build_point_defense_tallies(&ship, &actions, &BoostMap::default(), "Gunners");
     let bonus = |id: usize| tallies.iter().find(|(w, _)| *w == id).map(|(_, b)| *b);
@@ -2255,7 +2522,11 @@ mod battery_tests {
     let mut ship = ship_with_screens(vec![ScreenType::Meson], &[0]);
     ship.set_screen_pool(vec![100]);
     ship.clear_point_defense();
-    assert!(ship.screen_pool.is_empty());
+    assert!(
+      ship.screen_pool.is_empty(),
+      "screens should all have been spent: {:?}",
+      ship.screen_pool
+    );
     assert_eq!(ship.apply_screens(WeaponType::Meson, 40), 40);
   }
 
@@ -2476,7 +2747,13 @@ mod battery_tests {
     assert_eq!(free["Batteries"].len(), 1, "the sandcaster should be ready: {free:?}");
 
     // Ordering point defence on that mount spends its reaction.
-    let pd = vec![("Batteries".to_string(), vec![ShipAction::PointDefenseAction { weapon_id: 0 }])];
+    let pd = vec![(
+      "Batteries".to_string(),
+      vec![ShipAction::PointDefenseAction {
+        weapon_id: 0,
+        protecting: None,
+      }],
+    )];
     let spent = create_sand_counts(&ships, &pd);
     assert!(
       spent["Batteries"].is_empty(),
@@ -2549,6 +2826,16 @@ mod tests {
         Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Medium)),
         Weapon::single(WeaponType::Missile, WeaponMount::Bay(BaySize::Large)),
       ],
+      // Plant enough to feed all of it: an unpowered mount cannot fire, and
+      // this test is about what the mounts throw, not about the plant.
+      power: 500,
+      // Likewise a full magazine: the question here is what each mount
+      // throws, not how long the ship can keep throwing it.
+      magazine: crate::ship::Magazine {
+        missiles: 1000,
+        torpedoes: 100,
+        sand: 100,
+      },
       ..ShipDesignTemplate::default()
     };
 
@@ -2592,36 +2879,54 @@ mod tests {
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Beam Turret
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Turret
       ShipAction::FireAction {
         weapon_id: 2,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Barbette
       ShipAction::FireAction {
         weapon_id: 3,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Bay (Small)
       ShipAction::FireAction {
         weapon_id: 4,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Bay (Medium)
       ShipAction::FireAction {
         weapon_id: 5,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }, // Missile Bay (Large)
     ];
 
@@ -2642,7 +2947,7 @@ mod tests {
 
     // Check that we have the expected number of effects
     // 1 for beam plus any potential damage messages
-    assert!(!effects.is_empty());
+    assert!(!effects.is_empty(), "the attack should have reported something");
 
     // You might want to add more specific checks based on your exact implementation
     // For example, checking for specific damage amounts or other effect details
@@ -2872,6 +3177,7 @@ mod tests {
         captain_assist: 0,
         captain_fire: 1,
         smart: 0,
+        fire_control: 0,
       },
       0,
       &attacker,
@@ -3719,6 +4025,9 @@ mod tests {
       target: "Target".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }];
 
     let (missiles, effects) = do_fire_actions(
@@ -3781,6 +4090,9 @@ mod tests {
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }];
       let (_, effects) = do_fire_actions(
         &attacker,
@@ -3797,6 +4109,202 @@ mod tests {
         "{attacker_team:?} firing on {target_team:?} should be allowed"
       );
     }
+  }
+
+  /// The cargo lines say "50% of cargo destroyed", not "50%%".
+  #[test]
+  fn cargo_crits_print_one_percent_sign() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Freighter".to_string(),
+      hull: 200,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Freighter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let mut rng = StdRng::seed_from_u64(5);
+
+    for level in 1..=6 {
+      let effects = apply_crit(level, ShipSystem::Cargo, &mut ship, &mut rng);
+      for effect in &effects {
+        if let EffectMsg::Message { content, .. } = effect {
+          assert!(!content.contains("%%"), "level {level}: {content}");
+        }
+      }
+    }
+  }
+
+  /// A dodge by a pilot with no skill still shows in the log. It buys nothing,
+  /// which is the point: the line has to say the order was carried out.
+  #[test]
+  fn an_unskilled_dodge_is_still_reported() {
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Attacker".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      ..ShipDesignTemplate::default()
+    });
+    let defender_design = Arc::new(ShipDesignTemplate {
+      name: "Defender".to_string(),
+      hull: 200,
+      maneuver: 6,
+      power: 300,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    let mut defender = Ship::new(
+      "Defender".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &defender_design,
+      None,
+      None,
+    );
+    // The crew the scenario gave them: a pilot of skill 0.
+    defender.set_pilot_actions(Some(1), None).expect("a 6G hull can spare 1G");
+
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
+    let mut rng = StdRng::seed_from_u64(11);
+    let effects = attack(
+      HitMods::gunner(0),
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    let line = effects
+      .iter()
+      .find_map(|e| match e {
+        EffectMsg::Message { content, .. } => Some(content.clone()),
+        _ => None,
+      })
+      .expect("an attack always reports something");
+    assert!(line.contains("evade +0"), "the dodge should be named: {line}");
+  }
+
+  /// A sandcaster sharing a turret with missile racks still deploys, and the
+  /// log says so. Executor's second turret is exactly this shape.
+  #[test]
+  fn sand_from_a_mixed_turret_is_reported() {
+    let defender_design = Arc::new(ShipDesignTemplate {
+      name: "HMS Executor".to_string(),
+      hull: 400,
+      weapons: vec![
+        Weapon::single(WeaponType::Particle, WeaponMount::Barbette),
+        Weapon {
+          mount: WeaponMount::Turret,
+          guns: vec![
+            crate::ship::Gun::new(WeaponType::Missile),
+            crate::ship::Gun::new(WeaponType::Missile),
+            crate::ship::Gun::new(WeaponType::Sand),
+          ],
+        },
+      ],
+      ..ShipDesignTemplate::default()
+    });
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Threshing Oar".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Pulse, WeaponMount::Turret, 2)],
+      ..ShipDesignTemplate::default()
+    });
+
+    let mut attacker = Ship::new("Thrasher".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    attacker.contacts = vec!["Executor".to_string()];
+    let defender = Ship::new(
+      "Executor".to_string(),
+      Vec3::new(5000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &defender_design,
+      None,
+      None,
+    );
+
+    let mut snapshot = HashMap::new();
+    snapshot.insert("Executor".to_string(), defender.clone());
+    let mut sand_counts = create_sand_counts(&snapshot, &[]);
+    assert_eq!(
+      sand_counts.get("Executor").map(Vec::len),
+      Some(1),
+      "the mixed turret should offer one sandcaster: {sand_counts:?}"
+    );
+
+    let mut ships = HashMap::new();
+    ships.insert("Executor".to_string(), Arc::new(RwLock::new(defender)));
+    let actions = vec![ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Executor".to_string(),
+      called_shot_system: None,
+      firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    }];
+    let mut rng = StdRng::seed_from_u64(3);
+    let (_, effects) = do_fire_actions(
+      &attacker,
+      &mut ships,
+      &mut sand_counts,
+      &actions,
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("sand"))),
+      "the sand attempt should be reported: {effects:?}"
+    );
+  }
+
+  /// A gunner may throw fewer missiles than the rack holds -- a warning shot,
+  /// or keeping some back -- but never more than it holds.
+  #[test]
+  fn a_gunner_can_fire_a_short_salvo() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "TestShip".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 3)],
+      ..ShipDesignTemplate::default()
+    });
+
+    let launch = |salvo_size: Option<u16>| {
+      let mut rng = StdRng::seed_from_u64(7);
+      let mut attacker = Ship::new(
+        "Attacker".to_string(),
+        Vec3::new(-1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      attacker.contacts = vec!["Target".to_string()];
+      let target = Ship::new("Target".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+      let mut ships = HashMap::new();
+      ships.insert("Target".to_string(), Arc::new(RwLock::new(target)));
+      let mut sand_counts = HashMap::new();
+      let actions = vec![ShipAction::FireAction {
+        weapon_id: 0,
+        target: "Target".to_string(),
+        called_shot_system: None,
+        firing_kind: None,
+        salvo_size,
+        fire_control_dm: 0,
+        computer_fired: false,
+      }];
+      let (missiles, _) = do_fire_actions(
+        &attacker,
+        &mut ships,
+        &mut sand_counts,
+        &actions,
+        &BoostMap::default(),
+        &mut rng,
+      );
+      missiles.len()
+    };
+
+    assert_eq!(launch(None), 3, "the whole rack by default");
+    assert_eq!(launch(Some(1)), 1, "a warning shot");
+    assert_eq!(launch(Some(9)), 3, "and never more than the rack holds");
+    assert_eq!(launch(Some(0)), 1, "asking for none still fires one");
   }
 
   /// A ship cannot shoot what it has not detected. The order is accepted but
@@ -3831,6 +4339,9 @@ mod tests {
       target: "Target".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }];
 
     let (missiles, effects) = do_fire_actions(
@@ -3896,6 +4407,10 @@ mod tests {
     let make_attacker = || {
       let mut crew = Crew::new();
       crew.set_skill(Skills::Pilot, 2);
+      // A crew stated in full mans what it says it mans, so put someone on
+      // the gun: this test is about the pilot's assist, not about who is at
+      // the mount.
+      crew.add_gunnery(0);
       let mut a = Ship::new(
         "Attacker".to_string(),
         Vec3::new(-1000.0, 0.0, 0.0),
@@ -3917,6 +4432,9 @@ mod tests {
       target: "Target".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }];
 
     let mut total_unboosted: u64 = 0;
@@ -4061,12 +4579,18 @@ mod tests {
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       },
       ShipAction::FireAction {
         weapon_id: 1,
         target: "Target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       },
     ];
 

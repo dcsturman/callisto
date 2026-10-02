@@ -110,5 +110,28 @@
   ],
   "tl": 12,
   "role": "Carrier",
-  "source": "Ships of the Reach (Aslan)"
+  "source": "Ships of the Reach (Aslan)",
+  "software": [
+    {
+      "kind": "FireControl",
+      "level": 5
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "magazine": {
+    "missiles": 600,
+    "torpedoes": 0,
+    "sand": 120
+  }
 }

@@ -55,6 +55,42 @@ const SERVER_PATH: &str = "target/debug/callisto";
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(0);
 
+/// A design's software, and what a fresh ship of it runs, for the ship JSON
+/// these tests compare against. Read from the templates so a corrected
+/// loadout does not break tests that are about the wire protocol.
+fn software_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
+}
+
+/// A default crew's gunnery: one unskilled gunner per mount, which is what a
+/// ship nobody wrote a crew for sails with.
+/// What a design's magazine holds fresh from the yard.
+fn magazine_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  serde_json::to_value(callisto::ship::Magazine::for_design(templates.get(design).unwrap())).unwrap()
+}
+
+fn gunnery_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  let mounts = templates.get(design).unwrap().weapons.len();
+  serde_json::to_value(vec![0u8; mounts]).unwrap()
+}
+
+fn software_running_of(design: &str) -> serde_json::Value {
+  let templates = callisto::ship::get_ship_templates_snapshot();
+  let template = templates.get(design).unwrap().clone();
+  let ship = callisto::ship::Ship::new(
+    "probe".to_string(),
+    cgmath::Zero::zero(),
+    cgmath::Zero::zero(),
+    &template,
+    None,
+    None,
+  );
+  serde_json::to_value(&ship.software_running).unwrap()
+}
+
 fn get_next_port() -> u16 {
   use std::sync::Once;
   static INIT: Once = Once::new();
@@ -626,6 +662,8 @@ async fn integration_add_ship() {
     transmitting: None,
     team: None,
     contacts: None,
+    features_on: None,
+    software: None,
   };
 
   let body = rpc(&mut stream, RequestMsg::AddShip(ship)).await;
@@ -657,12 +695,15 @@ async fn integration_add_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }],
         "missiles":[],
         "planets":[],
@@ -701,6 +742,8 @@ async fn integration_add_planet_ship() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -721,6 +764,8 @@ async fn integration_add_planet_ship() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -742,12 +787,15 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -761,12 +809,15 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }],
           "missiles":[],
           "planets":[],
@@ -818,12 +869,15 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -837,12 +891,15 @@ async fn integration_add_planet_ship() {
          "current_computer": 5,
          "current_sensors": "Improved",
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "magazine": magazine_of("Buccaneer"),
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }]});
 
     assert_json_eq!(entities, compare);
@@ -893,12 +950,15 @@ async fn integration_add_planet_ship() {
      "current_computer": 5,
      "current_sensors": "Improved",
      "active_weapons": [true, true, true, true],
-     "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+     "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
      "dodge_thrust":0,
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
-     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+     "magazine": magazine_of("Buccaneer"),
+     "software": software_of("Buccaneer"),
+     "software_running": software_running_of("Buccaneer")
     },
     {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
      "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -912,12 +972,15 @@ async fn integration_add_planet_ship() {
      "current_computer": 5,
      "current_sensors": "Improved",
      "active_weapons": [true, true, true, true],
-     "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+     "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
      "dodge_thrust":0,
      "assist_gunners":false,
      "can_jump":false,
      "sensor_locks": [],
-     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+     "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+     "magazine": magazine_of("Buccaneer"),
+     "software": software_of("Buccaneer"),
+     "software_running": software_running_of("Buccaneer")
     }]});
 
     assert_json_eq!(&entities, &compare);
@@ -955,6 +1018,8 @@ async fn integration_update_ship() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1012,6 +1077,8 @@ async fn integration_update_missile() {
       transmitting: None,
       team: None,
       contacts: Some(vec!["ship2".to_string()]),
+      features_on: None,
+      software: Some(vec![]),
     }),
   )
   .await;
@@ -1031,6 +1098,8 @@ async fn integration_update_missile() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: Some(vec![]),
     }),
   )
   .await;
@@ -1044,6 +1113,9 @@ async fn integration_update_missile() {
       target: "ship2".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }],
   )];
 
@@ -1086,13 +1158,15 @@ async fn integration_update_missile() {
              "current_computer": 35,
              "current_sensors": "Improved",
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship2"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             // Three missiles away this round, and the magazine shows it.
+             "magazine": {"missiles": 33, "torpedoes": 0, "sand": 0}
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -1106,13 +1180,14 @@ async fn integration_update_missile() {
              "current_computer": 35,
              "current_sensors": "Improved",
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship1"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             "magazine": magazine_of("System Defense Boat")
             }],
             "missiles":[],"planets":[],"actions":[["ship1", [{"FireAction":{"weapon_id":1,"target":"ship2"}}]]]});
 
@@ -1151,6 +1226,8 @@ async fn integration_remove_ship() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1286,6 +1363,8 @@ async fn integration_set_acceleration() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1349,6 +1428,8 @@ async fn integration_compute_path_basic() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1447,6 +1528,8 @@ async fn integration_compute_path_with_standoff() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1545,6 +1628,8 @@ async fn integration_malformed_requests() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1608,6 +1693,9 @@ async fn integration_malformed_requests() {
         target: "nonexistent_target".to_string(),
         called_shot_system: None,
         firing_kind: None,
+        salvo_size: None,
+        fire_control_dm: 0,
+        computer_fired: false,
       }],
     )]),
   )
@@ -1674,6 +1762,9 @@ async fn integration_bad_requests() {
       target: "ship2".to_string(),
       called_shot_system: None,
       firing_kind: None,
+      salvo_size: None,
+      fire_control_dm: 0,
+      computer_fired: false,
     }],
   )]);
   let _response = rpc(&mut stream, msg).await;
@@ -1768,6 +1859,8 @@ async fn integration_set_crew_actions() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1851,6 +1944,8 @@ async fn integration_multi_client_test() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1868,6 +1963,8 @@ async fn integration_multi_client_test() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;
@@ -1891,6 +1988,8 @@ async fn integration_multi_client_test() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     }),
   )
   .await;

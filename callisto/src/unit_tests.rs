@@ -23,6 +23,43 @@ use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F
 use crate::list_local_or_cloud_dir;
 use crate::payloads::{AddPlanetMsg, AddShipMsg, EffectMsg, MessageCategory, SetPilotActions, EMPTY_FIRE_ACTIONS_MSG};
 use crate::player::PlayerManager;
+
+/// A design's software, and what a fresh ship of it is running, for the ship
+/// JSON these tests compare against.
+///
+/// Read from the templates rather than written out: these tests are about
+/// adding ships, fighting and missiles, and should not have to be edited
+/// every time a design's loadout is corrected against the book.
+fn software_of(design: &str) -> serde_json::Value {
+  let templates = crate::ship::get_ship_templates_snapshot();
+  serde_json::to_value(&templates.get(design).unwrap().software).unwrap()
+}
+
+/// What a design's magazine holds when it is fresh from the yard.
+fn magazine_of(design: &str) -> serde_json::Value {
+  let templates = crate::ship::get_ship_templates_snapshot();
+  serde_json::to_value(crate::ship::Magazine::for_design(templates.get(design).unwrap())).unwrap()
+}
+
+/// A default crew's gunnery: one gunner per mount, unskilled.
+///
+/// A ship nobody wrote a crew for is crewed by people whose names we do not
+/// know, so every mount has someone at it -- which is what lets an empty
+/// seat mean something when a scenario does leave one.
+fn gunnery_of(design: &str) -> serde_json::Value {
+  let templates = crate::ship::get_ship_templates_snapshot();
+  let mounts = templates.get(design).unwrap().weapons.len();
+  serde_json::to_value(vec![0u8; mounts]).unwrap()
+}
+
+/// The same, for what such a ship has running when it arrives.
+fn software_running_of(design: &str) -> serde_json::Value {
+  let templates = crate::ship::get_ship_templates_snapshot();
+  let template = templates.get(design).unwrap().clone();
+  let ship = crate::ship::Ship::new("probe".to_string(), Vec3::zero(), Vec3::zero(), &template, None, None);
+  serde_json::to_value(&ship.software_running).unwrap()
+}
+
 use crate::server::Server;
 use crate::ship::{BaySize, ShipDesignTemplate, ShipSystem, Weapon, WeaponMount, WeaponType};
 
@@ -82,12 +119,15 @@ async fn test_add_ship() {
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300,
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11,
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+        "magazine": magazine_of("Buccaneer"),
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
         "sensor_locks": [],
-        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "software": software_of("Buccaneer"),
+        "software_running": software_running_of("Buccaneer")
         }],
         "missiles":[],"planets":[],"actions":[]});
 
@@ -127,12 +167,15 @@ async fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "current_computer": 5,
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+         "magazine": magazine_of("Buccaneer"),
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         },
         {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -146,12 +189,15 @@ async fn test_add_planet_ship() {
          "current_sensors": "Improved",
          "current_computer": 5,
          "active_weapons": [true, true, true, true],
-         "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+         "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+         "magazine": magazine_of("Buccaneer"),
          "dodge_thrust":0,
          "assist_gunners":false,
          "can_jump":false,
          "sensor_locks": [],
-         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+         "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+         "software": software_of("Buccaneer"),
+         "software_running": software_running_of("Buccaneer")
         }],
           "missiles":[],
           "planets":[],
@@ -188,12 +234,15 @@ async fn test_add_planet_ship() {
        "current_sensors": "Improved",
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
-       "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+       "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -207,12 +256,15 @@ async fn test_add_planet_ship() {
        "current_sensors": "Improved",
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
-       "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+       "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       }]});
 
   assert_json_eq!(result, compare);
@@ -250,12 +302,15 @@ async fn test_add_planet_ship() {
        "current_sensors": "Improved",
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
-       "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+       "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       },
       {"name":"ship2","position":[10000.0,10000.0,10000.0],"velocity":[10000.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
@@ -269,12 +324,15 @@ async fn test_add_planet_ship() {
        "current_sensors": "Improved",
        "current_computer": 5,
        "active_weapons": [true, true, true, true],
-       "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+       "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Buccaneer")},
+       "magazine": magazine_of("Buccaneer"),
        "dodge_thrust":0,
        "assist_gunners":false,
        "can_jump":false,
        "sensor_locks": [],
-       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+       "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+       "software": software_of("Buccaneer"),
+       "software_running": software_running_of("Buccaneer")
       }]});
 
   assert_json_eq!(&start, &compare);
@@ -340,11 +398,11 @@ async fn test_update_missile() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
 
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[1000,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -383,13 +441,15 @@ async fn test_update_missile() {
              "current_sensors": "Improved",
              "current_computer": 35,
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
+             // Three missiles away this round, and the magazine shows it.
+             "magazine": {"missiles": 33, "torpedoes": 0, "sand": 0},
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
              "sensor_locks": [],
              "contacts": ["ship2"],
-             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+             "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
@@ -403,7 +463,8 @@ async fn test_update_missile() {
              "current_sensors": "Improved",
              "current_computer": 35,
              "active_weapons": [true, true],
-             "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+             "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("System Defense Boat")},
+             "magazine": magazine_of("System Defense Boat"),
              "dodge_thrust":0,
              "assist_gunners":false,
              "can_jump":false,
@@ -730,13 +791,12 @@ async fn test_called_shot() {
 
   // Gazelle class is a good test for this as it has 2 Particle Barbettes (likely to cause a crit) and 2 triple beams (also capable of called shots)
   // Give it a good gunner (skill 4) and sensor lock on ship2
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle", "sensor_locks":["ship2"], "crew":{"gunnery":[7, 6, 6, 6]}}"#;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[], "sensor_locks":["ship2"], "crew":{"gunnery":[7, 6, 6, 6]}}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
   // Make this a big ship to reduce sustained damage crits.
-  let ship2 =
-    r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5e4,0,5e4],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -884,12 +944,11 @@ async fn test_big_fight() {
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
 
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
-  let ship2 =
-    r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -952,13 +1011,14 @@ async fn test_big_fight() {
    "current_jump":5,"current_fuel":125,
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,true,true,true],
-   "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+   "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
+   "magazine": magazine_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship2"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -967,7 +1027,8 @@ async fn test_big_fight() {
    "current_jump":4,"current_fuel":130,
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,true,true,true],
-   "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+   "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
+   "magazine": magazine_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":true,
@@ -998,8 +1059,8 @@ async fn test_fight_with_crew() {
   let server = setup_test_with_server(authenticator).await;
 
   // Ship 1 has a capable crew.
-  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
-        "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]}}"#;
+  let ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[],
+        "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[2, 2, 1, 1]}}"#;
 
   let response = server.add_ship(serde_json::from_str(ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
@@ -1011,8 +1072,7 @@ async fn test_fight_with_crew() {
   assert_eq!(response, "Set crew action executed");
 
   // Ship 2 has no crew skills
-  let ship2 =
-    r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
+  let ship2 = r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -1074,13 +1134,16 @@ async fn test_fight_with_crew() {
    "current_jump":5,"current_fuel":130,
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,true,true,true],
-   "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 1, 1]},
-   "dodge_thrust":0,
+   "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[2, 2, 1, 1]},
+   // The pilot's order stands after the round it was given in: dodging three
+   // attacks spends the allowance, not the order.
+   "dodge_thrust":3,
    "assist_gunners":true,
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship2"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "magazine": magazine_of("Gazelle")
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1089,7 +1152,8 @@ async fn test_fight_with_crew() {
    "current_jump":0,"current_fuel":128,
    "current_crew":20,"current_computer": 20, "current_sensors":"Military",
    "active_weapons":[true,false,false,true],
-   "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+   "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery": gunnery_of("Gazelle")},
+   "magazine": magazine_of("Gazelle"),
    "dodge_thrust":0,
    "assist_gunners":false,
    "can_jump":false,
@@ -1122,7 +1186,7 @@ async fn test_slugfest() {
   // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
   // Boost weapon #10 as its firing a pules laser at the harrier.
   let destroyer = r#"{"name":"Evil Destroyer","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham",
-        "crew":{"pilot":3,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1]}}"#;
+        "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1]}}"#;
 
   let response = server.add_ship(serde_json::from_str(destroyer).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
@@ -1235,6 +1299,8 @@ async fn test_get_entities() {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     })
     .unwrap();
 
@@ -1270,7 +1336,11 @@ async fn test_get_entities() {
   assert_eq!(planet.get_name(), planet_name);
   assert_eq!(planet.get_position(), planet_position);
   assert_eq!(planet.color, planet_color);
-  assert!(planet.visual_effects.is_empty());
+  assert!(
+    planet.visual_effects.is_empty(),
+    "a quiet planet shows nothing: {:?}",
+    planet.visual_effects
+  );
 
   // Check that there are no missiles
   assert!(entities.missiles.is_empty());
@@ -1292,13 +1362,12 @@ async fn test_missile_impact_close() {
   let server = setup_test_with_server(authenticator).await;
 
   // Add the firing ship
-  let firing_ship =
-    r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let firing_ship = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(firing_ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
   // Add the target ship very close to the firing ship
-  let target_ship = r#"{"name":"ship2","position":[1000,1000,1000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let target_ship = r#"{"name":"ship2","position":[1000,1000,1000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(target_ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -1333,7 +1402,7 @@ async fn test_missile_impact_close() {
   );
 
   // Add the target ship very close to the firing ship but not in impact range.
-  let target_ship = r#"{"name":"ship2","position":[4000000,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat"}"#;
+  let target_ship = r#"{"name":"ship2","position":[4000000,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"System Defense Boat","software":[]}"#;
   let response = server.add_ship(serde_json::from_str(target_ship).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");
 
@@ -1532,7 +1601,7 @@ async fn test_leadership_roll_reported_without_boosts() {
 
   let (points, applied) = extract_leadership_effect(&effects, "ship1");
   assert_eq!(points, captain_result.points);
-  assert!(applied.is_empty());
+  assert!(applied.is_empty(), "no boost should have been applied: {applied:?}");
 }
 
 /// Captain rolls leadership with a couple of boosts. Verify that the
@@ -1546,7 +1615,7 @@ async fn test_leadership_check_success_path() {
 
   // ship1: a captain with leadership=4 firing two beam weapons.
   let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2,2,1,1],"leadership":4}}"#;
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[2,2,1,1],"leadership":4}}"#;
   server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
 
   // ship2: a soft target so the fire action stays in the queue.
@@ -1620,7 +1689,7 @@ async fn test_leadership_check_truncates_when_n_below_count() {
 
   // Captain ship with no leadership skill.
   let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[1,1,1,1],"leadership":0}}"#;
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[1,1,1,1],"leadership":0}}"#;
   server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
 
   let ship2 =
@@ -1680,6 +1749,7 @@ async fn test_leadership_check_truncates_when_n_below_count() {
     },
     BoostTarget::Sensor {
       ship: "ship1".to_string(),
+      operator: 0,
     },
   ];
   canonical.sort_by_key(boost_target_sort_key);
@@ -1698,7 +1768,7 @@ async fn test_leadership_drops_dead_target_boost() {
 
   // Capable captain so N is likely positive.
   let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[2,2,1,1],"leadership":6}}"#;
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[2,2,1,1],"leadership":6}}"#;
   server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
 
   let ship2 =
@@ -1817,7 +1887,7 @@ async fn test_reset_actions_strips_leadership_check() {
   let server = setup_test_with_server(authenticator).await;
 
   let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Buccaneer",
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[],"leadership":2}}"#;
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0],"leadership":2}}"#;
   server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
 
   let queue = json!([["ship1", [
@@ -2019,7 +2089,8 @@ async fn test_rearming_a_ship_clears_its_weapon_actions() {
   assert_eq!(
     remaining,
     &vec![ShipAction::SensorLock {
-      target: "ship2".to_string()
+      target: "ship2".to_string(),
+      operator: 0
     }],
     "only the weapon-bound actions should have been dropped"
   );

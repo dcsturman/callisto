@@ -27,5 +27,25 @@
   ],
   "tl": 15,
   "role": "Warship",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AutoRepair",
+      "level": 1
+    },
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "FireControl",
+      "level": 2
+    }
+  ],
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ]
 }

@@ -10,6 +10,7 @@ use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
 use super::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+use super::software::Software;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 use std::fmt::Debug;
@@ -90,6 +91,32 @@ pub struct AddShipMsg {
   /// approach. Absent means none.
   #[serde(default)]
   pub contacts: Option<Vec<String>>,
+  /// Software aboard, replacing the design's list.
+  ///
+  /// Absent means the design's own. A scenario that fits a raider with Evade
+  /// it was never sold with says so here.
+  #[serde(default)]
+  pub software: Option<Vec<Software>>,
+  /// Switchable features the ship starts with running, by index into the
+  /// design's `features` list.
+  ///
+  /// A Harrier's holographic hull is off at the dock, so absent means the
+  /// design's own defaults. A scenario that opens with the projector already
+  /// up says so here.
+  #[serde(default)]
+  pub features_on: Option<Vec<usize>>,
+}
+
+/// Start or stop one software package.
+///
+/// Not an action: the rules put no combat cost on choosing what the computer
+/// runs, and the engineer already has one order a round to spend. It takes
+/// effect for the round being given.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetSoftwareRunning {
+  pub ship_name: String,
+  pub software: Software,
+  pub running: bool,
 }
 
 #[skip_serializing_none]
@@ -261,6 +288,15 @@ pub enum EffectMsg {
     /// no one subject, e.g. a range band, which is about a pair.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ship: Option<String>,
+    /// Whether the check this message reports passed.
+    ///
+    /// `None` for the many messages that state something rather than resolve
+    /// something -- a missile launch, a range band, a ship leaving play. The
+    /// results log puts a tick or a cross against the ones that have an
+    /// answer, so a referee can see how a round went without reading every
+    /// line of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    succeeded: Option<bool>,
   },
   EngineerAction {
     result: EngineerActionResult,
@@ -322,6 +358,7 @@ impl EffectMsg {
       content,
       category: MessageCategory::Info,
       ship: None,
+      succeeded: None,
     }
   }
 
@@ -332,6 +369,18 @@ impl EffectMsg {
       content,
       category,
       ship: Some(ship.to_string()),
+      succeeded: None,
+    }
+  }
+
+  /// A message about one ship that reports how a check came out.
+  #[must_use]
+  pub fn outcome(ship: &str, category: MessageCategory, content: String, succeeded: bool) -> EffectMsg {
+    EffectMsg::Message {
+      content,
+      category,
+      ship: Some(ship.to_string()),
+      succeeded: Some(succeeded),
     }
   }
 
@@ -343,6 +392,7 @@ impl EffectMsg {
       content,
       category,
       ship: None,
+      succeeded: None,
     }
   }
 }
@@ -402,6 +452,11 @@ pub enum Role {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserData {
   pub display_name: String,
+  /// Whether this player has said they are done for the round. Cleared for
+  /// everyone when the round advances. The referee has no use for it -- they
+  /// are the one waiting -- but it costs nothing to carry.
+  #[serde(default)]
+  pub ready: bool,
   /// Every station this player is working. One entry for a single role,
   /// several for a player covering more than one seat on a small crew, and
   /// `General` for all of them.
@@ -511,10 +566,13 @@ pub enum RequestMsg {
   ComputePath(ComputePathMsg),
   SetPilotActions(SetPilotActions),
   SetShipEmissions(SetShipEmissions),
+  SetSoftwareRunning(SetSoftwareRunning),
   SetShipTeam(SetShipTeam),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
+  /// A player saying their orders for this round are in, or taking it back.
+  SetReady(bool),
   Update,
   JoinScenario(JoinScenarioMsg),
   CreateScenario(CreateScenarioMsg),
@@ -588,6 +646,8 @@ mod tests {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     };
     let json = json!({
         "name": "ship1",
@@ -617,6 +677,8 @@ mod tests {
       transmitting: None,
       team: None,
       contacts: None,
+      features_on: None,
+      software: None,
     };
     let json = json!({
         "name": "ship1",
@@ -625,10 +687,7 @@ mod tests {
         "design": "Buccaneer",
         "crew": {
             "pilot": 2,
-            "engineering_jump": 3,
-            "engineering_power": 0,
-            "engineering_maneuver": 0,
-            "sensors": 0,
+            "sensors":[],"engineers":[{"jump":3}],
             "gunnery": []
         }
     });
@@ -800,6 +859,9 @@ mod tests {
           target: "ship2".to_string(),
           called_shot_system: None,
           firing_kind: None,
+          salvo_size: None,
+          fire_control_dm: 0,
+          computer_fired: false,
         }],
       ),
       (
@@ -809,6 +871,9 @@ mod tests {
           target: "ship1".to_string(),
           called_shot_system: None,
           firing_kind: None,
+          salvo_size: None,
+          fire_control_dm: 0,
+          computer_fired: false,
         }],
       ),
     ];

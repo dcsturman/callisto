@@ -13,22 +13,41 @@ body {
     font-weight: 400;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .axis {
     color: grey;
 }
 
-h1 {
-    font-size: 18pt;
+:root {
+    /* One type scale for the whole console. Sizes were invented per rule as
+       the UI grew -- 2pt, 3px, 0.75em, 14px and 13pt all appeared -- which is
+       why a heading could end up smaller than the text inside it. Everything
+       below picks from here.
+
+       xs  captions, column heads, units
+       sm  body text, inputs, buttons: the default
+       md  a card or section title
+       lg  a panel heading
+       xl  the application's own title */
+    --font-xs: 8.5pt;
+    --font-sm: 9pt;
+    --font-md: 10.5pt;
+    --font-lg: 12pt;
+    --font-xl: 18pt;
 }
+
+h1 {
+    font-size: var(--font-xl);
+}
+
 h2 {
-    font-size: 12pt;
+    font-size: var(--font-lg);
 }
 
 h3 {
-    font-size: 10pt;
+    font-size: var(--font-md);
 }
 
 .ship-list-label {
@@ -67,32 +86,67 @@ input {
     z-index: 0;
 }
 
+/* The console: the ship's dossier and the station cards in one column that
+   fills top to bottom and spills into a second only when it has to. The
+   dossier used to own a full-height column whether it filled it or not, and
+   the cards a second one beside it -- two reserved columns for what is often
+   one column of content, on a screen where that space is the scarce thing. */
+.console {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px;
+    height: 100vh;
+    /* Only as wide as the columns it actually uses. */
+    width: max-content;
+    max-width: 100vw;
+    overflow: auto;
+    position: relative;
+    z-index: 10;
+}
+
 .controls-pane {
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    height: 100vh;
     padding-right: 4px;
-    flex-grow: 0;
-    flex-shrink: 0;
-    flex-basis: 250px;
+    /* Takes the height of what is in it, so cards follow it down the column
+       rather than starting after a full-height pane. */
+    flex: 0 0 auto;
+    width: 310px;
     border: 1px solid #b6bcae;
     background-color: black;
     color-scheme: dark;
-    overflow: hidden auto;
-    z-index: 10;
 }
 
 .control-input {
     margin: 2px;
-    padding: 2px;
+    padding: 2px 4px;
     width: 50px;
-    height: 30px;
-    border-radius: 5px;
+    height: 26px;
+    box-sizing: border-box;
+    border-radius: 3px;
     color: black;
     background-color: whitesmoke;
     border: 1px solid #333;
-    font-size: 9pt;
+    font-size: var(--font-sm);
+}
+
+/* Dropdowns are inputs too. They used to take the display face at whatever
+   size the browser chose, so a select beside a text box did not match it. */
+select.control-input,
+.select-dropdown {
+    height: 26px;
+    box-sizing: border-box;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid #333;
+    color: black;
+    background-color: whitesmoke;
+    font-family: "Sono", monospace;
+    font-size: var(--font-sm);
 }
 
 .mass-input {
@@ -128,7 +182,7 @@ input {
 }
 
 .entity-list-title {
-    font-size: 14px;
+    font-size: var(--font-md);
     margin: 0 0 4px 0;
 }
 
@@ -147,7 +201,7 @@ input {
 
 .entity-list-kind-icon {
     flex: 0 0 auto;
-    font-size: 16px;
+    font-size: var(--font-md);
     opacity: 0.85;
 }
 
@@ -175,7 +229,7 @@ input {
     cursor: pointer;
     color: inherit;
     padding: 2px 4px;
-    font-size: 12px;
+    font-size: var(--font-sm);
 }
 
 .entity-list-icon-button:hover {
@@ -187,8 +241,9 @@ input {
 }
 
 .control-button {
-    height: 30px;
+    height: 26px;
     width: 100%;
+    font-size: var(--font-sm);
 }
 
 .control-launch-button {
@@ -213,7 +268,7 @@ input {
 .control-label {
     display: flex;
     flex-direction: column;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     margin: 0px;
     padding: 2px;
     color: white;
@@ -221,7 +276,7 @@ input {
 }
 
 .control-label.h2 {
-    font-size: 12pt;
+    font-size: var(--font-lg);
     font-weight: bold;
 }
 
@@ -242,7 +297,7 @@ input {
 }
 .as-label {
     color: white;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     margin: 2px;
 }
 
@@ -278,7 +333,7 @@ input {
     white-space: nowrap;
     font-family: "Orbitron", sans-serif;
     font-weight: 600;
-    font-size: 12pt;
+    font-size: var(--font-lg);
 
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -326,7 +381,7 @@ input {
     font-optical-sizing: auto;
     font-weight: 400;
     font-style: normal;
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-variation-settings: "MONO" 1;
 }
 .ship-info-window {
@@ -363,8 +418,12 @@ input {
     right: 0px;
     display: flex;
     flex-direction: column;
+    align-items: flex-end;
     gap: 4px;
     z-index: 12;
+    /* Three panels can outgrow a laptop screen, and the results are the one
+       that scrolls rather than the stack. */
+    max-height: 100vh;
 }
 
 /* The reference's own title. It is a disclosure line inside View Controls, not
@@ -372,7 +431,7 @@ input {
    weight -- rather than shouting louder than the box it lives in. Two classes
    so this outranks the shared .accordion-header rule and nothing else. */
 .accordion.camera-keys > .accordion-header {
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-weight: 400;
     letter-spacing: 0;
 }
@@ -385,7 +444,7 @@ input {
     column-gap: 8px;
     row-gap: 2px;
     margin: 2px 0 4px 0;
-    font-size: 0.8em;
+    font-size: var(--font-xs);
 }
 
 .camera-key-list dt,
@@ -402,7 +461,7 @@ input {
     border-radius: 3px;
     padding: 0 3px;
     font-family: inherit;
-    font-size: 0.95em;
+    font-size: var(--font-sm);
     line-height: 1.3;
 }
 
@@ -412,7 +471,7 @@ input {
    are lifted so they are not skimmed past. */
 .course-banner {
     margin: 4px 0 6px 0;
-    font-size: 0.85em;
+    font-size: var(--font-sm);
     line-height: 1.35;
     max-width: 30em;
 }
@@ -434,7 +493,7 @@ input {
    body-sized, wrapping, so a fifteen-mount gunner list is two quiet lines
    rather than a column. */
 .crew-line {
-    font-size: 10pt;
+    font-size: var(--font-md);
     line-height: 1.4;
     margin: 2px 0 4px 2px;
     opacity: 0.85;
@@ -479,7 +538,7 @@ input {
 .fatal-error button {
     margin-top: 6px;
     padding: 6px 18px;
-    font-size: 1em;
+    font-size: var(--font-sm);
     cursor: pointer;
 }
 
@@ -515,7 +574,14 @@ input {
    track is added rather than always reserved -- the referee's view keeps the
    narrow three-column box. */
 .ship-summary-rows-with-range {
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 1fr auto auto auto auto;
+}
+
+/* The band the round ends in. Sits right of the kilometres and reads as the
+   conclusion drawn from them, so it is not bolder than the name. */
+.ship-summary-band {
+    padding-left: 6px;
+    white-space: nowrap;
 }
 
 /* The cells belong to the list's grid. `display: contents` drops the row box
@@ -528,7 +594,7 @@ input {
 /* Units live here instead of on every value, which is what pays for the extra
    column. Quiet enough not to compete with the ships themselves. */
 .ship-summary-header {
-    font-size: 0.75em;
+    font-size: var(--font-xs);
     letter-spacing: 0.04em;
     text-transform: uppercase;
     opacity: 0.55;
@@ -560,10 +626,33 @@ input {
     padding-right: 6px;
 }
 
+h2.control-form,
+h3.control-form {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+    border-bottom: 1px solid #4a4f48;
+    padding: 6px 0 2px 0;
+    margin: 8px 0 4px 0;
+}
+
+/* A label names the box beside it, so it sits below its section heading
+   rather than over it. */
+.control-label {
+    font-size: var(--font-sm);
+    font-weight: 400;
+}
+
 .vital-stats-bloc {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
+    /* A narrow pane wraps the row instead of hiding the last column: the
+       pane clips horizontal overflow, so "Hull" simply vanished. */
+    flex-wrap: wrap;
+    gap: 0 8px;
 }
 .target-entry-form {
     display: flex;
@@ -609,21 +698,21 @@ input {
 }
 
 .info-icon {
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .tooltip-body {
     z-index: 100;
     padding: 2px !important;
     color: #3dfc32 !important;
-    font-size: 2pt;
+    font-size: var(--font-xs);
 }
 
 #design-tooltip {
     z-index: 100;
     color: #fff;
     background-color: rgb(55, 55, 55);
-    font-size: 8pt;
+    font-size: var(--font-xs);
     padding: 2px;
     padding-left: 6px;
 }
@@ -651,7 +740,7 @@ input {
 
 .weapon-symbol-count {
     background-color: transparent;
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-weight: bold;
     color: white;
     z-index: 3;
@@ -690,7 +779,7 @@ input {
     white-space: nowrap;
     font-family: "Orbitron", sans-serif;
     font-weight: 600;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     height: 35px;
 
     -webkit-font-smoothing: antialiased;
@@ -700,7 +789,7 @@ input {
 .weapon-passive-list {
     /* Defences with no button -- point defence, sand, repulsors.  Listed as
        text so a referee can see a ship carries them. */
-    font-size: 9pt;
+    font-size: var(--font-sm);
     color: #b0b0b0;
     padding: 2px 4px 4px 4px;
     line-height: 1.3;
@@ -745,6 +834,44 @@ input {
     padding-right: 4px;
 }
 
+/* Every heading inside a panel takes the same tone, whether it was written
+   as an h2 or as a section tag: the panels are instruments, and a heading in
+   one should not be louder than the same heading in the next. */
+.station-card h2,
+.controls-pane h2,
+.view-controls-window h2,
+.ship-summary-window h2 {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+    margin: 6px 0 3px 0;
+}
+
+/* The pane's own title is the one heading above that tone, and only just. */
+.controls-pane > h1 {
+    font-size: var(--font-lg);
+    margin: 4px 0;
+}
+
+.stats-bloc-entry h2 {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #c8cdc1;
+    opacity: 0.75;
+    margin: 2px 0 0 0;
+}
+
+/* Values under those heads, and the crew line, are readings: monospace, so
+   digits line up down the panel. */
+.stats-bloc-entry .plan-accel-text,
+.crew-line {
+    font-size: var(--font-sm);
+}
+
 .authentication-container {
     background-image: url("../public/assets/galaxy1.png");
     background-size: cover;
@@ -782,13 +909,13 @@ input {
     border-radius: 6px;
     padding: 12px 16px;
     font-family: "Orbitron", sans-serif;
-    font-size: 11pt;
+    font-size: var(--font-md);
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
 }
 
 .scenario-load-errors h2 {
     margin: 0 0 6px 0;
-    font-size: 12pt;
+    font-size: var(--font-lg);
     color: #ff9090;
 }
 
@@ -804,7 +931,7 @@ input {
 
 .scenario-load-errors p {
     margin: 6px 0;
-    font-size: 10pt;
+    font-size: var(--font-md);
     opacity: 0.85;
 }
 
@@ -836,12 +963,20 @@ input {
         color: rgb(0, 255, 0);
     }
 }
+/* Ready tick. Green like the list markers, and monospace so the tick and the
+   blank it stands in for take the same room. */
+.user-ready-mark {
+    display: inline-block;
+    width: 1em;
+    font-family: monospace;
+    color: rgb(0, 255, 0);
+}
 .logout-button {
     width: 100%;
 }
 
 .authentication-blurb {
-    font-size: 12pt;
+    font-size: var(--font-lg);
     width: 40%;
 }
 
@@ -855,12 +990,6 @@ input {
     padding-right: 4px;
     display: flex;
     flex-direction: column;
-}
-
-.crew-builder-input {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
 }
 
 .crew-builder-gun-selector {
@@ -880,7 +1009,7 @@ input {
 }
 
 .accordion-header {
-    font-size: 14pt;
+    font-size: var(--font-lg);
     font-weight: bold;
     display: flex;
     flex-direction: row;
@@ -891,19 +1020,39 @@ input {
     padding-right: 4px;
 }
 
+/* Results sit in the top-right stack under the view controls: a panel of a
+   settled size in a settled place. They used to float beside the console,
+   which moved them every time the console gained or lost a column, and they
+   size to their widest line -- since detection checks started itemising
+   their DM, that line is very wide indeed. */
 #results-window {
-    /* Cap the width. This is a flex child that sizes to its widest line, and
-       since detection checks started itemising their DM the widest line is very
-       wide indeed -- the box grew across the viewport and slid under the
-       fixed top-right controls. Long lines wrap instead. */
-    max-width: min(44rem, 50vw);
-    overflow: auto;
+    width: 30rem;
+    max-width: 96vw;
+    max-height: 45vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.results-dismiss {
+    position: sticky;
+    bottom: 0;
+    /* Over the lines it is sitting on top of. */
+    background: #1b1f24;
+    z-index: 1;
+}
+
+/* The heading stays put as the results scroll under it. */
+#results-window h1 {
+    position: sticky;
+    top: 0;
+    background: #1b1f24;
+    z-index: 1;
 }
 
 /* The heading is chrome, not content: at the shared 18pt it was taller than the
    results underneath it. */
 #results-window h1 {
-    font-size: 13pt;
+    font-size: var(--font-lg);
     margin: 0 0 0.35em 0;
 }
 
@@ -943,7 +1092,7 @@ input {
     display: inline-block;
     width: 60px;
     text-align: center;
-    font-size: 1em;
+    font-size: var(--font-sm);
     font-weight: 500;
     opacity: 0.9;
 }
@@ -957,11 +1106,85 @@ input {
 /* Compact section header used in the per-ship Controls popup. Replaces the
    bulky `<h2>` per role section so the controls themselves are the visual
    focus instead of the labels. */
+/* A heading's glyph: the same size as its text and in the same colour, so it
+   reads as part of the heading rather than as decoration beside it. */
+.section-tag-icon,
+/* The heading row: the fold toggle takes the width, the arrows sit at the
+   end. Two buttons rather than one, since a button cannot nest. */
+.station-card-head-row {
+    display: flex;
+    align-items: stretch;
+}
+
+.station-card-head-row > .station-card-head {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.station-card-move {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-right: 3px;
+}
+
+/* Quiet until wanted: arranging the console is a thing you do once, not
+   something that should compete with the instruments. */
+.station-card-move-button {
+    border: none;
+    background: none;
+    color: #c8cdc1;
+    opacity: 0.35;
+    cursor: pointer;
+    font-size: 7pt;
+    line-height: 1;
+    padding: 1px 2px;
+}
+
+.station-card-move-button:hover:not(:disabled) {
+    opacity: 1;
+}
+
+.station-card-move-button:disabled {
+    opacity: 0.1;
+    cursor: default;
+}
+
+.card-order-reset {
+    align-self: flex-start;
+    margin: 2px 4px;
+    padding: 1px 7px;
+    font-size: var(--font-xs);
+    color: #c8cdc1;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.station-card-icon {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 5px;
+    opacity: 0.8;
+    vertical-align: -1px;
+}
+
+.station-card-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.section-tag-icon svg {
+    width: 12px;
+    height: 12px;
+}
+
 .section-tag {
     /* Absolute pt so the tag's size is consistent regardless of whichever
        parent's font-size context it lands in (e.g. `.control-label` parents
        compute em differently from naked containers). */
-    font-size: 9pt;
+    font-size: var(--font-sm);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -981,7 +1204,7 @@ input {
 #crew-actions-window select,
 #crew-actions-window input,
 #crew-actions-window p {
-    font-size: 11pt;
+    font-size: var(--font-md);
 }
 
 /* Pack Pilot Actions onto a single row: Dodge label/input + Assist Gunner
@@ -1008,7 +1231,7 @@ input {
     background-color: whitesmoke;
     border: 1px solid #333;
     font-family: "Orbitron", sans-serif;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .sensor-action-select {
@@ -1018,7 +1241,7 @@ input {
 }
 
 .role-input {
-    font-size: 8pt;
+    font-size: var(--font-xs);
     height: 20px;
     margin: 0px;
     margin-left: 2px;
@@ -1062,7 +1285,7 @@ input {
 }
 
 .label-scenario-name {
-    font-size: 14pt;
+    font-size: var(--font-lg);
 }
 
 .tutorial-button {
@@ -1097,7 +1320,7 @@ input {
     justify-content: space-between;
     align-items: center;
     padding: 2px;
-    font-size: 3px;
+    font-size: var(--font-xs);
 }
 
 .planet-effect-row label {
@@ -1106,7 +1329,7 @@ input {
     align-items: flex-start;
     margin: 8px;
     cursor: pointer;
-    font-size: 7pt;
+    font-size: var(--font-xs);
 }
 
 .planet-effect-checkbox {
@@ -1136,7 +1359,7 @@ input {
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     padding: 4px 0;
     width: 100%;
 }
@@ -1158,7 +1381,7 @@ input {
     color: black;
     background-color: whitesmoke;
     border: 1px solid #333;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .save-scenario-dialog-backdrop,
@@ -1202,7 +1425,7 @@ input {
     border: 1px solid #333;
     border-radius: 4px;
     padding: 4px 6px;
-    font-size: 10pt;
+    font-size: var(--font-md);
     font-family: "Sono", monospace;
     width: 100%;
     box-sizing: border-box;
@@ -1231,7 +1454,7 @@ input {
     color: white;
     cursor: pointer;
     font-family: "Orbitron", sans-serif;
-    font-size: 10pt;
+    font-size: var(--font-md);
 }
 
 .save-scenario-button-row button:disabled {
@@ -1287,7 +1510,7 @@ input {
 .hardpoint-guns .hardpoint-gun {
     flex: 1 1 0;
     min-width: 0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .weapon-detail-backdrop {
@@ -1313,12 +1536,12 @@ input {
 
 .weapon-detail-dialog h2 {
     margin: 0 0 4px 0;
-    font-size: 13pt;
+    font-size: var(--font-lg);
 }
 
 .weapon-detail-summary {
     color: #b0b0b0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     margin-bottom: 10px;
 }
 
@@ -1334,7 +1557,7 @@ input {
 }
 
 .weapon-detail-gun-label {
-    font-size: 9pt;
+    font-size: var(--font-sm);
     color: #b0b0b0;
     min-width: 44px;
 }
@@ -1347,7 +1570,7 @@ input {
 }
 
 .weapon-detail-modifier {
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -1374,7 +1597,7 @@ input {
 }
 
 .hardpoint-usage {
-    font-size: 12px;
+    font-size: var(--font-sm);
 }
 
 /* Over-allowance is advisory only: the ship is still submittable. */
@@ -1390,12 +1613,12 @@ input {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    font-size: 12px;
+    font-size: var(--font-sm);
     margin-top: 4px;
 }
 
 .hardpoint-column-labels > span {
-    font-size: 10px;
+    font-size: var(--font-xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     opacity: 0.6;
@@ -1463,7 +1686,7 @@ input {
 .hardpoint-guns .hardpoint-gun {
     flex: 1 1 0;
     min-width: 0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
 }
 
 .weapon-detail-backdrop {
@@ -1489,12 +1712,12 @@ input {
 
 .weapon-detail-dialog h2 {
     margin: 0 0 4px 0;
-    font-size: 13pt;
+    font-size: var(--font-lg);
 }
 
 .weapon-detail-summary {
     color: #b0b0b0;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     margin-bottom: 10px;
 }
 
@@ -1510,7 +1733,7 @@ input {
 }
 
 .weapon-detail-gun-label {
-    font-size: 9pt;
+    font-size: var(--font-sm);
     color: #b0b0b0;
     min-width: 44px;
 }
@@ -1523,7 +1746,7 @@ input {
 }
 
 .weapon-detail-modifier {
-    font-size: 8.5pt;
+    font-size: var(--font-xs);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -1535,7 +1758,7 @@ input {
 }
 
 .hardpoint-problem {
-    font-size: 12px;
+    font-size: var(--font-sm);
     color: #b00;
     margin-top: 2px;
 }
@@ -1543,7 +1766,7 @@ input {
 /* Gunnery moved to the hardpoint rows; this keeps its absence from reading as
    an oversight. */
 .crew-builder-note {
-    font-size: 12px;
+    font-size: var(--font-sm);
     opacity: 0.7;
     margin: 4px 0 0 0;
 }
@@ -1582,7 +1805,7 @@ input {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     white-space: nowrap;
     cursor: pointer;
 }
@@ -1615,7 +1838,7 @@ input {
     border: 1px solid #555;
     border-radius: 3px;
     font-family: "Sono", monospace;
-    font-size: 9pt;
+    font-size: var(--font-sm);
     padding: 0 2px;
 }
 
@@ -1631,9 +1854,7 @@ input {
     cursor: not-allowed;
 }
 
-/* Heading row of the Ship's Computer: the ship's name and, in place of the
-   word "Controls", the team selector. Baseline-aligned so the dropdown sits
-   with the name rather than floating above or below it. */
+/* Heading row of the Ship's Computer: the ship's name. */
 .computer-title-row {
     display: flex;
     align-items: baseline;
@@ -1643,6 +1864,19 @@ input {
 
 .computer-title-row h1 {
     margin: 0;
+}
+
+/* Salvo size on a launch action: how many of the rack to throw. Sized to sit
+   on the action's own row rather than pushing the boost column along. */
+.salvo-select {
+    background-color: #1a1a1a;
+    color: inherit;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-family: "Sono", monospace;
+    font-size: var(--font-sm);
+    padding: 0 2px;
+    margin-left: 4px;
 }
 
 /* A weapon button for a gun that shares its mount with something else. Without
@@ -1664,4 +1898,1334 @@ input {
     border-top: 6px solid #b6bcae;
     border-left: 6px solid transparent;
     pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Sensor station: the sensop's instruments. Everything here is read, not
+   operated, so it is dense, quiet, and leans on shape and colour rather than
+   on labels -- the operator is reading it aloud to the rest of the crew.
+   --------------------------------------------------------------------------- */
+
+.sensor-station {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.sensor-block {
+    border: 1px solid #2c3c4c;
+    border-radius: 3px;
+    padding: 4px 6px 6px;
+    background: rgba(12, 20, 28, 0.6);
+}
+
+.sensor-empty {
+    margin: 2px 0 0;
+    font-size: var(--font-sm);
+    font-style: italic;
+    opacity: 0.6;
+}
+
+/* Icons inherit the row's colour, so a lit row and a quiet one differ in one
+   place rather than two. */
+.sensor-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+}
+
+.sensor-icon-fill {
+    fill: currentColor;
+    stroke: none;
+}
+
+.sensor-icon-alarm {
+    color: #ff6b6b;
+}
+
+/* --- Emissions gauge --- */
+
+.emission-gauge-svg {
+    width: 100%;
+    height: 34px;
+}
+
+.emission-step {
+    opacity: 0.85;
+}
+
+.emission-step-quiet { fill: #2f6f4f; }
+.emission-step-faint { fill: #8a8f3a; }
+.emission-step-loud { fill: #b86a2b; }
+.emission-step-blazing { fill: #a33b3b; }
+
+.emission-tick {
+    stroke: rgba(0, 0, 0, 0.55);
+    stroke-width: 1;
+}
+
+.emission-needle {
+    fill: #e8f1f8;
+}
+
+.emission-needle-line {
+    stroke: #e8f1f8;
+    stroke-width: 1.5;
+}
+
+.emission-reading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--font-sm);
+}
+
+.emission-total {
+    font-family: "Sono", monospace;
+    font-size: var(--font-md);
+}
+
+/* The gauge names its own state, and the colour of that name is the state. */
+.emission-quiet .emission-level { color: #63c08c; }
+.emission-faint .emission-level { color: #d8de6a; }
+.emission-loud .emission-level { color: #f0a35e; }
+.emission-blazing .emission-level { color: #ff6b6b; }
+
+.emission-terms {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 1px 6px;
+    font-size: var(--font-sm);
+}
+
+.emission-term {
+    display: contents;
+}
+
+/* A row contributing nothing is still shown: "the transponder is off" is
+   something the operator wants to be able to say. */
+.emission-term-quiet {
+    opacity: 0.45;
+}
+
+.emission-term-value {
+    font-family: "Sono", monospace;
+    text-align: right;
+}
+
+.emission-icon {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+    align-self: center;
+}
+
+.emission-icon-wave {
+    opacity: 0.8;
+}
+
+.emission-icon-lit {
+    color: #ffd43b;
+}
+
+/* --- Eyes on us --- */
+
+.watcher-list,
+.salvo-list,
+.contact-detail-list {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.watcher {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 0;
+}
+
+.watcher-state {
+    margin-left: auto;
+    font-size: var(--font-xs);
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+
+.watcher-locked .watcher-state {
+    color: #ff6b6b;
+    opacity: 1;
+}
+
+/* --- Inbound salvoes --- */
+
+.salvo {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+}
+
+.salvo-count {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    color: #ff6b6b;
+}
+
+.salvo-count-number {
+    font-family: "Sono", monospace;
+    font-size: var(--font-md);
+}
+
+.salvo-range {
+    font-family: "Sono", monospace;
+    text-align: right;
+}
+
+.salvo-band {
+    opacity: 0.6;
+}
+
+.salvo-eta {
+    font-family: "Sono", monospace;
+    text-align: right;
+    min-width: 2.2em;
+}
+
+/* One round out is the last chance to do anything about it. */
+.salvo-eta-now {
+    color: #ff6b6b;
+}
+
+/* --- Squadron picture --- */
+
+.picture-grid {
+    border-collapse: collapse;
+    margin-top: 4px;
+    font-size: var(--font-sm);
+    width: 100%;
+}
+
+.picture-ship {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    font-weight: normal;
+    opacity: 0.75;
+    padding: 0 2px;
+    text-align: center;
+}
+
+.picture-contact {
+    font-weight: normal;
+    text-align: left;
+    padding-right: 6px;
+    white-space: nowrap;
+}
+
+.picture-cell {
+    text-align: center;
+    padding: 0 2px;
+}
+
+.picture-mark {
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
+.picture-mark-held {
+    fill: #63c08c;
+}
+
+/* An outline, not a blank: the cell says "this ship is blind to it", which is
+   information, where an empty cell would read as a rendering gap. */
+.picture-mark-blind {
+    fill: none;
+    stroke: #6b7684;
+    stroke-width: 1.2;
+    stroke-dasharray: 2 2;
+}
+
+.picture-mark-lock {
+    fill: none;
+    stroke: #ffd43b;
+    stroke-width: 1.2;
+}
+
+/* A row our side cannot all see is the one worth closing. */
+.picture-row-gap .picture-contact::after {
+    content: " \2022";
+    color: #ffd43b;
+}
+
+/* --- Contact detail --- */
+
+.contact-detail {
+    border-top: 1px solid #22303d;
+    padding: 3px 0;
+}
+
+.contact-detail:first-child {
+    border-top: none;
+}
+
+.contact-detail-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.contact-detail-class {
+    opacity: 0.75;
+}
+
+.contact-detail-tons {
+    margin-left: auto;
+    font-family: "Sono", monospace;
+    opacity: 0.75;
+}
+
+.contact-detail-line {
+    display: flex;
+    gap: 4px;
+    align-items: baseline;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+.contact-detail-label {
+    opacity: 0.55;
+    text-transform: lowercase;
+}
+
+.contact-detail-label:not(:first-child) {
+    margin-left: 6px;
+}
+
+.contact-weapons {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+
+.contact-weapon {
+    display: flex;
+    align-items: center;
+}
+
+/* A mount drawn as the gunner draws it. Smaller here: this is a reading of
+   someone else's ship rather than a button to press. */
+.weapon-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+}
+
+.weapon-glyph-icon {
+    width: 24px;
+    height: auto;
+    background-color: transparent;
+}
+
+/* A mixed mount takes its first gun's colour, so it is marked the way the
+   gunner's own mixed buttons are. */
+.weapon-glyph-mixed {
+    border-bottom: 2px solid #8899aa;
+}
+
+.contact-weapon-none {
+    border: none;
+    font-style: italic;
+    opacity: 0.55;
+}
+
+/* ---------------------------------------------------------------------------
+   Crew lists: sensor operators and engineers are people, not skills, so each
+   is a row that can be added to or taken off the watch. Every row sits on a
+   grid shared with its heading, so the heads are over the boxes they name.
+   --------------------------------------------------------------------------- */
+
+/* Pilot and leadership: one value each, labels left and boxes right. */
+.crew-skill-rows {
+    display: grid;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+.crew-skill-row {
+    display: grid;
+    grid-template-columns: 1fr 3.2em;
+    align-items: center;
+    gap: 6px;
+}
+
+.crew-skill-input {
+    text-align: center;
+}
+
+.crew-group {
+    margin-top: 8px;
+    border-top: 1px solid #22303d;
+    padding-top: 4px;
+}
+
+.crew-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.crew-group-title {
+    font-size: var(--font-md);
+    letter-spacing: 0.04em;
+    opacity: 0.85;
+}
+
+.crew-group-empty {
+    margin: 2px 0;
+    font-size: var(--font-xs);
+    font-style: italic;
+    opacity: 0.55;
+}
+
+.crew-add,
+.crew-remove {
+    background: none;
+    border: 1px solid #2c3c4c;
+    border-radius: 2px;
+    color: inherit;
+    cursor: pointer;
+    font-family: "Sono", monospace;
+    line-height: 1;
+    padding: 1px 5px;
+}
+
+.crew-add {
+    margin-left: auto;
+}
+
+.crew-remove {
+    opacity: 0.75;
+}
+
+.crew-add:hover,
+.crew-remove:hover {
+    border-color: #4a6a8a;
+    opacity: 1;
+}
+
+/* The watch: a number box per skill, the row's number on the left and the
+   button that takes them off it on the right. */
+.crew-operator-grid,
+.crew-engineer-grid {
+    display: grid;
+    align-items: center;
+    gap: 3px 4px;
+    margin-top: 3px;
+    justify-content: start;
+}
+
+.crew-operator-grid {
+    grid-template-columns: 1.8em 3.2em 1.8em;
+}
+
+.crew-engineer-grid {
+    grid-template-columns: 1.8em repeat(5, 3.2em) 1.8em;
+}
+
+.crew-column-head {
+    font-size: var(--font-xs);
+    opacity: 0.55;
+    text-align: center;
+}
+
+.crew-row-label {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    opacity: 0.6;
+    text-align: right;
+}
+
+.crew-row-input {
+    width: 100%;
+    text-align: center;
+    padding: 1px 2px;
+}
+
+/* Names the crew member a panel belongs to, where a ship carries more than
+   one of them. Quiet: it is a label on someone else's controls. */
+.crew-slot-tag {
+    margin-top: 6px;
+    font-size: var(--font-xs);
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+    border-top: 1px solid #22303d;
+    padding-top: 3px;
+}
+
+/* ---------------------------------------------------------------------------
+   Engineer's boards: power and damage control. Both are instruments -- read at
+   a glance, operated rarely -- so they lean on lit bars and pips rather than
+   on columns of figures.
+   --------------------------------------------------------------------------- */
+
+.power-board,
+.damage-board {
+    border: 1px solid #2c3c4c;
+    border-radius: 3px;
+    padding: 4px 6px 6px;
+    background: rgba(12, 20, 28, 0.6);
+    margin-top: 6px;
+}
+
+.power-summary {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--font-sm);
+    font-family: "Sono", monospace;
+}
+
+.power-spare {
+    color: #63c08c;
+}
+
+/* Drawing more than the plant makes: the engineer's problem to solve. */
+.power-short {
+    color: #ff6b6b;
+}
+
+.power-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    margin-top: 6px;
+    overflow-x: auto;
+}
+
+.power-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 34px;
+}
+
+/* The tube a column fills. Dark and recessed, so an unlit bar still reads as
+   a gauge with nothing in it rather than as empty space. */
+.power-column-track {
+    width: 14px;
+    height: 70px;
+    background: #10171e;
+    border: 1px solid #243240;
+    border-radius: 2px;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+}
+
+.power-column-fill {
+    width: 100%;
+    background: #ff4d4d;
+    box-shadow: 0 0 6px #ff4d4d, 0 0 14px rgba(255, 77, 77, 0.6);
+    transition: height 180ms ease-out;
+}
+
+/* Shut down: the tube is still there, the glow is not. */
+.power-column-dark .power-column-fill {
+    background: #3a4450;
+    box-shadow: none;
+}
+
+/* An order queued this round, not yet resolved: amber, as a pending switch. */
+.power-column-queued .power-column-fill {
+    background: #ffb84d;
+    box-shadow: 0 0 6px #ffb84d, 0 0 14px rgba(255, 184, 77, 0.5);
+}
+
+.power-column-draw {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+}
+
+.power-column-switch {
+    background: none;
+    border: 1px solid #2c3c4c;
+    border-radius: 2px;
+    color: inherit;
+    cursor: pointer;
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    padding: 0 3px;
+}
+
+.power-column-switch:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.power-column-label {
+    font-size: var(--font-xs);
+    opacity: 0.7;
+    text-align: center;
+    max-width: 46px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.power-half {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+/* A system that draws only when it is used -- the jump drive. Lit its full
+   height when the spare power would cover it, in the cooler colour of
+   something held in reserve rather than something running. */
+.power-column-standby .power-column-fill {
+    background: #5aa9e6;
+    box-shadow: 0 0 6px rgba(90, 169, 230, 0.5);
+    opacity: 0.75;
+}
+
+/* A system the plant cannot feed: the tube is lit to what it is getting, in
+   the colour of a warning rather than of a system at work. */
+.power-column-starved .power-column-fill {
+    background: #ffb84d;
+    box-shadow: 0 0 6px rgba(255, 184, 77, 0.6);
+}
+
+.power-queued-note {
+    margin-left: 6px;
+    font-size: var(--font-xs);
+    color: #ffb84d;
+}
+
+/* Results: a tick or a cross in a fixed gutter, so the text of every line
+   starts at the same column whether it was a check or a statement. */
+.result-line {
+    display: grid;
+    grid-template-columns: 1.2em 1fr;
+    align-items: baseline;
+    gap: 6px;
+    margin: 3px 0;
+}
+
+.result-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 3px;
+    font-size: var(--font-xs);
+    font-weight: 700;
+    line-height: 1;
+    color: #ffffff;
+}
+
+.result-pass {
+    background: #2f8f55;
+}
+
+/* A failure is the thing a referee scans for, so it is the rounder, louder
+   of the two. */
+.result-fail {
+    background: #c0392b;
+    border-radius: 50%;
+}
+
+/* Nothing was checked: the gutter still holds the line's text in place. */
+.result-mark-none {
+    background: none;
+}
+
+.result-text {
+    min-width: 0;
+}
+
+/* --- The ship's computer --- */
+
+.computer-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--font-sm);
+}
+
+.computer-processing {
+    font-family: "Sono", monospace;
+    letter-spacing: 0.04em;
+}
+
+.computer-spare {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}
+
+/* Over the computer's Processing score: something has to be shut down. */
+.computer-over {
+    color: #ff6b6b;
+    opacity: 1;
+}
+
+/* Bandwidth is one pool, so it reads as one bar rather than a column per
+   package. */
+.bandwidth-gauge {
+    height: 7px;
+    margin: 5px 0 7px;
+    border: 1px solid #2f3a33;
+    border-radius: 2px;
+    background: #10151a;
+    overflow: hidden;
+}
+
+.bandwidth-gauge-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3f7fbf, #5aa9e6);
+    box-shadow: 0 0 6px rgba(90, 169, 230, 0.5);
+    transition: width 120ms linear;
+}
+
+.software-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.software-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 1px 0;
+    opacity: 0.6;
+}
+
+/* Running software is the thing being read, so it is the thing that is lit. */
+.software-on {
+    opacity: 1;
+}
+
+.software-toggle {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+}
+
+.software-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.software-bandwidth {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    opacity: 0.75;
+}
+
+.software-none {
+    font-style: italic;
+    opacity: 0.55;
+}
+
+/* The referee's loadout editor, in the Add Ship form. */
+.software-editor-list {
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.software-editor-list .software-row {
+    gap: 8px;
+}
+
+.software-remove {
+    border: none;
+    background: none;
+    color: #ff6b6b;
+    cursor: pointer;
+    font-size: var(--font-md);
+    line-height: 1;
+    padding: 0 2px;
+}
+
+.software-add {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.software-add select {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+/* The computer's share of a shot, under the fire order it belongs to. */
+.fire-control-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+.fire-control-toggle,
+.fire-control-dm {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+}
+
+.fire-control-left {
+    font-family: "Sono", monospace;
+    opacity: 0.7;
+}
+
+/* A computer with nothing spare cannot work its squadron's hand-offs. */
+.computer-warning {
+    margin: 0 0 6px;
+    font-size: var(--font-xs);
+    color: #ffb84d;
+}
+
+/* Bandwidth an ion hit is holding down. */
+.computer-ion {
+    color: #5aa9e6;
+}
+
+/* The drones the computer can send to a system instead of an engineer. */
+.damage-drones {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+/* A mount nobody is at. Dimmed as well as greyed, so it reads as out of
+   action next to the guns that are crewed. */
+.weapon-button-unmanned {
+    opacity: 0.55;
+}
+
+/* --- The gunner's instruments --- */
+
+/* A quiet switch under the board rather than a control competing with it. */
+.target-allies {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-top: 3px;
+    font-size: var(--font-xs);
+    opacity: 0.7;
+}
+
+.target-rows,
+.incoming-rows,
+.odds-rows,
+.magazine-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.target-row {
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.target-row:last-child {
+    border-bottom: none;
+}
+
+.target-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.target-name {
+    font-weight: 600;
+}
+
+/* A lock is worth DM+2, so it reads as something gained. */
+.target-lock {
+    font-size: var(--font-xs);
+    color: #63c08c;
+    border: 1px solid rgba(99, 192, 140, 0.5);
+    border-radius: 2px;
+    padding: 0 3px;
+}
+
+.target-range {
+    margin-left: auto;
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+.target-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: var(--font-xs);
+    opacity: 0.85;
+}
+
+.target-dm,
+.target-trend {
+    font-family: "Sono", monospace;
+}
+
+/* Warmer as the range closes, matching the roster's colouring. */
+.target-band-short {
+    color: #ff8f5a;
+}
+
+.target-band-medium {
+    color: #ffc14d;
+}
+
+.target-band-long {
+    color: #9ad26a;
+}
+
+.target-band-very-long {
+    color: #5aa9e6;
+}
+
+.target-band-distant {
+    color: #909296;
+}
+
+/* Ours, at the end of the detail line: small, because it is a reminder of
+   what we are carrying rather than the subject of the row. */
+.target-reach {
+    display: inline-flex;
+    gap: 1px;
+    align-items: center;
+    margin-left: auto;
+    transform: scale(0.72);
+    transform-origin: right center;
+}
+
+/* Theirs, on a line of its own with what each would roll against us. */
+.target-theirs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 1px;
+}
+
+.target-their-gun {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+}
+
+.target-their-dm {
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--font-xs);
+    color: #ffb84d;
+}
+
+/* A mount that cannot reach is dimmed rather than hidden: knowing which gun
+   is useless at this range is the point. */
+.target-reach-no {
+    opacity: 0.25;
+    filter: grayscale(1);
+}
+
+/* Three questions on one card -- what is flying at us, what could fire at
+   us, and what we have to answer with -- so each gets a line of its own. */
+.incoming-heading {
+    margin: 6px 0 2px;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
+}
+
+.incoming-heading:first-child {
+    margin-top: 0;
+}
+
+.threat-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: var(--font-xs);
+}
+
+.threat-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 6px;
+    align-items: baseline;
+}
+
+.threat-name {
+    font-size: var(--font-sm);
+}
+
+.threat-band {
+    opacity: 0.7;
+}
+
+/* The part of their shot we can work out: weapon, range, their lock, our
+   evasion. Their gunner's skill is not ours to know, so the number is
+   deliberately short of the whole story -- hence the hover. */
+.threat-dm {
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+    color: #ffb84d;
+}
+
+.threat-guns {
+    text-align: right;
+    opacity: 0.85;
+}
+
+.incoming-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.incoming-count {
+    font-family: "Sono", monospace;
+    font-weight: 700;
+    color: #ff6b6b;
+}
+
+.incoming-eta {
+    margin-left: auto;
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}
+
+/* Arriving now: the thing the gunner has to answer this round. */
+.incoming-now {
+    color: #ff6b6b;
+    opacity: 1;
+}
+
+.incoming-defences {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: var(--font-xs);
+    opacity: 0.8;
+}
+
+.odds-head {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 3px;
+}
+
+/* A quiet control, in the console's own tone: the white input styling it
+   borrowed was a white slab with its label clipped. */
+.odds-toggle {
+    font-size: var(--font-xs);
+    padding: 1px 7px;
+    color: #c8cdc1;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    width: auto;
+    margin-top: 4px;
+}
+
+.odds-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.odds-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    font-size: var(--font-xs);
+}
+
+.odds-dm,
+.odds-chance {
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Out of reach, or nobody at the mount: no shot to weigh. */
+.odds-row-dead {
+    opacity: 0.45;
+}
+
+.magazine-rows {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.magazine-row {
+    display: flex;
+    gap: 4px;
+    align-items: baseline;
+    font-size: var(--font-xs);
+}
+
+.magazine-count {
+    font-family: "Sono", monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Empty racks, which a gunner should see before ordering a salvo. */
+.magazine-out {
+    color: #ff6b6b;
+}
+
+/* --- Jump readiness --- */
+
+.jump-verdict {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.jump-ready {
+    color: #63c08c;
+}
+
+.jump-not-ready {
+    color: #ff6b6b;
+}
+
+/* Fuel enough to jump, but not as far as the drive is rated for. */
+.jump-limited {
+    color: #ffb84d;
+}
+
+.jump-condition-limited .jump-condition-mark,
+.jump-condition-limited .jump-condition-detail {
+    color: #ffb84d;
+    opacity: 1;
+}
+
+.jump-conditions {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.jump-condition {
+    display: grid;
+    grid-template-columns: 1em auto 1fr;
+    align-items: baseline;
+    gap: 5px;
+    padding: 1px 0;
+}
+
+.jump-condition-mark {
+    color: #63c08c;
+    font-family: "Sono", monospace;
+}
+
+.jump-condition-blocking .jump-condition-mark {
+    color: #ff6b6b;
+}
+
+/* The reason, which is what the engineer reads out: a figure against the
+   figure it has to beat. */
+.jump-condition-detail {
+    text-align: right;
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    opacity: 0.75;
+}
+
+/* --- Damage control --- */
+
+.damage-rows,
+.damage-overloads {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    font-size: var(--font-sm);
+}
+
+.damage-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+}
+
+.severity {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.severity-pip {
+    width: 6px;
+    height: 10px;
+    border: 1px solid #2c3c4c;
+    border-radius: 1px;
+}
+
+.severity-pip-lit {
+    background: #ffa94d;
+    border-color: #ffa94d;
+}
+
+/* Severity 4 and up is where systems start being destroyed outright. */
+.severity-bad .severity-pip-lit {
+    background: #ff6b6b;
+    border-color: #ff6b6b;
+}
+
+.damage-dm {
+    font-family: "Sono", monospace;
+    min-width: 2.2em;
+    text-align: right;
+}
+
+/* A repair that needs a 10 or better on 2D is one to think twice about. */
+.damage-dm-poor {
+    color: #ff6b6b;
+}
+
+.damage-overload {
+    font-size: var(--font-xs);
+    color: #ffa94d;
+    opacity: 0.9;
+}
+
+.damage-hull {
+    margin-top: 4px;
+    font-size: var(--font-xs);
+    font-family: "Sono", monospace;
+    opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------------------
+   Stations: one card per crew station the player is working.
+
+   The layout used to depend on which role you held -- a gunner's controls
+   were an accordion in the left column, a pilot's helm a pop-up, and the
+   referee got a second copy of everything in a window of its own. Now every
+   station is the same card, and they flow into as many columns as the space
+   allows: one station reads as a column, five fill the width.
+   --------------------------------------------------------------------------- */
+
+.station-card {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    width: 310px;
+    border: 1px solid #b6bcae;
+    background-color: rgba(0, 0, 0, 0.85);
+    /* A card taller than the screen scrolls inside itself rather than
+       pushing the column off the bottom. */
+    max-height: 100vh;
+    overflow: auto;
+}
+
+/* The heading is the fold control, so it is a button -- but it should read as
+   a title bar, not as something to press for its own sake. */
+.station-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 3px 6px;
+    background: rgba(40, 54, 68, 0.6);
+    border: none;
+    border-bottom: 1px solid #2c3c4c;
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+}
+
+.station-card-head:hover {
+    background: rgba(56, 74, 92, 0.7);
+}
+
+.station-card-title {
+    font-size: var(--font-md);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* Who is working it: a skill, or a position when the ship carries several. */
+.station-card-crew {
+    font-size: var(--font-xs);
+    font-family: "Sono", monospace;
+    opacity: 0.65;
+}
+
+.station-card-chevron {
+    margin-left: auto;
+    opacity: 0.6;
+    font-size: var(--font-sm);
+}
+
+.station-card-body {
+    padding: 4px 6px 6px;
+}
+
+/* A card folded away keeps its heading and nothing else. */
+.station-card-closed .station-card-head {
+    border-bottom: none;
+}
+
+/* The orders a station has queued, at the foot of its own card. The captain's
+   card carries the whole round's instead. */
+.station-orders {
+    margin-top: 6px;
+    border-top: 1px solid #22303d;
+    padding-top: 4px;
+}
+
+.stations-note {
+    width: 310px;
+    margin: 0;
+    padding: 2px 6px;
+    font-size: var(--font-xs);
+    font-style: italic;
+    opacity: 0.7;
 }

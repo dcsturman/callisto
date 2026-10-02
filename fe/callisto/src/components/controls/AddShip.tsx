@@ -45,6 +45,131 @@ import { CiCircleQuestion } from "react-icons/ci";
 import { unique_ship_name } from "lib/shipnames";
 import { Ship, defaultShip, findShip } from "lib/entities";
 import { Team, TEAMS, TEAM_CSS } from "lib/teams";
+import { samePowerSystem } from "lib/power";
+import {
+  SOFTWARE,
+  SOFTWARE_KINDS,
+  Software,
+  SoftwareKind,
+  isLevelled,
+  bandwidthOf,
+  sameSoftware,
+  softwareLabel,
+} from "lib/software";
+
+/**
+ * Which of a design's auxiliary systems start running.
+ *
+ * A Harrier's holographic hull is off at the dock and the engineer brings it
+ * up, so these are off unless the design says otherwise -- and a scenario can
+ * open with one already running by ticking it here.
+ */
+function defaultFeaturesOn(design: ShipDesignTemplate | undefined): number[] {
+  return (design?.features ?? [])
+    .map((feature, index) => (feature.default_on ? index : -1))
+    .filter((index) => index >= 0);
+}
+
+/** Whether two loadouts are the same set of packages. */
+function sameSoftwareList(a: Software[], b: Software[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((package_) => b.some((other) => sameSoftware(package_, other)))
+  );
+}
+
+/** The same, read back off a ship that already exists. */
+function featuresOnFor(ship: Ship, design: ShipDesignTemplate | undefined): number[] {
+  const offline = ship.offline ?? [];
+  return (design?.features ?? [])
+    .map((_feature, index) => index)
+    .filter((index) => !offline.some((off) => samePowerSystem(off, {Feature: index})));
+}
+
+/**
+ * Which software a ship carries, for the referee building a scenario.
+ *
+ * Installed, not running: a ship can own more than it can run at once, and
+ * which of it is up during the fight is the engineer's problem rather than
+ * the scenario author's.
+ */
+function SoftwareEditor(args: {
+  software: Software[];
+  processing: number;
+  onChange: (software: Software[]) => void;
+}) {
+  const [kind, setKind] = useState<SoftwareKind>("Evade");
+  const [level, setLevel] = useState<number>(SOFTWARE["Evade"].levels[0][0]);
+
+  const add = () => {
+    const addition = { kind, level };
+    // One level of a package at a time: fitting Evade/2 replaces Evade/1.
+    const kept = args.software.filter((installed) => installed.kind !== kind);
+    args.onChange([...kept, addition]);
+  };
+
+  return (
+    <div className="software-editor">
+      <h2>Software</h2>
+      <ul className="software-editor-list">
+        {args.software.length === 0 && (
+          <li className="software-row software-none">none</li>
+        )}
+        {args.software.map((installed) => (
+          <li key={`${installed.kind}-${installed.level}`} className="software-row software-on">
+            <span className="software-name" title={SOFTWARE[installed.kind].blurb}>
+              {softwareLabel(installed)}
+            </span>
+            <span className="software-bandwidth">{bandwidthOf(installed) || "—"}</span>
+            <button
+              type="button"
+              className="software-remove"
+              title={`Remove ${softwareLabel(installed)}`}
+              onClick={() =>
+                args.onChange(args.software.filter((other) => !sameSoftware(other, installed)))
+              }
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="software-add">
+        <select
+          className="control-input"
+          value={kind}
+          onChange={(event) => {
+            const next = event.target.value as SoftwareKind;
+            setKind(next);
+            setLevel(SOFTWARE[next].levels[0][0]);
+          }}
+        >
+          {SOFTWARE_KINDS.map((option) => (
+            <option key={option} value={option}>
+              {SOFTWARE[option].label}
+            </option>
+          ))}
+        </select>
+        {isLevelled(kind) && (
+          <select
+            className="control-input"
+            value={level}
+            onChange={(event) => setLevel(Number(event.target.value))}
+          >
+            {SOFTWARE[kind].levels.map(([option, bandwidth]) => (
+              <option key={option} value={option}>
+                /{option} ({bandwidth} bw)
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="button" className="control-input blue-button" onClick={add}>
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
 
 import { addShip } from "lib/serverManager";
 import { useAppSelector } from "state/hooks";
@@ -118,6 +243,12 @@ export const AddShip: React.FC<AddShipProps> = () => {
       activeSensors: true,
       transmitting: false,
       team: null as Team | null,
+      // The design's loadout, which a scenario can change: a raider refitted
+      // with Evade it was never sold with is a reasonable thing to want.
+      software: (firstDesign.software ?? []) as Software[],
+      // A Harrier's holographic hull and the like. Off unless the design says
+      // otherwise -- the engineer brings them up.
+      featuresOn: defaultFeaturesOn(firstDesign),
     };
   }, [shipDesignTemplates, entities, buildWeaponRows, crewForDesign]);
 
@@ -148,6 +279,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
         activeSensors: current.active_sensors !== false,
         transmitting: current.transmitting === true,
         team: current.team ?? null,
+        software: current.software ?? shipDesignTemplates[current.design]?.software ?? [],
+        featuresOn: featuresOnFor(current, shipDesignTemplates[current.design]),
       };
       setAddShipData(template);
     }
@@ -184,6 +317,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
               activeSensors: ship.active_sensors !== false,
               transmitting: ship.transmitting === true,
               team: ship.team ?? null,
+              software: ship.software ?? shipDesignTemplates[ship.design]?.software ?? [],
+              featuresOn: featuresOnFor(ship, shipDesignTemplates[ship.design]),
             });
           }
         }
@@ -247,6 +382,12 @@ export const AddShip: React.FC<AddShipProps> = () => {
         active_sensors: addShipData.activeSensors,
         transmitting: addShipData.transmitting,
         team: addShipData.team ?? undefined,
+        // Sent only when it differs from the design's own, so an unmodified
+        // ship keeps inheriting its loadout.
+        software: sameSoftwareList(addShipData.software, shipDesignTemplates[design]?.software ?? [])
+          ? undefined
+          : addShipData.software,
+        features_on: addShipData.featuresOn,
       };
 
       addShip(revision);
@@ -267,9 +408,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
         design: design,
         crew,
         armament: buildWeaponRows(design, undefined, crew.gunnery),
+        software: shipDesignTemplates[design]?.software ?? [],
+        featuresOn: defaultFeaturesOn(shipDesignTemplates[design]),
       });
     },
-    [addShipData, setAddShipData, buildWeaponRows, crewForDesign],
+    [addShipData, setAddShipData, buildWeaponRows, crewForDesign, shipDesignTemplates],
   );
 
   const handleWeaponsChange = useCallback(
@@ -393,6 +536,41 @@ export const AddShip: React.FC<AddShipProps> = () => {
               />
               Transmit
             </label>
+            {(shipDesignTemplates[addShipData.design]?.features ?? []).map((feature, index) =>
+              (feature.power ?? 0) > 0 ? (
+                <label
+                  key={feature.name}
+                  className="emissions-toggle"
+                  title={`${feature.name}: draws ${feature.power} Power while it is running.`}>
+                  <input
+                    type="checkbox"
+                    checked={addShipData.featuresOn.includes(index)}
+                    onChange={(event) =>
+                      setAddShipData({
+                        ...addShipData,
+                        featuresOn: event.target.checked
+                          ? [...addShipData.featuresOn, index]
+                          : addShipData.featuresOn.filter((on) => on !== index),
+                      })
+                    }
+                  />
+                  {feature.name}
+                </label>
+              ) : (
+                // A fitting has no switch: say it is aboard and leave it.
+                <span key={feature.name} className="emissions-toggle ship-fitting" title="Fitted to this hull">
+                  {feature.name}
+                </span>
+              )
+            )}
+            {/* The computer's loadout. A design arrives with what the book
+                sold it; a scenario can refit it, and Bandwidth is only
+                checked when the ship tries to run it all at once. */}
+            <SoftwareEditor
+              software={addShipData.software}
+              processing={shipDesignTemplates[addShipData.design]?.computer ?? 0}
+              onChange={(software) => setAddShipData({...addShipData, software})}
+            />
             <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
               Team
               <select

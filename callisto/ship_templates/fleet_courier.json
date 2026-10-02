@@ -38,5 +38,31 @@
   ],
   "tl": 15,
   "role": "Courier",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "AntiHijack",
+      "level": 3
+    },
+    {
+      "kind": "Evade",
+      "level": 3
+    },
+    {
+      "kind": "FireControl",
+      "level": 4
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 5
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

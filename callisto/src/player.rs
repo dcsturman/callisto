@@ -14,10 +14,10 @@ use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
   FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
-  SetShipTeam, ShipActionMsg, ShipDesignTemplateMsg,
+  SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
-use crate::ship::{get_ship_templates_snapshot, Ship, ShipDesignTemplate, Weapon, WeaponMount};
+use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Weapon, WeaponMount};
 use crate::{debug, info, warn};
 
 /// Most weapons we will accept on a single ship.  Generous compared to any real
@@ -277,7 +277,13 @@ impl PlayerManager {
     // Applied after creation rather than threaded through `add_ship`, which
     // already carries six arguments. Absent leaves the normal running state a
     // new ship is built with.
-    if ship.active_sensors.is_some() || ship.transmitting.is_some() || ship.team.is_some() || ship.contacts.is_some() {
+    if ship.active_sensors.is_some()
+      || ship.transmitting.is_some()
+      || ship.team.is_some()
+      || ship.contacts.is_some()
+      || ship.features_on.is_some()
+      || ship.software.is_some()
+    {
       if let Some(added) = entities.ships.get(&name) {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
@@ -288,10 +294,64 @@ impl PlayerManager {
           added.contacts = contacts;
           added.contacts.sort();
         }
+        if let Some(software) = ship.software {
+          added.software = software;
+          // Keep running only what is still aboard and still fits.
+          let installed = added.software.clone();
+          added.software_running.retain(|package| installed.contains(package));
+          for package in &installed {
+            if package.always_running() && !added.software_running.contains(package) {
+              added.software_running.push(*package);
+            }
+          }
+        }
+        if let Some(running) = ship.features_on {
+          for index in 0..added.design.features.len() {
+            added.set_online(PowerSystem::Feature(index), running.contains(&index));
+          }
+        }
       }
     }
 
     Ok("Add ship action executed".to_string())
+  }
+
+  /// Start or stop one of a ship's software packages.
+  ///
+  /// Free, and effective at once: the rules put no combat cost on what the
+  /// computer chooses to run. Bandwidth is the only thing that can refuse it.
+  ///
+  /// # Errors
+  /// Returns an error if the ship is unknown, the package is not installed,
+  /// or there is not enough Bandwidth left to run it.
+  ///
+  /// # Panics
+  /// Panics if the lock on entities cannot be obtained.
+  pub fn set_software_running(&self, msg: &SetSoftwareRunning) -> Result<String, String> {
+    let entities = self.server.as_ref().unwrap().get_unlocked_entities().unwrap();
+    let ship = entities
+      .ships
+      .get(&msg.ship_name)
+      .ok_or_else(|| format!("Cannot set software on unknown ship named '{}'", msg.ship_name))?;
+    let mut ship = ship.write().unwrap();
+    if ship.set_software_running(msg.software, msg.running) {
+      Ok(format!(
+        "{} {} {}.",
+        msg.ship_name,
+        if msg.running { "runs" } else { "stops" },
+        msg.software
+      ))
+    } else if msg.running {
+      Err(format!(
+        "{} cannot run {}: {} of {} Bandwidth already in use.",
+        msg.ship_name,
+        msg.software,
+        ship.bandwidth_used(),
+        ship.processing()
+      ))
+    } else {
+      Err(format!("{} does not have {} installed.", msg.ship_name, msg.software))
+    }
   }
 
   /// Sets the crew actions for a ship.
@@ -834,22 +894,27 @@ impl PlayerManager {
           (Some(action.clone()), None, None, None, None)
         }
         ShipAction::PointDefenseAction { .. } => (None, None, None, Some(action.clone()), None),
-        ShipAction::JamMissiles => (None, None, Some(action.clone()), None, None),
+        ShipAction::JamMissiles { .. } => (None, None, Some(action.clone()), None, None),
         ShipAction::BreakSensorLock { .. } | ShipAction::SensorLock { .. } | ShipAction::JamComms { .. } => {
           (None, Some(action.clone()), None, None, None)
         }
         // Engineer actions (including Jump) are deferred to end-of-turn evaluation.
-        ShipAction::OverloadDrive | ShipAction::OverloadPlant | ShipAction::Repair { .. } | ShipAction::Jump => {
-          (None, None, None, None, Some(action.clone()))
-        }
-        // LeadershipCheck is consumed in Phase 0 below; it does not flow into
-        // any of the per-category slices.
-        ShipAction::LeadershipCheck { .. } => (None, None, None, None, None),
-        // Anti-actions are consumed by `merge` and should never reach the queue.
-        // If one slips through, drop it from every slice.
-        ShipAction::ClearSensorAction | ShipAction::ClearEngineerAction | ShipAction::ClearLeadershipCheck => {
-          (None, None, None, None, None)
-        }
+        ShipAction::OverloadDrive { .. }
+        | ShipAction::OverloadPlant { .. }
+        | ShipAction::Repair { .. }
+        // The computer's own repair rides with the engineers' orders: it is
+        // resolved in the same end-of-turn pass, and costs nobody an action.
+        | ShipAction::ComputerRepair { .. }
+        | ShipAction::SetPower { .. }
+        | ShipAction::Jump { .. } => (None, None, None, None, Some(action.clone())),
+        // LeadershipCheck is consumed in Phase 0 below, so it reaches none of
+        // the per-category slices. Nor do the anti-actions, which `merge`
+        // consumes and which should never get this far -- but if one slips
+        // through it belongs nowhere either.
+        ShipAction::LeadershipCheck { .. }
+        | ShipAction::ClearSensorAction { .. }
+        | ShipAction::ClearEngineerAction { .. }
+        | ShipAction::ClearLeadershipCheck => (None, None, None, None, None),
       }));
       Some((
         (ship_name.clone(), f_actions.into_iter().flatten().collect::<Vec<ShipAction>>()),
@@ -895,6 +960,16 @@ impl PlayerManager {
     // get jam checks on subsequent rounds because they sit in self.missiles
     // until they reach their target.
     effects.append(&mut entities.sensor_actions(&jam_missile_actions, &boost_map, &mut rng));
+
+    // Broad Spectrum EW jams for any ship whose operator did not: the program
+    // takes the same action, without the sensop and without their skill, and
+    // a salvo can only be jammed once (High Guard p. 74).
+    let jammed_by_hand: std::collections::HashSet<String> = jam_missile_actions
+      .iter()
+      .filter(|(_, actions)| !actions.is_empty())
+      .map(|(ship_name, _)| ship_name.clone())
+      .collect();
+    effects.append(&mut entities.broad_spectrum_pass(&jammed_by_hand, &mut rng));
 
     // 4. Update all entities (ships, planets, missiles) and gather in their effects.
     effects.append(&mut entities.update_all(&ship_snapshot, &boost_map, &mut rng));
@@ -1021,6 +1096,14 @@ impl PlayerManager {
   #[must_use]
   pub fn get_email(&self) -> Option<String> {
     self.authenticator.get_email()
+  }
+
+  /// The scenario this player is in and the session key that identifies them
+  /// in it, when they have both.
+  #[must_use]
+  pub fn server_and_session(&self) -> Option<(String, String)> {
+    let server_id = self.server.as_ref()?.get_id().to_string();
+    Some((server_id, self.get_session_key()?))
   }
 
   #[must_use]

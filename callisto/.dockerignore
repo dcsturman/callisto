@@ -1,0 +1,28 @@
+# What docker ships to the daemon as the build context, and what `COPY . .`
+# then puts in the image. Without this file the context is the whole crate
+# directory -- including target/, which is tens of gigabytes of host-built
+# artifacts that then land on top of the image's own target/ and throw away
+# every dependency the build stage just compiled. That is the difference
+# between a one-minute rebuild and a ten-minute one.
+target/
+coverage/
+
+# Credentials and certificates. Compose hands these to the container as
+# secrets at run time; they have no business in an image layer.
+keys/
+secrets/
+*.key
+*.crt
+*.csr
+*.der
+
+# Not part of the build.
+.git
+.gitignore
+.dockerignore
+.gcloudignore
+.DS_Store
+Dockerfile*
+cloudbuild.yaml
+**/*.md
+profile.json.gz

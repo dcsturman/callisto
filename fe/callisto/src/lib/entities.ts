@@ -2,6 +2,8 @@ import { Crew, createCrew } from "components/controls/CrewBuilder";
 import { Weapon } from "lib/weapon";
 import { Team } from "lib/teams";
 export { availablePower } from "lib/power";
+import { PowerSystem } from "lib/power";
+import {Software} from "lib/software";
 
 export type Acceleration = [[number, number, number], number];
 
@@ -69,12 +71,21 @@ export interface Ship extends Entity {
    * subtract it. Use {@link availablePower} rather than `current_power`.
    */
   ion_power_loss?: number;
+  /**
+   * Bandwidth an ion hit is currently suppressing. Absent when none is.
+   *
+   * House rule: an ion hit spills a tenth of its damage into the computer.
+   * Read the computer's capacity through {@link availableProcessing}.
+   */
+  ion_bandwidth_loss?: number;
   /** Rounds of ion suppression still to run. Absent when none is. */
   ion_rounds?: number;
   current_maneuver: number;
   current_jump: number;
   current_fuel: number;
   current_crew: number;
+  /** The computer's Processing score, which Bandwidth is measured against. */
+  current_computer: number;
   current_sensors: string;
   active_weapons: boolean[];
   dodge_thrust: number;
@@ -115,6 +126,37 @@ export interface Ship extends Entity {
   /** Which side the ship is on. Absent means unaligned. */
   team?: Team;
   crew: Crew;
+  /**
+   * Which sensor operator and which engineer are working this round, as
+   * indices into the crew's lists. Absent means the first of them, which is
+   * what a ship with one of each always uses.
+   */
+  sensor_operator?: number;
+  engineer_on_duty?: number;
+  /** Systems the engineer has powered down. Absent when everything is live. */
+  offline?: PowerSystem[];
+  /** Software aboard, which may differ from the design's. */
+  software?: Software[];
+  /** Which of it the computer is running. Bandwidth limits this. */
+  software_running?: Software[];
+  /**
+   * Missiles, torpedoes and sandcaster barrels still aboard.
+   *
+   * Spent as they are fired and thrown; a reset restocks the ship.
+   */
+  magazine?: {missiles: number; torpedoes: number; sand: number};
+  /**
+   * Switchable features to start running, by index into the design's list.
+   *
+   * Only ever set by the Add Ship dialog on its way to the server; a ship
+   * coming back from the server reports its switches in `offline` instead.
+   */
+  features_on?: number[];
+  /** Basic ship systems running at half, which the rules allow in a pinch. */
+  basic_power_halved?: boolean;
+  /** How many times each overload has been tried; each one past the first costs DM-2. */
+  overload_drive_attempts?: number;
+  overload_plant_attempts?: number;
   crit_level?: number[]; // Array of 11 numbers indexed by ShipSystem
   /**
    * Each bridge station's state, in the order of {@link BRIDGE_STATIONS}.
@@ -215,6 +257,7 @@ const createShip = (
   current_jump: number,
   current_fuel: number,
   current_crew: number,
+  current_computer: number,
   current_sensors: string,
   active_weapons: boolean[],
   dodge_thrust: number,
@@ -235,6 +278,7 @@ const createShip = (
     current_jump,
     current_fuel,
     current_crew,
+    current_computer,
     current_sensors,
     active_weapons,
     dodge_thrust,
@@ -259,6 +303,7 @@ export const defaultShip = () => {
     0,
     0,
     0,
+    0,
     "",
     [],
     0,
@@ -270,6 +315,8 @@ export const defaultShip = () => {
 
 export interface Missile extends Entity {
   acceleration: [number, number, number];
+  /** The ship that launched it. */
+  source: string;
   target: string;
   target_locked: boolean;
   target_sensor_lock: boolean;
@@ -284,6 +331,7 @@ export const defaultMissile = () => {
     name: "New Missile",
     position: [0, 0, 0],
     velocity: [0, 0, 0],
+    source: "",
     target: "",
     target_locked: false,
     target_sensor_lock: false,

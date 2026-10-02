@@ -43,7 +43,7 @@ import {
 } from "lib/serverManager";
 import { Users } from "components/UserList";
 
-import { ShipComputer } from "components/controls/ShipComputer";
+import { Stations } from "components/controls/Stations";
 import { ViewMode, hasRole, isReferee } from "lib/view";
 
 import { RoleChooser } from "components/Role";
@@ -163,14 +163,33 @@ function Simulator() {
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
-        {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
-        {(scenarioBuilderMode ||
-          hasRole(roles, ViewMode.General, ViewMode.Pilot, ViewMode.Observer)) && (
-          <div className="top-right-stack">
-            <ShipSummary />
-            <ViewControls />
-          </div>
-        )}
+        {/* The console: the ship's dossier, then a card for every station
+            this player works, in one column that spills into a second only
+            when the first is full. Screen space is the scarce thing on a
+            laptop, and the old layout reserved a column whether it had
+            anything to put in it or not. */}
+        <div className="console">
+          {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
+          {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
+            <Stations ship={computerShip} />
+          )}
+        </div>
+        {/* The ship list and view options are for everyone at the table. They
+            were limited to General, Pilot and Observer, which left an engineer
+            or a gunner with no way to see the other ships or turn the range
+            rings on. */}
+        <div className="top-right-stack">
+          <ShipSummary />
+          <ViewControls />
+          {/* Results belong with the other reference panels rather than
+              floating beside the console, where their width moved them
+              every time the console gained or lost a column. */}
+          {showResults && (
+            <Suspense fallback={null}>
+              <ResultsWindow />
+            </Suspense>
+          )}
+        </div>
         <div className="admin-button-window">
           <h2>
             {joinedScenario &&
@@ -189,14 +208,6 @@ function Simulator() {
             )}
           </div>
         </div>
-        {!scenarioBuilderMode && hasRole(roles, ViewMode.General) && computerShip && (
-          <ShipComputer ship={computerShip} />
-        )}
-        {showResults && (
-          <Suspense fallback={null}>
-            <ResultsWindow />
-          </Suspense>
-        )}
         <Canvas
           style={{ position: "absolute" }}
           id="main-canvas"
