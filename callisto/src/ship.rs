@@ -1866,12 +1866,6 @@ impl Ship {
     if self.crew.is_none() {
       let mounts = self.weapons().len();
       self.crew = Some(crewed_or_default(None, &self.design, mounts));
-    } else if self.has_feature(FeatureKind::RepairDrones) {
-      // A crew the scenario named still gets trained on the drones the ship
-      // is fitted with, unless it said otherwise.
-      if let Some(crew) = self.crew.as_mut() {
-        crew.qualify_for_drones();
-      }
     }
   }
 
@@ -3182,7 +3176,7 @@ fn crewed_or_default(crew: Option<Crew>, design: &ShipDesignTemplate, mounts: us
     .iter()
     .any(|feature| feature.kind == Some(FeatureKind::RepairDrones))
   {
-    crew.qualify_for_drones();
+    crew.hire_a_drone_operator();
   }
   crew
 }

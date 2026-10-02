@@ -413,14 +413,17 @@ impl Crew {
     self.engineers[index] = engineer;
   }
 
-  /// Train the engineers on the drones the ship carries.
+  /// Sign on somebody who can work the ship's repair drones.
   ///
-  /// A hull fitted with repair drones has someone who can fly them: not
-  /// well, but trained rather than fumbling, so an engineer who says
-  /// nothing about Electronics (remote ops) gets 0 instead of untrained.
-  /// A stated rating is left alone, and a ship with no drones keeps its
-  /// engineers untrained, which is what they are.
-  pub fn qualify_for_drones(&mut self) {
+  /// A captain who paid for drones hires a hand who can fly them, so the
+  /// crew we make up for a design that carries them has Electronics
+  /// (remote ops) 0 in the engine room -- trained rather than fumbling.
+  /// This fills out a crew nobody wrote; a scenario that names its own
+  /// crew gets exactly the people it named.
+  pub fn hire_a_drone_operator(&mut self) {
+    if self.engineers.is_empty() {
+      self.engineers.push(Engineer::default());
+    }
     for engineer in &mut self.engineers {
       if engineer.remote_ops.is_none() {
         engineer.remote_ops = Some(0);

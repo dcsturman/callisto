@@ -3096,24 +3096,18 @@ impl Entities {
 
   /// The best pair of hands aboard for flying the repair drones.
   ///
-  /// Whoever has the most Electronics (remote ops), held to the drones'
-  /// own rating of 1 (Core Rulebook p. 159). Untrained is DM-3, which is
-  /// what a ship with no drones has: nobody has ever needed to learn.
+  /// Whoever has the most Electronics (remote ops), held to the drones' own
+  /// rating of 1 (Core Rulebook p. 159). Nobody trained is DM-3, like any
+  /// other skill no one has: a crew we made up for a hull with drones comes
+  /// with an operator in it, but a crew the scenario wrote is whoever it
+  /// wrote.
   fn drone_repair_dm(&self, ship_name: &str) -> i16 {
     self.ships.get(ship_name).map_or(-3, |ship| {
-      let ship = ship.read().unwrap();
-      let best = (0..ship.get_crew().engineer_count().max(1))
-        .map(|index| ship.get_crew().engineer_at(index).drone_repair_dm())
+      let crew = ship.read().unwrap().get_crew().clone();
+      (0..crew.engineer_count().max(1))
+        .map(|index| crew.engineer_at(index).drone_repair_dm())
         .max()
-        .unwrap_or(-3);
-      // A hull fitted with drones has somebody who can fly them, named in
-      // the crew or not: the fitting implies the training. Without them,
-      // nobody aboard has ever needed to learn.
-      if ship.has_feature(crate::ship::FeatureKind::RepairDrones) {
-        best.max(0)
-      } else {
-        best
-      }
+        .unwrap_or(-3)
     })
   }
 
@@ -5221,8 +5215,9 @@ mod tests {
   }
 
   /// The drones are flown by whoever has Electronics (remote ops), held to
-  /// the drones' own rating of 1. A hull fitted with them trains someone,
-  /// so its crew is a green 0 rather than untrained.
+  /// the drones' own rating of 1. A captain who paid for drones hires
+  /// somebody who can fly them, so a crew we make up has an operator in it
+  /// -- but a crew the scenario wrote is whoever it wrote.
   #[test]
   fn drone_repairs_roll_on_remote_ops() {
     let drones = crate::ship::ShipFeature {
@@ -5244,7 +5239,7 @@ mod tests {
     assert_eq!(
       entities.drone_repair_dm("Magenta"),
       0,
-      "a ship with drones has someone trained to fly them"
+      "a made-up crew for a hull with drones has somebody aboard who can fly them"
     );
 
     // Someone who actually knows the job is still held to the drones.
@@ -5260,6 +5255,24 @@ mod tests {
       entities.drone_repair_dm("Magenta"),
       1,
       "the drones are rated 1, whoever flies them"
+    );
+
+    // A crew the scenario wrote is taken as written: this engineer never
+    // learned the drones, aboard or not.
+    let mut stated = Crew::default();
+    stated.set_engineer(
+      0,
+      crate::crew::Engineer {
+        power: 2,
+        maneuver: 2,
+        ..crate::crew::Engineer::default()
+      },
+    );
+    entities.add_ship("Scratch".to_string(), Vec3::zero(), Vec3::zero(), &design, Some(stated), None);
+    assert_eq!(
+      entities.drone_repair_dm("Scratch"),
+      -3,
+      "nobody the scenario named has Electronics (remote ops)"
     );
 
     // And a hull with no drones has nobody who has ever needed to learn.

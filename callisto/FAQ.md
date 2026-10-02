@@ -498,13 +498,15 @@ names we do not know, not a derelict. Leaving a position empty is something a
 scenario says deliberately, by giving a crew whose gunnery list is shorter
 than the ship has mounts.
 
-#### Assumption — a hull with repair drones has somebody trained to fly them
+#### Assumption — a ship that bought drones hired somebody to fly them
 The drones work at "an Engineer skill level of 1 or the level the Traveller has
 in Electronics (remote ops), whichever is lower" (CRB p. 159), and the books
-never say who aboard has that skill. Every engineer now carries a remote ops
-rating, untrained (DM-3) unless stated — but a ship fitted with drones floors
-it at 0, since fitting them implies training someone to use them. A higher
-rating is still held to the drones' own 1.
+never say who aboard has that skill. Engineers now carry a remote ops rating,
+and the crew Callisto makes up for a design with drones has one at 0 — a
+captain who paid for drones hires a hand who can work them. It is the made-up
+crew that carries this, not the hull: a scenario that names its own crew gets
+exactly the people it named, untrained unless it says otherwise, as with
+gunners. A rating above 1 is still held to the drones' own rating.
 
 #### Interpretation — /bis means Jump Control costs five less
 "+5 to the Bandwidth of the jump control software" (CRB p. 180) could mean a
