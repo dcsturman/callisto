@@ -147,12 +147,14 @@ describe("one action each", () => {
   });
 });
 
-describe("a snapshot does not undo a boost that is still in flight", () => {
+describe("two consoles on one ship agree", () => {
   // The referee has no ship of their own, so the boost checkboxes write
-  // against whichever console is open. The guard used to name `user.shipName`
-  // -- null for them -- so an EntityResponse answering an earlier request
-  // wiped the tick, and the next order sent the shortened list back up.
-  test("a ship still mid-turn keeps the boosts the server has not echoed yet", () => {
+  // against whichever console is open; the guard used to name
+  // `user.shipName`, which is null for them. Then holding the local list
+  // outright was worse: a second console that had ticked one box kept
+  // showing one box while the server, and the console that set them, had
+  // three.
+  test("a ship still mid-turn keeps a tick the server has not echoed yet", () => {
     let state = boosted(
       {kind: "Engineer", ship: SHIP, engineer: 0},
       {kind: "Fire", ship: SHIP, weapon_id: 0},
@@ -163,15 +165,62 @@ describe("a snapshot does not undo a boost that is still in flight", () => {
       [SHIP]: {
         ...state[SHIP],
         leadershipCheck: {boosts: [{kind: "Engineer" as const, ship: SHIP, engineer: 0}]},
+        pendingBoosts: [],
       },
     };
     state = reduce(state, setActions({parsed: stale, rolledShips: [SHIP]}));
     expect(boostsOf(state)).toHaveLength(2);
   });
 
+  test("a console that ticked nothing takes the server's list whole", () => {
+    // This browser has one boost and has heard back about it; the captain's
+    // own console has since added two more.
+    let state = boosted({kind: "Evade", ship: SHIP});
+    const echoed = {
+      [SHIP]: {...state[SHIP], leadershipCheck: {boosts: [{kind: "Evade" as const, ship: SHIP}]}, pendingBoosts: []},
+    };
+    state = reduce(state, setActions({parsed: echoed, rolledShips: [SHIP]}));
+
+    const fromTheOtherConsole = {
+      [SHIP]: {
+        ...state[SHIP],
+        leadershipCheck: {
+          boosts: [
+            {kind: "Evade" as const, ship: SHIP},
+            {kind: "Sensor" as const, ship: SHIP, operator: 0},
+            {kind: "Fire" as const, ship: SHIP, weapon_id: 0},
+          ],
+        },
+        pendingBoosts: [],
+      },
+    };
+    state = reduce(state, setActions({parsed: fromTheOtherConsole, rolledShips: [SHIP]}));
+    expect(boostsOf(state)).toHaveLength(3);
+  });
+
+  test("a tick retires once the server says it back, and stops overriding", () => {
+    let state = boosted({kind: "Fire", ship: SHIP, weapon_id: 0});
+    const echoed = {
+      [SHIP]: {
+        ...state[SHIP],
+        leadershipCheck: {boosts: [{kind: "Fire" as const, ship: SHIP, weapon_id: 0}]},
+        pendingBoosts: [],
+      },
+    };
+    state = reduce(state, setActions({parsed: echoed, rolledShips: [SHIP]}));
+    expect(state[SHIP].pendingBoosts).toHaveLength(0);
+
+    // Somebody else unticks it. Nothing of ours is waiting, so it goes.
+    const withoutIt = {
+      [SHIP]: {...state[SHIP], leadershipCheck: {boosts: []}, pendingBoosts: []},
+    };
+    state = reduce(state, setActions({parsed: withoutIt, rolledShips: [SHIP]}));
+    expect(boostsOf(state)).toHaveLength(0);
+  });
+
   test("once the round is over the server's list wins", () => {
     let state = boosted({kind: "Fire", ship: SHIP, weapon_id: 0});
-    const after = {[SHIP]: {...state[SHIP], leadershipCheck: null}};
+    const after = {[SHIP]: {...state[SHIP], leadershipCheck: null, pendingBoosts: []}};
     state = reduce(state, setActions({parsed: after, rolledShips: []}));
     expect(boostsOf(state)).toHaveLength(0);
   });

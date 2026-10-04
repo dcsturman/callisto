@@ -31,6 +31,16 @@ export type ActionType = {
     clearSensors: number[];
     clearEngineers: number[];
     clearLeadership: boolean;
+    /**
+     * Boost toggles this browser has made and not yet seen come back.
+     *
+     * The server is the truth about who is inspiring what -- two consoles on
+     * the same ship must agree -- but a tick is in Redux before it is on the
+     * wire, so a snapshot answering an earlier request would undo it. Each
+     * entry says what was toggled and which way, is laid over whatever the
+     * server last said, and retires the moment the server agrees.
+     */
+    pendingBoosts?: {target: BoostTarget; on: boolean}[];
   };
 };
 
