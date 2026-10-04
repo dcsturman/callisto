@@ -1020,6 +1020,21 @@ h3.control-form {
     padding-right: 4px;
 }
 
+/* The ship's own panel reads as one of the station cards, because next to
+   them that is what it is. Without this it kept the accordion's larger bold
+   heading and sat in the column shouting over the instruments beside it. */
+#ship-computer > .accordion-header {
+    font-size: var(--font-md);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+#ship-computer > .accordion-header svg {
+    opacity: 0.6;
+    font-size: var(--font-sm);
+}
+
 /* Results sit in the top-right stack under the view controls: a panel of a
    settled size in a settled place. They used to float beside the console,
    which moved them every time the console gained or lost a column, and they
