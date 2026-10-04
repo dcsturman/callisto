@@ -1,7 +1,8 @@
 import * as React from "react";
 import {useMemo} from "react";
 
-import {Ship} from "lib/entities";
+import {Ship, ShipSystem} from "lib/entities";
+import {SYSTEM_NAMES} from "components/controls/EngineerTasks";
 import {isUndetected} from "lib/contacts";
 import {formatKm, bandName} from "lib/range";
 import {teamLabelColor} from "lib/teams";
@@ -248,6 +249,9 @@ function ContactDetail(args: {
                   </>
                 )}
               </div>
+              {/* What we can see is wrong with her. Silent while she is
+                  whole, so an undamaged contact costs no line. */}
+              <ContactDamage ship={ship} />
               {/* The armament in the gunner's own vocabulary: mount as the
                   shape, weapon as the colour, the full name on hover. */}
               <ul className="contact-weapons">
@@ -266,6 +270,36 @@ function ContactDetail(args: {
         })}
       </ul>
     </div>
+  );
+}
+
+/**
+ * The damage a contact is carrying, system by system, worst first.
+ *
+ * Only what has actually been hit: a ship with nothing wrong shows nothing,
+ * which keeps the common case to the three lines it was. Severity is the
+ * number the books use and the number a gunner picking a target wants --
+ * a Thrust 3 raider at severity 4 on her m-drive is not going anywhere.
+ */
+function ContactDamage(args: {ship: Ship}) {
+  const hits = (args.ship.crit_level ?? [])
+    .map((level, index) => ({system: index as ShipSystem, level}))
+    .filter((hit) => hit.level > 0)
+    .sort((a, b) => b.level - a.level);
+
+  if (hits.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul className="contact-damage">
+      {hits.map((hit) => (
+        <li key={hit.system} className="contact-damage-hit" title={`Severity ${hit.level}`}>
+          <span className="contact-detail-label">{SYSTEM_NAMES[hit.system]}</span>
+          <span className={hit.level >= 4 ? "contact-damage-bad" : undefined}>{hit.level}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

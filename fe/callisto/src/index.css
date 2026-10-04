@@ -1020,6 +1020,21 @@ h3.control-form {
     padding-right: 4px;
 }
 
+/* The ship's own panel reads as one of the station cards, because next to
+   them that is what it is. Without this it kept the accordion's larger bold
+   heading and sat in the column shouting over the instruments beside it. */
+#ship-computer > .accordion-header {
+    font-size: var(--font-md);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+#ship-computer > .accordion-header svg {
+    opacity: 0.6;
+    font-size: var(--font-sm);
+}
+
 /* Results sit in the top-right stack under the view controls: a panel of a
    settled size in a settled place. They used to float beside the console,
    which moved them every time the console gained or lost a column, and they
@@ -2213,6 +2228,31 @@ h3.control-form {
 
 .contact-detail-label:not(:first-child) {
     margin-left: 6px;
+}
+
+/* What is wrong with a contact, on the line above her guns: system and
+   severity, worst first, and nothing at all while she is whole. */
+.contact-damage {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: var(--font-xs);
+}
+
+.contact-damage-hit {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    font-family: "Sono", monospace;
+}
+
+/* Severe is where a system starts being written off rather than dented. */
+.contact-damage-bad {
+    color: #e8705f;
+    font-weight: 600;
 }
 
 .contact-weapons {

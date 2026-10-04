@@ -277,9 +277,11 @@ export function Controls() {
   }
 
   return (
+    // No heading of its own: the column is a stack of cards that each name
+    // themselves, and "Controls" over the top of them labelled nothing the
+    // reader could not see. The scenario builder keeps its heading, having
+    // no cards to speak for it.
     <div className="controls-pane">
-      <h1>Controls</h1>
-      <hr />
       {/* Referee only. General mode with a ship assigned is a player flying
           that ship with every station open, not the GM; that is the case that
           was leaking Add Ship. Same condition App.tsx uses for the reset. */}

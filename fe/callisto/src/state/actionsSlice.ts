@@ -27,6 +27,7 @@ const newShipAction = () => {
     engineers: [] as EngineerState[],
     computerRepairs: [] as ShipSystem[],
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
+    pendingBoosts: [] as {target: BoostTarget; on: boolean}[],
     clearSensors: [] as number[],
     clearEngineers: [] as number[],
     clearLeadership: false,
@@ -80,6 +81,17 @@ const dropBoostsFrom = (
   if (next.length === boosts.length) {
     return;
   }
+  // Withdrawing a boost is a toggle like any other, and has to be held
+  // against an in-flight snapshot the same way.
+  const removed = boosts.filter(
+    (boost) => !next.some((kept) => boostTargetEquals(kept, boost))
+  );
+  slot.pendingBoosts = [
+    ...(slot.pendingBoosts ?? []).filter(
+      (entry) => !removed.some((boost) => boostTargetEquals(entry.target, boost))
+    ),
+    ...removed.map((target) => ({target, on: false})),
+  ];
   slot.leadershipCheck = { boosts: next };
   // Same rule as toggleBoost: an empty list means "strip the queued
   // LeadershipCheck", not "leave the old one on the server".
@@ -92,23 +104,18 @@ export const actionsSlice = createSlice({
   reducers: {
     // Replace the entire actions slice with a server-derived snapshot.
     //
-    // A boost just ticked is in Redux and on its way to the server, so a
-    // snapshot that answers an *earlier* request still describes the world
-    // before the tick. Overwriting with it loses the boost -- and the next
-    // thing the captain does sends the shortened list back up, which makes
-    // the loss permanent. So a ship's local boost list survives a snapshot
-    // while that ship is still mid-turn.
+    // The server is the truth about who is inspiring what: two consoles on
+    // the same ship have to agree, and the one that did not make a tick has
+    // no business keeping its older idea of the list. But a tick made here
+    // is in Redux before it is on the wire, so a snapshot answering an
+    // earlier request would undo it -- and the next order sent would make
+    // that permanent.
     //
-    // `rolledShips` is every ship whose captain has rolled on the fresh
-    // snapshot. End-of-turn flips that back to false, which is the signal to
-    // let the local list go: those boosts have been applied or have expired.
-    //
-    // This used to protect only `user.shipName`. A referee has no assigned
-    // ship, and the boost checkboxes fall back to whichever ship's console is
-    // open (see WeaponUse), so their boosts were written under one name and
-    // guarded under another -- which is to say not guarded at all. Every ship
-    // with pending boosts is now protected, so the two cannot drift apart
-    // again.
+    // So the snapshot wins, with this browser's own un-echoed toggles laid
+    // back over it. Each toggle says which way it went, and retires as soon
+    // as the server agrees. `rolledShips` is every ship whose captain has
+    // rolled; when a round ends that flag clears, and with it any toggle
+    // still waiting, because those boosts have been applied or have expired.
     setActions: (
       state,
       item: PayloadAction<{
@@ -118,18 +125,11 @@ export const actionsSlice = createSlice({
     ) => {
       const { parsed, rolledShips } = item.payload;
 
-      // Hold the pending boosts of every ship still mid-turn.
-      const pending = new Map<
-        string,
-        { leadershipCheck: ShipActionSlot["leadershipCheck"]; clearLeadership: boolean }
-      >();
+      const pending = new Map<string, {target: BoostTarget; on: boolean}[]>();
       for (const shipName of rolledShips) {
-        const slot = state[shipName];
-        if (slot?.leadershipCheck && slot.leadershipCheck.boosts.length > 0) {
-          pending.set(shipName, {
-            leadershipCheck: slot.leadershipCheck,
-            clearLeadership: slot.clearLeadership,
-          });
+        const waiting = state[shipName]?.pendingBoosts;
+        if (waiting && waiting.length > 0) {
+          pending.set(shipName, waiting.map((entry) => ({...entry})));
         }
       }
 
@@ -138,10 +138,25 @@ export const actionsSlice = createSlice({
       // Copy new payload into state
       Object.assign(state, parsed);
 
-      for (const [shipName, held] of pending) {
+      for (const [shipName, waiting] of pending) {
         state[shipName] ??= newShipAction();
-        state[shipName].leadershipCheck = held.leadershipCheck;
-        state[shipName].clearLeadership = held.clearLeadership;
+        const slot = state[shipName];
+        let boosts = [...(slot.leadershipCheck?.boosts ?? [])];
+        const stillWaiting: {target: BoostTarget; on: boolean}[] = [];
+        for (const entry of waiting) {
+          const present = boosts.some((boost) => boostTargetEquals(boost, entry.target));
+          if (present === entry.on) {
+            // The server has caught up with this one.
+            continue;
+          }
+          stillWaiting.push(entry);
+          boosts = entry.on
+            ? [...boosts, entry.target]
+            : boosts.filter((boost) => !boostTargetEquals(boost, entry.target));
+        }
+        slot.pendingBoosts = stillWaiting;
+        slot.leadershipCheck = {boosts};
+        slot.clearLeadership = boosts.length === 0 && stillWaiting.length > 0;
       }
     },
     // One operator's action. `operator` is their place in the crew, so a
@@ -201,10 +216,18 @@ export const actionsSlice = createSlice({
       const slot = state[item.payload.shipName];
       const boosts = slot.leadershipCheck?.boosts ?? [];
       const idx = boosts.findIndex((b) => boostTargetEquals(b, item.payload.target));
-      const nextBoosts =
-        idx === -1 ? [...boosts, item.payload.target] : boosts.filter((_, i) => i !== idx);
+      const on = idx === -1;
+      const nextBoosts = on ? [...boosts, item.payload.target] : boosts.filter((_, i) => i !== idx);
       slot.leadershipCheck = { boosts: nextBoosts };
       slot.clearLeadership = nextBoosts.length === 0;
+      // Remember the toggle until the server says it back, so a snapshot
+      // already in flight cannot undo it.
+      slot.pendingBoosts = [
+        ...(slot.pendingBoosts ?? []).filter(
+          (entry) => !boostTargetEquals(entry.target, item.payload.target)
+        ),
+        {target: item.payload.target, on},
+      ];
       updateActions(state);
     },
     fireWeapon: (
