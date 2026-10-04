@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Thebus",
     "owner": "dcsturman@gmail.com",
-    "description": "Treasures of Sindal, Pirates of Drinax p.128. The yacht Lyonesse II calls for help near the gas giant Olo: a Proactive Recycling Company Q-ship, bait for pirates who jump into Thebus. Three more PRC ships lie behind the moonlet with their active sensors shut down \u2014 the interceptors Invigilator (President Yang aboard) and Death's Actuary, and the salvage hauler Cicada \u2014 and spring the trap once the Travellers are committed.\n\nRunning it: the Travellers start at Medium range of the yacht, and the GM should move them to wherever the approach actually ended. Lyonesse II is deliberately unaligned, so nothing on the board gives the ruse away; put her on the PRC team when the trap springs. The three lurkers are dark and must be found \u2014 or will announce themselves by shooting.\n\nTwo things from the text worth remembering. The yacht's jump drive is shot and irreparable (her jump rating is 0 here), and the PRC will spend her as a fireship if the battle turns: nuclear missiles in her cargo bay, 6D to every ship at Close range. Death's Actuary is under orders to protect Yang's ship at all costs. The PRC are not bloodthirsty and will listen to an offer."
+    "description": "Treasures of Sindal, Pirates of Drinax p.128. The yacht Lyonesse II calls for help near the gas giant Olo: a Proactive Recycling Company Q-ship, bait for pirates who jump into Thebus. Three more PRC ships lie behind the moonlet with their active sensors shut down \u2014 the interceptors Invigilator (President Yang aboard) and Death's Actuary, and the salvage hauler Cicada \u2014 and spring the trap once the Travellers are committed.\n\nRunning it: HMS Executor starts 4,000 km from the yacht, and the three ambushers sit 8,000 to 9,000 km behind the moonlet -- Medium range, inside the interceptors' beam lasers, so the trap bites the round it springs. The GM should move everyone to wherever the approach actually ended. Lyonesse II is deliberately unaligned, so nothing on the board gives the ruse away; put her on the PRC team when the trap springs. The three lurkers are dark and must be found \u2014 or will announce themselves by shooting.\n\nTwo things from the text worth remembering. The yacht's jump drive is shot and irreparable (her jump rating is 0 here), and the PRC will spend her as a fireship if the battle turns: nuclear missiles in her cargo bay, 6D to every ship at Close range. Death's Actuary is under orders to protect Yang's ship at all costs. The PRC are not bloodthirsty and will listen to an offer."
   },
   "planets": [
     {
@@ -17,7 +17,7 @@
         0.0,
         0.0
       ],
-      "color": "!jupiter",
+      "color": "!saturn",
       "radius": 55000000.0,
       "mass": 1.2e+27
     },
@@ -44,7 +44,7 @@
       "name": "Lyonesse II",
       "position": [
         600000000.0,
-        18000000.0,
+        7000000.0,
         0.0
       ],
       "velocity": [
@@ -259,7 +259,7 @@
       "name": "HMS Executor",
       "position": [
         600000000.0,
-        22000000.0,
+        11000000.0,
         0.0
       ],
       "velocity": [
