@@ -9,7 +9,7 @@ vi.mock("lib/serverManager", async (importOriginal) => ({
   updateActions: vi.fn(),
 }));
 
-import {actionsSlice, toggleBoost, dropBoosts, unfireWeapon, setSensorAction, setEngineerAction} from "state/actionsSlice";
+import {actionsSlice, toggleBoost, dropBoosts, unfireWeapon, setSensorAction, setEngineerAction, setActions} from "state/actionsSlice";
 import {DEFAULT_SENSOR_STATE, SensorAction} from "components/controls/Actions";
 
 const reduce = actionsSlice.reducer;
@@ -143,6 +143,36 @@ describe("one action each", () => {
 
     // Withdrawing theirs takes it.
     state = reduce(state, setSensorAction({shipName: SHIP, operator: 1, action: DEFAULT_SENSOR_STATE}));
+    expect(boostsOf(state)).toHaveLength(0);
+  });
+});
+
+describe("a snapshot does not undo a boost that is still in flight", () => {
+  // The referee has no ship of their own, so the boost checkboxes write
+  // against whichever console is open. The guard used to name `user.shipName`
+  // -- null for them -- so an EntityResponse answering an earlier request
+  // wiped the tick, and the next order sent the shortened list back up.
+  test("a ship still mid-turn keeps the boosts the server has not echoed yet", () => {
+    let state = boosted(
+      {kind: "Engineer", ship: SHIP, engineer: 0},
+      {kind: "Fire", ship: SHIP, weapon_id: 0},
+    );
+
+    // The snapshot in flight knows only about the engineer's.
+    const stale = {
+      [SHIP]: {
+        ...state[SHIP],
+        leadershipCheck: {boosts: [{kind: "Engineer" as const, ship: SHIP, engineer: 0}]},
+      },
+    };
+    state = reduce(state, setActions({parsed: stale, rolledShips: [SHIP]}));
+    expect(boostsOf(state)).toHaveLength(2);
+  });
+
+  test("once the round is over the server's list wins", () => {
+    let state = boosted({kind: "Fire", ship: SHIP, weapon_id: 0});
+    const after = {[SHIP]: {...state[SHIP], leadershipCheck: null}};
+    state = reduce(state, setActions({parsed: after, rolledShips: []}));
     expect(boostsOf(state)).toHaveLength(0);
   });
 });

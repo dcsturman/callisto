@@ -5640,6 +5640,40 @@ mod tests {
   /// dropped every older file until the field was defaulted. This walks the
   /// whole directory so a new scenario, or a new required field, cannot break
   /// one unnoticed.
+  /// Every ship in every bundled scenario comes up with the software its
+  /// design carries. A scenario states no software, serde fills an empty
+  /// list, and a ship that keeps that list has a computer it cannot run
+  /// anything on -- which is what "no software aboard" on the console means.
+  #[test_log::test(tokio::test)]
+  async fn bundled_scenario_ships_come_with_their_software() {
+    config_test_ship_templates().await;
+
+    let mut checked = 0;
+    for entry in fs::read_dir("./scenarios").expect("scenarios directory") {
+      let path = entry.expect("readable entry").path();
+      if path.extension().is_none_or(|e| e != "json") {
+        continue;
+      }
+      let name = path.display().to_string();
+      let bytes = fs::read(&path).unwrap_or_else(|e| panic!("{name}: unreadable: {e}"));
+      let entities = Entities::parse_bytes_with_ship_templates(&bytes, &name, get_ship_templates_snapshot())
+        .unwrap_or_else(|e| panic!("{name}: failed to load: {e}"));
+      for (ship_name, ship) in &entities.ships {
+        let ship = ship.read().unwrap();
+        if ship.design.software.is_empty() {
+          continue;
+        }
+        assert!(
+          !ship.software.is_empty(),
+          "{name}: {ship_name} ({}) sailed without the software its design carries",
+          ship.design.name
+        );
+        checked += 1;
+      }
+    }
+    assert!(checked > 0, "no ships with software found -- has the fixture moved?");
+  }
+
   #[test_log::test(tokio::test)]
   async fn every_bundled_scenario_loads() {
     config_test_ship_templates().await;
