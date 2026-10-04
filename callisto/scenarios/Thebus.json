@@ -35,8 +35,8 @@
       ],
       "color": "!moon",
       "primary": "Olo",
-      "radius": 120000.0,
-      "mass": 2e+19
+      "radius": 1000000.0,
+      "mass": 5e+21
     }
   ],
   "ships": [
@@ -84,13 +84,16 @@
           2
         ],
         "leadership": 1
-      }
+      },
+      "contacts": [
+        "HMS Executor"
+      ]
     },
     {
       "name": "Invigilator",
       "position": [
         600000000.0,
-        -600000.0,
+        -1300000.0,
         400000.0
       ],
       "velocity": [
@@ -143,7 +146,7 @@
       "name": "Death's Actuary",
       "position": [
         600000000.0,
-        -800000.0,
+        -1600000.0,
         -500000.0
       ],
       "velocity": [
@@ -196,7 +199,7 @@
       "name": "Cicada",
       "position": [
         600000000.0,
-        -1100000.0,
+        -2000000.0,
         900000.0
       ],
       "velocity": [
@@ -275,7 +278,10 @@
         ]
       ],
       "design": "HMS Executor",
-      "team": "Red"
+      "team": "Red",
+      "contacts": [
+        "Lyonesse II"
+      ]
     }
   ]
 }
