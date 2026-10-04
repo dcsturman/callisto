@@ -29,6 +29,11 @@ const SOLVE_TOLERANCE: f64 = 1e-4;
 // with close, and define that as 1% - as you get closer you can refine your course and missiles
 // refine every round.
 const ANS_PERCENT_OFF: f64 = 0.01;
+/// Floors for the two "how far off is this answer" fractions below, in metres
+/// and metres per second. They stand in for the size of the change asked for
+/// when that change is nothing at all.
+const POSITION_FLOOR: f64 = 1.0;
+const VELOCITY_FLOOR: f64 = 1.0;
 const MAX_ITERATIONS: usize = 100;
 const MAX_SAMPLES: usize = 100;
 
@@ -426,11 +431,21 @@ impl FlightParams {
         // Case where magnitude of position or velocity are so large, the norm will be a lot larger but still
         // be effectively correct.
 
-        // Check the ratio of how far the calculated position is from the end position to the start position to the end position.
-        let pos_percent_off = self.pos_eq(Vec3::from(a_1), Vec3::from(a_2), t_1, t_2).magnitude()
-          / (Vec3::from(self.start_pos) - Vec3::from(self.end_pos)).magnitude();
-        let vel_percent_off = self.vel_eq(Vec3::from(a_1), Vec3::from(a_2), t_1, t_2).magnitude()
-          / (Vec3::from(self.start_vel) - Vec3::from(self.end_vel)).magnitude();
+        // How far off the answer is, as a fraction of the change that was
+        // asked for. Each fraction has a floor under its denominator: a
+        // rendezvous with a ship already flying alongside asks for no change
+        // in velocity at all, and dividing by that zero scored a perfect
+        // answer as infinitely wrong and threw it away.
+        let pos_percent_off = fraction_off(
+          self.pos_eq(Vec3::from(a_1), Vec3::from(a_2), t_1, t_2).magnitude(),
+          (Vec3::from(self.start_pos) - Vec3::from(self.end_pos)).magnitude(),
+          POSITION_FLOOR,
+        );
+        let vel_percent_off = fraction_off(
+          self.vel_eq(Vec3::from(a_1), Vec3::from(a_2), t_1, t_2).magnitude(),
+          (Vec3::from(self.start_vel) - Vec3::from(self.end_vel)).magnitude(),
+          VELOCITY_FLOOR,
+        );
         debug!(
           "(compute_flight_path) Position percent off: {:0.4?}, Velocity percent off: {:0.4?}",
           pos_percent_off, vel_percent_off
@@ -482,10 +497,21 @@ impl FlightParams {
   }
 
   fn build_path(&self, a_1: &Vec3, a_2: &Vec3, t_1: f64, t_2: f64) -> (Vec<Vec3>, Vec3) {
+    build_path_from(self.start_pos, self.start_vel, a_1, a_2, t_1, t_2)
+  }
+}
+
+/// Fly a plan and report where it goes and how fast it ends up.
+///
+/// Free of the solver's own frame, so a plan worked out somewhere convenient
+/// can be replayed from where the ship really is. Accelerations and durations
+/// do not care about the frame; a path drawn on the screen does.
+fn build_path_from(start_pos: Vec3, start_vel: Vec3, a_1: &Vec3, a_2: &Vec3, t_1: f64, t_2: f64) -> (Vec<Vec3>, Vec3) {
+  {
     // Now that we've solved for acceleration lets create a path and end velocity
     let mut path = Vec::new();
-    let mut vel = self.start_vel;
-    let mut pos = self.start_pos;
+    let mut vel = start_vel;
+    let mut pos = start_pos;
 
     let mut left_over_time = 0.;
     // Every path starts with the starting position
@@ -620,6 +646,18 @@ pub fn lead_burn(
   }
 }
 
+/// How far off an answer is, as a fraction of the change it was asked to
+/// make, with a floor under the denominator.
+///
+/// Without the floor a course that asks for no change in one of the two --
+/// a rendezvous with a ship flying alongside, or a burn that ends where it
+/// began -- divides by zero, and the perfect answer scores as infinitely
+/// wrong. With it, such an answer is judged against the floor instead, so it
+/// has to be right in absolute terms: a centimetre, or a centimetre a second.
+fn fraction_off(residual: f64, asked_for: f64, floor: f64) -> f64 {
+  residual / asked_for.max(floor)
+}
+
 /// Plot a course to a target, always producing a plan.
 ///
 /// Walks the ladder described on [`PathMode`]: a full rendezvous if one exists,
@@ -636,6 +674,43 @@ pub fn plot_course(
   start_pos: Vec3, start_vel: Vec3, max_acceleration: f64, end_pos: Vec3, end_vel: Vec3, target_vel: Option<Vec3>,
   target_accel: Option<Vec3>,
 ) -> FlightPathResult {
+  // Solve the manoeuvre in its own frame: starting at the origin, and at
+  // rest relative to the target. Neither changes the answer -- accelerations
+  // and durations do not care where the origin is or how fast the whole
+  // picture is drifting -- but both change the arithmetic enormously.
+  //
+  // A fight beside a moon is 600,000 km from the system's origin and carries
+  // the moon's 11.5 km/s around it, so the 4,000 km that actually matters is
+  // a small difference between large numbers, and the solver's tolerance is
+  // absolute: it could never drive those residuals down far enough and gave
+  // up on rendezvous that were trivially flyable. In its own frame every
+  // number is the size of the manoeuvre.
+  let frame_vel = target_vel.unwrap_or_else(Vec3::zero);
+  let mut result = plot_course_in_frame(
+    start_vel - frame_vel,
+    max_acceleration,
+    end_pos - start_pos,
+    end_vel - frame_vel,
+    target_vel.map(|_| Vec3::zero()),
+    target_accel,
+  );
+
+  // Fly the plan again from where the ship really is, so the path on the
+  // screen and the velocity it ends at are in the world's frame.
+  let (first, second) = (&result.plan.0, &result.plan.1);
+  let (a_2, t_2) = second.as_ref().map_or((Vec3::zero(), 0), |pair| (pair.0, pair.1));
+  #[allow(clippy::cast_precision_loss)]
+  let (path, end_velocity) = build_path_from(start_pos, start_vel, &first.0, &a_2, first.1 as f64, t_2 as f64);
+  result.path = path;
+  result.end_velocity = end_velocity;
+  result
+}
+
+fn plot_course_in_frame(
+  start_vel: Vec3, max_acceleration: f64, end_pos: Vec3, end_vel: Vec3, target_vel: Option<Vec3>,
+  target_accel: Option<Vec3>,
+) -> FlightPathResult {
+  let start_pos = Vec3::zero();
   let mut rendezvous = FlightParams::new(
     start_pos,
     end_pos,
@@ -982,6 +1057,60 @@ mod tests {
       None,
     );
     assert_eq!(r.mode, PathMode::Intercept);
+  }
+
+  /// Two ships flying in formation around a gas giant: 4,000 km apart, both
+  /// carrying the moon's 11.5 km/s orbital velocity. Nothing about this is
+  /// hard -- the relative velocity is zero -- but the shared velocity is
+  /// three orders of magnitude larger than anything else in the problem.
+  #[test_log::test]
+  fn plot_course_intercepts_a_ship_flying_alongside() {
+    let orbit = Vec3::new(0.0, 0.0, 11_553.0);
+    let r = plot_course(
+      Vec3::new(6.0e8, 2.2e7, 0.0),
+      orbit,
+      6.0 * G,
+      Vec3::new(6.0e8, 1.8e7, 0.0),
+      orbit,
+      Some(orbit),
+      None,
+    );
+    assert_eq!(
+      r.mode,
+      PathMode::Intercept,
+      "a ship 4,000 km away at matched velocity is a rendezvous"
+    );
+  }
+
+  /// A rendezvous out at a planet, far from the system's origin.
+  ///
+  /// The same manoeuvre as the test above in every way that matters -- 4,000
+  /// km, nothing moving relative to anything -- but plotted 600,000 km from
+  /// the origin, where it used to come back as a pass-through because the
+  /// solver's absolute tolerance could not be met by numbers that size.
+  #[test_log::test]
+  fn plot_course_intercepts_far_from_the_origin() {
+    let r = plot_course(
+      Vec3::new(6.0e8, 2.8e7, 0.0),
+      Vec3::zero(),
+      6.0 * G,
+      Vec3::new(6.0e8, 1.8e7, 0.0),
+      Vec3::zero(),
+      Some(Vec3::zero()),
+      None,
+    );
+    assert_eq!(r.mode, PathMode::Intercept, "distance from the origin is not difficulty");
+
+    // And the path is still in the world's frame, not the solver's.
+    let first = r.path.first().expect("a path");
+    assert_relative_eq!(first.x, 6.0e8, epsilon = 1.0);
+    assert_relative_eq!(first.y, 2.8e7, epsilon = 1.0);
+    // Arrival is within a few km of the target over a 10,000 km burn: the
+    // plan's durations go out as whole seconds, and a second of a 6G burn is
+    // 350 m/s, so the replayed path lands slightly off the solved one.
+    let last = r.path.last().expect("a path");
+    assert_relative_eq!(last.x, 6.0e8, epsilon = 2.0e4);
+    assert_relative_eq!(last.y, 1.8e7, epsilon = 2.0e4);
   }
 
   /// A target that out-accelerates us and is already receding has no root for
