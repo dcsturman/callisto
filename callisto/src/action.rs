@@ -587,6 +587,78 @@ mod tests {
     map
   }
 
+  /// What the captain's console actually sends: the ship's whole order list,
+  /// fire orders and the inspire list together, over and over as boxes are
+  /// ticked. The inspire on a gun has to survive that.
+  #[test]
+  fn a_fire_boost_survives_the_list_being_resent() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate::default());
+    entities.add_ship(
+      "Exec".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    entities.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(0.0, 0.0, 0.0),
+      Vec3::new(0.0, 0.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+
+    let fire = ShipAction::FireAction {
+      weapon_id: 0,
+      target: "Quarry".to_string(),
+      called_shot_system: None,
+      salvo_size: None,
+      firing_kind: None,
+      fire_control_dm: 0,
+      computer_fired: false,
+    };
+    let inspire = |boosts: Vec<BoostTarget>| ShipAction::LeadershipCheck { boosts };
+    let gun = BoostTarget::Fire {
+      ship: "Exec".to_string(),
+      weapon_id: 0,
+    };
+    let engine_room = BoostTarget::Engineer {
+      ship: "Exec".to_string(),
+      engineer: 0,
+    };
+
+    // The gunner's order goes up first, as it does at the table.
+    merge(&mut entities, vec![("Exec".to_string(), vec![fire.clone()])]);
+    // Then the captain ticks the engineer, and then the gun.
+    merge(
+      &mut entities,
+      vec![("Exec".to_string(), vec![fire.clone(), inspire(vec![engine_room.clone()])])],
+    );
+    merge(
+      &mut entities,
+      vec![("Exec".to_string(), vec![fire, inspire(vec![engine_room.clone(), gun.clone()])])],
+    );
+
+    let queued = entities
+      .actions
+      .iter()
+      .find(|(ship, _)| ship == "Exec")
+      .map(|(_, actions)| actions.clone())
+      .expect("Exec has orders");
+    let boosts = queued
+      .iter()
+      .find_map(|action| match action {
+        ShipAction::LeadershipCheck { boosts } => Some(boosts.clone()),
+        _ => None,
+      })
+      .expect("the captain's inspire list is queued");
+    assert!(boosts.contains(&engine_room), "the engineer's inspire survived: {boosts:?}");
+    assert!(boosts.contains(&gun), "so should the gun's: {boosts:?}");
+  }
+
   #[test]
   fn test_boost_target_alive_evade_requires_dodge_thrust() {
     // Ship exists, dodge_thrust = 0 -> not alive.

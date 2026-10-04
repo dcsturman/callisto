@@ -797,25 +797,18 @@ function handleEntities(json: object) {
   console.groupEnd();
   store.dispatch(setEntities(entities));
   releaseDepartedShip(entities);
-  // The captain's local leadership boost list is held in Redux only between
-  // explicit flushes; thread their shipName into setActions so the reducer
-  // can preserve it across this server-driven overwrite. Also pass
-  // `leadership_rolled` so the reducer can drop the local list at end-of-turn
-  // (when the server resets that flag back to false).
-  const captainShipName = store.getState().user.shipName ?? null;
-  const captainShip = captainShipName
-    ? entities.ships.find((s) => s.name === captainShipName)
-    : null;
-  const captainLeadershipRolled = captainShip?.leadership_rolled ?? false;
+  // Boosts a captain has ticked are in Redux and on their way up, so a
+  // snapshot answering an earlier request would undo them. Name every ship
+  // whose captain has rolled and let the reducer hold those lists; a ship
+  // whose roll has been cleared is past the round and lets its list go.
+  const rolledShips = entities.ships
+    .filter((ship) => ship.leadership_rolled ?? false)
+    .map((ship) => ship.name);
   if (Object.hasOwn(json, "actions")) {
     const actions = (json as { actions: object[] }).actions;
     const parsed_actions = payloadToAction(actions);
     store.dispatch(
-      setActions({
-        parsed: parsed_actions,
-        captainShipName,
-        captainLeadershipRolled,
-      })
+      setActions({ parsed: parsed_actions, rolledShips })
     );
 
     console.groupCollapsed("Received Actions: ");
@@ -825,11 +818,7 @@ function handleEntities(json: object) {
     console.log(JSON.stringify(json));
     console.groupEnd();
     store.dispatch(
-      setActions({
-        parsed: {} as ActionType,
-        captainShipName,
-        captainLeadershipRolled,
-      })
+      setActions({ parsed: {} as ActionType, rolledShips })
     );
   }
 }

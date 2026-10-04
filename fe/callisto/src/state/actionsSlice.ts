@@ -90,64 +90,58 @@ export const actionsSlice = createSlice({
   name: "server",
   initialState,
   reducers: {
-    // Replace the entire actions slice with a server-derived snapshot. The
-    // captain's locally-edited boost list is held in Redux only between
-    // explicit flushes (Update / CaptainAction), so when an EntityResponse
-    // arrives mid-turn we must NOT clobber pending boosts the captain has not
-    // yet committed.
+    // Replace the entire actions slice with a server-derived snapshot.
     //
-    // After end-of-turn `Update`, the server resets `leadership_rolled` to
-    // false on the captain's ship. We use that signal: when the parsed
-    // snapshot reflects an unrolled captain, drop the local boost list (the
-    // round is over, those boosts have either been applied or expired).
-    // While `leadership_rolled` is true (mid-turn after the captain rolled),
-    // preserve local boosts.
+    // A boost just ticked is in Redux and on its way to the server, so a
+    // snapshot that answers an *earlier* request still describes the world
+    // before the tick. Overwriting with it loses the boost -- and the next
+    // thing the captain does sends the shortened list back up, which makes
+    // the loss permanent. So a ship's local boost list survives a snapshot
+    // while that ship is still mid-turn.
     //
-    // The two-property payload shape avoids `import { store }` cycles inside
-    // the slice file.
+    // `rolledShips` is every ship whose captain has rolled on the fresh
+    // snapshot. End-of-turn flips that back to false, which is the signal to
+    // let the local list go: those boosts have been applied or have expired.
+    //
+    // This used to protect only `user.shipName`. A referee has no assigned
+    // ship, and the boost checkboxes fall back to whichever ship's console is
+    // open (see WeaponUse), so their boosts were written under one name and
+    // guarded under another -- which is to say not guarded at all. Every ship
+    // with pending boosts is now protected, so the two cannot drift apart
+    // again.
     setActions: (
       state,
       item: PayloadAction<{
         parsed: ActionType;
-        captainShipName: string | null;
-        captainLeadershipRolled: boolean;
+        rolledShips: string[];
       }>
     ) => {
-      const { parsed, captainShipName, captainLeadershipRolled } = item.payload;
+      const { parsed, rolledShips } = item.payload;
 
-      // Snapshot the captain's leadership boosts before reset. They are sent
-      // to the server now, but a peer's EntityResponse can still arrive in the
-      // gap between a toggle and its own round-trip, and would otherwise drop
-      // them for that moment.
-      const localCaptainLC =
-        captainShipName && state[captainShipName]
-          ? state[captainShipName].leadershipCheck
-          : null;
-      const localCaptainClearLeadership =
-        captainShipName && state[captainShipName]
-          ? state[captainShipName].clearLeadership
-          : false;
+      // Hold the pending boosts of every ship still mid-turn.
+      const pending = new Map<
+        string,
+        { leadershipCheck: ShipActionSlot["leadershipCheck"]; clearLeadership: boolean }
+      >();
+      for (const shipName of rolledShips) {
+        const slot = state[shipName];
+        if (slot?.leadershipCheck && slot.leadershipCheck.boosts.length > 0) {
+          pending.set(shipName, {
+            leadershipCheck: slot.leadershipCheck,
+            clearLeadership: slot.clearLeadership,
+          });
+        }
+      }
 
       // Clear existing state
       Object.keys(state).forEach((key) => delete state[key]);
       // Copy new payload into state
       Object.assign(state, parsed);
 
-      // Restore captain's local boosts only when:
-      //  - We have a captain ship.
-      //  - Local boosts are non-empty (worth preserving).
-      //  - The captain is still mid-turn (`leadership_rolled` true on the
-      //    fresh server snapshot). End-of-turn flips this to false and we
-      //    intentionally let the boost list go stale-then-cleared.
-      if (
-        captainShipName &&
-        captainLeadershipRolled &&
-        localCaptainLC &&
-        localCaptainLC.boosts.length > 0
-      ) {
-        state[captainShipName] ??= newShipAction();
-        state[captainShipName].leadershipCheck = localCaptainLC;
-        state[captainShipName].clearLeadership = localCaptainClearLeadership;
+      for (const [shipName, held] of pending) {
+        state[shipName] ??= newShipAction();
+        state[shipName].leadershipCheck = held.leadershipCheck;
+        state[shipName].clearLeadership = held.clearLeadership;
       }
     },
     // One operator's action. `operator` is their place in the crew, so a
