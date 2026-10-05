@@ -221,17 +221,23 @@ function Simulator() {
           }}
         >
           {/* eslint-disable react/no-unknown-property */}
+          {/* The star. `decay` near zero means no falloff worth the name, so
+              intensity lands as a flat multiplier on every lit surface --
+              which is why it has to be about 1. At 6 the sunward face of
+              anything pale saturated: Saturn's cloud bands came out as one
+              white blob, and Jupiter was washed out enough that ambient had
+              already been cut to 0.3 chasing the same fault. Only planets
+              are lit at all; ships draw with unlit materials. */}
           <pointLight
             position={[-148e3, 10, 10]}
-            intensity={6.0}
+            intensity={1.0}
             decay={0.01}
             color="#fff7cd"
           />
-          {/* Low: ambient multiplies a texture at full strength with no
-              shading falloff, so at 1.0 Jupiter's near-white cloud bands
-              clipped to featureless blocks — which then bloomed as one huge
-              bright area. */}
-          <ambientLight intensity={0.3} />
+          {/* Fill for the night side, and the reason a texture's own
+              brightness still reads at the terminator. With the star no
+              longer six times too strong this can come back up a little. */}
+          <ambientLight intensity={0.35} />
           <GrabCamera setCamera={setCamera} />
           <FlyControls
             containerName="main-canvas"
