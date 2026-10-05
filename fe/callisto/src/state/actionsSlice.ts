@@ -18,6 +18,17 @@ export type ActionsState = ActionType;
 
 const initialState = {} as ActionType;
 
+/**
+ * How long a toggle may override the server before it is written off.
+ *
+ * A toggle goes up with the very next message, so its own round-trip is well
+ * inside this. Anything still waiting after it was never going to arrive --
+ * and since this slice is persisted to sessionStorage, a toggle can outlive
+ * the round that made it and come back on a reload, where without an expiry
+ * it would override the server for the rest of the session.
+ */
+const PENDING_BOOST_TTL_MS = 4000;
+
 const newShipAction = () => {
   return {
     sensors: [] as SensorState[],
@@ -27,7 +38,7 @@ const newShipAction = () => {
     engineers: [] as EngineerState[],
     computerRepairs: [] as ShipSystem[],
     leadershipCheck: null as { boosts: BoostTarget[] } | null,
-    pendingBoosts: [] as {target: BoostTarget; on: boolean}[],
+    pendingBoosts: [] as {target: BoostTarget; on: boolean; at: number}[],
     clearSensors: [] as number[],
     clearEngineers: [] as number[],
     clearLeadership: false,
@@ -90,7 +101,7 @@ const dropBoostsFrom = (
     ...(slot.pendingBoosts ?? []).filter(
       (entry) => !removed.some((boost) => boostTargetEquals(entry.target, boost))
     ),
-    ...removed.map((target) => ({target, on: false})),
+    ...removed.map((target) => ({target, on: false, at: Date.now()})),
   ];
   slot.leadershipCheck = { boosts: next };
   // Same rule as toggleBoost: an empty list means "strip the queued
@@ -125,10 +136,11 @@ export const actionsSlice = createSlice({
     ) => {
       const { parsed, rolledShips } = item.payload;
 
-      const pending = new Map<string, {target: BoostTarget; on: boolean}[]>();
+      const fresh = Date.now() - PENDING_BOOST_TTL_MS;
+      const pending = new Map<string, {target: BoostTarget; on: boolean; at: number}[]>();
       for (const shipName of rolledShips) {
-        const waiting = state[shipName]?.pendingBoosts;
-        if (waiting && waiting.length > 0) {
+        const waiting = (state[shipName]?.pendingBoosts ?? []).filter((entry) => entry.at > fresh);
+        if (waiting.length > 0) {
           pending.set(shipName, waiting.map((entry) => ({...entry})));
         }
       }
@@ -142,7 +154,7 @@ export const actionsSlice = createSlice({
         state[shipName] ??= newShipAction();
         const slot = state[shipName];
         let boosts = [...(slot.leadershipCheck?.boosts ?? [])];
-        const stillWaiting: {target: BoostTarget; on: boolean}[] = [];
+        const stillWaiting: {target: BoostTarget; on: boolean; at: number}[] = [];
         for (const entry of waiting) {
           const present = boosts.some((boost) => boostTargetEquals(boost, entry.target));
           if (present === entry.on) {
@@ -226,7 +238,7 @@ export const actionsSlice = createSlice({
         ...(slot.pendingBoosts ?? []).filter(
           (entry) => !boostTargetEquals(entry.target, item.payload.target)
         ),
-        {target: item.payload.target, on},
+        {target: item.payload.target, on, at: Date.now()},
       ];
       updateActions(state);
     },

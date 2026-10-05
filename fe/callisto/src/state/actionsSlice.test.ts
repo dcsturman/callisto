@@ -218,6 +218,29 @@ describe("two consoles on one ship agree", () => {
     expect(boostsOf(state)).toHaveLength(0);
   });
 
+  test("a toggle that never came back stops overriding the server", () => {
+    // The slice is persisted, so a toggle can come back on a reload long
+    // after the round it belonged to. Without an expiry it would hold its
+    // ship's list against every snapshot for the rest of the session.
+    let state = boosted({kind: "Fire", ship: SHIP, weapon_id: 0});
+    state = {
+      ...state,
+      [SHIP]: {
+        ...state[SHIP],
+        pendingBoosts: (state[SHIP].pendingBoosts ?? []).map((entry) => ({
+          ...entry,
+          at: Date.now() - 60_000,
+        })),
+      },
+    };
+
+    const serverSays = {
+      [SHIP]: {...state[SHIP], leadershipCheck: {boosts: []}, pendingBoosts: []},
+    };
+    state = reduce(state, setActions({parsed: serverSays, rolledShips: [SHIP]}));
+    expect(boostsOf(state)).toHaveLength(0);
+  });
+
   test("once the round is over the server's list wins", () => {
     let state = boosted({kind: "Fire", ship: SHIP, weapon_id: 0});
     const after = {[SHIP]: {...state[SHIP], leadershipCheck: null, pendingBoosts: []}};

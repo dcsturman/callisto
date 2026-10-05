@@ -552,6 +552,18 @@ pub fn attack(
   // The primary crit (if any) is a single crit at a level determined by the success of the hit.
   let primary_crit = hit_roll - CRITICAL_THRESHOLD > 0;
 
+  // "If the attack is successful and scores a critical hit, the attacker may
+  // choose which location is hit" (CRB p. 169) -- which critical is not said,
+  // so the first one this attack causes takes the called location, whether
+  // that is the Effect 6 critical or the first from sustained damage. Any
+  // beyond it roll as usual: the gunner called one shot, not every hit the
+  // shell makes on its way through.
+  //
+  // Restricting it to the Effect 6 critical, as this did, made a called shot
+  // a DM-2 for nothing in the ordinary case: a hit that carried a ship past a
+  // tenth of its hull put the critical somewhere random anyway.
+  let mut called = called_shot_system;
+
   if primary_crit {
     debug!(
       "(Combat.attack) Primary crit level {} to {}.",
@@ -562,7 +574,7 @@ pub fn attack(
     effects.append(&mut do_critical(
       u8::try_from(hit_roll - CRITICAL_THRESHOLD).expect("(combat.attack) hit_role primary crit calc is out of range"),
       defender,
-      called_shot_system,
+      called.take(),
       rng,
     ));
   }
@@ -578,10 +590,10 @@ pub fn attack(
 
   debug!("(Combat.attack) Secondary crits {} to {}.", secondary_crit, defender.get_name());
 
-  // Add a level 1 crit for each secondary crit.
+  // Add a level 1 crit for each secondary crit. The first of them takes the
+  // called location if the attack has not already spent it.
   for _ in 0..secondary_crit {
-    // Sustained damage crits do not use the called shot rules. They are totally random.
-    effects.append(&mut do_critical(1, defender, None, rng));
+    effects.append(&mut do_critical(1, defender, called.take(), rng));
   }
 
   defender.set_hull_points(u32::saturating_sub(current_hull, damage));
@@ -3147,6 +3159,73 @@ mod tests {
     );
     assert!(matches!(effects[0], EffectMsg::Message { .. }));
     assert!(matches!(effects[1], EffectMsg::Message { .. }));
+  }
+
+  /// A called shot that hits puts the critical where the gunner called it,
+  /// including when the critical came from sustained damage rather than from
+  /// an Effect of 6. "If the attack is successful and scores a critical hit,
+  /// the attacker may choose which location is hit" (CRB p. 169) does not say
+  /// which critical, and restricting it to the Effect 6 one made a called
+  /// shot a DM-2 for nothing in the ordinary case.
+  #[test]
+  fn a_called_shot_places_the_crit_it_causes() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Design".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1)],
+      // Small enough that one hit carries it past a tenth of its hull, which
+      // is the sustained-damage critical.
+      hull: 80,
+      armor: 0,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let weapon = Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1);
+
+    // Several seeds: the roll has to hit, and without the fix the location
+    // is random, so one lucky seed would prove nothing.
+    let mut called_right = 0;
+    let mut crits_seen = 0;
+    for seed in 0..40u64 {
+      let mut defender = Ship::new(
+        "Defender".to_string(),
+        Vec3::new(1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let mut rng = StdRng::seed_from_u64(seed);
+      let effects = attack(
+        HitMods {
+          gunner: 3,
+          ..HitMods::default()
+        },
+        0,
+        &attacker,
+        &mut defender,
+        &weapon.firing_default().unwrap(),
+        Some(&ShipSystem::Weapon),
+        &BoostMap::default(),
+        &mut rng,
+      );
+      let crits: Vec<&EffectMsg> = effects
+        .iter()
+        .filter(|effect| matches!(effect, EffectMsg::Message { content, .. } if content.contains("critical hit")))
+        .collect();
+      if crits.is_empty() {
+        continue;
+      }
+      crits_seen += 1;
+      if matches!(crits[0], EffectMsg::Message { content, .. } if content.contains("weapon critical hit")) {
+        called_right += 1;
+      }
+    }
+
+    assert!(crits_seen > 0, "no critical hits in forty attacks -- the fixture is wrong");
+    assert_eq!(
+      called_right, crits_seen,
+      "every first critical should land on the weapon the gunner called"
+    );
   }
 
   /// The attacker's modifiers are named, not summed: a skill-3 gunner showing
