@@ -100,7 +100,16 @@ input {
     height: 100vh;
     /* Only as wide as the columns it actually uses. */
     width: max-content;
-    max-width: 100vw;
+    /* Three columns, and never underneath the top-right stack.
+       A column is 310px and the gap 4px, so three come to 938. Past the
+       third the console keeps wrapping and the extra columns are scrolled
+       to -- which is visible, since the scrollbar is drawn.
+       The stack is `position: fixed`, and the console used to run straight
+       under it: a fourth column landed beneath the Ships window with both
+       drawn on top of each other. 31rem clears the widest panel in it, the
+       results window at 30rem. The floor keeps one whole column on a narrow
+       window rather than squeezing it. */
+    max-width: min(938px, max(314px, calc(100vw - 31rem)));
     overflow: auto;
     position: relative;
     z-index: 10;
