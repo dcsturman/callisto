@@ -1090,9 +1090,14 @@ h3.control-form {
     color: red;
 }
 
+/* One queued order: what it is on the left, the controls that qualify it on
+   the right, the captain's Assist box last. It wraps, so a row carrying more
+   than the column's width can put its extras on a line of their own rather
+   than squeezing every control to nothing. */
 .fire-actions-div {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
@@ -2728,12 +2733,27 @@ h3.control-form {
 }
 
 /* The computer's share of a shot, under the fire order it belongs to. */
+/* The computer's share of a shot, on its own line under the order it
+   belongs to. Inline it was a third set of controls competing for a column
+   that is barely wide enough for the order itself: the labels wrapped
+   mid-phrase and the count ran off the edge. */
 .fire-control-row {
+    flex-basis: 100%;
     display: flex;
     align-items: baseline;
     gap: 8px;
+    margin: 1px 0 3px 22px;
     font-size: var(--font-xs);
     opacity: 0.85;
+}
+
+/* Said once at the head of the line, so the two controls under it do not
+   each have to explain themselves. */
+.fire-control-row::before {
+    content: "fire control";
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.6;
 }
 
 .fire-control-toggle,
@@ -2741,6 +2761,14 @@ h3.control-form {
     display: flex;
     align-items: baseline;
     gap: 3px;
+    white-space: nowrap;
+}
+
+/* The pool is the last thing on the line and the first to be pushed off it,
+   so it holds its own width. */
+.fire-control-left {
+    margin-left: auto;
+    white-space: nowrap;
 }
 
 .fire-control-left {
