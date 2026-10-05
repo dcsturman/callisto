@@ -40,7 +40,7 @@ export type ActionType = {
      * entry says what was toggled and which way, is laid over whatever the
      * server last said, and retires the moment the server agrees.
      */
-    pendingBoosts?: {target: BoostTarget; on: boolean}[];
+    pendingBoosts?: {target: BoostTarget; on: boolean; at: number}[];
   };
 };
 

@@ -815,6 +815,15 @@ function FireControlRow(args: {
   spent: number;
   shipName: string;
   hasGunner: boolean;
+  /**
+   * Whether points can be spent improving this shot.
+   *
+   * A launch makes no attack roll -- the missile rolls when it arrives --
+   * so there is nothing for the computer to add, and the server ignores a
+   * DM asked for on one. Firing the mount is still worth a point, since
+   * that is what lets an unmanned rack launch at all.
+   */
+  allowDm: boolean;
 }) {
   const dispatch = useAppDispatch();
   const mine = (args.action.fire_control_dm ?? 0) + (args.action.computer_fired ? 1 : 0);
@@ -847,6 +856,7 @@ function FireControlRow(args: {
         />
         computer fires
       </label>
+      {args.allowDm && (
       <label className="fire-control-dm" title="Fire Control points added to this shot">
         DM
         <select
@@ -868,6 +878,7 @@ function FireControlRow(args: {
           ))}
         </select>
       </label>
+      )}
       <span className="fire-control-left">
         {mine > 0 ? `${mine} used, ` : ""}
         {Math.max(0, left)} left
@@ -1150,6 +1161,20 @@ export function Actions(args: {
                 )
               }
             />
+            {/* The computer's share of this shot. This is the row that
+                matters: a direct-fire attack rolls, so a point spent here
+                is +1 to hit. */}
+            {fireControlPool > 0 && (
+              <FireControlRow
+                action={action}
+                index={index}
+                pool={fireControlPool}
+                spent={fireControlSpent}
+                shipName={computerShipName ?? ""}
+                hasGunner={(args.gunnery?.[action.weapon_id] ?? 0) > 0}
+                allowDm={true}
+              />
+            )}
             {renderBoostCheckbox(fireBoostTarget)}
           </div>
         ) : (
@@ -1215,6 +1240,7 @@ export function Actions(args: {
                 spent={fireControlSpent}
                 shipName={computerShipName ?? ""}
                 hasGunner={(args.gunnery?.[action.weapon_id] ?? 0) > 0}
+                allowDm={false}
               />
             )}
             {renderBoostCheckbox(

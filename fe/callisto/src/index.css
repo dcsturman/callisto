@@ -106,6 +106,35 @@ input {
     z-index: 10;
 }
 
+/* The console scrolls sideways once the cards need more columns than the
+   screen is wide -- a referee works five stations and the engineer's card
+   is the tall one, so it is the one that lands in the column past the
+   edge. macOS hides overlay scrollbars until something moves, so there was
+   nothing at all to say a card was out there. This keeps the bar visible
+   whenever there is somewhere to scroll to. */
+.console {
+    scrollbar-width: thin;
+    scrollbar-color: #4b5a6b rgba(0, 0, 0, 0.4);
+}
+
+.console::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+
+.console::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.console::-webkit-scrollbar-thumb {
+    background: #4b5a6b;
+    border-radius: 5px;
+}
+
+.console::-webkit-scrollbar-thumb:hover {
+    background: #5f7389;
+}
+
 .controls-pane {
     box-sizing: border-box;
     display: flex;
@@ -1090,9 +1119,14 @@ h3.control-form {
     color: red;
 }
 
+/* One queued order: what it is on the left, the controls that qualify it on
+   the right, the captain's Assist box last. It wraps, so a row carrying more
+   than the column's width can put its extras on a line of their own rather
+   than squeezing every control to nothing. */
 .fire-actions-div {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
@@ -1122,8 +1156,15 @@ h3.control-form {
    bulky `<h2>` per role section so the controls themselves are the visual
    focus instead of the labels. */
 /* A heading's glyph: the same size as its text and in the same colour, so it
-   reads as part of the heading rather than as decoration beside it. */
-.section-tag-icon,
+   reads as part of the heading rather than as decoration beside it.
+   `inline-flex`, because `flex` made the glyph a block of its own and put
+   every section's heading on two lines -- a line of icon, a line of word. */
+.section-tag-icon {
+    display: inline-flex;
+    align-items: center;
+    color: inherit;
+}
+
 /* The heading row: the fold toggle takes the width, the arrows sit at the
    end. Two buttons rather than one, since a button cannot nest. */
 .station-card-head-row {
@@ -1196,6 +1237,10 @@ h3.control-form {
 }
 
 .section-tag {
+    /* The glyph and the word on one line, which is what the glyph is for. */
+    display: flex;
+    align-items: center;
+    gap: 5px;
     /* Absolute pt so the tag's size is consistent regardless of whichever
        parent's font-size context it lands in (e.g. `.control-label` parents
        compute em differently from naked containers). */
@@ -2728,12 +2773,27 @@ h3.control-form {
 }
 
 /* The computer's share of a shot, under the fire order it belongs to. */
+/* The computer's share of a shot, on its own line under the order it
+   belongs to. Inline it was a third set of controls competing for a column
+   that is barely wide enough for the order itself: the labels wrapped
+   mid-phrase and the count ran off the edge. */
 .fire-control-row {
+    flex-basis: 100%;
     display: flex;
     align-items: baseline;
     gap: 8px;
+    margin: 1px 0 3px 22px;
     font-size: var(--font-xs);
     opacity: 0.85;
+}
+
+/* Said once at the head of the line, so the two controls under it do not
+   each have to explain themselves. */
+.fire-control-row::before {
+    content: "fire control";
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.6;
 }
 
 .fire-control-toggle,
@@ -2741,6 +2801,14 @@ h3.control-form {
     display: flex;
     align-items: baseline;
     gap: 3px;
+    white-space: nowrap;
+}
+
+/* The pool is the last thing on the line and the first to be pushed off it,
+   so it holds its own width. */
+.fire-control-left {
+    margin-left: auto;
+    white-space: nowrap;
 }
 
 .fire-control-left {
