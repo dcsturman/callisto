@@ -20,14 +20,14 @@
         "jump": 3,
         "power": 3,
         "maneuver": 3,
-        "mechanic": 3,
-        "remote_ops": 4
+        "mechanic": 3
       },
       {
         "jump": 2,
         "power": 3,
         "maneuver": 2,
-        "mechanic": 2
+        "mechanic": 2,
+        "remote_ops": 4
       }
     ],
     "gunnery": [
