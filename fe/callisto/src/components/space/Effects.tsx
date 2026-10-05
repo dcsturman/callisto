@@ -19,10 +19,26 @@ const BEAM_HIT = "BeamHit";
 const MESSAGE_EVENT = "Message";
 
 const MISSILE_HIT_COLOR: [number, number, number] = [1.0, 0, 0];
-const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [1.0, 1.0, 1.0];
-const SHIP_DESTROYED_COLOR: [number, number, number] = [0.0, 0.0, 1.0];
+const MISSILE_EXHAUSTED_COLOR: [number, number, number] = [0.65, 0.68, 0.72];
 // Orange, so a beam hit reads apart from a missile hit (red).
 const BEAM_HIT_COLOR: [number, number, number] = [1.0, 0.55, 0];
+
+// A ship coming apart: white-hot at the centre, fire behind it, and a shell
+// that carries on outwards. Nothing else on the board is white, so it does
+// not need the old flat blue to tell it from a missile hit.
+const SHIP_DESTROYED_FLASH = "#fff4d6";
+const SHIP_DESTROYED_FIRE = "#ff7a28";
+const SHIP_DESTROYED_SHELL = "#ff4418";
+
+/** The sphere a ship draws as, and the unit every effect is sized in. */
+const SHIP_MARKER = 0.2;
+/** A hit, in ship markers: big enough to see, small enough to leave the
+ *  ship under it visible. */
+const HIT_BURST = 3.0;
+/** A beam's own hit is smaller, so the beam that caused it still reads. */
+const BEAM_BURST = 2.0;
+/** A missile going dark is not a hit, and should not flash like one. */
+const EXHAUSTED_BURST = 1.5;
 
 // A laser is instantaneous in fiction, but one that clears the screen in a few
 // frames is one nobody sees -- particularly a referee watching the whole board.
@@ -66,14 +82,25 @@ export const defaultEvent = () => {
   return createEvent("", null, null, null, null);
 };
 
+/**
+ * A hit, as an expanding bubble that fades.
+ *
+ * `radius` is where it stops, in ship markers -- a ship draws as a sphere of
+ * SHIP_MARKER units, and a burst is only legible against that. It used to
+ * expand to 5 units whatever was happening, twenty-five times the ship it
+ * was going off next to, which at the ranges a boarding action or an ambush
+ * is fought at swallowed the whole engagement and hid the beam that caused
+ * it.
+ */
 export function Explosion(args: {
   center: [number, number, number];
   color: [number, number, number];
   cleanupFn: () => void;
+  radius?: number;
 }) {
   const { scale, opacity } = useSpring({
     from: { scale: 0.0, opacity: 1.0 },
-    to: [{ scale: 100.0, opacity: 0.0 }],
+    to: [{ scale: args.radius ?? HIT_BURST, opacity: 0.0 }],
     onResolve: (result) => {
       if (result.finished) {
         args.cleanupFn();
@@ -88,9 +115,90 @@ export function Explosion(args: {
 
   return (
     <animated.mesh scale={scale} position={scaleVector(args.center, SCALE)}>
-      <sphereGeometry args={[0.05]} />
+      <sphereGeometry args={[SHIP_MARKER]} />
       <animated.meshStandardMaterial transparent={true} color={args.color} opacity={opacity} />
     </animated.mesh>
+  );
+}
+
+/**
+ * A ship coming apart, in three layers that outlive each other: a white-hot
+ * flash, a fireball behind it, and a shell that keeps going after both have
+ * gone. It runs about three seconds, where a hit is gone in half of one, and
+ * it is the one effect on the board worth stopping to watch.
+ *
+ * Additive blending on the first two, so where they overlap they burn out to
+ * white the way an explosion does rather than turning muddy.
+ */
+export function ShipExplosion(args: {
+  center: [number, number, number];
+  cleanupFn: () => void;
+}) {
+  const at = scaleVector(args.center, SCALE);
+
+  const flash = useSpring({
+    from: { scale: 0.4, opacity: 1.0 },
+    to: [
+      { scale: 3.0, opacity: 0.9 },
+      { scale: 4.0, opacity: 0.0 },
+    ],
+    config: { duration: 170 },
+  });
+
+  const fireball = useSpring({
+    from: { scale: 0.3, opacity: 0.95 },
+    to: [
+      { scale: 5.0, opacity: 0.7 },
+      { scale: 8.0, opacity: 0.0 },
+    ],
+    config: { duration: 650 },
+  });
+
+  // The last to go, and what clears the event.
+  const shell = useSpring({
+    from: { scale: 1.0, opacity: 0.45 },
+    to: [{ scale: 14.0, opacity: 0.0 }],
+    delay: 120,
+    config: { duration: 2600 },
+    onResolve: (result) => {
+      if (result.finished) {
+        args.cleanupFn();
+      }
+    },
+  });
+
+  return (
+    <>
+      <animated.mesh scale={shell.scale} position={at}>
+        <sphereGeometry args={[SHIP_MARKER, 24, 16]} />
+        <animated.meshBasicMaterial
+          transparent={true}
+          color={SHIP_DESTROYED_SHELL}
+          opacity={shell.opacity}
+          depthWrite={false}
+        />
+      </animated.mesh>
+      <animated.mesh scale={fireball.scale} position={at}>
+        <sphereGeometry args={[SHIP_MARKER, 24, 16]} />
+        <animated.meshBasicMaterial
+          transparent={true}
+          color={SHIP_DESTROYED_FIRE}
+          opacity={fireball.opacity}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </animated.mesh>
+      <animated.mesh scale={flash.scale} position={at}>
+        <sphereGeometry args={[SHIP_MARKER, 24, 16]} />
+        <animated.meshBasicMaterial
+          transparent={true}
+          color={SHIP_DESTROYED_FLASH}
+          opacity={flash.opacity}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </animated.mesh>
+    </>
   );
 }
 
@@ -190,11 +298,11 @@ export function Explosions() {
                 key={key}
                 center={(event.position?? [0, 0, 0])}
                 color={color}
+                radius={EXHAUSTED_BURST}
                 cleanupFn={removeMe}
               />
             );
           case SHIP_DESTROYED:
-            color = SHIP_DESTROYED_COLOR;
             key = "Destroyed-" + (event.id ?? index);
             removeMe = () => {
               if (event.id != null) {
@@ -202,10 +310,9 @@ export function Explosions() {
               }
             };
             return (
-              <Explosion
+              <ShipExplosion
                 key={key}
                 center={(event.position?? [0, 0, 0])}
-                color={color}
                 cleanupFn={removeMe}
               />
             );
@@ -230,6 +337,7 @@ export function Explosions() {
                 <Explosion
                   center={event.position ?? [0, 0, 0]}
                   color={color}
+                  radius={BEAM_BURST}
                   cleanupFn={() => {}}
                 />
               </React.Fragment>
