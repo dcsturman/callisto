@@ -106,6 +106,24 @@ input {
     z-index: 10;
 }
 
+/* On a laptop the console stops wrapping and scrolls instead.
+   Wrapping is all or nothing: two panels an inch taller than the window
+   start a second column, which on a 1440-wide screen takes half the width
+   and leaves both columns half empty -- and the star field, which is the
+   other half of the game, with nothing left. A column that scrolls costs a
+   gesture; a column that wraps costs the view.
+   Children hold their height, since a column flex item shrinks to fit by
+   default and would squash rather than overflow. */
+@media (max-width: 1500px) {
+    .console {
+        flex-wrap: nowrap;
+    }
+
+    .console > * {
+        flex-shrink: 0;
+    }
+}
+
 /* The console scrolls sideways once the cards need more columns than the
    screen is wide -- a referee works five stations and the engineer's card
    is the tall one, so it is the one that lands in the column past the
