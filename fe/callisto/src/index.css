@@ -2653,6 +2653,54 @@ h3.control-form {
     margin: 3px 0;
 }
 
+/* The results filter: two rows of chips, ships above and kinds below.
+   Chips rather than a dropdown, because the question is "these two ships" as
+   often as "this one". */
+.result-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0 0 6px 0;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #343a33;
+}
+
+.result-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Off is an outline, on is filled: a glance says what is being hidden. */
+.result-chip {
+    padding: 1px 7px;
+    border: 1px solid currentColor;
+    border-radius: 9px;
+    background: transparent;
+    font-family: inherit;
+    font-size: var(--font-xs);
+    line-height: 1.5;
+    opacity: 0.55;
+    cursor: pointer;
+}
+
+.result-chip:hover {
+    opacity: 0.85;
+}
+
+.result-chip-on {
+    background: rgba(200, 205, 193, 0.14);
+    opacity: 1;
+    font-weight: 600;
+}
+
+/* The way back to everything, which is only worth showing while something is
+   being hidden. */
+.result-chip-all {
+    color: #c8cdc1;
+    border-style: dashed;
+}
+
 /* A ship's name inside a result: bold, and in its own side's colour, so the
    eye finds who a line is about before reading the line. */
 .result-ship {

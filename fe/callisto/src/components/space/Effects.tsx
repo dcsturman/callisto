@@ -9,7 +9,14 @@ import { Team, teamLabelColor } from "lib/teams";
 import { Tooltip } from "react-tooltip";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
-import { setShowResults, removeEvent, clearMessageEvents } from "state/uiSlice";
+import {
+  setShowResults,
+  removeEvent,
+  clearMessageEvents,
+  toggleResultShip,
+  toggleResultCategory,
+  clearResultFilters,
+} from "state/uiSlice";
 import { messageStyle } from "lib/messages";
 import {entitiesSelector} from "state/serverSlice";
 
@@ -438,6 +445,97 @@ function ResultText(args: {event: Event}) {
   );
 }
 
+/** Every ship a message names, in the order the sentence names them. */
+function shipsIn(event: Event): ShipRef[] {
+  const target = typeof event.target === "string" ? {name: event.target} : event.target;
+  return [event.ship, target, event.contact].filter((who): who is ShipRef => who != null);
+}
+
+/**
+ * The filter: which ships' results to show, and which kinds.
+ *
+ * Chips rather than a dropdown, because the question is "these two ships" as
+ * often as "this one" -- a referee watching a boarding action, a sensop
+ * watching every sensor check on one hull. Only the ships and kinds actually
+ * in this round's results get a chip, so the rows stay short.
+ */
+function ResultFilter(args: {events: Event[]}) {
+  const dispatch = useAppDispatch();
+  const ships = useAppSelector((state) => state.ui.resultShips);
+  const categories = useAppSelector((state) => state.ui.resultCategories);
+
+  const present = useMemo(() => {
+    const byName = new Map<string, ShipRef>();
+    const kinds = new Set<string>();
+    for (const event of args.events) {
+      for (const who of shipsIn(event)) {
+        if (!byName.has(who.name)) {
+          byName.set(who.name, who);
+        }
+      }
+      if (event.category != null) {
+        kinds.add(event.category);
+      }
+    }
+    return {
+      ships: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      kinds: [...kinds].sort(),
+    };
+  }, [args.events]);
+
+  if (present.ships.length <= 1 && present.kinds.length <= 1) {
+    return null;
+  }
+
+  const filtering = ships.length > 0 || categories.length > 0;
+
+  return (
+    <div className="result-filter">
+      <div className="result-filter-row">
+        {present.ships.map((who) => {
+          const on = ships.includes(who.name);
+          return (
+            <button
+              key={who.name}
+              type="button"
+              className={on ? "result-chip result-chip-on" : "result-chip"}
+              style={{color: teamLabelColor(who.team ?? null)}}
+              title={on ? `Showing ${who.name}` : `Show only ${who.name} and whoever else is chosen`}
+              onClick={() => dispatch(toggleResultShip(who.name))}>
+              {who.name}
+            </button>
+          );
+        })}
+      </div>
+      <div className="result-filter-row">
+        {present.kinds.map((kind) => {
+          const on = categories.includes(kind);
+          return (
+            <button
+              key={kind}
+              type="button"
+              className={on ? "result-chip result-chip-on" : "result-chip"}
+              style={messageStyle(kind)}
+              title={on ? `Showing ${kind}` : `Show only ${kind} and whatever else is chosen`}
+              onClick={() => dispatch(toggleResultCategory(kind))}>
+              {kind}
+            </button>
+          );
+        })}
+        {filtering && (
+          <button
+            type="button"
+            className="result-chip result-chip-all"
+            title="Show everything again"
+            onClick={() => dispatch(clearResultFilters())}>
+            all
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * The turn's results.
  *
@@ -454,17 +552,38 @@ export function ResultsWindow() {
   }, [dispatch]);
 
   const messages = useMemo(() => events?.filter((event) => event.kind === MESSAGE_EVENT) ?? [], [events]);
+  const shipFilter = useAppSelector((state) => state.ui.resultShips);
+  const categoryFilter = useAppSelector((state) => state.ui.resultCategories);
+
+  // Chosen ships and chosen kinds, combining with and: "sensors, on this one
+  // hull" is the case the two rows exist for. Nothing chosen means everything.
+  const shown = useMemo(
+    () =>
+      messages.filter((event) => {
+        const byShip =
+          shipFilter.length === 0 || shipsIn(event).some((who) => shipFilter.includes(who.name));
+        const byCategory =
+          categoryFilter.length === 0 ||
+          (event.category != null && categoryFilter.includes(event.category));
+        return byShip && byCategory;
+      }),
+    [messages, shipFilter, categoryFilter]
+  );
 
   return (
     <div id="results-window" className="computer-window">
       <h1>Results</h1>
       <br></br>
       {messages.length === 0 && <h2>No results</h2>}
+      {messages.length > 0 && <ResultFilter events={messages} />}
+      {messages.length > 0 && shown.length === 0 && (
+        <p className="sensor-empty">Nothing matches the filter.</p>
+      )}
       {/* A tick or a cross against everything that was a check, so a round
           can be read at a glance. Lines that merely report something are
           indented to the same text column rather than sitting under the
           marks. */}
-      {messages.length > 0 && messages.map((msg, index) => (
+      {shown.map((msg, index) => (
         <p key={"msg-" + index} className="result-line" style={messageStyle(msg.category)}>
           {msg.succeeded == null ? (
             <span className="result-mark result-mark-none" aria-hidden="true" />
