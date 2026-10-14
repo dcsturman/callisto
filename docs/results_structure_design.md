@@ -290,6 +290,31 @@ and the target number become the `roll` string that was always meant for them,
 anywhere. Three functions go with them: `formatEngineerResult`,
 `formatLeadershipResult` and `describeBoost`.
 
+#### What earns an effect variant of its own
+
+The question this raises is worth writing down, because "it changes state, so
+it needs structure" is the natural guess and it is not how this system works.
+
+Effects carry **no state**. The server applies a repair to its own `Entities`
+and then sends the whole snapshot; the client's ships come from that snapshot,
+not from the effect. An effect is what the client should *do* about something
+that happened -- and for most of them the answer is "put a line in results".
+
+So a variant earns its place when the client must act on it in some way text
+cannot express. The ones that do are the visual effects: `BeamHit` carries an
+origin and an end because something has to draw the beam, `ShipImpact` and
+`ShipDestroyed` carry a position because something has to go off there.
+`EngineerAction` and `LeadershipAction` carry structure that nothing acts on;
+their whole use is a sentence.
+
+That cuts both ways, and the door stays open. If the damage diagram should one
+day flash the section an engineer has just repaired, that is a client action
+text cannot express, and the right answer is a structured effect **alongside**
+the message -- the line in results, and the thing the view does -- rather than
+the message carrying fields the results path has no use for. `action`,
+`check` and `target` are exactly the fields such an effect would want, which
+is why this design moves them out of results rather than deleting the idea.
+
 The one thing to confirm first is that nothing else consumes the structured
 fields. At the time of writing nothing does -- `serverManager.ts` is the only
 reader, `EngineerActionResult` exists in `lib/entities.ts` purely to type it,
