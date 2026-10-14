@@ -17,7 +17,7 @@ import {
   toggleResultCategory,
   clearResultFilters,
 } from "state/uiSlice";
-import { messageStyle } from "lib/messages";
+import { messageStyle, messageRole, roleStyle, MessageRole } from "lib/messages";
 import {entitiesSelector} from "state/serverSlice";
 
 
@@ -466,16 +466,14 @@ function ResultFilter(args: {events: Event[]}) {
 
   const present = useMemo(() => {
     const byName = new Map<string, ShipRef>();
-    const kinds = new Set<string>();
+    const kinds = new Set<MessageRole>();
     for (const event of args.events) {
       for (const who of shipsIn(event)) {
         if (!byName.has(who.name)) {
           byName.set(who.name, who);
         }
       }
-      if (event.category != null) {
-        kinds.add(event.category);
-      }
+      kinds.add(messageRole(event.category));
     }
     return {
       ships: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)),
@@ -508,17 +506,19 @@ function ResultFilter(args: {events: Event[]}) {
         })}
       </div>
       <div className="result-filter-row">
-        {present.kinds.map((kind) => {
-          const on = categories.includes(kind);
+        {present.kinds.map((role) => {
+          const on = categories.includes(role);
           return (
             <button
-              key={kind}
+              key={role}
               type="button"
               className={on ? "result-chip result-chip-on" : "result-chip"}
-              style={messageStyle(kind)}
-              title={on ? `Showing ${kind}` : `Show only ${kind} and whatever else is chosen`}
-              onClick={() => dispatch(toggleResultCategory(kind))}>
-              {kind}
+              style={roleStyle(role)}
+              title={
+                on ? `Showing the ${role}'s work` : `Show only the ${role}'s work, and whatever else is chosen`
+              }
+              onClick={() => dispatch(toggleResultCategory(role))}>
+              {role}
             </button>
           );
         })}
@@ -563,8 +563,7 @@ export function ResultsWindow() {
         const byShip =
           shipFilter.length === 0 || shipsIn(event).some((who) => shipFilter.includes(who.name));
         const byCategory =
-          categoryFilter.length === 0 ||
-          (event.category != null && categoryFilter.includes(event.category));
+          categoryFilter.length === 0 || categoryFilter.includes(messageRole(event.category));
         return byShip && byCategory;
       }),
     [messages, shipFilter, categoryFilter]

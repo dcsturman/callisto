@@ -573,10 +573,16 @@ pub fn attack(
       defender.get_name()
     );
     // Add a single crit at the effect level
+    let severity =
+      u8::try_from(hit_roll - CRITICAL_THRESHOLD).expect("(combat.attack) hit_role primary crit calc is out of range");
     effects.append(&mut do_critical(
-      u8::try_from(hit_roll - CRITICAL_THRESHOLD).expect("(combat.attack) hit_role primary crit calc is out of range"),
+      severity,
       defender,
       called.take(),
+      &CritCause {
+        attacker: attacker_name,
+        why: format!("effect {effect} on the hit, which is a critical at severity {severity}"),
+      },
       rng,
     ));
   }
@@ -595,7 +601,19 @@ pub fn attack(
   // Add a level 1 crit for each secondary crit. The first of them takes the
   // called location if the attack has not already spent it.
   for _ in 0..secondary_crit {
-    effects.append(&mut do_critical(1, defender, called.take(), rng));
+    effects.append(&mut do_critical(
+      1,
+      defender,
+      called.take(),
+      &CritCause {
+        attacker: attacker_name,
+        why: format!(
+          "sustained damage: {damage} took it past another {crit_threshold} hull, a tenth of {}",
+          defender.get_max_hull_points()
+        ),
+      },
+      rng,
+    ));
   }
 
   defender.set_hull_points(u32::saturating_sub(current_hull, damage));
@@ -603,7 +621,8 @@ pub fn attack(
 }
 
 fn do_critical(
-  crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, rng: &mut dyn RngCore,
+  crit_level: u8, defender: &mut Ship, called_shot_system: Option<&ShipSystem>, cause: &CritCause,
+  rng: &mut dyn RngCore,
 ) -> Vec<EffectMsg> {
   let location = if let Some(system) = called_shot_system {
     debug!("(Combat.do_critical) Critical on called shot system '{system:?}'.");
@@ -615,11 +634,30 @@ fn do_critical(
     loc
   };
 
-  let effects = apply_crit(crit_level, location, defender, rng);
+  let effects = apply_crit(crit_level, location, defender, rng)
+    .into_iter()
+    // Who did it, and why it happened. A crit line named only the ship that
+    // suffered it, so a gunner filtering on their own ship saw the damage
+    // they did and none of the criticals it caused -- and the line never said
+    // which of the two ways a critical arrives this one came by.
+    .map(|effect| effect.at(cause.attacker).rolled(cause.why.clone()))
+    .collect::<Vec<_>>();
 
   info!("(Combat.do_critical) {} suffers crits: {:?}.", defender.get_name(), effects);
 
   effects
+}
+
+/// Where a critical came from: who caused it, and which of the two ways it
+/// arrived.
+///
+/// A critical is either the Effect 6 of a very good hit, or the toll for
+/// taking a ship past another tenth of its hull (CRB p. 169). Those are very
+/// different pieces of news -- one is marksmanship, the other is attrition --
+/// and the line itself has never said which.
+struct CritCause<'a> {
+  attacker: &'a str,
+  why: String,
 }
 
 /// The mounts still switched on, so a hit that silences the ship can put them
@@ -3064,6 +3102,73 @@ mod tests {
     );
     assert!(matches!(effects[0], EffectMsg::Message { .. }));
     assert!(matches!(effects[1], EffectMsg::Message { .. }));
+  }
+
+  /// A critical names the ship that caused it and says which of the two ways
+  /// it arrived.
+  ///
+  /// The line used to name only the ship that suffered it, so a gunner
+  /// watching their own ship saw the damage they did and none of the
+  /// criticals it caused.
+  #[test]
+  fn a_critical_names_its_cause() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Design".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1)],
+      hull: 80,
+      armor: 0,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let weapon = Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1);
+
+    let mut seen = 0;
+    for seed in 0..40u64 {
+      let mut defender = Ship::new(
+        "Defender".to_string(),
+        Vec3::new(1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let mut rng = StdRng::seed_from_u64(seed);
+      for effect in attack(
+        HitMods {
+          gunner: 3,
+          ..HitMods::default()
+        },
+        0,
+        &attacker,
+        &mut defender,
+        &weapon.firing_default().unwrap(),
+        None,
+        &BoostMap::default(),
+        &mut rng,
+      ) {
+        let EffectMsg::Message {
+          category: MessageCategory::Critical,
+          target,
+          roll,
+          ..
+        } = &effect
+        else {
+          continue;
+        };
+        seen += 1;
+        assert_eq!(
+          target.as_ref().map(|who| who.name.as_str()),
+          Some("Attacker"),
+          "a critical should name the ship that caused it"
+        );
+        let why = roll.clone().unwrap_or_default();
+        assert!(
+          why.contains("sustained damage") || why.contains("effect"),
+          "a critical should say why it happened, got {why:?}"
+        );
+      }
+    }
+    assert!(seen > 0, "no criticals in forty attacks -- the fixture is wrong");
   }
 
   /// A called shot that hits puts the critical where the gunner called it,
