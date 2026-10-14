@@ -246,23 +246,83 @@ keeps the filter meaning one thing.
 
 ### 6.2 Results do not all come from `Message`
 
-Two other effects become result lines, and the **client composes their text**:
-`EffectMsg::EngineerAction { result }` and `EffectMsg::LeadershipAction { .. }`
-are turned into Message-shaped events in `serverManager.ts`, where the client
-also invents their prefixes ("[Engineer SUCCESS]", "[Captain]") and names their
-category.
+Two other effects become result lines, and the **client composes their text**.
+This is worth setting out, because it is not a design anyone would choose
+today -- it is an order-of-arrival accident.
 
-That has to move. If the client keeps writing sentences, half the results have
-ships inside text nobody can bold and arithmetic nobody can lift out. The
-server should emit these as ordinary `Message`s with `ship`, `roll` and
-`succeeded` filled in -- which also deletes `formatEngineerResult` and
-`formatLeadershipResult` and the only place the client writes English.
+| | Added | What it carries |
+| --- | --- | --- |
+| `EffectMsg::EngineerAction` | 2026-03-04, "Added engineer role" | `ship_name`, `action`, `success`, `check`, `target`, `message`, `critical_failure` |
+| `EffectMsg::LeadershipAction` | 2026-04-28, "Enable captain role" | `ship_name`, `roll`, `leadership`, `points`, `boosts_applied` |
+| `EffectMsg::Message` gains structure | 2026-09-13, "Make the results log readable" | `category`, `ship`, `succeeded` |
 
-A check before doing it: whether anything else in the client reads
-`EngineerActionResult`'s structured fields. At the time of writing it does not
--- `serverManager.ts` is the only consumer, and only to make a line.
+When the engineer and captain roles were built, `Message` was a bare string.
+Anything with a roll, a target number and a success flag could not be carried
+by it, so each got a variant of its own -- and the rule written into
+`payloads.rs` at the time still says so: *"Anything that needs real structure
+gets its own `EffectMsg` variant instead."* That was right in March.
 
----
+Six months later `Message` grew the structure these two were invented for.
+Nothing went back to fold them in, so today:
+
+- The client builds their sentences in `serverManager.ts`
+  (`formatEngineerResult`, `formatLeadershipResult`), inventing the prefixes
+  `[Engineer SUCCESS]` and `[Captain]` and naming their category itself.
+- `describeBoost` has the client writing game vocabulary -- "Fire on HMS
+  Executor (W#0)" -- which the server could say far better, since it knows the
+  mount is a particle barbette.
+- The structure that justified the variants is **unused**. The client reads
+  `message`, `success` and `critical_failure` and nothing else;
+  `action`, `check` and `target` are carried across the wire and dropped. The
+  original intent -- "so the FE can route it through the existing action
+  union" -- never happened.
+- These lines cannot be filtered or coloured by ship under this design, since
+  their ships are inside text.
+
+A leadership line also names a second ship in practice: a Detection boost
+reads "Death's Actuary searching for HMS Executor", so the captain's ship is
+`%s` and the quarry is `%t`.
+
+**The fix is to delete both variants** and have the server emit ordinary
+`Message`s with `ship`, `target`, `roll` and `succeeded` filled in. The check
+and the target number become the `roll` string that was always meant for them,
+`critical_failure` picks the sentence, and the client stops writing English
+anywhere. Three functions go with them: `formatEngineerResult`,
+`formatLeadershipResult` and `describeBoost`.
+
+The one thing to confirm first is that nothing else consumes the structured
+fields. At the time of writing nothing does -- `serverManager.ts` is the only
+reader, `EngineerActionResult` exists in `lib/entities.ts` purely to type it,
+and the FE's own `EngineerAction`-named exports are a different thing (queued
+orders in `actionsSlice`).
+
+### 6.3 Tooltips: one way, not four
+
+The client already has `react-tooltip` as a dependency and uses it in three
+places -- the design picker's info icon, the ship-design details panel, and
+the weapon glyphs -- with three different looks:
+
+| Class | Looks like |
+| --- | --- |
+| `.tooltip-body` | green `#3dfc32` text, `--font-xs`, `padding: 2px !important` |
+| `#design-tooltip` | white on grey `rgb(55,55,55)`, `--font-xs` |
+| `.weapon-button-tooltip` | `.tooltip-body` plus a left pad |
+| `.ship-design-description-tooltip` | a 250px cap on the rendered body |
+
+Alongside them, 64 plain `title=` attributes across the console.
+
+The results tooltip should not be a fifth look. Proposal:
+
+1. **One class, `console-tip`**, defined once: the cards' own dark ground and
+   hairline border, `--font-xs`, monospace where it carries numbers, a
+   `max-width` around 280px, 300ms delay, no `!important`.
+2. **The three existing tooltips move onto it**, keeping the design-details
+   one's richer rendered body. The green-on-black and white-on-grey variants
+   both go.
+3. **The rule for which to use**, written down so it stops being ad hoc:
+   `title` for a short plain hint; `console-tip` where the content is
+   structured -- a breakdown, a column of modifiers, anything multi-line.
+4. The roll arithmetic uses `console-tip`, which is what forced the question.
 
 ## 7. Still open
 
