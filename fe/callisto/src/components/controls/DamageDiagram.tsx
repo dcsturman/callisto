@@ -225,9 +225,13 @@ export function DamageDiagram(args: {ship: Ship; design: ShipDesignTemplate | un
       role="img"
       aria-label="Ship damage by system">
       {/* Armour outside, hull within it, each taking its own colour. Drawn
-          first, so the blocks sit on top of them. */}
-      <path d={ARMOUR_PATH} fill="none" stroke={colourFor(armourLevel)} strokeWidth={3.5} />
-      <path d={HULL_PATH} fill="#070b10" stroke={hullShows} strokeWidth={2} />
+          first, so the blocks sit on top of them.
+          The hull is the heavy line and the armour the fine one, which is the
+          other way round from how they sit on the ship: most fights end when
+          the hull reaches nothing, so the hull is what the drawing should say
+          loudest. */}
+      <path d={ARMOUR_PATH} fill="none" stroke={colourFor(armourLevel)} strokeWidth={1.6} />
+      <path d={HULL_PATH} fill="#070b10" stroke={hullShows} strokeWidth={3.5} />
 
       {SECTIONS.map((section) => {
         const level = levelOf(section.system);

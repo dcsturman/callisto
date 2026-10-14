@@ -147,11 +147,18 @@ export function TargetBoard(args: {ship: Ship}) {
             </span>
             {/* Where it will be when the round ends: a shot is ordered now
                 and resolved then, and a target that is opening may be out of
-                a mount's reach by the time it fires. */}
+                a mount's reach by the time it fires. The band is named only
+                when it changes -- "Long ... Long" was the same word twice,
+                and the arrow alone says which way it is going. */}
             <span
               className="target-trend"
-              title={row.closing ? "Closing" : "Opening"}>
-              {row.closing ? "▼" : "▲"} {row.endBand}
+              title={`${row.closing ? "Closing" : "Opening"}; ${
+                row.endBand === row.band
+                  ? `still ${row.endBand} when the round ends`
+                  : `${row.endBand} when the round ends`
+              }`}>
+              {row.closing ? "▼" : "▲"}
+              {row.endBand === row.band ? "" : ` ${row.endBand}`}
             </span>
             <span className="target-defence" title="Armour, and screens fitted">
               armour {row.armour}

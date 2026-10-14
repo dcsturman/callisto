@@ -63,6 +63,11 @@ export function ShotOdds(args: {ship: Ship}) {
     const dodge = target.dodge_thrust > 0 ? -(target.crew?.pilot ?? 0) : 0;
     const evadeSoftware = -(target.software_running?.find((s) => s.kind === "Evade")?.level ?? 0);
     const advanced = args.ship.software_running?.find((s) => s.kind === "AdvancedFireControl")?.level ?? 0;
+    // "For now assume all missiles are smart missiles": the guidance bonus is
+    // our TL over theirs, and never less than 1 nor more than 6.
+    const ourTl = templates[args.ship.design]?.tl ?? 0;
+    const theirTl = templates[target.design]?.tl ?? 0;
+    const smartMissile = Math.min(6, Math.max(1, ourTl - theirTl));
     const launchSolution = args.ship.software_running?.find((s) => s.kind === "LaunchSolution")?.level ?? 0;
 
     return shipWeapons(args.ship, templates).map((weapon, index) => {
@@ -74,17 +79,29 @@ export function ShotOdds(args: {ship: Ship}) {
       const inReach = reaches(weapon, band);
       // Itemised the way the results log itemises an attack: a bare -1 is a
       // riddle, and the gunner's next question is always "why".
-      const terms: [string, number][] = [
-        ["gunner", gunner],
-        ["weapon", WEAPON_HIT_MOD[kind] ?? 0],
-        // A salvo is not modified by the range it was launched from.
-        [salvo ? "range (salvo, so none)" : `range (${band})`, salvo ? 0 : RANGE_MOD[band]],
-        ["sensor lock", locked ? 2 : 0],
-        ["their pilot evading", dodge],
-        ["their Evade software", evadeSoftware],
-        ["Advanced Fire Control", advanced],
-        ["Launch Solution", salvo ? launchSolution : 0],
-      ];
+      // A salvo is not the gunner's shot. Launching makes no attack roll at
+      // all: the missile rolls when it arrives, with its own guidance and
+      // none of the gunner's skill, the mount's own accuracy or the range it
+      // was thrown from. Showing the gunner's skill on that row said a rack
+      // would hit like a gun, which it does not.
+      const terms: [string, number][] = salvo
+        ? [
+            ["smart missile (our TL over theirs)", smartMissile],
+            ["sensor lock", locked ? 2 : 0],
+            ["their pilot evading", dodge],
+            ["their Evade software", evadeSoftware],
+            ["Advanced Fire Control", advanced],
+            ["Launch Solution", launchSolution],
+          ]
+        : [
+            ["gunner", gunner],
+            ["weapon", WEAPON_HIT_MOD[kind] ?? 0],
+            [`range (${band})`, RANGE_MOD[band]],
+            ["sensor lock", locked ? 2 : 0],
+            ["their pilot evading", dodge],
+            ["their Evade software", evadeSoftware],
+            ["Advanced Fire Control", advanced],
+          ];
       const dm = terms.reduce((total, [, value]) => total + value, 0);
       const named = terms.filter(([, value]) => value !== 0);
       const why =
