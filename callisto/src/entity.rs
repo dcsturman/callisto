@@ -189,10 +189,7 @@ fn engineer_check(roll: u8, terms: &[(&str, i16)], target: u8) -> (u8, String) {
   } else {
     format!(" ({breakdown})")
   };
-  (
-    total,
-    format!("with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against {target}"),
-  )
+  (total, format!("roll {roll} DM {dm:+}{breakdown} = {total} vs {target}"))
 }
 
 /// One sensor-operator check against a fixed target number.
@@ -2783,6 +2780,7 @@ impl Entities {
           check: 0,
           target: 0,
           message: format!("%s cannot jump: its {} station is out.", stations_down.join(" and ")),
+          roll: None,
           critical_failure: false,
         },
         false,
@@ -2810,6 +2808,7 @@ impl Entities {
           check: 0,
           target: 0,
           message: format!("%s cannot jump: {reason}."),
+          roll: None,
           critical_failure: false,
         },
         false,
@@ -2836,10 +2835,11 @@ impl Entities {
           check: total,
           target,
           message: if short_jump {
-            format!("{ship_name} jump check {check}: jumps successfully, jump-{jump_range} on the fuel aboard.")
+            format!("%s jumps successfully: jump-{jump_range} on the fuel aboard.")
           } else {
-            format!("{ship_name} jump check {check}: jumps successfully.")
+            "%s jumps successfully.".to_string()
           },
+          roll: Some(check.clone()),
           critical_failure: false,
         },
         true,
@@ -2852,7 +2852,8 @@ impl Entities {
           success: false,
           check: total,
           target,
-          message: format!("%s jump check {check}: misjumps! Ship is lost in jump space."),
+          message: "%s jump check: misjumps! Ship is lost in jump space.".to_string(),
+          roll: Some(check.clone()),
           critical_failure: true,
         },
         true,
@@ -2907,7 +2908,8 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("%s maneuver drive overload {check}: success, +1 thrust for {rounds} round(s)."),
+        message: format!("%s maneuver drive overload: success, +1 thrust for {rounds} round(s)."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -2919,7 +2921,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("%s maneuver drive overload {check}: critical failure, drive damaged."),
+        message: "%s maneuver drive overload: critical failure, drive damaged.".to_string(),
+        roll: Some(check.clone()),
         critical_failure: true,
       }
     } else {
@@ -2930,7 +2933,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("%s maneuver drive overload {check}: failed."),
+        message: "%s maneuver drive overload: failed.".to_string(),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     }
@@ -2979,7 +2983,8 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("%s power plant overload {check}: success, +10% power for {rounds} round(s)."),
+        message: format!("%s power plant overload: success, +10% power for {rounds} round(s)."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -2991,7 +2996,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("%s power plant overload {check}: critical failure, plant damaged."),
+        message: "%s power plant overload: critical failure, plant damaged.".to_string(),
+        roll: Some(check.clone()),
         critical_failure: true,
       }
     } else {
@@ -3002,7 +3008,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("%s power plant overload {check}: failed."),
+        message: "%s power plant overload: failed.".to_string(),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     }
@@ -3046,6 +3053,7 @@ impl Entities {
         check: 0,
         target: 0,
         message: format!("%s runs basic ship systems {state}.{}", power_note(spare)),
+        roll: None,
         critical_failure: false,
       };
     }
@@ -3068,6 +3076,7 @@ impl Entities {
         check: 0,
         target: 0,
         message: format!("%s brings {label} back online.{}", power_note(spare)),
+        roll: None,
         critical_failure: false,
       };
     }
@@ -3089,7 +3098,8 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("%s powers down {label} {check}: offline.{}", power_note(spare)),
+        message: format!("%s powers down {label}: offline.{}", power_note(spare)),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     } else {
@@ -3099,7 +3109,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("%s powers down {label} {check}: failed, it stays online."),
+        message: format!("%s powers down {label}: failed, it stays online."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     }
@@ -3172,6 +3183,7 @@ impl Entities {
         check: 0,
         target: 0,
         message: "%s cannot repair hull damage.".to_string(),
+        roll: None,
         critical_failure: false,
       };
     }
@@ -3252,7 +3264,8 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("%s repair {system:?} {check}: repaired.{station}"),
+        message: format!("%s repair {system:?}: repaired.{station}"),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     } else {
@@ -3266,7 +3279,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("%s repair {system:?} {check}: failed."),
+        message: format!("%s repair {system:?}: failed."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     }
@@ -6176,7 +6190,7 @@ mod tests {
       "{effects:?}"
     );
     assert!(
-      format!("{effects:?}").contains("with roll 12 and DM -1 (damage -1) for a total of 11 against 8"),
+      format!("{effects:?}").contains("roll 12 DM -1 (damage -1) = 11 vs 8"),
       "the check should be spelled out: {effects:?}"
     );
   }
@@ -6643,7 +6657,7 @@ mod tests {
       &mut rng,
     );
     assert!(
-      format!("{effects:?}").contains("with roll 2 and DM +2 (mechanic +3, damage -1)"),
+      format!("{effects:?}").contains("roll 2 DM +2 (mechanic +3, damage -1)"),
       "{effects:?}"
     );
   }

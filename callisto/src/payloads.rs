@@ -385,11 +385,11 @@ impl EngineerActionResult {
   pub fn into_message(self) -> EffectMsg {
     let effect = EffectMsg::outcome(&self.ship_name, MessageCategory::Engineering, self.message, self.success);
     // A refusal has no roll behind it -- a jump with the astrogation station
-    // out never got as far as dice -- and reports check 0 against target 0.
-    if self.target == 0 {
-      effect
-    } else {
-      effect.rolled(format!("{} vs {}", self.check, self.target))
+    // out never got as far as dice -- and reports no arithmetic.
+    match self.roll {
+      Some(roll) => effect.rolled(roll),
+      None if self.target == 0 => effect,
+      None => effect.rolled(format!("{} vs {}", self.check, self.target)),
     }
   }
 }
@@ -520,6 +520,9 @@ pub struct EngineerActionResult {
   pub check: u8,
   pub target: u8,
   pub message: String,
+  /// The arithmetic behind the check, for the hover: "roll 5 DM -1 (damage -1)
+  /// = 4 vs 8". `None` for a refusal, which never got as far as dice.
+  pub roll: Option<String>,
   pub critical_failure: bool,
 }
 
