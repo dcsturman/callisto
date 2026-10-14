@@ -55,40 +55,72 @@ This is the case that decides whether `%t` is enough (section 6.1).
 ## 2. The wire type
 
 ```rust
+/// A ship named in a result: who it was, and whose side it was on when the
+/// line was written.
+///
+/// The team travels with the message because a ship destroyed this round is
+/// gone from the entity list by the time its results are read -- and those
+/// are the lines that matter most. A result that carries its own colours is
+/// a result that still reads tomorrow.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ShipRef {
+  pub name: String,
+  pub team: Option<Team>,
+}
+
 Message {
-  /// The sentence, with `%s` where the subject ship's name goes and `%t`
-  /// where the target's does. Still server-authored English; the client
-  /// never builds a sentence.
+  /// The sentence, with placeholders where the ships go: `%s` the subject,
+  /// `%t` the target, `%c` the third party. Server-authored English; the
+  /// client substitutes names and never builds a sentence of its own.
   content: String,
+  /// What kind of event this is. Tints the line, and the referee filters
+  /// on it.
   category: MessageCategory,
-  /// The subject: the ship acting, or the ship the fact is about.
-  ship: Option<String>,
-  /// The object, where the message has one: the ship shot at, jammed,
-  /// detected, handed a contact.
-  target: Option<String>,
-  /// How the number came out, lifted out of `content`: "roll 7 + skill 4 +
-  /// assist 2 = 13 vs 8". Shown on hover rather than in the line.
+  /// The ship this is about: the one acting, or the one the fact is about.
+  /// Required -- every message in the codebase has one (section 6.2).
+  ship: ShipRef,
+  /// The ship acted upon, where there is one: shot at, jammed, detected,
+  /// handed a contact.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  target: Option<ShipRef>,
+  /// A third ship the sentence names. Today that is the hand-off and only
+  /// the hand-off: "%s receives contact on %c from %t".
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  contact: Option<ShipRef>,
+  /// How the number came out: "roll 7 + leadership 4 = 11 vs 8". Lifted out
+  /// of `content` and shown on hover.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   roll: Option<String>,
+  /// Tick, cross, or neither.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   succeeded: Option<bool>,
 }
 ```
 
-`ship` and `target` carry **names**, which is what the rest of the protocol
-uses as a ship's identity.
+Constructors stay short at eighty call sites by building rather than taking
+seven arguments:
+
+```rust
+EffectMsg::about(ship, MessageCategory::Attack, content)
+  .at(target)        // sets `target`
+  .on(contact)       // sets `contact`
+  .rolled(breakdown) // sets `roll`
+  .outcome(hit)      // sets `succeeded`
+```
 
 ### 2.1 Why `%s` and `%t` rather than `{ship}`
 
 Every one of these sentences is built with `format!`, where `{ship}` would have
-to be written `{{ship}}` and read badly at eighty call sites. `%s`/`%t` pass
-through `format!` untouched. They are also not valid Rust format syntax, so a
-placeholder left unsubstituted cannot be mistaken for one.
+to be written `{{ship}}` and read badly at eighty call sites. `%s`/`%t`/`%c`
+pass through `format!` untouched. They are also not valid Rust format syntax,
+so a placeholder left unsubstituted cannot be mistaken for one.
 
 ### 2.2 Compatibility
 
-Both new fields are `Option` with `#[serde(default)]`, and a `content` with no
-placeholder in it renders exactly as it does today. That makes the conversion
-incremental: the type changes once, then call sites move over a category at a
-time, and nothing is broken in between.
+`target`, `contact` and `roll` are optional with serde defaults, and a
+`content` with no placeholder renders as it does today. `ship` becoming
+required is the one breaking change, and it is a compile error at each site
+rather than a silent one.
 
 ---
 
@@ -100,28 +132,13 @@ time, and nothing is broken in between.
    bold, team colour           bold, team colour
 ```
 
-- **Both ship names bold**, always.
-- **Coloured by team**: the four team colours, or grey when the ship is on no
-  team. This is the rule the ship list and contact detail already use
-  (`teamLabelColor`), so results agree with the rest of the console.
-- **The rest of the line** keeps its category tint, as now.
-- **A line with roll arithmetic** gets a quiet marker — a dotted underline
-  under the sentence — and the arithmetic on hover.
-
-### 3.1 Where the colour comes from
-
-A ship destroyed this round is gone from the entity list by the time its
-results are read, and those are exactly the lines that matter most. Two
-choices:
-
-1. **Resolve from entities, fall back to grey.** No new wire data; the ship
-   that just died loses its colour.
-2. **Send the team with the message** — `ship_team`, `target_team` — two small
-   fields the server already has at the moment it writes the line.
-
-This design takes (2). It costs two enum fields and makes a result
-self-contained, which is the property that makes results worth keeping after
-the round that produced them.
+- **Every ship name bold**, always -- subject, target and contact alike.
+- **Coloured by team**, or grey when the ship is on no team. Same rule the
+  ship list and contact detail use, so results agree with the rest of the
+  console.
+- **The rest of the line** keeps its category tint.
+- **A line with arithmetic** carries a quiet marker and gives the arithmetic
+  on hover.
 
 ---
 
@@ -136,127 +153,143 @@ Under this design the line reads:
 
 > **HMS Executor** inspires 3 tasks: fire control on her own particle barbette.
 
-and the hover carries *"roll 7 + leadership 4 = 11 vs 8"*.
+with *"roll 7 + leadership 4 = 11 vs 8"* on hover. The attack lines gain more,
+since their breakdown is already itemised and already long.
 
-The attack lines are the bigger win, since their breakdown is already itemised
-and already long:
+`roll` is a **string**, not a structure. The server composes these breakdowns
+today, so a string is a move rather than a rewrite, and the client only prints
+it. A structured form can be added beside it if anything ever needs the parts.
 
-> **HMS Executor** particle beam → **Cicada**: hit, effect 0. Damage 4D 10 = 30.
+### 4.1 `title` or a tooltip of our own
 
-hover: *"3 + 5 = 8 vs 8 — gunner +3, assist +2, captain fire +1, range +1,
-called shot −2"*.
+**`title`** is the browser's built-in: set an attribute, the browser draws a
+small box after about a second. It costs nothing, screen readers announce it,
+and it is what the rest of the console uses. Against it: the delay, no styling
+at all (system font, system colours, the browser's own wrapping), and **it does
+not exist on a touch screen** -- there is no hover to have.
 
-`roll` is a **string**, not a structure. The server already composes these
-breakdowns for the current sentences, so a string is a move rather than a
-rewrite; and the client does nothing with the parts but print them. If a later
-need appears — sorting by DM, say — a structured form can be added beside it.
+**A tooltip of our own** is an element we position and style: appears at once,
+in the console's monospace so a column of modifiers lines up, as wide as the
+breakdown needs, and can be opened by click or tap as well as hover. Against
+it: it is code, it needs care inside a panel that scrolls and clips, and it has
+to handle keyboard focus to stay accessible.
+
+Recommendation: **our own, for this one panel.** The arithmetic is a list of
+named numbers -- "gunner +3, assist +2, captain fire +1, range +1, called shot
+-2" -- which is exactly what the browser's tooltip renders worst. Everything
+else in the console keeps `title`.
 
 ---
 
 ## 5. Filtering
 
-A compact row of chips at the top of the results window, one per ship named in
-this round's results, each in its team colour:
+Two rows of chips at the head of the results window, both multi-select, both
+hiding what is not chosen:
 
 ```
- ships:  [HMS Executor] [Cicada] [Death's Actuary] [Invigilator]      all
+ ships:       [HMS Executor] [Cicada] [Death's Actuary] [Invigilator]   all
+ categories:  [Attack] [Damage] [Critical] [Detection] [Handoff] ...    all
 ```
 
-- **Multi-select**, not a dropdown: a referee watching a boarding action cares
-  about two ships, not one.
-- **Default: all on**, so the panel behaves as it does today until someone
-  touches it.
-- **A line matches if either end matches** — picking Executor shows what she
-  did *and* what was done to her, which is what "messages about this ship"
-  means to a player.
-- Chips appear only for ships in the current results, so the row stays short.
-- Selection lives in `uiSlice` and persists across rounds, like the card order.
-  A ship that leaves the scenario drops out of the row; if that empties the
-  selection, it resets to all rather than showing nothing.
-
-Open: whether an unselected line should be **hidden** or **dimmed**. Hidden is
-what was asked for and is what a filter normally means. Dimmed keeps the shape
-of the round — you can still see that something happened elsewhere — at the
-cost of the compression that makes filtering worth having.
+- **Ships** carry their team colour, and a line matches if **any** of its
+  three ships is chosen -- picking Executor shows what she did and what was
+  done to her.
+- **Categories** let the sensor operator watch sensors and nothing else.
+- The two combine with **and**: chosen ships, chosen categories. Sensors on
+  one ship is the case this is for.
+- **Unchosen lines are hidden**, not dimmed.
+- **Default is everything**, so the panel behaves as it does today until
+  someone touches it.
+- Chips appear only for ships and categories present in the current results,
+  so the rows stay short.
+- Selection lives in `uiSlice` beside the card order, and persists. A ship
+  that leaves the scenario drops out; if that would empty the selection, it
+  resets to all rather than showing an empty panel.
 
 ---
 
-## 6. Open questions
+## 6. What the audit found
 
-### 6.1 The three-ship message
+Every `EffectMsg` construction in the server, read:
 
-*"{recipient} receives contact on {contact} from {host}"* has three ships.
-Options:
+| Category | Sites |
+| --- | --- |
+| Critical | 41 |
+| Attack | 8 |
+| Detection | 8 |
+| Damage | 7 |
+| Handoff | 6 |
+| Destruction | 2 |
+| Engineering | 1 |
+| Info | 1 |
+| *(no category, no subject)* | 7 |
+| **Total** | **81** |
 
-- **a.** `%s`/`%t` plus a third named field for the contact (`%c`). Clear, but
-  the third field exists for one message.
-- **b.** An ordered list of referents, `%1 %2 %3`, with `ship`/`target` kept as
-  the first two for filtering. General, slightly more machinery.
-- **c.** Leave the third name plain text. It then neither bolds nor filters —
-  and "which ships is this about" is exactly the question the hand-off line
-  raises.
+### 6.1 Every message has a subject
 
-### 6.2 Is `ship` required or optional?
+The seven with no subject today, and the subject each should have:
 
-Once the seven subject-less sites are given their obvious subject, is any
-message genuinely about no ship? *"X is out of range of Y's Z"* and the range
-band lines both have a natural subject. If none remain, `ship` could become
-required, which makes the filter total and removes a branch from the client. A
-required field is also a forcing function on whoever writes the next message.
+| Where | Message | Subject |
+| --- | --- | --- |
+| `combat.rs:155` | "%s's %w is not a mount this weapon can be fired from" | the firing ship |
+| `combat.rs:249` | "%t is out of range of %s's %w" | the firing ship |
+| `combat.rs:1444` | "%s's %w cannot be fired from that mount" | the firing ship |
+| `combat.rs:1460` | "%t is out of range of %s's %w" | the firing ship |
+| `entity.rs:880` | "%s's point defence batteries will intercept up to N" | the defending ship |
+| `entity.rs:1153` | "missile destroyed by %s's point defence" | the defending ship |
+| `payloads.rs:832` | a unit-test fixture, not a message the server sends | — |
 
-### 6.3 Hover mechanism
+So `ship` can be required: there is no message in the codebase that is about no
+ship. Two of them do read with the target as the grammatical subject -- "Cicada
+is out of range of Executor's beam" -- but the rule is the ship *acting*, which
+keeps the filter meaning one thing.
 
-`title` is what the rest of the console uses: free, accessible, no layout work.
-It is also slow to appear, cannot be styled, and does not exist on a touch
-screen. A styled tooltip would read better on the one panel where the
-arithmetic matters. Consistency argues for `title`; this is the panel that
-might deserve the exception.
+### 6.2 Results do not all come from `Message`
 
-### 6.4 Emphasis inside the sentence
+Two other effects become result lines, and the **client composes their text**:
+`EffectMsg::EngineerAction { result }` and `EffectMsg::LeadershipAction { .. }`
+are turned into Message-shaped events in `serverManager.ts`, where the client
+also invents their prefixes ("[Engineer SUCCESS]", "[Captain]") and names their
+category.
 
-The question raised with this work: are bold ship names enough to make a round
-readable, or does the line need its *point* emphasised too — the damage number,
-"miss", the critical's severity?
+That has to move. If the client keeps writing sentences, half the results have
+ships inside text nobody can bold and arithmetic nobody can lift out. The
+server should emit these as ordinary `Message`s with `ship`, `roll` and
+`succeeded` filled in -- which also deletes `formatEngineerResult` and
+`formatLeadershipResult` and the only place the client writes English.
 
-Three ways:
-
-- **a.** Nothing further. See how the ship names read first.
-- **b.** One emphasis span per message, marked in `content` (`*30*` or
-  `%e{30}`), used for the thing that changed. Cheap, and the server already
-  knows which number that is.
-- **c.** Structured outcome fields (damage, effect, severity) and let the
-  client lay them out. Most work, most consistency, and it starts to make the
-  sentence a template.
-
-Recommendation: ship 1–3, read a real round, then decide between (a) and (b).
-The whole point of this work is that the line should be scannable; whether it
-is cannot be judged from here.
-
-### 6.5 Category filtering
-
-Should the same row offer "combat only" or "hide detection"? The categories
-exist and a round of sensor checks is the noisiest thing in the log. Probably a
-second row of chips, probably later — but worth knowing now, because it decides
-whether the filter state is "a set of ships" or "a set of predicates".
+A check before doing it: whether anything else in the client reads
+`EngineerActionResult`'s structured fields. At the time of writing it does not
+-- `serverManager.ts` is the only consumer, and only to make a line.
 
 ---
 
-## 7. Work, in order
+## 7. Still open
 
-1. **Wire type and constructors** — add `target`, `roll`, the two team fields;
-   extend `about`/`outcome` with variants that take a target and a roll.
-   Nothing renders differently yet.
-2. **Client** — substitute `%s`/`%t`, bold and colour them, hang `roll` on a
-   hover. Lines without placeholders keep working, so this can land before any
-   message is converted.
-3. **Convert the call sites**, a category at a time: Attack and Damage first
-   (the longest lines and the most arithmetic), then Detection and Handoff,
-   then Engineering, Leadership, Critical, Destruction, Info.
-4. **Filtering** in `uiSlice` and the results window.
-5. **The seven subject-less messages** get their subject, and `ship` becomes
-   required if 6.2 lands that way.
+- **Emphasis inside the sentence.** Deferred by decision: ship names first,
+  then read a real round and decide whether the line's *point* -- the damage,
+  "miss", the severity -- needs bolding too. If it does, the cheap form is one
+  marked span per message, since the server knows which number matters.
+- **Whether the hand-off is the only three-ship line.** `contact` is in the
+  type for it; if a second case appears the field is already general.
 
-Tests: the integration tests assert on whole message strings. They will need a
-helper that renders a message the way the client does — substituting the names
-— so the assertions stay readable and the placeholders are checked by the same
+## 8. Work, in order
+
+1. **Wire type and constructors** — `ShipRef`, the `target`/`contact`/`roll`
+   fields, and the builder. `ship` becomes required, which is a compile error
+   at each of the eighty-one sites rather than a silent change.
+2. **Client** — substitute `%s`/`%t`/`%c`, bold and colour them from the
+   `ShipRef`s, hang `roll` on a tooltip. Lines with no placeholder keep
+   working, so this lands before any message is converted.
+3. **Convert the call sites**, a category at a time: Attack and Damage first —
+   the longest lines and the most arithmetic — then Detection and Handoff, then
+   Critical, Engineering, Destruction, Info.
+4. **Move the two client-composed families server-side** (section 6.2), so
+   every result is a `Message` and the client writes no English at all.
+5. **Filtering**: two chip rows, ships and categories, state in `uiSlice`.
+6. **Emphasis**, if a real round still reads badly.
+
+Tests: the integration tests assert on whole message strings. They need a
+helper that renders a message the way the client does — substituting names —
+so the assertions stay readable and the placeholders get checked by the same
 act.
