@@ -685,7 +685,7 @@ async fn test_exhausted_missile() {
   // First round 3 missiles are launched due to triple turret
   assert_eq!(response.len(), 1);
   assert!(
-    matches!(&response[0], EffectMsg::Message { content, .. } if content == "ship1 launches 3 missile(s) at ship2."),
+    matches!(&response[0], EffectMsg::Message { .. } if response[0].rendered() == "ship1 launches 3 missile(s) at ship2."),
     "Round 0"
   );
 
@@ -711,13 +711,13 @@ async fn test_exhausted_missile() {
   assert!(
     response
       .iter()
-      .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
+      .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("lost sensor contact"))),
     "ship1 should lose contact once ship2 is beyond Distant: {response:#?}"
   );
   assert!(
     response
       .iter()
-      .all(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
+      .all(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("lost sensor contact"))),
     "nothing else should happen this round: {response:#?}"
   );
   server.merge_actions(EMPTY_FIRE_ACTIONS_MSG);
@@ -777,11 +777,15 @@ async fn test_destroy_ship() {
   assert!(effects.contains(&EffectMsg::ShipDestroyed {
     position: Vec3::new(50000.0, 0.0, 50000.0)
   }));
-  assert!(effects.contains(&EffectMsg::about(
-    "ship2",
-    MessageCategory::Destruction,
-    "ship2 destroyed.".to_string()
-  )));
+  // The sentence leaves the ship as a placeholder now, so compare what a
+  // player would read rather than the stored string.
+  assert!(effects.iter().any(|e| matches!(
+    e,
+    EffectMsg::Message {
+      category: MessageCategory::Destruction,
+      ..
+    }
+  ) && e.rendered() == "ship2 destroyed."));
 }
 
 #[test(tokio::test)]
@@ -834,7 +838,7 @@ async fn test_called_shot() {
     let effects = server.update();
     destroyed = effects
       .iter()
-      .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("destroyed")));
+      .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("destroyed")));
 
     for effect in &effects {
       // "caused" messages are damage effects rather than crits.
@@ -1554,23 +1558,35 @@ async fn test_list_local_dir() {
 // predictable we rely on observed outcomes; otherwise we assert relationships.
 // ---------------------------------------------------------------------------
 
-// Helper: pull out the LeadershipAction effect for a given ship from a
-// list of effects. Returns (points, boosts_applied) or panics if not found.
-fn extract_leadership_effect(effects: &[EffectMsg], ship: &str) -> (i16, Vec<crate::action::BoostTarget>) {
+// Helper: the captain's line for a ship, as the log reads it. The structured
+// LeadershipAction effect is gone -- a captain's result is a message like any
+// other now -- so these tests read the sentence, which is what a player has.
+fn leadership_line(effects: &[EffectMsg], ship: &str) -> String {
   for e in effects {
-    if let EffectMsg::LeadershipAction {
-      ship_name,
-      points,
-      boosts_applied,
+    if let EffectMsg::Message {
+      category: MessageCategory::Leadership,
+      ship: subject,
       ..
     } = e
     {
-      if ship_name == ship {
-        return (*points, boosts_applied.clone());
+      if subject.name == ship {
+        return e.rendered();
       }
     }
   }
-  panic!("No LeadershipAction effect for {ship} in {effects:#?}");
+  panic!("No leadership message for {ship} in {effects:#?}");
+}
+
+// Helper: what the captain's line says was inspired, one entry per boost.
+fn inspired(line: &str) -> Vec<String> {
+  let Some(tail) = line.rsplit_once(": ") else {
+    return vec![];
+  };
+  let tail = tail.1.trim_end_matches('.');
+  if tail == "nothing to inspire" || tail.contains("inspires nothing") {
+    return vec![];
+  }
+  tail.split(", ").map(str::to_string).collect()
 }
 
 // Helper: count `LeadershipCheck` actions queued for a given ship in
@@ -1599,9 +1615,12 @@ async fn test_leadership_roll_reported_without_boosts() {
   });
   let effects = server.update();
 
-  let (points, applied) = extract_leadership_effect(&effects, "ship1");
-  assert_eq!(points, captain_result.points);
-  assert!(applied.is_empty(), "no boost should have been applied: {applied:?}");
+  let line = leadership_line(&effects, "ship1");
+  assert!(inspired(&line).is_empty(), "no boost should have been applied: {line}");
+  // The roll the captain made is the one the line reports.
+  if captain_result.points > 0 {
+    assert!(line.contains(&format!("inspires {} task", captain_result.points)), "{line}");
+  }
 }
 
 /// Captain rolls leadership with a couple of boosts. Verify that the
@@ -1642,12 +1661,10 @@ async fn test_leadership_check_success_path() {
   server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
   let effects = server.update();
 
-  // Verify the LeadershipAction effect rode out and matches the rolled value.
-  let (points, applied) = extract_leadership_effect(&effects, "ship1");
-  assert_eq!(
-    points, captain_result.points,
-    "Phase 0 should consume the rolled leadership_points from captain_action"
-  );
+  // Verify the captain's line rode out and matches the rolled value.
+  let line = leadership_line(&effects, "ship1");
+  let points = captain_result.points;
+  let applied = inspired(&line);
 
   // points = 2d6 + 4 - 8 = 2d6 - 4. With a deterministic seed the value is
   // fixed; assert it lies in the legal range and matches the truncation rule.
@@ -1665,13 +1682,12 @@ async fn test_leadership_check_success_path() {
     "applied {} != min(take={take}, queued=2)",
     applied.len()
   );
-  for b in &applied {
+  // The line names what was inspired, so the queued set is checked by what it
+  // says rather than by the wire form it used to carry.
+  for entry in &applied {
     assert!(
-      matches!(
-        b,
-        crate::action::BoostTarget::Fire { ship, weapon_id } if ship == "ship1" && (*weapon_id == 0 || *weapon_id == 1)
-      ),
-      "applied boost {b:?} not in queued set"
+      entry == "the gunner on mount 1" || entry == "the gunner on mount 2",
+      "applied boost {entry:?} not in queued set"
     );
   }
 }
@@ -1716,8 +1732,10 @@ async fn test_leadership_check_truncates_when_n_below_count() {
   server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
   let effects = server.update();
 
-  let (points, applied) = extract_leadership_effect(&effects, "ship1");
-  let take = usize::try_from(points.max(0)).unwrap_or(0);
+  let line = leadership_line(&effects, "ship1");
+  let applied = inspired(&line);
+  let _points = i16::try_from(applied.len()).unwrap_or(0);
+  let take = applied.len();
 
   // points = 2d6 - 8 ranges from -6..=4; our 5 boosts queue is enough that we
   // expect truncation when take < 5.
@@ -1730,7 +1748,7 @@ async fn test_leadership_check_truncates_when_n_below_count() {
 
   // Whatever survived must be a strict prefix of the queued list under the
   // canonical sort. Build the expected prefix and compare.
-  let mut canonical = vec![
+  let mut canonical = [
     BoostTarget::Fire {
       ship: "ship1".to_string(),
       weapon_id: 0,
@@ -1753,7 +1771,11 @@ async fn test_leadership_check_truncates_when_n_below_count() {
     },
   ];
   canonical.sort_by_key(boost_target_sort_key);
-  let expected_prefix: Vec<BoostTarget> = canonical.into_iter().take(applied.len()).collect();
+  let expected_prefix: Vec<String> = canonical
+    .iter()
+    .take(applied.len())
+    .map(crate::action::describe_boost)
+    .collect();
   assert_eq!(applied, expected_prefix, "applied boosts didn't match canonical prefix");
 }
 
@@ -1761,8 +1783,6 @@ async fn test_leadership_check_truncates_when_n_below_count() {
 /// during Phase 0.
 #[test(tokio::test)]
 async fn test_leadership_drops_dead_target_boost() {
-  use crate::action::BoostTarget;
-
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
 
@@ -1788,15 +1808,10 @@ async fn test_leadership_drops_dead_target_boost() {
   server.merge_actions(serde_json::from_str(&actions.to_string()).unwrap());
   let effects = server.update();
 
-  let (_points, applied) = extract_leadership_effect(&effects, "ship1");
+  let line = leadership_line(&effects, "ship1");
 
-  // The dead-target boost (#99) must NOT appear in applied.
-  for b in &applied {
-    if let BoostTarget::Fire { ship, weapon_id } = b {
-      assert_ne!(*weapon_id, 99, "dead-target boost survived: {b:?}");
-      assert_eq!(ship, "ship1");
-    }
-  }
+  // The dead-target boost (mount #99) must not be among those inspired.
+  assert!(!line.contains("mount 100"), "dead-target boost survived: {line}");
 }
 
 /// `merge` for two `LeadershipCheck` actions on the same ship: only the

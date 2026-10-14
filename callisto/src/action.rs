@@ -152,6 +152,37 @@ pub fn boost_target_sort_key(t: &BoostTarget) -> (String, u8, usize) {
   (ship, boost_target_kind_ord(t), weapon)
 }
 
+/// How a boost reads in the results log: "the gunner on turret 2",
+/// "the engineer", "the sensop searching for Raider".
+///
+/// Said here rather than in the client, which used to build this sentence
+/// itself out of the wire form -- "Fire HMS Executor#0", which is a data
+/// structure read aloud rather than something a captain would say.
+#[must_use]
+pub fn describe_boost(target: &BoostTarget) -> String {
+  match target {
+    BoostTarget::Fire { weapon_id, .. } => format!("the gunner on mount {}", weapon_id + 1),
+    BoostTarget::PointDefense { weapon_id, .. } => format!("point defence on mount {}", weapon_id + 1),
+    BoostTarget::Sensor { operator, .. } => {
+      if *operator == 0 {
+        "the sensor operator".to_string()
+      } else {
+        format!("sensor operator #{}", operator + 1)
+      }
+    }
+    BoostTarget::Detection { target, .. } => format!("the search for {target}"),
+    BoostTarget::Engineer { engineer, .. } => {
+      if *engineer == 0 {
+        "the engineer".to_string()
+      } else {
+        format!("engineer #{}", engineer + 1)
+      }
+    }
+    BoostTarget::Evade { .. } => "the pilot's evasion".to_string(),
+    BoostTarget::AssistGunner { .. } => "the pilot assisting the gunners".to_string(),
+  }
+}
+
 /// Returns true if the boost target is "alive" — for action-based targets,
 /// there is a matching queued action in `actions`; for pilot-state targets
 /// (Evade / `AssistGunner`), the underlying ship state is set. Used by Phase

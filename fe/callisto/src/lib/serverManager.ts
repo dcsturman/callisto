@@ -40,7 +40,6 @@ import {
   Ship,
   Planet,
   MetaData,
-  EngineerActionResult,
 } from "lib/entities";
 import { ViewMode, parseRoles } from "lib/view";
 import { Acceleration } from "lib/entities";
@@ -853,117 +852,18 @@ function handleEffect(json: object[]) {
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
   console.groupEnd();
 
-  // Engineer-action effects ride the same Effects channel as combat / sensor
-  // effects but the existing UI expects each event to be one of the visual
-  // kinds (ShipImpact / ExhaustedMissile / ShipDestroyed / BeamHit / Message).
-  // Translate `{kind:"EngineerAction", result:{...}}` into a Message-style
-  // event so it surfaces in the existing ResultsWindow alongside everything
-  // else from the same turn.
-  const events: Event[] = (
-    json as Array<Event | EngineerActionEffect | LeadershipActionEffect>
-  ).map((event) => {
-    if ((event as EngineerActionEffect).kind === "EngineerAction") {
-      const result = (event as EngineerActionEffect).result;
-      return {
-        kind: "Message",
-        content: formatEngineerResult(result),
-        position: null,
-        target: null,
-        origin: null,
-        // The two structured variants compose their own text here, so they
-        // also name their own category -- the server never sends one for them.
-        category: "Engineering",
-        ship: {name: result.ship_name},
-        succeeded: result.success,
-      } as Event;
-    }
-    if ((event as LeadershipActionEffect).kind === "LeadershipAction") {
-      const lead = event as LeadershipActionEffect;
-      return {
-        kind: "Message",
-        content: formatLeadershipResult(lead),
-        position: null,
-        target: null,
-        origin: null,
-        category: "Leadership",
-        ship: {name: lead.ship_name},
-        // A round where the captain never rolled is not a failed check, so it
-        // goes unmarked like any other statement.
-        succeeded: lead.roll == null ? undefined : lead.points > 0,
-      } as Event;
-    }
-    return event as Event;
-  }).map((event) => ({ ...event, id: nextEventId++ }));
+  // Every effect arrives the same way now: the server writes the sentence,
+  // names the ships in it and carries the arithmetic separately. The client
+  // used to compose engineer and leadership results itself -- inventing their
+  // prefixes and even naming their category -- which left half the results
+  // with ships buried in text nothing could colour or filter.
+  const events: Event[] = (json as Event[]).map((event) => ({
+    ...event,
+    id: nextEventId++,
+  }));
 
   store.dispatch(setEvents(events));
   store.dispatch(setShowResults(true));
-}
-
-interface EngineerActionEffect {
-  kind: "EngineerAction";
-  result: EngineerActionResult;
-}
-
-function formatEngineerResult(result: EngineerActionResult): string {
-  const outcome = result.critical_failure
-    ? "CRITICAL FAILURE"
-    : result.success
-      ? "SUCCESS"
-      : "FAILURE";
-  // The server's message carries the roll, each modifier and the total
-  // against the target, so it is not repeated here.
-  return `[Engineer ${outcome}] ${result.message}`;
-}
-
-interface LeadershipActionEffect {
-  kind: "LeadershipAction";
-  ship_name: string;
-  /** The 2D behind `points`; absent when the captain never rolled this round. */
-  roll?: number | null;
-  leadership?: number;
-  points: number;
-  boosts_applied: object[];
-}
-
-/**
- * The captain's check, shown the way every other check is: roll, skill, total
- * against 8, and what it bought. A round with no roll says so rather than
- * reporting "0 points" as if the dice had come up badly.
- */
-function formatLeadershipResult(lead: LeadershipActionEffect): string {
-  const summary =
-    lead.boosts_applied.length === 0
-      ? "no boosts"
-      : `${lead.boosts_applied.length} boost(s): ${lead.boosts_applied
-          .map((b) => describeBoost(b))
-          .join(", ")}`;
-  if (lead.roll == null) {
-    return `[Captain] ${lead.ship_name} made no leadership roll this round; ${summary}.`;
-  }
-  const skill = lead.leadership ?? 0;
-  const total = lead.roll + skill;
-  // Nothing to spend on a roll that missed, so say it failed rather than
-  // reporting a negative number of points.
-  const points =
-    lead.points > 0
-      ? `${lead.points} point${lead.points === 1 ? "" : "s"}`
-      : "failed";
-  return (
-    `[Captain] ${lead.ship_name} leadership check with roll ${lead.roll} and skill ` +
-    `${skill >= 0 ? "+" : ""}${skill} for a total of ${total} against 8: ${points}; ${summary}.`
-  );
-}
-
-function describeBoost(b: object): string {
-  // Wire form is `{Fire: {ship, weapon_id}}` etc. Convert to a readable
-  // "Kind on ship[/weapon]" string.
-  const obj = b as Record<string, { ship: string; weapon_id?: number }>;
-  const kind = Object.keys(obj)[0];
-  const v = obj[kind];
-  const wid = v.weapon_id;
-  return wid !== undefined
-    ? `${kind} ${v.ship}#${wid}`
-    : `${kind} ${v.ship}`;
 }
 
 function handleUsers(json: [UserContext]) {

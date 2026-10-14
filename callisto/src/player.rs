@@ -7,14 +7,16 @@ use itertools::multiunzip;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::action::{boost_target_alive, boost_target_sort_key, merge, BoostMap, BoostTarget, ShipAction};
+use crate::action::{
+  boost_target_alive, boost_target_sort_key, describe_boost, merge, BoostMap, BoostTarget, ShipAction,
+};
 use crate::authentication::Authenticator;
 use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg, SetShipEmissions,
-  SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg,
+  SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
@@ -72,6 +74,44 @@ pub struct PlayerManager {
   // Ship this player may have assumed a crew position on.
   ship: Option<String>,
   test_mode: bool,
+}
+
+/// A captain's leadership check, as the log reads it.
+///
+/// Written here rather than in the client, which used to compose this
+/// sentence itself -- prefix, category and all -- out of a structured effect
+/// whose structure nothing else used.
+fn leadership_message(
+  ship_name: &str, roll: Option<u8>, leadership: u8, points: i16, boosts: &[BoostTarget],
+) -> EffectMsg {
+  let spent = if boosts.is_empty() {
+    "nothing to inspire".to_string()
+  } else {
+    boosts.iter().map(describe_boost).collect::<Vec<_>>().join(", ")
+  };
+
+  // A captain who never pressed the button is not a captain who failed.
+  let Some(roll) = roll else {
+    return EffectMsg::about(
+      ship_name,
+      MessageCategory::Leadership,
+      format!("%s's captain made no leadership roll: {spent}."),
+    );
+  };
+
+  let content = if points > 0 {
+    format!(
+      "%s's captain inspires {points} task{}: {spent}.",
+      if points == 1 { "" } else { "s" }
+    )
+  } else {
+    "%s's captain inspires nothing this round.".to_string()
+  };
+
+  EffectMsg::outcome(ship_name, MessageCategory::Leadership, content, points > 0).rolled(format!(
+    "roll {roll} leadership {leadership:+} = {} vs 8",
+    i16::from(roll) + i16::from(leadership)
+  ))
 }
 
 impl PlayerManager {
@@ -810,13 +850,7 @@ impl PlayerManager {
             };
             (roll, leadership)
           };
-          leadership_effects.push(EffectMsg::LeadershipAction {
-            ship_name: ship_name.clone(),
-            roll,
-            leadership,
-            points: n,
-            boosts_applied: truncated,
-          });
+          leadership_effects.push(leadership_message(ship_name, roll, leadership, n, &truncated));
         }
       }
 
@@ -826,7 +860,7 @@ impl PlayerManager {
       let reported: HashSet<&String> = leadership_effects
         .iter()
         .filter_map(|effect| match effect {
-          EffectMsg::LeadershipAction { ship_name, .. } => Some(ship_name),
+          EffectMsg::Message { ship, .. } => Some(&ship.name),
           _ => None,
         })
         .collect();
@@ -844,12 +878,9 @@ impl PlayerManager {
       unreported.sort_unstable_by_key(|(name, ..)| *name);
       let unreported: Vec<EffectMsg> = unreported
         .into_iter()
-        .map(|(name, points, leadership)| EffectMsg::LeadershipAction {
-          ship_name: name.clone(),
-          roll: Some(u8::try_from(points + 8 - i16::from(leadership)).unwrap_or(0)),
-          leadership,
-          points,
-          boosts_applied: vec![],
+        .map(|(name, points, leadership)| {
+          let roll = Some(u8::try_from(points + 8 - i16::from(leadership)).unwrap_or(0));
+          leadership_message(name, roll, leadership, points, &[])
         })
         .collect();
       leadership_effects.extend(unreported);

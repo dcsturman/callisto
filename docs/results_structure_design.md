@@ -1,7 +1,7 @@
 # Structured results
 
-Status: **design only, nothing implemented.**
-Date: 2026-10-14.
+Status: **steps 1-4 built; filtering and emphasis to come.**
+Date: 2026-10-14, built 2026-10-14.
 
 Scope: `callisto/src/payloads.rs` (the wire type and its constructors),
 roughly eighty `EffectMsg` call sites across `callisto/src/combat.rs`,
@@ -360,23 +360,25 @@ The results tooltip should not be a fifth look. Proposal:
 
 ## 8. Work, in order
 
-1. **Wire type and constructors** — `ShipRef`, the `target`/`contact`/`roll`
-   fields, and the builder. `ship` becomes required, which is a compile error
-   at each of the eighty-one sites rather than a silent change.
-2. **Client** — substitute `%s`/`%t`/`%c`, bold and colour them from the
-   `ShipRef`s, hang `roll` on a tooltip. Lines with no placeholder keep
-   working, so this lands before any message is converted.
-3. **Convert the call sites**, a category at a time: Attack and Damage first —
-   the longest lines and the most arithmetic — then Detection and Handoff, then
-   Critical, Engineering, Destruction, Info.
-4. **Delete `EngineerAction` and `LeadershipAction`** (section 6.2). The
-   server emits their lines as `Message`s with `roll` and `succeeded` filled
-   in; `formatEngineerResult`, `formatLeadershipResult` and `describeBoost`
-   leave the client with them, and the client writes no English at all.
+1. ~~**Wire type and constructors**~~ -- `ShipRef`, `target`/`contact`/`roll`,
+   the builder, `ship` required. The six subject-less messages got their
+   subject. Done.
+2. ~~**Client**~~ -- `%s`/`%t`/`%c` substituted, each name bold in its team's
+   colour, `roll` on a `console-tip` hover with a dotted underline to say it is
+   there. Done.
+3. ~~**Convert the call sites**~~ -- all of them: attacks and damage, the three
+   shared sensor-check builders, range bands and lost contacts, the hand-offs
+   including the three-ship line, 38 critical hits, point defence, the weapon
+   refusals, launches, sand, ion drain, the pilot's assist. Done.
+4. ~~**Delete `EngineerAction` and `LeadershipAction`**~~ -- both gone. The
+   server writes their lines, `describe_boost` says what a captain inspired in
+   words a captain would use, and the client's `formatEngineerResult`,
+   `formatLeadershipResult` and `describeBoost` went with them. The client
+   writes no English at all now. Done.
 5. **Filtering**: two chip rows, ships and categories, state in `uiSlice`.
 6. **Emphasis**, if a real round still reads badly.
 
-Tests: the integration tests assert on whole message strings. They need a
-helper that renders a message the way the client does — substituting names —
-so the assertions stay readable and the placeholders get checked by the same
-act.
+Tests read `EffectMsg::rendered()` -- the line with its ships put back --
+which asserts what a player sees and, in passing, that every placeholder has a
+ship to fill it. The leadership tests read the sentence too, since the
+structured effect they used to inspect no longer exists.

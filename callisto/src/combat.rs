@@ -540,17 +540,14 @@ pub fn attack(
       defender.get_name()
     );
 
-    effects.push(EffectMsg::about(
-      attacker_name,
-      MessageCategory::Damage,
-      format!(
-        "{} loses {} power to {}'s ion cannon for {} round(s).",
-        defender.get_name(),
-        drained,
+    effects.push(
+      EffectMsg::about(
         attacker_name,
-        rounds
-      ),
-    ));
+        MessageCategory::Damage,
+        format!("%t loses {drained} power to %s's ion cannon for {rounds} round(s)."),
+      )
+      .at(defender.get_name()),
+    );
     return effects;
   }
 
@@ -672,11 +669,7 @@ pub(crate) fn apply_crit(
     vec![EffectMsg::about(
       &crit_ship,
       MessageCategory::Critical,
-      format!(
-        "{}'s critical hit at level {level} caused {} damage.",
-        defender.get_name(),
-        damage
-      ),
+      format!("%s's critical hit at level {level} caused {damage} damage."),
     )]
   } else {
     event!(
@@ -696,10 +689,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s sensors critical hit (level {level}) and attack DM reduced by 1.",
-            defender.get_name()
-          ),
+          format!("%s's sensors critical hit (level {level}) and attack DM reduced by 1."),
         )]
       }
       (ShipSystem::Sensors, 6) => {
@@ -708,10 +698,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s sensors critical hit (level 6) and completely disabled.",
-            defender.get_name()
-          ),
+          "%s's sensors critical hit (level 6) and completely disabled.".to_string(),
         )]
       }
       (ShipSystem::Sensors, _) => {
@@ -721,10 +708,7 @@ pub(crate) fn apply_crit(
           vec![EffectMsg::about(
             &crit_ship,
             MessageCategory::Critical,
-            format!(
-              "{}'s sensors critical hit (level {level}) and completely disabled.",
-              defender.get_name()
-            ),
+            format!("%s's sensors critical hit (level {level}) and completely disabled."),
           )]
         } else {
           defender.record_damage(location, level, SystemDamage::SensorGrade(defender.current_sensors));
@@ -733,8 +717,7 @@ pub(crate) fn apply_crit(
             &crit_ship,
             MessageCategory::Critical,
             format!(
-              "{}'s sensors critical hit (level {level}) and reduced to {}.",
-              defender.get_name(),
+              "%s's sensors critical hit (level {level}) and reduced to {}.",
               String::from(defender.current_sensors)
             ),
           )]
@@ -747,10 +730,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s powerplant critical hit (level 3) and reduced by 50%.",
-            defender.get_name()
-          ),
+          "%s's powerplant critical hit (level 3) and reduced by 50%.".to_string(),
         )]
       }
       (ShipSystem::Powerplant, 4) => {
@@ -759,7 +739,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!("{}'s powerplant critical hit (level 4) and offline.", defender.get_name()),
+          "%s's powerplant critical hit (level 4) and offline.".to_string(),
         )]
       }
       (ShipSystem::Powerplant, level) if level < 3 => {
@@ -769,10 +749,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s powerplant critical hit (level {level}) and reduced by 10%.",
-            defender.get_name()
-          ),
+          format!("%s's powerplant critical hit (level {level}) and reduced by 10%."),
         )]
       }
       (ShipSystem::Powerplant, level) => {
@@ -781,7 +758,7 @@ pub(crate) fn apply_crit(
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!("{}'s powerplant critical hit (level {level}) and offline.", defender.get_name()),
+          format!("%s's powerplant critical hit (level {level}) and offline."),
         )];
         effects.append(&mut apply_crit(
           if level == 5 { 1 } else { roll(rng) },
@@ -802,11 +779,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s fuel critical hit (level {level}) and reduced by {}.",
-            defender.get_name(),
-            fuel_loss
-          ),
+          format!("%s's fuel critical hit (level {level}) and reduced by {fuel_loss}."),
         )]
       }
       (ShipSystem::Fuel, level) => {
@@ -814,10 +787,7 @@ pub(crate) fn apply_crit(
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s fuel critical hit (level {level}) and fuel take destroyed.",
-            defender.get_name()
-          ),
+          format!("%s's fuel critical hit (level {level}) and fuel take destroyed."),
         )];
         effects.append(&mut apply_crit(
           if level == 5 { 1 } else { roll(rng) },
@@ -833,10 +803,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s weapon critical hit (level 1) and attack DM reduced by 1.",
-            defender.get_name()
-          ),
+          "%s's weapon critical hit (level 1) and attack DM reduced by 1.".to_string(),
         )]
       }
       (ShipSystem::Weapon, level) => {
@@ -869,19 +836,13 @@ pub(crate) fn apply_crit(
           vec![EffectMsg::about(
             &crit_ship,
             MessageCategory::Critical,
-            format!(
-              "{}'s weapon critical hit (level {level}) and {disabled} disabled.",
-              defender.get_name(),
-            ),
+            format!("%s's weapon critical hit (level {level}) and {disabled} disabled."),
           )]
         } else {
           vec![EffectMsg::about(
             &crit_ship,
             MessageCategory::Critical,
-            format!(
-              "{}'s weapon critical hit (level {level}) but all weapons already disabled.",
-              defender.get_name()
-            ),
+            format!("%s's weapon critical hit (level {level}) but all weapons already disabled."),
           )]
         };
         effects.append(&mut match level {
@@ -903,11 +864,7 @@ pub(crate) fn apply_crit(
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s armor critical hit (level {level}) and reduced by {}.",
-            defender.get_name(),
-            damage
-          ),
+          format!("%s's armor critical hit (level {level}) and reduced by {damage}."),
         )];
         if level >= 5 {
           effects.append(&mut apply_crit(1, ShipSystem::Hull, defender, rng));
@@ -920,11 +877,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s hull critical hit (level {level}) and reduced by {}.",
-            defender.get_name(),
-            damage
-          ),
+          format!("%s's hull critical hit (level {level}) and reduced by {damage}."),
         )]
       }
       (ShipSystem::Maneuver, 5) => {
@@ -933,7 +886,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!("{}'s maneuver critical hit (level 5) and offline.", defender.get_name()),
+          "%s's maneuver critical hit (level 5) and offline.".to_string(),
         )]
       }
       (ShipSystem::Maneuver, 6) => {
@@ -942,7 +895,7 @@ pub(crate) fn apply_crit(
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!("{}'s maneuver critical hit (level 6) and offline.", defender.get_name()),
+          "%s's maneuver critical hit (level 6) and offline.".to_string(),
         )];
         effects.append(&mut apply_crit(roll(rng), ShipSystem::Hull, defender, rng));
         effects
@@ -954,29 +907,20 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s maneuver critical hit (level {level}) and reduced by 1.",
-            defender.get_name()
-          ),
+          format!("%s's maneuver critical hit (level {level}) and reduced by 1."),
         )]
       }
       (ShipSystem::Cargo, 1) => vec![EffectMsg::about(
         &crit_ship,
         MessageCategory::Critical,
-        format!(
-          "{}'s cargo critical hit (level {level}) and 10% of cargo destroyed.",
-          defender.get_name()
-        ),
+        format!("%s's cargo critical hit (level {level}) and 10% of cargo destroyed."),
       )],
       (ShipSystem::Cargo, 2) => {
         let percent_destroyed = 10 * roll(rng);
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s cargo critical hit (level {level}) and {percent_destroyed}% of cargo destroyed.",
-            defender.get_name()
-          ),
+          format!("%s's cargo critical hit (level {level}) and {percent_destroyed}% of cargo destroyed."),
         )]
       }
       (ShipSystem::Cargo, 3) => {
@@ -984,29 +928,20 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s cargo critical hit (level {level}) and {percent_destroyed}% of cargo destroyed.",
-            defender.get_name()
-          ),
+          format!("%s's cargo critical hit (level {level}) and {percent_destroyed}% of cargo destroyed."),
         )]
       }
       (ShipSystem::Cargo, 4) => vec![EffectMsg::about(
         &crit_ship,
         MessageCategory::Critical,
-        format!(
-          "{}'s cargo critical hit (level {level}) and all cargo destroyed.",
-          defender.get_name()
-        ),
+        format!("%s's cargo critical hit (level {level}) and all cargo destroyed."),
       )],
       (ShipSystem::Cargo, _) => {
         let mut effects = apply_crit(1, ShipSystem::Hull, defender, rng);
         effects.push(EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s cargo critical hit (level {level}) and all cargo destroyed.",
-            defender.get_name()
-          ),
+          format!("%s's cargo critical hit (level {level}) and all cargo destroyed."),
         ));
         effects
       }
@@ -1017,7 +952,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!("{}'s jump critical hit (level 1) and reduced by 1.", defender.get_name()),
+          "%s's jump critical hit (level 1) and reduced by 1.".to_string(),
         )]
       }
       (ShipSystem::Jump, level) => {
@@ -1026,7 +961,7 @@ pub(crate) fn apply_crit(
         let mut effects = vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!("{}'s jump critical hit (level {level}) and offline.", defender.get_name()),
+          format!("%s's jump critical hit (level {level}) and offline."),
         )];
         if level >= 4 {
           effects.append(&mut apply_crit(1, ShipSystem::Hull, defender, rng));
@@ -1038,10 +973,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s crew critical hit (level 1) and random occupant takes {crew_damage} damage.",
-            defender.get_name()
-          ),
+          format!("%s's crew critical hit (level 1) and random occupant takes {crew_damage} damage."),
         )]
       }
       (ShipSystem::Crew, 2) => {
@@ -1049,10 +981,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s crew critical hit (level 2) and life support fails within {hours} hours.",
-            defender.get_name()
-          ),
+          format!("%s's crew critical hit (level 2) and life support fails within {hours} hours."),
         )]
       }
       (ShipSystem::Crew, 3) => {
@@ -1064,10 +993,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s crew critical hit (level 3) and {num_occupants} take {damages} points of damage.",
-            defender.get_name()
-          ),
+          format!("%s's crew critical hit (level 3) and {num_occupants} take {damages} points of damage."),
         )]
       }
       (ShipSystem::Crew, 4) => {
@@ -1075,33 +1001,24 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s crew critical hit (level 4) and life support fails in {rounds} rounds.",
-            defender.get_name()
-          ),
+          format!("%s's crew critical hit (level 4) and life support fails in {rounds} rounds."),
         )]
       }
       (ShipSystem::Crew, 5) => {
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s crew critical hit (level 5) and all occupants take 3D damage (roll each separately).",
-            defender.get_name()
-          ),
+          "%s's crew critical hit (level 5) and all occupants take 3D damage (roll each separately).".to_string(),
         )]
       }
       (ShipSystem::Crew, 6) => vec![EffectMsg::about(
         &crit_ship,
         MessageCategory::Critical,
-        format!("{}'s crew critical hit (level 6) and life support fails.", defender.get_name()),
+        "%s's crew critical hit (level 6) and life support fails.".to_string(),
       )],
       (ShipSystem::Crew, _) => {
         let mut effects = apply_crit(1, ShipSystem::Hull, defender, rng);
-        effects.push(EffectMsg::about(&crit_ship, MessageCategory::Critical, format!(
-          "{}'s crew critical hit (level {level}) (<- This is a bug - should never hit this level). Life support fails.",
-          defender.get_name()
-        )));
+        effects.push(EffectMsg::about(&crit_ship, MessageCategory::Critical, format!("%s's crew critical hit (level {level}) (<- This is a bug - should never hit this level). Life support fails.")));
         effects
       }
       (ShipSystem::Bridge, 1) => {
@@ -1111,8 +1028,7 @@ pub(crate) fn apply_crit(
           &crit_ship,
           MessageCategory::Critical,
           format!(
-            "{}'s bridge critical hit (level 1): {station} station disabled this round and next ({}).",
-            defender.get_name(),
+            "%s's bridge critical hit (level 1): {station} station disabled this round and next ({}).",
             station.loses()
           ),
         )]
@@ -1123,8 +1039,7 @@ pub(crate) fn apply_crit(
           &crit_ship,
           MessageCategory::Critical,
           format!(
-            "{}'s bridge critical hit (level 2): computer reboots, down this round and next ({}).",
-            defender.get_name(),
+            "%s's bridge critical hit (level 2): computer reboots, down this round and next ({}).",
             BridgeStation::Computer.loses()
           ),
         )]
@@ -1134,10 +1049,7 @@ pub(crate) fn apply_crit(
         vec![EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s bridge critical hit (level 3) and computer damaged: reduce bandwidth -50%",
-            defender.get_name()
-          ),
+          "%s's bridge critical hit (level 3) and computer damaged: reduce bandwidth -50%".to_string(),
         )]
       }
       (ShipSystem::Bridge, 5) => {
@@ -1147,8 +1059,7 @@ pub(crate) fn apply_crit(
           &crit_ship,
           MessageCategory::Critical,
           format!(
-            "{}'s bridge critical hit (level 5): computer destroyed until repaired ({}).",
-            defender.get_name(),
+            "%s's bridge critical hit (level 5): computer destroyed until repaired ({}).",
             BridgeStation::Computer.loses()
           ),
         )]
@@ -1167,11 +1078,7 @@ pub(crate) fn apply_crit(
         effects.push(EffectMsg::about(
           &crit_ship,
           MessageCategory::Critical,
-          format!(
-            "{}'s bridge critical hit (level {level}): {station} station destroyed until repaired ({}); occupant takes {crew_damage} damage.",
-            defender.get_name(),
-            station.loses()
-          ),
+          format!("%s's bridge critical hit (level {level}): {station} station destroyed until repaired ({}); occupant takes {crew_damage} damage.", station.loses()),
         ));
         effects
       }
@@ -1231,14 +1138,14 @@ pub fn do_fire_actions<S: BuildHasher>(
     );
     (
       impact,
-      Some(EffectMsg::about(
-        attacker.get_name(),
-        MessageCategory::Attack,
-        format!(
-          "{} pilot assists gunners with roll {roll} and skill {pilot:+} for effect {effect}: DM {impact:+} to this round's shots.",
-          attacker.get_name()
-        ),
-      )),
+      Some(
+        EffectMsg::about(
+          attacker.get_name(),
+          MessageCategory::Attack,
+          format!("%s pilot assists gunners: DM {impact:+} to this round's shots."),
+        )
+        .rolled(format!("roll {roll} skill {pilot:+} = effect {effect}")),
+      ),
     )
   } else {
     (0, None)
@@ -1314,8 +1221,9 @@ pub fn do_fire_actions<S: BuildHasher>(
           return vec![EffectMsg::about(
             attacker.get_name(),
             MessageCategory::Info,
-            format!("{} will not fire on {target}: same side.", attacker.get_name()),
-          )];
+            "%s will not fire on %t: same side.".to_string(),
+          )
+          .at(target)];
         }
       }
 
@@ -1497,11 +1405,7 @@ pub fn do_fire_actions<S: BuildHasher>(
           return vec![EffectMsg::about(
             attacker.get_name(),
             MessageCategory::Attack,
-            format!(
-              "{} has no {}s left to launch.",
-              attacker.get_name(),
-              String::from(&firing.kind).to_lowercase()
-            ),
+            format!("%s has no {}s left to launch.", String::from(&firing.kind).to_lowercase()),
           )];
         }
         *aboard -= u32::from(count);
@@ -1525,14 +1429,9 @@ pub fn do_fire_actions<S: BuildHasher>(
         return vec![EffectMsg::about(
           attacker.get_name(),
           MessageCategory::Attack,
-          format!(
-            "{} launches {} {}(s) at {}.",
-            attacker.get_name(),
-            count,
-            String::from(&firing.kind),
-            target.get_name()
-          ),
-        )];
+          format!("%s launches {} {}(s) at %t.", count, String::from(&firing.kind)),
+        )
+        .at(target.get_name())];
       }
 
       match firing.kind {
@@ -1557,12 +1456,9 @@ pub fn do_fire_actions<S: BuildHasher>(
               let effect = dice - STANDARD_ROLL_THRESHOLD + modifier;
               // Same compact shape as an attack line: sand is part of the same
               // exchange, and the defender rolling it is the actor here.
-              let sand_line = format!(
-                "{} sand -> {}: {dice}{modifier:+}={} vs {STANDARD_ROLL_THRESHOLD}",
-                target.get_name(),
-                attacker.get_name(),
-                dice + modifier
-              );
+              let sand_line = "%s sand -> %t".to_string();
+              let sand_roll_line =
+                format!("{dice}{modifier:+}={} vs {STANDARD_ROLL_THRESHOLD}", dice + modifier);
               if effect >= 0 {
                 debug!(
                   "(Combat.do_fire_actions) {}'s sand (modifier = {})successfully deployed against {} with effect {}.",
@@ -1578,10 +1474,12 @@ pub fn do_fire_actions<S: BuildHasher>(
                   vec![EffectMsg::about(
                     target.get_name(),
                     MessageCategory::Damage,
-                    format!(
-                      "{sand_line}, effect {effect}. Deployed, damage -{sand_mod} ({effect} effect +1D {sand_roll})."
-                    ),
-                  )],
+                    format!("{sand_line}: deployed, damage -{sand_mod}."),
+                  )
+                  .at(attacker.get_name())
+                  .rolled(format!(
+                    "{sand_roll_line} · {effect} effect +1D {sand_roll} = -{sand_mod}"
+                  ))],
                 )
               } else {
                 debug!(
@@ -1597,8 +1495,10 @@ pub fn do_fire_actions<S: BuildHasher>(
                   vec![EffectMsg::about(
                     target.get_name(),
                     MessageCategory::Damage,
-                    format!("{sand_line}, fails to deploy."),
-                  )],
+                    format!("{sand_line}: fails to deploy."),
+                  )
+                  .at(attacker.get_name())
+                  .rolled(sand_roll_line.clone())],
                 )
               }
             }

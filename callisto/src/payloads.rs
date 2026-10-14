@@ -4,7 +4,7 @@
  */
 use std::collections::HashMap;
 
-use super::action::{BoostTarget, ShipAction, ShipActionList};
+use super::action::{ShipAction, ShipActionList};
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
@@ -316,26 +316,6 @@ pub enum EffectMsg {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     succeeded: Option<bool>,
   },
-  EngineerAction {
-    result: EngineerActionResult,
-  },
-  /// Reports the result of a captain's `LeadershipCheck` resolution. `points`
-  /// is the signed leadership N (`2d6 + leadership − 8`); negative values are
-  /// reported but mean no boosts applied. `boosts_applied` is the actual list
-  /// of targets that received a +1 (already truncated by N and filtered down
-  /// to live queue entries).
-  ///
-  /// `roll` and `leadership` are the dice and the skill behind `points`, so
-  /// the log can show the check rather than only its net. `roll` is `None`
-  /// when the captain never pressed the button this round -- the resolution
-  /// still runs, with no points, and a roll must not be invented for it.
-  LeadershipAction {
-    ship_name: String,
-    roll: Option<u8>,
-    leadership: u8,
-    points: i16,
-    boosts_applied: Vec<BoostTarget>,
-  },
 }
 
 /// A ship named in a result: who it was, and whose side it was on.
@@ -392,6 +372,26 @@ pub enum MessageCategory {
   /// Everything else: refused orders, errors, general notes.
   #[default]
   Info,
+}
+
+impl EngineerActionResult {
+  /// The line this result puts in the log.
+  ///
+  /// The structure here -- the action, the check, the target number -- was
+  /// only ever used to compose a sentence, and the client was composing it.
+  /// It composes here instead, so every result reaches the log as a message
+  /// like any other, with its ship bolded and its arithmetic on the hover.
+  #[must_use]
+  pub fn into_message(self) -> EffectMsg {
+    let effect = EffectMsg::outcome(&self.ship_name, MessageCategory::Engineering, self.message, self.success);
+    // A refusal has no roll behind it -- a jump with the astrogation station
+    // out never got as far as dice -- and reports check 0 against target 0.
+    if self.target == 0 {
+      effect
+    } else {
+      effect.rolled(format!("{} vs {}", self.check, self.target))
+    }
+  }
 }
 
 impl EffectMsg {
