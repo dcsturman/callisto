@@ -283,8 +283,8 @@ A leadership line also names a second ship in practice: a Detection boost
 reads "Death's Actuary searching for HMS Executor", so the captain's ship is
 `%s` and the quarry is `%t`.
 
-**The fix is to delete both variants** and have the server emit ordinary
-`Message`s with `ship`, `target`, `roll` and `succeeded` filled in. The check
+**Decided: both variants go.** Neither needs to be acted on -- a sentence is
+all either has ever been -- so the server emits ordinary `Message`s with `ship`, `target`, `roll` and `succeeded` filled in. The check
 and the target number become the `roll` string that was always meant for them,
 `critical_failure` picks the sentence, and the client stops writing English
 anywhere. Three functions go with them: `formatEngineerResult`,
@@ -369,8 +369,10 @@ The results tooltip should not be a fifth look. Proposal:
 3. **Convert the call sites**, a category at a time: Attack and Damage first —
    the longest lines and the most arithmetic — then Detection and Handoff, then
    Critical, Engineering, Destruction, Info.
-4. **Move the two client-composed families server-side** (section 6.2), so
-   every result is a `Message` and the client writes no English at all.
+4. **Delete `EngineerAction` and `LeadershipAction`** (section 6.2). The
+   server emits their lines as `Message`s with `roll` and `succeeded` filled
+   in; `formatEngineerResult`, `formatLeadershipResult` and `describeBoost`
+   leave the client with them, and the client writes no English at all.
 5. **Filtering**: two chip rows, ships and categories, state in `uiSlice`.
 6. **Emphasis**, if a real round still reads badly.
 
