@@ -879,8 +879,10 @@ function FireControlRow(args: {
         </select>
       </label>
       )}
-      <span className="fire-control-left">
-        {mine > 0 ? `${mine} used, ` : ""}
+      {/* Just what is left. The row also said how much this mount had taken,
+          which is the number the controls beside it already show, and in a
+          310px column it pushed the count off the edge. */}
+      <span className="fire-control-left" title={`${mine} spent on this mount`}>
         {Math.max(0, left)} left
       </span>
     </div>
