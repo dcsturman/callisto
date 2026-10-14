@@ -313,17 +313,25 @@ pub fn attack(
   ];
   let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
-  let mut named: Vec<String> = terms
+  let named: Vec<String> = terms
     .iter()
-    .filter(|(name, value)| *value != 0 || *name == "evade")
+    .filter(|(name, value)| {
+      if *name == "evade" {
+        // A ship that dodged says so even when its pilot's skill is 0 and the
+        // dodge bought nothing. Otherwise the line is identical to one where
+        // nobody evaded, and a pilot cannot tell the order was carried out.
+        evading
+      } else {
+        // Everything else is named when it did something. Matched on the term
+        // itself rather than on the text it prints: dropping anything that
+        // began "evade " also dropped "evade software", so a defender running
+        // Evade had the DM counted against the shot and left out of the
+        // arithmetic, which then did not add up.
+        *value != 0
+      }
+    })
     .map(|(name, value)| format!("{name} {value:+}"))
     .collect();
-  // A ship that dodged says so even when its pilot's skill is 0 and the dodge
-  // bought nothing. Otherwise the line is identical to one where nobody
-  // evaded, and a pilot cannot tell the order was carried out.
-  if !evading {
-    named.retain(|term| !term.starts_with("evade "));
-  }
   let breakdown = named.join(", ");
   let breakdown = if breakdown.is_empty() {
     String::new()
@@ -3102,6 +3110,98 @@ mod tests {
     );
     assert!(matches!(effects[0], EffectMsg::Message { .. }));
     assert!(matches!(effects[1], EffectMsg::Message { .. }));
+  }
+
+  /// The arithmetic on an attack adds up.
+  ///
+  /// It did not: the breakdown dropped anything whose text began "evade ",
+  /// meaning to drop the dodge term when nobody dodged, and took "evade
+  /// software" with it -- so a defender running Evade had the DM counted
+  /// against the shot and left out of the sum. The line then read
+  /// "8+3=11 (gunner +3, captain fire +1)", which is +4 of terms making +3.
+  #[test]
+  fn an_attack_names_every_modifier_it_counted() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Design".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1)],
+      hull: 200,
+      computer: 20,
+      software: vec![crate::software::Software::new(SoftwareKind::Evade, 1)],
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let mut defender = Ship::new(
+      "Defender".to_string(),
+      Vec3::new(1000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    // Running Evade, but with nobody at the helm dodging: the case that was
+    // being mis-reported.
+    assert!(
+      defender.running_level(SoftwareKind::Evade).is_some(),
+      "the defender should be evading"
+    );
+
+    let weapon = Weapon::uniform(WeaponType::Beam, WeaponMount::Turret, 1);
+    let mut rng = StdRng::seed_from_u64(7);
+    let effects = attack(
+      HitMods {
+        gunner: 3,
+        ..HitMods::default()
+      },
+      0,
+      &attacker,
+      &mut defender,
+      &weapon.firing_default().unwrap(),
+      None,
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    let roll = effects
+      .iter()
+      .find_map(|e| match e {
+        EffectMsg::Message { roll, .. } => roll.clone(),
+        _ => None,
+      })
+      .expect("an attack reports its arithmetic");
+
+    // "8+3=11 (gunner +3, evade software -1, ...) vs 8": the dice, the
+    // modifier applied, and the terms it was made of.
+    let (sum, rest) = roll.split_once('=').expect("the roll states a total");
+    let stated: i32 = sum
+      .split_once(['+', '-'])
+      .map(|(_, modifier)| {
+        let size = modifier.trim().parse::<i32>().unwrap_or(0);
+        if sum.contains('-') {
+          -size
+        } else {
+          size
+        }
+      })
+      .expect("the roll states a modifier");
+    let named: i32 = rest
+      .split_once('(')
+      .and_then(|(_, tail)| tail.split_once(')'))
+      .map_or(0, |(terms, _)| {
+        terms
+          .split(", ")
+          .filter_map(|term| term.rsplit_once(' '))
+          .map(|(_, value)| value.parse::<i32>().unwrap_or(0))
+          .sum()
+      });
+
+    assert_eq!(
+      named, stated,
+      "the terms named should add up to the modifier applied, in {roll:?}"
+    );
+    assert!(
+      roll.contains("evade software"),
+      "the defender's Evade should be named: {roll:?}"
+    );
   }
 
   /// A critical names the ship that caused it and says which of the two ways
