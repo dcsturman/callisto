@@ -1161,9 +1161,11 @@ export function Actions(args: {
                 )
               }
             />
-            {/* The computer's share of this shot. This is the row that
-                matters: a direct-fire attack rolls, so a point spent here
-                is +1 to hit. */}
+            {renderBoostCheckbox(fireBoostTarget)}
+            {/* The computer's share of this shot, on the line below: a
+                direct-fire attack rolls, so a point spent here is +1 to hit.
+                It comes after the Assist box so that box stays up on the
+                order's own line, where every other card puts it. */}
             {fireControlPool > 0 && (
               <FireControlRow
                 action={action}
@@ -1175,7 +1177,6 @@ export function Actions(args: {
                 allowDm={true}
               />
             )}
-            {renderBoostCheckbox(fireBoostTarget)}
           </div>
         ) : (
           <div
@@ -1232,6 +1233,10 @@ export function Actions(args: {
             {/* The computer's share of this shot, when the ship is running
                 Fire Control. One point has the computer fire a mount with
                 nobody on it; the rest can be spent improving the shot. */}
+            {renderBoostCheckbox(
+              fireBoostTarget,
+              "Launching makes no check, so there is nothing to boost",
+            )}
             {fireControlPool > 0 && (
               <FireControlRow
                 action={action}
@@ -1242,10 +1247,6 @@ export function Actions(args: {
                 hasGunner={(args.gunnery?.[action.weapon_id] ?? 0) > 0}
                 allowDm={false}
               />
-            )}
-            {renderBoostCheckbox(
-              fireBoostTarget,
-              "Launching makes no check, so there is nothing to boost",
             )}
           </div>
         );

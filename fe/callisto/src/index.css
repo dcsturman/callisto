@@ -2790,19 +2790,15 @@ h3.control-form {
     flex-basis: 100%;
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: 6px;
     margin: 1px 0 3px 22px;
     font-size: var(--font-xs);
     opacity: 0.85;
-}
-
-/* Said once at the head of the line, so the two controls under it do not
-   each have to explain themselves. */
-.fire-control-row::before {
-    content: "fire control";
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    opacity: 0.6;
+    /* The controls say what they are -- "computer fires", "DM", "2 left" --
+       so the row needs no heading of its own. One was tried: in a 310px
+       column "FIRE CONTROL" wrapped to two lines and pushed the Assist box
+       off the order it belonged to. */
+    white-space: nowrap;
 }
 
 .fire-control-toggle,
@@ -3201,7 +3197,9 @@ h3.control-form {
 .damage-diagram {
     display: block;
     width: 100%;
-    max-width: 196px;
+    /* The card's full width, less its padding: the drawing carries its own
+       label margins, so capping it narrower only shrank the ship. */
+    max-width: 296px;
     margin: 2px auto 6px;
 }
 
