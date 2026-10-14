@@ -138,7 +138,11 @@ export function TargetBoard(args: {ship: Ship}) {
             </span>
           </div>
           <div className="target-detail">
-            <span className={`target-band target-band-${row.band.replace(" ", "-").toLowerCase()}`}>
+            <span
+              className={`target-band target-band-${row.band.replace(" ", "-").toLowerCase()}`}
+              title={`The band it is in now, at ${Math.round(row.metres / 1000).toLocaleString(
+                "en-US"
+              )} km. Orders are given at this range; they resolve at the one beside it.`}>
               {row.band}
             </span>
             <span className="target-dm" title="What the range does to an attack roll">
@@ -147,11 +151,18 @@ export function TargetBoard(args: {ship: Ship}) {
             </span>
             {/* Where it will be when the round ends: a shot is ordered now
                 and resolved then, and a target that is opening may be out of
-                a mount's reach by the time it fires. */}
+                a mount's reach by the time it fires. The band is named only
+                when it changes -- "Long ... Long" was the same word twice,
+                and the arrow alone says which way it is going. */}
             <span
               className="target-trend"
-              title={row.closing ? "Closing" : "Opening"}>
-              {row.closing ? "▼" : "▲"} {row.endBand}
+              title={`${row.closing ? "Closing" : "Opening"}. ${
+                row.endBand === row.band
+                  ? `Still ${row.endBand} when the round ends, which is the range this round's shots are resolved at.`
+                  : `${row.endBand} when the round ends, which is the range this round's shots are resolved at.`
+              }`}>
+              {row.closing ? "▼" : "▲"}
+              {row.endBand === row.band ? "" : ` ${row.endBand}`}
             </span>
             <span className="target-defence" title="Armour, and screens fitted">
               armour {row.armour}
