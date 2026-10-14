@@ -142,7 +142,7 @@ already trust.
 the target's velocity. "Intercept to Medium and hold us there" is that
 solver called once a round. Every model in this design -- prompted,
 fine-tuned or RL-trained -- sits in the Commander slot and produces the same
-thing, a choice of verbs. The one layering that is worth keeping in mind for
+thing, a plan and a choice of verbs (§4.2). The one layering that is worth keeping in mind for
 phase 4 is an LLM *over* a trained policy: the LLM turns the admiral's
 English into constraints and a reward ("do not destroy her" becomes a
 penalty on hull below a fifth) and the policy picks verbs under them. That
@@ -237,7 +237,34 @@ pub struct Intent {
   pub command: Option<Inspire>,
   pub rationale: String,          // one sentence, logged, shown to the referee
 }
+
+/// One team's answer for the round: a plan that carries over, and an
+/// Intent for each ship.
+pub struct TeamDecision {
+  pub plan: String,               // the strategy, revised each round, fed back next round
+  pub ships: Vec<(String, Intent)>,
+}
 ```
+
+**Who formulates the strategy.** The Commander. "Take their fighters first
+and stay out of the battleships' reach" is exactly what it is for; the
+verbs are the vocabulary it writes that plan in. Two ships get
+`engage(fighter_1)`, every helm gets `hold_range(battleship, Long)`, the
+captain gets `inspire(gunners)`. If a human admiral has given orders, the
+plan serves them; if not, the Commander is the admiral. Three levels, then:
+
+| Level | Who | Form |
+|---|---|---|
+| Orders | a human admiral or the scenario file; optional | English, standing until replaced |
+| Strategy | the Commander, once per team per round | `plan` text plus one `Intent` per ship |
+| Execution | `callisto::tactics` and the solver | the messages a console would send |
+
+**The plan persists.** A strategy should not be reinvented every six minutes
+of game time. The `plan` from this round goes into next round's prompt, so
+the model revises a plan rather than starting from nothing, and the admiral
+sees the current plan beside the orders they gave. This is the pattern the
+Strategist work (§5.1) gets its results from: strategy in text, revised,
+executed by code.
 
 `rationale` is not decoration. It is the ship reporting back up the chain:
 the squadron and fleet controllers see each ship's line in the orders panel
@@ -377,13 +404,22 @@ This exists for three reasons, in order of when they matter:
 
 1. **Evaluation.** "Is the LLM better than the index card?" is a win rate
    over a hundred Thebus runs with the seed varied. Without it we are
-   guessing.
+   guessing. The same run with two providers on the two sides, swapped each
+   game so the side advantage cancels, is how the model choice (§4.5) gets
+   made.
 2. **Tuning.** Prompt changes, doctrine changes and verb changes are measured
    the same way.
 3. **Data.** The log is the training set that approach 2 lacks and the
    environment that approach 3 needs. See §5.
 
 ### 4.8 Joining a game
+
+Nobody prompts the service. It is a client: it watches the round number in
+`EntityResponse`, and when it ticks the service builds each team's
+observation with a plain function, makes one model call per team, and sends
+the messages. The backend pushing a "your move" message instead would work
+too, but needs a new message and a backend that knows where the service
+is; watching costs nothing and survives a backend restart on its own.
 
 The service keeps one lobby connection and already receives the running
 scenario list. When a running scenario contains ships with
