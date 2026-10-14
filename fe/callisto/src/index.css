@@ -739,20 +739,45 @@ h3.control-form {
     font-size: var(--font-sm);
 }
 
-.tooltip-body {
+/* One look for every tooltip in the console.
+   There were three: green-on-black for the weapon glyphs, white-on-grey for
+   the design picker, and the first of those plus a left pad for the weapon
+   buttons -- so the same gesture produced a different-looking answer
+   depending on which panel you were in. This is the cards' own ground and
+   hairline border, which is what the rest of the console is made of.
+   `title` is still right for a short plain hint; this is for an answer with
+   structure in it -- a breakdown, a column of modifiers, more than a line. */
+.console-tip {
     z-index: 100;
-    padding: 2px !important;
-    color: #3dfc32 !important;
+    max-width: 280px;
+    padding: 4px 7px !important;
+    border: 1px solid #4a4f48 !important;
+    border-radius: 3px;
+    background-color: rgba(10, 13, 16, 0.96) !important;
+    color: #c8cdc1 !important;
     font-size: var(--font-xs);
+    line-height: 1.35;
+    opacity: 1 !important;
 }
 
+/* Numbers in a tooltip line up: a breakdown is a column, not a sentence. */
+.console-tip-figures {
+    font-family: "Sono", monospace;
+}
+
+/* Kept as aliases so an older panel is never left unstyled. */
+.tooltip-body,
 #design-tooltip {
     z-index: 100;
-    color: #fff;
-    background-color: rgb(55, 55, 55);
+    max-width: 280px;
+    padding: 4px 7px !important;
+    border: 1px solid #4a4f48 !important;
+    border-radius: 3px;
+    background-color: rgba(10, 13, 16, 0.96) !important;
+    color: #c8cdc1 !important;
     font-size: var(--font-xs);
-    padding: 2px;
-    padding-left: 6px;
+    line-height: 1.35;
+    opacity: 1 !important;
 }
 
 .label-with-tooltip {
@@ -838,8 +863,10 @@ h3.control-form {
     color: #d0d0d0;
 }
 
+/* Folded into .console-tip; the class stays only so markup that still names
+   it is not left half-styled. */
 .weapon-button-tooltip {
-    padding-left: 6px !important;
+    padding-left: 7px !important;
 }
 
 .weapon-button:disabled {

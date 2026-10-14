@@ -178,7 +178,7 @@ export const WeaponButton = (props: {
         </button>
         <Tooltip
           id={props.weapon + props.mount}
-          className="tooltip-body weapon-button-tooltip"
+          className="console-tip"
         />
       </>
     );
@@ -205,7 +205,7 @@ export const WeaponButton = (props: {
         </button>
         <Tooltip
           id={props.weapon + props.mount}
-          className="tooltip-body weapon-button-tooltip"
+          className="console-tip"
         />
       </>
     );
@@ -234,7 +234,7 @@ export const WeaponButton = (props: {
           </button>
           <Tooltip
             id={props.weapon + "small-bay"}
-            className="tooltip-body  weapon-button-tooltip"
+            className="console-tip"
           />
         </>
       );
@@ -260,7 +260,7 @@ export const WeaponButton = (props: {
           </button>
           <Tooltip
             id={props.weapon + "med-bay"}
-            className="tooltip-body  weapon-button-tooltip"
+            className="console-tip"
           />
         </>
       );
@@ -286,7 +286,7 @@ export const WeaponButton = (props: {
           </button>
           <Tooltip
             id={props.weapon + "large-bay"}
-            className="tooltip-body  weapon-button-tooltip"
+            className="console-tip"
           />
         </>
       );
@@ -315,7 +315,7 @@ export const WeaponButton = (props: {
           </button>
           <Tooltip
             id={props.weapon + num + "turret"}
-            className="tooltip-body  weapon-button-tooltip"
+            className="console-tip"
           />
         </>
       );
@@ -342,7 +342,7 @@ export const WeaponButton = (props: {
           </button>
           <Tooltip
             id={props.weapon + num + "turret"}
-            className="tooltip-body  weapon-button-tooltip"
+            className="console-tip"
           />
         </>
       );
@@ -368,7 +368,7 @@ export const WeaponButton = (props: {
         </button>
         <Tooltip
           id={props.weapon + num + "turret"}
-          className="tooltip-body weapon-button-tooltip"
+          className="console-tip"
         />
       </>
     );

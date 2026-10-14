@@ -51,7 +51,7 @@ export function WeaponGlyph(args: {weapon: Weapon}) {
         data-tooltip-delay-show={300}>
         <Icon className="weapon-glyph-icon" style={{fill: WEAPON_COLORS[kind]}} />
       </span>
-      <Tooltip id={tipId} className="tooltip-body weapon-button-tooltip" />
+      <Tooltip id={tipId} className="console-tip" />
     </>
   );
 }
