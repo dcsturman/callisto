@@ -79,37 +79,37 @@ const SECTIONS: Section[] = [
     system: ShipSystem.Sensors,
     label: "Sensors",
     shapes: [band(50, 94, 106, 74, 86, 114)],
-    labelAt: {x: 197, y: 54, anchor: "end"},
+    labelAt: {x: 246, y: 54, anchor: "end"},
   },
   {
     system: ShipSystem.Bridge,
     label: "Bridge",
     shapes: [band(78, 84.5, 115.5, 106, 75, 125)],
-    labelAt: {x: 197, y: 90, anchor: "end"},
+    labelAt: {x: 246, y: 90, anchor: "end"},
   },
   {
     system: ShipSystem.Crew,
     label: "Crew",
     shapes: [band(110, 73.7, 126.3, 140, 63.6, 136.4)],
-    labelAt: {x: 197, y: 126, anchor: "end"},
+    labelAt: {x: 246, y: 126, anchor: "end"},
   },
   {
     system: ShipSystem.Cargo,
     label: "Cargo",
     shapes: [band(144, 62, 137.8, 160, 56.8, 143.2)],
-    labelAt: {x: 3, y: 120, anchor: "start"},
+    labelAt: {x: -46, y: 120, anchor: "start"},
   },
   {
     system: ShipSystem.Weapon,
     label: "Weapon",
     shapes: [block(20, 148, 13, 40), block(167, 148, 13, 40)],
-    labelAt: {x: 3, y: 168, anchor: "start"},
+    labelAt: {x: -46, y: 168, anchor: "start"},
   },
   {
     system: ShipSystem.Fuel,
     label: "Fuel",
     shapes: [band(164, 55, 75.25, 188, 47, 71.25), band(164, 124.75, 145, 188, 128.75, 153)],
-    labelAt: {x: 3, y: 216, anchor: "start"},
+    labelAt: {x: -46, y: 216, anchor: "start"},
   },
   {
     system: ShipSystem.Jump,
@@ -127,7 +127,7 @@ const SECTIONS: Section[] = [
     system: ShipSystem.Maneuver,
     label: "M-drive",
     shapes: [block(58, 208, 32, 13), block(110, 208, 32, 13)],
-    labelAt: {x: 197, y: 220, anchor: "end"},
+    labelAt: {x: 246, y: 220, anchor: "end"},
   },
 ];
 
@@ -201,7 +201,7 @@ export function DamageDiagram(args: {ship: Ship; design: ShipDesignTemplate | un
   return (
     <svg
       className="damage-diagram"
-      viewBox="0 0 200 258"
+      viewBox="-52 0 304 258"
       role="img"
       aria-label="Ship damage by system">
       {/* Armour outside, hull within it, each taking its own colour. Drawn
@@ -255,7 +255,7 @@ export function DamageDiagram(args: {ship: Ship; design: ShipDesignTemplate | un
 
       <SectionLabel
         label="Armour"
-        at={{x: 197, y: 14, anchor: "end"}}
+        at={{x: 246, y: 14, anchor: "end"}}
         colour={colourFor(armourLevel)}
         reading={String(armourLevel)}
         quiet={armourLevel === 0}
@@ -265,7 +265,7 @@ export function DamageDiagram(args: {ship: Ship; design: ShipDesignTemplate | un
           the whole fight runs on. */}
       <SectionLabel
         label="Hull"
-        at={{x: 3, y: 14, anchor: "start"}}
+        at={{x: -46, y: 14, anchor: "start"}}
         colour={colourFor(hullLevel)}
         quiet={hullLevel === 0}
         reading={
