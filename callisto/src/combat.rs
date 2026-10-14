@@ -3112,6 +3112,32 @@ mod tests {
     assert!(matches!(effects[1], EffectMsg::Message { .. }));
   }
 
+  /// An overloaded plant actually makes more Power.
+  ///
+  /// The multiplier a successful overload sets lived in a helper nothing ever
+  /// called, so the engineer who rolled it got a line in the log and not one
+  /// point of Power: not a thrust, not a weapon, nothing on the board.
+  #[test]
+  fn an_overloaded_plant_makes_more_power() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Design".to_string(),
+      power: 100,
+      ..ShipDesignTemplate::default()
+    });
+    let mut ship = Ship::new("Plant".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(ship.available_power(), 100);
+
+    ship.set_temporary_power_multiplier(1.1, 3);
+    assert_eq!(ship.available_power(), 110, "a 10% overload is ten more Power on a 100 plant");
+
+    // An ion hit takes from what the plant makes, overloaded or not.
+    ship.apply_ion_damage(20, 2);
+    assert_eq!(ship.available_power(), 90, "ion drain comes off the overloaded output");
+
+    ship.set_temporary_power_multiplier(1.0, 0);
+    assert_eq!(ship.available_power(), 80, "and the plant is back to its rating when it lapses");
+  }
+
   /// The arithmetic on an attack adds up.
   ///
   /// It did not: the breakdown dropped anything whose text began "evade ",

@@ -77,13 +77,26 @@ export function PowerBoard(args: {ship: Ship}) {
 
   // A queued order on basic systems: `online: false` is the order to run them
   // at half. Undefined when no such order is waiting.
+  // A plant an engineer has overloaded is making more than its rating, and
+  // the supply figure moving with no explanation reads as a fault.
+  const overload = args.ship.temporary_power_multiplier ?? 1;
+
   const halfOrdered =
     queued?.kind === "SetPower" && queued.system === "Basic" ? !queued.online : null;
 
   return (
     <div className="power-board">
       <div className="power-summary">
-        <span className="power-supply">{supply} available</span>
+        <span
+          className="power-supply"
+          title={
+            overload > 1
+              ? `The plant is overloaded: ${Math.round((overload - 1) * 100)}% more than its rating of ${args.ship.current_power}`
+              : undefined
+          }>
+          {supply} available
+          {overload > 1 && <span className="power-overload"> +{Math.round((overload - 1) * 100)}%</span>}
+        </span>
         <span className={short > 0 ? "power-spare power-short" : "power-spare"}>
           {short > 0 ? `${short} short` : `${spare} spare`}
         </span>

@@ -323,6 +323,10 @@ pub struct Ship {
   #[serde(skip_deserializing, default, skip_serializing_if = "is_zero_u8")]
   temporary_maneuver_rounds: u8,
 
+  /// What an overloaded plant is making, as a multiplier on its rating.
+  ///
+  /// On the wire while it is not 1.0, so the engineer's power board can say
+  /// where the extra came from rather than the supply figure quietly moving.
   #[derivative(PartialEq = "ignore")]
   #[serde(
     skip_deserializing,
@@ -2808,8 +2812,20 @@ impl Ship {
   /// Everything that asks what the ship can currently do should read this
   /// rather than `current_power`, which is the undamaged-by-ion figure.
   #[must_use]
+  #[allow(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss
+  )]
   pub fn available_power(&self) -> u32 {
-    self.current_power.saturating_sub(self.ion_power_loss)
+    // An overloaded plant makes more, and an ion hit takes from what it makes.
+    //
+    // The multiplier used to live in `get_effective_power`, which nothing ever
+    // called -- so a successful plant overload bought its engineer nothing at
+    // all: not a thrust, not a weapon, not a line on the power board. It
+    // belongs here, where everything that spends Power reads it.
+    let generated = (self.current_power as f32 * self.temporary_power_multiplier) as u32;
+    generated.saturating_sub(self.ion_power_loss)
   }
 
   /// Suppress `amount` Power for `rounds` rounds.
@@ -2840,17 +2856,6 @@ impl Ship {
       self.ion_power_loss = 0;
       self.ion_bandwidth_loss = 0;
     }
-  }
-
-  /// Returns the effective power including temporary multiplier.
-  #[must_use]
-  #[allow(
-    clippy::cast_sign_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss
-  )]
-  pub fn get_effective_power(&self) -> u32 {
-    (self.available_power() as f32 * self.temporary_power_multiplier) as u32
   }
 }
 

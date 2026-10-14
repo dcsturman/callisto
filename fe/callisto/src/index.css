@@ -2528,6 +2528,12 @@ h3.control-form {
     color: #63c08c;
 }
 
+/* Where the extra Power came from, beside the supply figure it changed.
+   The same violet the engineer's own lines take in the results log. */
+.power-overload {
+    color: #c9a0ff;
+}
+
 /* Drawing more than the plant makes: the engineer's problem to solve. */
 .power-short {
     color: #ff6b6b;

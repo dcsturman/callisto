@@ -9,18 +9,31 @@ export interface PoweredShip {
   current_power: number;
   /** Power an ion hit is currently suppressing; absent when none is. */
   ion_power_loss?: number;
+  /**
+   * What an overloaded plant is making, as a multiplier on its rating.
+   * Absent while the plant is running normally.
+   */
+  temporary_power_multiplier?: number;
 }
 
 /**
- * Power the ship can actually use, after any ion suppression.
+ * Power the ship can actually use: what the plant is making, less any ion
+ * suppression.
  *
- * The server tracks ion damage apart from `current_power` so that a repair
- * cannot undo an ion hit -- which means anything asking what a ship can do now
- * has to subtract it. Reading `current_power` directly shows a ship at full
- * power in the same round its power was drained.
+ * Two things move it off `current_power`. An overloaded plant makes more --
+ * the engineer's roll buys 10% for a few rounds -- and an ion hit takes from
+ * what it makes. The server tracks ion damage apart from `current_power` so
+ * that a repair cannot undo an ion hit, which means anything asking what a
+ * ship can do now has to subtract it. This mirrors `Ship::available_power`,
+ * and has to keep mirroring it: the board that disagreed with the server
+ * would be worse than no board.
  */
 export const availablePower = (ship: PoweredShip): number =>
-  Math.max(0, ship.current_power - (ship.ion_power_loss ?? 0));
+  Math.max(
+    0,
+    Math.trunc(ship.current_power * (ship.temporary_power_multiplier ?? 1)) -
+      (ship.ion_power_loss ?? 0)
+  );
 
 // --- The power budget -----------------------------------------------------
 //
