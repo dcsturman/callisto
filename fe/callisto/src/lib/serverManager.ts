@@ -873,7 +873,7 @@ function handleEffect(json: object[]) {
         // The two structured variants compose their own text here, so they
         // also name their own category -- the server never sends one for them.
         category: "Engineering",
-        ship: result.ship_name,
+        ship: {name: result.ship_name},
         succeeded: result.success,
       } as Event;
     }
@@ -886,7 +886,7 @@ function handleEffect(json: object[]) {
         target: null,
         origin: null,
         category: "Leadership",
-        ship: lead.ship_name,
+        ship: {name: lead.ship_name},
         // A round where the captain never rolled is not a failed check, so it
         // goes unmarked like any other statement.
         succeeded: lead.roll == null ? undefined : lead.points > 0,

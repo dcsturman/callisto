@@ -877,9 +877,11 @@ impl Entities {
       ship.set_point_defense_pool(pool);
       if pool > 0 {
         debug!("(Entities.fire_actions) {name}'s point defence batteries will intercept {pool} missile(s).");
-        battery_effects.push(EffectMsg::message(format!(
-          "{name}'s point defence batteries will intercept up to {pool} missile(s) this round."
-        )));
+        battery_effects.push(EffectMsg::about(
+          &name,
+          MessageCategory::Info,
+          format!("%s's point defence batteries will intercept up to {pool} missile(s) this round."),
+        ));
       }
     }
 
@@ -1150,7 +1152,14 @@ impl Entities {
                 );
                 cleanup_missile_list.push(missile.clone());
                 let what = String::from(&launcher.primary_kind());
-                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("{what} {missile} destroyed by {target_name}'s point defence"))])
+                Some(vec![
+                  EffectMsg::ExhaustedMissile { position: target.get_position() },
+                  EffectMsg::about(
+                    &target_name,
+                    MessageCategory::Damage,
+                    format!("{what} {missile} destroyed by %s's point defence."),
+                  ),
+                ])
               } else {
                 // The attack gets through point defense
                 // A launched object resolves as the gun that threw it.
@@ -1621,9 +1630,10 @@ impl Entities {
               EffectMsg::ExhaustedMissile {
                 position: missile.get_position(),
               },
-              EffectMsg::tagged(
+              EffectMsg::about(
+                ship_name,
                 MessageCategory::Destruction,
-                format!("Missile {} destroyed by jamming.", missile.get_name()),
+                format!("Missile {} destroyed by %s's jamming.", missile.get_name()),
               ),
             ]
           })
@@ -4592,7 +4602,7 @@ mod tests {
     assert_eq!(entities.missiles.len(), 1); // Only one missile should be left
     assert_eq!(effects.len(), 15); // One message for jamming success and one for missile destruction
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("destroyed by jamming")
+        EffectMsg::Message { .. } if e.rendered().contains("destroyed by defender's jamming")
     )));
 
     let mut entities = Entities::default();
@@ -4669,7 +4679,7 @@ mod tests {
     );
     assert!(
       effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("destroyed by jamming")
+        EffectMsg::Message { .. } if e.rendered().contains("destroyed by defender's jamming")
       )),
       "Expected a 'destroyed by jamming' effect message"
     );

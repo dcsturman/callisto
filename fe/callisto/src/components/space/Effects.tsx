@@ -5,6 +5,8 @@ import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "lib/Util";
 import { SCALE } from "lib/universal";
 import { findShip } from "lib/entities";
+import { Team, teamLabelColor } from "lib/teams";
+import { Tooltip } from "react-tooltip";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { setShowResults, removeEvent, clearMessageEvents } from "state/uiSlice";
@@ -50,6 +52,19 @@ const BEAM_FADE_MS = 700;
 // whatever `linewidth` says, which is why this is a solid body rather than one.
 const BEAM_RADIUS_FRACTION = 0.004;
 
+/**
+ * A ship named in a result: who it was, and the side it was on when the line
+ * was written.
+ *
+ * The team travels with the message because a ship destroyed this round is
+ * gone from the entity list by the time its results are read -- and those are
+ * the lines that matter most.
+ */
+export interface ShipRef {
+  name: string;
+  team?: Team | null;
+}
+
 export interface Event {
   /** Set on receipt; unique across rounds. */
   id?: number,
@@ -58,14 +73,27 @@ export interface Event {
   // Will only have one of position or target. Position is a concrete position
   // while target is the name of a target.
   position: [number, number, number] | null,
-  target: string | null,
+  /**
+   * The visual kinds carry a ship's name here; a Message carries the ship its
+   * sentence acts on, with the side it was on. One key, two shapes, because
+   * both come up the same channel.
+   */
+  target: string | ShipRef | null,
   origin: [number, number, number] | null,
   // Message events only. `category` drives the colour in the results log;
   // `ship` is the subject of the sentence -- the attacker for an attack, the
   // ship taking it for damage. Both optional: the visual event kinds carry
   // neither, and an older server sends messages without them.
   category?: string,
-  ship?: string | null,
+  /** Message events: the subject of the sentence, substituted for `%s`. */
+  ship?: ShipRef | null,
+  /** Message events: a third ship the sentence names, substituted for `%c`. */
+  contact?: ShipRef | null,
+  /**
+   * The arithmetic behind the line -- "roll 7 + leadership 4 = 11 vs 8" --
+   * kept out of the sentence and shown on a hover.
+   */
+  roll?: string | null,
   /**
    * Whether the check this message reports passed. Absent on the many
    * messages that state something rather than resolve something -- a missile
@@ -268,7 +296,11 @@ export function Explosions() {
         switch (event.kind) {
           case SHIP_IMPACT:
             // Use the current position of the target if we can find it; otherwise use the position (last known position actually) as a backup
-            position = findShip(entities, event.target)?.position ?? event.position ?? [0, 0, 0];
+            position =
+              findShip(entities, typeof event.target === "string" ? event.target : (event.target?.name ?? ""))
+                ?.position ??
+              event.position ??
+              [0, 0, 0];
             color = MISSILE_HIT_COLOR;
             key = "Impact-" + (event.id ?? index);
             removeMe = () => {
@@ -359,6 +391,54 @@ export function Explosions() {
 }
 
 /**
+ * One ship's name inside a result, in its own team's colour.
+ *
+ * Bold always: the eye should find who a line is about before reading the
+ * line. Grey for a ship on no side, which is the same grey the ship list
+ * gives it.
+ */
+function ResultShip(args: {ship: ShipRef}) {
+  return (
+    <span className="result-ship" style={{color: teamLabelColor(args.ship.team ?? null)}}>
+      {args.ship.name}
+    </span>
+  );
+}
+
+/**
+ * A result's sentence, with the ships put back into it.
+ *
+ * The server writes `%s` for the subject, `%t` for the ship acted on and `%c`
+ * for a third party, and sends each as a name and a side. Splitting on the
+ * placeholders is what lets a ship be drawn in its own colour rather than
+ * being a run of text in the middle of a sentence.
+ *
+ * A message with no placeholders -- anything not yet converted -- prints as
+ * it always did.
+ */
+function ResultText(args: {event: Event}) {
+  const {content, ship, target, contact} = args.event;
+  const named: Record<string, ShipRef | null | undefined> = {
+    "%s": ship,
+    "%t": typeof target === "string" ? {name: target} : target,
+    "%c": contact,
+  };
+  const pieces = (content ?? "").split(/(%[stc])/g);
+  return (
+    <>
+      {pieces.map((piece, index) => {
+        const who = named[piece];
+        return who == null ? (
+          <React.Fragment key={index}>{piece}</React.Fragment>
+        ) : (
+          <ResultShip key={index} ship={who} />
+        );
+      })}
+    </>
+  );
+}
+
+/**
  * The turn's results.
  *
  * Coloured by category rather than by keyword: the server says what each line
@@ -396,9 +476,18 @@ export function ResultsWindow() {
               {msg.succeeded ? "\u2713" : "\u2715"}
             </span>
           )}
-          <span className="result-text">{msg.content}</span>
+          <span
+            className={msg.roll == null ? "result-text" : "result-text result-text-rolled"}
+            data-tooltip-id="result-roll"
+            data-tooltip-content={msg.roll ?? undefined}
+            data-tooltip-delay-show={200}>
+            <ResultText event={msg} />
+          </span>
         </p>
       ))}
+      {/* The arithmetic behind a line, on the line's own hover: a round is
+          read for what happened, and the numbers are what you go back for. */}
+      <Tooltip id="result-roll" className="console-tip console-tip-figures" />
       {/* Pinned, because the panel scrolls: a round with twenty checks in
           it should not hide the way to dismiss them. */}
       <button

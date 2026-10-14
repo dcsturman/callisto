@@ -923,7 +923,7 @@ async fn test_point_defense_battery_intercepts_missiles() {
   let intercepted = effects
     .iter()
     .filter(
-      |e| matches!(e, EffectMsg::Message { content, .. } if content.contains("destroyed by defender's point defence")),
+      |e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("destroyed by defender's point defence")),
     )
     .count();
 

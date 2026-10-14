@@ -152,11 +152,14 @@ pub fn attack(
       String::from(&firing.kind),
       String::from(&firing.kind)
     );
-    return vec![EffectMsg::message(format!(
-      "{}'s {} is not a mount this weapon can be fired from.",
+    return vec![EffectMsg::about(
       attacker_name,
-      String::from(&firing.kind)
-    ))];
+      MessageCategory::Info,
+      format!(
+        "%s's {} is not a mount this weapon can be fired from.",
+        String::from(&firing.kind)
+      ),
+    )];
   };
 
   // This in theory could be lossy but that would require there to be more than 4.29x10^9m which is VERY far.  If we
@@ -246,12 +249,12 @@ pub fn attack(
       attacker.get_name(),
       String::from(&firing.kind)
     );
-    return vec![EffectMsg::message(format!(
-      "{} is out of range of {}'s {}.",
-      defender.get_name(),
+    return vec![EffectMsg::about(
       attacker.get_name(),
-      String::from(&firing.kind)
-    ))];
+      MessageCategory::Info,
+      format!("%t is out of range of %s's {}.", String::from(&firing.kind)),
+    )
+    .at(defender.get_name())];
   };
 
   let lock_mod = if attacker.sensor_locks.contains(&defender.get_name().to_string()) {
@@ -1441,11 +1444,11 @@ pub fn do_fire_actions<S: BuildHasher>(
           String::from(&firing.kind),
           String::from(&firing.kind)
         );
-        return vec![EffectMsg::message(format!(
-          "{}'s {} cannot be fired from that mount.",
+        return vec![EffectMsg::about(
           attacker.get_name(),
-          String::from(&firing.kind)
-        ))];
+          MessageCategory::Info,
+          format!("%s's {} cannot be fired from that mount.", String::from(&firing.kind)),
+        )];
       };
 
       // Launchers have "Special" range and are never ruled out by distance.
@@ -1457,12 +1460,12 @@ pub fn do_fire_actions<S: BuildHasher>(
           attacker.get_name(),
           String::from(&firing.kind)
         );
-        return vec![EffectMsg::message(format!(
-          "{} is out of range of {}'s {}.",
-          target.get_name(),
+        return vec![EffectMsg::about(
           attacker.get_name(),
-          String::from(&firing.kind)
-        ))];
+          MessageCategory::Info,
+          format!("%t is out of range of %s's {}.", String::from(&firing.kind)),
+        )
+        .at(target.get_name())];
       }
 
       // At this point all these attacks should be in range.
@@ -3458,7 +3461,7 @@ mod tests {
     assert!(
       hit
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { ship: Some(s), .. } if s == "Attacker")),
+        .any(|e| matches!(e, EffectMsg::Message { ship, .. } if ship.name == "Attacker")),
       "a damage message is about the attacker"
     );
   }

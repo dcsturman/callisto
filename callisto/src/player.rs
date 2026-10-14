@@ -17,7 +17,7 @@ use crate::payloads::{
   SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
 };
 use crate::server::Server;
-use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Weapon, WeaponMount};
+use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
 use crate::{debug, info, warn};
 
 /// Most weapons we will accept on a single ship.  Generous compared to any real
@@ -1019,6 +1019,16 @@ impl PlayerManager {
     entities.tick_bridge_stations();
 
     entities.reset_actions();
+
+    // Colour the round's results. The roster comes from the start-of-round
+    // snapshot rather than the live ships, so a ship that was destroyed this
+    // round still reports in its own team's colour -- which is exactly the
+    // line a referee reads afterwards.
+    let teams: HashMap<String, Option<Team>> =
+      ship_snapshot.iter().map(|(name, ship)| (name.clone(), ship.team)).collect();
+    for effect in &mut effects {
+      effect.colour_from(&teams);
+    }
 
     effects
   }

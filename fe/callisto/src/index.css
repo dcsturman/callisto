@@ -2653,6 +2653,19 @@ h3.control-form {
     margin: 3px 0;
 }
 
+/* A ship's name inside a result: bold, and in its own side's colour, so the
+   eye finds who a line is about before reading the line. */
+.result-ship {
+    font-weight: 700;
+}
+
+/* A line whose arithmetic is a hover away says so quietly. */
+.result-text-rolled {
+    text-decoration: underline dotted rgba(200, 205, 193, 0.35);
+    text-underline-offset: 3px;
+    cursor: help;
+}
+
 .result-mark {
     display: inline-flex;
     align-items: center;
