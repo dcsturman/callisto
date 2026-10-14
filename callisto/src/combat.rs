@@ -331,26 +331,26 @@ pub fn attack(
     format!(" ({breakdown})")
   };
 
-  // Every attack opens the same way, so a reader can always see how the shot
-  // was worked out and not just how it came out. Built before the damage roll
-  // shadows anything, and reused by all four outcomes below.
+  // Every attack opens the same way: who fired what at whom, with the two
+  // ships left as placeholders so the client can draw each in its own
+  // colour. Reused by all four outcomes below.
   let weapon_name = String::from(&firing.kind);
-  let attack_line = format!(
-    "{attacker_name} {weapon_name} -> {}: {roll}{attack_mod:+}={hit_roll}{breakdown} vs {STANDARD_ROLL_THRESHOLD}",
-    defender.get_name()
-  );
+  let attack_line = format!("%s {weapon_name} -> %t");
+  // How the number came out, for the hover. This used to sit in the middle
+  // of the sentence, which made every attack a line of arithmetic with the
+  // outcome hidden at the end of it.
+  let attack_roll = format!("{roll}{attack_mod:+}={hit_roll}{breakdown} vs {STANDARD_ROLL_THRESHOLD}");
 
   if hit_roll < STANDARD_ROLL_THRESHOLD {
     debug!(
       "(Combat.attack) {}'s attack roll is {}, adjusted to {}, and misses.",
       attacker_name, roll, hit_roll
     );
-    return vec![EffectMsg::outcome(
-      attacker_name,
-      MessageCategory::Attack,
-      format!("{attack_line}, miss."),
-      false,
-    )];
+    return vec![
+      EffectMsg::outcome(attacker_name, MessageCategory::Attack, format!("{attack_line}: miss."), false)
+        .at(defender.get_name())
+        .rolled(attack_roll),
+    ];
   }
 
   let effect: u32 = u32::try_from(hit_roll - STANDARD_ROLL_THRESHOLD).unwrap_or(0);
@@ -413,12 +413,11 @@ pub fn attack(
     return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Damage,
-      format!(
-        "{attack_line}, effect {effect}. Damage {} = 0, absorbed by armour.",
-        terms.join(" ")
-      ),
+      format!("{attack_line}: hit, effect {effect}. Absorbed by armour."),
       true,
-    )];
+    )
+    .at(defender.get_name())
+    .rolled(format!("{attack_roll} · damage {} = 0", terms.join(" ")))];
   };
 
   debug!(
@@ -449,12 +448,11 @@ pub fn attack(
     return vec![EffectMsg::outcome(
       attacker_name,
       MessageCategory::Damage,
-      format!(
-        "{attack_line}, effect {effect}. Damage {} = 0, absorbed by screens.",
-        terms.join(" ")
-      ),
+      format!("{attack_line}: hit, effect {effect}. Absorbed by screens."),
       true,
-    )];
+    )
+    .at(defender.get_name())
+    .rolled(format!("{attack_roll} · damage {} = 0", terms.join(" ")))];
   }
 
   // Calculate additional damage multipliers and effects for non-crits now.
@@ -466,9 +464,11 @@ pub fn attack(
       EffectMsg::outcome(
         attacker_name,
         MessageCategory::Damage,
-        format!("{attack_line}, effect {effect}. Damage {} = {damage}.", terms.join(" ")),
+        format!("{attack_line}: hit, effect {effect}. Damage {damage}."),
         true,
-      ),
+      )
+      .at(defender.get_name())
+      .rolled(format!("{attack_roll} · damage {} = {damage}", terms.join(" "))),
       EffectMsg::ShipImpact {
         target: defender.get_name().to_string(),
         position: defender.get_position(),
@@ -503,9 +503,11 @@ pub fn attack(
       EffectMsg::outcome(
         attacker_name,
         MessageCategory::Damage,
-        format!("{attack_line}, effect {effect}. Damage {} = {damage}.", terms.join(" ")),
+        format!("{attack_line}: hit, effect {effect}. Damage {damage}."),
         true,
-      ),
+      )
+      .at(defender.get_name())
+      .rolled(format!("{attack_roll} · damage {} = {damage}", terms.join(" "))),
       EffectMsg::BeamHit {
         origin: attacker.get_position(),
         position: defender.get_position(),
@@ -3272,7 +3274,7 @@ mod tests {
     let text = effects
       .iter()
       .find_map(|e| match e {
-        EffectMsg::Message { content, .. } => Some(content.clone()),
+        EffectMsg::Message { roll, .. } => Some(format!("{} {}", e.rendered(), roll.clone().unwrap_or_default())),
         _ => None,
       })
       .unwrap();
@@ -3294,7 +3296,7 @@ mod tests {
       effects
         .iter()
         .find_map(|e| match e {
-          EffectMsg::Message { content, .. } => Some(content.clone()),
+          EffectMsg::Message { roll, .. } => Some(format!("{} {}", e.rendered(), roll.clone().unwrap_or_default())),
           _ => None,
         })
         .expect("an attack always reports something")
@@ -3378,7 +3380,7 @@ mod tests {
       effects
         .iter()
         .find_map(|e| match e {
-          EffectMsg::Message { content, .. } => Some(content.clone()),
+          EffectMsg::Message { roll, .. } => Some(format!("{} {}", e.rendered(), roll.clone().unwrap_or_default())),
           _ => None,
         })
         .expect("an attack always reports something")
@@ -3434,8 +3436,10 @@ mod tests {
     let miss_text = text(&miss);
     assert_eq!(category(&miss), MessageCategory::Attack);
     // The modifier shown is the summed DM, not the caller's `hit_mod`, so these
-    // assert on shape rather than on one particular number.
-    for fragment in ["Attacker beam laser -> Defender: ", "=", " vs 8, miss."] {
+    // assert on shape rather than on one particular number. The sentence and
+    // the arithmetic are two fields now -- the line a player reads, and what
+    // its hover carries -- so `text` joins them.
+    for fragment in ["Attacker beam laser -> Defender: miss.", "=", " vs 8"] {
       assert!(
         miss_text.contains(fragment),
         "miss line {miss_text:?} should contain {fragment:?}"
@@ -3448,9 +3452,9 @@ mod tests {
     let hit_text = text(&hit);
     assert_eq!(category(&hit), MessageCategory::Damage);
     for fragment in [
-      "Attacker beam laser -> Defender: ",
-      " vs 8, effect ",
-      "Damage ",
+      "Attacker beam laser -> Defender: hit, effect ",
+      " vs 8",
+      "damage ",
       "-3 armour",
       " = ",
     ] {
@@ -4257,7 +4261,7 @@ mod tests {
     let line = effects
       .iter()
       .find_map(|e| match e {
-        EffectMsg::Message { content, .. } => Some(content.clone()),
+        EffectMsg::Message { roll, .. } => Some(format!("{} {}", e.rendered(), roll.clone().unwrap_or_default())),
         _ => None,
       })
       .expect("an attack always reports something");
