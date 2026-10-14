@@ -46,6 +46,50 @@ const CATEGORY_COLOR: Record<MessageCategory, string> = {
 const EMPHATIC = new Set<MessageCategory>(["Destruction"]);
 
 /**
+ * Who a line belongs to: the station whose work it reports.
+ *
+ * The categories are mechanics -- an attack roll, the damage it did, the
+ * critical that followed -- which is the right grain for colour and the wrong
+ * one for choosing what to watch. Three of them are one person's round: the
+ * gunner's. Filtering by "Attack" turned up launches and not the shots that
+ * resolved, because a resolved shot is "Damage".
+ *
+ * So the filter asks whose work it is, and the colour still says what kind of
+ * thing happened.
+ */
+export type MessageRole = "Gunner" | "Sensors" | "Engineer" | "Captain" | "Ship";
+
+const CATEGORY_ROLE: Record<MessageCategory, MessageRole> = {
+  Attack: "Gunner",
+  Damage: "Gunner",
+  Critical: "Gunner",
+  Detection: "Sensors",
+  Handoff: "Sensors",
+  Engineering: "Engineer",
+  Leadership: "Captain",
+  // A ship coming apart, or a refusal that belongs to no station: the ship's
+  // own news.
+  Destruction: "Ship",
+  Info: "Ship",
+};
+
+/** The station a line belongs to, for the results filter. */
+export const messageRole = (category: string | undefined): MessageRole =>
+  CATEGORY_ROLE[(category ?? "Info") as MessageCategory] ?? "Ship";
+
+/** A role's chip colour: the loudest of the categories it covers. */
+const ROLE_COLOR: Record<MessageRole, string> = {
+  Gunner: CATEGORY_COLOR.Damage,
+  Sensors: CATEGORY_COLOR.Detection,
+  Engineer: CATEGORY_COLOR.Engineering,
+  Captain: CATEGORY_COLOR.Leadership,
+  Ship: CATEGORY_COLOR.Info,
+};
+
+/** Style for a role chip in the results filter. */
+export const roleStyle = (role: MessageRole): {color: string} => ({color: ROLE_COLOR[role]});
+
+/**
  * Style for one results line.
  *
  * Anything unrecognised -- an older server, or a category added ahead of the

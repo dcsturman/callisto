@@ -5,10 +5,19 @@ import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "lib/Util";
 import { SCALE } from "lib/universal";
 import { findShip } from "lib/entities";
+import { Team, teamLabelColor } from "lib/teams";
+import { Tooltip } from "react-tooltip";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
-import { setShowResults, removeEvent, clearMessageEvents } from "state/uiSlice";
-import { messageStyle } from "lib/messages";
+import {
+  setShowResults,
+  removeEvent,
+  clearMessageEvents,
+  toggleResultShip,
+  toggleResultCategory,
+  clearResultFilters,
+} from "state/uiSlice";
+import { messageStyle, messageRole, roleStyle, MessageRole } from "lib/messages";
 import {entitiesSelector} from "state/serverSlice";
 
 
@@ -50,6 +59,19 @@ const BEAM_FADE_MS = 700;
 // whatever `linewidth` says, which is why this is a solid body rather than one.
 const BEAM_RADIUS_FRACTION = 0.004;
 
+/**
+ * A ship named in a result: who it was, and the side it was on when the line
+ * was written.
+ *
+ * The team travels with the message because a ship destroyed this round is
+ * gone from the entity list by the time its results are read -- and those are
+ * the lines that matter most.
+ */
+export interface ShipRef {
+  name: string;
+  team?: Team | null;
+}
+
 export interface Event {
   /** Set on receipt; unique across rounds. */
   id?: number,
@@ -58,14 +80,27 @@ export interface Event {
   // Will only have one of position or target. Position is a concrete position
   // while target is the name of a target.
   position: [number, number, number] | null,
-  target: string | null,
+  /**
+   * The visual kinds carry a ship's name here; a Message carries the ship its
+   * sentence acts on, with the side it was on. One key, two shapes, because
+   * both come up the same channel.
+   */
+  target: string | ShipRef | null,
   origin: [number, number, number] | null,
   // Message events only. `category` drives the colour in the results log;
   // `ship` is the subject of the sentence -- the attacker for an attack, the
   // ship taking it for damage. Both optional: the visual event kinds carry
   // neither, and an older server sends messages without them.
   category?: string,
-  ship?: string | null,
+  /** Message events: the subject of the sentence, substituted for `%s`. */
+  ship?: ShipRef | null,
+  /** Message events: a third ship the sentence names, substituted for `%c`. */
+  contact?: ShipRef | null,
+  /**
+   * The arithmetic behind the line -- "roll 7 + leadership 4 = 11 vs 8" --
+   * kept out of the sentence and shown on a hover.
+   */
+  roll?: string | null,
   /**
    * Whether the check this message reports passed. Absent on the many
    * messages that state something rather than resolve something -- a missile
@@ -268,7 +303,11 @@ export function Explosions() {
         switch (event.kind) {
           case SHIP_IMPACT:
             // Use the current position of the target if we can find it; otherwise use the position (last known position actually) as a backup
-            position = findShip(entities, event.target)?.position ?? event.position ?? [0, 0, 0];
+            position =
+              findShip(entities, typeof event.target === "string" ? event.target : (event.target?.name ?? ""))
+                ?.position ??
+              event.position ??
+              [0, 0, 0];
             color = MISSILE_HIT_COLOR;
             key = "Impact-" + (event.id ?? index);
             removeMe = () => {
@@ -359,6 +398,145 @@ export function Explosions() {
 }
 
 /**
+ * One ship's name inside a result, in its own team's colour.
+ *
+ * Bold always: the eye should find who a line is about before reading the
+ * line. Grey for a ship on no side, which is the same grey the ship list
+ * gives it.
+ */
+function ResultShip(args: {ship: ShipRef}) {
+  return (
+    <span className="result-ship" style={{color: teamLabelColor(args.ship.team ?? null)}}>
+      {args.ship.name}
+    </span>
+  );
+}
+
+/**
+ * A result's sentence, with the ships put back into it.
+ *
+ * The server writes `%s` for the subject, `%t` for the ship acted on and `%c`
+ * for a third party, and sends each as a name and a side. Splitting on the
+ * placeholders is what lets a ship be drawn in its own colour rather than
+ * being a run of text in the middle of a sentence.
+ *
+ * A message with no placeholders -- anything not yet converted -- prints as
+ * it always did.
+ */
+function ResultText(args: {event: Event}) {
+  const {content, ship, target, contact} = args.event;
+  const named: Record<string, ShipRef | null | undefined> = {
+    "%s": ship,
+    "%t": typeof target === "string" ? {name: target} : target,
+    "%c": contact,
+  };
+  const pieces = (content ?? "").split(/(%[stc])/g);
+  return (
+    <>
+      {pieces.map((piece, index) => {
+        const who = named[piece];
+        return who == null ? (
+          <React.Fragment key={index}>{piece}</React.Fragment>
+        ) : (
+          <ResultShip key={index} ship={who} />
+        );
+      })}
+    </>
+  );
+}
+
+/** Every ship a message names, in the order the sentence names them. */
+function shipsIn(event: Event): ShipRef[] {
+  const target = typeof event.target === "string" ? {name: event.target} : event.target;
+  return [event.ship, target, event.contact].filter((who): who is ShipRef => who != null);
+}
+
+/**
+ * The filter: which ships' results to show, and which kinds.
+ *
+ * Chips rather than a dropdown, because the question is "these two ships" as
+ * often as "this one" -- a referee watching a boarding action, a sensop
+ * watching every sensor check on one hull. Only the ships and kinds actually
+ * in this round's results get a chip, so the rows stay short.
+ */
+function ResultFilter(args: {events: Event[]}) {
+  const dispatch = useAppDispatch();
+  const ships = useAppSelector((state) => state.ui.resultShips);
+  const categories = useAppSelector((state) => state.ui.resultCategories);
+
+  const present = useMemo(() => {
+    const byName = new Map<string, ShipRef>();
+    const kinds = new Set<MessageRole>();
+    for (const event of args.events) {
+      for (const who of shipsIn(event)) {
+        if (!byName.has(who.name)) {
+          byName.set(who.name, who);
+        }
+      }
+      kinds.add(messageRole(event.category));
+    }
+    return {
+      ships: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      kinds: [...kinds].sort(),
+    };
+  }, [args.events]);
+
+  if (present.ships.length <= 1 && present.kinds.length <= 1) {
+    return null;
+  }
+
+  const filtering = ships.length > 0 || categories.length > 0;
+
+  return (
+    <div className="result-filter">
+      <div className="result-filter-row">
+        {present.ships.map((who) => {
+          const on = ships.includes(who.name);
+          return (
+            <button
+              key={who.name}
+              type="button"
+              className={on ? "result-chip result-chip-on" : "result-chip"}
+              style={{color: teamLabelColor(who.team ?? null)}}
+              title={on ? `Showing ${who.name}` : `Show only ${who.name} and whoever else is chosen`}
+              onClick={() => dispatch(toggleResultShip(who.name))}>
+              {who.name}
+            </button>
+          );
+        })}
+      </div>
+      <div className="result-filter-row">
+        {present.kinds.map((role) => {
+          const on = categories.includes(role);
+          return (
+            <button
+              key={role}
+              type="button"
+              className={on ? "result-chip result-chip-on" : "result-chip"}
+              style={roleStyle(role)}
+              title={
+                on ? `Showing the ${role}'s work` : `Show only the ${role}'s work, and whatever else is chosen`
+              }
+              onClick={() => dispatch(toggleResultCategory(role))}>
+              {role}
+            </button>
+          );
+        })}
+        {filtering && (
+          <button
+            type="button"
+            className="result-chip result-chip-all"
+            title="Show everything again"
+            onClick={() => dispatch(clearResultFilters())}>
+            all
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The turn's results.
  *
  * Coloured by category rather than by keyword: the server says what each line
@@ -374,17 +552,37 @@ export function ResultsWindow() {
   }, [dispatch]);
 
   const messages = useMemo(() => events?.filter((event) => event.kind === MESSAGE_EVENT) ?? [], [events]);
+  const shipFilter = useAppSelector((state) => state.ui.resultShips);
+  const categoryFilter = useAppSelector((state) => state.ui.resultCategories);
+
+  // Chosen ships and chosen kinds, combining with and: "sensors, on this one
+  // hull" is the case the two rows exist for. Nothing chosen means everything.
+  const shown = useMemo(
+    () =>
+      messages.filter((event) => {
+        const byShip =
+          shipFilter.length === 0 || shipsIn(event).some((who) => shipFilter.includes(who.name));
+        const byCategory =
+          categoryFilter.length === 0 || categoryFilter.includes(messageRole(event.category));
+        return byShip && byCategory;
+      }),
+    [messages, shipFilter, categoryFilter]
+  );
 
   return (
     <div id="results-window" className="computer-window">
       <h1>Results</h1>
       <br></br>
       {messages.length === 0 && <h2>No results</h2>}
+      {messages.length > 0 && <ResultFilter events={messages} />}
+      {messages.length > 0 && shown.length === 0 && (
+        <p className="sensor-empty">Nothing matches the filter.</p>
+      )}
       {/* A tick or a cross against everything that was a check, so a round
           can be read at a glance. Lines that merely report something are
           indented to the same text column rather than sitting under the
           marks. */}
-      {messages.length > 0 && messages.map((msg, index) => (
+      {shown.map((msg, index) => (
         <p key={"msg-" + index} className="result-line" style={messageStyle(msg.category)}>
           {msg.succeeded == null ? (
             <span className="result-mark result-mark-none" aria-hidden="true" />
@@ -396,9 +594,18 @@ export function ResultsWindow() {
               {msg.succeeded ? "\u2713" : "\u2715"}
             </span>
           )}
-          <span className="result-text">{msg.content}</span>
+          <span
+            className={msg.roll == null ? "result-text" : "result-text result-text-rolled"}
+            data-tooltip-id="result-roll"
+            data-tooltip-content={msg.roll ?? undefined}
+            data-tooltip-delay-show={200}>
+            <ResultText event={msg} />
+          </span>
         </p>
       ))}
+      {/* The arithmetic behind a line, on the line's own hover: a round is
+          read for what happened, and the numbers are what you go back for. */}
+      <Tooltip id="result-roll" className="console-tip console-tip-figures" />
       {/* Pinned, because the panel scrolls: a round with twenty checks in
           it should not hide the way to dismiss them. */}
       <button

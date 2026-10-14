@@ -4,7 +4,7 @@
  */
 use std::collections::HashMap;
 
-use super::action::{BoostTarget, ShipAction, ShipActionList};
+use super::action::{ShipAction, ShipActionList};
 use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
@@ -272,6 +272,10 @@ pub enum EffectMsg {
     position: Vec3,
   },
   Message {
+    /// The sentence, with placeholders where the ships go: `%s` for the
+    /// subject, `%t` for the target, `%c` for a third party. The client
+    /// substitutes the names so it can draw each one in its own colour; it
+    /// never builds a sentence of its own.
     content: String,
     /// What kind of event this reports, so the client can colour the results
     /// log without parsing English out of `content`.
@@ -280,14 +284,28 @@ pub enum EffectMsg {
     /// never enough to rebuild the sentence, and is not meant to be.
     #[serde(default)]
     category: MessageCategory,
-    /// The ship the message is about, where there is a single obvious one.
+    /// The ship the message is about: the subject, not the object. An attack
+    /// is about the attacker, damage about the ship taking it.
     ///
-    /// The subject, not the object: an attack is about the attacker, damage is
-    /// about the ship taking it. Lets the client tint or filter by ship later
-    /// without every message being rewritten again. Omitted when a message has
-    /// no one subject, e.g. a range band, which is about a pair.
+    /// Required. Every message the server sends has a ship it is about, which
+    /// is what makes "show me this ship's round" a complete answer rather
+    /// than a mostly-complete one.
+    ship: ShipRef,
+    /// The ship acted upon, where the sentence has one: shot at, jammed,
+    /// detected, handed a contact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    ship: Option<String>,
+    target: Option<ShipRef>,
+    /// A third ship the sentence names. Today that is the sensor hand-off and
+    /// only the hand-off: "%s receives contact on %c from %t".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contact: Option<ShipRef>,
+    /// How the number came out: "roll 7 + leadership 4 = 11 vs 8".
+    ///
+    /// Kept out of `content` because a round of results is read for what
+    /// happened, and the arithmetic behind each line is what you go looking
+    /// for afterwards. The client hangs it on a hover.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    roll: Option<String>,
     /// Whether the check this message reports passed.
     ///
     /// `None` for the many messages that state something rather than resolve
@@ -298,26 +316,33 @@ pub enum EffectMsg {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     succeeded: Option<bool>,
   },
-  EngineerAction {
-    result: EngineerActionResult,
-  },
-  /// Reports the result of a captain's `LeadershipCheck` resolution. `points`
-  /// is the signed leadership N (`2d6 + leadership − 8`); negative values are
-  /// reported but mean no boosts applied. `boosts_applied` is the actual list
-  /// of targets that received a +1 (already truncated by N and filtered down
-  /// to live queue entries).
-  ///
-  /// `roll` and `leadership` are the dice and the skill behind `points`, so
-  /// the log can show the check rather than only its net. `roll` is `None`
-  /// when the captain never pressed the button this round -- the resolution
-  /// still runs, with no points, and a roll must not be invented for it.
-  LeadershipAction {
-    ship_name: String,
-    roll: Option<u8>,
-    leadership: u8,
-    points: i16,
-    boosts_applied: Vec<BoostTarget>,
-  },
+}
+
+/// A ship named in a result: who it was, and whose side it was on.
+///
+/// The team travels with the message rather than being looked up when the
+/// line is drawn, because a ship destroyed this round is gone from the entity
+/// list by the time its results are read -- and those are the lines that
+/// matter most. A result carries its own colours.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ShipRef {
+  pub name: String,
+  /// `None` for a ship on no side, which draws grey.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub team: Option<Team>,
+}
+
+impl ShipRef {
+  /// Named now, coloured later: `Entities::colour_results` stamps the team on
+  /// every `ShipRef` once the round is over, from a roster taken before
+  /// anything was destroyed.
+  #[must_use]
+  pub fn new(name: &str) -> Self {
+    ShipRef {
+      name: name.to_string(),
+      team: None,
+    }
+  }
 }
 
 /// What a [`EffectMsg::Message`] is reporting.
@@ -349,26 +374,41 @@ pub enum MessageCategory {
   Info,
 }
 
-impl EffectMsg {
-  /// An uncategorised note. The fallback for messages that are neither about
-  /// one ship nor part of a mechanic worth colouring.
+impl EngineerActionResult {
+  /// The line this result puts in the log.
+  ///
+  /// The structure here -- the action, the check, the target number -- was
+  /// only ever used to compose a sentence, and the client was composing it.
+  /// It composes here instead, so every result reaches the log as a message
+  /// like any other, with its ship bolded and its arithmetic on the hover.
   #[must_use]
-  pub fn message(content: String) -> EffectMsg {
-    EffectMsg::Message {
-      content,
-      category: MessageCategory::Info,
-      ship: None,
-      succeeded: None,
+  pub fn into_message(self) -> EffectMsg {
+    let effect = EffectMsg::outcome(&self.ship_name, MessageCategory::Engineering, self.message, self.success);
+    // A refusal has no roll behind it -- a jump with the astrogation station
+    // out never got as far as dice -- and reports no arithmetic.
+    match self.roll {
+      Some(roll) => effect.rolled(roll),
+      None if self.target == 0 => effect,
+      None => effect.rolled(format!("{} vs {}", self.check, self.target)),
     }
   }
+}
 
+impl EffectMsg {
   /// A message about one ship: the subject of the sentence, not its object.
+  ///
+  /// Write the sentence with `%s` where the ship's name belongs rather than
+  /// formatting the name into it -- the client needs to find it to draw it in
+  /// the ship's own colour. The same goes for `%t` and `%c` below.
   #[must_use]
   pub fn about(ship: &str, category: MessageCategory, content: String) -> EffectMsg {
     EffectMsg::Message {
       content,
       category,
-      ship: Some(ship.to_string()),
+      ship: ShipRef::new(ship),
+      target: None,
+      contact: None,
+      roll: None,
       succeeded: None,
     }
   }
@@ -376,23 +416,87 @@ impl EffectMsg {
   /// A message about one ship that reports how a check came out.
   #[must_use]
   pub fn outcome(ship: &str, category: MessageCategory, content: String, succeeded: bool) -> EffectMsg {
-    EffectMsg::Message {
-      content,
-      category,
-      ship: Some(ship.to_string()),
-      succeeded: Some(succeeded),
-    }
+    EffectMsg::about(ship, category, content).resolved(succeeded)
   }
 
-  /// A categorised message with no single subject ship, such as a range band,
-  /// which is a fact about a pair rather than about either one of them.
+  /// The ship this one acts on: `%t` in the sentence.
   #[must_use]
-  pub fn tagged(category: MessageCategory, content: String) -> EffectMsg {
-    EffectMsg::Message {
+  pub fn at(mut self, ship: &str) -> EffectMsg {
+    if let EffectMsg::Message { target, .. } = &mut self {
+      *target = Some(ShipRef::new(ship));
+    }
+    self
+  }
+
+  /// A third ship the sentence names: `%c`. The contact in a hand-off.
+  #[must_use]
+  pub fn on(mut self, ship: &str) -> EffectMsg {
+    if let EffectMsg::Message { contact, .. } = &mut self {
+      *contact = Some(ShipRef::new(ship));
+    }
+    self
+  }
+
+  /// The arithmetic behind the line, for the hover: "roll 7 + skill 4 = 11
+  /// vs 8". Never part of the sentence.
+  #[must_use]
+  pub fn rolled(mut self, arithmetic: String) -> EffectMsg {
+    if let EffectMsg::Message { roll, .. } = &mut self {
+      *roll = Some(arithmetic);
+    }
+    self
+  }
+
+  /// How the check came out: a tick or a cross against the line.
+  #[must_use]
+  pub fn resolved(mut self, succeeded: bool) -> EffectMsg {
+    if let EffectMsg::Message { succeeded: field, .. } = &mut self {
+      *field = Some(succeeded);
+    }
+    self
+  }
+
+  /// The sentence as the client draws it, with the ships put back into it.
+  ///
+  /// Tests read a result the way a player does rather than asserting on a
+  /// string with `%s` in it -- and in doing so they check that every
+  /// placeholder has a ship to fill it, which a bare string assertion cannot.
+  #[must_use]
+  pub fn rendered(&self) -> String {
+    let EffectMsg::Message {
       content,
-      category,
-      ship: None,
-      succeeded: None,
+      ship,
+      target,
+      contact,
+      ..
+    } = self
+    else {
+      return String::new();
+    };
+    let mut out = content.replace("%s", &ship.name);
+    if let Some(target) = target {
+      out = out.replace("%t", &target.name);
+    }
+    if let Some(contact) = contact {
+      out = out.replace("%c", &contact.name);
+    }
+    out
+  }
+
+  /// Stamp the teams on every ship this message names.
+  ///
+  /// Called once per round against a roster taken before anything was shot to
+  /// pieces, so a ship that died still reports in its own colour.
+  pub fn colour_from(&mut self, teams: &HashMap<String, Option<Team>>) {
+    if let EffectMsg::Message {
+      ship, target, contact, ..
+    } = self
+    {
+      for named in [Some(ship), target.as_mut(), contact.as_mut()].into_iter().flatten() {
+        if let Some(team) = teams.get(&named.name) {
+          named.team = *team;
+        }
+      }
     }
   }
 }
@@ -416,6 +520,9 @@ pub struct EngineerActionResult {
   pub check: u8,
   pub target: u8,
   pub message: String,
+  /// The arithmetic behind the check, for the hover: "roll 5 DM -1 (damage -1)
+  /// = 4 vs 8". `None` for a refusal, which never got as far as dice.
+  pub roll: Option<String>,
   pub critical_failure: bool,
 }
 
@@ -829,11 +936,25 @@ mod tests {
     let json_str = serde_json::to_string(&msg).unwrap();
     assert_eq!(json_str, json.to_string());
 
-    let msg = EffectMsg::message("2 points to the hull".to_string());
+    // A message names its ships rather than spelling them into the sentence,
+    // and carries the side each was on so the line keeps its colours after
+    // the ship is gone.
+    let msg = EffectMsg::about(
+      "Vanguard",
+      MessageCategory::Damage,
+      "%s takes 2 points to the hull from %t.".to_string(),
+    )
+    .at("Raider")
+    .rolled("roll 9 + gunner 2 = 11 vs 8".to_string())
+    .resolved(true);
     let json = json!({
         "kind" : "Message",
-        "content" : "2 points to the hull",
-        "category" : "Info"
+        "content" : "%s takes 2 points to the hull from %t.",
+        "category" : "Damage",
+        "ship" : { "name" : "Vanguard" },
+        "target" : { "name" : "Raider" },
+        "roll" : "roll 9 + gunner 2 = 11 vs 8",
+        "succeeded" : true
     });
 
     let json_str = serde_json::to_string(&msg).unwrap();

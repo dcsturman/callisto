@@ -1292,11 +1292,12 @@ function ShipDesignList(args: {
       </div>
       <Tooltip
         id={args.shipDesignName + "ship-description-tip"}
-        className="tooltip-body"
+        className="console-tip"
         render={ShipDesignDetails}
       />
       <Tooltip
         id="design-tooltip"
+        className="console-tip"
         anchorSelect=".info-icon"
         content="Select the design of the ship you wish to add to the scenario."
       />

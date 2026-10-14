@@ -226,24 +226,6 @@ export function stringToShipSystem(name: string): ShipSystem | null {
 // EngineerActionType is the queued engineer-slot's value type, mirroring the
 // Rust ShipAction variants for OverloadDrive / OverloadPlant / Repair.
 // Sent as part of ModifyActions; received as the `action` field on
-// EngineerActionResult inside an EngineerAction effect.
-// Note: ShipSystem serializes as a string (e.g., "Sensors", "Powerplant").
-export type EngineerActionType =
-  | "OverloadDrive"
-  | "OverloadPlant"
-  | { Repair: { system: string } };
-
-// Inner shape of `EffectMsg::EngineerAction { result: ... }` from the backend.
-export interface EngineerActionResult {
-  ship_name: string;
-  action: EngineerActionType;
-  success: boolean;
-  check: number;
-  target: number;
-  message: string;
-  critical_failure: boolean;
-}
-
 const createShip = (
   name: string,
   position: [number, number, number],
