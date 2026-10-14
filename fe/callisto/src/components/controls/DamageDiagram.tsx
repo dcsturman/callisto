@@ -24,6 +24,25 @@ const WRECKED = "#e05a46";
 
 const colourFor = (level: number): string => (level === 0 ? WHOLE : level <= 2 ? HURT : WRECKED);
 
+/**
+ * How a hull reads: by its criticals and by what is left of it, whichever is
+ * worse.
+ *
+ * A hull with no critical on it can still be two thirds gone, and a ship that
+ * is two thirds gone is not a green ship. Hull points are the clock the fight
+ * runs on, so the outline answers to them as well as to the crit table: amber
+ * below two thirds, red below a third.
+ */
+const hullColour = (level: number, percent: number | null): string => {
+  const fromCrits = colourFor(level);
+  if (percent == null) {
+    return fromCrits;
+  }
+  const fromPoints = percent < 33 ? WRECKED : percent < 66 ? HURT : WHOLE;
+  const rank = (colour: string) => (colour === WRECKED ? 2 : colour === HURT ? 1 : 0);
+  return rank(fromPoints) > rank(fromCrits) ? fromPoints : fromCrits;
+};
+
 type Point = {x: number; y: number};
 type Anchor = "start" | "middle" | "end";
 
@@ -197,6 +216,7 @@ export function DamageDiagram(args: {ship: Ship; design: ShipDesignTemplate | un
 
   const armourLevel = levelOf(ShipSystem.Armor);
   const hullLevel = levelOf(ShipSystem.Hull);
+  const hullShows = hullColour(hullLevel, hullPercent);
 
   return (
     <svg
@@ -207,7 +227,7 @@ export function DamageDiagram(args: {ship: Ship; design: ShipDesignTemplate | un
       {/* Armour outside, hull within it, each taking its own colour. Drawn
           first, so the blocks sit on top of them. */}
       <path d={ARMOUR_PATH} fill="none" stroke={colourFor(armourLevel)} strokeWidth={3.5} />
-      <path d={HULL_PATH} fill="#070b10" stroke={colourFor(hullLevel)} strokeWidth={2} />
+      <path d={HULL_PATH} fill="#070b10" stroke={hullShows} strokeWidth={2} />
 
       {SECTIONS.map((section) => {
         const level = levelOf(section.system);
@@ -266,15 +286,9 @@ export function DamageDiagram(args: {ship: Ship; design: ShipDesignTemplate | un
       <SectionLabel
         label="Hull"
         at={{x: -46, y: 14, anchor: "start"}}
-        colour={colourFor(hullLevel)}
-        quiet={hullLevel === 0}
-        reading={
-          hullPercent == null
-            ? String(hullLevel)
-            : hullLevel > 0
-              ? `${hullLevel} · ${hullPercent}%`
-              : `${hullPercent}%`
-        }
+        colour={hullShows}
+        quiet={hullShows === WHOLE}
+        reading={hullPercent == null ? String(hullLevel) : `${hullLevel} · ${hullPercent}%`}
       />
     </svg>
   );
