@@ -1,6 +1,6 @@
 # AI-controlled ships
 
-Status: **design, not yet agreed.** Nothing in this document is built.
+Status: **design, decisions in §7 agreed 2026-10-14.** Nothing in this document is built.
 Date: 2026-10-14.
 Branch: `epic-ai-ships`. Work branches off it and merges back into it; the
 epic goes to `canary` as a whole when it is playable.
@@ -97,6 +97,11 @@ with the ships as fields gets a faithful account of the last round for free.
                                                                  └──http──  LLM (Vertex / Anthropic)
 ```
 
+**The service is Rust.** Everything it needs exists in Rust already: the
+wire types, the solver, and the tactics module it links as a library. The
+model call is one HTTPS request. The only Python in the plan is the offline
+training in phase 4, which runs over exported logs, never inside the service.
+
 **The service is a client.** It joins a scenario, takes the stations it has
 been given, and every round reads the world, decides, and sends the same
 messages a human console sends. The backend does not know it is a machine
@@ -131,6 +136,17 @@ whole point:
 The Commander never emits a number the rules care about. It emits *which
 verb, at whom, with what preference*. The numbers come from the solver we
 already trust.
+
+**No model implements intercept.** Intercept is a solved numeric problem and
+`plot_course` solves it exactly: standoff at the band's inner edge, match
+the target's velocity. "Intercept to Medium and hold us there" is that
+solver called once a round. Every model in this design -- prompted,
+fine-tuned or RL-trained -- sits in the Commander slot and produces the same
+thing, a choice of verbs. The one layering that is worth keeping in mind for
+phase 4 is an LLM *over* a trained policy: the LLM turns the admiral's
+English into constraints and a reward ("do not destroy her" becomes a
+penalty on hull below a fifth) and the policy picks verbs under them. That
+is still model over policy over solver. The solver is the floor.
 
 ## 4. The pieces
 
@@ -181,9 +197,10 @@ pre-shared secret first.
   observer still need the full picture, so it is a per-role projection rather
   than a filter.
 
-Recommend A now, with B on the list for when the AI is good enough that
-someone accuses it of cheating. The choke point in A is exactly the seam B
-would need, so nothing is thrown away.
+Decided: A. The service is ours and we trust it not to cheat; one function
+strips `Entities` to what the ship knows, and a test keeps it honest. The
+choke point in A is exactly the seam B would need, so nothing is thrown away
+if B is ever wanted.
 
 ### 4.2 `callisto::tactics` -- the verbs
 
@@ -222,10 +239,11 @@ pub struct Intent {
 }
 ```
 
-`rationale` is not decoration. It is what the referee reads when a ship does
-something odd, what goes in the results window as "Invigilator: closing to
-board before the yacht can run", and the label on every logged decision when
-we come to train on them (§5).
+`rationale` is not decoration. It is the ship reporting back up the chain:
+the squadron and fleet controllers see each ship's line in the orders panel
+beside the orders it was given ("Invigilator: closing to board before the
+yacht can run"), the referee sees every ship's, and it is the label on every
+logged decision when we come to train on them (§5).
 
 ### 4.3 Observation -- what a ship may know
 
@@ -298,11 +316,17 @@ model asked for intent is reliable; a model asked for numbers is not.
 5. *The verbs* (the tool schema), with one line each on when a human would
    choose it.
 
-**Per ship or per team?** One call per ship keeps calls small and the
-schema simple, but three pirates deciding independently will not coordinate.
-A call per team, returning one `Intent` per ship, lets the model split fire
-and screen. Recommend per team with a per-ship fallback when a team is large
-(more than four ships, say).
+**One call per team.** Per ship, three pirates decide independently and
+will not coordinate. Per game, one context holds both sides' knowledge and
+the model "plays" the pirates knowing exactly what the Executor is about to
+do, because it just decided that too. Per team keeps the model an honest
+player: its context contains only what that team's ships know, which is what
+the Observation layer exists for. In the usual game (humans against AI
+pirates) there is one AI team, so per team is per game anyway; the two only
+differ when AI fights AI in the harness, where the separation is what makes
+a win rate mean anything. The call returns one `Intent` per ship, so the
+model can split fire and screen. Fall back to per ship only if a team grows
+past four or five ships and the schema gets unwieldy.
 
 **Cost and latency.** Roughly 5-8k input tokens (mostly cached) and
 300-600 output per call. One call per team per round. A round of tabletop
@@ -311,10 +335,15 @@ on the critical path, and the referee sees "AI ships deciding..." then
 "ready". At current Sonnet-class prices this is cents per fight. Cheap enough
 that cost is not a design input.
 
-**Provider.** Behind a trait with two implementations: Claude on Vertex AI
-and Gemini on Vertex AI, both in the GCP project we already deploy to. Pick
-by config. Start with whichever has the better tool-use behaviour in the
-first week of trials; the design does not depend on it.
+**Provider.** Behind a trait with two implementations, both reached with
+the GCP project's own service-account credentials and billed to it: Gemini
+on Vertex AI, and Claude on Vertex AI (Anthropic's models are a first-party
+publisher in Vertex Model Garden, same auth, same billing, regional
+endpoints). They differ in request format (`generateContent` versus the
+Anthropic Messages API) and in how often their tool calls need correcting,
+which only a week of harness runs will tell. Both cache the fixed prompt
+prefix, which is what makes the rules digest cheap. Gemini is the default;
+the trait makes it a config line.
 
 **Determinism for tests.** A `Replay` Commander plays back recorded
 decisions, and the scripted Commander is deterministic by construction, so
@@ -471,31 +500,33 @@ if the opponent is now good enough to be worth cheating against.
 the LLM's better games (filtered by outcome); or RL over `Intent` in the
 harness. Decided by the numbers from phases 1-2.
 
-## 7. Open questions
+## 7. Decisions and what is still open
 
-Things to settle before phase 0, roughly in order of how much they change:
+Agreed 2026-10-14:
 
-1. **One service or part of the backend?** This design keeps it separate (a
-   client). The case for folding it in: no auth problem, no join dance, no
-   second deploy. The case against: the model call is slow and external and
-   should not sit inside the processor's single task; and a separate service
-   is the only shape where "the AI went down" does not mean "the game went
-   down". Recommend separate, as above.
-2. **Per-ship or per-team decisions** for the model (§4.5). Recommend per
-   team.
-3. **How far to trust the service on fog of war** (§4.1). Recommend the
-   self-restricting builder with a test, and server-side projection later.
-4. **Which model first.** Claude on Vertex or Gemini on Vertex. Recommend
-   trying both for a week behind the trait and keeping the one whose tool
-   calls need less correcting.
-5. **Whole-ship v1 or stations from the start.** Recommend whole-ship; the
-   station split is a frontend and role problem, not a decision problem.
-6. **Should the verbs be offered to humans too?** An "Intercept to Medium"
-   button on the pilot's console is a small frontend change once
-   `callisto::tactics` exists, and would shorten every human round. Not part
-   of this epic, but worth knowing we are building towards it.
-7. **The `rationale` in results.** Shown to everyone, to the referee only, or
-   to the AI's own team? Pirates announcing "closing to board" to the yacht
-   gives the game away. Recommend team-only, referee always.
-8. **Naming.** `callisto-ai` for the crate and service; `Controller::Ai` on
-   the ship; `Admiral` for the role. Open to better.
+1. **A separate service**, in Rust, speaking the player protocol. The model
+   call is slow and external and does not belong inside the processor's
+   single task, and "the AI went down" must not mean "the game went down".
+2. **One model call per team** (§4.5), returning an `Intent` per ship.
+3. **Fog of war is the service's job** (§4.1 A): one strip function with a
+   test. Server-side projection only if ever needed.
+4. **Gemini on Vertex by default**, Claude on Vertex behind the same trait;
+   a week of harness runs picks (§4.5).
+5. **Rationale reports up the chain**: each ship's line is shown to its
+   squadron and fleet controllers and to the referee; never to the other
+   side.
+6. **Whole-ship control in v1.** Stations come in phase 3.
+7. **The verbs will be offered to humans later** ("Intercept to Medium and
+   hold us there" on the pilot's console). Not in this epic, but
+   `callisto::tactics` is built knowing it.
+
+Still open, none blocking phase 0:
+
+- **Naming.** `callisto-ai` for the crate and service; `Controller::Ai` on
+  the ship; `Admiral` for the role. Open to better.
+- **Victory conditions in the harness.** Destroyed / jumped out / boarded /
+  round limit are the obvious four; scenarios may need their own (Thebus:
+  "the yacht reaches 100 diameters").
+- **What the referee can override.** Force a re-decision, replace an
+  `Intent` by hand, or take a station back mid-fight. Probably all three,
+  eventually.
