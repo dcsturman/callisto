@@ -3,6 +3,7 @@ import {useMemo} from "react";
 
 import {Ship, ShipSystem, stringToShipSystem} from "lib/entities";
 import {SYSTEM_NAMES} from "components/controls/EngineerTasks";
+import {DamageDiagram} from "components/controls/DamageDiagram";
 import {useAppDispatch, useAppSelector} from "state/hooks";
 import {templatesSelector} from "state/serverSlice";
 import {setComputerRepair} from "state/actionsSlice";
@@ -77,6 +78,10 @@ export function DamageBoard(args: {ship: Ship; engineer?: number}) {
 
   return (
     <div className="damage-board">
+      {/* The whole ship at a glance, before the list of what is wrong with
+          it. Green all over is the answer most rounds, and reading that off a
+          drawing is faster than reading it off an absence of rows. */}
+      <DamageDiagram ship={args.ship} design={design} />
       {rows.length === 0 ? (
         <p className="sensor-empty">No damage.</p>
       ) : (

@@ -3196,6 +3196,26 @@ h3.control-form {
 
 /* --- Damage control --- */
 
+/* The schematic at the head of damage control. Sized to the card rather
+   than to the drawing, so it keeps its proportions in a 310px column. */
+.damage-diagram {
+    display: block;
+    width: 100%;
+    max-width: 196px;
+    margin: 2px auto 6px;
+}
+
+.damage-diagram-name {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-decoration: underline;
+}
+
+.damage-diagram-reading {
+    font-size: 9px;
+    font-family: "Sono", monospace;
+}
+
 .damage-rows,
 .damage-overloads {
     list-style: none;
