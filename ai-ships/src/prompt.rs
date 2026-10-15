@@ -329,6 +329,12 @@ fn mount_line(mount: usize, weapon: &Weapon, gunner: Option<u8>) -> String {
       facts.push("a launch is seen by everyone".to_string());
     }
   }
+  if let Some((kind, profile)) = &card.launcher {
+    facts.push(format!(
+      "and a {kind:?} ({}D per hit) it fires instead when the guns do not reach",
+      profile.damage_dice
+    ));
+  }
   if card.point_defence {
     facts.push("can do point defence".to_string());
   }

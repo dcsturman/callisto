@@ -226,9 +226,9 @@ fn offensive(kind: WeaponType) -> bool {
 }
 
 /// The mounts on `ship` that can fire on a target at this range, each with the
-/// gun kind that would fire: the longest-reaching offensive gun in the mount.
-/// Launchers always bear -- the salvo flies to its target. Mounts switched off
-/// do not bear.
+/// gun kind that would fire: its direct-fire guns if they reach, else its
+/// launcher. Launchers always bear -- the salvo flies to its target. Mounts
+/// switched off do not bear.
 #[must_use]
 pub fn weapons_that_bear(ship: &Ship, range: Range) -> Vec<(usize, WeaponType)> {
   ship
@@ -245,11 +245,20 @@ pub fn weapons_that_bear(ship: &Ship, range: Range) -> Vec<(usize, WeaponType)> 
           let firing = weapon.firing(kind)?;
           let profile = profile_for(kind, firing.mount)?.with_modifiers(kind, firing.modifiers);
           let reaches = profile.salvo.is_some() || profile.reaches(range);
-          // Launchers first, then the longest reach.
-          reaches.then_some((profile.salvo.is_some(), profile.max_range, kind))
+          // A mount fires one kind of gun a round. Direct fire whenever it
+          // reaches -- it lands this round, cannot be shot down, and a mixed
+          // turret usually has more of it -- and the launcher only when
+          // nothing else does. Among direct-fire guns, the most of them, then
+          // the longest reach.
+          let guns = weapon.guns.iter().filter(|gun| gun.kind == kind).count();
+          reaches.then_some((profile.salvo.is_none(), guns, profile.max_range, kind))
         })
-        .max_by(|a, b| (a.0, a.1).partial_cmp(&(b.0, b.1)).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(_, _, kind)| (index, kind))
+        .max_by(|a, b| {
+          (a.0, a.1, a.2)
+            .partial_cmp(&(b.0, b.1, b.2))
+            .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(_, _, _, kind)| (index, kind))
     })
     .collect()
 }
@@ -259,11 +268,15 @@ pub fn weapons_that_bear(ship: &Ship, range: Range) -> Vec<(usize, WeaponType)> 
 /// multiple, and the reactions it offers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MountCard {
-  /// The attacking gun: the longest-reaching offensive gun in the mount.
+  /// The attacking gun: its direct-fire guns if it has any (most of them,
+  /// then the longest reach), otherwise its launcher.
   /// `None` for a mount that cannot attack (sand alone, a battery).
   pub attack: Option<(WeaponType, WeaponProfile)>,
   /// How many of that gun the mount holds.
   pub guns: usize,
+  /// A launcher in the same mount, fired instead when its direct-fire guns
+  /// do not reach.
+  pub launcher: Option<(WeaponType, WeaponProfile)>,
   /// Damage multiple from the mount: 1 for turrets, 3 for a barbette, 10 and
   /// up for bays.
   pub multiple: u32,
@@ -278,16 +291,31 @@ pub struct MountCard {
 /// The card for one mount.
 #[must_use]
 pub fn mount_card(weapon: &Weapon) -> MountCard {
-  let attack = weapon
-    .guns
+  let candidates: Vec<(WeaponType, WeaponProfile, usize)> = weapon
+    .kinds()
+    .into_iter()
+    .filter(|kind| offensive(*kind))
+    .filter_map(|kind| {
+      let profile = profile_for(kind, &weapon.mount)?;
+      Some((kind, profile, weapon.guns.iter().filter(|gun| gun.kind == kind).count()))
+    })
+    .collect();
+  // As `weapons_that_bear` chooses: direct fire first (most guns, then the
+  // longest reach), the launcher only when there is nothing else.
+  let direct = candidates
     .iter()
-    .filter(|gun| offensive(gun.kind))
-    .filter_map(|gun| profile_for(gun.kind, &weapon.mount).map(|profile| (gun.kind, profile)))
-    .max_by_key(|(_, profile)| profile.max_range.map_or(u8::MAX, |range| range as u8));
-  let guns = attack.map_or(0, |(kind, _)| weapon.guns.iter().filter(|gun| gun.kind == kind).count());
+    .filter(|(_, profile, _)| profile.salvo.is_none())
+    .max_by_key(|(_, profile, guns)| (*guns, profile.max_range.map_or(0, |range| range as u8)));
+  let launcher = candidates.iter().find(|(_, profile, _)| profile.salvo.is_some());
+  let chosen = direct.or(launcher);
   MountCard {
-    attack,
-    guns,
+    attack: chosen.map(|(kind, profile, _)| (*kind, *profile)),
+    guns: chosen.map_or(0, |(_, _, guns)| *guns),
+    launcher: if direct.is_some() {
+      launcher.map(|(kind, profile, _)| (*kind, *profile))
+    } else {
+      None
+    },
     multiple: damage_multiple(MountClass::from(&weapon.mount)),
     point_defence: point_defense_score(weapon) > 0,
     sand: weapon.has_kind(WeaponType::Sand),
