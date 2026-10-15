@@ -1,6 +1,7 @@
 {
   "name": "Survey Scout - Donosev",
   "displacement": 400,
+  "cost_mcr": 163.3995,
   "hull": 144,
   "armor": 0,
   "maneuver": 3,

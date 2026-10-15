@@ -1,6 +1,7 @@
 {
   "name": "X-Boat Tender - XT",
   "displacement": 1000,
+  "cost_mcr": 280.215,
   "hull": 400,
   "armor": 0,
   "maneuver": 1,

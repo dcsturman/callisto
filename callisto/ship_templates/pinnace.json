@@ -1,6 +1,7 @@
 {
   "name": "Pinnace",
   "displacement": 40,
+  "cost_mcr": 8.712,
   "hull": 16,
   "armor": 0,
   "maneuver": 5,

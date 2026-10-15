@@ -1,6 +1,7 @@
 {
   "name": "Ultralight Fighter",
   "displacement": 6,
+  "cost_mcr": 6.3324,
   "hull": 2,
   "armor": 3,
   "maneuver": 6,

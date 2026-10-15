@@ -1,6 +1,7 @@
 {
   "name": "Fast Trader - Type A3",
   "displacement": 200,
+  "cost_mcr": 76.5,
   "hull": 80,
   "armor": 2,
   "maneuver": 4,

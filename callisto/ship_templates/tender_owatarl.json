@@ -1,6 +1,7 @@
 {
   "name": "Tender - OwatarL",
   "displacement": 600,
+  "cost_mcr": 165.027,
   "hull": 216,
   "armor": 4,
   "maneuver": 1,

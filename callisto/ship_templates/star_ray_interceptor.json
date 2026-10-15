@@ -1,6 +1,7 @@
 {
   "name": "Star Ray Interceptor",
   "displacement": 200,
+  "cost_mcr": 87.75,
   "hull": 80,
   "armor": 4,
   "maneuver": 3,

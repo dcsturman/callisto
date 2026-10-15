@@ -1,6 +1,7 @@
 {
   "name": "Light Trader - Aoa'iw",
   "displacement": 300,
+  "cost_mcr": 91.777,
   "hull": 120,
   "armor": 4,
   "maneuver": 1,

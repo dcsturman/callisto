@@ -1,6 +1,7 @@
 {
   "name": "Far Trader",
   "displacement": 200,
+  "cost_mcr": 54.1582,
   "hull": 80,
   "armor": 0,
   "maneuver": 1,

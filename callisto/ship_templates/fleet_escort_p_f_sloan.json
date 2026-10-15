@@ -1,6 +1,7 @@
 {
   "name": "Fleet Escort - P.F. Sloan",
   "displacement": 5000,
+  "cost_mcr": 2957.796,
   "hull": 2000,
   "armor": 15,
   "maneuver": 6,

@@ -1,6 +1,7 @@
 {
   "name": "Assault Carrier - Sakhai",
   "displacement": 2000,
+  "cost_mcr": 857.15,
   "hull": 880,
   "armor": 8,
   "maneuver": 3,

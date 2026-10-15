@@ -1,6 +1,7 @@
 {
   "name": "System Defence Boat - Dragon",
   "displacement": 400,
+  "cost_mcr": 277.425,
   "hull": 176,
   "armor": 13,
   "maneuver": 7,

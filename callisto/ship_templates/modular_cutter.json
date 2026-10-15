@@ -1,6 +1,7 @@
 {
   "name": "Modular Cutter",
   "displacement": 50,
+  "cost_mcr": 10.737,
   "hull": 20,
   "armor": 0,
   "maneuver": 4,

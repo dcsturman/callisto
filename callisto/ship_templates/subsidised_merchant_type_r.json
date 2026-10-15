@@ -1,6 +1,7 @@
 {
   "name": "Subsidised Merchant - Type R",
   "displacement": 400,
+  "cost_mcr": 78.579,
   "hull": 160,
   "armor": 0,
   "maneuver": 1,

@@ -1,6 +1,7 @@
 {
   "name": "Heavy Fighter",
   "displacement": 50,
+  "cost_mcr": 68.913,
   "hull": 22,
   "armor": 15,
   "maneuver": 9,
