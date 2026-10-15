@@ -76,6 +76,8 @@ pub struct Processor {
   ai_service: Option<AiServiceClient>,
   /// What the AI service was last told it is crewing, by scenario.
   ai_sides: HashMap<String, Sides>,
+  /// Where to record every game played, if anywhere.
+  game_log_dir: Option<String>,
 }
 
 struct Connection {
@@ -138,6 +140,16 @@ enum ActiveProcessorEvent {
   IdleCheck,
 }
 
+/// The prefix the scenario builder gives the sessions it creates. Mirrors
+/// `SCENARIO_BUILDER_PREFIX` in the frontend's `ScenarioManager.tsx`.
+pub const SCENARIO_BUILDER_PREFIX: &str = "SCENARIO-";
+
+/// Whether a scenario session is the builder's rather than a game.
+#[must_use]
+pub fn is_scenario_builder(scenario_id: &str) -> bool {
+  scenario_id.starts_with(SCENARIO_BUILDER_PREFIX)
+}
+
 impl Processor {
   /// Build a new processor.
   ///
@@ -174,6 +186,7 @@ impl Processor {
       service_auth: ServiceAuth::default(),
       ai_service: None,
       ai_sides: HashMap::new(),
+      game_log_dir: None,
     }
   }
 
@@ -182,6 +195,13 @@ impl Processor {
   #[must_use]
   pub fn with_ai_service(mut self, ai_service: Option<AiServiceClient>) -> Self {
     self.ai_service = ai_service;
+    self
+  }
+
+  /// Record every game played in `dir`: see [`crate::game_log`].
+  #[must_use]
+  pub fn with_game_log_dir(mut self, dir: Option<String>) -> Self {
+    self.game_log_dir = dir.filter(|dir| !dir.is_empty());
     self
   }
 
@@ -197,6 +217,12 @@ impl Processor {
     let after = sides_of(&entities);
     drop(entities);
     let scenario_id = server.get_id();
+    // A scenario being built is not being played: a ship marked AI there is a
+    // note for when it is, and an AI crew would only set courses that then get
+    // saved into the scenario.
+    if is_scenario_builder(scenario_id) {
+      return;
+    }
     let before = self.ai_sides.get(scenario_id).cloned().unwrap_or_default();
     for call in plan_calls(scenario_id, &before, &after) {
       client.send(call);
@@ -712,6 +738,9 @@ impl Processor {
           round: entities.round.saturating_sub(1),
           effects,
         };
+        if let Some(log) = player.server.as_ref().and_then(|server| server.log()) {
+          log.round(resolved.round, &resolved.effects, &entities);
+        }
         let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(entities)];
         if let Some(server_id) = server_id {
           msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
@@ -753,6 +782,32 @@ impl Processor {
   // a lot of the codebase.  So excluding those two clippy warnings.
   #[allow(clippy::too_many_lines, clippy::needless_lifetimes, clippy::implicit_hasher)]
   pub async fn handle_request(&mut self, message: RequestMsg, player: &mut PlayerManager) -> Vec<ResponseMsg> {
+    // An order, noted before it is handled (handling consumes it) and
+    // recorded after, with whether it was taken.
+    let order = crate::game_log::ships_ordered(&message).and_then(|ships| {
+      let server = player.server.as_ref()?;
+      server.log()?;
+      let round = server.get_unlocked_entities().map_or(0, |world| world.round);
+      Some((ships, round, serde_json::to_value(&message).unwrap_or_default()))
+    });
+    let reset = matches!(message, RequestMsg::Reset);
+    let responses = self.dispatch_request(message, player).await;
+    if let Some(log) = player.server.as_ref().and_then(|server| server.log()) {
+      if let Some((ships, round, request)) = order {
+        let accepted = !responses.iter().any(|response| matches!(response, ResponseMsg::Error(_)));
+        log.order(round, &ships, player.giver(), accepted, &request);
+      }
+      if reset {
+        if let Ok(world) = player.clone_entities() {
+          log.reset(&world);
+        }
+      }
+    }
+    responses
+  }
+
+  #[allow(clippy::too_many_lines)]
+  async fn dispatch_request(&mut self, message: RequestMsg, player: &mut PlayerManager) -> Vec<ResponseMsg> {
     event!(Level::INFO, request = Into::<&str>::into(&message), contents = ?message);
 
     // If the connection has not logged in yet, that is the priority.
@@ -816,6 +871,7 @@ impl Processor {
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
       RequestMsg::SetShipController(request) => response_with_update(player, player.set_ship_controller(&request)),
       RequestMsg::SetOrders(request) => response_with_update(player, player.set_orders(&request)),
+      RequestMsg::SetAiReport(request) => response_with_update(player, player.set_ai_report(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
       RequestMsg::RenameEntity(msg) => response_with_update(player, player.rename(&msg)),
@@ -1033,6 +1089,12 @@ impl Processor {
         );
         // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
         let server = Arc::new(Server::new(&create_scenario.name, &scenario_full_name).await);
+        // Every game is recorded; a scenario being built is not a game.
+        if let Some(dir) = &self.game_log_dir {
+          if !is_scenario_builder(&create_scenario.name) {
+            server.start_log(dir, &create_scenario.scenario);
+          }
+        }
         self.servers.insert(create_scenario.name.clone(), server.clone());
         event!(
           target: LOG_SCENARIO_ACTIVITY,

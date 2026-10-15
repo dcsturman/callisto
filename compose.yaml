@@ -18,6 +18,8 @@ services:
     volumes:
       - ./callisto/scenarios:/scenarios:ro
       - ./callisto/ship_templates:/ship_templates:ro
+      # Every game played is recorded here, for learning from later.
+      - ./game_logs:/game_logs
     secrets:
       - google_credentials
       - gcs_credentials
@@ -31,6 +33,7 @@ services:
       # exporting CALLISTO_SERVICE_TOKEN before `docker compose up`.
       CALLISTO_SERVICE_TOKEN: ${CALLISTO_SERVICE_TOKEN:-local-dev-service-token}
       CALLISTO_AI_SERVICE: http://ai:8080
+      CALLISTO_GAME_LOG_DIR: /game_logs
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
       SENTRY_DSN: https://2bd6b4d950ccb59ce589533dcf1b253a@o4511288095080448.ingest.us.sentry.io/4511288117755904
       SENTRY_ENVIRONMENT: docker-local
@@ -55,6 +58,10 @@ services:
       CALLISTO_AI_MODEL: ${CALLISTO_AI_MODEL:-gemini}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-callisto-1731280702227}
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
+      # Every model call, beside the backend's record of the game.
+      CALLISTO_GAME_LOG_DIR: /game_logs
+    volumes:
+      - ./game_logs:/game_logs
     secrets:
       - gcs_credentials
     expose:

@@ -9,6 +9,7 @@ pub mod combat;
 mod computer;
 pub mod crew;
 pub mod entity;
+pub mod game_log;
 pub mod missile;
 pub mod payloads;
 pub mod planet;

@@ -495,6 +495,13 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub orders: Option<String>,
+  /// What the AI crewing this ship last reported: whether it is still
+  /// deciding the round, its side's plan, and why it gave this ship the orders
+  /// it did. Set by the AI service, for the people this ship reports to and
+  /// the referee; cleared when the ship goes back to human hands.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_report: Option<AiReport>,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -1353,6 +1360,31 @@ impl Controller {
   }
 }
 
+/// Where the AI crewing a ship is in its round.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiStatus {
+  /// Asked the model and waiting for its answer.
+  Deciding,
+  /// Orders given; the ship is ready.
+  Ready,
+  /// The model did not answer this round: the ship keeps its last plan.
+  NoAnswer,
+}
+
+/// The AI's account of a ship's round, as its crew would give it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct AiReport {
+  pub round: u32,
+  pub status: AiStatus,
+  /// The side's standing plan.
+  #[serde(default)]
+  pub plan: Option<String>,
+  /// Why this ship was given the orders it was, in one sentence.
+  #[serde(default)]
+  pub rationale: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Team {
   Red,
@@ -1706,6 +1738,7 @@ impl Ship {
       ion_rounds: 0,
       magazine: Magazine::for_design(design),
       controller: Controller::Human,
+      ai_report: None,
       orders: None,
     }
   }

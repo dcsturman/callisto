@@ -47,6 +47,15 @@ export function ShipCommand(args: { ship: Ship }) {
           {ai ? "Take back" : "Switch to AI"}
         </button>
       </div>
+      {ai && args.ship.ai_report != null && (
+        <p className="ship-command-report">
+          {args.ship.ai_report.status === "Deciding"
+            ? "Deciding\u2026"
+            : args.ship.ai_report.status === "NoAnswer"
+              ? "No answer this round: keeping her last orders."
+              : (args.ship.ai_report.rationale ?? "Orders given.")}
+        </p>
+      )}
       <label className="ship-command-orders">
         <h2>Orders</h2>
         <textarea

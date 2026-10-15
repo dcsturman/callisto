@@ -131,6 +131,11 @@ struct Args {
   /// ships sit uncrewed.
   #[arg(long, env = "CALLISTO_AI_SERVICE")]
   ai_service: Option<String>,
+
+  /// Record every game played here, one JSON-lines file each, for learning
+  /// from later. Unset means games are not recorded.
+  #[arg(long, env = "CALLISTO_GAME_LOG_DIR")]
+  game_log_dir: Option<String>,
 }
 
 #[cfg(feature = "no_tls_upgrade")]
@@ -476,7 +481,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       directory_handle,
     )
     .with_service_auth(service_auth)
-    .with_ai_service(ai_service);
+    .with_ai_service(ai_service)
+    .with_game_log_dir(args.game_log_dir.clone());
     processor.processor().await;
   });
 

@@ -252,6 +252,13 @@ export function Controls() {
 
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
+  const aiDeciding = [
+    ...new Set(
+      entities.ships
+        .filter((ship) => ship.controller === "AI" && ship.ai_report?.status === "Deciding")
+        .map((ship) => ship.team ?? ship.name),
+    ),
+  ].sort();
   const shipTemplates = useAppSelector((state) => state.server.templates);
   const showRange = useAppSelector((state) => state.ui.showRange);
 
@@ -514,6 +521,13 @@ export function Controls() {
       <div className="round-counter" title="The round now being played">
         Round {entities.round ?? 1}
       </div>
+      {/* A model can take half a minute: without this the round just looks
+          stuck. Which sides only, never what they are thinking. */}
+      {aiDeciding.length > 0 && (
+        <div className="ai-deciding" title="An AI side is choosing its orders for this round">
+          AI deciding: {aiDeciding.join(", ")}
+        </div>
+      )}
       {/* The referee ends the round; everyone else says when their orders are
           in. Two people pressing Next Round ends the round before the rest of
           the table has finished giving theirs. */}

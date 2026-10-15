@@ -2394,6 +2394,68 @@ async fn test_set_controller_and_orders() {
     .is_err());
 }
 
+/// The AI's report on a ship: only an AI-crewed ship takes one, and handing
+/// the ship back to its crew clears it.
+#[test(tokio::test)]
+async fn test_ai_report_follows_the_controller() {
+  use crate::payloads::{SetAiReport, SetShipController};
+  use crate::ship::{AiReport, AiStatus, Controller};
+  let server = setup_test_with_server(setup_authenticator()).await;
+  server
+    .add_ship(AddShipMsg {
+      name: "Pirate".to_string(),
+      position: Vec3::zero(),
+      velocity: Vec3::zero(),
+      design: ShipDesignTemplate::default().name.clone(),
+      crew: None,
+      weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
+      features_on: None,
+      controller: Some(Controller::Ai),
+      orders: None,
+      software: None,
+    })
+    .unwrap();
+  let report = AiReport {
+    round: 1,
+    status: AiStatus::Ready,
+    plan: Some("Close and board.".to_string()),
+    rationale: Some("She cannot outrun us.".to_string()),
+  };
+  server
+    .set_ai_report(&SetAiReport {
+      ship_name: "Pirate".to_string(),
+      report: Some(report.clone()),
+    })
+    .unwrap();
+  let read = |server: &PlayerManager| {
+    let entities = server.get_entities().unwrap();
+    let ship = entities.ships.get("Pirate").unwrap().read().unwrap();
+    ship.ai_report.clone()
+  };
+  assert_eq!(read(&server), Some(report.clone()));
+
+  server
+    .set_ship_controller(&SetShipController {
+      ship_name: "Pirate".to_string(),
+      controller: Controller::Human,
+    })
+    .unwrap();
+  assert_eq!(read(&server), None, "taking the ship back clears the AI's report");
+  assert!(
+    server
+      .set_ai_report(&SetAiReport {
+        ship_name: "Pirate".to_string(),
+        report: Some(report),
+      })
+      .is_err(),
+    "a human-crewed ship takes no AI report"
+  );
+}
+
 /// Rounds count from 1 and go up by one each update. The count goes over the
 /// wire but never into a saved scenario, which always opens at the start.
 #[test(tokio::test)]
@@ -2409,4 +2471,14 @@ async fn test_rounds_count_up_and_stay_out_of_scenario_files() {
   assert_eq!(wire["round"], json!(3));
   let saved: serde_json::Value = serde_json::from_slice(&entities.to_scenario_file_json().unwrap()).unwrap();
   assert!(saved.get("round").is_none(), "a saved scenario must open at round 1");
+}
+
+/// A scenario the builder has open is not crewed by AI: its sessions are
+/// recognised by the builder's prefix.
+#[test]
+fn builder_sessions_are_not_games() {
+  use crate::processor::is_scenario_builder;
+  assert!(is_scenario_builder("SCENARIO-Thebus-4821"));
+  assert!(!is_scenario_builder("Thebus"));
+  assert!(!is_scenario_builder("TUTORIAL-1234"));
 }

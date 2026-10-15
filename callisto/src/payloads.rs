@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{Controller, ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+use super::ship::{AiReport, Controller, ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
 use super::software::Software;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
@@ -172,6 +172,15 @@ pub struct SetShipTeam {
 pub struct SetShipController {
   pub ship_name: String,
   pub controller: Controller,
+}
+
+/// The AI service's report on a ship's round. `None` clears it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetAiReport {
+  pub ship_name: String,
+  #[serde(default)]
+  pub report: Option<AiReport>,
 }
 
 /// Give a ship standing orders. `None`, or an empty string, clears them.
@@ -738,6 +747,7 @@ pub enum RequestMsg {
   SetShipTeam(SetShipTeam),
   SetShipController(SetShipController),
   SetOrders(SetOrders),
+  SetAiReport(SetAiReport),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),

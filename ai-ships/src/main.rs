@@ -9,7 +9,7 @@ use ai_ships::auth::Credential;
 use ai_ships::commander::Commander;
 use ai_ships::crew::CrewConfig;
 use ai_ships::crews::Crews;
-use ai_ships::llm;
+use ai_ships::llm::{self, Llm};
 use ai_ships::provider::{ModelSpec, Vertex};
 use callisto::authentication::{GoogleAuthenticator, UserDirectory};
 use callisto::service_auth::ServiceAuth;
@@ -56,9 +56,38 @@ struct Args {
   #[arg(long, env = "GOOGLE_CLOUD_PROJECT")]
   gcp_project: Option<String>,
 
+  /// Record every model call here, one JSON-lines file per side per game,
+  /// beside the backend's record of the game. Unset means not recorded.
+  #[arg(long, env = "CALLISTO_GAME_LOG_DIR")]
+  game_log_dir: Option<String>,
+
   /// The Vertex AI region to call models in.
   #[arg(long, env = "CALLISTO_VERTEX_REGION", default_value = "global")]
   vertex_region: String,
+}
+
+/// A side's call record for a game: `<started>-ai-<game>-<side>.jsonl`.
+fn call_log(dir: &str, game: &str, side: &str) -> Option<std::fs::File> {
+  let safe = |name: &str| -> String {
+    name
+      .chars()
+      .map(|c| {
+        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+          c
+        } else {
+          '_'
+        }
+      })
+      .collect()
+  };
+  let started = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map_or(0, |elapsed| elapsed.as_secs());
+  let path = std::path::Path::new(dir).join(format!("{started}-ai-{}-{}.jsonl", safe(game), safe(side)));
+  std::fs::create_dir_all(dir).ok()?;
+  std::fs::File::create(&path)
+    .map_err(|e| tracing::warn!("(main) Not recording {game}/{side}'s calls: {e}"))
+    .ok()
 }
 
 fn http_audience(backend: &str) -> String {
@@ -122,8 +151,16 @@ async fn main() {
       .as_ref()
       .map_or_else(String::new, |vertex| format!(" in project {}", vertex.project()))
   );
-  let commander =
-    Arc::new(move || llm::named(&model, 0, vertex.as_ref()).expect("checked at startup") as Box<dyn Commander>);
+  let game_log_dir = args.game_log_dir.clone().filter(|dir| !dir.is_empty());
+  let commander = Arc::new(move |game: &str, side: &str| -> Box<dyn Commander> {
+    // A model side records every call beside the backend's record of the game.
+    if let (Some(spec), Some(vertex), Some(dir)) = (ModelSpec::parse(&model), vertex.as_ref(), game_log_dir.as_ref()) {
+      if let Some(file) = call_log(dir, game, side) {
+        return Box::new(Llm::new(Arc::clone(vertex), spec).with_call_log(game, Box::new(file)));
+      }
+    }
+    llm::named(&model, 0, vertex.as_ref()).expect("checked at startup")
+  });
   let app = Arc::new(App {
     crews: Crews::new(config, commander),
     callers,
