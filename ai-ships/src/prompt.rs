@@ -60,8 +60,10 @@ pub fn situation(view: &Observation, plan: Option<&str>, memory: &Memory) -> Str
   let _ = writeln!(out, "## Your plan from last round\n\n{}\n", plan.unwrap_or("(none yet)"));
   let _ = writeln!(out, "## Your ships\n");
   for ship in &view.own {
-    own_ship(&mut out, ship);
+    own_ship(&mut out, view, ship);
   }
+  stealth(&mut out, view);
+  hunting(&mut out, view);
   allies(&mut out, view);
   contacts(&mut out, view);
   blips(&mut out, view);
@@ -319,7 +321,7 @@ fn weapon_list(ship: &Ship) -> String {
     .join("; ")
 }
 
-fn own_ship(out: &mut String, ship: &Ship) {
+fn own_ship(out: &mut String, view: &Observation, ship: &Ship) {
   let design = &ship.design;
   let _ = writeln!(
     out,
@@ -380,6 +382,7 @@ fn own_ship(out: &mut String, ship: &Ship) {
       .map_or_else(String::new, |stealth| format!("; stealth {stealth:?}"))
   );
   jump_line(out, ship);
+  stealth_line(out, view, ship);
   let _ = writeln!(
     out,
     "- Contacts held: {}; locked: {}",
@@ -411,6 +414,40 @@ fn own_ship(out: &mut String, ship: &Ship) {
   );
   computer_line(out, ship);
   let _ = writeln!(out, "- Damage: {}\n", crits(&ship.crit_level));
+}
+
+/// For a stealthed ship, what each posture costs her this round against the
+/// enemy most likely to find her.
+fn stealth_line(out: &mut String, view: &Observation, ship: &Ship) {
+  let Some(stealth) = ship.design.stealth else {
+    return;
+  };
+  let worst = view
+    .exposures
+    .iter()
+    .filter(|exposure| exposure.ours == ship.get_name())
+    .max_by(|a, b| found(a, Posture::Active, false).total_cmp(&found(b, Posture::Active, false)));
+  let Some(worst) = worst else {
+    let _ = writeln!(out, "- Stealth {stealth:?}: no enemy in contact to hide from yet.");
+    return;
+  };
+  let _ = writeln!(
+    out,
+    "- Stealth {stealth:?}. {} is the likeliest to find her this round: silent {}, silent and firing {}, sharing {}, active {}.",
+    worst.contact,
+    percent(found(worst, Posture::Silent, false)),
+    percent(found(worst, Posture::Silent, true)),
+    percent(found(worst, Posture::Passive, false)),
+    percent(found(worst, Posture::Active, false))
+  );
+}
+
+fn found(exposure: &Exposure, posture: Posture, firing: bool) -> f64 {
+  exposure
+    .odds
+    .iter()
+    .find(|odds| odds.posture == posture && odds.firing == firing)
+    .map_or(0.0, |odds| odds.found)
 }
 
 /// Whether the ship can jump out, and if not, why.
@@ -512,6 +549,57 @@ fn nearest_of(view: &Observation, point: Vec3) -> (String, f64) {
     .map(|ship| (ship.get_name().to_string(), (ship.get_position() - point).magnitude()))
     .min_by(|a, b| a.1.total_cmp(&b.1))
     .unwrap_or_else(|| ("nobody".to_string(), 0.0))
+}
+
+/// How to fight a stealthed ship, for a side that has one. Stealth is rare,
+/// so this is only said when it applies, not in every prompt.
+fn stealth(out: &mut String, view: &Observation) {
+  let hidden: Vec<&str> = view
+    .own
+    .iter()
+    .filter(|ship| ship.design.stealth.is_some())
+    .map(Entity::get_name)
+    .collect();
+  if hidden.is_empty() {
+    return;
+  }
+  let _ = writeln!(
+    out,
+    "## Stealth: {}\n\n{}",
+    hidden.join(", "),
+    include_str!("prompt/stealth.md")
+  );
+}
+
+/// How to hunt a stealthed enemy, for a side that is likely facing one: a
+/// stealthed contact, or a blip inside Very Long that nobody has found --
+/// an ordinary hull that close would have been.
+fn hunting(out: &mut String, view: &Observation) {
+  let stealthed: Vec<&str> = view
+    .enemies()
+    .into_iter()
+    .filter(|contact| contact.stealth.is_some())
+    .map(|contact| contact.name.as_str())
+    .collect();
+  let unfound: Vec<&str> = view
+    .blips
+    .iter()
+    // Nobody has looked yet in the opening round: the first detection pass
+    // runs at its end.
+    .filter(|blip| view.round > 1 && blip.distance < 50_000_000.0)
+    .map(|blip| blip.name.as_str())
+    .collect();
+  if stealthed.is_empty() && unfound.is_empty() {
+    return;
+  }
+  let mut who = Vec::new();
+  if !stealthed.is_empty() {
+    who.push(format!("{} (stealthed)", stealthed.join(", ")));
+  }
+  if !unfound.is_empty() {
+    who.push(format!("{} (inside sensor range and still not found)", unfound.join(", ")));
+  }
+  let _ = writeln!(out, "## Hunting: {}\n\n{}", who.join("; "), include_str!("prompt/hunting.md"));
 }
 
 fn blips(out: &mut String, view: &Observation) {
@@ -694,15 +782,23 @@ fn odds_cell(odds: &BandOdds, hull: f64) -> String {
   }
 }
 
+/// How findable each of our ships is, but only where it depends on what she
+/// does: an ordinary hull is found whatever her posture, and a line saying so
+/// for every pairing is a page of 100%.
 fn exposures(out: &mut String, view: &Observation) {
-  if view.exposures.is_empty() {
+  let informative: Vec<&Exposure> = view
+    .exposures
+    .iter()
+    .filter(|exposure| found(exposure, Posture::Silent, false) < 0.95 || found(exposure, Posture::Active, true) < 0.95)
+    .collect();
+  if informative.is_empty() {
     return;
   }
   let _ = writeln!(
     out,
     "## How likely each contact is to find your ship this round, by posture\n\nThe second figure is if the ship also fires.\n"
   );
-  for exposure in &view.exposures {
+  for exposure in informative {
     exposure_line(out, exposure);
   }
   out.push('\n');
