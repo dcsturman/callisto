@@ -907,16 +907,7 @@ Still open:
   scenario can already say `controller: AI` and give `orders` per ship in its
   JSON, but the builder has no way to set either: mark a ship, or a whole
   team, as AI-crewed, and write its standing orders.
-- **Called shots are only checked in the frontend.** The book allows them at
-  Short or less with direct-fire weapons (CRB p. 169); the gunner's console
-  offers the menu only at Short, and `tactics::orders` drops a called shot
-  further out, but the backend accepts one at any range from any client.
-  Validate it server-side.
-- **Missile damage adds the attack's Effect.** The book multiplies missile
-  damage by the Effect, capped at the salvo's remaining missiles (CRB p. 169);
-  with Callisto's singleton missiles that cap is 1, so the Effect should not
-  count at all. `combat::attack` and the odds table in `tactics` both add it,
-  about 3 points a hit. Minor; fix both together and note it in `FAQ.md`.
+- **Called shots and missile damage** now follow the book on the server (see `FAQ.md`, Weapons).
 
 - **The verb set.** §4.2 is a first pass checked against two real orders
   (Thebus and Marduk). It needs a read against a playthrough: anything done

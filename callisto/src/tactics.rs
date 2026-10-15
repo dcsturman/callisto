@@ -424,7 +424,13 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
           let hit = if profile.ion {
             0.0
           } else {
-            expected_hit_damage(&dice, total - STANDARD_ROLL_THRESHOLD, armour, turret_bonus, multiple)
+            // A missile's Effect adds nothing to its damage (see `combat::attack`).
+            let effect = if profile.salvo.is_some() {
+              0
+            } else {
+              total - STANDARD_ROLL_THRESHOLD
+            };
+            expected_hit_damage(&dice, effect, armour, turret_bonus, multiple)
           };
           (chance + p, damage + p * hit)
         });
