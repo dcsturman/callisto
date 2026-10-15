@@ -26,5 +26,28 @@
   ],
   "tl": 15,
   "role": "Courier",
-  "source": "Ships of the Reach"
+  "source": "Ships of the Reach",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 4
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_bis": true
 }

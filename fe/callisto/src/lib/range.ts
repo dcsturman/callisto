@@ -1,6 +1,6 @@
 import {Acceleration, Ship} from "lib/entities";
 import {G, TURN_IN_SECONDS} from "lib/universal";
-import {vectorDistance} from "lib/Util";
+import {findRangeBand, vectorDistance} from "lib/Util";
 
 type Vec3 = [number, number, number];
 
@@ -101,6 +101,28 @@ export const formatKm = (metres: number): string => {
   const km = metres / 1000;
   const rounded = km < 10000 ? Math.round(km) : Math.round(km / 10) * 10;
   return rounded.toLocaleString("en-US");
+};
+
+/**
+ * The band a range falls in, by name.
+ *
+ * What a pilot and a gunner actually work in: the gunner's DM and every
+ * weapon's reach are per band, and a pilot dialling a burn wants to know the
+ * band they will end the round in, not the kilometres.
+ */
+export const bandName = (metres: number): string => findRangeBand(metres);
+
+/**
+ * Where a target is now and where this plan leaves it, as bands.
+ *
+ * The arrow is the same shape as the kilometre cell beside it, so the two read
+ * as one statement. No `~` here: the number carries the uncertainty, and the
+ * band is the answer to "will I end at Long?".
+ */
+export const formatBands = (reading: RangeReading): string => {
+  const now = bandName(reading.now);
+  const next = bandName(reading.next);
+  return now === next ? now : `${now} → ${next}`;
 };
 
 /**

@@ -38,5 +38,31 @@
   ],
   "tl": 12,
   "role": "Escort",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "FireControl",
+      "level": 1
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

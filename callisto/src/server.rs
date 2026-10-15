@@ -44,6 +44,15 @@ struct MembershipTable {
   last_exit: u64,
 }
 
+/// Whether this player is refereeing: holding no ship of their own and not
+/// merely watching. Matches `isReferee` on the client.
+///
+/// The ship decides, not the role. A referee may take a single station to cut
+/// their screen down and is still the referee.
+fn is_referee(entry: &MemberEntry) -> bool {
+  entry.ship.is_none() && !entry.roles.contains(&Role::Observer)
+}
+
 /// Represents a player's entry in the server membership table.
 /// Note two players could have the same email (same account) but
 /// would then have different session keys.
@@ -51,6 +60,8 @@ struct MemberEntry {
   email: String,
   roles: Vec<Role>,
   ship: Option<String>,
+  /// Set by the player, cleared for everyone when the round advances.
+  ready: bool,
 }
 
 impl PartialEq for Server {
@@ -166,12 +177,16 @@ impl ServerMembersTable {
     }
 
     let server_table = self.server_members.entry(server_id.to_string()).or_default();
+    // Changing station is not un-readying: a player who has said they are done
+    // and then swaps seats is still done.
+    let ready = server_table.table.get(session_key).is_some_and(|entry| entry.ready);
     server_table.table.insert(
       session_key.to_string(),
       MemberEntry {
         email: email.to_string(),
         roles,
         ship,
+        ready,
       },
     );
   }
@@ -225,8 +240,40 @@ impl ServerMembersTable {
         display_name: email_to_display_name(&entry.email),
         roles: entry.roles.clone(),
         ship: entry.ship.clone(),
+        ready: entry.ready,
       })
       .collect()
+  }
+
+  /// Mark one player ready, or not. Returns false if they are not in the
+  /// server, which means the caller has nothing to tell anyone about.
+  pub fn set_ready(&mut self, server_id: &str, session_key: &str, ready: bool) -> bool {
+    self
+      .server_members
+      .get_mut(server_id)
+      .and_then(|members| members.table.get_mut(session_key))
+      .is_some_and(|entry| {
+        entry.ready = ready;
+        true
+      })
+  }
+
+  /// Clear everyone's ready flag, for the start of a new round.
+  pub fn clear_ready(&mut self, server_id: &str) {
+    if let Some(members) = self.server_members.get_mut(server_id) {
+      for entry in members.table.values_mut() {
+        entry.ready = false;
+      }
+    }
+  }
+
+  /// Whether anyone in this server is refereeing.
+  #[must_use]
+  pub fn has_referee(&self, server_id: &str) -> bool {
+    self
+      .server_members
+      .get(server_id)
+      .is_some_and(|members| members.table.values().any(is_referee))
   }
 
   #[must_use]
@@ -284,5 +331,77 @@ impl Default for MembershipTable {
 impl Default for ServerMembersTable {
   fn default() -> Self {
     Self::new()
+  }
+}
+
+#[cfg(test)]
+mod membership_tests {
+  use super::{Role, ServerMembersTable};
+
+  fn table_with_two() -> ServerMembersTable {
+    let mut members = ServerMembersTable::new();
+    members.register("scenario-1", "Treasure 1");
+    members.update("scenario-1", "key-gm", "gm@example.com", vec![Role::General], None);
+    members.update(
+      "scenario-1",
+      "key-pilot",
+      "pilot@example.com",
+      vec![Role::Pilot],
+      Some("Executor".to_string()),
+    );
+    members
+  }
+
+  #[test]
+  fn ready_is_per_player_and_cleared_for_the_round() {
+    let mut members = table_with_two();
+    assert!(members.set_ready("scenario-1", "key-pilot", true));
+    let readies: Vec<bool> = members.get_user_context("scenario-1").iter().map(|user| user.ready).collect();
+    assert_eq!(readies.iter().filter(|ready| **ready).count(), 1);
+
+    members.clear_ready("scenario-1");
+    assert!(members.get_user_context("scenario-1").iter().all(|user| !user.ready));
+  }
+
+  /// Changing station mid-round does not undo saying you are done.
+  #[test]
+  fn ready_survives_a_role_change() {
+    let mut members = table_with_two();
+    members.set_ready("scenario-1", "key-pilot", true);
+    members.update(
+      "scenario-1",
+      "key-pilot",
+      "pilot@example.com",
+      vec![Role::Gunner],
+      Some("Executor".to_string()),
+    );
+    assert!(members
+      .get_user_context("scenario-1")
+      .iter()
+      .any(|user| user.ready && user.ship == Some("Executor".to_string())));
+  }
+
+  /// A player with no ship and every station is the referee; a crew is not.
+  #[test]
+  fn a_referee_is_someone_without_a_ship() {
+    let members = table_with_two();
+    assert!(members.has_referee("scenario-1"));
+
+    let mut crew_only = ServerMembersTable::new();
+    crew_only.register("scenario-2", "Treasure 1");
+    crew_only.update(
+      "scenario-2",
+      "key-pilot",
+      "pilot@example.com",
+      vec![Role::General],
+      Some("Executor".to_string()),
+    );
+    assert!(!crew_only.has_referee("scenario-2"));
+  }
+
+  #[test]
+  fn setting_ready_for_a_stranger_says_so() {
+    let mut members = table_with_two();
+    assert!(!members.set_ready("scenario-1", "key-nobody", true));
   }
 }

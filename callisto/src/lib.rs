@@ -16,6 +16,7 @@ pub mod processor;
 mod rules_tables;
 pub mod server;
 pub mod ship;
+pub mod software;
 
 #[macro_use]
 mod cov_util;

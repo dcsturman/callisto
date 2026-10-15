@@ -50,7 +50,6 @@ export const CaptainTasks: React.FC<CaptainTasksProps> = ({ ship }) => {
 
   return (
     <div className="captain-tasks">
-      <div className="section-tag">Captain</div>
       <button
         type="button"
         className="control-input control-button blue-button"

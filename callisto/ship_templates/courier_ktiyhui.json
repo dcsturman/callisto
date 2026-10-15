@@ -26,5 +26,24 @@
   ],
   "tl": 13,
   "role": "Courier",
-  "source": "Ships of the Reach (Aslan)"
+  "source": "Ships of the Reach (Aslan)",
+  "software": [
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_bis": true
 }

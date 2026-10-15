@@ -78,6 +78,17 @@ describe("Error inbound handling", () => {
     },
   );
 
+  // A ship that jumped out or was destroyed takes its console with it. A
+  // request already in flight comes back as an error, which is a race rather
+  // than anything the player did.
+  it("does not alert when the error is about a ship that has left the scenario", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    await fireMessage({
+      Error: "Cannot compute flightpath for unknown ship named 'Dragon'",
+    });
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
   it("ignores non-pinned Error strings (no banner state change)", async () => {
     const { store } = await import("state/store");
     const initialBanner = store.getState().server.authBanner;
@@ -248,5 +259,73 @@ describe("sensor hand-off", () => {
         SetShipEmissions: { ship_name: "Picket", handoff_sensors: false },
       }),
     ]);
+  });
+});
+
+describe("computeFlightPath", () => {
+  it("sends nothing for a ship that is no longer in the scenario", async () => {
+    const sm = await import("lib/serverManager");
+    const before = mockSocket.sent.length;
+    sm.computeFlightPath("Dragon", [0, 0, 0], [0, 0, 0]);
+    expect(mockSocket.sent.length).toBe(before);
+  });
+});
+
+describe("a ship that leaves the scenario", () => {
+  async function fireEntities(shipNames: string[]) {
+    const sm = await import("lib/serverManager");
+    expect(mockSocket.onmessage).toBeTruthy();
+    mockSocket.onmessage!(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          EntityResponse: {
+            ships: shipNames.map((name) => ({
+              name,
+              position: [0, 0, 0],
+              velocity: [0, 0, 0],
+              plan: [[[0, 0, 0], 0]],
+              design: "Scout/Courier",
+              current_hull: 40,
+              crew: {pilot: 0, sensors: [], engineers: [], gunnery: [], screen_gunnery: []},
+            })),
+            missiles: [],
+            planets: [],
+          },
+        }),
+      }),
+    );
+    return sm;
+  }
+
+  it("stands the player down to Observer and clears the selection", async () => {
+    const {store} = await import("state/store");
+    const {setJoinedScenario, setRoleShip} = await import("state/userSlice");
+    const {setComputerShipName} = await import("state/uiSlice");
+    const {ViewMode} = await import("lib/view");
+
+    store.dispatch(setJoinedScenario("Marduk Encounter"));
+    store.dispatch(setRoleShip([[ViewMode.Pilot], "Dragon"]));
+    store.dispatch(setComputerShipName("Dragon"));
+
+    await fireEntities(["Buccaneer"]);
+
+    expect(store.getState().user.shipName).toBeNull();
+    expect(store.getState().user.roles).toEqual([ViewMode.Observer]);
+    expect(store.getState().ui.computerShipName).toBeNull();
+    expect(mockSocket.sent.some((msg) => msg.includes('"SetRole"') && msg.includes("Observer"))).toBe(true);
+  });
+
+  it("leaves a player alone while their ship is still there", async () => {
+    const {store} = await import("state/store");
+    const {setJoinedScenario, setRoleShip} = await import("state/userSlice");
+    const {ViewMode} = await import("lib/view");
+
+    store.dispatch(setJoinedScenario("Marduk Encounter"));
+    store.dispatch(setRoleShip([[ViewMode.Pilot], "Dragon"]));
+
+    await fireEntities(["Dragon", "Buccaneer"]);
+
+    expect(store.getState().user.shipName).toBe("Dragon");
+    expect(store.getState().user.roles).toEqual([ViewMode.Pilot]);
   });
 });

@@ -13,5 +13,20 @@
   "weapons": [],
   "tl": 13,
   "role": "Courier",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 4
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    }
+  ],
+  "computer_bis": true
 }

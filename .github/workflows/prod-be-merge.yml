@@ -46,7 +46,7 @@ jobs:
         uses: 'google-github-actions/auth@v2'
         with:
           project_id: ${{ env.PROJECT_ID }}
-          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}' 
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
           service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
 
       - name: 'Set up Cloud SDK'
@@ -74,6 +74,20 @@ jobs:
       - name: 'Deploy to Cloud Run'
         run:
           gcloud run deploy ${{ env.APP }} --port=${{ env.PORT }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}  --region=${{ env.REGION }}  --timeout=${{ env.TIMEOUT }} --session-affinity
+            --max-instances=1
             --update-secrets=/secrets/google_credentials=google_credentials:latest
             --update-env-vars=SENTRY_DSN=https://2bd6b4d950ccb59ce589533dcf1b253a@o4511288095080448.ingest.us.sentry.io/4511288117755904,SENTRY_ENVIRONMENT=production
             --args=${{ env.APP_ARGS }},${{ env.GENERAL_ARGS }}
+      - name: "Retire the previous revision"
+        # A deploy has to end the old container, not leave it serving. Its
+        # instance would otherwise hold open WebSockets until the request
+        # timeout, keeping players on the old build and on a second instance --
+        # which is what --max-instances=1 exists to prevent. Rollback is a
+        # deploy of an earlier image by its commit SHA.
+        run: |
+          latest=$(gcloud run services describe ${{ env.APP }} --region=${{ env.REGION }} --format='value(status.latestReadyRevisionName)')
+          for revision in $(gcloud run revisions list --service=${{ env.APP }} --region=${{ env.REGION }} --format='value(metadata.name)'); do
+            if [ "$revision" != "$latest" ]; then
+              gcloud run revisions delete "$revision" --region=${{ env.REGION }} --quiet || true
+            fi
+          done

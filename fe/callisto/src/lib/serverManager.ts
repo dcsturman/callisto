@@ -23,6 +23,7 @@ import {
   ScenarioLoadError,
 } from "state/serverSlice";
 import {
+  setComputerShipName,
   setEvents,
   setProposedPlan,
   setShowResults,
@@ -33,12 +34,12 @@ import { AppMode, setAppMode } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
 import { G } from "lib/universal";
+import { Software } from "lib/software";
 import {
   EntityList,
   Ship,
   Planet,
   MetaData,
-  EngineerActionResult,
 } from "lib/entities";
 import { ViewMode, parseRoles } from "lib/view";
 import { Acceleration } from "lib/entities";
@@ -282,6 +283,13 @@ const handleMessage = (event: MessageEvent) => {
       store.dispatch(setAuthBanner(json.Error));
       return;
     }
+    // A request about a ship that has just left the scenario -- jumped out,
+    // blown up -- is a race, not something the player did wrong. The console
+    // disables itself; a modal demanding an OK does not belong here.
+    if (/unknown ship named/i.test(json.Error)) {
+      console.warn("Received Error for a ship no longer in the scenario: " + json.Error);
+      return;
+    }
     console.error("Received Error: " + json.Error);
     alert(json.Error);
   }
@@ -347,6 +355,9 @@ export function addShip(ship: Ship) {
       // a ship deliberately switched on says anything.
       ...(ship.transmitting === true ? { transmitting: true } : {}),
       ...(ship.team ? { team: ship.team } : {}),
+      // Absent means the design's own defaults, which for every switchable
+      // feature so far means off.
+      ...(ship.features_on ? { features_on: ship.features_on } : {}),
     },
   };
 
@@ -493,6 +504,32 @@ export function updateActions(actions: ActionType) {
   socket.send(JSON.stringify(payload));
 }
 
+// A player saying their orders are in. Their queued actions go up with it, so
+// the referee is looking at what the player actually meant when they advance
+// the round.
+export function setReady(ready: boolean) {
+  updateActions(store.getState().actions);
+  socket.send(JSON.stringify({ SetReady: ready }));
+}
+
+// Put one of the crew on the sensors or in the engine room. Only ever sent by
+// a ship carrying more than one of them -- with one there is no choice to
+// record, and the server falls back to whoever is aboard.
+export function setCrewOnDuty(
+  shipName: string,
+  duty: {sensor_operator?: number; engineer?: number}
+) {
+  socket.send(
+    JSON.stringify({
+      SetCrewOnDuty: {
+        ship_name: shipName,
+        sensor_operator: duty.sensor_operator,
+        engineer: duty.engineer,
+      },
+    })
+  );
+}
+
 export function nextRound() {
   // Flush any locally-held boost state to the server before ending the round.
   // Boost toggles don't round-trip on every click anymore (see
@@ -529,6 +566,15 @@ export function computeFlightPath(
     return;
   }
 
+  // A ship that jumped out or was destroyed is no longer in the scenario, and
+  // the server answers a course request for it with an error. Asking at all is
+  // the bug: the console has nothing left to fly.
+  if (!store.getState().server.entities.ships.some((ship) => ship.name === entity_name)) {
+    store.dispatch(setProposedPlan(null));
+    console.warn(`(computeFlightPath) ${entity_name} is no longer in the scenario; no course plotted.`);
+    return;
+  }
+
   // If there is a target acceleration, convert it to m/s^2 from G's
   if (target_accel != null) {
     target_accel = [
@@ -558,6 +604,24 @@ export function computeFlightPath(
       if (value !== null) {
         return value;
       }
+    }),
+  );
+}
+
+/**
+ * Start or stop a piece of the ship's software.
+ *
+ * Not an action: the rules put no combat cost on what the computer chooses to
+ * run, so this takes effect at once rather than waiting for the round.
+ */
+export function setSoftwareRunning(
+  shipName: string,
+  software: Software,
+  running: boolean,
+) {
+  socket.send(
+    JSON.stringify({
+      SetSoftwareRunning: { ship_name: shipName, software, running },
     }),
   );
 }
@@ -664,6 +728,36 @@ function handleTemplates(json: object) {
   store.dispatch(setTemplates(templates));
 }
 
+/**
+ * Let go of a ship that is no longer in the scenario.
+ *
+ * A ship that jumps out or is destroyed takes its stations with it. Whoever
+ * was flying it becomes an observer, and a referee's selection simply clears
+ * back to the no-ship-selected state they started in -- rather than leaving a
+ * console bound to a ship the server has never heard of, whose first course
+ * request comes back as an error.
+ */
+function releaseDepartedShip(entities: EntityList) {
+  const state = store.getState();
+  // Only once we are actually in a scenario: an empty list while joining or
+  // leaving one is not a ship being lost.
+  if (state.user.joinedScenario == null) {
+    return;
+  }
+  const aboard = (name: string | null) => name != null && entities.ships.some((ship) => ship.name === name);
+
+  if (state.user.shipName != null && !aboard(state.user.shipName)) {
+    console.warn(`(handleEntities) ${state.user.shipName} has left the scenario; standing down to Observer.`);
+    // Locally and on the server both, the way the role dialog does it.
+    store.dispatch(setRoleShip([[ViewMode.Observer], null]));
+    requestRoleChoice([ViewMode.Observer], null);
+  }
+
+  if (state.ui.computerShipName != null && !aboard(state.ui.computerShipName)) {
+    store.dispatch(setComputerShipName(null));
+  }
+}
+
 function handleEntities(json: object) {
   const entities = json as EntityList;
 
@@ -701,25 +795,19 @@ function handleEntities(json: object) {
   console.groupEnd();
   console.groupEnd();
   store.dispatch(setEntities(entities));
-  // The captain's local leadership boost list is held in Redux only between
-  // explicit flushes; thread their shipName into setActions so the reducer
-  // can preserve it across this server-driven overwrite. Also pass
-  // `leadership_rolled` so the reducer can drop the local list at end-of-turn
-  // (when the server resets that flag back to false).
-  const captainShipName = store.getState().user.shipName ?? null;
-  const captainShip = captainShipName
-    ? entities.ships.find((s) => s.name === captainShipName)
-    : null;
-  const captainLeadershipRolled = captainShip?.leadership_rolled ?? false;
+  releaseDepartedShip(entities);
+  // Boosts a captain has ticked are in Redux and on their way up, so a
+  // snapshot answering an earlier request would undo them. Name every ship
+  // whose captain has rolled and let the reducer hold those lists; a ship
+  // whose roll has been cleared is past the round and lets its list go.
+  const rolledShips = entities.ships
+    .filter((ship) => ship.leadership_rolled ?? false)
+    .map((ship) => ship.name);
   if (Object.hasOwn(json, "actions")) {
     const actions = (json as { actions: object[] }).actions;
     const parsed_actions = payloadToAction(actions);
     store.dispatch(
-      setActions({
-        parsed: parsed_actions,
-        captainShipName,
-        captainLeadershipRolled,
-      })
+      setActions({ parsed: parsed_actions, rolledShips })
     );
 
     console.groupCollapsed("Received Actions: ");
@@ -729,11 +817,7 @@ function handleEntities(json: object) {
     console.log(JSON.stringify(json));
     console.groupEnd();
     store.dispatch(
-      setActions({
-        parsed: {} as ActionType,
-        captainShipName,
-        captainLeadershipRolled,
-      })
+      setActions({ parsed: {} as ActionType, rolledShips })
     );
   }
 }
@@ -768,113 +852,18 @@ function handleEffect(json: object[]) {
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
   console.groupEnd();
 
-  // Engineer-action effects ride the same Effects channel as combat / sensor
-  // effects but the existing UI expects each event to be one of the visual
-  // kinds (ShipImpact / ExhaustedMissile / ShipDestroyed / BeamHit / Message).
-  // Translate `{kind:"EngineerAction", result:{...}}` into a Message-style
-  // event so it surfaces in the existing ResultsWindow alongside everything
-  // else from the same turn.
-  const events: Event[] = (
-    json as Array<Event | EngineerActionEffect | LeadershipActionEffect>
-  ).map((event) => {
-    if ((event as EngineerActionEffect).kind === "EngineerAction") {
-      const result = (event as EngineerActionEffect).result;
-      return {
-        kind: "Message",
-        content: formatEngineerResult(result),
-        position: null,
-        target: null,
-        origin: null,
-        // The two structured variants compose their own text here, so they
-        // also name their own category -- the server never sends one for them.
-        category: "Engineering",
-        ship: result.ship_name,
-      } as Event;
-    }
-    if ((event as LeadershipActionEffect).kind === "LeadershipAction") {
-      const lead = event as LeadershipActionEffect;
-      return {
-        kind: "Message",
-        content: formatLeadershipResult(lead),
-        position: null,
-        target: null,
-        origin: null,
-        category: "Leadership",
-        ship: lead.ship_name,
-      } as Event;
-    }
-    return event as Event;
-  }).map((event) => ({ ...event, id: nextEventId++ }));
+  // Every effect arrives the same way now: the server writes the sentence,
+  // names the ships in it and carries the arithmetic separately. The client
+  // used to compose engineer and leadership results itself -- inventing their
+  // prefixes and even naming their category -- which left half the results
+  // with ships buried in text nothing could colour or filter.
+  const events: Event[] = (json as Event[]).map((event) => ({
+    ...event,
+    id: nextEventId++,
+  }));
 
   store.dispatch(setEvents(events));
   store.dispatch(setShowResults(true));
-}
-
-interface EngineerActionEffect {
-  kind: "EngineerAction";
-  result: EngineerActionResult;
-}
-
-function formatEngineerResult(result: EngineerActionResult): string {
-  const outcome = result.critical_failure
-    ? "CRITICAL FAILURE"
-    : result.success
-      ? "SUCCESS"
-      : "FAILURE";
-  // The server's message carries the roll, each modifier and the total
-  // against the target, so it is not repeated here.
-  return `[Engineer ${outcome}] ${result.message}`;
-}
-
-interface LeadershipActionEffect {
-  kind: "LeadershipAction";
-  ship_name: string;
-  /** The 2D behind `points`; absent when the captain never rolled this round. */
-  roll?: number | null;
-  leadership?: number;
-  points: number;
-  boosts_applied: object[];
-}
-
-/**
- * The captain's check, shown the way every other check is: roll, skill, total
- * against 8, and what it bought. A round with no roll says so rather than
- * reporting "0 points" as if the dice had come up badly.
- */
-function formatLeadershipResult(lead: LeadershipActionEffect): string {
-  const summary =
-    lead.boosts_applied.length === 0
-      ? "no boosts"
-      : `${lead.boosts_applied.length} boost(s): ${lead.boosts_applied
-          .map((b) => describeBoost(b))
-          .join(", ")}`;
-  if (lead.roll == null) {
-    return `[Captain] ${lead.ship_name} made no leadership roll this round; ${summary}.`;
-  }
-  const skill = lead.leadership ?? 0;
-  const total = lead.roll + skill;
-  // Nothing to spend on a roll that missed, so say it failed rather than
-  // reporting a negative number of points.
-  const points =
-    lead.points > 0
-      ? `${lead.points} point${lead.points === 1 ? "" : "s"}`
-      : "failed";
-  return (
-    `[Captain] ${lead.ship_name} leadership check with roll ${lead.roll} and skill ` +
-    `${skill >= 0 ? "+" : ""}${skill} for a total of ${total} against 8: ${points}; ${summary}.`
-  );
-}
-
-function describeBoost(b: object): string {
-  // Wire form is `{Fire: {ship, weapon_id}}` etc. Convert to a readable
-  // "Kind on ship[/weapon]" string.
-  const obj = b as Record<string, { ship: string; weapon_id?: number }>;
-  const kind = Object.keys(obj)[0];
-  const v = obj[kind];
-  const wid = v.weapon_id;
-  return wid !== undefined
-    ? `${kind} ${v.ship}#${wid}`
-    : `${kind} ${v.ship}`;
 }
 
 function handleUsers(json: [UserContext]) {
@@ -886,6 +875,7 @@ function handleUsers(json: [UserContext]) {
     const raw = user as unknown as { roles?: unknown; role?: unknown };
     c.roles = parseRoles(raw.roles ?? raw.role);
     c.ship = user.ship;
+    c.ready = user.ready ?? false;
     users.push(c);
   }
   store.dispatch(setUsers(users));

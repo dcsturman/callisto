@@ -32,5 +32,19 @@
   ],
   "tl": 11,
   "role": "Trader",
-  "source": "Ships of the Reach (Aslan)"
+  "source": "Ships of the Reach (Aslan)",
+  "software": [
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

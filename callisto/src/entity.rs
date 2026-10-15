@@ -12,7 +12,8 @@ use std::sync::{Arc, RwLock};
 use tracing::{event, Level};
 
 use crate::action::{
-  boost_for_detection, boost_for_engineer, boost_for_sensor, BoostMap, BoostTarget, ShipAction, ShipActionList,
+  boost_for_detection, boost_for_engineer, boost_for_sensor, engineer_of, sensor_operator_of, BoostMap, BoostTarget,
+  ShipAction, ShipActionList,
 };
 use crate::combat::{
   apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
@@ -29,8 +30,10 @@ use crate::rules_tables::{
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{
-  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, Range, Ship, ShipDesignTemplate, ShipSystem,
+  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, PowerSystem, Range, Ship, ShipDesignTemplate,
+  ShipSystem,
 };
+use crate::software::SoftwareKind;
 
 #[allow(unused_imports)]
 use crate::{debug, error, info, warn, LOG_FILE_USE};
@@ -151,12 +154,21 @@ fn detection_roll_effect(
   // but ends on the total against the target number rather than on Effect.
   // Detection is pass or fail: the margin buys nothing here, unlike jamming,
   // where Effect decides how many missiles die.
-  EffectMsg::about(
+  EffectMsg::outcome(
     observer,
     MessageCategory::Detection,
-    format!(
-      "{observer} sensor check on {target} with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against 8: {outcome}."
-    ),
+    format!("%s sensor check on %t: {outcome}."),
+    total >= 8,
+  )
+  .at(target)
+  .rolled(format!("roll {roll} DM {dm:+}{breakdown} = {total} vs 8"))
+}
+
+/// " Power spare: 12." or the shortfall, for the end of a power order.
+fn power_note(spare: Option<u32>) -> String {
+  spare.map_or_else(
+    || " The ship is still drawing more Power than it makes.".to_string(),
+    |spare| format!(" Power spare: {spare}."),
   )
 }
 
@@ -177,10 +189,7 @@ fn engineer_check(roll: u8, terms: &[(&str, i16)], target: u8) -> (u8, String) {
   } else {
     format!(" ({breakdown})")
   };
-  (
-    total,
-    format!("with roll {roll} and DM {dm:+}{breakdown} for a total of {total} against {target}"),
-  )
+  (total, format!("roll {roll} DM {dm:+}{breakdown} = {total} vs {target}"))
 }
 
 /// One sensor-operator check against a fixed target number.
@@ -193,17 +202,35 @@ fn sensor_check_effect(
 ) -> EffectMsg {
   let total = i16::from(roll) + dm;
   // Jamming inbound missiles is the one sensop check with no second ship in it.
-  let subject = other.map_or_else(|| action.to_string(), |other| format!("{action} {other}"));
-  EffectMsg::about(
+  let subject = other.map_or_else(|| action.to_string(), |_| format!("{action} %t"));
+  let effect = EffectMsg::outcome(
     actor,
     MessageCategory::Detection,
-    format!(
-      "{actor} {subject} with roll {roll} and DM {dm:+} for a total of {total} against {target_number}: {outcome}."
-    ),
+    format!("%s {subject}: {outcome}."),
+    total >= target_number,
   )
+  .rolled(format!("roll {roll} DM {dm:+} = {total} vs {target_number}"));
+  match other {
+    Some(other) => effect.at(other),
+    None => effect,
+  }
 }
 
 /// An opposed sensor check, where there is no target number -- only the other
+/// A ship sharing its picture: its name, where it is, and what it holds.
+type HandoffHost = (String, Vec3, Vec<String>);
+
+/// "Alpha", "Alpha and Beta", "Alpha, Beta and Gamma" -- for a list in a
+/// sentence rather than a log dump.
+fn join_names<'a>(names: impl IntoIterator<Item = &'a String>) -> String {
+  let names: Vec<&str> = names.into_iter().map(String::as_str).collect();
+  match names.as_slice() {
+    [] => String::new(),
+    [one] => (*one).to_string(),
+    [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+  }
+}
+
 /// ship's roll. Both sides are shown, because "failed" against a 12 and against
 /// a 4 are very different pieces of information.
 fn opposed_check_effect(
@@ -213,21 +240,27 @@ fn opposed_check_effect(
   let (other_roll, other_dm) = opposing;
   let mine = i16::from(roll) + dm;
   let theirs = i16::from(other_roll) + other_dm;
-  EffectMsg::about(
+  EffectMsg::outcome(
     actor,
     MessageCategory::Detection,
-    format!(
-      "{actor} {action} {other} with roll {roll} and DM {dm:+} for {mine}, against roll {other_roll} and DM {other_dm:+} for {theirs}: {outcome}."
-    ),
+    format!("%s {action} %t: {outcome}."),
+    // An opposed check is won by beating the other side, ties going to the
+    // ship being acted upon (p. 78).
+    mine > theirs,
   )
+  .at(other)
+  .rolled(format!(
+    "roll {roll} DM {dm:+} = {mine}, against roll {other_roll} DM {other_dm:+} = {theirs}"
+  ))
 }
 
 pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> EffectMsg {
   EffectMsg::about(
     ship_name,
     MessageCategory::Detection,
-    format!("{ship_name} has no sensor contact on {target} and cannot {verb} it."),
+    format!("%s has no sensor contact on %t and cannot {verb} it."),
   )
+  .at(target)
 }
 
 impl Entities {
@@ -777,6 +810,7 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read a ship.
+  #[allow(clippy::too_many_lines)]
   pub fn fire_actions(
     &mut self, fire_actions: &[(String, Vec<ShipAction>)], point_defense_actions: &[(String, Vec<ShipAction>)],
     ship_snapshot: &HashMap<String, Ship>, boost_map: &BoostMap, rng: &mut dyn RngCore,
@@ -801,7 +835,7 @@ impl Entities {
         EffectMsg::about(
           name,
           MessageCategory::Critical,
-          format!("{name} cannot fire: its fire control station is out."),
+          "%s cannot fire: its fire control station is out.".to_string(),
         )
       })
       .collect();
@@ -846,9 +880,11 @@ impl Entities {
       ship.set_point_defense_pool(pool);
       if pool > 0 {
         debug!("(Entities.fire_actions) {name}'s point defence batteries will intercept {pool} missile(s).");
-        battery_effects.push(EffectMsg::message(format!(
-          "{name}'s point defence batteries will intercept up to {pool} missile(s) this round."
-        )));
+        battery_effects.push(EffectMsg::about(
+          &name,
+          MessageCategory::Info,
+          format!("%s's point defence batteries will intercept up to {pool} missile(s) this round."),
+        ));
       }
     }
 
@@ -863,8 +899,23 @@ impl Entities {
         continue;
       };
 
+      // Point Defence software lets a ship shoot down what is coming at
+      // somebody else: "may use point defence batteries and the Point
+      // Defence (gunner) reaction to defend any ship within Close range",
+      // and /2 "increases this range to Short" (High Guard p. 75). Orders
+      // naming another ship are split out and resolved against it.
+      let (for_others, for_self): (Vec<ShipAction>, Vec<ShipAction>) = actions.iter().cloned().partition(|action| {
+        matches!(
+          action,
+          ShipAction::PointDefenseAction {
+            protecting: Some(_),
+            ..
+          }
+        )
+      });
+
       let mut ship = ship.write().unwrap();
-      let tallies = build_point_defense_tallies(&ship, actions, boost_map, defender);
+      let tallies = build_point_defense_tallies(&ship, &for_self, boost_map, defender);
 
       // Every gunner makes one check per round and their Effects add up
       // (Core Rulebook p. 171), so roll the whole list now rather than one
@@ -874,6 +925,64 @@ impl Entities {
       debug!("(Entities.fire_actions) {defender}'s gunners contribute {pool} point(s) of point defence this round.");
       ship.add_point_defense_pool(pool);
       ship.set_point_defense_list(tallies);
+
+      // Everything aimed at protecting a neighbour, grouped so each escort
+      // rolls its guns once.
+      let reach = ship.running_level(SoftwareKind::PointDefence);
+      let here = ship.get_position();
+      drop(ship);
+      let mut by_ward: HashMap<String, Vec<ShipAction>> = HashMap::new();
+      for action in for_others {
+        if let ShipAction::PointDefenseAction {
+          protecting: Some(ward), ..
+        } = &action
+        {
+          by_ward.entry(ward.clone()).or_default().push(action.clone());
+        }
+      }
+      for (ward, ward_actions) in by_ward {
+        let Some(reach) = reach else {
+          battery_effects.push(EffectMsg::about(
+            defender,
+            MessageCategory::Attack,
+            "%s has no Point Defence software and cannot cover %t.".to_string(),
+          ));
+          continue;
+        };
+        let Some(ward_ship) = self.ships.get(&ward) else {
+          warn!("(Entities.fire_actions) {defender} cannot cover unknown ship {ward}.");
+          continue;
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let distance = (ward_ship.read().unwrap().get_position() - here).magnitude() as u32;
+        let band = find_range_band(distance);
+        // The book says Close for /1 and Short for /2, and Callisto has no
+        // Close band -- Adjacent and Close collapse into Short here. Keeping
+        // the step rather than the labels: /1 covers Short, /2 one band
+        // further. See FAQ.md.
+        let limit = if reach >= 2 { Range::Medium } else { Range::Short };
+        if band > limit {
+          battery_effects.push(EffectMsg::about(
+            defender,
+            MessageCategory::Attack,
+            format!("{defender} cannot cover {ward} at {band} range: Point Defence/{reach} reaches {limit}."),
+          ));
+          continue;
+        }
+
+        let covering = self.ships.get(defender).unwrap().read().unwrap();
+        let tallies = build_point_defense_tallies(&covering, &ward_actions, boost_map, defender);
+        drop(covering);
+        let pool = roll_point_defense_pool(&tallies, rng);
+        if pool > 0 {
+          ward_ship.write().unwrap().add_point_defense_pool(pool);
+          battery_effects.push(EffectMsg::about(
+            defender,
+            MessageCategory::Attack,
+            format!("{defender} covers {ward}: up to {pool} missile(s) intercepted on its behalf."),
+          ));
+        }
+      }
     }
 
     let effects = fire_actions
@@ -886,6 +995,19 @@ impl Entities {
 
         let (missiles, effects) =
           do_fire_actions(attack_ship, &mut self.ships, &mut sand_counts, actions, boost_map, rng);
+        // Debit the magazine for what actually left the rails. The snapshot
+        // the fire actions worked from capped the salvo; this is where the
+        // live ship pays for it.
+        if let Some(ship) = self.ships.get(attacker) {
+          let mut ship = ship.write().unwrap();
+          for missile in &missiles {
+            if missile.weapon.has_kind(crate::ship::WeaponType::Torpedo) {
+              ship.magazine.torpedoes = ship.magazine.torpedoes.saturating_sub(1);
+            } else {
+              ship.magazine.missiles = ship.magazine.missiles.saturating_sub(1);
+            }
+          }
+        }
         for missile in missiles {
           if let Err(msg) = self.launch_missile(&missile.source, &missile.target, missile.weapon) {
             warn!("Could not launch missile: {}", msg);
@@ -1033,7 +1155,14 @@ impl Entities {
                 );
                 cleanup_missile_list.push(missile.clone());
                 let what = String::from(&launcher.primary_kind());
-                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }, EffectMsg::message(format!("{what} {missile} destroyed by {target_name}'s point defence"))])
+                Some(vec![
+                  EffectMsg::ExhaustedMissile { position: target.get_position() },
+                  EffectMsg::about(
+                    &target_name,
+                    MessageCategory::Damage,
+                    format!("{what} {missile} destroyed by %s's point defence."),
+                  ),
+                ])
               } else {
                 // The attack gets through point defense
                 // A launched object resolves as the gun that threw it.
@@ -1106,7 +1235,7 @@ impl Entities {
               cleanup_ships_list.push(name.to_string());
               Some(vec![
                 EffectMsg::ShipDestroyed { position: pos },
-                EffectMsg::about(name, MessageCategory::Destruction, format!("{name} destroyed.")),
+                EffectMsg::about(name, MessageCategory::Destruction, "%s destroyed.".to_string()),
               ])
             }
             update => panic!("(Entity.update_all) Unexpected update {update:?} during ship updates."),
@@ -1174,16 +1303,38 @@ impl Entities {
         effects.push(effect);
         continue;
       }
-      let boost = boost_for_sensor(boost_map, ship_name);
+      // A suite with no power finds nothing and locks onto nothing.
+      if !self.ships.get(ship_name).unwrap().read().unwrap().sensors_powered() {
+        effects.push(EffectMsg::about(
+          ship_name,
+          MessageCategory::Detection,
+          "%s's sensors have no power.".to_string(),
+        ));
+        continue;
+      }
+      // One action per operator: a ship with two of them can jam with one and
+      // lock with the other. A second action from the same operator is the
+      // client asking for more than the crew has hands for.
+      let mut worked = HashSet::<usize>::new();
       // Process the actions for each ship.
       for action in actions {
+        if let Some(operator) = sensor_operator_of(action) {
+          if !worked.insert(operator) {
+            warn!("(Entity.do_sensor_actions) {ship_name}'s operator #{operator} already acted; skipping {action:?}.");
+            continue;
+          }
+        }
+        let operator = sensor_operator_of(action).unwrap_or(0);
+        let boost = boost_for_sensor(boost_map, ship_name, operator);
         effects.append(&mut match action {
-          ShipAction::JamMissiles => self.jam_missiles(ship_name, boost, rng),
-          ShipAction::BreakSensorLock { target } => {
-            self.break_sensor_lock(ship_name, target, &reverse_sensor_locks, boost, rng)
+          // Not a sensor action; handled with the engineers' orders.
+          ShipAction::ComputerRepair { .. } => continue,
+          ShipAction::JamMissiles { .. } => self.jam_missiles(ship_name, operator, boost, rng),
+          ShipAction::BreakSensorLock { target, .. } => {
+            self.break_sensor_lock(ship_name, target, operator, &reverse_sensor_locks, boost, rng)
           }
 
-          ShipAction::SensorLock { target } => {
+          ShipAction::SensorLock { target, .. } => {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for sensor lock.", target);
               continue;
@@ -1192,20 +1343,23 @@ impl Entities {
             // running dark is by definition not doing. High Guard p. 77:
             // pinpointing a ship "requires the use of active sensors".
             if !self.has_active_sensors(ship_name) {
-              effects.push(EffectMsg::about(
-                ship_name,
-                MessageCategory::Detection,
-                format!("{ship_name} is running dark and cannot lock onto {target}."),
-              ));
+              effects.push(
+                EffectMsg::about(
+                  ship_name,
+                  MessageCategory::Detection,
+                  "%s is running dark and cannot lock onto %t.".to_string(),
+                )
+                .at(target),
+              );
               continue;
             }
             if !self.has_contact(ship_name, target) {
               effects.push(no_contact_effect(ship_name, target, "lock onto"));
               continue;
             }
-            self.sensor_lock(ship_name, target, boost, rng)
+            self.sensor_lock(ship_name, target, operator, boost, rng)
           }
-          ShipAction::JamComms { target } => {
+          ShipAction::JamComms { target, .. } => {
             if !self.ships.contains_key(target) {
               warn!("(Entity.do_sensor_actions) Cannot find target {} for jamming comms.", target);
               continue;
@@ -1214,18 +1368,19 @@ impl Entities {
               effects.push(no_contact_effect(ship_name, target, "jam"));
               continue;
             }
-            self.jam_comms(ship_name, target, boost, rng)
+            self.jam_comms(ship_name, target, operator, boost, rng)
           }
           ShipAction::PointDefenseAction { .. }
           | ShipAction::FireAction { .. }
           | ShipAction::DeleteFireAction { .. }
-          | ShipAction::Jump
-          | ShipAction::OverloadDrive
-          | ShipAction::OverloadPlant
+          | ShipAction::Jump { .. }
+          | ShipAction::OverloadDrive { .. }
+          | ShipAction::OverloadPlant { .. }
           | ShipAction::Repair { .. }
+          | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
-          | ShipAction::ClearSensorAction
-          | ShipAction::ClearEngineerAction
+          | ShipAction::ClearSensorAction { .. }
+          | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => {
             error!("(Entity.do_sensor_actions) Unexpected sensor action {action:?}");
             Vec::default()
@@ -1247,13 +1402,18 @@ impl Entities {
     detection_modifiers(observer.design.tl, target.design.tl, target.design.stealth)
   }
 
-  // Quality modifiers are the level of sensors as well as skill of the crew
-  fn sensor_quality_modifiers(&self, ship_name: &str) -> i16 {
+  // Quality modifiers are the level of sensors as well as skill of the crew.
+  // A ship with several operators uses whichever one is on the station this
+  // round; one with a single operator has no choice to make and uses them.
+  fn sensor_quality_modifiers(&self, ship_name: &str, operator: usize) -> i16 {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
-    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(ship.get_crew().get_sensors())
+    let skill = ship.get_crew().get_sensors_at(operator);
+    SENSOR_QUALITY_MOD[ship.current_sensors as usize] + i16::from(skill)
   }
 
-  fn sensor_lock(&mut self, ship_name: &String, target: &str, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  fn sensor_lock(
+    &mut self, ship_name: &String, target: &str, operator: usize, boost: i16, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
     // First check if there is already a sensor lock and if so just return.
     if self
       .ships
@@ -1265,7 +1425,8 @@ impl Entities {
 
     // Check if sensor lock is achieved.
     let roll = roll_dice(2, rng);
-    let dm = self.sensor_quality_modifiers(ship_name) + self.sensor_detection_modifiers(ship_name, target) + boost;
+    let dm =
+      self.sensor_quality_modifiers(ship_name, operator) + self.sensor_detection_modifiers(ship_name, target) + boost;
     let check = i16::from(roll) + dm - 8;
 
     if check > 0 {
@@ -1305,15 +1466,36 @@ impl Entities {
     }
   }
 
-  fn jam_comms(&self, ship_name: &String, target: &str, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  /// The Electronic Warfare program's DM, for the checks it applies to.
+  ///
+  /// "All electronic warfare actions ... performed from the ship gain a DM to
+  /// their Electronics (sensors) checks equal to the Electronic Warfare
+  /// package's score" (High Guard p. 74). The Core Rulebook's electronic
+  /// warfare actions are jamming an enemy's comms and breaking a sensor lock
+  /// (p. 160), and jamming an incoming salvo is one too -- Broad Spectrum EW
+  /// is described as performing exactly that action automatically. Acquiring
+  /// a lock is a sensor check rather than electronic warfare, and gets
+  /// nothing from this.
+  fn electronic_warfare_mod(&self, ship_name: &str) -> i16 {
+    self
+      .ships
+      .get(ship_name)
+      .and_then(|ship| ship.read().unwrap().running_level(SoftwareKind::ElectronicWarfare))
+      .map_or(0, i16::from)
+  }
+
+  fn jam_comms(
+    &self, ship_name: &String, target: &str, operator: usize, boost: i16, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
     // Rolled jammer-first, then target, to consume the seeded stream in the
     // order this always did.
     let roll = roll_dice(2, rng);
-    let dm = self.sensor_quality_modifiers(ship_name)
+    let dm = self.sensor_quality_modifiers(ship_name, operator)
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + self.electronic_warfare_mod(ship_name)
       + boost;
     let other_roll = roll_dice(2, rng);
-    let other_dm = self.sensor_quality_modifiers(target)
+    let other_dm = self.sensor_quality_modifiers(target, usize::MAX)
       + countermeasures_mod(self.ships.get(target).unwrap().read().unwrap().design.countermeasures);
     let check = i16::from(roll) + dm - i16::from(other_roll) - other_dm;
 
@@ -1343,7 +1525,55 @@ impl Entities {
       )]
     }
   }
-  fn jam_missiles(&mut self, ship_name: &String, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+  /// Broad Spectrum EW: the computer jams for itself.
+  ///
+  /// The package "continuously scans for hostile missile launches and
+  /// automatically sends disruptive signals ... A single electronic warfare
+  /// action (with no crew skill DM applied) is automatically performed
+  /// against any and all enemy salvoes" (High Guard p. 74). So it is the
+  /// jamming action a sensop would have taken, without the sensop and
+  /// without their skill -- and since "each salvo can still only be
+  /// subjected to one electronic warfare action", a ship whose operator
+  /// already jammed this round gains nothing from it.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  pub fn broad_spectrum_pass(&mut self, already_jammed: &HashSet<String>, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    let candidates: Vec<String> = self
+      .ships
+      .iter()
+      .filter(|(name, ship)| {
+        let ship = ship.read().unwrap();
+        !already_jammed.contains(*name)
+          && ship.running_level(SoftwareKind::BroadSpectrumEw).is_some()
+          && ship.sensors_powered()
+      })
+      .map(|(name, _)| name.clone())
+      .collect();
+
+    // Only ships with something inbound: the program is always scanning, but
+    // there is nothing to report when nothing was launched at them.
+    let under_fire: Vec<String> = candidates
+      .into_iter()
+      .filter(|name| self.missiles.values().any(|m| m.read().unwrap().target == *name))
+      .collect();
+
+    let mut effects = Vec::new();
+    for name in under_fire {
+      effects.append(&mut self.jam_missiles_check(&name, None, 0, rng));
+    }
+    effects
+  }
+
+  fn jam_missiles(&mut self, ship_name: &String, operator: usize, boost: i16, rng: &mut dyn RngCore) -> Vec<EffectMsg> {
+    self.jam_missiles_check(ship_name, Some(operator), boost, rng)
+  }
+
+  /// One jamming attempt. `operator` is `None` when the computer is doing it
+  /// on its own, which brings no crew skill with it.
+  fn jam_missiles_check(
+    &mut self, ship_name: &String, operator: Option<usize>, boost: i16, rng: &mut dyn RngCore,
+  ) -> Vec<EffectMsg> {
     let mut effects = Vec::<EffectMsg>::new();
     // Find all missiles targeting this ship.
     let targeting_missiles = self
@@ -1354,21 +1584,35 @@ impl Entities {
       .collect::<Vec<_>>();
 
     let dice = roll_dice(2, rng);
-    let dm = self.sensor_quality_modifiers(ship_name)
+    // No operator means the program is doing it, and brings no skill of its
+    // own -- only the suite's own quality.
+    let quality = operator.map_or_else(
+      || {
+        let ship = self.ships.get(ship_name).unwrap().read().unwrap();
+        SENSOR_QUALITY_MOD[ship.current_sensors as usize]
+      },
+      |operator| self.sensor_quality_modifiers(ship_name, operator),
+    );
+    let dm = quality
       + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+      + self.electronic_warfare_mod(ship_name)
       + boost;
     let check = i16::from(dice) + dm - 10;
 
     debug!(
       "(Entity.jam_missiles) Missile jamming attempt by {ship_name} rolled {dice}, sensor_quality mod {}, countermeasures mod {} gives an effect of {check}.",
-      self.sensor_quality_modifiers(ship_name),
+      quality,
       countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures),
     );
 
     if check >= 0 {
       effects.append(&mut vec![sensor_check_effect(
         ship_name,
-        "jams inbound missiles",
+        if operator.is_some() {
+          "jams inbound missiles"
+        } else {
+          "jams inbound missiles automatically (broad spectrum)"
+        },
         None,
         dice,
         dm,
@@ -1392,9 +1636,10 @@ impl Entities {
               EffectMsg::ExhaustedMissile {
                 position: missile.get_position(),
               },
-              EffectMsg::tagged(
+              EffectMsg::about(
+                ship_name,
                 MessageCategory::Destruction,
-                format!("Missile {} destroyed by jamming.", missile.get_name()),
+                format!("Missile {} destroyed by %s's jamming.", missile.get_name()),
               ),
             ]
           })
@@ -1405,7 +1650,11 @@ impl Entities {
       // If the EW check failed, just let the users know.
       effects.push(sensor_check_effect(
         ship_name,
-        "jams inbound missiles",
+        if operator.is_some() {
+          "jams inbound missiles"
+        } else {
+          "jams inbound missiles automatically (broad spectrum)"
+        },
         None,
         dice,
         dm,
@@ -1417,8 +1666,8 @@ impl Entities {
   }
 
   fn break_sensor_lock(
-    &self, ship_name: &String, target: &str, reverse_sensor_locks: &HashMap<String, Vec<String>>, boost: i16,
-    rng: &mut dyn RngCore,
+    &self, ship_name: &String, target: &str, operator: usize, reverse_sensor_locks: &HashMap<String, Vec<String>>,
+    boost: i16, rng: &mut dyn RngCore,
   ) -> Vec<EffectMsg> {
     // Check if the target of the BreakSensorLock has a sensor lock on this ship.
     // Get the list of every ship with a sensor lock on current ship; make sure the target of the BreakSensorLock is in that list.
@@ -1430,10 +1679,11 @@ impl Entities {
       // Rolled breaker-first, then holder, to consume the seeded stream in the
       // order this always did.
       let roll = roll_dice(2, rng);
-      let dm = self.sensor_quality_modifiers(ship_name)
+      let dm = self.sensor_quality_modifiers(ship_name, operator)
         + countermeasures_mod(self.ships.get(ship_name).unwrap().read().unwrap().design.countermeasures)
+        + self.electronic_warfare_mod(ship_name)
         + boost;
-      let other_dm = self.sensor_quality_modifiers(target)
+      let other_dm = self.sensor_quality_modifiers(target, usize::MAX)
         // The ship shaking off the lock benefits from ITS OWN stealth, so the
         // observer here is `target` (which holds the lock) and the quarry is
         // `ship_name`. Negating turns the detection penalty into a bonus for
@@ -1640,6 +1890,24 @@ impl Entities {
   /// `fired` names the ships that took a fire action this round, which is worth
   /// DM+2 to anyone hunting a stealthed one.
   ///
+  /// "Cicada now at Medium range (was Short)", when it has moved a band.
+  ///
+  /// A band is the whole of the to-hit modifier, and for a stealthed ship an
+  /// opening band is what loses the contact, so a change is worth saying.
+  fn band_change_effect(
+    ship_snapshot: &HashMap<String, Ship>, observer_name: &str, target_name: &str, band_now: Range,
+  ) -> Option<EffectMsg> {
+    let band_start = Self::snapshot_band(ship_snapshot, observer_name, target_name)?;
+    (band_now != band_start).then(|| {
+      EffectMsg::about(
+        observer_name,
+        MessageCategory::Detection,
+        format!("%s: %t now at {band_now} range (was {band_start})."),
+      )
+      .at(target_name)
+    })
+  }
+
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write a ship.
   pub fn detection_pass(
@@ -1680,6 +1948,14 @@ impl Entities {
         let observer = self.ships.get(*observer_name).unwrap().read().unwrap();
         let target = self.ships.get(*target_name).unwrap().read().unwrap();
 
+        // A ship whose sensors have no power acquires nothing. What it
+        // already holds it keeps: the plot does not evaporate because the
+        // engineer pulled a breaker, and High Guard has contact persisting
+        // "under most circumstances".
+        if !observer.sensors_powered() && !observer.contacts.iter().any(|name| name == *target_name) {
+          continue;
+        }
+
         // Team-mates always know where each other are, so there is nothing to
         // acquire and nothing that can be lost.
         if observer.team.is_some() && observer.team == target.team {
@@ -1692,14 +1968,8 @@ impl Entities {
         let holds_contact = observer.contacts.iter().any(|name| name == *target_name);
 
         if holds_contact {
-          if let Some(band_start) = Self::snapshot_band(ship_snapshot, observer_name, target_name) {
-            if band_now != band_start {
-              band_changes.push(EffectMsg::about(
-                observer_name,
-                MessageCategory::Detection,
-                format!("{observer_name}: {target_name} now at {band_now} range (was {band_start})."),
-              ));
-            }
+          if let Some(change) = Self::band_change_effect(ship_snapshot, observer_name, target_name, band_now) {
+            band_changes.push(change);
           }
 
           // Beyond Distant everything is an undifferentiated blip (p. 76), so
@@ -1802,11 +2072,14 @@ impl Entities {
       // Only announce a loss nothing else has reported. A failed reacquisition
       // already printed its roll, ending in "contact lost".
       if !rolled {
-        effects.push(EffectMsg::about(
-          observer_name,
-          MessageCategory::Detection,
-          format!("{observer_name} has lost sensor contact with {target_name}: out of range."),
-        ));
+        effects.push(
+          EffectMsg::about(
+            observer_name,
+            MessageCategory::Detection,
+            "%s has lost sensor contact with %t: out of range.".to_string(),
+          )
+          .at(target_name),
+        );
       }
     }
 
@@ -1855,6 +2128,9 @@ impl Entities {
     let observer = self.ships.get(observer_name).unwrap().read().unwrap();
     let mut terms = vec![
       ("sensor grade", SENSOR_QUALITY_MOD[observer.current_sensors as usize]),
+      // Detection is not an action anyone queues, so it is not one operator's
+      // check: the watch as a whole is looking, and the best of them is who
+      // notices.
       ("sensor skill", i16::from(observer.get_crew().get_sensors())),
     ];
     terms.extend(detection_modifier_terms(
@@ -1917,6 +2193,59 @@ impl Entities {
     }
   }
 
+  /// The ships sharing their picture this round, with what each of them holds,
+  /// and anything that has to be said about those that cannot share.
+  ///
+  /// Snapshotted before anything is shared, so a hand-off cannot be relayed
+  /// onward within the same pass.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read a ship.
+  fn handoff_hosts(&self) -> (Vec<HandoffHost>, Vec<EffectMsg>) {
+    let mut effects = Vec::new();
+    let mut hosts: Vec<HandoffHost> = Vec::new();
+    for (name, ship) in &self.ships {
+      let ship = ship.read().unwrap();
+      // A jammed ship cannot send: jamming stops communication, and a
+      // hand-off is communication. Jamming already announces itself, so it
+      // needs no message here.
+      if !ship.handoff_sensors || ship.team.is_none() || ship.comms_jammed {
+        continue;
+      }
+      // Sending takes the comms station, and the computer to package the
+      // picture. Said only when there was a picture to send.
+      if let Some(station) = ship.handoff_station_down() {
+        if !ship.contacts.is_empty() {
+          effects.push(EffectMsg::about(
+            name,
+            MessageCategory::Handoff,
+            format!("%s cannot hand off its sensor picture: its {station} station is out."),
+          ));
+        }
+        continue;
+      }
+      // Spare Bandwidth, not the rating: a ship whose computer is full of
+      // Evade and Fire Control has nothing left to run the link with, which
+      // is a real decision rather than an accident (High Guard p. 78).
+      if ship.bandwidth_spare() == 0 && ship.running_level(SoftwareKind::BattleNetwork).is_none() {
+        // Say so rather than failing quietly. A ship with no Bandwidth left --
+        // a bad enough bridge crit will take it, and so will running too much
+        // software -- looks exactly like one that is sharing fine. Only worth
+        // saying when there is a picture to share.
+        if !ship.contacts.is_empty() {
+          effects.push(EffectMsg::about(
+            name,
+            MessageCategory::Handoff,
+            "%s cannot hand off its sensor picture: no computer Bandwidth available.".to_string(),
+          ));
+        }
+        continue;
+      }
+      hosts.push((name.clone(), ship.get_position(), ship.contacts.clone()));
+    }
+    (hosts, effects)
+  }
+
   /// Share contacts along the team's hand-off links.
   ///
   /// High Guard p. 77: ships in a squadron can pass their sensor picture to
@@ -1941,51 +2270,33 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write a ship.
+  #[allow(clippy::too_many_lines)]
   pub fn sensor_handoff_pass(&mut self) -> Vec<EffectMsg> {
-    let mut effects = Vec::new();
-
-    // Snapshot what each host acquired on its own, before anything is shared,
-    // so a hand-off cannot be relayed onward within the same pass.
-    let mut hosts: Vec<(String, Vec3, Vec<String>)> = Vec::new();
-    for (name, ship) in &self.ships {
-      let ship = ship.read().unwrap();
-      // A jammed ship cannot send: jamming stops communication, and a
-      // hand-off is communication. Jamming already announces itself, so it
-      // needs no message here.
-      if !ship.handoff_sensors || ship.team.is_none() || ship.comms_jammed {
-        continue;
-      }
-      // Sending takes the comms station, and the computer to package the
-      // picture. Said only when there was a picture to send.
-      if let Some(station) = ship.handoff_station_down() {
-        if !ship.contacts.is_empty() {
-          effects.push(EffectMsg::about(
-            name,
-            MessageCategory::Handoff,
-            format!("{name} cannot hand off its sensor picture: its {station} station is out."),
-          ));
-        }
-        continue;
-      }
-      if ship.current_computer == 0 {
-        // Say so rather than failing quietly. A ship with no Bandwidth left --
-        // a bad enough bridge crit will take it -- looks exactly like one that
-        // is sharing fine, since nothing on screen shows the rating. Only worth
-        // saying when there is a picture to share.
-        if !ship.contacts.is_empty() {
-          effects.push(EffectMsg::about(
-            name,
-            MessageCategory::Handoff,
-            format!("{name} cannot hand off its sensor picture: no computer Bandwidth available."),
-          ));
-        }
-        continue;
-      }
-      hosts.push((name.clone(), ship.get_position(), ship.contacts.clone()));
-    }
+    let (hosts, mut effects) = self.handoff_hosts();
     if hosts.is_empty() {
       return effects;
     }
+
+    // What each host can still carry. "The ship can hand-off its sensor data
+    // to a maximum of five other ships" on five spare Bandwidth (High Guard
+    // p. 78), so the host's spare is a count of links, not a gate. Battle
+    // Network buys out of that count entirely: the program feeds every allied
+    // ship in range for its own Bandwidth and no more, which is what makes it
+    // worth 10 points to a carrier with forty fighters out.
+    let mut host_links: HashMap<String, u32> = hosts
+      .iter()
+      .map(|(name, _, _)| {
+        let ship = self.ships.get(name).unwrap().read().unwrap();
+        (name.clone(), ship.bandwidth_spare())
+      })
+      .collect();
+    let host_networks: HashMap<String, Option<u8>> = hosts
+      .iter()
+      .map(|(name, _, _)| {
+        let ship = self.ships.get(name).unwrap().read().unwrap();
+        (name.clone(), ship.running_level(SoftwareKind::BattleNetwork))
+      })
+      .collect();
 
     let mut shared = Vec::<(String, String, String)>::new();
     for (recipient_name, recipient) in &self.ships {
@@ -1995,9 +2306,15 @@ impl Entities {
         continue;
       }
       // Same reasoning as the host side: a recipient with no Bandwidth is told
-      // so, but only once something was actually held out to it.
-      let no_bandwidth = recipient_guard.current_computer == 0;
+      // so, but only once something was actually held out to it. A recipient
+      // pays its point whether or not the host is running Battle Network.
+      let no_bandwidth = recipient_guard.bandwidth_spare() == 0;
       let mut missed_a_handoff = false;
+      // Hand-offs refused for range, so the crew is told why rather than
+      // watching a team-mate hold a contact they never receive. Gathered per
+      // recipient and said once, since a silent refusal repeats every round.
+      let mut distant_hosts = std::collections::BTreeSet::<String>::new();
+      let mut distant_contacts = std::collections::BTreeSet::<String>::new();
       let here = recipient_guard.get_position();
 
       for (host_name, host_pos, host_contacts) in &hosts {
@@ -2010,7 +2327,31 @@ impl Entities {
         }
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let distance = (*host_pos - here).magnitude() as u32;
-        if find_range_band(distance) == Range::Distant {
+        let band = find_range_band(distance);
+
+        // Battle Network/1 reaches every allied ship within Medium, /2 within
+        // Long (High Guard p. 73). Inside that, the link costs the host
+        // nothing further; outside it, or without the program, it spends one
+        // of the host's spare points.
+        let networked = match host_networks.get(host_name).copied().flatten() {
+          Some(1) => band <= Range::Medium,
+          Some(_) => band <= Range::Long,
+          None => false,
+        };
+        if !networked && host_links.get(host_name).copied().unwrap_or(0) == 0 {
+          continue;
+        }
+        // One point buys the link to this ship, however many contacts travel
+        // along it -- the book counts ships fed, not contacts shared.
+        let mut link_paid = networked;
+
+        if band == Range::Distant {
+          if host_contacts
+            .iter()
+            .any(|contact| contact != recipient_name && !recipient_guard.contacts.contains(contact))
+          {
+            distant_hosts.insert(host_name.clone());
+          }
           continue;
         }
 
@@ -2031,11 +2372,18 @@ impl Entities {
           #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
           let to_contact = (contact_ship.read().unwrap().get_position() - here).magnitude() as u32;
           if find_range_band(to_contact) == Range::Distant {
+            distant_contacts.insert(contact.clone());
             continue;
           }
           if no_bandwidth {
             missed_a_handoff = true;
           } else {
+            if !link_paid {
+              if let Some(left) = host_links.get_mut(host_name) {
+                *left = left.saturating_sub(1);
+              }
+              link_paid = true;
+            }
             shared.push((recipient_name.clone(), contact.clone(), host_name.clone()));
           }
         }
@@ -2045,7 +2393,28 @@ impl Entities {
         effects.push(EffectMsg::about(
           recipient_name,
           MessageCategory::Handoff,
-          format!("{recipient_name} cannot receive a sensor hand-off: no computer Bandwidth available."),
+          "%s cannot receive a sensor hand-off: no computer Bandwidth available.".to_string(),
+        ));
+      }
+      if !distant_hosts.is_empty() {
+        effects.push(EffectMsg::about(
+          recipient_name,
+          MessageCategory::Handoff,
+          format!(
+            "%s is beyond Distant from {} and cannot take a hand-off from {}.",
+            join_names(&distant_hosts),
+            if distant_hosts.len() == 1 { "it" } else { "them" }
+          ),
+        ));
+      }
+      if !distant_contacts.is_empty() {
+        effects.push(EffectMsg::about(
+          recipient_name,
+          MessageCategory::Handoff,
+          format!(
+            "%s cannot be handed a contact on {}: beyond Distant, where nothing can be held.",
+            join_names(&distant_contacts)
+          ),
         ));
       }
     }
@@ -2057,11 +2426,15 @@ impl Entities {
       }
       recipient.contacts.push(contact.clone());
       recipient.contacts.sort();
-      effects.push(EffectMsg::about(
-        &recipient_name,
-        MessageCategory::Handoff,
-        format!("{recipient_name} receives contact on {contact} from {host_name}."),
-      ));
+      effects.push(
+        EffectMsg::about(
+          &recipient_name,
+          MessageCategory::Handoff,
+          "%s receives contact on %c from %t.".to_string(),
+        )
+        .at(&host_name)
+        .on(&contact),
+      );
     }
 
     effects
@@ -2209,11 +2582,13 @@ impl Entities {
       actions.retain(|action| {
         match action {
           // Keep FireActions, JamComms if the target still exists.
-          ShipAction::JamComms { target } | ShipAction::FireAction { target, .. } => self.ships.contains_key(target),
+          ShipAction::JamComms { target, .. } | ShipAction::FireAction { target, .. } => {
+            self.ships.contains_key(target)
+          }
           // Keep SensorLock only while the lock isn't yet established.
-          ShipAction::SensorLock { target } => self.ships.contains_key(target) && !attacker_has_lock_on(target),
+          ShipAction::SensorLock { target, .. } => self.ships.contains_key(target) && !attacker_has_lock_on(target),
           // Keep BreakSensorLock if the target still exists and the target has a sensor lock.
-          ShipAction::BreakSensorLock { target } => {
+          ShipAction::BreakSensorLock { target, .. } => {
             if let Some(target_ship) = self.ships.get(target) {
               let target_ship = target_ship.read().unwrap();
               return target_ship.sensor_locks.contains(ship_name);
@@ -2221,20 +2596,22 @@ impl Entities {
             false
           }
           // Keep JamMissiles and PointDefense in all cases.
-          ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles => true,
+          ShipAction::PointDefenseAction { .. } | ShipAction::JamMissiles { .. } => true,
           // Engineer actions should be scrubbed each turn - they are one-time actions.
           // LeadershipCheck is also one-shot (the captain re-queues it each
           // turn through the Captain HUD).
           // Anti-actions are consumed by `merge` and should never reach here, but
           // strip them defensively if they do.
           ShipAction::DeleteFireAction { .. }
-          | ShipAction::Jump
-          | ShipAction::OverloadDrive
-          | ShipAction::OverloadPlant
+          | ShipAction::Jump { .. }
+          | ShipAction::OverloadDrive { .. }
+          | ShipAction::OverloadPlant { .. }
           | ShipAction::Repair { .. }
+          | ShipAction::ComputerRepair { .. }
+          | ShipAction::SetPower { .. }
           | ShipAction::LeadershipCheck { .. }
-          | ShipAction::ClearSensorAction
-          | ShipAction::ClearEngineerAction
+          | ShipAction::ClearSensorAction { .. }
+          | ShipAction::ClearEngineerAction { .. }
           | ShipAction::ClearLeadershipCheck => false,
         }
       });
@@ -2286,31 +2663,69 @@ impl Entities {
         continue;
       }
 
-      let boost = boost_for_engineer(boost_map, ship_name);
+      // One job per engineer: two of them can repair two systems in a round,
+      // but neither can be in two places at once.
+      let mut worked = HashSet::<usize>::new();
 
+      // The Auto-Repair pool for this round. Each point is either an attempt
+      // the computer makes itself or a DM on someone else's (CRB p. 161).
+      // The attempts are ordered explicitly; whatever is left over goes to
+      // the engineers' own repairs, since an unspent point does nothing.
+      let mut auto_repair_left = self.ships.get(ship_name).unwrap().read().unwrap().auto_repair_mod();
       for action in ship_actions {
-        // Defensive: skip if already taken (reset_temporary_bonuses should
-        // have cleared this before we ran).
-        {
-          let mut ship = self.ships.get(ship_name).unwrap().write().unwrap();
-          if ship.has_engineer_action_taken() {
-            warn!(
-              "(engineer_actions) {ship_name} already has an engineer action taken this turn; skipping {action:?}."
-            );
+        if let ShipAction::ComputerRepair { system } = action {
+          if auto_repair_left == 0 {
+            effects.push(EffectMsg::about(
+              ship_name,
+              MessageCategory::Engineering,
+              format!(
+                "%s's computer has no Auto-Repair capacity left for the {}.",
+                String::from(*system)
+              ),
+            ));
             continue;
           }
-          ship.set_engineer_action_taken(true);
+          auto_repair_left -= 1;
+          effects.push(self.process_computer_repair(ship_name, *system, rng).into_message());
         }
+      }
+
+      for action in ship_actions {
+        let Some(engineer) = engineer_of(action) else {
+          // Caller is expected to filter, but be defensive. A computer repair
+          // belongs to nobody and was handled above.
+          continue;
+        };
+        if !worked.insert(engineer) {
+          warn!("(engineer_actions) {ship_name}'s engineer #{engineer} already has a job; skipping {action:?}.");
+          continue;
+        }
+        self
+          .ships
+          .get(ship_name)
+          .unwrap()
+          .write()
+          .unwrap()
+          .set_engineer_action_taken(true);
+
+        let boost = boost_for_engineer(boost_map, ship_name, engineer);
 
         // Crits a failed overload does to its own ship, reported after the
         // check that caused them.
         let mut crits = Vec::new();
         let result = match action {
-          ShipAction::OverloadDrive => self.process_overload_drive(ship_name, boost, &mut crits, rng),
-          ShipAction::OverloadPlant => self.process_overload_plant(ship_name, boost, &mut crits, rng),
-          ShipAction::Repair { system } => self.process_repair(ship_name, *system, boost, rng),
-          ShipAction::Jump => {
-            let (result, jumped) = self.process_jump(ship_name, boost, rng);
+          ShipAction::OverloadDrive { .. } => self.process_overload_drive(ship_name, engineer, boost, &mut crits, rng),
+          ShipAction::OverloadPlant { .. } => self.process_overload_plant(ship_name, engineer, boost, &mut crits, rng),
+          ShipAction::Repair { system, .. } => {
+            let lent = auto_repair_left;
+            auto_repair_left = 0;
+            self.process_repair(ship_name, *system, engineer, boost, lent, rng)
+          }
+          ShipAction::SetPower { system, online, .. } => {
+            self.process_set_power(ship_name, *system, *online, engineer, boost, rng)
+          }
+          ShipAction::Jump { .. } => {
+            let (result, jumped) = self.process_jump(ship_name, engineer, boost, rng);
             if jumped {
               jumped_ships.push(ship_name.clone());
             }
@@ -2319,7 +2734,7 @@ impl Entities {
           // Caller is expected to filter, but be defensive.
           _ => continue,
         };
-        effects.push(EffectMsg::EngineerAction { result });
+        effects.push(result.into_message());
         effects.append(&mut crits);
       }
     }
@@ -2345,9 +2760,11 @@ impl Entities {
   /// (the ship still leaves the system but flagged as `critical_failure`).
   /// If preconditions aren't met the ship doesn't jump at all (`success: false`,
   /// no critical failure).
-  fn process_jump(&mut self, ship_name: &str, boost: i16, rng: &mut dyn RngCore) -> (EngineerActionResult, bool) {
+  fn process_jump(
+    &mut self, ship_name: &str, engineer: usize, boost: i16, rng: &mut dyn RngCore,
+  ) -> (EngineerActionResult, bool) {
     let ship = self.ships.get(ship_name).unwrap().read().unwrap();
-    let action = ShipAction::Jump;
+    let action = ShipAction::Jump { engineer };
 
     let stations_down: Vec<String> = [BridgeStation::Astrogation, BridgeStation::Computer]
       .into_iter()
@@ -2362,14 +2779,27 @@ impl Entities {
           success: false,
           check: 0,
           target: 0,
-          message: format!("{ship_name} cannot jump: its {} station is out.", stations_down.join(" and ")),
+          message: format!("%s cannot jump: its {} station is out.", stations_down.join(" and ")),
+          roll: None,
           critical_failure: false,
         },
         false,
       );
     }
 
-    if !ship.can_jump() || ship.current_fuel <= ship.design.hull / 10 {
+    // Fuel is a tenth of the tonnage per jump number, so a ship short of a
+    // full tank still jumps -- just not as far.
+    let jump_range = ship.jump_range_available();
+    if !ship.can_jump() || jump_range == 0 {
+      let reason = if jump_range == 0 {
+        format!(
+          "only {} tons of fuel aboard and a jump-1 needs {}",
+          ship.current_fuel,
+          ship.fuel_per_jump_number()
+        )
+      } else {
+        "not clear of gravity wells, or the drive has no power".to_string()
+      };
       return (
         EngineerActionResult {
           ship_name: ship_name.to_string(),
@@ -2377,14 +2807,16 @@ impl Entities {
           success: false,
           check: 0,
           target: 0,
-          message: format!("{ship_name} cannot jump: insufficient fuel or not clear of gravity wells."),
+          message: format!("%s cannot jump: {reason}."),
+          roll: None,
           critical_failure: false,
         },
         false,
       );
     }
+    let short_jump = jump_range < ship.current_jump;
 
-    let skill = ship.get_crew().get_engineering_jump();
+    let skill = ship.get_crew().engineer_at(engineer).jump;
     drop(ship);
 
     let target: u8 = 6;
@@ -2402,7 +2834,12 @@ impl Entities {
           success: true,
           check: total,
           target,
-          message: format!("{ship_name} jump check {check}: jumps successfully."),
+          message: if short_jump {
+            format!("%s jumps successfully: jump-{jump_range} on the fuel aboard.")
+          } else {
+            "%s jumps successfully.".to_string()
+          },
+          roll: Some(check.clone()),
           critical_failure: false,
         },
         true,
@@ -2415,7 +2852,8 @@ impl Entities {
           success: false,
           check: total,
           target,
-          message: format!("{ship_name} jump check {check}: misjumps! Ship is lost in jump space."),
+          message: "%s jump check: misjumps! Ship is lost in jump space.".to_string(),
+          roll: Some(check.clone()),
           critical_failure: true,
         },
         true,
@@ -2436,29 +2874,42 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
   fn process_overload_drive(
-    &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
+    &mut self, ship_name: &str, engineer: usize, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
-    let skill = ship.read().unwrap().get_crew().get_engineering_maneuver();
+    let skill = ship.read().unwrap().get_crew().engineer_at(engineer).maneuver;
     let target: u8 = 10;
+    // "This check suffers a cumulative DM-2 each time it is attempted after
+    // the first" (Core Rulebook p. 171). The penalty only comes off with 1D
+    // hours of maintenance, which is not something done mid-fight.
+    let attempts = ship.read().unwrap().overload_drive_attempts;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (m-drive)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (m-drive)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("repeated overloads", -2 * i16::from(attempts)),
+      ],
       target,
     );
+    ship.write().unwrap().overload_drive_attempts = attempts.saturating_add(1);
 
-    let action = ShipAction::OverloadDrive;
+    let action = ShipAction::OverloadDrive { engineer };
 
     if total >= target {
-      // Success - set temporary_maneuver = 1
-      ship.write().unwrap().set_temporary_maneuver(1);
+      // House rule: the overload holds for the Effect of the check in rounds,
+      // and an Effect of 0 still buys one. The book gives a single round,
+      // which made a hard check worth very little.
+      let rounds = (total - target).saturating_add(1);
+      ship.write().unwrap().set_temporary_maneuver(1, rounds);
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} maneuver drive overload {check}: success, temporary +1 maneuver."),
+        message: format!("%s maneuver drive overload: success, +1 thrust for {rounds} round(s)."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -2470,7 +2921,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} maneuver drive overload {check}: critical failure, drive damaged."),
+        message: "%s maneuver drive overload: critical failure, drive damaged.".to_string(),
+        roll: Some(check.clone()),
         critical_failure: true,
       }
     } else {
@@ -2481,7 +2933,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} maneuver drive overload {check}: failed."),
+        message: "%s maneuver drive overload: failed.".to_string(),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     }
@@ -2500,29 +2953,38 @@ impl Entities {
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
   fn process_overload_plant(
-    &mut self, ship_name: &str, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
+    &mut self, ship_name: &str, engineer: usize, boost: i16, crits: &mut Vec<EffectMsg>, rng: &mut dyn RngCore,
   ) -> EngineerActionResult {
     let ship = self.ships.get(ship_name).unwrap();
-    let skill = ship.read().unwrap().get_crew().get_engineering_power();
+    let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
     let target: u8 = 10;
+    // The same cumulative DM-2 the drive takes, for the same reason.
+    let attempts = ship.read().unwrap().overload_plant_attempts;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
-      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      &[
+        ("engineering (power)", i16::from(skill)),
+        ("captain", boost.max(0)),
+        ("repeated overloads", -2 * i16::from(attempts)),
+      ],
       target,
     );
+    ship.write().unwrap().overload_plant_attempts = attempts.saturating_add(1);
 
-    let action = ShipAction::OverloadPlant;
+    let action = ShipAction::OverloadPlant { engineer };
 
     if total >= target {
-      // Success - set temporary_power_multiplier = 1.1
-      ship.write().unwrap().set_temporary_power_multiplier(1.1);
+      // Same house rule as the drive: Effect in rounds, minimum one.
+      let rounds = (total - target).saturating_add(1);
+      ship.write().unwrap().set_temporary_power_multiplier(1.1, rounds);
       EngineerActionResult {
         ship_name: ship_name.to_string(),
         action,
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} power plant overload {check}: success, temporary +10% power."),
+        message: format!("%s power plant overload: success, +10% power for {rounds} round(s)."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     } else if total <= 4 {
@@ -2534,7 +2996,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} power plant overload {check}: critical failure, plant damaged."),
+        message: "%s power plant overload: critical failure, plant damaged.".to_string(),
+        roll: Some(check.clone()),
         critical_failure: true,
       }
     } else {
@@ -2545,7 +3008,109 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} power plant overload {check}: failed."),
+        message: "%s power plant overload: failed.".to_string(),
+        roll: Some(check.clone()),
+        critical_failure: false,
+      }
+    }
+  }
+
+  /// Power a system down, or bring it back up (Core Rulebook p. 171).
+  ///
+  /// Shutting down takes an Engineer (power) check; the book asks for one and
+  /// gives no target number, so it uses the same Average (8+) every other
+  /// engineering job here does. Bringing a system back takes the round but no
+  /// check -- it is switching it on, not nursing it.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained to read or write the ship.
+  fn process_set_power(
+    &mut self, ship_name: &str, system: PowerSystem, online: bool, engineer: usize, boost: i16, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    let action = ShipAction::SetPower {
+      system,
+      online,
+      engineer,
+    };
+    let ship = self.ships.get(ship_name).unwrap();
+
+    // Basic ship systems cannot be switched off, but High Guard p. 17 lets a
+    // desperate crew run them at half. `online` says which way: off means
+    // half, on means back to full. Throwing that switch is a breaker, not a
+    // repair, so it takes the engineer's round but no check.
+    if system == PowerSystem::Basic {
+      ship.write().unwrap().set_basic_power_halved(!online);
+      let spare = ship.read().unwrap().power_spare();
+      let state = if online {
+        "back to full power"
+      } else {
+        "at half power -- life support, gravity and heat"
+      };
+      return EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        check: 0,
+        target: 0,
+        message: format!("%s runs basic ship systems {state}.{}", power_note(spare)),
+        roll: None,
+        critical_failure: false,
+      };
+    }
+
+    let label = ship
+      .read()
+      .unwrap()
+      .power_lines()
+      .into_iter()
+      .find(|line| line.system == system)
+      .map_or_else(|| format!("{system:?}"), |line| line.label);
+
+    if online {
+      ship.write().unwrap().set_online(system, true);
+      let spare = ship.read().unwrap().power_spare();
+      return EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        check: 0,
+        target: 0,
+        message: format!("%s brings {label} back online.{}", power_note(spare)),
+        roll: None,
+        critical_failure: false,
+      };
+    }
+
+    let skill = ship.read().unwrap().get_crew().engineer_at(engineer).power;
+    let target: u8 = 8;
+    let (total, check) = engineer_check(
+      roll_dice(2, rng),
+      &[("engineering (power)", i16::from(skill)), ("captain", boost.max(0))],
+      target,
+    );
+
+    if total >= target {
+      ship.write().unwrap().set_online(system, false);
+      let spare = ship.read().unwrap().power_spare();
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: true,
+        check: total,
+        target,
+        message: format!("%s powers down {label}: offline.{}", power_note(spare)),
+        roll: Some(check.clone()),
+        critical_failure: false,
+      }
+    } else {
+      EngineerActionResult {
+        ship_name: ship_name.to_string(),
+        action,
+        success: false,
+        check: total,
+        target,
+        message: format!("%s powers down {label}: failed, it stays online."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     }
@@ -2563,10 +3128,51 @@ impl Entities {
   ///
   /// # Panics
   /// Panics if the lock cannot be obtained to read or write the ship.
-  fn process_repair(
-    &mut self, ship_name: &str, system: ShipSystem, boost: i16, rng: &mut dyn RngCore,
+  /// A repair the computer runs through the ship's drones.
+  ///
+  /// The drones "are considered to have an Engineer skill level of 1 ... in
+  /// all specialities for the Repair System action alone" (Core Rulebook
+  /// p. 159), so this is a skill-1 attempt that costs no one their action --
+  /// and it is why a ship with its engineer dead can still put itself back
+  /// together, slowly.
+  fn process_computer_repair(
+    &mut self, ship_name: &str, system: ShipSystem, rng: &mut dyn RngCore,
   ) -> EngineerActionResult {
-    let action = ShipAction::Repair { system };
+    self.repair_attempt(ship_name, system, None, 0, 0, rng)
+  }
+
+  /// The best pair of hands aboard for flying the repair drones.
+  ///
+  /// Whoever has the most Electronics (remote ops), held to the drones' own
+  /// rating of 1 (Core Rulebook p. 159). A crew that says nothing is rated 0
+  /// at it, as it is at every other engineering skill.
+  fn drone_repair_dm(&self, ship_name: &str) -> i16 {
+    self.ships.get(ship_name).map_or(0, |ship| {
+      let crew = ship.read().unwrap().get_crew().clone();
+      (0..crew.engineer_count().max(1))
+        .map(|index| crew.engineer_at(index).drone_repair_dm())
+        .max()
+        .unwrap_or(0)
+    })
+  }
+
+  fn process_repair(
+    &mut self, ship_name: &str, system: ShipSystem, engineer: usize, boost: i16, auto_repair: u8, rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    self.repair_attempt(ship_name, system, Some(engineer), boost, auto_repair, rng)
+  }
+
+  /// One attempt at putting a system right, by a crewman or by the computer.
+  ///
+  /// `engineer` is `None` when the ship's drones are doing it on their own.
+  fn repair_attempt(
+    &mut self, ship_name: &str, system: ShipSystem, engineer: Option<usize>, boost: i16, auto_repair: u8,
+    rng: &mut dyn RngCore,
+  ) -> EngineerActionResult {
+    let action = engineer.map_or(ShipAction::ComputerRepair { system }, |engineer| ShipAction::Repair {
+      system,
+      engineer,
+    });
 
     // Cannot repair Hull
     if system == ShipSystem::Hull {
@@ -2576,22 +3182,36 @@ impl Entities {
         success: false,
         check: 0,
         target: 0,
-        message: format!("{ship_name} cannot repair hull damage."),
+        message: "%s cannot repair hull damage.".to_string(),
+        roll: None,
         critical_failure: false,
       };
     }
 
+    // Read before the write lock, since it reads the crew through the map.
+    let drone_dm = if engineer.is_none() {
+      self.drone_repair_dm(ship_name)
+    } else {
+      0
+    };
+
     let ship = self.ships.get(ship_name).unwrap();
     let mut ship_write = ship.write().unwrap();
 
-    // Engineering for the drives and the power plant; Mechanic for the rest of
-    // the ship's equipment.
-    let crew = ship_write.get_crew();
-    let (skill, skill_name) = match system {
-      ShipSystem::Jump => (crew.get_engineering_jump(), "engineering (j-drive)"),
-      ShipSystem::Powerplant => (crew.get_engineering_power(), "engineering (power)"),
-      ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (crew.get_mechanic(), "mechanic"),
-      _ => (crew.get_engineering_maneuver(), "engineering (m-drive)"),
+    // Engineering for the drives and the power plant; Mechanic for the rest
+    // of the ship's equipment. A drone run brings whoever is flying them,
+    // held to the drones' own rating.
+    let (skill, skill_name): (i16, &str) = match engineer {
+      None => (drone_dm, "repair drones (remote ops)"),
+      Some(engineer) => {
+        let engineer = ship_write.get_crew().engineer_at(engineer);
+        match system {
+          ShipSystem::Jump => (i16::from(engineer.jump), "engineering (j-drive)"),
+          ShipSystem::Powerplant => (i16::from(engineer.power), "engineering (power)"),
+          ShipSystem::Weapon | ShipSystem::Sensors | ShipSystem::Bridge => (i16::from(engineer.mechanic), "mechanic"),
+          _ => (i16::from(engineer.maneuver), "engineering (m-drive)"),
+        }
+      }
     };
 
     // Get current crit level for the system
@@ -2605,14 +3225,18 @@ impl Entities {
       0
     };
 
+    // Points of the Auto-Repair pool the crew put on this attempt.
+    let drones = auto_repair;
+
     let target: u8 = 8;
     let (total, check) = engineer_check(
       roll_dice(2, rng),
       &[
-        (skill_name, i16::from(skill)),
+        (skill_name, skill),
         ("earlier attempts", i16::from(repair_bonus)),
         ("captain", boost.max(0)),
         ("damage", -i16::from(crit_level)),
+        ("auto-repair", i16::from(drones)),
       ],
       target,
     );
@@ -2624,14 +3248,11 @@ impl Entities {
       }
       ship_write.set_repair_bonus(0);
       ship_write.set_last_repair_component(Some(system));
-      // A bridge repair takes the most recent bridge damage back off, down to
-      // the severity it now stands at.
-      let restored = if system == ShipSystem::Bridge {
-        let level = ship_write.crit_level[system as usize];
-        ship_write.undo_bridge_damage(level)
-      } else {
-        vec![]
-      };
+      // Give back what the severity just repaired had taken: thrust, power,
+      // jump, sensors, a weapon mount, a bridge station. Lowering the number
+      // alone left a ship with its drive repaired and no thrust.
+      let level = ship_write.crit_level[system as usize];
+      let restored = ship_write.undo_damage(system, level);
       let station = if restored.is_empty() {
         String::new()
       } else {
@@ -2643,7 +3264,8 @@ impl Entities {
         success: true,
         check: total,
         target,
-        message: format!("{ship_name} repair {system:?} {check}: repaired.{station}"),
+        message: format!("%s repair {system:?}: repaired.{station}"),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     } else {
@@ -2657,7 +3279,8 @@ impl Entities {
         success: false,
         check: total,
         target,
-        message: format!("{ship_name} repair {system:?} {check}: failed."),
+        message: format!("%s repair {system:?}: failed."),
+        roll: Some(check.clone()),
         critical_failure: false,
       }
     }
@@ -2800,6 +3423,7 @@ impl<'de> Deserialize<'de> for Entities {
 #[cfg(test)]
 mod tests {
   use crate::ship::{WeaponMount, WeaponType};
+  use crate::software::Software;
 
   /// The launcher every pre-torpedo test implicitly assumed: a single missile rack.
   fn test_missile_weapon() -> Weapon {
@@ -3500,7 +4124,8 @@ mod tests {
         "current_computer": 5,
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -3518,7 +4143,8 @@ mod tests {
         "current_computer": 5,
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -3536,7 +4162,8 @@ mod tests {
         "current_computer": 5,
         "current_sensors": "Improved",
         "active_weapons": [true, true, true, true],
-        "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,"engineering_maneuver":0,"sensors":0,"gunnery":[]},
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[0,0,0,0]},
+        "magazine": {"missiles": 0, "torpedoes": 0, "sand": 80},
         "dodge_thrust":0,
         "assist_gunners":false,
         "can_jump":false,
@@ -3595,6 +4222,11 @@ mod tests {
       crew_skills: None,
       weapons: vec![],
       screens: vec![],
+      features: vec![],
+      magazine: crate::ship::Magazine::default(),
+      software: vec![],
+      computer_bis: false,
+      computer_fib: false,
       tl: 10,
       role: None,
       source: None,
@@ -3992,7 +4624,7 @@ mod tests {
     let ship = create_test_ship_sensors("defender", 4);
     entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
 
-    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
 
     // Create missiles targeting the defender
     for i in 1..=8 {
@@ -4010,7 +4642,7 @@ mod tests {
     assert_eq!(entities.missiles.len(), 1); // Only one missile should be left
     assert_eq!(effects.len(), 15); // One message for jamming success and one for missile destruction
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("destroyed by jamming")
+        EffectMsg::Message { .. } if e.rendered().contains("destroyed by defender's jamming")
     )));
 
     let mut entities = Entities::default();
@@ -4018,7 +4650,7 @@ mod tests {
     let ship = create_test_ship_sensors("defender", 4);
     entities.ships.insert("defender".to_string(), Arc::new(RwLock::new(ship)));
 
-    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
 
     // Create missiles targeting the defender
     let missile1 = create_test_missile("missile1", "defender");
@@ -4040,7 +4672,7 @@ mod tests {
     assert_eq!(entities.missiles.len(), 2); // No missiles should be destroyed due to check result
     assert_eq!(effects.len(), 1); // Only one message for jamming failure
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("defender jams inbound missiles") && content.contains("jamming failed")
+        EffectMsg::Message { .. } if e.rendered().contains("defender jams inbound missiles") && e.rendered().contains("jamming failed")
     )));
   }
 
@@ -4076,7 +4708,7 @@ mod tests {
     entities.launch_missile("attacker", "defender", test_missile_weapon()).unwrap();
     assert_eq!(entities.missiles.len(), 1, "Missile should be in flight after launch");
 
-    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles])];
+    let actions = vec![("defender".to_string(), vec![ShipAction::JamMissiles { operator: 0 }])];
     let boost_map = BoostMap::default();
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
@@ -4087,7 +4719,7 @@ mod tests {
     );
     assert!(
       effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("destroyed by jamming")
+        EffectMsg::Message { .. } if e.rendered().contains("destroyed by defender's jamming")
       )),
       "Expected a 'destroyed by jamming' effect message"
     );
@@ -4106,6 +4738,7 @@ mod tests {
       "attacker".to_string(),
       vec![ShipAction::SensorLock {
         target: "target".to_string(),
+        operator: 0,
       }],
     )];
     entities.ships.insert("attacker".to_string(), Arc::new(RwLock::new(ship1)));
@@ -4118,7 +4751,7 @@ mod tests {
     let boost_map = BoostMap::default();
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("attempts a sensor lock on target") && content.contains("no lock")
+        EffectMsg::Message { .. } if e.rendered().contains("attempts a sensor lock on target") && e.rendered().contains("no lock")
     )));
     let mut rng = StepRng::new(5, 0); // Will always roll 6 for predictable results
 
@@ -4127,7 +4760,7 @@ mod tests {
 
     // With a roll of 6 and sensor skill of 4, the lock should be established
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("attempts a sensor lock on target") && content.contains("lock established")
+        EffectMsg::Message { .. } if e.rendered().contains("attempts a sensor lock on target") && e.rendered().contains("lock established")
     )));
 
     let attacker = entities.ships.get("attacker").unwrap().read().unwrap();
@@ -4150,6 +4783,7 @@ mod tests {
       "defender".to_string(),
       vec![ShipAction::BreakSensorLock {
         target: "attacker".to_string(),
+        operator: 0,
       }],
     )];
 
@@ -4163,12 +4797,16 @@ mod tests {
 
     // Check that the lock was broken
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("broke")
+        EffectMsg::Message { .. } if e.rendered().contains("broke")
     )));
 
     {
       let attacker = entities.ships.get("attacker").unwrap().read().unwrap();
-      assert!(attacker.sensor_locks.is_empty());
+      assert!(
+        attacker.sensor_locks.is_empty(),
+        "the lock should have been broken: {:?}",
+        attacker.sensor_locks
+      );
     }
 
     let mut rng = StepRng::new(1, 1); // Increment rolls to have attacker win (they roll second)
@@ -4185,7 +4823,7 @@ mod tests {
 
     // Check that the lock was not broken
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("breaks the sensor lock held by") && content.contains("lock holds")
+        EffectMsg::Message { .. } if e.rendered().contains("breaks the sensor lock held by") && e.rendered().contains("lock holds")
     )));
   }
 
@@ -4202,6 +4840,7 @@ mod tests {
       "jammer".to_string(),
       vec![ShipAction::JamComms {
         target: "target".to_string(),
+        operator: 0,
       }],
     )];
 
@@ -4214,7 +4853,7 @@ mod tests {
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
 
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("jams comms on") && content.contains("jamming failed")
+        EffectMsg::Message { .. } if e.rendered().contains("jams comms on") && e.rendered().contains("jamming failed")
     )));
 
     let mut rng = StepRng::new(4, 1); // Going past 6 on second two rolls ensures jammer wins
@@ -4222,7 +4861,7 @@ mod tests {
     let effects = entities.sensor_actions(&actions, &boost_map, &mut rng);
     // With high sensor skill and good roll, jamming should succeed
     assert!(effects.iter().any(|e| matches!(e,
-        EffectMsg::Message { content, .. } if content.contains("jams comms on") && content.contains("comms jammed")
+        EffectMsg::Message { .. } if e.rendered().contains("jams comms on") && e.rendered().contains("comms jammed")
     )));
   }
 
@@ -4416,8 +5055,72 @@ mod tests {
     assert!(
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("receives contact on Bogey"))),
+        .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("receives contact on Bogey"))),
       "the hand-off should be reported"
+    );
+  }
+
+  /// A hand-off refused for range says so. Silence left a crew watching a
+  /// team-mate hold a contact that never arrived, with nothing to explain it.
+  #[test]
+  fn a_range_blocked_handoff_says_why() {
+    // The contact sits beyond Distant from the recipient, though the picket
+    // holds it and the link between the two ships is fine.
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities
+      .ships
+      .get("Bogey")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(2.0e9, 0.0, 0.0));
+
+    let effects = entities.sensor_handoff_pass();
+    assert!(!holds_contact(&entities, "Mate", "Bogey"));
+    assert!(
+      effects.iter().any(
+        |e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("cannot be handed a contact on Bogey"))
+      ),
+      "the refusal should be reported: {effects:?}"
+    );
+
+    // And when it is the link itself that is too long.
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    entities
+      .ships
+      .get("Mate")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_position(Vec3::new(2.0e9, 0.0, 0.0));
+
+    let effects = entities.sensor_handoff_pass();
+    assert!(!holds_contact(&entities, "Mate", "Bogey"));
+    assert!(
+      effects
+        .iter()
+        .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("beyond Distant from Picket"))),
+      "the broken link should be reported: {effects:?}"
+    );
+  }
+
+  /// A hand-off that could not happen this round happens the next one. The
+  /// report was that it only ever worked on the round the contact was made.
+  #[test]
+  fn handoff_retries_in_later_rounds() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+
+    // Round one: the recipient is jammed, so nothing reaches it.
+    entities.ships.get("Mate").unwrap().write().unwrap().comms_jammed = true;
+    entities.sensor_handoff_pass();
+    assert!(!holds_contact(&entities, "Mate", "Bogey"), "jammed, so nothing this round");
+
+    // Round two: the jamming has lapsed and the picket still holds the contact.
+    entities.clear_comms_jamming();
+    entities.sensor_handoff_pass();
+    assert!(
+      holds_contact(&entities, "Mate", "Bogey"),
+      "the contact should be handed off in a later round too"
     );
   }
 
@@ -4436,6 +5139,261 @@ mod tests {
     );
   }
 
+  /// Broad Spectrum EW jams for a ship whose operator did not, at no skill.
+  #[test]
+  fn broad_spectrum_jams_without_a_sensop() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Picket".to_string(),
+      displacement: 400,
+      computer: 20,
+      sensors: crate::ship::Sensors::Advanced,
+      software: vec![Software::new(SoftwareKind::BroadSpectrumEw, 0)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Picket".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Raider".to_string(),
+      Vec3::new(10000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .unwrap();
+    assert_eq!(entities.missiles.len(), 1);
+
+    // Every die a 6, so the program's own check lands.
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.broad_spectrum_pass(&HashSet::new(), &mut rng);
+    assert!(
+      format!("{effects:?}").contains("broad spectrum"),
+      "the program should say it acted: {effects:?}"
+    );
+    assert_eq!(entities.missiles.len(), 0, "and the salvo should be jammed");
+  }
+
+  /// "Each salvo can still only be subjected to one electronic warfare
+  /// action", so an operator who already jammed leaves nothing for it.
+  #[test]
+  fn broad_spectrum_stands_aside_for_the_sensop() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Picket".to_string(),
+      displacement: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::BroadSpectrumEw, 0)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Picket".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.add_ship(
+      "Raider".to_string(),
+      Vec3::new(10000.0, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    entities
+      .launch_missile("Raider", "Picket", Weapon::uniform(WeaponType::Missile, WeaponMount::Turret, 1))
+      .unwrap();
+
+    let mut rng = StepRng::new(5, 0);
+    let already: HashSet<String> = std::iter::once("Picket".to_string()).collect();
+    let effects = entities.broad_spectrum_pass(&already, &mut rng);
+    assert!(effects.is_empty(), "nothing to add: {effects:?}");
+    assert_eq!(entities.missiles.len(), 1);
+  }
+
+  /// Auto-Repair is a pool: each point is either an attempt the computer
+  /// makes itself through the drones, or a DM on someone else's. A ship with
+  /// no engineer left can still put itself back together, slowly.
+  #[test]
+  fn the_computer_repairs_on_its_own_through_the_drones() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Tender".to_string(),
+      displacement: 400,
+      power: 500,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::AutoRepair, 2)],
+      features: vec![crate::ship::ShipFeature {
+        name: "Repair drones".to_string(),
+        power: 0,
+        default_on: false,
+        kind: Some(crate::ship::FeatureKind::RepairDrones),
+      }],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Magenta".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    {
+      let mut ship = entities.ships.get("Magenta").unwrap().write().unwrap();
+      ship.crit_level[ShipSystem::Sensors as usize] = 1;
+      assert_eq!(ship.auto_repair_mod(), 2, "two points a round");
+      // Somebody aboard who can actually fly them, which the drones hold to
+      // their own rating of 1.
+      let mut crew = ship.get_crew().clone();
+      let mut engineer = crew.engineer_at(0);
+      engineer.remote_ops = 2;
+      crew.set_engineer(0, engineer);
+      ship.set_crew(crew);
+    }
+
+    // Every die a 6, so the attempt lands: the point is that it happens at
+    // all, without an engineer spending their order.
+    let mut rng = StepRng::new(u64::MAX, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Magenta".to_string(),
+        vec![ShipAction::ComputerRepair {
+          system: ShipSystem::Sensors,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert_eq!(
+      entities.ships.get("Magenta").unwrap().read().unwrap().crit_level[ShipSystem::Sensors as usize],
+      0,
+      "{effects:?}"
+    );
+    assert!(format!("{effects:?}").contains("repair drones"), "{effects:?}");
+  }
+
+  /// The drones are flown by whoever has Electronics (remote ops), held to
+  /// the drones' own rating of 1. A crew that says nothing about it is rated
+  /// 0, as it is at every other engineering skill.
+  #[test]
+  fn drone_repairs_roll_on_remote_ops() {
+    let drones = crate::ship::ShipFeature {
+      name: "Repair drones".to_string(),
+      power: 0,
+      default_on: false,
+      kind: Some(crate::ship::FeatureKind::RepairDrones),
+    };
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Tender".to_string(),
+      displacement: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::AutoRepair, 1)],
+      features: vec![drones],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Magenta".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    assert_eq!(entities.drone_repair_dm("Magenta"), 0, "a crew that says nothing is rated 0");
+
+    // Someone who actually knows the job is still held to the drones.
+    {
+      let mut ship = entities.ships.get("Magenta").unwrap().write().unwrap();
+      let mut crew = ship.get_crew().clone();
+      let mut engineer = crew.engineer_at(0);
+      engineer.remote_ops = 3;
+      crew.set_engineer(0, engineer);
+      ship.set_crew(crew);
+    }
+    assert_eq!(
+      entities.drone_repair_dm("Magenta"),
+      1,
+      "the drones are rated 1, whoever flies them"
+    );
+  }
+
+  /// No drones, no attempts: the program has nothing to send out.
+  #[test]
+  fn auto_repair_without_drones_does_nothing() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Unfitted".to_string(),
+      displacement: 400,
+      computer: 20,
+      software: vec![Software::new(SoftwareKind::AutoRepair, 2)],
+      ..ShipDesignTemplate::default()
+    });
+    let mut entities = Entities::default();
+    entities.add_ship("Bare".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.ships.get("Bare").unwrap().write().unwrap().crit_level[ShipSystem::Sensors as usize] = 1;
+
+    let mut rng = StepRng::new(u64::MAX, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Bare".to_string(),
+        vec![ShipAction::ComputerRepair {
+          system: ShipSystem::Sensors,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert_eq!(
+      entities.ships.get("Bare").unwrap().read().unwrap().crit_level[ShipSystem::Sensors as usize],
+      1,
+      "nothing should have been repaired"
+    );
+    assert!(format!("{effects:?}").contains("no Auto-Repair capacity"), "{effects:?}");
+  }
+
+  /// A host feeds as many ships as it has spare Bandwidth points, and
+  /// software it is running eats into that: "the ship is using 10 Bandwidth
+  /// to run an Evade/1 program, leaving it with five points of available
+  /// Bandwidth. Therefore, the ship can hand-off its sensor data to a maximum
+  /// of five other ships" (High Guard p. 78).
+  #[test]
+  fn running_software_eats_the_bandwidth_a_handoff_needs() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    {
+      let mut picket = entities.ships.get("Picket").unwrap().write().unwrap();
+      picket.current_computer = 10;
+      picket.software = vec![Software::new(SoftwareKind::Evade, 1)];
+      picket.software_running = vec![Software::new(SoftwareKind::Evade, 1)];
+      assert_eq!(picket.bandwidth_spare(), 0, "Evade/1 fills a Computer/10");
+    }
+    let effects = entities.sensor_handoff_pass();
+    assert!(
+      !holds_contact(&entities, "Mate", "Bogey"),
+      "a host with nothing spare cannot share"
+    );
+    assert!(
+      format!("{effects:?}").contains("no computer Bandwidth available"),
+      "{effects:?}"
+    );
+
+    // Shut the program down and the link is there again.
+    entities
+      .ships
+      .get("Picket")
+      .unwrap()
+      .write()
+      .unwrap()
+      .set_software_running(Software::new(SoftwareKind::Evade, 1), false);
+    entities.sensor_handoff_pass();
+    assert!(holds_contact(&entities, "Mate", "Bogey"));
+  }
+
+  /// Battle Network "enables a ship to hand off target sensor detection data
+  /// to all desired ships within the specified range" (High Guard p. 73) --
+  /// so the host stops paying a point per ship, which is the whole value of
+  /// it to a carrier with a squadron out.
+  #[test]
+  fn battle_network_feeds_a_squadron_on_one_program() {
+    let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
+    {
+      let mut picket = entities.ships.get("Picket").unwrap().write().unwrap();
+      picket.current_computer = 10;
+      // Every point spent on the program itself, so nothing is left to buy
+      // links with the usual rule.
+      picket.software = vec![Software::new(SoftwareKind::BattleNetwork, 2)];
+      picket.software_running = vec![Software::new(SoftwareKind::BattleNetwork, 2)];
+      assert_eq!(picket.bandwidth_spare(), 0);
+    }
+    entities.sensor_handoff_pass();
+    assert!(
+      holds_contact(&entities, "Mate", "Bogey"),
+      "the program feeds the squadron on its own Bandwidth"
+    );
+  }
+
   /// "A hand-off requires one point of available computer Bandwidth from both
   /// the host and recipient ship" (High Guard p. 78).
   #[test]
@@ -4443,7 +5401,7 @@ mod tests {
     let says = |effects: &[EffectMsg], fragment: &str| {
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains(fragment)))
+        .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains(fragment)))
     };
 
     let mut entities = handoff_pair(Some(crate::ship::Team::Red), Some(crate::ship::Team::Red));
@@ -4540,6 +5498,16 @@ mod tests {
       assert!(ship.current_computer > 0, "the test design must have a computer");
     }
 
+    // A loaded ship also comes up running its design's software, and a
+    // Buccaneer's Jump Control fills its small computer -- which is the
+    // rule working, not a fault: a point of Bandwidth has to be found at
+    // each end (High Guard p. 78). Shut it down and the link is there.
+    for name in ["Picket", "Mate"] {
+      let mut ship = entities.ships.get(name).unwrap().write().unwrap();
+      ship.software_running.clear();
+      assert!(ship.bandwidth_spare() > 0, "{name} should have Bandwidth free now");
+    }
+
     entities.sensor_handoff_pass();
     assert!(
       holds_contact(&entities, "Mate", "Bogey"),
@@ -4634,8 +5602,7 @@ mod tests {
     let overridden = parse(json!({"ships":[
       {"name":"Executor","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
        "plan":[[[0.0,0.0,0.0],50000]],"design":"HMS Executor",
-       "crew":{"pilot":0,"engineering_jump":0,"engineering_power":0,
-               "engineering_maneuver":0,"sensors":0,"gunnery":[]}}]}));
+       "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[]}}]}));
     let ship = overridden.ships.get("Executor").unwrap().read().unwrap();
     assert_eq!(
       ship.get_crew().get_sensors(),
@@ -4723,6 +5690,40 @@ mod tests {
   /// dropped every older file until the field was defaulted. This walks the
   /// whole directory so a new scenario, or a new required field, cannot break
   /// one unnoticed.
+  /// Every ship in every bundled scenario comes up with the software its
+  /// design carries. A scenario states no software, serde fills an empty
+  /// list, and a ship that keeps that list has a computer it cannot run
+  /// anything on -- which is what "no software aboard" on the console means.
+  #[test_log::test(tokio::test)]
+  async fn bundled_scenario_ships_come_with_their_software() {
+    config_test_ship_templates().await;
+
+    let mut checked = 0;
+    for entry in fs::read_dir("./scenarios").expect("scenarios directory") {
+      let path = entry.expect("readable entry").path();
+      if path.extension().is_none_or(|e| e != "json") {
+        continue;
+      }
+      let name = path.display().to_string();
+      let bytes = fs::read(&path).unwrap_or_else(|e| panic!("{name}: unreadable: {e}"));
+      let entities = Entities::parse_bytes_with_ship_templates(&bytes, &name, get_ship_templates_snapshot())
+        .unwrap_or_else(|e| panic!("{name}: failed to load: {e}"));
+      for (ship_name, ship) in &entities.ships {
+        let ship = ship.read().unwrap();
+        if ship.design.software.is_empty() {
+          continue;
+        }
+        assert!(
+          !ship.software.is_empty(),
+          "{name}: {ship_name} ({}) sailed without the software its design carries",
+          ship.design.name
+        );
+        checked += 1;
+      }
+    }
+    assert!(checked > 0, "no ships with software found -- has the fixture moved?");
+  }
+
   #[test_log::test(tokio::test)]
   async fn every_bundled_scenario_loads() {
     config_test_ship_templates().await;
@@ -4754,7 +5755,7 @@ mod tests {
       effects
         .iter()
         .filter_map(|e| match e {
-          EffectMsg::Message { content, .. } if content.contains("now at") => Some(content.clone()),
+          EffectMsg::Message { .. } if e.rendered().contains("now at") => Some(e.rendered()),
           _ => None,
         })
         .collect::<Vec<_>>()
@@ -4831,7 +5832,7 @@ mod tests {
     assert!(
       !effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("now at"))),
+        .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("now at"))),
       "a ship with no contact should not be told the range, got {effects:?}"
     );
   }
@@ -4859,7 +5860,9 @@ mod tests {
         .detection_pass(&snapshot, &HashSet::new(), &map, &mut rng)
         .iter()
         .find_map(|e| match e {
-          EffectMsg::Message { content, .. } if content.contains("sensor check on") => Some(content.clone()),
+          EffectMsg::Message { roll, .. } if e.rendered().contains("sensor check on") => {
+            Some(format!("{} {}", e.rendered(), roll.clone().unwrap_or_default()))
+          }
           _ => None,
         })
         .expect("a check should be reported")
@@ -4883,15 +5886,17 @@ mod tests {
     let check = effects
       .iter()
       .find_map(|e| match e {
-        EffectMsg::Message { content, .. } if content.contains("sensor check on") => Some(content.clone()),
+        EffectMsg::Message { roll, .. } if e.rendered().contains("sensor check on") => {
+          Some(format!("{} {}", e.rendered(), roll.clone().unwrap_or_default()))
+        }
         _ => None,
       })
       .expect("the attempt should be reported");
 
     assert!(check.contains("Seeker sensor check on Quarry"), "{check}");
-    assert!(check.contains("with roll "), "the roll should be shown: {check}");
-    assert!(check.contains("a total of "), "the total should be shown: {check}");
-    assert!(check.contains("against 8"), "the target number should be shown: {check}");
+    assert!(check.contains("roll "), "the roll should be shown: {check}");
+    assert!(check.contains(" = "), "the total should be shown: {check}");
+    assert!(check.contains("vs 8"), "the target number should be shown: {check}");
     assert!(
       check.contains("no contact") || check.contains("contact."),
       "the outcome should be shown: {check}"
@@ -4919,7 +5924,7 @@ mod tests {
     assert!(
       !effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("sensor check on"))),
+        .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("sensor check on"))),
       "a ship running dark makes no check, so it should report none: {effects:#?}"
     );
   }
@@ -5076,6 +6081,14 @@ mod tests {
       jump: 2,
       fuel: 100,
       computer: 10,
+      // Plant enough to run everything and still jump, which is what the
+      // tests below assume a healthy ship can do.
+      power: 400,
+      // A jump needs the software that plots it, as well as the drive.
+      software: vec![crate::software::Software::new(
+        crate::software::SoftwareKind::JumpControl,
+        2,
+      )],
       ..ShipDesignTemplate::default()
     });
     entities.add_ship("Dragon".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
@@ -5089,6 +6102,9 @@ mod tests {
     );
     let mut dragon = entities.ships.get("Dragon").unwrap().write().unwrap();
     dragon.enable_jump();
+    // Jump Control starts stopped on every ship; this one is meant to be
+    // ready to jump, so its astrogator has switched it on.
+    dragon.set_software_running(Software::new(SoftwareKind::JumpControl, 2), true);
     dragon.contacts = vec!["Quarry".to_string()];
     drop(dragon);
     entities
@@ -5158,6 +6174,7 @@ mod tests {
         "Dragon".to_string(),
         vec![ShipAction::Repair {
           system: ShipSystem::Bridge,
+          engineer: 0,
         }],
       )],
       &BoostMap::default(),
@@ -5173,9 +6190,82 @@ mod tests {
       "{effects:?}"
     );
     assert!(
-      format!("{effects:?}").contains("with roll 12 and DM -1 (damage -1) for a total of 11 against 8"),
+      format!("{effects:?}").contains("roll 12 DM -1 (damage -1) = 11 vs 8"),
       "the check should be spelled out: {effects:?}"
     );
+  }
+
+  /// A repaired drive flies again. The report was a raider with its thrust at
+  /// 0(4) whose engineer repaired the crit and stayed dead in the water: the
+  /// repair lowered the severity and gave nothing back.
+  #[test]
+  fn repairing_a_drive_gives_the_thrust_back() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Threshing Oar".to_string(),
+      hull: 200,
+      maneuver: 4,
+      power: 200,
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Thrasher".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+
+    // Two hits on the drive and one on the plant, as the shooting went.
+    let mut rng = StepRng::new(5, 0);
+    {
+      let mut ship = entities.ships.get("Thrasher").unwrap().write().unwrap();
+      crate::combat::apply_crit(1, ShipSystem::Maneuver, &mut ship, &mut rng);
+      crate::combat::apply_crit(2, ShipSystem::Maneuver, &mut ship, &mut rng);
+      crate::combat::apply_crit(1, ShipSystem::Powerplant, &mut ship, &mut rng);
+      assert_eq!(ship.current_maneuver, 2, "two hits, two points of thrust");
+      assert_eq!(ship.current_power, 180, "and a tenth of the plant");
+      // A crew who can actually fix it.
+      let mut crew = Crew::new();
+      crew.set_skill(Skills::EngineeringManeuver, 3);
+      crew.set_skill(Skills::EngineeringPower, 3);
+      ship.set_crew(crew);
+    }
+
+    let repair = |entities: &mut Entities, system: ShipSystem| {
+      // Every die a 6, so the check succeeds.
+      let mut rng = StepRng::new(5, 0);
+      entities.engineer_actions(
+        &[("Thrasher".to_string(), vec![ShipAction::Repair { system, engineer: 0 }])],
+        &BoostMap::default(),
+        &mut rng,
+      )
+    };
+
+    let effects = repair(&mut entities, ShipSystem::Maneuver);
+    {
+      let ship = entities.ships.get("Thrasher").unwrap().read().unwrap();
+      assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], 1);
+      assert_eq!(ship.current_maneuver, 3, "the second hit's point comes back");
+    }
+    assert!(format!("{effects:?}").contains("thrust back to 3"), "{effects:?}");
+
+    // The ship has to be told to try again; one repair is one severity.
+    entities
+      .ships
+      .get("Thrasher")
+      .unwrap()
+      .write()
+      .unwrap()
+      .reset_temporary_bonuses();
+    repair(&mut entities, ShipSystem::Maneuver);
+    entities
+      .ships
+      .get("Thrasher")
+      .unwrap()
+      .write()
+      .unwrap()
+      .reset_temporary_bonuses();
+    repair(&mut entities, ShipSystem::Powerplant);
+
+    let ship = entities.ships.get("Thrasher").unwrap().read().unwrap();
+    assert_eq!(ship.current_maneuver, 4, "fully repaired, fully flying");
+    assert_eq!(ship.current_power, 200, "and the plant back to its rating");
+    assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], 0);
   }
 
   /// Each Bridge repair takes off the damage done at the severity it leaves,
@@ -5190,19 +6280,26 @@ mod tests {
     ship.bridge_hit_bandwidth(5, 0);
 
     // 5 -> 4: the computer comes back, at what it had before the level 5 hit.
-    ship.undo_bridge_damage(4);
+    ship.undo_damage(ShipSystem::Bridge, 4);
     assert!(ship.station_working(BridgeStation::Computer));
     assert_eq!(ship.current_computer, 5);
     assert!(!ship.station_working(BridgeStation::Pilot), "the level 4 damage is still there");
 
     // 4 -> 3: the pilot.
-    ship.undo_bridge_damage(3);
+    ship.undo_damage(ShipSystem::Bridge, 3);
     assert!(ship.station_working(BridgeStation::Pilot));
     assert_eq!(ship.current_computer, 5, "Bandwidth still halved");
 
     // 3 -> 2: the Bandwidth.
-    assert_eq!(ship.undo_bridge_damage(2), vec!["computer Bandwidth back to 10".to_string()]);
-    assert!(ship.bridge_damage.is_empty());
+    assert_eq!(
+      ship.undo_damage(ShipSystem::Bridge, 2),
+      vec!["computer Bandwidth back to 10".to_string()]
+    );
+    assert!(
+      ship.damage_log.is_empty(),
+      "an undamaged ship has nothing logged: {:?}",
+      ship.damage_log
+    );
   }
 
   /// Undoing a destroyed station leaves it destroyed if an earlier hit had
@@ -5214,10 +6311,323 @@ mod tests {
     ship.bridge_hit_destroy(4, BridgeStation::Pilot);
     ship.bridge_hit_destroy(6, BridgeStation::Pilot);
 
-    ship.undo_bridge_damage(5);
+    ship.undo_damage(ShipSystem::Bridge, 5);
     assert!(!ship.station_working(BridgeStation::Pilot));
-    ship.undo_bridge_damage(3);
+    ship.undo_damage(ShipSystem::Bridge, 3);
     assert!(ship.station_working(BridgeStation::Pilot));
+  }
+
+  /// Powering a system down frees its draw, and the engineer is told what is
+  /// left. Bringing it back takes a round but no check.
+  #[test]
+  fn an_engineer_can_power_a_system_down() {
+    let mut entities = Entities::default();
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Thresher".to_string(),
+      displacement: 200,
+      power: 175,
+      maneuver: 6,
+      sensors: crate::ship::Sensors::Military,
+      weapons: vec![crate::ship::Weapon::single(
+        crate::ship::WeaponType::Particle,
+        crate::ship::WeaponMount::Barbette,
+      )],
+      ..ShipDesignTemplate::default()
+    });
+    entities.add_ship("Thresher".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    {
+      let mut ship = entities.ships.get("Thresher").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.set_skill(Skills::EngineeringPower, 2);
+      ship.set_crew(crew);
+    }
+
+    let order = |entities: &mut Entities, online: bool, seed: u64| {
+      let mut rng = SmallRng::seed_from_u64(seed);
+      entities.engineer_actions(
+        &[(
+          "Thresher".to_string(),
+          vec![ShipAction::SetPower {
+            system: PowerSystem::Weapon(0),
+            online,
+            engineer: 0,
+          }],
+        )],
+        &BoostMap::default(),
+        &mut rng,
+      )
+    };
+
+    let before = entities.ships.get("Thresher").unwrap().read().unwrap().max_acceleration();
+    let effects = order(&mut entities, false, 4);
+    {
+      let ship = entities.ships.get("Thresher").unwrap().read().unwrap();
+      assert!(!ship.is_online(PowerSystem::Weapon(0)), "{effects:?}");
+      assert!(ship.max_acceleration() > before, "the drive gets the barbette's share");
+    }
+    assert!(format!("{effects:?}").contains("Power spare"), "{effects:?}");
+
+    entities
+      .ships
+      .get("Thresher")
+      .unwrap()
+      .write()
+      .unwrap()
+      .reset_temporary_bonuses();
+    order(&mut entities, true, 4);
+    assert!(entities
+      .ships
+      .get("Thresher")
+      .unwrap()
+      .read()
+      .unwrap()
+      .is_online(PowerSystem::Weapon(0)));
+  }
+
+  /// House rule: an overload holds for the Effect of the check in rounds, so
+  /// a good roll is worth more than a scraped one.
+  #[test]
+  fn an_overload_holds_for_its_effect_in_rounds() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.set_skill(Skills::EngineeringManeuver, 4);
+      ship.set_crew(crew);
+    }
+
+    // Every die a 6: 12 + 4 against 10 is an Effect of 6, so seven rounds.
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.engineer_actions(
+      &[("Dragon".to_string(), vec![ShipAction::OverloadDrive { engineer: 0 }])],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(format!("{effects:?}").contains("for 7 round(s)"), "{effects:?}");
+
+    let ship = entities.ships.get("Dragon").unwrap();
+    assert_eq!(ship.read().unwrap().get_temporary_maneuver(), 1);
+    for remaining in (1..7).rev() {
+      ship.write().unwrap().reset_temporary_bonuses();
+      assert_eq!(
+        ship.read().unwrap().temporary_maneuver_rounds(),
+        remaining,
+        "the overload should still be running"
+      );
+      assert_eq!(ship.read().unwrap().get_temporary_maneuver(), 1);
+    }
+
+    // And the last round spends the last of it.
+    ship.write().unwrap().reset_temporary_bonuses();
+    assert_eq!(ship.read().unwrap().get_temporary_maneuver(), 0, "then it lapses");
+  }
+
+  /// Overloading again and again gets harder: a cumulative DM-2 each time,
+  /// which the log names so the engineer can see the hole they are in.
+  #[test]
+  fn repeated_overloads_get_harder() {
+    let mut entities = bridge_board();
+    let mut rng = StepRng::new(5, 0);
+    let mut overload = |entities: &mut Entities| {
+      let effects = entities.engineer_actions(
+        &[("Dragon".to_string(), vec![ShipAction::OverloadDrive { engineer: 0 }])],
+        &BoostMap::default(),
+        &mut rng,
+      );
+      entities.ships.get("Dragon").unwrap().write().unwrap().reset_temporary_bonuses();
+      format!("{effects:?}")
+    };
+
+    let first = overload(&mut entities);
+    assert!(!first.contains("repeated overloads"), "nothing to pay the first time: {first}");
+
+    let second = overload(&mut entities);
+    assert!(second.contains("repeated overloads -2"), "{second}");
+
+    let third = overload(&mut entities);
+    assert!(third.contains("repeated overloads -4"), "{third}");
+  }
+
+  /// Two operators are two people: one can jam while the other locks, in the
+  /// same round. One operator still gets one action.
+  #[test]
+  fn every_operator_gets_an_action() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.add_sensor_operator(3);
+      crew.add_sensor_operator(2);
+      ship.set_crew(crew);
+      ship.contacts = vec!["Quarry".to_string()];
+    }
+
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.sensor_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![
+          ShipAction::SensorLock {
+            target: "Quarry".to_string(),
+            operator: 0,
+          },
+          ShipAction::JamComms {
+            target: "Quarry".to_string(),
+            operator: 1,
+          },
+        ],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    let text = format!("{effects:?}");
+    assert!(text.contains("sensor lock"), "the first operator's action: {text}");
+    assert!(text.contains("jam"), "and the second one's: {text}");
+
+    // Both from the same operator is more than one pair of hands.
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.sensor_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![
+          ShipAction::JamComms {
+            target: "Quarry".to_string(),
+            operator: 1,
+          },
+          ShipAction::JamComms {
+            target: "Quarry".to_string(),
+            operator: 1,
+          },
+        ],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert_eq!(effects.len(), 1, "one operator, one action: {effects:?}");
+  }
+
+  /// And two engineers can take two jobs in a round.
+  #[test]
+  fn every_engineer_gets_a_job() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.add_engineer(crate::crew::Engineer {
+        maneuver: 3,
+        ..crate::crew::Engineer::default()
+      });
+      crew.add_engineer(crate::crew::Engineer {
+        mechanic: 3,
+        ..crate::crew::Engineer::default()
+      });
+      ship.set_crew(crew);
+      ship.crit_level[ShipSystem::Maneuver as usize] = 1;
+      ship.crit_level[ShipSystem::Sensors as usize] = 1;
+    }
+
+    let mut rng = StepRng::new(5, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Dragon".to_string(),
+        vec![
+          ShipAction::Repair {
+            system: ShipSystem::Maneuver,
+            engineer: 0,
+          },
+          ShipAction::Repair {
+            system: ShipSystem::Sensors,
+            engineer: 1,
+          },
+        ],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+
+    let ship = entities.ships.get("Dragon").unwrap().read().unwrap();
+    assert_eq!(ship.crit_level[ShipSystem::Maneuver as usize], 0, "{effects:?}");
+    assert_eq!(ship.crit_level[ShipSystem::Sensors as usize], 0, "{effects:?}");
+  }
+
+  /// With two engineers aboard, the one given the job is the one who rolls --
+  /// not the better of them.
+  #[test]
+  fn the_engineer_given_the_job_is_the_one_who_rolls() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.add_engineer(crate::crew::Engineer {
+        mechanic: 4,
+        ..crate::crew::Engineer::default()
+      });
+      crew.add_engineer(crate::crew::Engineer {
+        mechanic: 1,
+        ..crate::crew::Engineer::default()
+      });
+      ship.set_crew(crew);
+      ship.crit_level[ShipSystem::Sensors as usize] = 1;
+    }
+
+    let mut rng = StepRng::new(0, 0);
+    let effects = entities.engineer_actions(
+      &[(
+        "Dragon".to_string(),
+        // The second engineer takes this one.
+        vec![ShipAction::Repair {
+          system: ShipSystem::Sensors,
+          engineer: 1,
+        }],
+      )],
+      &BoostMap::default(),
+      &mut rng,
+    );
+    assert!(
+      format!("{effects:?}").contains("mechanic +1"),
+      "the engineer who takes the job should roll their own skill: {effects:?}"
+    );
+  }
+
+  /// And an action names its operator, so that is whose skill it uses.
+  #[test]
+  fn the_operator_working_an_action_is_the_one_who_rolls() {
+    let mut entities = bridge_board();
+    {
+      let mut ship = entities.ships.get("Dragon").unwrap().write().unwrap();
+      let mut crew = Crew::new();
+      crew.add_sensor_operator(4);
+      crew.add_sensor_operator(0);
+      ship.set_crew(crew);
+      ship.contacts = vec!["Quarry".to_string()];
+    }
+
+    let lock = |entities: &mut Entities, operator: usize| {
+      let mut rng = StepRng::new(2, 0);
+      let effects = entities.sensor_actions(
+        &[(
+          "Dragon".to_string(),
+          vec![ShipAction::SensorLock {
+            target: "Quarry".to_string(),
+            operator,
+          }],
+        )],
+        &BoostMap::default(),
+        &mut rng,
+      );
+      format!("{effects:?}")
+    };
+
+    // The green operator's 0 on top of the ship's sensor grade, not the
+    // veteran's 4.
+    let green = lock(&mut entities, 1);
+    assert!(
+      green.contains("DM +1"),
+      "the operator working it should roll their own skill: {green}"
+    );
+
+    let veteran = lock(&mut entities, 0);
+    assert!(veteran.contains("DM +5"), "and the veteran brings their own: {veteran}");
   }
 
   /// Weapons, sensors and the bridge are repaired with Mechanic, not
@@ -5240,13 +6650,14 @@ mod tests {
         "Dragon".to_string(),
         vec![ShipAction::Repair {
           system: ShipSystem::Sensors,
+          engineer: 0,
         }],
       )],
       &BoostMap::default(),
       &mut rng,
     );
     assert!(
-      format!("{effects:?}").contains("with roll 2 and DM +2 (mechanic +3, damage -1)"),
+      format!("{effects:?}").contains("roll 2 DM +2 (mechanic +3, damage -1)"),
       "{effects:?}"
     );
   }
@@ -5265,7 +6676,7 @@ mod tests {
 
     let mut rng = StepRng::new(5, 0);
     let effects = entities.engineer_actions(
-      &[("Dragon".to_string(), vec![ShipAction::Jump])],
+      &[("Dragon".to_string(), vec![ShipAction::Jump { engineer: 0 }])],
       &BoostMap::default(),
       &mut rng,
     );
@@ -5291,13 +6702,17 @@ mod tests {
         "Dragon".to_string(),
         vec![ShipAction::SensorLock {
           target: "Quarry".to_string(),
+          operator: 0,
         }],
       )],
       &BoostMap::default(),
       &mut rng,
     );
     assert!(format!("{effects:?}").contains("sensors station is out"), "{effects:?}");
-    assert!(entities.ships.get("Dragon").unwrap().read().unwrap().sensor_locks.is_empty());
+    assert!(
+      entities.ships.get("Dragon").unwrap().read().unwrap().sensor_locks.is_empty(),
+      "Dragon should hold no locks"
+    );
 
     let snapshot = entities.ship_deep_copy();
     let effects = entities.fire_actions(
@@ -5308,6 +6723,9 @@ mod tests {
           target: "Quarry".to_string(),
           called_shot_system: None,
           firing_kind: None,
+          salvo_size: None,
+          fire_control_dm: 0,
+          computer_fired: false,
         }],
       )],
       &[],
@@ -5336,7 +6754,7 @@ mod tests {
     // Every die a 1: a check of 2, a critical failure against 10.
     let mut rng = StepRng::new(0, 0);
     let effects = entities.engineer_actions(
-      &[("Dragon".to_string(), vec![ShipAction::OverloadDrive])],
+      &[("Dragon".to_string(), vec![ShipAction::OverloadDrive { engineer: 0 }])],
       &BoostMap::default(),
       &mut rng,
     );
@@ -5584,7 +7002,7 @@ mod tests {
     assert!(
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("lost sensor contact"))),
+        .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("lost sensor contact"))),
       "the loss should be reported"
     );
   }
@@ -5676,7 +7094,11 @@ mod tests {
     entities.detection_pass(&snapshot, &HashSet::new(), &BoostMap::default(), &mut rng);
 
     let seeker = entities.ships.get("Seeker").unwrap().read().unwrap();
-    assert!(seeker.contacts.is_empty());
+    assert!(
+      seeker.contacts.is_empty(),
+      "nothing should have been detected: {:?}",
+      seeker.contacts
+    );
     assert!(seeker.sensor_locks.is_empty(), "the lock should go with the contact");
   }
 
@@ -5718,7 +7140,7 @@ mod tests {
     assert_eq!(ship.sensor_locks.len(), 1);
 
     assert!(ship.set_emissions(Some(false), None), "going dark should drop them");
-    assert!(ship.sensor_locks.is_empty());
+    assert!(ship.sensor_locks.is_empty(), "the lock should be gone: {:?}", ship.sensor_locks);
     // Already dark: nothing left to drop, so no second report.
     assert!(!ship.set_emissions(Some(false), None));
   }
@@ -5749,6 +7171,7 @@ mod tests {
       "attacker".to_string(),
       vec![ShipAction::SensorLock {
         target: "target".to_string(),
+        operator: 0,
       }],
     )];
     let effects = entities.sensor_actions(&actions, &BoostMap::default(), &mut rng);
@@ -5756,7 +7179,7 @@ mod tests {
     assert!(
       effects
         .iter()
-        .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains("running dark"))),
+        .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("running dark"))),
       "expected a running-dark refusal, got {effects:?}"
     );
     assert!(
@@ -5859,12 +7282,14 @@ mod tests {
       (
         ShipAction::SensorLock {
           target: "target".to_string(),
+          operator: 0,
         },
         "cannot lock onto",
       ),
       (
         ShipAction::JamComms {
           target: "target".to_string(),
+          operator: 0,
         },
         "cannot jam",
       ),
@@ -5874,7 +7299,7 @@ mod tests {
       assert!(
         effects
           .iter()
-          .any(|e| matches!(e, EffectMsg::Message { content, .. } if content.contains(wording))),
+          .any(|e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains(wording))),
         "expected a refusal containing {wording:?}, got {effects:?}"
       );
     }
@@ -5942,7 +7367,7 @@ mod tests {
       let entities =
         setup_sensor_test_ships("test_ship", attack_skill, "ignore", 0, attack_design, "Free Trader").await;
 
-      let result = entities.sensor_quality_modifiers("test_ship");
+      let result = entities.sensor_quality_modifiers("test_ship", 0);
       assert_eq!(
         result, expected,
         "Failed with attack_design={attack_design}, attack_skill={attack_skill}, expected={expected}",
@@ -5954,7 +7379,7 @@ mod tests {
   #[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
   fn test_sensor_quality_modifiers_invalid_ship() {
     let entities = Entities::new();
-    entities.sensor_quality_modifiers("nonexistent_ship");
+    entities.sensor_quality_modifiers("nonexistent_ship", 0);
   }
 
   #[test]

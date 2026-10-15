@@ -21,7 +21,8 @@
       2,
       0,
       2
-    ]
+    ],
+    "mechanic": 2
   },
   "weapons": [
     {
@@ -49,5 +50,20 @@
   ],
   "tl": 12,
   "role": "Raider",
-  "source": "Pirates of Drinax"
+  "source": "Pirates of Drinax",
+  "software": [
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_bis": true
 }

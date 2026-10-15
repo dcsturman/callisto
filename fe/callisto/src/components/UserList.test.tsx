@@ -51,6 +51,21 @@ describe("Users (peer list)", () => {
     expect(container.textContent).toContain("bob");
   });
 
+  it("ticks players who are ready and leaves the rest unticked", () => {
+    renderUsers(
+      [
+        { display_name: "alice", roles: [ViewMode.Pilot], ship: "Buccaneer", ready: true },
+        { display_name: "bob", roles: [ViewMode.Gunner], ship: "Buccaneer" },
+      ],
+      null,
+    );
+    const rows = Array.from(container.querySelectorAll("li"));
+    const alice = rows.find((row) => row.textContent?.includes("alice"));
+    const bob = rows.find((row) => row.textContent?.includes("bob"));
+    expect(alice?.textContent).toContain("\u2713");
+    expect(bob?.textContent).not.toContain("\u2713");
+  });
+
   it("filters out the current user by display_name (derived from email local-part)", () => {
     renderUsers(
       [

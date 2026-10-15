@@ -13,5 +13,19 @@
   "weapons": [],
   "tl": 14,
   "role": "Support",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 1
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

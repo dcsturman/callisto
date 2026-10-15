@@ -13,5 +13,24 @@
   "weapons": [],
   "tl": 12,
   "role": "Trader",
-  "source": "Ships of the Reach"
+  "source": "Ships of the Reach",
+  "software": [
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_bis": true
 }

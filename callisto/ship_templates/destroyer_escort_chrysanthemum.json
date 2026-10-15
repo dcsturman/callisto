@@ -68,5 +68,23 @@
   ],
   "tl": 15,
   "role": "Escort",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_fib": true,
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ],
+  "magazine": {
+    "missiles": 384,
+    "torpedoes": 0,
+    "sand": 100
+  }
 }

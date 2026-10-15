@@ -32,5 +32,34 @@
   ],
   "tl": 12,
   "role": "Support",
-  "source": "Ships of the Reach (Aslan)"
+  "source": "Ships of the Reach (Aslan)",
+  "software": [
+    {
+      "kind": "FireControl",
+      "level": 2
+    },
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ],
+  "magazine": {
+    "missiles": 0,
+    "torpedoes": 0,
+    "sand": 20
+  }
 }

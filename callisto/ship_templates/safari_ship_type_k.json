@@ -13,5 +13,20 @@
   "weapons": [],
   "tl": 12,
   "role": "Liner",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_bis": true
 }

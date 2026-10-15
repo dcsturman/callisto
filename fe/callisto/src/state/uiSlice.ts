@@ -17,6 +17,33 @@ export interface UISlice {
     showRange: string | null;
     computerShipName: string | null;
     /**
+     * The order the station cards are shown in, by card id.
+     *
+     * A player's own arrangement: which instruments they want at the top of
+     * the column. Cards not named here follow in their natural order, so a
+     * card added later appears rather than vanishing for anyone who has
+     * arranged theirs.
+     */
+    cardOrder: string[];
+    /**
+     * Whether the targets board leaves out our own side.
+     *
+     * A gunner is not shooting at their squadron, so the default is to
+     * leave them off and keep the card for the ships that matter. A referee
+     * reading the board for everyone can tick them back on.
+     */
+    showAlliesOnTargets: boolean;
+    /**
+     * Which ships' results to show, and which kinds.
+     *
+     * Empty means everything, which is how a round starts: a filter nobody
+     * has touched should not be hiding anything. A line survives if any ship
+     * it names is chosen and its kind is chosen, so picking a ship gives both
+     * what it did and what was done to it.
+     */
+    resultShips: string[];
+    resultCategories: string[];
+    /**
      * Whether the Scenario Builder holds edits that have not been saved.
      *
      * Set by the scenario-mutating requests in serverManager, cleared on a
@@ -38,6 +65,10 @@ const initialState: UISlice  = {
     jumpDistance: false,
     showRange: null,
     computerShipName: null,
+    cardOrder: [],
+    showAlliesOnTargets: false,
+    resultShips: [],
+    resultCategories: [],
     scenarioDirty: false,
 }
 
@@ -84,10 +115,61 @@ export const uiSlice = createSlice({
     setComputerShipName: (state, action: PayloadAction<string | null>) => {
         state.computerShipName = action.payload;
     },
+    /**
+     * Move a card one place earlier or later.
+     *
+     * `order` only holds what the player has arranged; the caller passes the
+     * full list as it stands so a first move has something to reorder.
+     */
+    /** Tick a ship off or on in the results filter. */
+    toggleResultShip: (state, action: PayloadAction<string>) => {
+      state.resultShips = state.resultShips.includes(action.payload)
+        ? state.resultShips.filter((name) => name !== action.payload)
+        : [...state.resultShips, action.payload];
+    },
+    /** The same for a kind of result. */
+    toggleResultCategory: (state, action: PayloadAction<string>) => {
+      state.resultCategories = state.resultCategories.includes(action.payload)
+        ? state.resultCategories.filter((kind) => kind !== action.payload)
+        : [...state.resultCategories, action.payload];
+    },
+    /** Back to showing everything. */
+    clearResultFilters: (state) => {
+      state.resultShips = [];
+      state.resultCategories = [];
+    },
+    moveCard: (
+      state,
+      action: PayloadAction<{id: string; delta: number; current: string[]}>
+    ) => {
+      const order = state.cardOrder.length > 0 ? [...state.cardOrder] : [...action.payload.current];
+      // A card the stored order has not seen yet: put the current list in
+      // place first, so moving it lands where the player can see.
+      for (const id of action.payload.current) {
+        if (!order.includes(id)) {
+          order.push(id);
+        }
+      }
+      const from = order.indexOf(action.payload.id);
+      const to = from + action.payload.delta;
+      if (from < 0 || to < 0 || to >= order.length) {
+        return;
+      }
+      const [moved] = order.splice(from, 1);
+      order.splice(to, 0, moved);
+      state.cardOrder = order;
+    },
+    setShowAlliesOnTargets: (state, action: PayloadAction<boolean>) => {
+      state.showAlliesOnTargets = action.payload;
+    },
+    /** Back to the order the cards come in. */
+    resetCardOrder: (state) => {
+      state.cardOrder = [];
+    },
     resetServer: () => initialState,
   }
 });
 
-export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, resetServer } = uiSlice.actions;
+export const { setEntityToShow, setScenarioDirty, setProposedPlan, setShowResults, setEvents, removeEvent, clearMessageEvents, setCameraPos, setCameraQuaternion, setGravityWells, setJumpDistance, setShowRange, setComputerShipName, moveCard, resetCardOrder, setShowAlliesOnTargets, toggleResultShip, toggleResultCategory, clearResultFilters, resetServer } = uiSlice.actions;
 export type UIReducer = ReturnType<typeof uiSlice.reducer>;
 export default uiSlice.reducer;

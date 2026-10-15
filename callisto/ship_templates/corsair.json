@@ -32,5 +32,37 @@
   ],
   "tl": 15,
   "role": "Raider",
-  "source": "Ships of the Reach"
+  "source": "Ships of the Reach",
+  "software": [
+    {
+      "kind": "AutoRepair",
+      "level": 1
+    },
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "FireControl",
+      "level": 2
+    },
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ]
 }

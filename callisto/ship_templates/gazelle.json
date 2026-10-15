@@ -34,5 +34,38 @@
   ],
   "tl": 14,
   "role": "Escort",
-  "source": "High Guard"
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "FireControl",
+      "level": 4
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 5
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_bis": true,
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ]
 }

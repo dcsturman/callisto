@@ -7,19 +7,44 @@
   "planets": [
     {
       "name": "ACE",
-      "position": [0, 0, 0],
-      "velocity": [0, 0, 0],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
       "color": "!venus",
-      "radius": 5.5e6,
-      "mass": 3.557e24
+      "radius": 5500000.0,
+      "mass": 3.557e+24
     }
   ],
   "ships": [
     {
       "name": "Voidskipper",
-      "position": [2.0e7, 2.0e7, 2.0e7],
-      "velocity": [0, 0, 0],
-      "plan": [[[0, 0, 0], 50000]],
+      "position": [
+        20000000.0,
+        20000000.0,
+        20000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
       "design": "Void Trader",
       "crew": {
         "pilot": 3,
@@ -27,14 +52,37 @@
         "engineering_power": 1,
         "engineering_maneuver": 3,
         "sensors": 3,
-        "gunnery": [1, 1, 0, 0]
+        "gunnery": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "mechanic": 1
       }
     },
     {
       "name": "Flayer",
-      "position": [5.8e6, 0, 5.8e6],
-      "velocity": [0, 0, 0],
-      "plan": [[[0, 0, 0], 50000]],
+      "position": [
+        5800000.0,
+        0,
+        5800000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
       "design": "Threshing Oar",
       "crew": {
         "pilot": 2,
@@ -42,14 +90,37 @@
         "engineering_power": 2,
         "engineering_maneuver": 2,
         "sensors": 1,
-        "gunnery": [2, 2, 2, 2]
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "mechanic": 2
       }
     },
     {
       "name": "Skinner",
-      "position": [0, 7.0e6, -7.0e6],
-      "velocity": [0, 0, 0],
-      "plan": [[[0, 0, 0], 50000]],
+      "position": [
+        0,
+        7000000.0,
+        -7000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
       "design": "Threshing Oar",
       "crew": {
         "pilot": 2,
@@ -57,7 +128,13 @@
         "engineering_power": 2,
         "engineering_maneuver": 2,
         "sensors": 1,
-        "gunnery": [2, 2, 2, 2]
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "mechanic": 2
       }
     }
   ]

@@ -54,7 +54,8 @@
           1,
           1
         ],
-        "leadership": 4
+        "leadership": 4,
+        "mechanic": 0
       },
       "dodge_thrust": 0,
       "assist_gunners": false,
@@ -178,7 +179,8 @@
           0,
           1
         ],
-        "leadership": 3
+        "leadership": 3,
+        "mechanic": 0
       },
       "dodge_thrust": 0,
       "assist_gunners": false,
@@ -236,7 +238,8 @@
         "gunnery": [
           3
         ],
-        "leadership": 3
+        "leadership": 3,
+        "mechanic": 1
       },
       "dodge_thrust": 0,
       "assist_gunners": false,

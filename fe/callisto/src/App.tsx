@@ -43,7 +43,7 @@ import {
 } from "lib/serverManager";
 import { Users } from "components/UserList";
 
-import { ShipComputer } from "components/controls/ShipComputer";
+import { Stations } from "components/controls/Stations";
 import { ViewMode, hasRole, isReferee } from "lib/view";
 
 import { RoleChooser } from "components/Role";
@@ -163,14 +163,33 @@ function Simulator() {
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
-        {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
-        {(scenarioBuilderMode ||
-          hasRole(roles, ViewMode.General, ViewMode.Pilot, ViewMode.Observer)) && (
-          <div className="top-right-stack">
-            <ShipSummary />
-            <ViewControls />
-          </div>
-        )}
+        {/* The console: the ship's dossier, then a card for every station
+            this player works, in one column that spills into a second only
+            when the first is full. Screen space is the scarce thing on a
+            laptop, and the old layout reserved a column whether it had
+            anything to put in it or not. */}
+        <div className="console">
+          {(scenarioBuilderMode || !hasRole(roles, ViewMode.Observer)) && <Controls />}
+          {!scenarioBuilderMode && !hasRole(roles, ViewMode.Observer) && computerShip && (
+            <Stations ship={computerShip} />
+          )}
+        </div>
+        {/* The ship list and view options are for everyone at the table. They
+            were limited to General, Pilot and Observer, which left an engineer
+            or a gunner with no way to see the other ships or turn the range
+            rings on. */}
+        <div className="top-right-stack">
+          <ShipSummary />
+          <ViewControls />
+          {/* Results belong with the other reference panels rather than
+              floating beside the console, where their width moved them
+              every time the console gained or lost a column. */}
+          {showResults && (
+            <Suspense fallback={null}>
+              <ResultsWindow />
+            </Suspense>
+          )}
+        </div>
         <div className="admin-button-window">
           <h2>
             {joinedScenario &&
@@ -189,14 +208,6 @@ function Simulator() {
             )}
           </div>
         </div>
-        {!scenarioBuilderMode && hasRole(roles, ViewMode.General) && computerShip && (
-          <ShipComputer ship={computerShip} />
-        )}
-        {showResults && (
-          <Suspense fallback={null}>
-            <ResultsWindow />
-          </Suspense>
-        )}
         <Canvas
           style={{ position: "absolute" }}
           id="main-canvas"
@@ -210,17 +221,23 @@ function Simulator() {
           }}
         >
           {/* eslint-disable react/no-unknown-property */}
+          {/* The star. `decay` near zero means no falloff worth the name, so
+              intensity lands as a flat multiplier on every lit surface --
+              which is why it has to be about 1. At 6 the sunward face of
+              anything pale saturated: Saturn's cloud bands came out as one
+              white blob, and Jupiter was washed out enough that ambient had
+              already been cut to 0.3 chasing the same fault. Only planets
+              are lit at all; ships draw with unlit materials. */}
           <pointLight
             position={[-148e3, 10, 10]}
-            intensity={6.0}
+            intensity={1.0}
             decay={0.01}
             color="#fff7cd"
           />
-          {/* Low: ambient multiplies a texture at full strength with no
-              shading falloff, so at 1.0 Jupiter's near-white cloud bands
-              clipped to featureless blocks — which then bloomed as one huge
-              bright area. */}
-          <ambientLight intensity={0.3} />
+          {/* Fill for the night side, and the reason a texture's own
+              brightness still reads at the terminator. With the star no
+              longer six times too strong this can come back up a little. */}
+          <ambientLight intensity={0.35} />
           <GrabCamera setCamera={setCamera} />
           <FlyControls
             containerName="main-canvas"

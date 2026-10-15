@@ -156,6 +156,10 @@ pub async fn load_user_directory(filename: &str) -> Result<UserDirectory, Box<dy
 }
 
 /// Trait defining the authentication behavior for the application
+// `async_trait` marks the futures it generates `#[must_use]`, which the lint
+// reads as a second attribute on a type that already carries one. Nothing for
+// us to fix in the trait itself.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Authenticator: Send + Sync + DynClone + Debug {
   /// Returns the web server URL
@@ -1173,8 +1177,11 @@ pub(crate) mod tests {
   async fn test_load_google_credentials_from_file() {
     let credentials =
       GoogleAuthenticator::load_google_credentials(format!("{LOCAL_SECRETS_DIR}/{GOOGLE_CREDENTIALS_FILE}").as_str());
-    assert!(!credentials.client_id.is_empty());
-    assert!(!credentials.client_secret.is_empty());
+    assert!(!credentials.client_id.is_empty(), "the parsed credentials have no client id");
+    assert!(
+      !credentials.client_secret.is_empty(),
+      "the parsed credentials have no client secret"
+    );
   }
 
   #[test_log::test(tokio::test)]

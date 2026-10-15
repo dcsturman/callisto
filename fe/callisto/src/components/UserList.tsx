@@ -8,6 +8,8 @@ export type UserContext = {
     display_name: string;
     roles: ViewMode[],
     ship: string | null;
+    /** Whether this player has said their orders are in for this round. */
+    ready?: boolean;
 }
 
 export type UserList = UserContext[];
@@ -40,7 +42,13 @@ export function Users(args: {users: UserList, email: string | null}) {
                         role_text = ` (${rolesToString(user.roles)} on ${user.ship})`;
                     }
                     return (
-                    <li key={user.display_name}>{user.display_name}{role_text}</li>
+                    <li key={user.display_name}>
+                        {/* A tick for a player who is done this round, with the
+                            same width held for one who is not, so names do not
+                            shift sideways as the table readies up. */}
+                        <span className="user-ready-mark">{user.ready ? "\u2713" : "\u00a0"}</span>
+                        {user.display_name}{role_text}
+                    </li>
                 )})}
             </ul>
         </div> : <></>

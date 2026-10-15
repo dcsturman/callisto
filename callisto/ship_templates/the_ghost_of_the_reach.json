@@ -39,5 +39,27 @@
   ],
   "tl": 15,
   "role": "Scout",
-  "source": "Ships of the Reach"
+  "source": "Ships of the Reach",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 2
+    },
+    {
+      "kind": "FireControl",
+      "level": 3
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ]
 }

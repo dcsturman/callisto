@@ -1,0 +1,299 @@
+{
+  "metadata": {
+    "name": "Thebus",
+    "owner": "dcsturman@gmail.com",
+    "description": "The yacht Lyonesse II is calling for help off the gas giant Olo, and her distress call is the only thing moving in the Thebus system. HMS Executor goes to answer it.\n\nBut is all as it seems? Who is really in distress here?"
+  },
+  "planets": [
+    {
+      "name": "Olo",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "color": "!saturn",
+      "radius": 55000000.0,
+      "mass": 1.2e+27
+    },
+    {
+      "name": "Olo IV",
+      "position": [
+        600000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "color": "!moon",
+      "primary": "Olo",
+      "radius": 1000000.0,
+      "mass": 5e+21
+    }
+  ],
+  "ships": [
+    {
+      "name": "Lyonesse II",
+      "position": [
+        600000000.0,
+        7000000.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        11553
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Yacht - Type Y",
+      "weapons": [
+        {
+          "kind": "Pulse",
+          "mount": {
+            "Turret": 3
+          }
+        }
+      ],
+      "current_jump": 0,
+      "transmitting": true,
+      "crew": {
+        "pilot": 1,
+        "engineering_jump": 0,
+        "engineering_power": 1,
+        "engineering_maneuver": 1,
+        "mechanic": 1,
+        "sensors": 1,
+        "gunnery": [
+          2
+        ],
+        "leadership": 1
+      },
+      "contacts": [
+        "HMS Executor",
+        "Invigilator",
+        "Death's Actuary",
+        "Cicada"
+      ]
+    },
+    {
+      "name": "Invigilator",
+      "position": [
+        600000000.0,
+        -1300000.0,
+        400000.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        11553
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Star Ray Interceptor",
+      "weapons": [
+        {
+          "kind": "Beam",
+          "mount": {
+            "Turret": 2
+          }
+        },
+        {
+          "kind": "Beam",
+          "mount": {
+            "Turret": 2
+          }
+        }
+      ],
+      "team": "Blue",
+      "active_sensors": false,
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 1,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 1,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "contacts": [
+        "Lyonesse II"
+      ]
+    },
+    {
+      "name": "Death's Actuary",
+      "position": [
+        600000000.0,
+        -1600000.0,
+        -500000.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        11553
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Star Ray Interceptor",
+      "weapons": [
+        {
+          "kind": "Beam",
+          "mount": {
+            "Turret": 2
+          }
+        },
+        {
+          "kind": "Beam",
+          "mount": {
+            "Turret": 2
+          }
+        }
+      ],
+      "team": "Blue",
+      "active_sensors": false,
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 1,
+        "engineering_power": 1,
+        "engineering_maneuver": 2,
+        "mechanic": 1,
+        "sensors": 1,
+        "gunnery": [
+          2,
+          1
+        ],
+        "leadership": 1
+      },
+      "contacts": [
+        "Lyonesse II"
+      ]
+    },
+    {
+      "name": "Cicada",
+      "position": [
+        600000000.0,
+        -2000000.0,
+        900000.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        11553
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "Salvage Hauler - Vulture",
+      "weapons": [
+        {
+          "kind": "Pulse",
+          "mount": {
+            "Turret": 2
+          }
+        },
+        {
+          "mount": {
+            "Turret": 2
+          },
+          "guns": [
+            {
+              "kind": "Sand"
+            },
+            {
+              "kind": "Missile"
+            }
+          ]
+        }
+      ],
+      "team": "Blue",
+      "active_sensors": false,
+      "crew": {
+        "pilot": 1,
+        "engineering_jump": 1,
+        "engineering_power": 1,
+        "engineering_maneuver": 1,
+        "mechanic": 2,
+        "sensors": 1,
+        "gunnery": [
+          1,
+          1
+        ],
+        "leadership": 0
+      },
+      "contacts": [
+        "Lyonesse II"
+      ]
+    },
+    {
+      "name": "HMS Executor",
+      "position": [
+        600000000.0,
+        11000000.0,
+        0.0
+      ],
+      "velocity": [
+        0.0,
+        0.0,
+        11553
+      ],
+      "plan": [
+        [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          50000
+        ]
+      ],
+      "design": "HMS Executor",
+      "team": "Red",
+      "contacts": [
+        "Lyonesse II"
+      ]
+    }
+  ]
+}
