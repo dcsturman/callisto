@@ -454,6 +454,40 @@ fn stealth_line(out: &mut String, view: &Observation, ship: &Ship) {
   let Some(stealth) = ship.design.stealth else {
     return;
   };
+  let found_by: Vec<&str> = view
+    .watchers
+    .iter()
+    .filter(|watcher| watcher.ours == ship.get_name())
+    .map(|watcher| watcher.by.as_str())
+    .collect();
+  if !found_by.is_empty() {
+    let odds: Vec<String> = found_by
+      .iter()
+      .map(|by| {
+        view
+          .exposures
+          .iter()
+          .find(|exposure| exposure.ours == ship.get_name() && exposure.contact == *by)
+          .map_or_else(
+            || format!("{by} unknown (you have not found her)"),
+            |exposure| {
+              let slip = exposure
+                .odds
+                .iter()
+                .find(|odds| odds.posture == Posture::Silent && !odds.firing)
+                .map_or(0.0, |odds| odds.slip_by_opening);
+              format!("{by} {}", percent(slip))
+            },
+          )
+      })
+      .collect();
+    let _ = writeln!(
+      out,
+      "- Stealth {stealth:?}, but she has been found. Opening the range by one band would make each lose her: {}. That is how she gets her stealth back: open a band, then go silent on a light burn so they do not find her again. Until then a thrust cap hides nothing: burn as hard as the fight needs.",
+      odds.join(", ")
+    );
+    return;
+  }
   let worst = view
     .exposures
     .iter()
@@ -758,8 +792,21 @@ fn approach_line(contact: &Contact, nearest: Option<&Ship>) -> String {
   } else {
     format!("; next round about {} km ({}) if nobody burns", km(after), band_at(after))
   };
+  let ours = ship.max_acceleration();
+  let theirs = contact.current_maneuver;
+  let race = match ours.cmp(&theirs) {
+    std::cmp::Ordering::Greater => format!(
+      "her thrust {theirs} G against {}'s {ours} G: you can hold the range open, or close it, as you choose",
+      contact.nearest
+    ),
+    std::cmp::Ordering::Less => format!(
+      "her thrust {theirs} G against {}'s {ours} G: she can close on you or run, and you cannot stop her",
+      contact.nearest
+    ),
+    std::cmp::Ordering::Equal => format!("her thrust {theirs} G, the same as {}'s", contact.nearest),
+  };
   format!(
-    "- From {} (your nearest): {} km, {}; {motion}{pass}",
+    "- From {} (your nearest): {} km, {}; {motion}{pass}. {race}",
     contact.nearest,
     km(contact.distance),
     contact.band
