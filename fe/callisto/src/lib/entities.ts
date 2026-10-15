@@ -53,6 +53,9 @@ export interface Entity {
   velocity: [number, number, number];
 }
 
+/** Who gives a ship its orders: people, or the AI service. */
+export type Controller = "Human" | "AI";
+
 export interface Ship extends Entity {
   plan: [Acceleration, Acceleration | null];
   design: string;
@@ -125,6 +128,10 @@ export interface Ship extends Entity {
   handoff_sensors?: boolean;
   /** Which side the ship is on. Absent means unaligned. */
   team?: Team;
+  /** Who gives the ship its orders. Absent means the people at its consoles. */
+  controller?: Controller;
+  /** Standing orders, in plain English. Absent means none. */
+  orders?: string;
   crew: Crew;
   /**
    * Which sensor operator and which engineer are working this round, as
@@ -425,6 +432,8 @@ export interface EntityList {
   // Basename of the scenario file this list was loaded from (e.g.
   // "planetfun.json"). Empty for from-scratch builder sessions.
   filename: string;
+  /** The round now being played, counting from 1. Absent from an older server. */
+  round?: number;
 }
 
 export const defaultEntityList = () => {
@@ -434,6 +443,7 @@ export const defaultEntityList = () => {
     missiles: [],
     metadata: createMetaData("", ""),
     filename: "",
+    round: 1,
   };
 };
 

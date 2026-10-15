@@ -479,6 +479,22 @@ pub struct Ship {
   /// makes a long missile duel a question of stores as well as nerve.
   #[serde(default)]
   pub magazine: Magazine,
+  /// Who is giving this ship its orders: the people at its consoles, or the
+  /// AI service.
+  ///
+  /// Omitted when `Human`, so every ship and scenario written before AI
+  /// control existed serializes exactly as it did.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Controller::is_human")]
+  pub controller: Controller,
+  /// The ship's standing orders, in plain English.
+  ///
+  /// World state, not a private channel: the referee sees what every ship was
+  /// told, and a human crew can read their own. An AI-controlled ship plans
+  /// against them; a scenario author gives pirates doctrine with them.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub orders: Option<String>,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -1311,6 +1327,27 @@ pub enum Stealth {
 /// point is that the display codes them: a referee reading "Red" on a dropdown
 /// and seeing a red ship in the view needs no translation step. `None` means
 /// unaligned, which is how every ship built before teams existed arrives.
+/// Who is giving a ship its orders.
+///
+/// Whole-ship for now: a ship is crewed by people or by the AI service, not
+/// some stations of each. Written `AI` in scenario files and on the wire; the
+/// Rust name is `Ai` because clippy's `upper_case_acronyms` will not have it
+/// otherwise.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Controller {
+  #[default]
+  Human,
+  #[serde(rename = "AI")]
+  Ai,
+}
+
+impl Controller {
+  #[must_use]
+  pub fn is_human(&self) -> bool {
+    *self == Controller::Human
+  }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Team {
   Red,
@@ -1663,6 +1700,8 @@ impl Ship {
       ion_bandwidth_loss: 0,
       ion_rounds: 0,
       magazine: Magazine::for_design(design),
+      controller: Controller::Human,
+      orders: None,
     }
   }
 

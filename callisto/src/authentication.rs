@@ -1091,6 +1091,29 @@ pub struct GooglePublicKeys {
   keys: Vec<GooglePublicKey>,
 }
 
+impl GooglePublicKeys {
+  /// The key Google signed a token with, by the key id in the token's header.
+  pub(crate) fn decoding_key(&self, kid: &str) -> Option<DecodingKey> {
+    self
+      .keys
+      .iter()
+      .find(|key| key.kid == kid)
+      .and_then(|key| DecodingKey::from_rsa_components(&key.n, &key.e).ok())
+  }
+
+  /// A key set built by hand, for tests that sign their own tokens.
+  #[cfg(test)]
+  pub(crate) fn single(kid: &str, n: &str, e: &str) -> Self {
+    GooglePublicKeys {
+      keys: vec![GooglePublicKey {
+        kid: kid.to_string(),
+        n: n.to_string(),
+        e: e.to_string(),
+      }],
+    }
+  }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 struct GooglePublicKey {
   kid: String,

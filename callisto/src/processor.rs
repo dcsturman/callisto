@@ -21,15 +21,19 @@ use dyn_clone::clone_box;
 
 use crate::authentication::{Authenticator, UserDirectory};
 
+use crate::ai_service::{plan_calls, sides_of, AiServiceClient, Sides};
 use crate::entity::MetaData;
-use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenarioLoadErrorMsg, ScenariosMsg};
+use crate::payloads::{
+  AuthResponse, EffectsMsg, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenarioLoadErrorMsg, ScenariosMsg,
+};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
+use crate::service_auth::ServiceAuth;
 use crate::{
   get_scenario_failures_snapshot, get_scenarios_snapshot, read_local_or_cloud_file, replace_scenarios,
   write_local_or_cloud_file,
 };
-use crate::{LOGOUT, LOG_FILE_USE};
+use crate::{LOGOUT, LOG_AUTH_RESULT, LOG_FILE_USE};
 
 #[cfg(feature = "no_tls_upgrade")]
 type SubStream = TcpStream;
@@ -66,6 +70,12 @@ pub struct Processor {
   // not a particular scenario.
   test_mode: bool,
   reload_notifications_enabled: bool,
+  /// What this backend accepts from a service logging in.
+  service_auth: ServiceAuth,
+  /// Where to ask for AI crews, if anywhere.
+  ai_service: Option<AiServiceClient>,
+  /// What the AI service was last told it is crewing, by scenario.
+  ai_sides: HashMap<String, Sides>,
 }
 
 struct Connection {
@@ -161,7 +171,62 @@ impl Processor {
       last_directory_seen,
       test_mode,
       reload_notifications_enabled: true,
+      service_auth: ServiceAuth::default(),
+      ai_service: None,
+      ai_sides: HashMap::new(),
     }
+  }
+
+  /// Ask this AI service to crew AI-controlled ships. Without it, an AI ship
+  /// sits uncrewed.
+  #[must_use]
+  pub fn with_ai_service(mut self, ai_service: Option<AiServiceClient>) -> Self {
+    self.ai_service = ai_service;
+    self
+  }
+
+  /// Tell the AI service about any change to which ships in this scenario it
+  /// should be crewing. Cheap when nothing changed: one pass over the ships.
+  fn reconcile_ai_crews(&mut self, server: Option<&Arc<Server>>) {
+    let (Some(client), Some(server)) = (&self.ai_service, server) else {
+      return;
+    };
+    let Ok(entities) = server.get_unlocked_entities() else {
+      return;
+    };
+    let after = sides_of(&entities);
+    drop(entities);
+    let scenario_id = server.get_id();
+    let before = self.ai_sides.get(scenario_id).cloned().unwrap_or_default();
+    for call in plan_calls(scenario_id, &before, &after) {
+      client.send(call);
+    }
+    if after.is_empty() {
+      self.ai_sides.remove(scenario_id);
+    } else {
+      self.ai_sides.insert(scenario_id.to_string(), after);
+    }
+  }
+
+  /// A scenario nobody is in any more has nothing left to crew.
+  fn release_expired_ai_crews(&mut self) {
+    let live: std::collections::HashSet<String> =
+      self.members.current_scenario_list().into_iter().map(|(id, _)| id).collect();
+    let expired: Vec<String> = self.ai_sides.keys().filter(|id| !live.contains(*id)).cloned().collect();
+    for scenario_id in expired {
+      if let (Some(client), Some(before)) = (&self.ai_service, self.ai_sides.remove(&scenario_id)) {
+        for call in plan_calls(&scenario_id, &before, &Sides::new()) {
+          client.send(call);
+        }
+      }
+    }
+  }
+
+  /// Let services log in. Without this, `ServiceLogin` is refused.
+  #[must_use]
+  pub fn with_service_auth(mut self, service_auth: ServiceAuth) -> Self {
+    self.service_auth = service_auth;
+    self
   }
   /// Polls all incoming connections and transmits any messages to
   /// the processing loop.
@@ -192,6 +257,9 @@ impl Processor {
     loop {
       // In here, clean up old scenarios that haven't had anyone in them for 5 minutes.
       let removed_scenario = self.members.clean_expired_scenarios();
+      if removed_scenario {
+        self.release_expired_ai_crews();
+      }
 
       // If there are no connections, then we wait for one to come in.
       // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
@@ -315,6 +383,8 @@ impl Processor {
               }
 
               let response = self.handle_request(parsed_message, &mut current_connection.player).await;
+              let server = current_connection.player.server.clone();
+              self.reconcile_ai_crews(server.as_ref());
               // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
               // but do not actually ever send it to the client (who has logged out!)
               if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {
@@ -625,6 +695,33 @@ impl Processor {
     }
   }
 
+  /// Resolve the round and tell the table what happened.
+  ///
+  /// Whoever pressed Next Round -- or, with no referee, whoever was last to say
+  /// Ready -- runs it; every ready flag is cleared for the round that follows.
+  fn advance_round(&mut self, player: &PlayerManager, server_id: Option<&str>) -> Vec<ResponseMsg> {
+    let effects = player.update();
+    if let Some(server_id) = server_id {
+      self.members.clear_ready(server_id);
+    }
+    match player.clone_entities() {
+      Ok(entities) => {
+        // The entities have moved on to the next round; the results are
+        // the one before it.
+        let resolved = EffectsMsg {
+          round: entities.round.saturating_sub(1),
+          effects,
+        };
+        let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(entities)];
+        if let Some(server_id) = server_id {
+          msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
+        }
+        msgs
+      }
+      Err(e) => entity_clone_failure_response(&e),
+    }
+  }
+
   /// This the primary server dispatch when a message arrives.  It knows nothing about threading or even how messages are received or sent.
   ///
   /// The function first checks if the user is logged in.  If not
@@ -663,6 +760,7 @@ impl Processor {
     // bypasses the gate so a fresh user can self-onboard.
     if !player.validated_user()
       && !matches!(message, RequestMsg::Login(_))
+      && !matches!(message, RequestMsg::ServiceLogin(_))
       && !matches!(message, RequestMsg::Register(_))
       && !matches!(message, RequestMsg::Quit)
       && !matches!(message, RequestMsg::ValidateSession)
@@ -683,6 +781,26 @@ impl Processor {
             self.build_successful_auth_msgs(player, auth_response)
           })
       }
+      RequestMsg::ServiceLogin(login) => {
+        let directory = self
+          .directory_handle
+          .read()
+          .expect("(handle_request) directory lock poisoned")
+          .clone();
+        match self.service_auth.verify(&login.token, &directory) {
+          Ok(identity) => {
+            event!(target: LOG_AUTH_RESULT, Level::INFO, email = identity.as_str(), result = "Service");
+            let auth_response = player.service_login(&identity, &self.session_keys);
+            self.build_successful_auth_msgs(player, auth_response)
+          }
+          Err(e) => {
+            // The detail is for the log; the wire gets one pinned tag.
+            warn!("(handle_request) Service login refused: {e}");
+            event!(target: LOG_AUTH_RESULT, Level::INFO, result = "ServiceRefused");
+            error_msg("SERVICE_AUTH_FAILED".to_string())
+          }
+        }
+      }
       RequestMsg::Register(register_msg) => player
         .register(register_msg, &self.session_keys)
         .await
@@ -696,6 +814,8 @@ impl Processor {
       RequestMsg::SetShipEmissions(request) => response_with_update(player, player.set_ship_emissions(&request)),
       RequestMsg::SetSoftwareRunning(request) => response_with_update(player, player.set_software_running(&request)),
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
+      RequestMsg::SetShipController(request) => response_with_update(player, player.set_ship_controller(&request)),
+      RequestMsg::SetOrders(request) => response_with_update(player, player.set_orders(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
       RequestMsg::RenameEntity(msg) => response_with_update(player, player.rename(&msg)),
@@ -722,6 +842,7 @@ impl Processor {
                 role.roles.clone(),
                 role.ship,
               );
+              self.members.set_ships(server.get_id(), &session_key, role.ships);
               vec![ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
             },
           ));
@@ -747,10 +868,18 @@ impl Processor {
           error!("(handle_request) Attempt to set ready outside a scenario.  Ignoring.");
           return error_msg("Cannot say you are ready before joining a scenario.".to_string());
         };
-        if self.members.set_ready(&server_id, &session_key, ready) {
-          vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
+        if !self.members.set_ready(&server_id, &session_key, ready) {
+          return error_msg("Cannot say you are ready: you are not in this scenario.".to_string());
+        }
+        // With nobody refereeing, the last player to say Ready presses Next
+        // Round for the table -- what a referee would do on seeing the list
+        // fill. An AI crew is one more player saying Ready; nobody waits on it
+        // specially, and nobody can run the round out from under it.
+        if ready && self.members.everyone_ready(&server_id) {
+          info!("(handle_request) Everyone in {server_id} is ready; advancing the round.");
+          self.advance_round(player, Some(&server_id))
         } else {
-          error_msg("Cannot say you are ready: you are not in this scenario.".to_string())
+          vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
         }
       }
       RequestMsg::Update => {
@@ -759,29 +888,16 @@ impl Processor {
         // table had finished giving orders. A scenario with nobody refereeing
         // -- one player, or a group who all took ships -- has no such problem,
         // so anyone may advance it.
-        let (own_roles, own_ship) = player.get_roles();
+        let (own_roles, _) = player.get_roles();
         // The ship decides, not the role: a referee who takes a single station
         // to simplify their screen still runs the round.
-        let refereeing = own_ship.is_none() && !own_roles.contains(&crate::payloads::Role::Observer);
+        let refereeing = !player.holds_ships() && !own_roles.contains(&crate::payloads::Role::Observer);
         let server_id = player.server.as_ref().map(|server| server.get_id().to_string());
         if !refereeing && server_id.as_ref().is_some_and(|id| self.members.has_referee(id)) {
           return error_msg("Only the GM can advance the round.".to_string());
         }
 
-        let effects = player.update();
-        if let Some(server_id) = &server_id {
-          self.members.clear_ready(server_id);
-        }
-        match player.clone_entities() {
-          Ok(entities) => {
-            let mut msgs = vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities)];
-            if let Some(server_id) = &server_id {
-              msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
-            }
-            msgs
-          }
-          Err(e) => entity_clone_failure_response(&e),
-        }
+        self.advance_round(player, server_id.as_deref())
       }
       RequestMsg::ComputePath(path_goal) => player
         .compute_path(&path_goal)
@@ -1297,7 +1413,10 @@ mod idle_tests {
   /// not only whoever pressed Next Round.
   #[test]
   fn effects_go_to_the_whole_scenario() {
-    assert!(is_broadcast_message(&ResponseMsg::Effects(vec![])));
+    assert!(is_broadcast_message(&ResponseMsg::Effects(crate::payloads::EffectsMsg {
+      round: 1,
+      effects: vec![]
+    })));
     assert!(!is_broadcast_message(&ResponseMsg::SimpleMsg("done".to_string())));
   }
 

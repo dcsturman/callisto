@@ -162,7 +162,10 @@ function Ship(args: {
             <textGeometry
               ref={textGeoRef}
               args={[
-                args.ship.name,
+                // An AI-crewed ship says so where everyone looks: on the map.
+                args.ship.controller === "AI"
+                  ? `${args.ship.name} [AI]`
+                  : args.ship.name,
                 { font: labelFont, size: 0.7, depth: 0.05 },
               ]}
             />

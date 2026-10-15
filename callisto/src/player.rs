@@ -15,8 +15,9 @@ use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg,
-  SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetOrders, SetPilotActions,
+  SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg,
+  ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
@@ -73,6 +74,9 @@ pub struct PlayerManager {
   roles: Vec<Role>,
   // Ship this player may have assumed a crew position on.
   ship: Option<String>,
+  // Further ships this connection answers for: a team's commander, or the AI
+  // service crewing a side.
+  ships: Vec<String>,
   test_mode: bool,
 }
 
@@ -124,6 +128,7 @@ impl PlayerManager {
       test_mode,
       roles: vec![Role::General],
       ship: None,
+      ships: vec![],
     }
   }
 
@@ -206,6 +211,33 @@ impl PlayerManager {
     })
   }
 
+  /// Log in a service whose token `service_auth` has already believed.
+  ///
+  /// The connection is then logged in exactly as a person's would be: its
+  /// session key maps to the identity, so everything after login -- joining,
+  /// taking ships, saying Ready -- works unchanged.
+  ///
+  /// # Panics
+  /// Panics if the session-keys lock is poisoned.
+  pub fn service_login(
+    &mut self, identity: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> AuthResponse {
+    let identity = identity.to_string();
+    if let Some(session_key) = self.authenticator.get_session_key() {
+      session_keys.lock().unwrap().insert(session_key, Some(identity.clone()));
+    } else {
+      warn!("(PlayerManager.service_login) No session key for {identity}.");
+    }
+    self.authenticator.set_email(Some(&identity));
+    info!("(PlayerManager.service_login) Logged in service {identity}.");
+    AuthResponse {
+      email: identity,
+      scenario: None,
+      roles: None,
+      ship: None,
+    }
+  }
+
   /// Register a new user. Mirrors `login` but reaches `register_user` on the
   /// authenticator so it can persist the email into the authorized-users
   /// directory. The `Err(String)` carries one of the wire-pinned tags
@@ -241,7 +273,7 @@ impl PlayerManager {
   /// # Panics
   /// Panics if the lock on entities cannot be obtained or if the server has never been initialized.
   pub fn reset(&self) -> Result<String, String> {
-    if self.roles.contains(&Role::General) && self.ship.is_none() {
+    if self.roles.contains(&Role::General) && !self.holds_ships() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
       // initial_scenario was validated at scenario-load time, so this
       // shouldn't fail in practice. Propagate the error rather than
@@ -323,12 +355,20 @@ impl PlayerManager {
       || ship.contacts.is_some()
       || ship.features_on.is_some()
       || ship.software.is_some()
+      || ship.controller.is_some()
+      || ship.orders.is_some()
     {
       if let Some(added) = entities.ships.get(&name) {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
         if ship.team.is_some() {
           added.team = ship.team;
+        }
+        if let Some(controller) = ship.controller {
+          added.controller = controller;
+        }
+        if ship.orders.is_some() {
+          added.orders = ship.orders.filter(|orders| !orders.trim().is_empty());
         }
         if let Some(contacts) = ship.contacts {
           added.contacts = contacts;
@@ -523,6 +563,73 @@ impl PlayerManager {
       request.ship_name, request.team
     );
     Ok("Set ship team executed".to_string())
+  }
+
+  /// Hand a ship to the AI service, or take it back.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_controller(&self, request: &SetShipController) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to hand over.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.controller = request.controller;
+    info!(
+      "(PlayerManager.set_ship_controller) {} is now controlled by {:?}.",
+      request.ship_name, request.controller
+    );
+    Ok("Set ship controller executed".to_string())
+  }
+
+  /// Give a ship standing orders, or clear them.
+  ///
+  /// Blank orders are no orders: an empty text box clears them rather than
+  /// leaving the ship holding an empty string an AI would have to interpret.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_orders(&self, request: &SetOrders) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to give orders to.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.orders = request
+      .orders
+      .as_deref()
+      .map(str::trim)
+      .filter(|orders| !orders.is_empty())
+      .map(ToString::to_string);
+    info!("(PlayerManager.set_orders) {} has orders {:?}.", request.ship_name, ship.orders);
+    Ok("Set orders executed".to_string())
   }
 
   /// Gets the current entities and returns them in a `Result`.
@@ -1061,6 +1168,7 @@ impl PlayerManager {
       effect.colour_from(&teams);
     }
 
+    entities.round += 1;
     effects
   }
 
@@ -1155,7 +1263,22 @@ impl PlayerManager {
   pub fn set_role(&mut self, msg: &ChangeRole) -> String {
     self.roles.clone_from(&msg.roles);
     self.ship.clone_from(&msg.ship);
+    self.ships.clone_from(&msg.ships);
     "Role set".to_string()
+  }
+
+  /// The ships this connection answers for beyond the one whose console it is
+  /// at.
+  #[must_use]
+  pub fn claimed_ships(&self) -> &[String] {
+    &self.ships
+  }
+
+  /// Whether this connection crews anything. One that does not, and is not
+  /// merely watching, is the referee.
+  #[must_use]
+  pub fn holds_ships(&self) -> bool {
+    self.ship.is_some() || !self.ships.is_empty()
   }
 }
 

@@ -329,3 +329,59 @@ describe("a ship that leaves the scenario", () => {
     expect(store.getState().user.roles).toEqual([ViewMode.Pilot]);
   });
 });
+
+describe("ship control and orders", () => {
+  it("hands a ship to the AI", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipController("Invigilator", "AI");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipController: { ship_name: "Invigilator", controller: "AI" },
+      }),
+    ]);
+  });
+
+  it("sends trimmed orders", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Invigilator", "  Close and board.  ");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetOrders: { ship_name: "Invigilator", orders: "Close and board." },
+      }),
+    ]);
+  });
+
+  it("clears orders with a blank box", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Invigilator", "   ");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetOrders: { ship_name: "Invigilator" } }),
+    ]);
+  });
+});
+
+describe("round results", () => {
+  it("stamps every result with the round it resolved", async () => {
+    const { store } = await import("state/store");
+    mockSocket.onmessage!(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          Effects: {
+            round: 4,
+            effects: [
+              {
+                kind: "Message",
+                content: "%s fires at %t",
+                category: "Attack",
+                ship: { name: "Invigilator" },
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    const events = store.getState().ui.events ?? [];
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((event) => event.round === 4)).toBe(true);
+  });
+});

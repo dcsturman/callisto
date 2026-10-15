@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+use super::ship::{Controller, ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
 use super::software::Software;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
@@ -42,6 +42,20 @@ where
 #[derive(Serialize, Deserialize)]
 pub struct LoginMsg {
   pub code: String,
+}
+
+/// A service logging in: the AI service, with a Google identity token on
+/// Cloud Run or the shared secret locally. See `service_auth`.
+#[derive(Serialize, Deserialize)]
+pub struct ServiceLoginMsg {
+  pub token: String,
+}
+
+impl std::fmt::Debug for ServiceLoginMsg {
+  // Requests are logged; the token must not be.
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("ServiceLoginMsg { token: <redacted> }")
+  }
 }
 
 // Custom Display implementation to redact the authentication code
@@ -105,6 +119,13 @@ pub struct AddShipMsg {
   /// up says so here.
   #[serde(default)]
   pub features_on: Option<Vec<usize>>,
+  /// Whether the ship starts crewed by people or by the AI service. Absent
+  /// means people.
+  #[serde(default)]
+  pub controller: Option<Controller>,
+  /// Standing orders the ship starts with.
+  #[serde(default)]
+  pub orders: Option<String>,
 }
 
 /// Start or stop one software package.
@@ -144,6 +165,22 @@ impl SetPilotActions {
 pub struct SetShipTeam {
   pub ship_name: String,
   pub team: Option<Team>,
+}
+
+/// Hand a ship to the AI service, or take it back.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetShipController {
+  pub ship_name: String,
+  pub controller: Controller,
+}
+
+/// Give a ship standing orders. `None`, or an empty string, clears them.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetOrders {
+  pub ship_name: String,
+  #[serde(default)]
+  pub orders: Option<String>,
 }
 
 /// Set a ship's emissions: whether it runs active sensors, and whether it is
@@ -316,6 +353,19 @@ pub enum EffectMsg {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     succeeded: Option<bool>,
   },
+}
+
+/// One round's results, and which round they were.
+///
+/// The round is stated once for the batch rather than on every line. Without
+/// it the only thing tying results to a round was arriving just before the
+/// `EntityResponse` that opened the next one, which a client reading them to
+/// decide the next round must not depend on.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct EffectsMsg {
+  /// The round these results resolved.
+  pub round: u32,
+  pub effects: Vec<EffectMsg>,
 }
 
 /// A ship named in a result: who it was, and whose side it was on.
@@ -569,6 +619,10 @@ pub struct UserData {
   /// `General` for all of them.
   pub roles: Vec<Role>,
   pub ship: Option<String>,
+  /// Further ships this player answers for, beyond `ship`. Absent for a
+  /// player at one console.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub ships: Vec<String>,
 }
 
 /// Convert an email address to the display name used on the wire. We trim the
@@ -588,7 +642,13 @@ pub struct ChangeRole {
   /// the two halves of a deploy cannot race each other.
   #[serde(alias = "role", deserialize_with = "one_or_many_roles")]
   pub roles: Vec<Role>,
+  /// The ship whose console this player is at.
   pub ship: Option<String>,
+  /// Every further ship this connection answers for: a team's commander, or
+  /// the AI service crewing a whole side on one connection. One ready flag
+  /// covers them all. Absent means only `ship`.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub ships: Vec<String>,
 }
 
 /// A role list, or a bare role that reads as a list of one.
@@ -664,6 +724,7 @@ serde_with::serde_conv!(
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 pub enum RequestMsg {
   Login(LoginMsg),
+  ServiceLogin(ServiceLoginMsg),
   Register(LoginMsg),
   AddShip(AddShipMsg),
   AddPlanet(AddPlanetMsg),
@@ -675,6 +736,8 @@ pub enum RequestMsg {
   SetShipEmissions(SetShipEmissions),
   SetSoftwareRunning(SetSoftwareRunning),
   SetShipTeam(SetShipTeam),
+  SetShipController(SetShipController),
+  SetOrders(SetOrders),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
@@ -706,7 +769,7 @@ pub enum ResponseMsg {
   DesignTemplateResponse(ShipDesignTemplateMsg),
   EntityResponse(Entities),
   FlightPath(FlightPathMsg),
-  Effects(Vec<EffectMsg>),
+  Effects(EffectsMsg),
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
   Scenarios(ScenariosMsg),
@@ -754,6 +817,8 @@ mod tests {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     };
     let json = json!({
@@ -785,6 +850,8 @@ mod tests {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     };
     let json = json!({

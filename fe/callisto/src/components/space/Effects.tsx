@@ -75,6 +75,8 @@ export interface ShipRef {
 export interface Event {
   /** Set on receipt; unique across rounds. */
   id?: number,
+  /** The round this result resolved. Set on receipt from its batch. */
+  round?: number,
   kind: string,
   content: string | null,
   // Will only have one of position or target. Position is a concrete position

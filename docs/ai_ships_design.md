@@ -201,8 +201,10 @@ not answer within its budget, the service says Ready with the ships' last
 plan and the results say so. With a referee, nothing changes: they still
 press. This is a backend change humans benefit from on their own.
 
-**Round number.** `MetaData.round: u32`, incremented by `update()`, included
-in `EntityResponse`. The service uses it to know a new round began; the
+**Round number.** `Entities.round: u32`, counting from 1, incremented by
+`update()`, included in `EntityResponse`. On `Entities` beside `filename`
+rather than in `MetaData`, because `MetaData` is saved into scenario files and
+a saved scenario must open at round 1. The service uses it to know a new round began; the
 frontend can show it in the header, which players have wanted anyway.
 
 The results carry it too: `ResponseMsg::Effects{round, effects}` instead of
@@ -220,11 +222,13 @@ of token, chosen by where the service runs:
   and the backend verifies it against Google's public keys, which it already
   fetches for human logins. Nothing is stored anywhere, so a restart or
   redeploy of either side changes nothing and rotation is Google's problem.
-  The only configuration is the service account's email in the
-  authorized-users file, which already lives in GCS.
+  The configuration is the service account's email in the authorized-users
+  file, which already lives in GCS, and `CALLISTO_SERVICE_AUDIENCE` on the
+  backend: its own URL, which the token must name.
 - *Pre-shared secret*, for local Docker Compose only, where there is no
-  metadata server. `--service-token` on the backend, the same string in the
-  service's environment. Never in an image; if it were ever wanted on Cloud
+  metadata server. `CALLISTO_SERVICE_TOKEN` in the backend's environment
+  (never on its command line, where a process listing would show it), the
+  same string in the service's. Never in an image; if it were ever wanted on Cloud
   Run it would have to come from Secret Manager, mounted on both services
   the way `google_credentials` is today.
 
@@ -586,13 +590,20 @@ This exists for three reasons, in order of when they matter:
 **The backend engages the service.** When a ship becomes `controller: Ai`
 -- loaded from a scenario file, or because someone at its console pressed
 "Switch to AI" -- the backend calls the service: `POST /crew {scenario_id,
-team, ships}`. The service then does what any player does: opens a WebSocket
+side, team, ships}`. A side is every AI ship on one team (id: the team's
+name), or one unaligned AI ship on its own (id: `ship:` and its name), and
+each call states the side's whole ship list, so a missed or repeated call is
+healed by the next. The backend works this out after every request by
+comparing what is true with what it last said, and calls only for sides that
+changed. The service then does what any player does: opens a WebSocket
 to the backend, logs in with its identity token, joins the scenario, claims
 those ships, and sends `SetReady(false)`. When the ships die, the scenario
-ends, or someone switches a ship back, the backend calls `/release` and the
-connection closes. The backend knows the service's address from one argument
-(`--ai-service`) and authenticates its calls with its own identity token,
-the ordinary Cloud Run service-to-service arrangement. If the service is
+ends, or someone switches a ship back, the backend calls `POST /release
+{scenario_id, side}` and the connection closes. The backend knows the
+service's address from `CALLISTO_AI_SERVICE` and authenticates its calls as
+a bearer token: the shared secret locally, otherwise its own identity token
+from the metadata server naming the service as audience, the ordinary Cloud
+Run service-to-service arrangement. Calls never hold up the game. If the service is
 down the backend logs it and the ship sits there, as a ship with no crew
 does.
 
@@ -688,7 +699,7 @@ Each phase ends in something playable or measurable, and merges into
 
 **Phase 0 -- prerequisites (backend only).** `controller` and `orders` on
 ships and in scenario files; `SetShipController` and `SetOrders`; round
-number in `MetaData` and on `Effects`; `ServiceLogin` with the pre-shared
+number on `Entities` and on `Effects`; `ServiceLogin` with the pre-shared
 token; many ships per connection. Frontend shows
 the chip, the orders, and the round. Nothing decides anything yet.
 

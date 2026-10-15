@@ -85,7 +85,7 @@ async fn test_simple_get() {
   let body = server.get_entities_json();
   assert_eq!(
     body,
-    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[],"missiles":[],"planets":[],"actions":[]}"#
   );
 }
 
@@ -115,7 +115,7 @@ async fn test_add_ship() {
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300,
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11,
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
@@ -154,7 +154,7 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
 
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -212,7 +212,7 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
   let result = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
     "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
     "gravity_radius_1":4_518_410.048_543_495,
@@ -277,7 +277,7 @@ async fn test_add_planet_ship() {
   let entities = server.get_entities_json();
 
   let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"missiles":[],
   "actions":[],
   "planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -428,7 +428,7 @@ async fn test_update_missile() {
 
   let entities = server.get_entities_json();
   let compare = json!(
-        {"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+        {"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
@@ -496,7 +496,7 @@ async fn test_remove_ship() {
 
   assert_eq!(
     entities,
-    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[],"missiles":[],"planets":[],"actions":[]}"#
   );
 
   // Try remove with non-existent ship
@@ -1007,7 +1007,7 @@ async fn test_big_fight() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":86,"current_armor":3,
@@ -1130,7 +1130,7 @@ async fn test_fight_with_crew() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":152,"current_armor":3,
@@ -1304,6 +1304,8 @@ async fn test_get_entities() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     })
     .unwrap();
@@ -2286,4 +2288,125 @@ async fn test_list_gcs_dir() {
   // We can't predict the actual contents
   assert!(result.is_ok(), "Failed to list GCS directory: {:?}", result.unwrap_err());
   assert!(result.unwrap().len() > 2, "Expected at least 3 files in the GCS directory");
+}
+
+const AI_SCENARIO: &str = r#"{
+  "metadata": {"name": "Ambush", "description": "", "owner": "test@test.com"},
+  "ships": [
+    {"name":"Crewed","position":[0,0,0],"velocity":[0,0,0],"plan":[[[0,0,0],50000]],"design":"Buccaneer"},
+    {"name":"Pirate","position":[0,0,0],"velocity":[0,0,0],"plan":[[[0,0,0],50000]],"design":"Buccaneer",
+     "controller":"AI","orders":"Stay dark until the yacht passes the moon, then close."}
+  ]
+}"#;
+
+/// A scenario can hand a ship to the AI and give it doctrine, and both survive
+/// a save. A ship crewed by people saves with neither key, so every scenario
+/// written before AI control existed is unchanged.
+#[test(tokio::test)]
+async fn test_scenario_round_trip_with_controller_and_orders() {
+  use crate::ship::Controller;
+  let _server = setup_test_with_server(setup_authenticator()).await;
+
+  let entities = Entities::load_from_bytes(AI_SCENARIO.as_bytes(), "ai_test.json").unwrap();
+  {
+    let pirate = entities.ships.get("Pirate").unwrap().read().unwrap();
+    assert_eq!(pirate.controller, Controller::Ai);
+    assert_eq!(
+      pirate.orders.as_deref(),
+      Some("Stay dark until the yacht passes the moon, then close.")
+    );
+    let crewed = entities.ships.get("Crewed").unwrap().read().unwrap();
+    assert_eq!(crewed.controller, Controller::Human);
+    assert!(crewed.orders.is_none());
+  }
+
+  let saved: serde_json::Value = serde_json::from_slice(&entities.to_scenario_file_json().unwrap()).unwrap();
+  let ships = saved["ships"].as_array().unwrap();
+  let crewed = ships.iter().find(|s| s["name"] == "Crewed").unwrap();
+  let pirate = ships.iter().find(|s| s["name"] == "Pirate").unwrap();
+  assert!(crewed.get("controller").is_none() && crewed.get("orders").is_none());
+  assert_eq!(pirate["controller"], json!("AI"));
+  assert_eq!(
+    pirate["orders"],
+    json!("Stay dark until the yacht passes the moon, then close.")
+  );
+}
+
+/// Switching a ship to AI and back, and giving it orders, from a console.
+/// Blank orders clear them.
+#[test(tokio::test)]
+async fn test_set_controller_and_orders() {
+  use crate::payloads::{SetOrders, SetShipController};
+  use crate::ship::Controller;
+  let server = setup_test_with_server(setup_authenticator()).await;
+  server
+    .add_ship(AddShipMsg {
+      name: "Pirate".to_string(),
+      position: Vec3::zero(),
+      velocity: Vec3::zero(),
+      design: ShipDesignTemplate::default().name.clone(),
+      crew: None,
+      weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
+      features_on: None,
+      controller: Some(Controller::Ai),
+      orders: Some("Close and board.".to_string()),
+      software: None,
+    })
+    .unwrap();
+  let read = |server: &PlayerManager| {
+    let entities = server.get_entities().unwrap();
+    let ship = entities.ships.get("Pirate").unwrap().read().unwrap();
+    (ship.controller, ship.orders.clone())
+  };
+  assert_eq!(read(&server), (Controller::Ai, Some("Close and board.".to_string())));
+
+  server
+    .set_ship_controller(&SetShipController {
+      ship_name: "Pirate".to_string(),
+      controller: Controller::Human,
+    })
+    .unwrap();
+  server
+    .set_orders(&SetOrders {
+      ship_name: "Pirate".to_string(),
+      orders: Some("  Hold here.  ".to_string()),
+    })
+    .unwrap();
+  assert_eq!(read(&server), (Controller::Human, Some("Hold here.".to_string())));
+
+  server
+    .set_orders(&SetOrders {
+      ship_name: "Pirate".to_string(),
+      orders: Some("   ".to_string()),
+    })
+    .unwrap();
+  assert_eq!(read(&server).1, None);
+
+  assert!(server
+    .set_ship_controller(&SetShipController {
+      ship_name: "Nobody".to_string(),
+      controller: Controller::Ai,
+    })
+    .is_err());
+}
+
+/// Rounds count from 1 and go up by one each update. The count goes over the
+/// wire but never into a saved scenario, which always opens at the start.
+#[test(tokio::test)]
+async fn test_rounds_count_up_and_stay_out_of_scenario_files() {
+  let server = setup_test_with_server(setup_authenticator()).await;
+  assert_eq!(server.get_entities().unwrap().round, 1);
+  let _ = server.update();
+  let _ = server.update();
+  let entities = server.get_entities().unwrap();
+  assert_eq!(entities.round, 3);
+
+  let wire: serde_json::Value = serde_json::to_value(&entities).unwrap();
+  assert_eq!(wire["round"], json!(3));
+  let saved: serde_json::Value = serde_json::from_slice(&entities.to_scenario_file_json().unwrap()).unwrap();
+  assert!(saved.get("round").is_none(), "a saved scenario must open at round 1");
 }
