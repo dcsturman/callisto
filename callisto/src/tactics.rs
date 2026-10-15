@@ -20,7 +20,7 @@ use crate::combat::{
   attack_terms, find_range_band, point_defense_score, AttackSituation, HitMods, STANDARD_ROLL_THRESHOLD,
 };
 use crate::computer::plot_course;
-use crate::entity::{detection_terms, emissions_of, Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, G};
+use crate::entity::{detection_terms, emissions_of, Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use crate::payloads::{
   CaptainActionMsg, RequestMsg, SetPilotActions, SetPlanMsg, SetShipEmissions, SetSoftwareRunning,
 };
@@ -560,6 +560,21 @@ fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<u8>) -> Resu
       let target = ship(target)?;
       let (near, far) = band_edges(*band);
       let now = (own.get_position() - target.get_position()).magnitude();
+      // Where the range will be next round if neither burns. If she will
+      // be inside the band's near edge, a rendezvous is always a round
+      // behind a ship coming on: burn straight away until the range opens,
+      // as a pilot would, and match her only once it has.
+      let line = own.get_position() - target.get_position();
+      let drift = own.get_velocity() - target.get_velocity();
+      let next = (line + drift * DELTA_TIME_F64).magnitude();
+      if near > 0.0 && next.min(now) < near * 1.1 {
+        let direction = if line.magnitude() > 0.0 {
+          line.normalize()
+        } else {
+          Vec3::unit_x()
+        };
+        return Ok(Some(FlightPlan::new((direction * thrust, DEFAULT_ACCEL_DURATION).into(), None)));
+      }
       // Where we are, if that is inside the band with room to spare;
       // otherwise the band's aim point.
       let keep = if now > near * 1.1 && now < far * 0.9 {
@@ -1214,6 +1229,32 @@ mod tests {
     let drive = G * f64::from(hunter(&world).max_acceleration());
     assert!(burn.magnitude() <= drive * 1.001, "{burn:?} exceeds {drive}");
     assert!(burn.x > 0.0, "the first burn closes on a target out along +x: {burn:?}");
+  }
+
+  /// Holding Very Long against a ship coming on fast: a rendezvous would be
+  /// a round behind her, so the helm burns straight away until the range
+  /// opens.
+  #[tokio::test]
+  async fn holding_a_band_against_a_ship_closing_burns_away() {
+    let world = two_ships(27_000.0 * KM).await;
+    // The quarry is coming straight at us at 20 km/s: 7,200 km a round.
+    world.ships["Quarry"]
+      .write()
+      .unwrap()
+      .set_velocity(Vec3::new(-20_000.0, 0.0, 0.0));
+    let intent = Intent {
+      helm: Helm::HoldRange {
+        target: "Quarry".to_string(),
+        band: Range::VeryLong,
+      },
+      ..Intent::default()
+    };
+    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
+      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
+      other => panic!("expected one plan, got {other:?}"),
+    };
+    let drive = G * f64::from(hunter(&world).max_acceleration());
+    assert!((plan.0 .0 - Vec3::new(-drive, 0.0, 0.0)).magnitude() < 1e-6, "{:?}", plan.0 .0);
   }
 
   #[tokio::test]

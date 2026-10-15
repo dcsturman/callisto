@@ -881,6 +881,11 @@ Still open:
   launcher's. The
   prompt says so for each, so the model does not try. Fire Control points
   are spent for it, spread across the round's fire orders.
+- **The harness calls a game off too readily for production.** After three
+  rounds with no ship holding an enemy it stops, even when one side is
+  chasing the other's blip and would catch it. Cheap, and fine for prompt
+  work; before results are trusted, keep playing while anyone is pursuing,
+  or count only a jump as an escape.
 - **The scenario builder must learn AI ships before the epic lands.** A
   scenario can already say `controller: AI` and give `orders` per ship in its
   JSON, but the builder has no way to set either: mark a ship, or a whole
