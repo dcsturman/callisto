@@ -86,7 +86,7 @@ Call `plan_round` once.
 
 Decide like a captain:
 
-- Lock what you intend to shoot: +2 on every gun.
+- Lock what you intend to shoot: +2 on every gun. The exception is a stealthed ship that has not been found: a lock needs active sensors, which give her away; her stealth section says when it is worth it.
 - Shoot the drive of a ship you mean to catch or keep; shoot the weapons of a ship you mean to survive.
 - Stay silent until you mean to be found. Firing is being found.
 - Obey your orders first. If they say protect a ship, do not leave her and do not risk her. If they say do not destroy, cripple, and stop when she is disabled. If they say withdraw when it turns, withdraw while you still can.
