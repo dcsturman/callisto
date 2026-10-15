@@ -36,6 +36,7 @@ pub struct Llm {
   transcript: Option<Transcript>,
   rounds_asked: u32,
   memory: prompt::Memory,
+  answered: bool,
 }
 
 impl Llm {
@@ -48,6 +49,7 @@ impl Llm {
       transcript: None,
       rounds_asked: 0,
       memory: prompt::Memory::default(),
+      answered: true,
     }
   }
 
@@ -97,11 +99,13 @@ impl Commander for Llm {
           info!("(llm {side}) {ship}: {}", intent.rationale);
         }
         self.plan = Some(reply.decision.plan);
+        self.answered = true;
         intents
       }
       Err(e) => {
         warn!("(llm {side}) Round {}: no decision; ships keep their plans. {e}", view.round);
         self.note(&format!("### No reply\n\n{e}\n"));
+        self.answered = false;
         vec![]
       }
     }
@@ -109,6 +113,10 @@ impl Commander for Llm {
 
   fn plan(&self) -> Option<&str> {
     self.plan.as_deref()
+  }
+
+  fn answered(&self) -> bool {
+    self.answered
   }
 }
 

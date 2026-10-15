@@ -39,6 +39,12 @@ pub trait Commander: Send {
   fn plan(&self) -> Option<&str> {
     None
   }
+
+  /// Whether the last call to `decide` produced a decision. A commander that
+  /// asks a model can fail to; the rest always decide, even if to do nothing.
+  fn answered(&self) -> bool {
+    true
+  }
 }
 
 /// Gives no orders. Ships hold their current plans.

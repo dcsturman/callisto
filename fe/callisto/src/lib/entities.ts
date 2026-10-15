@@ -56,6 +56,19 @@ export interface Entity {
 /** Who gives a ship its orders: people, or the AI service. */
 export type Controller = "Human" | "AI";
 
+/** Where the AI crewing a ship is in its round. Matches the Rust `AiStatus`. */
+export type AiStatus = "Deciding" | "Ready" | "NoAnswer";
+
+/** The AI's account of a ship's round, as its captain would give it. */
+export interface AiReport {
+  round: number;
+  status: AiStatus;
+  /** The side's standing plan. */
+  plan?: string;
+  /** Why this ship has the orders she has this round. */
+  rationale?: string;
+}
+
 export interface Ship extends Entity {
   plan: [Acceleration, Acceleration | null];
   design: string;
@@ -132,6 +145,8 @@ export interface Ship extends Entity {
   controller?: Controller;
   /** Standing orders, in plain English. Absent means none. */
   orders?: string;
+  /** The AI's last report on this ship. Only an AI-crewed ship has one. */
+  ai_report?: AiReport;
   crew: Crew;
   /**
    * Which sensor operator and which engineer are working this round, as

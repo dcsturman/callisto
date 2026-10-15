@@ -1,11 +1,12 @@
 import * as React from "react";
+import { ShipNameTag, ShipRef } from "components/controls/ShipNameTag";
 import {useCallback, useMemo} from "react";
 import * as THREE from "three";
 import { animated, useSpring } from "@react-spring/three";
 import { scaleVector } from "lib/Util";
 import { SCALE } from "lib/universal";
 import { findShip } from "lib/entities";
-import { Team, teamLabelColor } from "lib/teams";
+import { teamLabelColor } from "lib/teams";
 import { Tooltip } from "react-tooltip";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
@@ -67,10 +68,7 @@ const BEAM_RADIUS_FRACTION = 0.004;
  * gone from the entity list by the time its results are read -- and those are
  * the lines that matter most.
  */
-export interface ShipRef {
-  name: string;
-  team?: Team | null;
-}
+export type { ShipRef } from "components/controls/ShipNameTag";
 
 export interface Event {
   /** Set on receipt; unique across rounds. */
@@ -400,21 +398,6 @@ export function Explosions() {
 }
 
 /**
- * One ship's name inside a result, in its own team's colour.
- *
- * Bold always: the eye should find who a line is about before reading the
- * line. Grey for a ship on no side, which is the same grey the ship list
- * gives it.
- */
-function ResultShip(args: {ship: ShipRef}) {
-  return (
-    <span className="result-ship" style={{color: teamLabelColor(args.ship.team ?? null)}}>
-      {args.ship.name}
-    </span>
-  );
-}
-
-/**
  * A result's sentence, with the ships put back into it.
  *
  * The server writes `%s` for the subject, `%t` for the ship acted on and `%c`
@@ -440,7 +423,7 @@ function ResultText(args: {event: Event}) {
         return who == null ? (
           <React.Fragment key={index}>{piece}</React.Fragment>
         ) : (
-          <ResultShip key={index} ship={who} />
+          <ShipNameTag key={index} ship={who} />
         );
       })}
     </>

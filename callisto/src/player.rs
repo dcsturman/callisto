@@ -15,8 +15,8 @@ use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetOrders, SetPilotActions,
-  SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetAiReport, SetOrders,
+  SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg,
   ShipDesignTemplateMsg,
 };
 use crate::server::Server;
@@ -602,6 +602,9 @@ impl PlayerManager {
       .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
 
     ship.controller = request.controller;
+    if ship.controller.is_human() {
+      ship.ai_report = None;
+    }
     info!(
       "(PlayerManager.set_ship_controller) {} is now controlled by {:?}.",
       request.ship_name, request.controller
@@ -643,6 +646,34 @@ impl PlayerManager {
       .map(ToString::to_string);
     info!("(PlayerManager.set_orders) {} has orders {:?}.", request.ship_name, ship.orders);
     Ok("Set orders executed".to_string())
+  }
+
+  /// Record what the AI crewing a ship reports. Only an AI-crewed ship has a
+  /// report to give: one for a human ship is refused.
+  ///
+  /// # Errors
+  /// Returns an error if the ship does not exist or is not AI-crewed.
+  ///
+  /// # Panics
+  /// Panics if the entities or ship lock is poisoned.
+  pub fn set_ai_report(&self, request: &SetAiReport) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to report on.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+    if ship.controller.is_human() && request.report.is_some() {
+      return Err(format!("{} is not AI-crewed.", request.ship_name));
+    }
+    ship.ai_report.clone_from(&request.report);
+    Ok("AI report recorded".to_string())
   }
 
   /// Gets the current entities and returns them in a `Result`.

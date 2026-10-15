@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use callisto::payloads::{ChangeRole, JoinScenarioMsg, RequestMsg, ResponseMsg, Role, ServiceLoginMsg};
-use callisto::ship::{merge_ship_templates, ShipDesignTemplate};
+use callisto::payloads::{ChangeRole, JoinScenarioMsg, RequestMsg, ResponseMsg, Role, ServiceLoginMsg, SetAiReport};
+use callisto::ship::{merge_ship_templates, AiReport, AiStatus, ShipDesignTemplate};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::Message;
@@ -120,22 +120,55 @@ fn learn_designs(designs: HashMap<String, ShipDesignTemplate>) {
   merge_ship_templates(designs);
 }
 
-/// The side's orders for the round. The commander sees only what the side may
-/// know; its intents are carried out against the world, as a console would.
+/// What the side's crew tells the people it reports to about a ship this
+/// round: still deciding, or the plan and why this ship has her orders.
+fn report(ship: &str, round: u32, status: AiStatus, plan: Option<&str>, rationale: Option<&str>) -> RequestMsg {
+  RequestMsg::SetAiReport(SetAiReport {
+    ship_name: ship.to_string(),
+    report: Some(AiReport {
+      round,
+      status,
+      plan: plan.map(str::to_string),
+      rationale: rationale.map(str::to_string),
+    }),
+  })
+}
+
+/// The side's orders for the round, and its reports. The commander sees only
+/// what the side may know; its intents are carried out against the world, as
+/// a console would.
 async fn decide(commander: &mut dyn Commander, world: &Entities, ships: &[String]) -> Vec<RequestMsg> {
   let view = observe(world, ships);
-  commander
-    .decide(&view)
-    .await
-    .into_iter()
-    .filter(|(ship, _)| ships.contains(ship))
-    .flat_map(|(ship, intent)| {
-      tactics::orders(world, &ship, &intent).unwrap_or_else(|e| {
-        warn!("(crew) Could not carry out {ship}'s orders: {e}");
-        vec![]
-      })
+  let intents = commander.decide(&view).await;
+  let status = if commander.answered() {
+    AiStatus::Ready
+  } else {
+    AiStatus::NoAnswer
+  };
+  let mut requests: Vec<RequestMsg> = ships
+    .iter()
+    .filter(|ship| world.ships.contains_key(*ship))
+    .map(|ship| {
+      let rationale = intents
+        .iter()
+        .find(|(name, _)| name == ship)
+        .map(|(_, intent)| intent.rationale.as_str())
+        .filter(|text| !text.is_empty());
+      report(ship, view.round, status, commander.plan(), rationale)
     })
-    .collect()
+    .collect();
+  requests.extend(
+    intents
+      .into_iter()
+      .filter(|(ship, _)| ships.contains(ship))
+      .flat_map(|(ship, intent)| {
+        tactics::orders(world, &ship, &intent).unwrap_or_else(|e| {
+          warn!("(crew) Could not carry out {ship}'s orders: {e}");
+          vec![]
+        })
+      }),
+  );
+  requests
 }
 
 fn claim(ships: &[String]) -> RequestMsg {
@@ -217,6 +250,13 @@ async fn session(
             // Updates within a round (someone changed a plan) are not a new
             // decision.
             last_round = Some(world.round);
+            // Say so first: a model can take half a minute, and the table
+            // should see the AI thinking, not a game that has stopped.
+            for ship in claimed.iter().filter(|ship| world.ships.contains_key(*ship)) {
+              if let Err(e) = send(&mut socket, &report(ship, world.round, AiStatus::Deciding, commander.plan(), None)).await {
+                return Ending::Dropped(e);
+              }
+            }
             let mut orders = decide(commander, &world, &claimed).await;
             orders.push(RequestMsg::SetReady(true));
             for order in &orders {

@@ -5,6 +5,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { KernelSize } from "postprocessing";
 import { FlyControls } from "./lib/FlyControls";
+import { FleetComms } from "components/controls/FleetComms";
 
 import { Authentication } from "components/scenarios/Authentication";
 
@@ -189,6 +190,9 @@ function Simulator() {
               <ResultsWindow />
             </Suspense>
           )}
+          {/* What the AI captains are saying: the referee hears every AI
+              side without opening each ship. Nothing when no ship is AI. */}
+          {joinedScenario && !scenarioBuilderMode && <FleetComms />}
         </div>
         <div className="admin-button-window">
           <h2>
