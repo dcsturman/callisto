@@ -63,6 +63,7 @@
         ]
       ],
       "design": "Yacht - Type Y",
+   "team": "Blue",
       "weapons": [
         {
           "kind": "Pulse",
