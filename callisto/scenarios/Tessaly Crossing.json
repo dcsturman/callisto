@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Tessaly Crossing",
     "owner": "dcsturman@gmail.com",
-    "description": "A four-ship Imperial Navy patrol meets a four-ship corsair band off the moon Tessaly. The Navy brings two Gazelle escorts, a Watchdog picket and a patrol corvette; the corsairs a Fiery gunship with a fusion bay, a Corsair, and an escort and a picket taken as prizes. Matched on cost (MCr 992 against 910) and evenly balanced: whoever fights better wins."
+    "description": "A four-ship Imperial Navy patrol meets a four-ship corsair band off the moon Tessaly. The Navy brings two Gazelle escorts, a Watchdog picket and a patrol corvette; the corsairs a Fiery gunship with a fusion bay, an escort and two pickets taken as prizes. Matched on cost (MCr 992 against 974) and evenly balanced: whoever fights better wins."
   },
   "planets": [
     {
@@ -271,7 +271,7 @@
       "orders": "Corsair band. The Navy patrol stands between you and Tessaly's shipping. Break it: destroy what you can. This is a raid, not a last stand: no ship is worth losing for nothing, and if the fight turns against you, withdraw and live to raid again."
     },
     {
-      "name": "Saint Ysolde",
+      "name": "Hollow Crown",
       "position": [
         30000000.0,
         1600000.0,
@@ -292,7 +292,7 @@
           50000
         ]
       ],
-      "design": "Corsair - Type P",
+      "design": "Fleet Picket - Watchdog",
       "team": "Blue",
       "crew": {
         "pilot": 2,
@@ -302,6 +302,8 @@
         "mechanic": 2,
         "sensors": 2,
         "gunnery": [
+          2,
+          2,
           2,
           2,
           2

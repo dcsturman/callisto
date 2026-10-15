@@ -1188,9 +1188,10 @@ async fn test_slugfest() {
   let server = setup_test_with_server(authenticator).await;
 
   // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
-  // Boost weapon #10 as its firing a pules laser at the harrier.
+  // Boost weapon #10 as its firing a pules laser at the harrier. The particle bay (#0) has a veteran on it: a bay
+  // takes DM-2 against a ship of 2,000 tons or less (High Guard p. 31), and this test is about massed fire, not that.
   let destroyer = r#"{"name":"Evil Destroyer","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham",
-        "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1]}}"#;
+        "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[4, 2, 2, 2, 2, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1]}}"#;
 
   let response = server.add_ship(serde_json::from_str(destroyer).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");

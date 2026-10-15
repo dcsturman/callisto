@@ -184,8 +184,21 @@ pub(crate) fn attack_terms(
   // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
   // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
   // capital ships and struggle to connect with anything nimble.
-  let small_target_mod = if firing.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
+  //
+  // Bays likewise: "All bay weapons suffer DM-2 when attacking targets of 2,000
+  // tons or less and DM-4 when attacking targets of 100 tons or less. Missile
+  // and torpedo salvoes do not use these modifiers" (High Guard p. 31). A bay
+  // gun is laid for a capital ship. One term, since a torpedo bay is a salvo
+  // and takes only the torpedo's DM.
+  let tons = defender.design.displacement;
+  let small_target_mod = if firing.kind == WeaponType::Torpedo && tons < 2_000 {
     -2
+  } else if matches!(firing.mount, WeaponMount::Bay(_)) && profile.salvo.is_none() {
+    match tons {
+      0..=100 => -4,
+      101..=2_000 => -2,
+      _ => 0,
+    }
   } else {
     0
   };
@@ -3362,6 +3375,53 @@ mod tests {
   /// the attacker may choose which location is hit" (CRB p. 169) does not say
   /// which critical, and restricting it to the Effect 6 one made a called
   /// shot a DM-2 for nothing in the ordinary case.
+  #[test]
+  fn bay_weapons_struggle_against_small_targets() {
+    let bay = Weapon::single(WeaponType::Fusion, WeaponMount::Bay(BaySize::Small));
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Gunship".to_string(),
+      weapons: vec![bay.clone()],
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Gunship".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    let firing = bay.firing_default().unwrap();
+    let profile = profile_for(firing.kind, firing.mount).unwrap();
+    let small_target = |tons: u32| {
+      let design = Arc::new(ShipDesignTemplate {
+        name: "Target".to_string(),
+        displacement: tons,
+        ..ShipDesignTemplate::default()
+      });
+      let defender = Ship::new(
+        "Target".to_string(),
+        Vec3::new(1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let terms = attack_terms(
+        &AttackSituation {
+          hit: HitMods::default(),
+          attacker: &attacker,
+          defender: &defender,
+          firing: &firing,
+          profile: &profile,
+          range_band: Range::Short,
+          called_shot: false,
+        },
+        0,
+        0,
+      )
+      .unwrap();
+      terms.iter().find(|(name, _)| *name == "small target").unwrap().1
+    };
+    assert_eq!(small_target(50), -4, "100 tons or less");
+    assert_eq!(small_target(400), -2, "2,000 tons or less");
+    assert_eq!(small_target(2_000), -2);
+    assert_eq!(small_target(5_000), 0, "a capital ship is what a bay is for");
+  }
+
   #[test]
   fn a_called_shot_is_only_called_at_short_range() {
     let design = Arc::new(ShipDesignTemplate {
