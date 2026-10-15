@@ -34,3 +34,6 @@ compose.override.yaml
 fe/callisto/.env.sentry-build-plugin
 .claude/scheduled_tasks.lock
 /.claude
+
+# Local game records (CALLISTO_GAME_LOG_DIR), for training later.
+game_logs/

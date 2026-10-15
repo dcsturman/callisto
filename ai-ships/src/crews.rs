@@ -18,7 +18,8 @@ use crate::crew::{self, CrewConfig, Ending};
 pub type SideKey = (String, String);
 
 /// Makes the commander for a new crew.
-pub type CommanderFactory = Arc<dyn Fn() -> Box<dyn Commander> + Send + Sync>;
+/// Makes the commander for a new crew, given the game and the side it crews.
+pub type CommanderFactory = Arc<dyn Fn(&str, &str) -> Box<dyn Commander> + Send + Sync>;
 
 struct Running {
   ships: watch::Sender<Vec<String>>,
@@ -67,7 +68,7 @@ impl Crews {
       scenario_id.to_string(),
       side.to_string(),
       receiver,
-      (self.commander)(),
+      (self.commander)(scenario_id, side),
     ));
     running.insert(key, Running { ships: sender, task });
   }

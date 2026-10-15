@@ -764,6 +764,23 @@ The reasons:
 What we give up: 1 will sometimes do something odd, and it is not free to
 run. Both are acceptable for a tool that today needs a human at every station.
 
+### 4.10 Game records
+
+Every game is recorded for learning later, humans and AI alike. With
+`CALLISTO_GAME_LOG_DIR` set (Compose sets it to `./game_logs`), the backend
+writes one JSON-lines file per game: the world at the start, every order with
+the ships it was for and whether a human crew, the AI or the GM gave it, and at
+each round's end the results and the world after. Nobody is named. A side's
+view of a round is not stored, because the same function the AI uses rebuilds
+it from the world. The AI service writes a file per side beside it: each
+model call's situation, reply, tokens and estimated cost.
+`cargo run --release --bin game_report -- ../game_logs` (in `ai-ships/`)
+summarises what was played and what the calls cost.
+
+Recorded today: every game on a backend with the directory set, locally.
+Still to do before canary: upload to a bucket, and a converter from records
+to training examples.
+
 ## 6. Phases
 
 Each phase ends in something playable or measurable, and merges into

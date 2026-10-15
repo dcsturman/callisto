@@ -37,6 +37,12 @@ pub struct Llm {
   rounds_asked: u32,
   memory: prompt::Memory,
   answered: bool,
+  /// Every call, as JSON lines, for the game's record.
+  calls: Option<Transcript>,
+  /// Which game and side, for the record and the log.
+  game: String,
+  /// What the calls so far have cost, in US dollars, where the price is known.
+  spent: f64,
 }
 
 impl Llm {
@@ -50,6 +56,25 @@ impl Llm {
       rounds_asked: 0,
       memory: prompt::Memory::default(),
       answered: true,
+      calls: None,
+      game: String::new(),
+      spent: 0.0,
+    }
+  }
+
+  /// Record every call as a JSON line here, for the game's record: what the
+  /// side was shown, what the model answered, the tokens and the cost.
+  #[must_use]
+  pub fn with_call_log(mut self, game: &str, calls: Transcript) -> Self {
+    self.game = game.to_string();
+    self.calls = Some(calls);
+    self
+  }
+
+  fn record(&mut self, entry: &serde_json::Value) {
+    if let Some(calls) = self.calls.as_mut() {
+      let _ = writeln!(calls, "{entry}");
+      let _ = calls.flush();
     }
   }
 
@@ -94,6 +119,31 @@ impl Commander for Llm {
         if !notes.is_empty() {
           self.note(&format!("### Dropped\n\n- {}\n", notes.join("\n- ")));
         }
+        let cost = reply.cost(&self.spec);
+        self.spent += cost.unwrap_or(0.0);
+        self.record(&serde_json::json!({
+          "game": self.game,
+          "side": side,
+          "round": view.round,
+          "model": self.spec.name(),
+          "answered": true,
+          "input_tokens": reply.input_tokens,
+          "cached_tokens": reply.cached_tokens,
+          "output_tokens": reply.output_tokens,
+          "cost_usd": cost,
+          "situation": situation,
+          "reply": serde_json::from_str::<serde_json::Value>(&reply.raw).unwrap_or(serde_json::Value::String(reply.raw.clone())),
+          "dropped": notes,
+        }));
+        info!(
+          "(llm {side}) Round {}: {} in ({} cached), {} out, ${:.4}; ${:.3} so far this game",
+          view.round,
+          reply.input_tokens,
+          reply.cached_tokens,
+          reply.output_tokens,
+          cost.unwrap_or(0.0),
+          self.spent
+        );
         info!("(llm {side}) Round {}: plan: {}", view.round, reply.decision.plan);
         for (ship, intent) in &intents {
           info!("(llm {side}) {ship}: {}", intent.rationale);
@@ -104,6 +154,15 @@ impl Commander for Llm {
       }
       Err(e) => {
         warn!("(llm {side}) Round {}: no decision; ships keep their plans. {e}", view.round);
+        self.record(&serde_json::json!({
+          "game": self.game,
+          "side": side,
+          "round": view.round,
+          "model": self.spec.name(),
+          "answered": false,
+          "situation": situation,
+          "error": e.to_string(),
+        }));
         self.note(&format!("### No reply\n\n{e}\n"));
         self.answered = false;
         vec![]

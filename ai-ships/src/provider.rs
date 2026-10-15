@@ -70,6 +70,29 @@ impl std::fmt::Display for ModelSpec {
   }
 }
 
+/// What a model costs on Vertex, in US dollars per million tokens: input,
+/// cached input, and output (thinking included). Only models whose price we
+/// have confirmed; for the rest a call's cost is not estimated.
+#[must_use]
+pub fn price(spec: &ModelSpec) -> Option<(f64, f64, f64)> {
+  match spec.model.as_str() {
+    "gemini-3.8-flash" => Some((0.75, 0.075, 3.75)),
+    _ => None,
+  }
+}
+
+impl Reply {
+  /// What this call cost, in US dollars, if the model's price is known.
+  #[must_use]
+  pub fn cost(&self, spec: &ModelSpec) -> Option<f64> {
+    #[allow(clippy::cast_precision_loss)]
+    price(spec).map(|(input, cached, output)| {
+      let fresh = self.input_tokens.saturating_sub(self.cached_tokens) as f64;
+      (fresh * input + self.cached_tokens as f64 * cached + self.output_tokens as f64 * output) / 1_000_000.0
+    })
+  }
+}
+
 /// Why a call produced no decision.
 #[derive(Debug)]
 pub enum Error {

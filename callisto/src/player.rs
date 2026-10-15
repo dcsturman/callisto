@@ -82,6 +82,8 @@ pub struct PlayerManager {
   // AI harness, which needs every game reproducible but no two alike; test
   // mode's fixed seed would roll every round the same.
   seed: Option<u64>,
+  // Logged in as a service (the AI) rather than a person.
+  service: bool,
 }
 
 /// A captain's leadership check, as the log reads it.
@@ -134,6 +136,20 @@ impl PlayerManager {
       ship: None,
       ships: vec![],
       seed: None,
+      service: false,
+    }
+  }
+
+  /// Who this connection's orders come from, for the game record: the AI
+  /// service, the referee (who holds no ships and is not watching), or a crew.
+  #[must_use]
+  pub fn giver(&self) -> crate::game_log::By {
+    if self.service {
+      crate::game_log::By::Ai
+    } else if self.ship.is_none() && self.ships.is_empty() && !self.roles.contains(&Role::Observer) {
+      crate::game_log::By::Gm
+    } else {
+      crate::game_log::By::Human
     }
   }
 
@@ -242,6 +258,7 @@ impl PlayerManager {
       warn!("(PlayerManager.service_login) No session key for {identity}.");
     }
     self.authenticator.set_email(Some(&identity));
+    self.service = true;
     info!("(PlayerManager.service_login) Logged in service {identity}.");
     AuthResponse {
       email: identity,

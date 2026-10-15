@@ -26,6 +26,8 @@ pub struct Server {
   pub entities: Mutex<Entities>,
   pub initial_scenario: Entities,
   ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
+  /// This game's record, when games are being recorded.
+  log: std::sync::OnceLock<crate::game_log::GameLog>,
 }
 
 /// Maps a server ID to a server table that contains
@@ -117,7 +119,31 @@ impl Server {
       entities: Mutex::new(live_copy),
       initial_scenario,
       ship_templates,
+      log: std::sync::OnceLock::new(),
     }
+  }
+
+  /// Start recording this game in `dir`, from the world as it is now. Does
+  /// nothing if it is already being recorded or the record cannot be opened.
+  pub fn start_log(&self, dir: &str, scenario: &str) {
+    if self.log.get().is_some() {
+      return;
+    }
+    let Ok(world) = self.entities.lock() else {
+      return;
+    };
+    match crate::game_log::GameLog::start(dir, &self.id, scenario, &world) {
+      Ok(log) => {
+        let _ = self.log.set(log);
+      }
+      Err(e) => tracing::warn!("(Server.start_log) Not recording {}: {e}", self.id),
+    }
+  }
+
+  /// This game's record, if it is being recorded.
+  #[must_use]
+  pub fn log(&self) -> Option<&crate::game_log::GameLog> {
+    self.log.get()
   }
 
   /// Get the ID of the server.
