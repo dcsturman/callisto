@@ -1,0 +1,31 @@
+[package]
+name = "ai-ships"
+version = "0.1.0"
+edition = "2021"
+description = "Crews AI-controlled ships in callisto: connects to the backend as a player for each AI side."
+
+# A sibling of the backend crate, not a workspace member: a workspace at the
+# repo root would move callisto's build output out of callisto/target, which
+# its scripts and tests expect. The path dependency is all the sharing needed.
+
+[dependencies]
+callisto = { path = "../callisto", features = [] }
+axum = "0.8"
+clap = { version = "4.5.4", features = ["derive", "env"] }
+futures-util = "0.3.31"
+reqwest = { version = "0.12.4", features = ["json"] }
+rustls = "0.23.21"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.37.0", features = ["full"] }
+tokio-tungstenite = { version = "0.26.1", features = ["rustls-tls-native-roots"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+similar_names = "allow"

@@ -26,6 +26,11 @@ services:
     command: --tls-keys-private /run/secrets/tls_keys_private --tls-keys-public /run/secrets/tls_keys_public --oauth-creds /run/secrets/google_credentials --scenario-dir gs://callisto-scenarios --users-file /config/authorized_users.json --design-dir /ship_templates --web-server http://localhost:50001
     environment:
       RUST_LOG: debug,gomez=warn
+      # Lets the AI service log in, and the backend call it. Local only: on
+      # Cloud Run both sides use identity tokens instead. Override the value by
+      # exporting CALLISTO_SERVICE_TOKEN before `docker compose up`.
+      CALLISTO_SERVICE_TOKEN: ${CALLISTO_SERVICE_TOKEN:-local-dev-service-token}
+      CALLISTO_AI_SERVICE: http://ai:8080
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
       SENTRY_DSN: https://2bd6b4d950ccb59ce589533dcf1b253a@o4511288095080448.ingest.us.sentry.io/4511288117755904
       SENTRY_ENVIRONMENT: docker-local
@@ -33,6 +38,21 @@ services:
       - 30000
     ports:
       - 30000:30000
+  # The AI service: crews ships switched to AI. Start it with the backend:
+  #   docker compose -f compose.yaml -f compose.override.yaml up be ai
+  ai:
+    build:
+      # The repo root, because the service links the backend crate.
+      context: .
+      dockerfile: ai-ships/Dockerfile
+    environment:
+      RUST_LOG: info,ai_ships=debug
+      CALLISTO_BACKEND: ws://be:30000
+      CALLISTO_SERVICE_TOKEN: ${CALLISTO_SERVICE_TOKEN:-local-dev-service-token}
+    expose:
+      - 8080
+    depends_on:
+      - be
   fe:
     build:
       context: fe/callisto
