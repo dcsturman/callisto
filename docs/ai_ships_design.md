@@ -90,7 +90,7 @@ with the ships as fields gets a faithful account of the last round for free.
 
 ```
  browsers ──ws──┐
-                ├──  callisto (backend, the rules)  ──ws──  callisto-ai (the service)
+                ├──  callisto (backend, the rules)  ──ws──  ai-ships (the service)   
  referee ──ws──┘           │                                     │
                            │ tactics.rs (verbs → actions)        │ Commander (llm | baseline | learned)
                            │ computer.rs (the solver)            │ Observation (what this ship may know)
