@@ -753,6 +753,7 @@ impl Processor {
                 role.roles.clone(),
                 role.ship,
               );
+              self.members.set_ships(server.get_id(), &session_key, role.ships);
               vec![ResponseMsg::Users(self.members.get_user_context(server.get_id()))]
             },
           ));
@@ -798,10 +799,10 @@ impl Processor {
         // table had finished giving orders. A scenario with nobody refereeing
         // -- one player, or a group who all took ships -- has no such problem,
         // so anyone may advance it.
-        let (own_roles, own_ship) = player.get_roles();
+        let (own_roles, _) = player.get_roles();
         // The ship decides, not the role: a referee who takes a single station
         // to simplify their screen still runs the round.
-        let refereeing = own_ship.is_none() && !own_roles.contains(&crate::payloads::Role::Observer);
+        let refereeing = !player.holds_ships() && !own_roles.contains(&crate::payloads::Role::Observer);
         let server_id = player.server.as_ref().map(|server| server.get_id().to_string());
         if !refereeing && server_id.as_ref().is_some_and(|id| self.members.has_referee(id)) {
           return error_msg("Only the GM can advance the round.".to_string());

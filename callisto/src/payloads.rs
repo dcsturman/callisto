@@ -605,6 +605,10 @@ pub struct UserData {
   /// `General` for all of them.
   pub roles: Vec<Role>,
   pub ship: Option<String>,
+  /// Further ships this player answers for, beyond `ship`. Absent for a
+  /// player at one console.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub ships: Vec<String>,
 }
 
 /// Convert an email address to the display name used on the wire. We trim the
@@ -624,7 +628,13 @@ pub struct ChangeRole {
   /// the two halves of a deploy cannot race each other.
   #[serde(alias = "role", deserialize_with = "one_or_many_roles")]
   pub roles: Vec<Role>,
+  /// The ship whose console this player is at.
   pub ship: Option<String>,
+  /// Every further ship this connection answers for: a team's commander, or
+  /// the AI service crewing a whole side on one connection. One ready flag
+  /// covers them all. Absent means only `ship`.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub ships: Vec<String>,
 }
 
 /// A role list, or a bare role that reads as a list of one.

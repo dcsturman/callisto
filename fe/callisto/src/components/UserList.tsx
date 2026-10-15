@@ -10,6 +10,11 @@ export type UserContext = {
     ship: string | null;
     /** Whether this player has said their orders are in for this round. */
     ready?: boolean;
+    /**
+     * Further ships this player answers for beyond `ship`: a team's
+     * commander, or the AI crewing a side. Absent for one console.
+     */
+    ships?: string[];
 }
 
 export type UserList = UserContext[];
@@ -34,7 +39,12 @@ export function Users(args: {users: UserList, email: string | null}) {
                     // player is doing.
                     const general = user.roles.includes(ViewMode.General);
                     let role_text = "";
-                    if (general && user.ship != null) {
+                    // A whole side on one connection reads as how many ships it
+                    // has: "Pirates (AI)" with three names after it would not fit.
+                    const fleet = new Set([...(user.ship == null ? [] : [user.ship]), ...(user.ships ?? [])]);
+                    if (fleet.size > 1) {
+                        role_text = ` (${fleet.size} ships)`;
+                    } else if (general && user.ship != null) {
                         role_text = ` (On ${user.ship})`;
                     } else if (!general && user.ship == null) {
                         role_text = ` (${rolesToString(user.roles)})`;

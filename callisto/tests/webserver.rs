@@ -2211,6 +2211,7 @@ async fn integration_users_message_uses_display_name() {
     RequestMsg::SetRole(callisto::payloads::ChangeRole {
       roles: vec![callisto::payloads::Role::General],
       ship: None,
+      ships: vec![],
     }),
   )
   .await;
@@ -2316,6 +2317,7 @@ async fn integration_last_ready_advances_the_round() {
     RequestMsg::SetRole(callisto::payloads::ChangeRole {
       roles: vec![callisto::payloads::Role::General],
       ship: Some("Lone".to_string()),
+      ships: vec![],
     }),
   )
   .await;

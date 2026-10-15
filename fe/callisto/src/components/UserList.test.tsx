@@ -51,6 +51,23 @@ describe("Users (peer list)", () => {
     expect(container.textContent).toContain("bob");
   });
 
+  it("shows a connection answering for a side by its ship count", () => {
+    renderUsers(
+      [
+        { display_name: "alice", roles: [ViewMode.General], ship: "Executor" },
+        {
+          display_name: "ai-ships",
+          roles: [ViewMode.General],
+          ship: null,
+          ships: ["Invigilator", "Cicada", "Death's Actuary"],
+        },
+      ],
+      null,
+    );
+    expect(container.textContent).toContain("ai-ships (3 ships)");
+    expect(container.textContent).toContain("alice (On Executor)");
+  });
+
   it("ticks players who are ready and leaves the rest unticked", () => {
     renderUsers(
       [

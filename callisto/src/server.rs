@@ -50,7 +50,7 @@ struct MembershipTable {
 /// The ship decides, not the role. A referee may take a single station to cut
 /// their screen down and is still the referee.
 fn is_referee(entry: &MemberEntry) -> bool {
-  entry.ship.is_none() && !entry.roles.contains(&Role::Observer)
+  !entry.holds_ships() && !entry.roles.contains(&Role::Observer)
 }
 
 /// Represents a player's entry in the server membership table.
@@ -60,8 +60,17 @@ struct MemberEntry {
   email: String,
   roles: Vec<Role>,
   ship: Option<String>,
+  /// Further ships this player answers for. Their one ready flag covers all
+  /// of them.
+  ships: Vec<String>,
   /// Set by the player, cleared for everyone when the round advances.
   ready: bool,
+}
+
+impl MemberEntry {
+  fn holds_ships(&self) -> bool {
+    self.ship.is_some() || !self.ships.is_empty()
+  }
 }
 
 impl PartialEq for Server {
@@ -179,16 +188,31 @@ impl ServerMembersTable {
     let server_table = self.server_members.entry(server_id.to_string()).or_default();
     // Changing station is not un-readying: a player who has said they are done
     // and then swaps seats is still done.
-    let ready = server_table.table.get(session_key).is_some_and(|entry| entry.ready);
+    let existing = server_table.table.get(session_key);
+    let ready = existing.is_some_and(|entry| entry.ready);
+    // Nor is it giving up the other ships you answer for; `set_ships` does that.
+    let ships = existing.map(|entry| entry.ships.clone()).unwrap_or_default();
     server_table.table.insert(
       session_key.to_string(),
       MemberEntry {
         email: email.to_string(),
         roles,
         ship,
+        ships,
         ready,
       },
     );
+  }
+
+  /// Set the further ships a player answers for, beyond their own console's.
+  pub fn set_ships(&mut self, server_id: &str, session_key: &str, ships: Vec<String>) {
+    if let Some(entry) = self
+      .server_members
+      .get_mut(server_id)
+      .and_then(|members| members.table.get_mut(session_key))
+    {
+      entry.ships = ships;
+    }
   }
 
   /// Look for a user with a given session key already on this server.  If so, get the id as well as other existing
@@ -240,6 +264,7 @@ impl ServerMembersTable {
         display_name: email_to_display_name(&entry.email),
         roles: entry.roles.clone(),
         ship: entry.ship.clone(),
+        ships: entry.ships.clone(),
         ready: entry.ready,
       })
       .collect()
@@ -276,7 +301,7 @@ impl ServerMembersTable {
   #[must_use]
   pub fn everyone_ready(&self, server_id: &str) -> bool {
     self.server_members.get(server_id).is_some_and(|members| {
-      let mut crews = members.table.values().filter(|entry| entry.ship.is_some()).peekable();
+      let mut crews = members.table.values().filter(|entry| entry.holds_ships()).peekable();
       !members.table.values().any(is_referee) && crews.peek().is_some() && crews.all(|entry| entry.ready)
     })
   }
@@ -443,6 +468,36 @@ mod membership_tests {
     watchers.register("w", "Thebus");
     watchers.update("w", "key-watch", "w@example.com", vec![Role::Observer], None);
     assert!(!watchers.everyone_ready("w"), "nobody holds a ship, so nobody is ready");
+  }
+
+  /// A connection answering for a whole side -- the AI service, or a human
+  /// commanding a team -- is crew, not referee, even holding no console of
+  /// its own. Its one ready flag is the whole side's, and a later change of
+  /// station does not drop the ships it answers for.
+  #[test]
+  fn a_connection_can_answer_for_several_ships() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update("s", "key-ai", "ai@example.com", vec![Role::General], None);
+    assert!(members.has_referee("s"), "holding nothing yet, it looks like a referee");
+
+    members.set_ships("s", "key-ai", vec!["Invigilator".to_string(), "Cicada".to_string()]);
+    assert!(!members.has_referee("s"));
+    members.update("s", "key-ai", "ai@example.com", vec![Role::Gunner], None);
+    let users = members.get_user_context("s");
+    assert_eq!(users[0].ships, vec!["Invigilator".to_string(), "Cicada".to_string()]);
+
+    members.update(
+      "s",
+      "key-crew",
+      "c@example.com",
+      vec![Role::General],
+      Some("Executor".to_string()),
+    );
+    members.set_ready("s", "key-crew", true);
+    assert!(!members.everyone_ready("s"), "the pirates have not said ready");
+    members.set_ready("s", "key-ai", true);
+    assert!(members.everyone_ready("s"));
   }
 
   #[test]

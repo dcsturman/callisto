@@ -74,6 +74,9 @@ pub struct PlayerManager {
   roles: Vec<Role>,
   // Ship this player may have assumed a crew position on.
   ship: Option<String>,
+  // Further ships this connection answers for: a team's commander, or the AI
+  // service crewing a side.
+  ships: Vec<String>,
   test_mode: bool,
 }
 
@@ -125,6 +128,7 @@ impl PlayerManager {
       test_mode,
       roles: vec![Role::General],
       ship: None,
+      ships: vec![],
     }
   }
 
@@ -242,7 +246,7 @@ impl PlayerManager {
   /// # Panics
   /// Panics if the lock on entities cannot be obtained or if the server has never been initialized.
   pub fn reset(&self) -> Result<String, String> {
-    if self.roles.contains(&Role::General) && self.ship.is_none() {
+    if self.roles.contains(&Role::General) && !self.holds_ships() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
       // initial_scenario was validated at scenario-load time, so this
       // shouldn't fail in practice. Propagate the error rather than
@@ -1232,7 +1236,22 @@ impl PlayerManager {
   pub fn set_role(&mut self, msg: &ChangeRole) -> String {
     self.roles.clone_from(&msg.roles);
     self.ship.clone_from(&msg.ship);
+    self.ships.clone_from(&msg.ships);
     "Role set".to_string()
+  }
+
+  /// The ships this connection answers for beyond the one whose console it is
+  /// at.
+  #[must_use]
+  pub fn claimed_ships(&self) -> &[String] {
+    &self.ships
+  }
+
+  /// Whether this connection crews anything. One that does not, and is not
+  /// merely watching, is the referee.
+  #[must_use]
+  pub fn holds_ships(&self) -> bool {
+    self.ship.is_some() || !self.ships.is_empty()
   }
 }
 
