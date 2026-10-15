@@ -793,17 +793,26 @@ fn approach_line(contact: &Contact, nearest: Option<&Ship>) -> String {
     format!("; next round about {} km ({}) if nobody burns", km(after), band_at(after))
   };
   let ours = ship.max_acceleration();
+  let drive = ship.current_maneuver;
   let theirs = contact.current_maneuver;
+  let held = if drive > ours {
+    format!(
+      " ({drive} G drive, {} G held back for dodging and assisting the gunners)",
+      drive - ours
+    )
+  } else {
+    String::new()
+  };
   let race = match ours.cmp(&theirs) {
     std::cmp::Ordering::Greater => format!(
-      "her thrust {theirs} G against {}'s {ours} G: you can hold the range open, or close it, as you choose",
+      "her thrust {theirs} G against {}'s {ours} G{held}: you can hold the range open, or close it, as you choose",
       contact.nearest
     ),
     std::cmp::Ordering::Less => format!(
-      "her thrust {theirs} G against {}'s {ours} G: she can close on you or run, and you cannot stop her",
+      "her thrust {theirs} G against {}'s {ours} G{held}: she can close on you or run, and you cannot stop her",
       contact.nearest
     ),
-    std::cmp::Ordering::Equal => format!("her thrust {theirs} G, the same as {}'s", contact.nearest),
+    std::cmp::Ordering::Equal => format!("her thrust {theirs} G, the same as {}'s{held}", contact.nearest),
   };
   format!(
     "- From {} (your nearest): {} km, {}; {motion}{pass}. {race}",
