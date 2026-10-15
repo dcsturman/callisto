@@ -342,11 +342,56 @@ what it understood.
 
 ### 4.5 The LLM Commander
 
-**Interface, not prose.** The model is given the Observation and the orders
-and asked for one tool call, `plan_round`, whose schema is the `Intent` above.
-It never writes an acceleration vector, a to-hit number, or a position. It
-picks verbs. This is the lesson from the game-playing literature (§5.1): a
-model asked for intent is reliable; a model asked for numbers is not.
+**Interface, not prose.** The English stops at the model. It is given the
+Observation and the orders and must answer with one tool call, `plan_round`,
+whose schema is `TeamDecision` above. Both providers constrain the output to
+the schema, so the answer is valid JSON of the right shape or it is rejected
+and asked again; nothing downstream parses a sentence. The model never writes
+an acceleration vector, a to-hit number, or a position. It picks verbs with
+targets and parameters. This is the lesson from the game-playing literature
+(§5.1): a model asked for intent is reliable; a model asked for numbers is
+not.
+
+Worked through for one pirate in round 4 of Thebus:
+
+*In* (the rendered observation, abridged):
+
+```
+Orders: Stay dark until the yacht passes the moon, then close and board.
+Round 4. Lyonesse II: range 38,000 km (Long), closing 2,100 km/round, no
+lock. HMS Executor: not in contact. Our pulse lasers reach Long; her
+turret reaches Long. Hull 100%, no crits, 4 power spare.
+```
+
+*Out* (the tool call, exactly as the model emits it):
+
+```json
+{"plan": "Yacht is past the moon. Close to Short before the escort finds us; cripple her drive so she cannot run.",
+ "ships": [{"ship": "Invigilator",
+   "intent": {"helm": {"Intercept": {"target": "Lyonesse II", "band": "Short"}},
+              "fire": [{"mount": 0, "target": "Lyonesse II", "called": "Maneuver"}],
+              "sensors": [{"Lock": {"target": "Lyonesse II"}}],
+              "engineering": [],
+              "rationale": "Closing to board; shooting her drive so she cannot run."}}]}
+```
+
+*Then tactics does arithmetic and nothing else.* `Intercept{Lyonesse II,
+Short}` becomes a `ComputePath` with the yacht's position as the end point,
+her velocity as the end velocity and a standoff of 1,250 km, the inner edge
+of Short; the solver returns the burn and the service sends `SetPlan`.
+`Lock` becomes a `SensorLock` action. The fire entry becomes a `FireAction`
+with the called-shot system set and the fire-control DM filled from the
+software the ship is running. That is the code path a human console runs
+when the pilot clicks a target and types a standoff. It is scripted in the
+sense that a calculator is scripted.
+
+So the split is: the model does all the *understanding* (English orders and
+a picture of the fight, into verbs with targets and parameters), and code
+does all the *geometry and rules* (verbs into vectors, modifiers and
+messages). The verbs are the contract between them, and they are
+deliberately coarse: an admiral says "close to Short and shoot her drive",
+not "burn 2.3 g on bearing 047 for forty seconds". We ask the model for what
+a human would say.
 
 **Prompt shape**, cached where the provider allows:
 
