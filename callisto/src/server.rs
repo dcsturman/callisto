@@ -267,6 +267,20 @@ impl ServerMembersTable {
     }
   }
 
+  /// Whether the round should advance on its own: nobody is refereeing, at
+  /// least one player holds a ship, and every player holding a ship has said
+  /// Ready.
+  ///
+  /// Observers are not asked -- they have no orders to give. With a referee
+  /// this is always false: the referee presses Next Round, as before.
+  #[must_use]
+  pub fn everyone_ready(&self, server_id: &str) -> bool {
+    self.server_members.get(server_id).is_some_and(|members| {
+      let mut crews = members.table.values().filter(|entry| entry.ship.is_some()).peekable();
+      !members.table.values().any(is_referee) && crews.peek().is_some() && crews.all(|entry| entry.ready)
+    })
+  }
+
   /// Whether anyone in this server is refereeing.
   #[must_use]
   pub fn has_referee(&self, server_id: &str) -> bool {
@@ -397,6 +411,38 @@ mod membership_tests {
       Some("Executor".to_string()),
     );
     assert!(!crew_only.has_referee("scenario-2"));
+  }
+
+  /// With no referee, the round advances once every crew is ready. Observers
+  /// are not waited for; a table with nobody holding a ship never advances
+  /// itself; and with a referee present it never does either.
+  #[test]
+  fn everyone_ready_waits_for_every_crew_and_only_without_a_referee() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update("s", "key-a", "a@example.com", vec![Role::General], Some("Executor".to_string()));
+    members.update(
+      "s",
+      "key-b",
+      "b@example.com",
+      vec![Role::General],
+      Some("Invigilator".to_string()),
+    );
+    members.update("s", "key-watch", "w@example.com", vec![Role::Observer], None);
+    assert!(!members.everyone_ready("s"));
+
+    members.set_ready("s", "key-a", true);
+    assert!(!members.everyone_ready("s"), "one crew still giving orders");
+    members.set_ready("s", "key-b", true);
+    assert!(members.everyone_ready("s"), "the observer is not waited for");
+
+    members.update("s", "key-gm", "gm@example.com", vec![Role::General], None);
+    assert!(!members.everyone_ready("s"), "a referee presses Next Round themselves");
+
+    let mut watchers = ServerMembersTable::new();
+    watchers.register("w", "Thebus");
+    watchers.update("w", "key-watch", "w@example.com", vec![Role::Observer], None);
+    assert!(!watchers.everyone_ready("w"), "nobody holds a ship, so nobody is ready");
   }
 
   #[test]

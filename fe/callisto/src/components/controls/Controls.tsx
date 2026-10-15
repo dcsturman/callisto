@@ -538,7 +538,7 @@ export function Controls() {
           title={
             amReady
               ? "Take it back if you still have orders to give"
-              : "Tell the GM your orders are in"
+              : "Your orders are in. With a GM, they run the round; without one, it runs when every crew is ready."
           }
           onClick={() => setReady(!amReady)}
         >

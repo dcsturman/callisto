@@ -627,6 +627,33 @@ impl Processor {
     }
   }
 
+  /// Resolve the round and tell the table what happened.
+  ///
+  /// Whoever pressed Next Round -- or, with no referee, whoever was last to say
+  /// Ready -- runs it; every ready flag is cleared for the round that follows.
+  fn advance_round(&mut self, player: &PlayerManager, server_id: Option<&str>) -> Vec<ResponseMsg> {
+    let effects = player.update();
+    if let Some(server_id) = server_id {
+      self.members.clear_ready(server_id);
+    }
+    match player.clone_entities() {
+      Ok(entities) => {
+        // The entities have moved on to the next round; the results are
+        // the one before it.
+        let resolved = EffectsMsg {
+          round: entities.round.saturating_sub(1),
+          effects,
+        };
+        let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(entities)];
+        if let Some(server_id) = server_id {
+          msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
+        }
+        msgs
+      }
+      Err(e) => entity_clone_failure_response(&e),
+    }
+  }
+
   /// This the primary server dispatch when a message arrives.  It knows nothing about threading or even how messages are received or sent.
   ///
   /// The function first checks if the user is logged in.  If not
@@ -751,10 +778,18 @@ impl Processor {
           error!("(handle_request) Attempt to set ready outside a scenario.  Ignoring.");
           return error_msg("Cannot say you are ready before joining a scenario.".to_string());
         };
-        if self.members.set_ready(&server_id, &session_key, ready) {
-          vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
+        if !self.members.set_ready(&server_id, &session_key, ready) {
+          return error_msg("Cannot say you are ready: you are not in this scenario.".to_string());
+        }
+        // With nobody refereeing, the last player to say Ready presses Next
+        // Round for the table -- what a referee would do on seeing the list
+        // fill. An AI crew is one more player saying Ready; nobody waits on it
+        // specially, and nobody can run the round out from under it.
+        if ready && self.members.everyone_ready(&server_id) {
+          info!("(handle_request) Everyone in {server_id} is ready; advancing the round.");
+          self.advance_round(player, Some(&server_id))
         } else {
-          error_msg("Cannot say you are ready: you are not in this scenario.".to_string())
+          vec![ResponseMsg::Users(self.members.get_user_context(&server_id))]
         }
       }
       RequestMsg::Update => {
@@ -772,26 +807,7 @@ impl Processor {
           return error_msg("Only the GM can advance the round.".to_string());
         }
 
-        let effects = player.update();
-        if let Some(server_id) = &server_id {
-          self.members.clear_ready(server_id);
-        }
-        match player.clone_entities() {
-          Ok(entities) => {
-            // The entities have moved on to the next round; the results are
-            // the one before it.
-            let resolved = EffectsMsg {
-              round: entities.round.saturating_sub(1),
-              effects,
-            };
-            let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(entities)];
-            if let Some(server_id) = &server_id {
-              msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
-            }
-            msgs
-          }
-          Err(e) => entity_clone_failure_response(&e),
-        }
+        self.advance_round(player, server_id.as_deref())
       }
       RequestMsg::ComputePath(path_goal) => player
         .compute_path(&path_goal)

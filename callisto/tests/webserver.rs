@@ -2297,3 +2297,41 @@ async fn integration_blacklist_kick_on_reload() {
   let mut shutdown_stream = open_socket(port).await.unwrap();
   send_quit(&mut shutdown_stream).await;
 }
+
+/// With nobody refereeing, the last crew to say Ready ends the round for the
+/// table: the results come back stamped with the round they resolved, and the
+/// world comes back one round on.
+#[test_log::test(tokio::test)]
+async fn integration_last_ready_advances_the_round() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+
+  // Take a ship: a player with one is crew, not referee.
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::SetRole(callisto::payloads::ChangeRole {
+      roles: vec![callisto::payloads::Role::General],
+      ship: Some("Lone".to_string()),
+    }),
+  )
+  .await;
+  let _ = next_response_with_timeout(&mut stream, Duration::from_secs(2)).await;
+
+  match rpc(&mut stream, RequestMsg::SetReady(true)).await {
+    ResponseMsg::Effects(results) => assert_eq!(results.round, 1, "the results are round 1's"),
+    other => panic!("Expected the round to advance, got {other:?}"),
+  }
+  match next_response_with_timeout(&mut stream, Duration::from_secs(2)).await {
+    ResponseMsg::EntityResponse(entities) => assert_eq!(entities.round, 2),
+    other => panic!("Expected the world one round on, got {other:?}"),
+  }
+  match next_response_with_timeout(&mut stream, Duration::from_secs(2)).await {
+    ResponseMsg::Users(users) => assert!(users.iter().all(|user| !user.ready), "ready is cleared for the new round"),
+    other => panic!("Expected the cleared ready list, got {other:?}"),
+  }
+  send_quit(&mut stream).await;
+}
