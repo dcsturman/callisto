@@ -183,8 +183,12 @@ the referee always sees what every machine was told.
 **Many ships per connection.** `SetRole` takes `ships: Vec<String>` (the
 old `ship` stays as an alias for one). `SetReady` on such a connection marks
 every claimed ship ready, and `Users` shows the connection with its ship
-count. Only a service login may claim more than one ship; a human console
-keeps one.
+count. This is not a service-only privilege. A human who claims every Blue
+ship is Blue's commander: the referee's screen with the ship dropdown cut
+down to Blue, every Blue station open to them, and the picture limited to
+what Blue's ships between them have detected. That is the `Admiral` of §4.4,
+and the AI service is the same kind of connection with a model where the
+human would sit. One claim, one projection, one ready flag, for both.
 
 **Round number.** `MetaData.round: u32`, incremented by `update()`, included
 in `EntityResponse`. The service uses it to know a new round began; the
@@ -324,9 +328,12 @@ reason to start there (§5).
 Three levels, all stored as `orders` on ships:
 
 - **Scenario doctrine**: written in the JSON, stands until replaced.
-- **Admiral's orders**: a human with the (new) `Admiral` role sends
-  `SetOrders` to any ship on their team. The frontend needs an orders panel:
-  a list of the team's ships, each with its orders and its last `rationale`.
+- **Admiral's orders**: a human with the (new) `Admiral` role, which is a
+  connection that has claimed a team's ships (§4.1), sends `SetOrders` to
+  any of them. The admiral can also drop into any station on any of those
+  ships, as the referee can today, and sees the team's combined contacts and
+  nothing else. The frontend needs an orders panel: a list of the team's
+  ships, each with its orders, its current `plan` and its last `rationale`.
 - **Captain's orders**: a human captain on a mixed crew can set their own
   ship's orders, which the AI stations follow.
 
@@ -629,6 +636,9 @@ Agreed 2026-10-14:
 8. **No scripted Commander.** A fixed trivial baseline and a replay for CI
    are all the harness needs (§4.6); the first opponent anyone plays is the
    model.
+9. **Many ships per connection is for humans too.** Claiming a team's ships
+   is what makes someone its commander (§4.1, §4.4); the service is one more
+   such connection, not a special case.
 7. **The verbs will be offered to humans later** ("Intercept to Medium and
    hold us there" on the pilot's console). Not in this epic, but
    `callisto::tactics` is built knowing it.
