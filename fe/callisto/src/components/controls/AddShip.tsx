@@ -6,6 +6,7 @@ import {
   ShipDesignTemplate,
   ShipDesignTemplates,
   compressedWeapons,
+  formatMcr,
   shipWeapons,
 } from "lib/shipDesignTemplates";
 import {
@@ -650,9 +651,44 @@ export const AddShip: React.FC<AddShipProps> = () => {
         />
       </form>
       <AiTeams ships={entities.ships} />
+      <SideCosts ships={entities.ships} designs={shipDesignTemplates} />
     </Accordion>
   );
 };
+
+/**
+ * What each side has spent, by its designs' prices: the yardstick for an even
+ * scenario, and one day a budget (Trillion Credit Squadron). A ship refitted in
+ * the scenario counts at her design's price, since a refit's weapons are not
+ * priced here; ships whose design has no price are counted but not costed.
+ */
+function SideCosts(args: { ships: Ship[]; designs: ShipDesignTemplates }) {
+  const sides = [...TEAMS, null].flatMap((team) => {
+    const ships = args.ships.filter((ship) => (ship.team ?? null) === team);
+    if (ships.length === 0) {
+      return [];
+    }
+    const priced = ships.filter((ship) => args.designs[ship.design]?.cost_mcr != null);
+    const total = priced.reduce((sum, ship) => sum + (args.designs[ship.design]?.cost_mcr ?? 0), 0);
+    const refits = ships.filter((ship) => ship.weapons != null).length;
+    return [{ team, ships: ships.length, unpriced: ships.length - priced.length, total, refits }];
+  });
+  if (sides.length === 0) {
+    return null;
+  }
+  return (
+    <div className="side-costs" title="Each side's ships, at their designs' purchase prices.">
+      Cost by side:
+      {sides.map((side) => (
+        <span key={side.team ?? "none"} style={{ color: side.team ? TEAM_CSS[side.team] : undefined }}>
+          {side.team ?? "No team"} {formatMcr(side.total)} ({side.ships} ship{side.ships === 1 ? "" : "s"}
+          {side.unpriced > 0 ? `, ${side.unpriced} unpriced` : ""}
+          {side.refits > 0 ? `, ${side.refits} refitted at design price` : ""})
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Crew a whole team by AI in one go: every ship on it, as the scenario will be
@@ -1193,6 +1229,7 @@ const ShipDesignDetails = (render: {
         {design.armor} armor.&nbsp;
         {design.power} power back {design.maneuver}G thrust and jump{" "}
         {design.jump}. {weaponDesc}.
+        {design.cost_mcr != null ? ` Price ${formatMcr(design.cost_mcr)}.` : " Price not recorded."}
       </div>
     </>
   );
@@ -1350,7 +1387,7 @@ function ShipDesignList(args: {
                 <option
                   key={design.name + "-ship_list"}
                   value={design.name}
-                >{`${design.name} (${design.displacement})`}</option>
+                >{`${design.name} (${design.displacement}${design.cost_mcr != null ? `, ${formatMcr(design.cost_mcr)}` : ""})`}</option>
               ))}
             </optgroup>
           ))}

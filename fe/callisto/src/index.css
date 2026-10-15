@@ -3615,3 +3615,12 @@ h3.control-form {
     gap: 0.75em;
     margin-top: 0.5em;
 }
+
+.side-costs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75em;
+    margin-top: 0.5em;
+    font-variant-numeric: tabular-nums;
+}
