@@ -21,6 +21,7 @@ use dyn_clone::clone_box;
 
 use crate::authentication::{Authenticator, UserDirectory};
 
+use crate::ai_service::{plan_calls, sides_of, AiServiceClient, Sides};
 use crate::entity::MetaData;
 use crate::payloads::{
   AuthResponse, EffectsMsg, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenarioLoadErrorMsg, ScenariosMsg,
@@ -71,6 +72,10 @@ pub struct Processor {
   reload_notifications_enabled: bool,
   /// What this backend accepts from a service logging in.
   service_auth: ServiceAuth,
+  /// Where to ask for AI crews, if anywhere.
+  ai_service: Option<AiServiceClient>,
+  /// What the AI service was last told it is crewing, by scenario.
+  ai_sides: HashMap<String, Sides>,
 }
 
 struct Connection {
@@ -167,6 +172,53 @@ impl Processor {
       test_mode,
       reload_notifications_enabled: true,
       service_auth: ServiceAuth::default(),
+      ai_service: None,
+      ai_sides: HashMap::new(),
+    }
+  }
+
+  /// Ask this AI service to crew AI-controlled ships. Without it, an AI ship
+  /// sits uncrewed.
+  #[must_use]
+  pub fn with_ai_service(mut self, ai_service: Option<AiServiceClient>) -> Self {
+    self.ai_service = ai_service;
+    self
+  }
+
+  /// Tell the AI service about any change to which ships in this scenario it
+  /// should be crewing. Cheap when nothing changed: one pass over the ships.
+  fn reconcile_ai_crews(&mut self, server: Option<&Arc<Server>>) {
+    let (Some(client), Some(server)) = (&self.ai_service, server) else {
+      return;
+    };
+    let Ok(entities) = server.get_unlocked_entities() else {
+      return;
+    };
+    let after = sides_of(&entities);
+    drop(entities);
+    let scenario_id = server.get_id();
+    let before = self.ai_sides.get(scenario_id).cloned().unwrap_or_default();
+    for call in plan_calls(scenario_id, &before, &after) {
+      client.send(call);
+    }
+    if after.is_empty() {
+      self.ai_sides.remove(scenario_id);
+    } else {
+      self.ai_sides.insert(scenario_id.to_string(), after);
+    }
+  }
+
+  /// A scenario nobody is in any more has nothing left to crew.
+  fn release_expired_ai_crews(&mut self) {
+    let live: std::collections::HashSet<String> =
+      self.members.current_scenario_list().into_iter().map(|(id, _)| id).collect();
+    let expired: Vec<String> = self.ai_sides.keys().filter(|id| !live.contains(*id)).cloned().collect();
+    for scenario_id in expired {
+      if let (Some(client), Some(before)) = (&self.ai_service, self.ai_sides.remove(&scenario_id)) {
+        for call in plan_calls(&scenario_id, &before, &Sides::new()) {
+          client.send(call);
+        }
+      }
     }
   }
 
@@ -205,6 +257,9 @@ impl Processor {
     loop {
       // In here, clean up old scenarios that haven't had anyone in them for 5 minutes.
       let removed_scenario = self.members.clean_expired_scenarios();
+      if removed_scenario {
+        self.release_expired_ai_crews();
+      }
 
       // If there are no connections, then we wait for one to come in.
       // Special case as waiting on an empty FuturesUnordered will not wait - just returns None.
@@ -328,6 +383,8 @@ impl Processor {
               }
 
               let response = self.handle_request(parsed_message, &mut current_connection.player).await;
+              let server = current_connection.player.server.clone();
+              self.reconcile_ai_crews(server.as_ref());
               // This is a bit of a hack. We use `LogoutResponse` to signal that we should close the connection.
               // but do not actually ever send it to the client (who has logged out!)
               if response.iter().filter(|msg| matches!(msg, ResponseMsg::LogoutResponse)).count() > 0 {

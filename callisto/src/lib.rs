@@ -3,6 +3,7 @@
 /// Most of our logic is in `main.rs` or `processor.rs`.  This files allows us to build the crate as a library for use
 /// in integration tests. It also holds any general utility functions that don't have a logical home elsewhere.
 pub mod action;
+pub mod ai_service;
 pub mod authentication;
 pub mod combat;
 mod computer;

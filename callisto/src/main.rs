@@ -34,6 +34,7 @@ use callisto::authentication::{
   load_user_directory, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator, UserDirectory,
 };
 
+use callisto::ai_service::AiServiceClient;
 use callisto::entity::Entities;
 use callisto::processor::{Processor, ReloadNotification};
 use callisto::service_auth::ServiceAuth;
@@ -125,6 +126,11 @@ struct Args {
   /// with it: this backend's own URL. Set on Cloud Run; unset disables it.
   #[arg(long, env = "CALLISTO_SERVICE_AUDIENCE")]
   service_audience: Option<String>,
+
+  /// URL of the AI service, which crews AI-controlled ships. Unset means AI
+  /// ships sit uncrewed.
+  #[arg(long, env = "CALLISTO_AI_SERVICE")]
+  ai_service: Option<String>,
 }
 
 #[cfg(feature = "no_tls_upgrade")]
@@ -413,6 +419,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
   } else {
     Some(GoogleAuthenticator::fetch_google_public_keys().await)
   };
+  let ai_service = args
+    .ai_service
+    .as_deref()
+    .filter(|url| !url.is_empty())
+    .map(|url| AiServiceClient::new(url, args.service_token.clone()));
+  info!("(main) AI service: {ai_service:?}");
   let service_auth = ServiceAuth::new(args.service_token.clone(), args.service_audience.clone(), google_keys.clone());
   info!("(main) Service login: {service_auth:?}");
 
@@ -463,7 +475,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       test_mode,
       directory_handle,
     )
-    .with_service_auth(service_auth);
+    .with_service_auth(service_auth)
+    .with_ai_service(ai_service);
     processor.processor().await;
   });
 
