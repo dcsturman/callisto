@@ -169,3 +169,24 @@ async fn a_ship_that_out_reaches_its_enemy_stands_off() {
     }
   );
 }
+
+/// "Eyes on us": a side knows which enemies hold it, found or not, as the
+/// sensor station's panel shows -- even an enemy it has not found itself.
+#[tokio::test]
+async fn a_side_knows_who_has_found_it() {
+  let world = ambush().await;
+  {
+    let mut escort = world.ships["Escort"].write().unwrap();
+    escort.contacts = vec!["Pirate".to_string()];
+    escort.sensor_locks = vec!["Pirate".to_string()];
+  }
+  world.ships["Yacht"].write().unwrap().contacts = vec!["Pirate".to_string()];
+  let view = observe(&world, &["Pirate".to_string()]);
+  let mut watching: Vec<(&str, bool)> = view.watchers.iter().map(|w| (w.by.as_str(), w.lock)).collect();
+  watching.sort_unstable();
+  assert_eq!(watching, vec![("Escort", true), ("Yacht", false)]);
+  assert!(
+    view.contacts.iter().all(|contact| contact.name != "Escort"),
+    "knowing the escort has found us does not find the escort"
+  );
+}

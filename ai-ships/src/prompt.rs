@@ -101,7 +101,7 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
     .map(|ship| {
       let risk = at_risk(view, ship);
       format!(
-        "{} {}%{}{}",
+        "{} {}%{}{}{}",
         ship.get_name(),
         100 * ship.current_hull / ship.design.hull.max(1),
         if ship.current_maneuver == 0 {
@@ -116,7 +116,8 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
           )
         } else {
           String::new()
-        }
+        },
+        eyes_on(view, ship)
       )
     })
     .collect();
@@ -170,6 +171,37 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
     );
   }
   out.push('\n');
+}
+
+/// "Eyes on us": who has found this ship, as her sensor station shows it.
+/// For a stealthed ship that nobody has found, and who is giving herself
+/// away, it says so: that is the moment the choice matters.
+fn eyes_on(view: &Observation, ship: &Ship) -> String {
+  let watchers: Vec<String> = view
+    .watchers
+    .iter()
+    .filter(|watcher| watcher.ours == ship.get_name())
+    .map(|watcher| {
+      if watcher.lock {
+        format!("{} (locked on)", watcher.by)
+      } else {
+        watcher.by.clone()
+      }
+    })
+    .collect();
+  if !watchers.is_empty() {
+    return format!("; found by {}", watchers.join(", "));
+  }
+  if ship.design.stealth.is_none() {
+    return "; no enemy has found her".to_string();
+  }
+  let loud = ship.active_sensors || ship.is_transmitting();
+  if loud {
+    "; NO ENEMY HAS FOUND HER, but she is stealthed and radiating: see her stealth line before keeping her loud"
+      .to_string()
+  } else {
+    "; no enemy has found her: she is hidden".to_string()
+  }
 }
 
 /// The share of what a ship has left that the contacts could take next

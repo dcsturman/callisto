@@ -80,6 +80,17 @@ pub struct Blip {
   pub distance: f64,
 }
 
+/// An enemy ship that has found one of ours, as the sensor station's "Eyes on
+/// us" panel shows it: who, and whether it holds a lock as well.
+#[derive(Debug, Clone, Serialize)]
+pub struct Watcher {
+  /// Our ship being watched.
+  pub ours: String,
+  /// The enemy ship watching.
+  pub by: String,
+  pub lock: bool,
+}
+
 /// The gunner skill a side assumes of an enemy whose crew it cannot see: a
 /// trained crew.
 pub const ASSUMED_ENEMY_GUNNERY: i32 = 2;
@@ -115,6 +126,8 @@ pub struct Observation {
   pub contacts: Vec<Contact>,
   /// Ships of other sides on the plot that nobody of ours has detected.
   pub blips: Vec<Blip>,
+  /// Which enemies hold a contact on each of our ships.
+  pub watchers: Vec<Watcher>,
   pub planets: Vec<Planet>,
   /// Missiles aimed at our ships, or fired by them.
   pub missiles: Vec<Missile>,
@@ -179,6 +192,23 @@ fn tables(own: &[Ship], ships: &[Ship], contacts: &[Contact]) -> (Vec<Engagement
     })
     .collect();
   (engagements, exposures)
+}
+
+/// "Eyes on us": every enemy holding a contact on one of our ships.
+fn watchers_of(own: &[Ship], enemies: &[&Ship]) -> Vec<Watcher> {
+  own
+    .iter()
+    .flat_map(|mine| {
+      enemies
+        .iter()
+        .filter(|ship| ship.contacts.iter().any(|name| name == mine.get_name()))
+        .map(|ship| Watcher {
+          ours: mine.get_name().to_string(),
+          by: ship.get_name().to_string(),
+          lock: ship.sensor_locks.iter().any(|name| name == mine.get_name()),
+        })
+    })
+    .collect()
 }
 
 fn snapshot(world: &Entities) -> Vec<Ship> {
@@ -264,6 +294,11 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
       })
     })
     .collect();
+  let enemy_ships: Vec<&Ship> = ships
+    .iter()
+    .filter(|ship| !ours(ship) && (team.is_none() || ship.team != team))
+    .collect();
+  let watchers = watchers_of(&own, &enemy_ships);
   let (engagements, exposures) = tables(&own, &ships, &contacts);
 
   let side_names: BTreeSet<&str> = own.iter().map(Entity::get_name).collect();
@@ -284,6 +319,7 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     allies,
     contacts,
     blips,
+    watchers,
     planets,
     missiles,
     engagements,
