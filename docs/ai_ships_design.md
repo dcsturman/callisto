@@ -201,19 +201,35 @@ which round a batch of results belongs to is that it arrived just before an
 and must not match them by arrival order; the results window gets "Round 7"
 dividers and a filter; the harness logs get the round on every line.
 
-**Service login.** `Login` gets a sibling, `ServiceLogin{token}`. Two ways to
-mint the token:
+**Service login.** `Login` gets a sibling, `ServiceLogin{token}`. Two kinds
+of token, chosen by where the service runs:
 
-- *Pre-shared secret*: `--service-token` on the backend, same string in the
-  service's environment. Trivial, and fine for local and canary.
-- *Google service-account identity token*: Cloud Run mints an OIDC token for
-  the service's account on request; the backend already validates Google JWTs
-  for human logins, so verifying one more issuer is a few lines, and the
-  allowed service-account emails go in the existing authorized-users file.
-  This is what should run in prod.
+- *Google service-account identity token*, on Cloud Run. The service asks
+  the metadata server for a fresh one-hour OIDC token on every connection,
+  and the backend verifies it against Google's public keys, which it already
+  fetches for human logins. Nothing is stored anywhere, so a restart or
+  redeploy of either side changes nothing and rotation is Google's problem.
+  The only configuration is the service account's email in the
+  authorized-users file, which already lives in GCS.
+- *Pre-shared secret*, for local Docker Compose only, where there is no
+  metadata server. `--service-token` on the backend, the same string in the
+  service's environment. Never in an image; if it were ever wanted on Cloud
+  Run it would have to come from Secret Manager, mounted on both services
+  the way `google_credentials` is today.
 
-Recommend building the token check with the issuer pluggable and shipping the
-pre-shared secret first.
+The token check is built with the issuer pluggable; the identity token is
+the one that ships to canary and prod.
+
+**Sessions do not survive a backend restart**, and that is fine. The session
+key the backend issues at login is in memory, and a redeploy forgets it; the
+backend answers `PleaseLogin` and the browser logs in again. The service does
+the same: `PleaseLogin` or a dropped socket means mint a token, log in,
+re-claim its ships. Since the backend also forgot the claims and anything
+queued for the round, the service keeps its own record of its claims and its
+last `TeamDecision` per team, and after a reconnect it re-claims and re-sends
+the current round's messages. It needs that state anyway for the case where
+the model does not answer (§4.5). The backend runs at one instance, so there
+is no second instance holding different sessions.
 
 **Fog of war.** Two options:
 
