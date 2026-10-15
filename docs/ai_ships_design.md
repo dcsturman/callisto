@@ -608,11 +608,12 @@ debugging. Everything a player does goes through the backend.
 
 ### 4.9 Where it runs
 
-A second Cloud Run service, `callisto-ai`, deployed by a workflow alongside
+A second Cloud Run service, `ai-ships`, deployed by a workflow alongside
 `canary-be-merge.yml`, with the backend's WebSocket URL and the model
 endpoint as config. Locally, a third `compose.yaml` service. The service is a
-new crate in the workspace (`callisto-ai/`) that depends on the `callisto`
-library for the wire types, the solver and the tactics. Rust rather than
+new crate, `ai-ships/`, in a Cargo workspace at the repo root with
+`callisto`, depending on the `callisto` library for the wire types, the
+solver and the tactics. Rust rather than
 Python because everything it needs is already in Rust and the model call is
 one HTTPS request.
 
@@ -779,8 +780,14 @@ Also agreed, later the same day:
 14. **Anyone at a ship's console** may switch it to AI and set its orders;
     so may the scenario file (§4.1).
 15. **Model per team** (§4.5), so models can play each other.
-16. **Names**: the crate and Cloud Run service are `callisto-ai`; the ship
-    field is `controller: Human | Ai`; the team-commander role is `Admiral`.
+16. **Names**: the service is a sub-crate, `ai-ships`, in a Cargo workspace
+    at the repo root with `callisto` (none exists today; `callisto/` is a
+    single crate). It depends on `callisto` by path, so its Docker build
+    takes the repo root as context, unlike the backend's. The ship field is
+    `controller: Human | AI` on the wire and in scenario files; the Rust
+    variant is `Ai` with a serde rename, because clippy's
+    `upper_case_acronyms` lint fails CI on `AI`. The team-commander role is
+    `Admiral`.
 17. **Not now**: referee overrides of an AI's decisions, mixed crews, and
     the backend's whole-world broadcast (§3). All after there is a working
     AI.
