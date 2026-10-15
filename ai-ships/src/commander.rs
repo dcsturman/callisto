@@ -50,9 +50,11 @@ const REPAIR_PRIORITY: [ShipSystem; 9] = [
 ];
 
 /// Fight the nearest enemy with everything that reaches, lock it, defend, and
-/// repair what is broken.
+/// repair what is broken. With no enemy in contact, sweep with active sensors
+/// to find one: holding quiet with nothing to hide from finds nobody.
 fn fight(target: Option<&Contact>, helm: Helm) -> Intent {
   Intent {
+    posture: target.is_none().then_some(callisto::tactics::Posture::Active),
     helm,
     fire: target
       .map(|target| Engage {
@@ -72,7 +74,7 @@ fn fight(target: Option<&Contact>, helm: Helm) -> Intent {
       priority: REPAIR_PRIORITY.to_vec(),
     }],
     rationale: target.map_or_else(
-      || "No enemy in contact; holding.".to_string(),
+      || "No enemy in contact; sweeping for one.".to_string(),
       |target| format!("Engaging {}, the nearest enemy.", target.name),
     ),
     ..Intent::default()
@@ -148,5 +150,66 @@ impl Commander for Close {
         (ship.get_name().to_string(), fight(target, helm))
       })
       .collect()
+  }
+}
+
+/// Any legal verb at each station, by chance. The floor every other commander
+/// should clear: a commander that cannot beat this is not deciding anything.
+pub struct Random {
+  rng: rand::rngs::SmallRng,
+}
+
+impl Random {
+  #[must_use]
+  pub fn seeded(seed: u64) -> Self {
+    use rand::SeedableRng;
+    Random {
+      rng: rand::rngs::SmallRng::seed_from_u64(seed),
+    }
+  }
+}
+
+impl Commander for Random {
+  fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    use callisto::tactics::{Posture, BANDS};
+    use rand::seq::SliceRandom;
+    use rand::Rng;
+    let enemies = view.enemies();
+    view
+      .own
+      .iter()
+      .map(|ship| {
+        let target = enemies.choose(&mut self.rng).copied();
+        let helm = match (target, self.rng.gen_range(0..3)) {
+          (Some(target), 0) => Helm::Intercept {
+            target: target.name.clone(),
+            band: *BANDS.choose(&mut self.rng).unwrap_or(&Range::Long),
+          },
+          (Some(target), 1) => Helm::OpenRange {
+            target: target.name.clone(),
+          },
+          _ => Helm::Hold,
+        };
+        let mut intent = fight(target, helm);
+        intent.posture = [Posture::Silent, Posture::Passive, Posture::Active]
+          .choose(&mut self.rng)
+          .copied();
+        intent.rationale = "Chosen at random.".to_string();
+        (ship.get_name().to_string(), intent)
+      })
+      .collect()
+  }
+}
+
+/// A commander by name, for the harness and configuration: `idle`, `hold`,
+/// `close` or `random`. `seed` is used by those that roll dice of their own.
+#[must_use]
+pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
+  match name {
+    "idle" => Some(Box::new(Idle)),
+    "hold" => Some(Box::new(Hold)),
+    "close" => Some(Box::new(Close)),
+    "random" => Some(Box::new(Random::seeded(seed))),
+    _ => None,
   }
 }

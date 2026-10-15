@@ -19,4 +19,5 @@ pub mod auth;
 pub mod commander;
 pub mod crew;
 pub mod crews;
+pub mod harness;
 pub mod observation;
