@@ -266,6 +266,12 @@ pub fn attack(
   #[allow(clippy::cast_possible_truncation)]
   let range_band = find_range_band((defender.get_position() - attacker.get_position()).magnitude() as u32);
 
+  // "Ships at a range of Short or less may attempt to make called shots with
+  // direct-fire weapons (not missiles or torpedoes)" (Core Rulebook p. 169).
+  // The gunner's console only offers one at Short; this holds every client to
+  // it. Anything else fires as an ordinary shot, without the DM-2.
+  let called_shot_system = called_shot_system.filter(|_| range_band == Range::Short && profile.salvo.is_none());
+
   debug!(
         "(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}",
         attacker.get_name(),
@@ -413,21 +419,29 @@ pub fn attack(
     defender.get_name()
   );
 
-  // Damage is compute as the weapon dice for the given weapon
-  // + the effect of the hit roll
+  // Damage is the weapon's dice plus the Effect of the hit roll -- except for
+  // missiles and torpedoes. The book has a salvo "roll for damage as if for a
+  // single missile ... but do not apply the Effect", multiplying by the Effect
+  // instead, capped at the missiles left in the salvo (Core Rulebook p. 169).
+  // Callisto's missiles fly singly, so that cap is always one: their dice
+  // alone.
   let roll = u32::from(roll_dice_min(
     profile.damage_dice,
     WeaponProfile::min_die(firing.kind, firing.modifiers),
     rng,
   ));
-  let mut damage = roll + effect;
+  let effect_damage = if profile.salvo.is_some() { 0 } else { effect };
+  let mut damage = roll + effect_damage;
 
   // The damage arithmetic, accumulated as it happens rather than reconstructed
   // afterwards -- armour, screens, turret bonus and Damage Multiple are applied
   // at four different points and there is no way to infer the order from the
   // final number alone. "How did we get to 5?" should be answerable from the
   // results log without opening the debug output.
-  let mut terms = vec![format!("{}D {roll}", profile.damage_dice), format!("+{effect} effect")];
+  let mut terms = vec![format!("{}D {roll}", profile.damage_dice)];
+  if profile.salvo.is_none() {
+    terms.push(format!("+{effect} effect"));
+  }
 
   damage = if i64::from(damage) + i64::from(damage_mod) < 0 {
     0
@@ -3348,6 +3362,46 @@ mod tests {
   /// the attacker may choose which location is hit" (CRB p. 169) does not say
   /// which critical, and restricting it to the Effect 6 one made a called
   /// shot a DM-2 for nothing in the ordinary case.
+  #[test]
+  fn a_called_shot_is_only_called_at_short_range() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Design".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1)],
+      hull: 80,
+      armor: 0,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let weapon = Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1);
+    // Whether the attack's itemised DM carries the called shot's DM-2.
+    let called_at = |metres: f64| {
+      let mut defender = Ship::new(
+        "Defender".to_string(),
+        Vec3::new(metres, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let effects = attack(
+        HitMods {
+          gunner: 3,
+          ..HitMods::default()
+        },
+        0,
+        &attacker,
+        &mut defender,
+        &weapon.firing_default().unwrap(),
+        Some(&ShipSystem::Weapon),
+        &BoostMap::default(),
+        &mut StdRng::seed_from_u64(7),
+      );
+      serde_json::to_string(&effects).unwrap().contains("called shot")
+    };
+    assert!(called_at(1_000_000.0), "Short: the call is made, at DM-2");
+    assert!(!called_at(5_000_000.0), "Medium: fired as an ordinary shot");
+  }
+
   #[test]
   fn a_called_shot_places_the_crit_it_causes() {
     let design = Arc::new(ShipDesignTemplate {

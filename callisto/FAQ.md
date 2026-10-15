@@ -30,7 +30,8 @@ Everything below is a smaller deviation within the tonnage we do support.
   result, and never says what a *successful* check with an Effect of 0 is worth.  Callisto treats that as an
   oversight rather than an intent -- a check that succeeded should accomplish something.  So Effect **floors at
   1 wherever it multiplies**, and is used **as rolled wherever it is added** (weapon damage, where an Effect of
-  0 is a real outcome).
+  0 is a real outcome).  Missiles and torpedoes are the exception: they do their damage dice alone (see
+  Weapons below).
 * The entire "dogfight" system is ignored in Callisto.  There's no special dogfight rules or _adjacent_ range band.
 * Skills are still a work-in-progress and in some cases do not always have impact:
   * Moves are simultaneous for all ships.  Therefore there is no initiative between sides, and no impact from _Tactics_ or _Leadership_ skill. 
@@ -378,6 +379,20 @@ the plot, and killing the ship that gave it to them does not take it back.
 ---
 
 ### Weapons
+
+#### Change — a missile's Effect adds nothing to its damage
+A salvo "rolls for damage as if for a single missile ... but do not apply the
+Effect of the attack roll. Instead, any damage is multiplied by the Effect ...
+but the Effect cannot be higher than the number of remaining missiles in the
+salvo" (CRB p. 169). Callisto's missiles fly one at a time, so that cap is
+always one: a missile or torpedo does its damage dice and nothing more. Every
+other weapon still adds the Effect.
+
+#### Rule enforced — called shots only at Short, and not with missiles
+"Ships at a range of Short or less may attempt to make called shots with
+direct-fire weapons (not missiles or torpedoes)" (CRB p. 169). The server holds
+every client to this: a called shot from further out, or from a launcher, is
+fired as an ordinary shot, without the DM-2.
 
 #### Assumption — a torpedo barbette holds three and fires one at a time
 Keeps it below a small bay, which is the intent of the progression. Worth
