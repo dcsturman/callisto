@@ -122,10 +122,11 @@ fn learn_designs(designs: HashMap<String, ShipDesignTemplate>) {
 
 /// The side's orders for the round. The commander sees only what the side may
 /// know; its intents are carried out against the world, as a console would.
-fn decide(commander: &mut dyn Commander, world: &Entities, ships: &[String]) -> Vec<RequestMsg> {
+async fn decide(commander: &mut dyn Commander, world: &Entities, ships: &[String]) -> Vec<RequestMsg> {
   let view = observe(world, ships);
   commander
     .decide(&view)
+    .await
     .into_iter()
     .filter(|(ship, _)| ships.contains(ship))
     .flat_map(|(ship, intent)| {
@@ -216,7 +217,7 @@ async fn session(
             // Updates within a round (someone changed a plan) are not a new
             // decision.
             last_round = Some(world.round);
-            let mut orders = decide(commander, &world, &claimed);
+            let mut orders = decide(commander, &world, &claimed).await;
             orders.push(RequestMsg::SetReady(true));
             for order in &orders {
               if let Err(e) = send(&mut socket, order).await {

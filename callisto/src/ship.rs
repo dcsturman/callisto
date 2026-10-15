@@ -597,6 +597,11 @@ pub struct ShipDesignTemplate {
   /// usual load for what the ship is armed with.
   #[serde(default, skip_serializing_if = "Magazine::is_empty")]
   pub magazine: Magazine,
+  /// What the design costs to buy, in millions of credits, as its data sheet
+  /// gives it. Nothing reads it yet: it is for building and balancing
+  /// scenarios by price, Trillion Credit Squadron style.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cost_mcr: Option<f64>,
   /// The software the design is sold with. A scenario can add to it.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub software: Vec<Software>,
@@ -3717,6 +3722,7 @@ impl Default for ShipDesignTemplate {
       screens: vec![],
       features: vec![],
       magazine: Magazine::default(),
+      cost_mcr: None,
       software: vec![],
       computer_bis: false,
       computer_fib: false,
@@ -4455,6 +4461,7 @@ mod tests {
       tl: 10,
       role: None,
       source: None,
+      cost_mcr: None,
     });
     let mut templates = previous_templates.as_ref().clone();
     templates.insert("Test Design".to_string(), original_template.clone());
@@ -5041,6 +5048,7 @@ mod tests {
       tl: 12,
       role: None,
       source: None,
+      cost_mcr: None,
     });
 
     // Create a ship with lower current values
@@ -5183,6 +5191,7 @@ mod tests {
       tl: 12,
       role: None,
       source: None,
+      cost_mcr: None,
     };
 
     // Test normal case

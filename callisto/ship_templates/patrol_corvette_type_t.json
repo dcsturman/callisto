@@ -1,6 +1,7 @@
 {
   "name": "Patrol Corvette - Type T",
   "displacement": 400,
+  "cost_mcr": 198.26,
   "hull": 160,
   "armor": 4,
   "maneuver": 4,

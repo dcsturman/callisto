@@ -6,9 +6,11 @@ use std::time::Duration;
 
 use ai_ships::api::{router, App, Callers};
 use ai_ships::auth::Credential;
-use ai_ships::commander::{Close, Commander};
+use ai_ships::commander::Commander;
 use ai_ships::crew::CrewConfig;
 use ai_ships::crews::Crews;
+use ai_ships::llm;
+use ai_ships::provider::{ModelSpec, Vertex};
 use callisto::authentication::{GoogleAuthenticator, UserDirectory};
 use callisto::service_auth::ServiceAuth;
 use clap::Parser;
@@ -43,6 +45,20 @@ struct Args {
   /// separated: the backend's service account.
   #[arg(long, env = "CALLISTO_AI_ALLOWED_CALLERS", value_delimiter = ',')]
   allowed_callers: Vec<String>,
+
+  /// Who decides for the ships: a model (`gemini`, `gemini:<model>`,
+  /// `claude`, `claude:<model>`) or a baseline (`close`, `hold`, `idle`).
+  #[arg(long, env = "CALLISTO_AI_MODEL", default_value = "gemini")]
+  model: String,
+
+  /// The GCP project the model calls are billed to. Defaults to the
+  /// credential's own project.
+  #[arg(long, env = "GOOGLE_CLOUD_PROJECT")]
+  gcp_project: Option<String>,
+
+  /// The Vertex AI region to call models in.
+  #[arg(long, env = "CALLISTO_VERTEX_REGION", default_value = "global")]
+  vertex_region: String,
 }
 
 fn http_audience(backend: &str) -> String {
@@ -89,8 +105,25 @@ async fn main() {
     reconnect_backoff: Duration::from_secs(2),
   };
   info!("(main) Backend {}, logging in with {:?}.", config.backend, config.credential);
-  // Until there is a model: close with the nearest enemy and fight.
-  let commander = Arc::new(|| Box::new(Close) as Box<dyn Commander>);
+
+  let vertex = match ModelSpec::parse(&args.model) {
+    Some(_) => Some(Arc::new(
+      Vertex::new(args.gcp_project.as_deref(), &args.vertex_region)
+        .await
+        .expect("(main) Cannot reach Vertex AI"),
+    )),
+    None => None,
+  };
+  let model = args.model.clone();
+  llm::named(&model, 0, vertex.as_ref()).expect("(main) Unknown commander or model");
+  info!(
+    "(main) Deciding with {model}{}.",
+    vertex
+      .as_ref()
+      .map_or_else(String::new, |vertex| format!(" in project {}", vertex.project()))
+  );
+  let commander =
+    Arc::new(move || llm::named(&model, 0, vertex.as_ref()).expect("checked at startup") as Box<dyn Commander>);
   let app = Arc::new(App {
     crews: Crews::new(config, commander),
     callers,

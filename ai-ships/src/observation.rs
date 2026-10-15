@@ -30,7 +30,7 @@ use std::collections::BTreeSet;
 use callisto::entity::{Entities, Entity, Vec3};
 use callisto::missile::Missile;
 use callisto::planet::Planet;
-use callisto::ship::{Range, Sensors, Ship, Team, Weapon};
+use callisto::ship::{CounterMeasures, Range, Sensors, Ship, Stealth, Team, Weapon};
 use callisto::tactics::{band_between, detection, engagement, BandOdds, DetectionOdds};
 use cgmath::InnerSpace;
 use serde::Serialize;
@@ -40,9 +40,14 @@ use serde::Serialize;
 pub struct Contact {
   pub name: String,
   pub design: String,
-  /// The hull its class is built with. Not what it has left: that the
-  /// sensor station does not show.
+  pub displacement: u32,
+  /// The hull and armour its class is built with. Not what it has left: that
+  /// the sensor station does not show.
   pub design_hull: u32,
+  pub design_armor: u32,
+  pub stealth: Option<Stealth>,
+  pub tl: u8,
+  pub countermeasures: Option<CounterMeasures>,
   pub team: Option<Team>,
   pub position: Vec3,
   pub velocity: Vec3,
@@ -61,8 +66,34 @@ pub struct Contact {
   pub distance: f64,
 }
 
-/// The gunner skill a side assumes of an enemy whose crew it cannot see.
-pub const ASSUMED_ENEMY_GUNNERY: i32 = 1;
+/// A ship on the plot that no ship of ours has detected: the dimmed blip a
+/// console shows. Where it is and how it is moving, and nothing else -- not
+/// its class, not its guns. A course can be laid toward or away from it;
+/// nothing else can be done to it.
+#[derive(Debug, Clone, Serialize)]
+pub struct Blip {
+  pub name: String,
+  pub position: Vec3,
+  pub velocity: Vec3,
+  /// The nearest of our ships to it, and how far.
+  pub nearest: String,
+  pub distance: f64,
+}
+
+/// An enemy ship that has found one of ours, as the sensor station's "Eyes on
+/// us" panel shows it: who, and whether it holds a lock as well.
+#[derive(Debug, Clone, Serialize)]
+pub struct Watcher {
+  /// Our ship being watched.
+  pub ours: String,
+  /// The enemy ship watching.
+  pub by: String,
+  pub lock: bool,
+}
+
+/// The gunner skill a side assumes of an enemy whose crew it cannot see: a
+/// trained crew.
+pub const ASSUMED_ENEMY_GUNNERY: i32 = 2;
 
 /// What one of our ships and one contact can do to each other, by band.
 #[derive(Debug, Clone, Serialize)]
@@ -93,6 +124,10 @@ pub struct Observation {
   /// Other ships on the side's team, in full.
   pub allies: Vec<Ship>,
   pub contacts: Vec<Contact>,
+  /// Ships of other sides on the plot that nobody of ours has detected.
+  pub blips: Vec<Blip>,
+  /// Which enemies hold a contact on each of our ships.
+  pub watchers: Vec<Watcher>,
   pub planets: Vec<Planet>,
   /// Missiles aimed at our ships, or fired by them.
   pub missiles: Vec<Missile>,
@@ -123,6 +158,57 @@ impl Observation {
     enemies.sort_by(|a, b| a.distance.total_cmp(&b.distance));
     enemies
   }
+}
+
+/// The odds and exposure tables for every pairing of our ships with a contact.
+fn tables(own: &[Ship], ships: &[Ship], contacts: &[Contact]) -> (Vec<Engagement>, Vec<Exposure>) {
+  let known = |ship: &&Ship| contacts.iter().any(|contact| contact.name == ship.get_name());
+  let engagements = own
+    .iter()
+    .flat_map(|ship| {
+      ships.iter().filter(known).map(move |contact| Engagement {
+        ours: ship.get_name().to_string(),
+        contact: contact.get_name().to_string(),
+        // Our gunners we know; their armour is what their class carries.
+        we_hit: engagement(
+          ship,
+          contact,
+          &|mount| i32::from(ship.get_crew().get_gunnery(mount)),
+          contact.design.armor,
+        ),
+        // Their gunners we can only guess at; our armour we know.
+        they_hit: engagement(contact, ship, &|_| ASSUMED_ENEMY_GUNNERY, ship.get_current_armor()),
+      })
+    })
+    .collect();
+  let exposures = own
+    .iter()
+    .flat_map(|ship| {
+      ships.iter().filter(known).map(move |contact| Exposure {
+        ours: ship.get_name().to_string(),
+        contact: contact.get_name().to_string(),
+        odds: detection(contact, ship),
+      })
+    })
+    .collect();
+  (engagements, exposures)
+}
+
+/// "Eyes on us": every enemy holding a contact on one of our ships.
+fn watchers_of(own: &[Ship], enemies: &[&Ship]) -> Vec<Watcher> {
+  own
+    .iter()
+    .flat_map(|mine| {
+      enemies
+        .iter()
+        .filter(|ship| ship.contacts.iter().any(|name| name == mine.get_name()))
+        .map(|ship| Watcher {
+          ours: mine.get_name().to_string(),
+          by: ship.get_name().to_string(),
+          lock: ship.sensor_locks.iter().any(|name| name == mine.get_name()),
+        })
+    })
+    .collect()
 }
 
 fn snapshot(world: &Entities) -> Vec<Ship> {
@@ -165,7 +251,12 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
       Some(Contact {
         name: contact.get_name().to_string(),
         design: contact.design.name.clone(),
+        displacement: contact.design.displacement,
         design_hull: contact.design.hull,
+        design_armor: contact.design.armor,
+        stealth: contact.design.stealth,
+        tl: contact.design.tl,
+        countermeasures: contact.design.countermeasures,
         team: contact.team,
         position: contact.get_position(),
         velocity: contact.get_velocity(),
@@ -185,41 +276,30 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     })
     .collect();
 
-  let engagements = own
+  let blips: Vec<Blip> = ships
     .iter()
-    .flat_map(|ship| {
-      ships
+    .filter(|ship| !ours(ship) && (team.is_none() || ship.team != team))
+    .filter(|ship| !contacts.iter().any(|contact| contact.name == ship.get_name()))
+    .filter_map(|blip| {
+      let (nearest, distance) = own
         .iter()
-        .filter(|contact| contacts.iter().any(|known: &Contact| known.name == contact.get_name()))
-        .map(move |contact| Engagement {
-          ours: ship.get_name().to_string(),
-          contact: contact.get_name().to_string(),
-          // Our gunners we know; their armour is what their class carries.
-          we_hit: engagement(
-            ship,
-            contact,
-            &|mount| i32::from(ship.get_crew().get_gunnery(mount)),
-            contact.design.armor,
-          ),
-          // Their gunners we can only guess at; our armour we know.
-          they_hit: engagement(contact, ship, &|_| ASSUMED_ENEMY_GUNNERY, ship.get_current_armor()),
-        })
+        .map(|ship| (ship.get_name(), (ship.get_position() - blip.get_position()).magnitude()))
+        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+      Some(Blip {
+        name: blip.get_name().to_string(),
+        position: blip.get_position(),
+        velocity: blip.get_velocity(),
+        nearest: nearest.to_string(),
+        distance,
+      })
     })
     .collect();
-
-  let exposures = own
+  let enemy_ships: Vec<&Ship> = ships
     .iter()
-    .flat_map(|ship| {
-      ships
-        .iter()
-        .filter(|contact| contacts.iter().any(|known: &Contact| known.name == contact.get_name()))
-        .map(move |contact| Exposure {
-          ours: ship.get_name().to_string(),
-          contact: contact.get_name().to_string(),
-          odds: detection(contact, ship),
-        })
-    })
+    .filter(|ship| !ours(ship) && (team.is_none() || ship.team != team))
     .collect();
+  let watchers = watchers_of(&own, &enemy_ships);
+  let (engagements, exposures) = tables(&own, &ships, &contacts);
 
   let side_names: BTreeSet<&str> = own.iter().map(Entity::get_name).collect();
   let mut missiles: Vec<Missile> = world
@@ -238,6 +318,8 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     own,
     allies,
     contacts,
+    blips,
+    watchers,
     planets,
     missiles,
     engagements,

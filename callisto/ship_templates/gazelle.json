@@ -1,6 +1,7 @@
 {
   "name": "Gazelle",
   "displacement": 400,
+  "cost_mcr": 274.25,
   "hull": 160,
   "armor": 3,
   "maneuver": 5,

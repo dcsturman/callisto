@@ -1,0 +1,356 @@
+{
+  "metadata": {
+    "name": "Tessaly Crossing",
+    "owner": "dcsturman@gmail.com",
+    "description": "A four-ship Imperial Navy patrol meets a four-ship corsair band off the moon Tessaly. The Navy brings two Gazelle escorts, a Watchdog picket and a patrol corvette; the corsairs a Fiery gunship with a fusion bay, a Corsair, and an escort and a picket taken as prizes. Matched on cost (MCr 992 against 910) and evenly balanced: whoever fights better wins."
+  },
+  "planets": [
+    {
+      "name": "Tessaly",
+      "position": [
+        15000000.0,
+        60000000.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!mars",
+      "radius": 3000000.0,
+      "mass": 4e+23
+    }
+  ],
+  "ships": [
+    {
+      "name": "IMS Kestrel",
+      "position": [
+        0,
+        0.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial Navy patrol. The corsair band in Tessaly is to be destroyed or driven out of the system. Bring the whole squadron's guns to bear together. The Gazelle IMS Kestrel is the squadron's flagship: do not lose her."
+    },
+    {
+      "name": "IMS Bulwark",
+      "position": [
+        0,
+        800000.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Fleet Picket - Watchdog",
+      "team": "Red",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial Navy patrol. The corsair band in Tessaly is to be destroyed or driven out of the system. Bring the whole squadron's guns to bear together. The Gazelle IMS Kestrel is the squadron's flagship: do not lose her."
+    },
+    {
+      "name": "IMS Diligent",
+      "position": [
+        0,
+        1600000.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Red",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial Navy patrol. The corsair band in Tessaly is to be destroyed or driven out of the system. Bring the whole squadron's guns to bear together. The Gazelle IMS Kestrel is the squadron's flagship: do not lose her."
+    },
+    {
+      "name": "IMS Peregrine",
+      "position": [
+        0,
+        2400000.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial Navy patrol. The corsair band in Tessaly is to be destroyed or driven out of the system. Bring the whole squadron's guns to bear together. The Gazelle IMS Kestrel is the squadron's flagship: do not lose her."
+    },
+    {
+      "name": "Red Morrow",
+      "position": [
+        30000000.0,
+        0.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gunship - Fiery",
+      "team": "Blue",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. The Navy patrol stands between you and Tessaly's shipping. Break it: destroy what you can. This is a raid, not a last stand: no ship is worth losing for nothing, and if the fight turns against you, withdraw and live to raid again."
+    },
+    {
+      "name": "Long Reprieve",
+      "position": [
+        30000000.0,
+        800000.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. The Navy patrol stands between you and Tessaly's shipping. Break it: destroy what you can. This is a raid, not a last stand: no ship is worth losing for nothing, and if the fight turns against you, withdraw and live to raid again."
+    },
+    {
+      "name": "Saint Ysolde",
+      "position": [
+        30000000.0,
+        1600000.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Corsair - Type P",
+      "team": "Blue",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. The Navy patrol stands between you and Tessaly's shipping. Break it: destroy what you can. This is a raid, not a last stand: no ship is worth losing for nothing, and if the fight turns against you, withdraw and live to raid again."
+    },
+    {
+      "name": "Black Lantern",
+      "position": [
+        30000000.0,
+        2400000.0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Fleet Picket - Watchdog",
+      "team": "Blue",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. The Navy patrol stands between you and Tessaly's shipping. Break it: destroy what you can. This is a raid, not a last stand: no ship is worth losing for nothing, and if the fight turns against you, withdraw and live to raid again."
+    }
+  ]
+}

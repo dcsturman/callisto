@@ -63,7 +63,7 @@
         ]
       ],
       "design": "Yacht - Type Y",
-   "team": "Blue",
+      "team": "Blue",
       "weapons": [
         {
           "kind": "Pulse",
@@ -91,7 +91,8 @@
         "Invigilator",
         "Death's Actuary",
         "Cicada"
-      ]
+      ],
+      "orders": "You are the bait. Keep the Executor close and interested: hold at Medium of her and do not run. Once the interceptors have opened fire, close to Short and fire on her there; get right on top of her to board if you can."
     },
     {
       "name": "Invigilator",
@@ -147,7 +148,8 @@
       },
       "contacts": [
         "Lyonesse II"
-      ]
+      ],
+      "orders": "President Yang is aboard. Lyonesse II is our bait and HMS Executor has taken it. Stay dark until the Executor is committed to the yacht, then close to Short with Death's Actuary and cripple her drive and her particle barbette. We want her taken, not destroyed: once she cannot manoeuvre, stop shooting. If the battle is going against you, flee or jump: do not fight to the death unless you are cornered and cannot escape."
     },
     {
       "name": "Death's Actuary",
@@ -203,7 +205,8 @@
       },
       "contacts": [
         "Lyonesse II"
-      ]
+      ],
+      "orders": "Protect Invigilator at all costs: President Yang is aboard. Otherwise fight alongside her, and when she closes on HMS Executor, close with her and shoot the Executor's weapons."
     },
     {
       "name": "Cicada",
@@ -266,7 +269,8 @@
       },
       "contacts": [
         "Lyonesse II"
-      ]
+      ],
+      "orders": "Slow and unarmoured. Stay out of the Executor's reach; launch missiles at her once the interceptors engage."
     },
     {
       "name": "HMS Executor",
@@ -294,7 +298,8 @@
       "team": "Red",
       "contacts": [
         "Lyonesse II"
-      ]
+      ],
+      "orders": "Answer the yacht's distress call, but something is wrong. Keep your stealth: stay silent and do not transmit. If pirates appear, use your reach: hold at Very Long, where your particle barbette hits and their lasers cannot, and finish them with missiles. Never let a lighter ship get to Short of you."
     }
   ]
 }

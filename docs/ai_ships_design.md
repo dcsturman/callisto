@@ -876,6 +876,31 @@ Also agreed, later the same day:
 
 Still open:
 
+- **Verbs the model is told about but cannot use yet:** point defence on
+  behalf of another ship, and choosing a smaller missile salvo than the
+  launcher's. The
+  prompt says so for each, so the model does not try. Fire Control points
+  are spent for it, spread across the round's fire orders.
+- **The harness calls a game off too readily for production.** After three
+  rounds with no ship holding an enemy it stops, even when one side is
+  chasing the other's blip and would catch it. Cheap, and fine for prompt
+  work; before results are trusted, keep playing while anyone is pursuing,
+  or count only a jump as an escape.
+- **The scenario builder must learn AI ships before the epic lands.** A
+  scenario can already say `controller: AI` and give `orders` per ship in its
+  JSON, but the builder has no way to set either: mark a ship, or a whole
+  team, as AI-crewed, and write its standing orders.
+- **Called shots are only checked in the frontend.** The book allows them at
+  Short or less with direct-fire weapons (CRB p. 169); the gunner's console
+  offers the menu only at Short, and `tactics::orders` drops a called shot
+  further out, but the backend accepts one at any range from any client.
+  Validate it server-side.
+- **Missile damage adds the attack's Effect.** The book multiplies missile
+  damage by the Effect, capped at the salvo's remaining missiles (CRB p. 169);
+  with Callisto's singleton missiles that cap is 1, so the Effect should not
+  count at all. `combat::attack` and the odds table in `tactics` both add it,
+  about 3 points a hit. Minor; fix both together and note it in `FAQ.md`.
+
 - **The verb set.** §4.2 is a first pass checked against two real orders
   (Thebus and Marduk). It needs a read against a playthrough: anything done
   every round at a station that is not a verb is something the AI cannot do.

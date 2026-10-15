@@ -4260,6 +4260,7 @@ mod tests {
       tl: 10,
       role: None,
       source: None,
+      cost_mcr: None,
     });
 
     let mut scenario_templates = previous_templates.as_ref().clone();

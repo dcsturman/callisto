@@ -55,8 +55,18 @@ async fn a_side_sees_only_what_its_consoles_would() {
   for hidden in ["current_hull", "current_power", "crew", "orders", "plan"] {
     assert!(wire.get(hidden).is_none(), "a contact must not reveal {hidden}");
   }
-  let whole = serde_json::to_string(&view).unwrap();
-  assert!(!whole.contains("Escort"), "nothing anywhere in the view names the escort");
+  // The undetected escort is a blip on the plot: where it is and how it moves,
+  // nothing more, as the console shows it dimmed.
+  let blips: Vec<&str> = view.blips.iter().map(|blip| blip.name.as_str()).collect();
+  assert_eq!(blips, vec!["Escort"]);
+  let blip = serde_json::to_value(&view.blips[0]).unwrap();
+  for hidden in ["design", "weapons", "sensors", "current_hull", "crit_level", "team"] {
+    assert!(blip.get(hidden).is_none(), "a blip must not reveal {hidden}");
+  }
+  assert!(
+    view.engagements.iter().all(|e| e.contact != "Escort") && view.exposures.iter().all(|e| e.contact != "Escort"),
+    "nothing can be worked out about a ship nobody has found"
+  );
 }
 
 #[tokio::test]
@@ -64,12 +74,12 @@ async fn hold_fights_where_it_is_and_close_goes_to_its_guns_range() {
   let world = ambush().await;
   let view = observe(&world, &["Pirate".to_string()]);
 
-  let held = Hold.decide(&view);
+  let held = Hold.decide(&view).await;
   assert_eq!(held.len(), 1);
   assert_eq!(held[0].1.helm, Helm::Hold);
   assert_eq!(held[0].1.fire[0].target, "Yacht");
 
-  let closed = Close.decide(&view);
+  let closed = Close.decide(&view).await;
   let Helm::Intercept { target, band } = &closed[0].1.helm else {
     panic!("expected an intercept, got {:?}", closed[0].1.helm);
   };
@@ -93,7 +103,7 @@ async fn with_no_enemy_in_contact_a_commander_holds() {
   let world = ambush().await;
   world.ships["Pirate"].write().unwrap().contacts.clear();
   let view = observe(&world, &["Pirate".to_string()]);
-  let decided = Close.decide(&view);
+  let decided = Close.decide(&view).await;
   assert_eq!(decided[0].1.helm, Helm::Hold);
   assert_eq!(decided[0].1.fire, vec![]);
   assert_eq!(
@@ -152,10 +162,31 @@ async fn a_ship_that_out_reaches_its_enemy_stands_off() {
   assert!(silent.found < loud.found);
 
   assert_eq!(
-    Close.decide(&view)[0].1.helm,
+    Close.decide(&view).await[0].1.helm,
     Helm::Intercept {
       target: "Pirate".to_string(),
       band: Range::VeryLong
     }
+  );
+}
+
+/// "Eyes on us": a side knows which enemies hold it, found or not, as the
+/// sensor station's panel shows -- even an enemy it has not found itself.
+#[tokio::test]
+async fn a_side_knows_who_has_found_it() {
+  let world = ambush().await;
+  {
+    let mut escort = world.ships["Escort"].write().unwrap();
+    escort.contacts = vec!["Pirate".to_string()];
+    escort.sensor_locks = vec!["Pirate".to_string()];
+  }
+  world.ships["Yacht"].write().unwrap().contacts = vec!["Pirate".to_string()];
+  let view = observe(&world, &["Pirate".to_string()]);
+  let mut watching: Vec<(&str, bool)> = view.watchers.iter().map(|w| (w.by.as_str(), w.lock)).collect();
+  watching.sort_unstable();
+  assert_eq!(watching, vec![("Escort", true), ("Yacht", false)]);
+  assert!(
+    view.contacts.iter().all(|contact| contact.name != "Escort"),
+    "knowing the escort has found us does not find the escort"
   );
 }

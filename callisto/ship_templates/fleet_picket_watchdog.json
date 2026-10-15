@@ -1,6 +1,7 @@
 {
   "name": "Fleet Picket - Watchdog",
   "displacement": 500,
+  "cost_mcr": 245.837,
   "hull": 200,
   "armor": 8,
   "maneuver": 3,
