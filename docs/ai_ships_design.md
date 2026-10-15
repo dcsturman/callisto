@@ -881,6 +881,10 @@ Still open:
   launcher's. The
   prompt says so for each, so the model does not try. Fire Control points
   are spent for it, spread across the round's fire orders.
+- **The scenario builder must learn AI ships before the epic lands.** A
+  scenario can already say `controller: AI` and give `orders` per ship in its
+  JSON, but the builder has no way to set either: mark a ship, or a whole
+  team, as AI-crewed, and write its standing orders.
 - **Called shots are only checked in the frontend.** The book allows them at
   Short or less with direct-fire weapons (CRB p. 169); the gunner's console
   offers the menu only at Short, and `tactics::orders` drops a called shot

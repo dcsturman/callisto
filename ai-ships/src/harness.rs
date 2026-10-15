@@ -182,11 +182,19 @@ pub async fn play(
 
   let mut rounds = 0;
   let mut out_of_contact = 0;
+  let mut engaged = false;
   let mut disengaged = false;
   loop {
     let world = player.get_entities().map_err(|e| format!("{e:?}"))?;
-    out_of_contact = if in_contact(&world) { 0 } else { out_of_contact + 1 };
-    if rounds > 0 && out_of_contact >= DISENGAGED_ROUNDS {
+    // Only a fight that has started can be broken off: a scenario that
+    // opens with everyone out of contact (Marduk, at Distant) is an approach.
+    if in_contact(&world) {
+      engaged = true;
+      out_of_contact = 0;
+    } else {
+      out_of_contact += 1;
+    }
+    if engaged && out_of_contact >= DISENGAGED_ROUNDS {
       disengaged = true;
       break;
     }
