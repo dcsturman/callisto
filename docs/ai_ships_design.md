@@ -397,10 +397,15 @@ carries what the rules *mean* for this fight, computed by the rules' own code:
   to-hit sum is `combat::attack_terms`, the same function the real attack
   rolls against, so the odds cannot drift from the dice. An enemy's crew is
   not visible, so their side assumes gunnery 1; our side uses our gunners.
-- **Detection tables** (next). By band and posture, the chance they find us
-  this round and the chance we find them, from the detection rules' own
-  modifiers. "Creep in silent and stay at Very Long" becomes a choice made
-  from numbers.
+- **Exposure tables** (built). For each of our ships against each contact,
+  by posture and whether we fire: the chance that contact finds us this
+  round, and for a stealthy hull the chance of slipping a contact by opening
+  the range a band. Range does not enter the detection roll -- only Distant
+  ends contact -- so posture, burn, firing and damage are what move it. The
+  sum is the detection pass's own (`entity::detection_terms`). We cannot see
+  who holds us, so the table answers "if they look"; the enemy is assumed to
+  be sweeping actively, since it can switch on at will. "Creep in silent and
+  stay at Very Long" becomes a choice made from numbers.
 
 What is left for the prompt is the short list of rules that are facts rather
 than odds: firing breaks silence, a ship with no drive cannot run, jump needs

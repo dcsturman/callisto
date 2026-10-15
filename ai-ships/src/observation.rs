@@ -18,6 +18,10 @@
 //!   damage arithmetic. A commander reads "at Very Long they cannot touch us"
 //!   off the table rather than having to know why.
 //!
+//! * for each of its ships and each contact, an [`Exposure`]: by posture and
+//!   whether it fires, the chance that contact finds it this round, and for a
+//!   stealthy ship the chance of slipping contact by opening the range.
+//!
 //! An enemy's crew is not visible, so their side of the table assumes
 //! [`ASSUMED_ENEMY_GUNNERY`] at every mount.
 
@@ -27,7 +31,7 @@ use callisto::entity::{Entities, Entity, Vec3};
 use callisto::missile::Missile;
 use callisto::planet::Planet;
 use callisto::ship::{Range, Sensors, Ship, Team, Weapon};
-use callisto::tactics::{band_between, engagement, BandOdds};
+use callisto::tactics::{band_between, detection, engagement, BandOdds, DetectionOdds};
 use cgmath::InnerSpace;
 use serde::Serialize;
 
@@ -71,6 +75,14 @@ pub struct Engagement {
   pub they_hit: Vec<BandOdds>,
 }
 
+/// How visible one of our ships is to one contact.
+#[derive(Debug, Clone, Serialize)]
+pub struct Exposure {
+  pub ours: String,
+  pub contact: String,
+  pub odds: Vec<DetectionOdds>,
+}
+
 /// Everything one side may decide from.
 #[derive(Debug, Clone, Serialize)]
 pub struct Observation {
@@ -86,6 +98,8 @@ pub struct Observation {
   pub missiles: Vec<Missile>,
   /// The odds each way, for every pairing of our ships with a contact.
   pub engagements: Vec<Engagement>,
+  /// How visible each of our ships is to each contact.
+  pub exposures: Vec<Exposure>,
 }
 
 impl Observation {
@@ -193,6 +207,20 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     })
     .collect();
 
+  let exposures = own
+    .iter()
+    .flat_map(|ship| {
+      ships
+        .iter()
+        .filter(|contact| contacts.iter().any(|known: &Contact| known.name == contact.get_name()))
+        .map(move |contact| Exposure {
+          ours: ship.get_name().to_string(),
+          contact: contact.get_name().to_string(),
+          odds: detection(contact, ship),
+        })
+    })
+    .collect();
+
   let side_names: BTreeSet<&str> = own.iter().map(Entity::get_name).collect();
   let mut missiles: Vec<Missile> = world
     .missiles
@@ -213,5 +241,6 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     planets,
     missiles,
     engagements,
+    exposures,
   }
 }

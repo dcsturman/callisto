@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::action::ShipAction;
 use crate::combat::{attack_terms, find_range_band, AttackSituation, HitMods, STANDARD_ROLL_THRESHOLD};
 use crate::computer::plot_course;
-use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, G};
+use crate::entity::{detection_terms, emissions_of, Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, G};
 use crate::payloads::{RequestMsg, SetPilotActions, SetPlanMsg, SetShipEmissions};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS};
 use crate::ship::{FlightPlan, MountClass, Range, Salvo, Ship, ShipSystem, WeaponMount, WeaponType};
@@ -329,6 +329,66 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
         expected_damage: expected,
         mounts: bearing.len(),
         missiles_only: !bearing.is_empty() && launchers == bearing.len(),
+      }
+    })
+    .collect()
+}
+
+/// The chance two dice plus `dm` make the standard 8.
+fn chance_of_success(dm: i32) -> f64 {
+  (2..=12_i32)
+    .filter(|roll| roll + dm >= STANDARD_ROLL_THRESHOLD)
+    .map(|roll| f64::from(6 - (7 - roll).abs()) / 36.0)
+    .sum()
+}
+
+/// How exposed a ship is to one observer, under one posture.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DetectionOdds {
+  pub posture: Posture,
+  /// Whether the ship fires this round. Firing gives a ship away.
+  pub firing: bool,
+  /// The chance the observer finds the ship this round if it does not hold
+  /// it already. Assumes the observer is sweeping with active sensors, since
+  /// it can switch them on at will.
+  pub found: f64,
+  /// For an observer that already holds the ship: the chance of slipping
+  /// away by opening the range a band. Zero for a ship with no stealth --
+  /// only stealth can be lost.
+  pub slip_by_opening: f64,
+}
+
+/// How exposed `target` is to `observer` this round, for each posture and
+/// whether it fires, at its present burn and damage.
+///
+/// Built on the detection pass's own sum, so the odds are the rules' own.
+/// Range does not enter the roll; Distant ends contact outright, so nothing
+/// is found there.
+#[must_use]
+pub fn detection(observer: &Ship, target: &Ship) -> Vec<DetectionOdds> {
+  let distant = band_between(observer, target) == Range::Distant;
+  [Posture::Silent, Posture::Passive, Posture::Active]
+    .into_iter()
+    .flat_map(|posture| [false, true].map(|firing| (posture, firing)))
+    .map(|(posture, firing)| {
+      let mut emissions = emissions_of(target, firing);
+      emissions.active_sensors = posture == Posture::Active;
+      emissions.transmitting = posture != Posture::Silent;
+      let dm: i32 = detection_terms(observer, target, emissions)
+        .iter()
+        .map(|(_, value)| i32::from(*value))
+        .sum();
+      let found = if distant { 0.0 } else { chance_of_success(dm) };
+      let slip_by_opening = if target.design.stealth.is_some() {
+        1.0 - chance_of_success(dm)
+      } else {
+        0.0
+      };
+      DetectionOdds {
+        posture,
+        firing,
+        found,
+        slip_by_opening,
       }
     })
     .collect()
@@ -792,8 +852,49 @@ mod tests {
     assert!((plan.0 .0 - Vec3::new(-drive, 0.0, 0.0)).magnitude() < 1e-6);
   }
 
+  /// Going quiet hides a ship; firing gives it away; only a stealthy hull can
+  /// slip a contact by opening the range.
+  #[tokio::test]
+  async fn silence_hides_and_firing_reveals() {
+    config_test_ship_templates().await;
+    let watcher = ship_of("Buccaneer", 0.0);
+    let executor = ship_of("HMS Executor", 20_000.0 * KM);
+    let odds = detection(&watcher, &executor);
+    let find = |posture, firing| {
+      odds
+        .iter()
+        .find(|o| o.posture == posture && o.firing == firing)
+        .unwrap()
+        .clone()
+    };
+    assert!(
+      find(Posture::Silent, false).found < find(Posture::Active, false).found,
+      "{odds:?}"
+    );
+    assert!(
+      find(Posture::Silent, false).found < find(Posture::Silent, true).found,
+      "{odds:?}"
+    );
+
+    assert!(
+      find(Posture::Silent, false).slip_by_opening > 0.0,
+      "the Executor's stealth can shake a contact"
+    );
+
+    let plain = ship_of("Buccaneer", 20_000.0 * KM);
+    assert!(detection(&watcher, &plain).iter().all(|o| o.slip_by_opening == 0.0));
+    let far = ship_of("Buccaneer", 1.0e12);
+    assert!(
+      detection(&watcher, &far).iter().all(|o| o.found == 0.0),
+      "nothing is found at Distant"
+    );
+  }
+
   #[test]
   fn dice_add_up() {
+    assert!((chance_of_success(0) - 15.0 / 36.0).abs() < 1e-12);
+    assert!((chance_of_success(6) - 1.0).abs() < 1e-12);
+    assert!(chance_of_success(-5).abs() < 1e-12);
     let two = dice_distribution(2);
     assert!((two.iter().sum::<f64>() - 1.0).abs() < 1e-12);
     assert!((two[7] - 6.0 / 36.0).abs() < 1e-12);

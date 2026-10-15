@@ -132,6 +132,20 @@ async fn a_ship_that_out_reaches_its_enemy_stands_off() {
     "the pirate's lasers cannot reach Very Long"
   );
 
+  // And it can see how quietly it has to fly to stay hidden from her.
+  let exposure = view.exposures.iter().find(|e| e.contact == "Pirate").unwrap();
+  let silent = exposure
+    .odds
+    .iter()
+    .find(|o| o.posture == callisto::tactics::Posture::Silent && !o.firing)
+    .unwrap();
+  let loud = exposure
+    .odds
+    .iter()
+    .find(|o| o.posture == callisto::tactics::Posture::Active && o.firing)
+    .unwrap();
+  assert!(silent.found < loud.found);
+
   assert_eq!(
     Close.decide(&view)[0].1.helm,
     Helm::Intercept {
