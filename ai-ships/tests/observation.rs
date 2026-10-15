@@ -96,6 +96,11 @@ async fn with_no_enemy_in_contact_a_commander_holds() {
   let decided = Close.decide(&view);
   assert_eq!(decided[0].1.helm, Helm::Hold);
   assert_eq!(decided[0].1.fire, vec![]);
+  assert_eq!(
+    decided[0].1.posture,
+    Some(callisto::tactics::Posture::Active),
+    "with nobody in contact, sweep for someone"
+  );
 }
 
 /// A ship whose particle barbette out-reaches the enemy's guns stands off at

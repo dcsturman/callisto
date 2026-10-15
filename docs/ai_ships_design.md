@@ -600,6 +600,41 @@ Gemini, or this week's prompt against last week's, sides swapped each game.
 
 ### 4.7 The harness
 
+**Built** as `ai-ships/src/harness.rs` and the `harness` binary:
+
+```
+cd ai-ships
+cargo run --release --bin harness -- --scenario ../callisto/scenarios/Thebus.json \
+  --side Blue=close --side Red=close --side "ship:Lyonesse II=idle" --games 20 --rounds 40 \
+  --log rounds.jsonl --outcomes outcomes.jsonl
+```
+
+A game loads the scenario into an in-process backend server, and each round
+every side's commander decides from its own observation, its intents become
+orders through `callisto::tactics`, the orders are applied as the processor
+would apply them, and the round resolves. Dice come from the game's seed and
+the round number, so a seed replays exactly and no two seeds roll alike. A
+hundred and fifty rounds take well under a second. `--log` writes every
+side's intents per round; `--outcomes` writes each game's result.
+
+First results, Thebus, 20 games each (pirates on Blue, the Executor on Red):
+
+| Pirates | Executor | Pirates won | Executor won | Draws |
+|---|---|---|---|---|
+| close | close | 5 | 15 | 0 |
+| hold | close | 5 | 14 | 1 |
+| close | random | 10 | 0 | 10 |
+
+Two things the first runs taught. A commander with no enemy in contact has to
+sweep for one, or a stealthy enemy is never found; `Close` now goes active
+when it has nobody. And Marduk starts every ship at about 55,000 km, which is
+Distant, where nothing can be detected: a baseline that does not know where
+to look never finds anyone. Getting there is what a scenario's briefing tells
+a human, so it is the model's orders, not the baseline's rules, that will
+have to say it.
+
+The design as first written follows.
+
 A headless runner, in the backend crate's tests or a small binary: load a
 scenario, assign a Commander to each team, run N rounds through
 `Entities::update` directly (no WebSocket), stop when one side is gone or the
