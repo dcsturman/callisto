@@ -622,9 +622,10 @@ debugging. Everything a player does goes through the backend.
 A second Cloud Run service, `ai-ships`, deployed by a workflow alongside
 `canary-be-merge.yml`, with the backend's WebSocket URL and the model
 endpoint as config. Locally, a third `compose.yaml` service. The service is a
-new crate, `ai-ships/`, in a Cargo workspace at the repo root with
-`callisto`, depending on the `callisto` library for the wire types, the
-solver and the tactics. Rust rather than
+new crate, `ai-ships/`, beside `callisto/` and depending on the `callisto`
+library by path for the wire types, the solver and the tactics. Not a Cargo
+workspace: one at the repo root would move `callisto`'s build output out of
+`callisto/target`, which its scripts and tests expect. Rust rather than
 Python because everything it needs is already in Rust and the model call is
 one HTTPS request.
 
@@ -791,10 +792,9 @@ Also agreed, later the same day:
 14. **Anyone at a ship's console** may switch it to AI and set its orders;
     so may the scenario file (§4.1).
 15. **Model per team** (§4.5), so models can play each other.
-16. **Names**: the service is a sub-crate, `ai-ships`, in a Cargo workspace
-    at the repo root with `callisto` (none exists today; `callisto/` is a
-    single crate). It depends on `callisto` by path, so its Docker build
-    takes the repo root as context, unlike the backend's. The ship field is
+16. **Names**: the service is a sibling crate, `ai-ships`, depending on
+    `callisto` by path (not a workspace, §4.9), so its Docker build takes
+    the repo root as context, unlike the backend's. The ship field is
     `controller: Human | AI` on the wire and in scenario files; the Rust
     variant is `Ai` with a serde rename, because clippy's
     `upper_case_acronyms` lint fails CI on `AI`. The team-commander role is
