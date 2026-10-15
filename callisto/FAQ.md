@@ -628,6 +628,11 @@ for reasons no one at the table would see coming.
 Recorded so nobody assumes they were considered and rejected.
 
 - **Extended sensor arrays** (+2 to be detected, and longer detail range).
+- **Bay weapons against small targets.** "All bay weapons suffer DM-2 when
+  attacking targets of 2,000 tons or less and DM-4 when attacking targets of
+  100 tons or less. Missile and torpedo salvoes do not use these modifiers"
+  (HG p. 31). Not applied yet, so a bay hits small ships too easily: against
+  the 400-ton ships most scenarios use, every bay shot is missing its DM-2.
 - **Electronic warfare used to degrade a sensop's detection rolls**, as opposed
   to cutting communications. Jamming comms *is* implemented and does break
   hand-offs; what is missing is EW that makes a ship harder to find in the first
