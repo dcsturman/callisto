@@ -28,6 +28,7 @@ pub fn system() -> &'static str {
 pub fn situation(view: &Observation, plan: Option<&str>) -> String {
   let mut out = String::new();
   heading(&mut out, view);
+  status(&mut out, view);
   orders(&mut out, view);
   let _ = writeln!(out, "## Your plan from last round\n\n{}\n", plan.unwrap_or("(none yet)"));
   let _ = writeln!(out, "## Your ships\n");
@@ -51,15 +52,78 @@ fn heading(out: &mut String, view: &Observation) {
   let _ = writeln!(out, "# Round {}. You command {side}: {}.\n", view.round, names.join(", "));
 }
 
+/// How the fight stands, first: what each side has left, as far as we can
+/// see. Whether it is going against us is read here, not inferred.
+fn status(out: &mut String, view: &Observation) {
+  let _ = writeln!(out, "## The fight so far\n");
+  let (hull, max) = view
+    .own
+    .iter()
+    .fold((0, 0), |(hull, max), ship| (hull + ship.current_hull, max + ship.design.hull));
+  let ships: Vec<String> = view
+    .own
+    .iter()
+    .map(|ship| {
+      format!(
+        "{} {}%{}",
+        ship.get_name(),
+        100 * ship.current_hull / ship.design.hull.max(1),
+        if ship.current_maneuver == 0 {
+          " (cannot manoeuvre)"
+        } else {
+          ""
+        }
+      )
+    })
+    .collect();
+  let _ = writeln!(
+    out,
+    "- Your side: {} ships, hull {hull} of {max} ({}%): {}",
+    view.own.len(),
+    100 * hull / max.max(1),
+    ships.join(", ")
+  );
+  let enemies = view.enemies();
+  if enemies.is_empty() {
+    let _ = writeln!(out, "- Enemy: none in contact.\n");
+    return;
+  }
+  let seen: Vec<String> = enemies
+    .iter()
+    .map(|contact| {
+      let severity: u32 = contact.crit_level.iter().map(|level| u32::from(*level)).sum();
+      let state = if contact.current_maneuver == 0 {
+        "DISABLED, cannot manoeuvre".to_string()
+      } else if severity == 0 {
+        "no visible damage".to_string()
+      } else {
+        format!("damaged, criticals of total severity {severity}")
+      };
+      format!("{} ({state})", contact.name)
+    })
+    .collect();
+  let _ = writeln!(
+    out,
+    "- Enemy in contact: {} ships: {}. Their hull points are not visible.\n",
+    enemies.len(),
+    seen.join(", ")
+  );
+}
+
+/// Each ship's standing orders, with ships under the same orders listed
+/// together so a squadron's doctrine is read once.
 fn orders(out: &mut String, view: &Observation) {
   let _ = writeln!(out, "## Standing orders\n");
+  let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
   for ship in &view.own {
-    let _ = writeln!(
-      out,
-      "- {}: {}",
-      ship.get_name(),
-      ship.orders.as_deref().unwrap_or("(none given)")
-    );
+    let text = ship.orders.as_deref().unwrap_or("(none given)");
+    match groups.iter_mut().find(|(orders, _)| *orders == text) {
+      Some((_, ships)) => ships.push(ship.get_name()),
+      None => groups.push((text, vec![ship.get_name()])),
+    }
+  }
+  for (text, ships) in groups {
+    let _ = writeln!(out, "- {}: {text}", ships.join(", "));
   }
   out.push('\n');
 }
@@ -399,31 +463,7 @@ fn contact_block(out: &mut String, view: &Observation, contact: &Contact) {
       .map_or_else(String::new, |stealth| format!(", stealth {stealth:?}"))
   );
   let nearest = view.own.iter().find(|ship| ship.get_name() == contact.nearest);
-  let closing = nearest.map_or(0.0, |ship| {
-    let line = contact.position - ship.get_position();
-    if line.magnitude() < 1e-6 {
-      0.0
-    } else {
-      -(contact.velocity - ship.get_velocity()).dot(line.normalize()) * DELTA_TIME_F64
-    }
-  });
-  let next = (contact.distance - closing).max(0.0);
-  let motion = if closing.abs() < 500.0 {
-    "range steady".to_string()
-  } else if closing > 0.0 {
-    format!("closing {} km per round", km(closing))
-  } else {
-    format!("opening {} km per round", km(-closing))
-  };
-  let _ = writeln!(
-    out,
-    "- From {} (your nearest): {} km, {}; {motion}; next round about {} km ({}) if nobody burns",
-    contact.nearest,
-    km(contact.distance),
-    contact.band,
-    km(next),
-    band_at(next)
-  );
+  let _ = writeln!(out, "{}", approach_line(contact, nearest));
   let _ = writeln!(
     out,
     "- Position (km) {}; velocity (km/s) {}; thrust {} G; sensors {:?}",
@@ -439,8 +479,61 @@ fn contact_block(out: &mut String, view: &Observation, contact: &Contact) {
     .map(|(mount, weapon)| mount_line(mount, weapon, None))
     .collect();
   let _ = writeln!(out, "- Weapons: {}", weapons.join("; "));
-  let _ = writeln!(out, "- Visible damage: {}", crits(&contact.crit_level));
+  let _ = writeln!(
+    out,
+    "- Visible damage: {}{}",
+    crits(&contact.crit_level),
+    if contact.current_maneuver == 0 {
+      "; DISABLED: no thrust, cannot manoeuvre or dodge"
+    } else {
+      ""
+    }
+  );
   let _ = writeln!(out, "- Held as a contact by: {}\n", contact.held_by.join(", "));
+}
+
+/// Range now, and where it goes if nobody changes course: from the relative
+/// motion, so two ships that will pass each other are said to pass, with how
+/// close, rather than to reach zero.
+fn approach_line(contact: &Contact, nearest: Option<&Ship>) -> String {
+  let Some(ship) = nearest else {
+    return format!("- {} km, {}", km(contact.distance), contact.band);
+  };
+  let r = contact.position - ship.get_position();
+  let v = contact.velocity - ship.get_velocity();
+  let after = (r + v * DELTA_TIME_F64).magnitude();
+  let speed = v.magnitude();
+  let rate = -(r.dot(v)) / r.magnitude().max(1.0) * DELTA_TIME_F64;
+  let motion = if rate.abs() < 500.0 {
+    "range steady".to_string()
+  } else if rate > 0.0 {
+    format!("closing {} km per round", km(rate))
+  } else {
+    format!("opening {} km per round", km(-rate))
+  };
+  let closest_at = if speed > 1e-6 {
+    -(r.dot(v)) / (speed * speed)
+  } else {
+    0.0
+  };
+  let pass = if closest_at > 0.0 && closest_at < DELTA_TIME_F64 {
+    let closest = (r + v * closest_at).magnitude();
+    format!(
+      "; on present courses you pass within {} km ({}) this round and end it {} km apart ({})",
+      km(closest),
+      band_at(closest),
+      km(after),
+      band_at(after)
+    )
+  } else {
+    format!("; next round about {} km ({}) if nobody burns", km(after), band_at(after))
+  };
+  format!(
+    "- From {} (your nearest): {} km, {}; {motion}{pass}",
+    contact.nearest,
+    km(contact.distance),
+    contact.band
+  )
 }
 
 fn odds(out: &mut String, view: &Observation) {
@@ -449,67 +542,44 @@ fn odds(out: &mut String, view: &Observation) {
   }
   let _ = writeln!(
     out,
-    "## Odds, per round, flying straight (from the rules' own arithmetic)\n\n\"Hit\" is the best gun's chance; \"damage\" is expected hull points per round from every gun that reaches, after armour, with the share of the target's hull that is. Enemy gunners, whom you cannot see, are assumed skill 2.\n"
+    "## Odds per round, flying straight\n\nEach cell is `you / them`: your best gun's chance to hit and the share of their built hull your guns take in a round, then theirs against your hull as it stands. `-` is out of reach; `m` means missiles only. Enemy gunners, whom you cannot see, are assumed skill 2.\n"
   );
+  let _ = writeln!(out, "| You vs them | Short | Medium | Long | Very Long |");
+  let _ = writeln!(out, "|---|---|---|---|---|");
   for engagement in &view.engagements {
-    odds_table(out, view, engagement);
+    odds_row(out, view, engagement);
   }
+  out.push('\n');
 }
 
-fn odds_table(out: &mut String, view: &Observation, engagement: &Engagement) {
+fn odds_row(out: &mut String, view: &Observation, engagement: &Engagement) {
   let ours = view.own.iter().find(|ship| ship.get_name() == engagement.ours);
   let contact = view.contacts.iter().find(|contact| contact.name == engagement.contact);
   let (Some(ours), Some(contact)) = (ours, contact) else {
     return;
   };
-  let _ = writeln!(
-    out,
-    "### {} (hull {} left) against {} (hull {} as built)\n",
-    ours.get_name(),
-    ours.current_hull,
-    contact.name,
-    contact.design_hull
-  );
-  let _ = writeln!(
-    out,
-    "| Band | You hit | Your damage (share of their hull) | They hit | Their damage (share of yours) |"
-  );
-  let _ = writeln!(out, "|---|---|---|---|---|");
   let their_hull = f64::from(contact.design_hull.max(1));
   let our_hull = f64::from(ours.current_hull.max(1));
-  for (we, they) in engagement.we_hit.iter().zip(&engagement.they_hit) {
-    let _ = writeln!(
-      out,
-      "| {} | {} | {} | {} | {} |",
-      we.band,
-      hit_cell(we),
-      damage_cell(we, their_hull),
-      hit_cell(they),
-      damage_cell(they, our_hull)
-    );
-  }
-  out.push('\n');
+  let cells: Vec<String> = engagement
+    .we_hit
+    .iter()
+    .zip(&engagement.they_hit)
+    .filter(|(we, _)| we.band != callisto::ship::Range::Distant)
+    .map(|(we, they)| format!("{} / {}", odds_cell(we, their_hull), odds_cell(they, our_hull)))
+    .collect();
+  let _ = writeln!(out, "| {} vs {} | {} |", ours.get_name(), contact.name, cells.join(" | "));
 }
 
-fn hit_cell(odds: &BandOdds) -> String {
-  if odds.mounts == 0 {
-    "out of reach".to_string()
-  } else {
-    percent(odds.best_chance)
-  }
-}
-
-fn damage_cell(odds: &BandOdds, hull: f64) -> String {
+/// `72% 45%`: chance to hit, and the share of the hull taken per round.
+fn odds_cell(odds: &BandOdds, hull: f64) -> String {
   if odds.mounts == 0 {
     "-".to_string()
   } else {
     format!(
-      "{:.1} ({}; {} mount{}{})",
-      odds.expected_damage,
+      "{} {}{}",
+      percent(odds.best_chance),
       percent(odds.expected_damage / hull),
-      odds.mounts,
-      if odds.mounts == 1 { "" } else { "s" },
-      if odds.missiles_only { ", missiles only" } else { "" }
+      if odds.missiles_only { "m" } else { "" }
     )
   }
 }

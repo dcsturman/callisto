@@ -105,7 +105,7 @@ pub struct Hold;
 #[async_trait]
 impl Commander for Hold {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
-    let target = view.enemies().into_iter().next();
+    let target = target(view);
     view
       .own
       .iter()
@@ -149,6 +149,28 @@ fn best_band(view: &Observation, ours: &str, contact: &Contact) -> Range {
   })
 }
 
+/// The enemy to fight: among those nearly as near as the nearest (within a
+/// tenth), the one the side can hurt most, as a share of its hull, at the
+/// best band each of our ships has against it. Ties between equally near
+/// ships go to the softest target rather than to whichever name sorts first.
+fn target(view: &Observation) -> Option<&Contact> {
+  let enemies = view.enemies();
+  let nearest = enemies.first()?.distance;
+  let harm = |contact: &Contact| -> f64 {
+    let hull = f64::from(contact.design_hull.max(1));
+    view
+      .own
+      .iter()
+      .filter_map(|ship| view.engagement(ship.get_name(), &contact.name))
+      .map(|table| table.we_hit.iter().map(|odds| odds.expected_damage).fold(0.0, f64::max) / hull)
+      .sum()
+  };
+  enemies
+    .into_iter()
+    .filter(|contact| contact.distance <= nearest * 1.1)
+    .max_by(|a, b| harm(a).total_cmp(&harm(b)).then(b.name.cmp(&a.name)))
+}
+
 /// Heads for the nearest enemy, to the band where it does the most harm for
 /// the least taken, and fights.
 #[derive(Debug, Default)]
@@ -157,7 +179,7 @@ pub struct Close;
 #[async_trait]
 impl Commander for Close {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
-    let target = view.enemies().into_iter().next();
+    let target = target(view);
     view
       .own
       .iter()

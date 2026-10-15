@@ -57,7 +57,7 @@ struct Args {
   gcp_project: Option<String>,
 
   /// The Vertex AI region to call models in.
-  #[arg(long, env = "CALLISTO_VERTEX_REGION", default_value = "us-central1")]
+  #[arg(long, env = "CALLISTO_VERTEX_REGION", default_value = "global")]
   vertex_region: String,
 }
 

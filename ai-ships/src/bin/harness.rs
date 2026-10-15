@@ -65,7 +65,7 @@ struct Args {
   #[arg(long, env = "GOOGLE_CLOUD_PROJECT")]
   project: Option<String>,
   /// The Vertex AI region.
-  #[arg(long, env = "CALLISTO_VERTEX_REGION", default_value = "us-central1")]
+  #[arg(long, env = "CALLISTO_VERTEX_REGION", default_value = "global")]
   region: String,
   /// Play nothing: print the system prompt and what this side would be shown
   /// in the opening round, then exit.

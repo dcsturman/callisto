@@ -110,7 +110,14 @@ pub struct Vertex {
   token: Arc<dyn TokenSource>,
   project: String,
   region: String,
+  /// Gemini's explicit caches of the fixed part of the prompt, by model:
+  /// the cache's resource name and when to stop trusting it.
+  caches: tokio::sync::Mutex<std::collections::HashMap<String, (String, std::time::Instant)>>,
 }
+
+/// How long a cache lives, and how long we use it before making a new one.
+const CACHE_TTL: Duration = Duration::from_hours(1);
+const CACHE_TRUSTED: Duration = Duration::from_mins(55);
 
 const SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
 const ATTEMPTS: u32 = 3;
@@ -139,6 +146,7 @@ impl Vertex {
       token: provider.token_source(),
       project,
       region: region.to_string(),
+      caches: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     })
   }
 
@@ -165,20 +173,66 @@ impl Vertex {
   /// Returns an error if the call fails after retries, or the answer is not a
   /// decision.
   pub async fn plan_round(&self, spec: &ModelSpec, system: &str, situation: &str) -> Result<Reply, Error> {
-    let (url, body) = match spec.family {
-      Family::Gemini => (
-        self.endpoint("google", &spec.model, "generateContent"),
-        gemini_request(system, situation),
-      ),
-      Family::Claude => (
-        self.endpoint("anthropic", &spec.model, "rawPredict"),
-        claude_request(system, situation),
-      ),
-    };
-    let answer = self.post(&url, &body).await?;
     match spec.family {
-      Family::Gemini => gemini_reply(&answer),
-      Family::Claude => claude_reply(&answer),
+      Family::Gemini => self.gemini_round(&spec.model, system, situation).await,
+      Family::Claude => {
+        let url = self.endpoint("anthropic", &spec.model, "rawPredict");
+        claude_reply(&self.post(&url, &claude_request(system, situation)).await?)
+      }
+    }
+  }
+
+  /// A Gemini round, through an explicit cache of the system prompt and tool
+  /// when there is one: those tokens are billed at a fraction of the rate.
+  /// If the cache cannot be made, or has vanished, the round goes without.
+  async fn gemini_round(&self, model: &str, system: &str, situation: &str) -> Result<Reply, Error> {
+    let url = self.endpoint("google", model, "generateContent");
+    if let Some(cache) = self.gemini_cache(model, system).await {
+      match self.post(&url, &gemini_cached_request(&cache, model, situation)).await {
+        Ok(answer) => return gemini_reply(&answer),
+        Err(Error::Refused { status, body }) if status == 400 || status == 404 || status == 403 => {
+          warn!("(provider) The prompt cache was refused ({status}); going without it this round: {body}");
+          self.caches.lock().await.remove(model);
+        }
+        Err(e) => return Err(e),
+      }
+    }
+    gemini_reply(&self.post(&url, &gemini_request(system, situation, model)).await?)
+  }
+
+  /// The cache for this model, made if there is none or it is about to lapse.
+  async fn gemini_cache(&self, model: &str, system: &str) -> Option<String> {
+    let mut caches = self.caches.lock().await;
+    if let Some((name, until)) = caches.get(model) {
+      if std::time::Instant::now() < *until {
+        return Some(name.clone());
+      }
+    }
+    let host = if self.region == "global" {
+      "aiplatform.googleapis.com".to_string()
+    } else {
+      format!("{}-aiplatform.googleapis.com", self.region)
+    };
+    let url = format!(
+      "https://{host}/v1/projects/{}/locations/{}/cachedContents",
+      self.project, self.region
+    );
+    let mut body = gemini_fixed(system);
+    body["model"] = json!(format!(
+      "projects/{}/locations/{}/publishers/google/models/{model}",
+      self.project, self.region
+    ));
+    body["ttl"] = json!(format!("{}s", CACHE_TTL.as_secs()));
+    match self.post(&url, &body).await {
+      Ok(made) => {
+        let name = made["name"].as_str()?.to_string();
+        caches.insert(model.to_string(), (name.clone(), std::time::Instant::now() + CACHE_TRUSTED));
+        Some(name)
+      }
+      Err(e) => {
+        warn!("(provider) Could not cache the prompt for {model}; sending it whole. {e}");
+        None
+      }
     }
   }
 
@@ -257,19 +311,45 @@ fn uppercase_types(schema: &mut Value) {
   }
 }
 
-fn gemini_request(system: &str, situation: &str) -> Value {
+/// The fixed part of a Gemini request: the system prompt, the one tool, and
+/// that it must be called. What the cache holds.
+fn gemini_fixed(system: &str) -> Value {
   let mut schema = decision::schema();
   uppercase_types(&mut schema);
   json!({
     "systemInstruction": {"parts": [{"text": system}]},
-    "contents": [{"role": "user", "parts": [{"text": situation}]}],
     "tools": [{"functionDeclarations": [{
       "name": decision::TOOL_NAME,
       "description": decision::TOOL_DESCRIPTION,
       "parameters": schema
     }]}],
-    "toolConfig": {"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": [decision::TOOL_NAME]}},
-    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 8192}
+    "toolConfig": {"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": [decision::TOOL_NAME]}}
+  })
+}
+
+/// How much the model may think. Thinking is billed as output, and a round's
+/// decision does not need much: Gemini 3 takes a level, 2.5 a token budget.
+fn gemini_generation(model: &str) -> Value {
+  let thinking = if model.starts_with("gemini-2") {
+    json!({"thinkingBudget": 2048})
+  } else {
+    json!({"thinkingLevel": "LOW"})
+  };
+  json!({"temperature": 0.3, "maxOutputTokens": 32768, "thinkingConfig": thinking})
+}
+
+fn gemini_request(system: &str, situation: &str, model: &str) -> Value {
+  let mut body = gemini_fixed(system);
+  body["contents"] = json!([{"role": "user", "parts": [{"text": situation}]}]);
+  body["generationConfig"] = gemini_generation(model);
+  body
+}
+
+fn gemini_cached_request(cache: &str, model: &str, situation: &str) -> Value {
+  json!({
+    "cachedContent": cache,
+    "contents": [{"role": "user", "parts": [{"text": situation}]}],
+    "generationConfig": gemini_generation(model)
   })
 }
 
@@ -289,7 +369,9 @@ fn gemini_reply(answer: &Value) -> Result<Reply, Error> {
     raw: args.to_string(),
     input_tokens: usage["promptTokenCount"].as_u64().unwrap_or(0),
     cached_tokens: usage["cachedContentTokenCount"].as_u64().unwrap_or(0),
-    output_tokens: usage["candidatesTokenCount"].as_u64().unwrap_or(0),
+    // Thinking is billed as output, so it is counted as output.
+    output_tokens: usage["candidatesTokenCount"].as_u64().unwrap_or(0)
+      + usage["thoughtsTokenCount"].as_u64().unwrap_or(0),
   })
 }
 
