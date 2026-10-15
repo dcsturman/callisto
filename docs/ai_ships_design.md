@@ -194,6 +194,13 @@ human would sit. One claim, one projection, one ready flag, for both.
 in `EntityResponse`. The service uses it to know a new round began; the
 frontend can show it in the header, which players have wanted anyway.
 
+The results carry it too: `ResponseMsg::Effects{round, effects}` instead of
+a bare list, the round stated once per batch. Today the only thing that says
+which round a batch of results belongs to is that it arrived just before an
+`EntityResponse`. The service reads round N's results to decide round N+1
+and must not match them by arrival order; the results window gets "Round 7"
+dividers and a filter; the harness logs get the round on every line.
+
 **Service login.** `Login` gets a sibling, `ServiceLogin{token}`. Two ways to
 mint the token:
 
@@ -593,8 +600,8 @@ Each phase ends in something playable or measurable, and merges into
 
 **Phase 0 -- prerequisites (backend only).** `controller` and `orders` on
 ships and in scenario files; `SetShipController` and `SetOrders`; round
-number in `MetaData`; `ServiceLogin` with the pre-shared token; many ships
-per service connection. Frontend shows
+number in `MetaData` and on `Effects`; `ServiceLogin` with the pre-shared
+token; many ships per connection. Frontend shows
 the chip, the orders, and the round. Nothing decides anything yet.
 
 **Phase 1 -- verbs, harness, model.** `callisto::tactics` with tests; the
