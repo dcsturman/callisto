@@ -114,6 +114,103 @@ impl HitMods {
   }
 }
 
+/// What decides an attack roll, apart from the dice.
+pub(crate) struct AttackSituation<'a> {
+  pub hit: HitMods,
+  pub attacker: &'a Ship,
+  pub defender: &'a Ship,
+  pub firing: &'a Firing<'a>,
+  pub profile: &'a WeaponProfile,
+  pub range_band: Range,
+  pub called_shot: bool,
+}
+
+/// The attack DM, term by term, exactly as [`attack`] counts it -- or `None`
+/// if the gun cannot reach.
+///
+/// The one place the sum is made. [`attack`] rolls against it, and the AI's
+/// engagement table works out its odds from it, so what the AI expects is
+/// what the dice then do. The defender's dodge is passed in rather than read,
+/// because spending it is a side effect of really being shot at.
+pub(crate) fn attack_terms(
+  situation: &AttackSituation<'_>, evade_mod: i32, captain_mod: i32,
+) -> Option<[(&'static str, i32); 16]> {
+  let AttackSituation {
+    hit,
+    attacker,
+    defender,
+    firing,
+    profile,
+    range_band,
+    called_shot,
+  } = situation;
+  // Evade software flies the ship evasively on its own: "a negative DM equal
+  // to the Evade program's score to all attacks" (CRB p. 161). It needs no
+  // Thrust and no pilot, so it stacks with a pilot who is also dodging --
+  // the book gives no reason it should not, and the two are different
+  // things: one is the computer jinking, the other a pilot spending Thrust.
+  let evade_software = -i32::from(defender.running_level(SoftwareKind::Evade).unwrap_or(0));
+
+  // Advanced Fire Control adds its score to every attack the ship makes
+  // (High Guard p. 73), with no automated fire of its own.
+  let advanced_fire_control = i32::from(attacker.running_level(SoftwareKind::AdvancedFireControl).unwrap_or(0));
+
+  // Launch Solution does the same for missile and torpedo salvoes only
+  // (High Guard p. 75).
+  let launch_solution = if profile.salvo.is_some() {
+    i32::from(attacker.running_level(SoftwareKind::LaunchSolution).unwrap_or(0))
+  } else {
+    0
+  };
+
+  // Launchers have "Special" range: the salvo flies to the target, so the
+  // firing range never modifies the roll and never rules the shot out.
+  let range_mod = if profile.salvo.is_some() {
+    0
+  } else if profile.reaches(*range_band) {
+    RANGE_MOD[*range_band as usize]
+  } else {
+    return None;
+  };
+
+  let lock_mod = if attacker.sensor_locks.contains(&defender.get_name().to_string()) {
+    2
+  } else {
+    0
+  };
+
+  let called_mod = if *called_shot { -2 } else { 0 };
+
+  // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
+  // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
+  // capital ships and struggle to connect with anything nimble.
+  let small_target_mod = if firing.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
+    -2
+  } else {
+    0
+  };
+
+  let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
+  Some([
+    gunner,
+    assist,
+    captain_assist,
+    captain_fire,
+    smart,
+    ("weapon", profile.hit_mod),
+    ("range", range_mod),
+    ("called shot", called_mod),
+    ("small target", small_target_mod),
+    ("sensor lock", lock_mod),
+    ("evade", evade_mod),
+    ("captain evade", captain_mod),
+    ("evade software", evade_software),
+    ("fire control", hit.fire_control),
+    ("adv fire control", advanced_fire_control),
+    ("launch solution", launch_solution),
+  ])
+}
+
 /// Do the attack of one ship's weapon system against a ship.  This includes resolving previously launched missiles that
 /// now impact the target.
 ///
@@ -213,34 +310,19 @@ pub fn attack(
   } else {
     (0, 0)
   };
-  // Evade software flies the ship evasively on its own: "a negative DM equal
-  // to the Evade program's score to all attacks" (CRB p. 161). It needs no
-  // Thrust and no pilot, so it stacks with a pilot who is also dodging --
-  // the book gives no reason it should not, and the two are different
-  // things: one is the computer jinking, the other a pilot spending Thrust.
-  let evade_software = -i32::from(defender.running_level(SoftwareKind::Evade).unwrap_or(0));
-
-  // Advanced Fire Control adds its score to every attack the ship makes
-  // (High Guard p. 73), with no automated fire of its own.
-  let advanced_fire_control = i32::from(attacker.running_level(SoftwareKind::AdvancedFireControl).unwrap_or(0));
-
-  // Launch Solution does the same for missile and torpedo salvoes only
-  // (High Guard p. 75).
-  let launch_solution = if profile.salvo.is_some() {
-    i32::from(attacker.running_level(SoftwareKind::LaunchSolution).unwrap_or(0))
-  } else {
-    0
-  };
-
-  let defensive_modifier = evade_mod + captain_mod + evade_software;
-
-  // Launchers have "Special" range: the salvo flies to the target, so the
-  // firing range never modifies the roll and never rules the shot out.
-  let range_mod = if profile.salvo.is_some() {
-    0
-  } else if profile.reaches(range_band) {
-    RANGE_MOD[range_band as usize]
-  } else {
+  let Some(terms) = attack_terms(
+    &AttackSituation {
+      hit,
+      attacker,
+      defender,
+      firing,
+      profile: &profile,
+      range_band,
+      called_shot: called_shot_system.is_some(),
+    },
+    evade_mod,
+    captain_mod,
+  ) else {
     // We are out of range so cannot attack
     // Should never get here!
     error!(
@@ -257,28 +339,10 @@ pub fn attack(
     .at(defender.get_name())];
   };
 
-  let lock_mod = if attacker.sensor_locks.contains(&defender.get_name().to_string()) {
-    2
-  } else {
-    0
-  };
-
-  let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
-
-  // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
-  // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
-  // capital ships and struggle to connect with anything nimble.
-  let small_target_mod = if firing.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
-    -2
-  } else {
-    0
-  };
-
   info!(
-        "(Combat.attack) Ship {attacker_name} attacking with {firing:?} against {} with hit mods {hit:?}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
-        defender.get_name(),
-        profile.hit_mod
-    );
+    "(Combat.attack) Ship {attacker_name} attacking with {firing:?} against {} with terms {terms:?}",
+    defender.get_name()
+  );
 
   if let Some(cs) = called_shot_system {
     info!("(Combat.attack) Called shot system is {:?}.", cs);
@@ -292,25 +356,6 @@ pub fn attack(
   // never reached the results log at all. Same treatment the detection DM
   // gets, and for the same reason. Zero terms are dropped so an ordinary
   // shot stays short.
-  let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
-  let terms: [(&str, i32); 16] = [
-    gunner,
-    assist,
-    captain_assist,
-    captain_fire,
-    smart,
-    ("weapon", profile.hit_mod),
-    ("range", range_mod),
-    ("called shot", called_mod),
-    ("small target", small_target_mod),
-    ("sensor lock", lock_mod),
-    ("evade", evade_mod),
-    ("captain evade", captain_mod),
-    ("evade software", evade_software),
-    ("fire control", hit.fire_control),
-    ("adv fire control", advanced_fire_control),
-    ("launch solution", launch_solution),
-  ];
   let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
   let named: Vec<String> = terms

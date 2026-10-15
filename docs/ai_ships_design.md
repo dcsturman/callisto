@@ -381,6 +381,37 @@ A compact, stable, text-and-numbers view built once per round per AI ship:
 The same struct feeds every Commander. For the LLM it is rendered to text;
 for a learned policy it is flattened to features.
 
+**The mechanics are computed, not described.** A commander has to know the
+game: which weapons reach which band, what the to-hit modifiers are, what
+armour does to a light gun, how likely a silent ship is to be found. Writing
+all that into a prompt would be long, would drift from the code, and would
+leave the model doing the arithmetic it is worst at. Instead the Observation
+carries what the rules *mean* for this fight, computed by the rules' own code:
+
+- **Engagement tables** (built). For each of our ships against each contact,
+  by range band: the best single mount's chance to hit and the hull damage
+  expected from everything that bears, both ways. Damage is after armour,
+  penetration, the turret bonus and the mount's multiple, worked over every
+  way the dice can fall, so armour clipping a weak gun to nothing shows as a
+  small number. Missiles count their whole salvo, before point defence. The
+  to-hit sum is `combat::attack_terms`, the same function the real attack
+  rolls against, so the odds cannot drift from the dice. An enemy's crew is
+  not visible, so their side assumes gunnery 1; our side uses our gunners.
+- **Detection tables** (next). By band and posture, the chance they find us
+  this round and the chance we find them, from the detection rules' own
+  modifiers. "Creep in silent and stay at Very Long" becomes a choice made
+  from numbers.
+
+What is left for the prompt is the short list of rules that are facts rather
+than odds: firing breaks silence, a ship with no drive cannot run, jump needs
+100 diameters and fuel, launchers ignore range.
+
+The baseline commander shows the tables at work. It scores each band as the
+share of the enemy's hull it expects to take in a round, less the share of
+its own it expects to lose. The Executor against a Buccaneer deals 50 and
+takes 19 at Short but 24 and nothing at Very Long; with half the Buccaneer's
+hull, Very Long wins, which is what a referee would tell the player.
+
 ### 4.4 Orders and the chain of command
 
 Orders are strings. The Commander is what gives them meaning, and the LLM is

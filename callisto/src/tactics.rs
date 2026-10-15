@@ -16,12 +16,12 @@ use cgmath::{InnerSpace, Zero};
 use serde::{Deserialize, Serialize};
 
 use crate::action::ShipAction;
-use crate::combat::find_range_band;
+use crate::combat::{attack_terms, find_range_band, AttackSituation, HitMods, STANDARD_ROLL_THRESHOLD};
 use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, G};
 use crate::payloads::{RequestMsg, SetPilotActions, SetPlanMsg, SetShipEmissions};
-use crate::rules_tables::{profile_for, RANGE_BANDS};
-use crate::ship::{FlightPlan, Range, Ship, ShipSystem, WeaponType};
+use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS};
+use crate::ship::{FlightPlan, MountClass, Range, Salvo, Ship, ShipSystem, WeaponMount, WeaponType};
 
 /// How hard a ship tries not to be seen. A constraint over every other order,
 /// not an order of its own.
@@ -183,6 +183,153 @@ pub fn weapons_that_bear(ship: &Ship, range: Range) -> Vec<(usize, WeaponType)> 
         })
         .max_by(|a, b| (a.0, a.1).partial_cmp(&(b.0, b.1)).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(_, _, kind)| (index, kind))
+    })
+    .collect()
+}
+
+/// Every range band, nearest first.
+pub const BANDS: [Range; 5] = [
+  Range::Short,
+  Range::Medium,
+  Range::Long,
+  Range::VeryLong,
+  Range::Distant,
+];
+
+/// What one ship's guns can do to another at one range, in a round.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct BandOdds {
+  pub band: Range,
+  /// The best chance any one mount has to hit.
+  pub best_chance: f64,
+  /// Hull damage expected from every mount that bears, after armour,
+  /// penetration and the mount's multiple. Launchers count every missile in
+  /// the salvo, before point defence. Ion weapons, which take Power rather
+  /// than hull, count nothing here.
+  pub expected_damage: f64,
+  /// How many mounts can fire at all.
+  pub mounts: usize,
+  /// Every mount that bears is a launcher.
+  pub missiles_only: bool,
+}
+
+/// The chance distribution of the sum of `dice` six-sided dice.
+fn dice_distribution(dice: u8) -> Vec<f64> {
+  (0..dice).fold(vec![1.0], |sums, _| {
+    let mut next = vec![0.0; sums.len() + 6];
+    for (sum, chance) in sums.iter().enumerate() {
+      for face in 1..=6 {
+        next[sum + face] += chance / 6.0;
+      }
+    }
+    next
+  })
+}
+
+/// Expected hull damage from one hit with this effect: the same arithmetic
+/// `combat::attack` does, over every way the damage dice can fall. Armour
+/// clips low rolls to nothing, which is why this is not the average roll
+/// minus armour: a weak gun against a heavy hull is nearly harmless.
+fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32, multiple: u32) -> f64 {
+  dice
+    .iter()
+    .enumerate()
+    .map(|(roll, chance)| {
+      #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
+      let raw = roll as i32 + effect - i32::try_from(armour).unwrap_or(i32::MAX);
+      let through = u32::try_from(raw).unwrap_or(0);
+      let damage = if through == 0 {
+        0
+      } else {
+        (through + turret_bonus) * multiple
+      };
+      chance * f64::from(damage)
+    })
+    .sum()
+}
+
+/// What `attacker`'s guns can do to `defender` at each range band in a round.
+///
+/// Built on `combat::attack_terms`, the sum the dice are rolled against, so
+/// the odds are the rules' own. `gunnery` is each mount's gunner skill, by
+/// mount; a side cannot see an enemy's crew, so for a contact the caller
+/// passes what it assumes. `armour` is the defender's, likewise as known.
+/// Dodging is not assumed: these are the odds against a ship flying straight.
+#[must_use]
+pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i32, armour: u32) -> Vec<BandOdds> {
+  BANDS
+    .iter()
+    .map(|band| {
+      let bearing = weapons_that_bear(attacker, *band);
+      let mut best_chance: f64 = 0.0;
+      let mut expected = 0.0;
+      let mut launchers = 0;
+      for (index, kind) in &bearing {
+        let weapon = &attacker.weapons()[*index];
+        let Some(firing) = weapon.firing(*kind) else { continue };
+        let Some(profile) = profile_for(*kind, firing.mount).map(|p| p.with_modifiers(*kind, firing.modifiers)) else {
+          continue;
+        };
+        let situation = AttackSituation {
+          hit: HitMods::gunner(gunnery(*index)),
+          attacker,
+          defender,
+          firing: &firing,
+          profile: &profile,
+          range_band: *band,
+          called_shot: false,
+        };
+        let Some(terms) = attack_terms(&situation, 0, 0) else {
+          continue;
+        };
+        let dm: i32 = terms.iter().map(|(_, value)| value).sum();
+        let dice = dice_distribution(profile.damage_dice);
+        let armour = armour.saturating_sub(u32::from(profile.ap));
+        let (count, turret_bonus, multiple) = match profile.salvo {
+          Some(Salvo::PerGun) => (f64::from(firing.count), 0, 1),
+          Some(Salvo::Fixed(missiles)) => (f64::from(missiles), 0, 1),
+          None => (
+            1.0,
+            if matches!(firing.mount, WeaponMount::Turret) {
+              (u32::from(firing.count) - 1) * u32::from(profile.damage_dice)
+            } else {
+              0
+            },
+            if profile.use_multiple {
+              damage_multiple(MountClass::from(firing.mount))
+            } else {
+              1
+            },
+          ),
+        };
+        if profile.salvo.is_some() {
+          launchers += 1;
+        }
+        // Every way two dice can fall for the attack roll.
+        let (chance, per_attack) = (2..=12_i32).fold((0.0, 0.0), |(chance, damage), roll| {
+          let ways = f64::from(6 - (7 - roll).abs());
+          let total = roll + dm;
+          if total < STANDARD_ROLL_THRESHOLD {
+            return (chance, damage);
+          }
+          let p = ways / 36.0;
+          let hit = if profile.ion {
+            0.0
+          } else {
+            expected_hit_damage(&dice, total - STANDARD_ROLL_THRESHOLD, armour, turret_bonus, multiple)
+          };
+          (chance + p, damage + p * hit)
+        });
+        best_chance = best_chance.max(chance);
+        expected += per_attack * count;
+      }
+      BandOdds {
+        band: *band,
+        best_chance,
+        expected_damage: expected,
+        mounts: bearing.len(),
+        missiles_only: !bearing.is_empty() && launchers == bearing.len(),
+      }
     })
     .collect()
 }
@@ -643,6 +790,58 @@ mod tests {
     };
     let drive = G * f64::from(hunter(&world).max_acceleration());
     assert!((plan.0 .0 - Vec3::new(-drive, 0.0, 0.0)).magnitude() < 1e-6);
+  }
+
+  #[test]
+  fn dice_add_up() {
+    let two = dice_distribution(2);
+    assert!((two.iter().sum::<f64>() - 1.0).abs() < 1e-12);
+    assert!((two[7] - 6.0 / 36.0).abs() < 1e-12);
+    assert_eq!(dice_distribution(0), vec![1.0]);
+  }
+
+  fn ship_of(design: &str, x: f64) -> Ship {
+    let design = get_ship_template(design).unwrap();
+    Ship::new("x".to_string(), Vec3::new(x, 0.0, 0.0), Vec3::zero(), &design, None, None)
+  }
+
+  fn at(table: &[BandOdds], band: Range) -> &BandOdds {
+    table.iter().find(|odds| odds.band == band).unwrap()
+  }
+
+  /// The Executor's particle barbette reaches Very Long; a Buccaneer's pulse
+  /// lasers stop at Long. At Very Long the Executor hits and cannot be hit
+  /// back -- the case for staying out there.
+  #[tokio::test]
+  async fn a_longer_reach_shows_as_a_band_only_one_side_can_shoot_in() {
+    config_test_ship_templates().await;
+    let executor = ship_of("HMS Executor", 0.0);
+    let buccaneer = ship_of("Buccaneer", 30_000.0 * KM);
+    let skill = |_: usize| 2;
+    let ours = engagement(&executor, &buccaneer, &skill, buccaneer.design.armor);
+    let theirs = engagement(&buccaneer, &executor, &skill, executor.design.armor);
+
+    assert!(at(&ours, Range::VeryLong).expected_damage > 0.0, "{ours:?}");
+    assert!(at(&ours, Range::VeryLong).best_chance > 0.0);
+    assert_eq!(at(&theirs, Range::VeryLong).mounts, 0, "{theirs:?}");
+    assert!(at(&theirs, Range::Long).expected_damage > 0.0);
+    // A worse range is a worse shot.
+    assert!(at(&ours, Range::VeryLong).best_chance < at(&ours, Range::Short).best_chance);
+  }
+
+  /// Armour clips low damage rolls to nothing, so a light gun against a heavy
+  /// hull loses most of its effect.
+  #[tokio::test]
+  async fn heavy_armour_shrinks_what_a_light_gun_can_do() {
+    config_test_ship_templates().await;
+    let buccaneer = ship_of("Buccaneer", 0.0);
+    let target = ship_of("Gazulin Trader", 5_000.0 * KM);
+    let skill = |_: usize| 1;
+    let bare = at(&engagement(&buccaneer, &target, &skill, 0), Range::Medium).expected_damage;
+    let armoured = at(&engagement(&buccaneer, &target, &skill, 8), Range::Medium).expected_damage;
+    // Twin pulse turrets: about 9 expected against armour 8, 29 against none.
+    // The turret's bonus dice come after armour, which is why it is not less.
+    assert!(armoured > 0.0 && armoured < bare / 2.0, "{armoured} against {bare}");
   }
 
   #[tokio::test]

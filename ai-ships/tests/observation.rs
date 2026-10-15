@@ -70,13 +70,13 @@ async fn hold_fights_where_it_is_and_close_goes_to_its_guns_range() {
   assert_eq!(held[0].1.fire[0].target, "Yacht");
 
   let closed = Close.decide(&view);
-  assert_eq!(
-    closed[0].1.helm,
-    Helm::Intercept {
-      target: "Yacht".to_string(),
-      band: Range::Long
-    },
-    "pulse lasers all reach Long, so that is where to fight"
+  let Helm::Intercept { target, band } = &closed[0].1.helm else {
+    panic!("expected an intercept, got {:?}", closed[0].1.helm);
+  };
+  assert_eq!(target, "Yacht");
+  assert!(
+    *band <= Range::Long,
+    "a pulse-laser ship fights where its lasers reach, not at {band:?}"
   );
 
   // And the orders are ones a console could send: a plan, and the fire,
@@ -96,4 +96,47 @@ async fn with_no_enemy_in_contact_a_commander_holds() {
   let decided = Close.decide(&view);
   assert_eq!(decided[0].1.helm, Helm::Hold);
   assert_eq!(decided[0].1.fire, vec![]);
+}
+
+/// A ship whose particle barbette out-reaches the enemy's guns stands off at
+/// Very Long, where it hits and cannot be hit back -- even though at Short it
+/// would do twice the damage, because there it would take a bigger share of
+/// its own, smaller, hull.
+#[tokio::test]
+async fn a_ship_that_out_reaches_its_enemy_stands_off() {
+  let world = ambush().await;
+  let executor = callisto::ship::get_ship_template("HMS Executor").unwrap();
+  let mut world = world;
+  world.add_ship(
+    "Executor".to_string(),
+    Vec3::new(5_000.0 * KM, 0.0, 0.0),
+    Vec3::zero(),
+    &executor,
+    None,
+    None,
+  );
+  {
+    let mut ship = world.ships["Executor"].write().unwrap();
+    ship.team = Some(Team::Gold);
+    ship.contacts = vec!["Pirate".to_string()];
+  }
+  let view = observe(&world, &["Executor".to_string()]);
+
+  let table = view.engagement("Executor", "Pirate").unwrap();
+  let very_long =
+    |odds: &[callisto::tactics::BandOdds]| odds.iter().find(|o| o.band == Range::VeryLong).unwrap().clone();
+  assert!(very_long(&table.we_hit).expected_damage > 0.0);
+  assert_eq!(
+    very_long(&table.they_hit).mounts,
+    0,
+    "the pirate's lasers cannot reach Very Long"
+  );
+
+  assert_eq!(
+    Close.decide(&view)[0].1.helm,
+    Helm::Intercept {
+      target: "Pirate".to_string(),
+      band: Range::VeryLong
+    }
+  );
 }

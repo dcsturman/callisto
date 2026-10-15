@@ -9,12 +9,13 @@
 //! * [`Idle`] gives no orders. Ships keep their plans.
 //! * [`Hold`] keeps its plans and fights whatever is in reach: a fixed
 //!   opponent to measure smarter commanders against.
-//! * [`Close`] heads for the nearest enemy at the range its guns like best and
-//!   fights. What the service uses until there is a model.
+//! * [`Close`] heads for the nearest enemy, to the range band where it does
+//!   the most harm for the least taken, and fights. What the service uses
+//!   until there is a model.
 
 use callisto::entity::Entity;
-use callisto::ship::{Range, ShipSystem, WeaponType};
-use callisto::tactics::{weapons_that_bear, Engage, EngineerVerb, Helm, Intent, SensorVerb};
+use callisto::ship::{Range, ShipSystem};
+use callisto::tactics::{BandOdds, Engage, EngineerVerb, Helm, Intent, SensorVerb};
 
 use crate::observation::{Contact, Observation};
 
@@ -93,29 +94,43 @@ impl Commander for Hold {
   }
 }
 
-/// The band a ship's guns like best: the furthest every one of its direct-fire
-/// guns still reaches, so none is wasted. A ship with only launchers stays at
-/// Long, out of most guns' way.
-fn preferred_band(ship: &callisto::ship::Ship) -> Range {
-  [Range::VeryLong, Range::Long, Range::Medium, Range::Short]
-    .into_iter()
-    .find(|band| {
-      let direct = ship
-        .weapons()
-        .iter()
-        .filter(|weapon| {
-          weapon
-            .kinds()
-            .iter()
-            .any(|kind| !matches!(kind, WeaponType::Sand | WeaponType::PointDefense | WeaponType::Repulsor))
-        })
-        .count();
-      weapons_that_bear(ship, *band).len() >= direct
-    })
-    .unwrap_or(Range::Long)
+/// The band to fight a contact in, read off the engagement table.
+///
+/// A fight is a race to the other ship's hull, so each band is scored as the
+/// share of their hull we expect to take in a round, less the share of ours
+/// they expect to take. That is why a small ship that out-reaches a big one
+/// stands off where it cannot be answered, rather than closing to where it
+/// does the most raw damage and takes the most back. Their hull is their
+/// class's; ours is what we have left.
+///
+/// Bands where we cannot hurt them are never chosen: this commander is here
+/// to fight. On a tie, the band where we do more. With nothing that reaches,
+/// Long.
+fn best_band(view: &Observation, ours: &str, contact: &Contact) -> Range {
+  let our_hull = view
+    .own
+    .iter()
+    .find(|ship| ship.get_name() == ours)
+    .map_or(1.0, |ship| f64::from(ship.current_hull.max(1)));
+  let their_hull = f64::from(contact.design_hull.max(1));
+  view.engagement(ours, &contact.name).map_or(Range::Long, |table| {
+    let edge = |we: &BandOdds, they: &BandOdds| we.expected_damage / their_hull - they.expected_damage / our_hull;
+    table
+      .we_hit
+      .iter()
+      .zip(&table.they_hit)
+      .filter(|(we, _)| we.expected_damage > 0.0)
+      .max_by(|(we_a, they_a), (we_b, they_b)| {
+        edge(we_a, they_a)
+          .total_cmp(&edge(we_b, they_b))
+          .then(we_a.expected_damage.total_cmp(&we_b.expected_damage))
+      })
+      .map_or(Range::Long, |(we, _)| we.band)
+  })
 }
 
-/// Heads for the nearest enemy at the range its guns like best, and fights.
+/// Heads for the nearest enemy, to the band where it does the most harm for
+/// the least taken, and fights.
 #[derive(Debug, Default)]
 pub struct Close;
 
@@ -128,7 +143,7 @@ impl Commander for Close {
       .map(|ship| {
         let helm = target.map_or(Helm::Hold, |target| Helm::Intercept {
           target: target.name.clone(),
-          band: preferred_band(ship),
+          band: best_band(view, ship.get_name(), target),
         });
         (ship.get_name().to_string(), fight(target, helm))
       })
