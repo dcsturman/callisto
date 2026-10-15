@@ -264,7 +264,7 @@ station in practice:
 | Pilot | `evade(thrust)` / `assist_gunners` | `SetPilotActions` |
 | Gunner | `engage(target, weapons, called: Option<ShipSystem>, salvo)` | one `FireAction` per listed mount, fire-control DM filled from the software aboard |
 | Gunner | `defend(protecting)` | `PointDefenseAction` per sandcaster / PD mount |
-| Sensors | `lock(target)`, `jam_missiles`, `jam_comms(target)`, `go_dark`, `go_loud` | the sensor actions and `SetShipEmissions` |
+| Sensors | `lock(target)`, `search` (an active sweep for new contacts: loud), `share_contacts(on/off)` (the hand-off link, also an emission), `jam_missiles`, `jam_comms(target)` | the sensor actions, `SetShipEmissions`, hand-off |
 | Engineer | `repair_priority([systems])`, `overload_drive`, `overload_plant`, `power(system, on)` | one engineer action each; `Repair` picks the worst crit in the priority list |
 | Captain | `inspire([stations])` | `LeadershipCheck{boosts}` |
 
@@ -276,6 +276,7 @@ The Intent the Commander returns is a struct of one choice per station:
 
 ```rust
 pub struct Intent {
+  pub posture: Posture,           // Silent | Passive | Active: a constraint over everything below
   pub helm: Helm,                 // Intercept{..} | HoldRange{..} | OpenRange{..} | Station{..} | Hold
   pub fire: Vec<Engage>,          // may be empty; may name a called shot
   pub defence: Option<Defend>,
@@ -313,6 +314,20 @@ sees the current plan beside the orders they gave. This is the pattern the
 Strategist work (§5.1) gets its results from: strategy in text, revised,
 executed by code.
 
+**Posture is a constraint, not a verb.** Stealth in this game is a handful of
+switches -- transmitting, active sensors, the hand-off link, and firing -- over
+a `Stealth` rating on the hull. "Try hard not to lose your stealth" is a
+standing rule over all of them, so `Intent` states it once and tactics sets
+the switches from it: `Silent` turns everything off, `Passive` listens and
+shares with the team, `Active` sweeps and locks. A `Silent` posture with a
+fire order is not a contradiction, it is the ambush: tactics lets the fire go
+and the results say that silence was broken, because the detection pass
+treats a ship that fired as having broken it.
+
+**Boarding** is not in the rules yet. Until it is, "board" means
+`intercept(target, Adjacent)` and matched velocity, and the referee narrates
+the rest.
+
 `rationale` is not decoration. It is the ship reporting back up the chain:
 the squadron and fleet controllers see each ship's line in the orders panel
 beside the orders it was given ("Invigilator: closing to board before the
@@ -325,11 +340,16 @@ A compact, stable, text-and-numbers view built once per round per AI ship:
 
 - **Own ship**: hull, armour, crits by system, power available and spare,
   weapons and whether they can bear at each contact's range, ammunition,
-  software running, crew skills, drives and jump readiness, the standing
-  orders.
+  software running, crew skills, drives and jump readiness, stealth rating
+  and current emissions, whether anyone is believed to hold us as a contact,
+  the standing orders.
 - **Contacts** (only ships in `contacts`, plus team-mates): name, design if
-  known, range and range band, closing speed, bearing relative to our
-  velocity, whether we hold a sensor lock, what we last saw it do.
+  known and with it the sensor grade and weapons, range and range band,
+  which of *their* weapons reach us at this range and which of ours reach
+  them, closing speed, bearing relative to our velocity, whether we hold a
+  sensor lock, what we last saw it do. "Stay at Very Long because they cannot
+  hit you there" and "any ship with better than Basic sensors is the
+  priority" are both decisions the model can only make if these are stated.
 - **Missiles** in flight at us or ours.
 - **Planets** nearby, because the solver cares and because "use the moon for
   cover" is an order someone will give.
@@ -422,6 +442,26 @@ messages). The verbs are the contract between them, and they are
 deliberately coarse: an admiral says "close to Short and shoot her drive",
 not "burn 2.3 g on bearing 047 for forty seconds". We ask the model for what
 a human would say.
+
+A harder order, from the Marduk encounter, to show the seams holding:
+
+> While trying hard not to lose your stealth, creep into range of the
+> raiders. Stay at Very Long range as they cannot hit you there. Then shoot
+> them with your missiles and particle accelerator from there. If any ship
+> with better than Basic sensors comes in range, taking that out is your
+> priority.
+
+| Clause | What it is | Where it lands |
+|---|---|---|
+| not lose your stealth | a constraint over everything | `posture: Silent` until the round we fire |
+| creep into range | helm | `Intercept{raiders, VeryLong}` |
+| stay at Very Long, they cannot hit you there | helm, and a fact | `HoldRange{raiders, VeryLong}`; the Observation states their reach per band |
+| shoot with missiles and the PA | gunner | `engage` on those mounts; the rules digest says firing reveals us |
+| better-than-Basic sensors is the priority | targeting by capability | the Observation carries each contact's sensor grade; the model picks |
+
+Nothing here needed a new layer. It needed `posture` in the Intent and two
+more facts in the Observation, which is the kind of gap a playthrough finds
+and a line in a struct closes.
 
 **Prompt shape**, cached where the provider allows:
 
@@ -694,13 +734,36 @@ Agreed 2026-10-14:
    hold us there" on the pilot's console). Not in this epic, but
    `callisto::tactics` is built knowing it.
 
-Still open, none blocking phase 0:
+Still open, roughly in order of how much they change:
 
-- **Naming.** `callisto-ai` for the crate and service; `Controller::Ai` on
-  the ship; `Admiral` for the role. Open to better.
-- **Victory conditions in the harness.** Destroyed / jumped out / boarded /
-  round limit are the obvious four; scenarios may need their own (Thebus:
-  "the yacht reaches 100 diameters").
+- **The verb set.** §4.2 is a first pass checked against two real orders
+  (Thebus and Marduk). It needs a read against a playthrough: anything done
+  every round at a station that is not a verb is something the AI cannot do.
+- **Who waits for whom at Next Round.** With a referee they see the AI's
+  ready flag and press. Without one, the lone human may press while the model
+  is still thinking. Leaning: the server refuses `Update` until every AI team
+  is ready, with a visible "AI deciding" state and a timeout after which the
+  ships keep their last plan.
+- **How the service finds games to crew.** The running-scenario list carries
+  ids and template names, not ships. A "has AI ships" flag on that list is
+  the cleanest of the three options (the others: join everything as an
+  observer and look; a referee action).
+- **Victory conditions and reward.** Destroyed / jumped out / round limit are
+  generic; Thebus needs "the yacht reaches 100 diameters". The RL reward
+  (victory plus hull differential) has known failure modes, such as a policy
+  that learns to run away; written down before anyone trains.
+- **Who may set `controller` and `orders`.** Referee and scenario file for
+  both; a ship's own captain for its orders; an admiral for their team's.
 - **What the referee can override.** Force a re-decision, replace an
   `Intent` by hand, or take a station back mid-fight. Probably all three,
   eventually.
+- **Naming.** `callisto-ai` for the crate and service; `Controller::Ai` on
+  the ship; `Admiral` for the role. Open to better.
+- **Which Gemini and which Claude**, and the prompt-caching details. A
+  week-one choice.
+- **Mixed crews** (`ai_stations`): deferred to the command phase, shape not
+  yet drawn.
+
+Outside this epic but now on the record: the backend broadcasts the whole
+world to every connection on every change (§3). Anything near a hundred ships
+needs per-connection projection and deltas, AI or not.
