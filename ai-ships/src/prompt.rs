@@ -803,16 +803,25 @@ fn approach_line(contact: &Contact, nearest: Option<&Ship>) -> String {
   } else {
     String::new()
   };
-  let race = match ours.cmp(&theirs) {
-    std::cmp::Ordering::Greater => format!(
-      "her thrust {theirs} G against {}'s {ours} G{held}: you can hold the range open, or close it, as you choose",
-      contact.nearest
-    ),
-    std::cmp::Ordering::Less => format!(
-      "her thrust {theirs} G against {}'s {ours} G{held}: she can close on you or run, and you cannot stop her",
-      contact.nearest
-    ),
-    std::cmp::Ordering::Equal => format!("her thrust {theirs} G, the same as {}'s{held}", contact.nearest),
+  let race = if ours <= theirs && drive > theirs {
+    format!(
+      "her thrust {theirs} G against {}'s {ours} G, but only because {} holds back {} G of a {drive} G drive for dodging and assisting the gunners. Release it (evade 0, assist_gunners false) and she can hold the range open on this ship; keep it and this ship cannot get away from her",
+      contact.nearest,
+      contact.nearest,
+      drive - ours
+    )
+  } else {
+    match ours.cmp(&theirs) {
+      std::cmp::Ordering::Greater => format!(
+        "her thrust {theirs} G against {}'s {ours} G{held}: you can hold the range open, or close it, as you choose",
+        contact.nearest
+      ),
+      std::cmp::Ordering::Less => format!(
+        "her thrust {theirs} G against {}'s {ours} G{held}: she can close on you or run, and you cannot stop her",
+        contact.nearest
+      ),
+      std::cmp::Ordering::Equal => format!("her thrust {theirs} G, the same as {}'s{held}", contact.nearest),
+    }
   };
   format!(
     "- From {} (your nearest): {} km, {}; {motion}{pass}. {race}",
