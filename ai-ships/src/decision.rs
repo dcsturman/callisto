@@ -247,7 +247,7 @@ pub fn schema() -> Value {
               "description": "What the helm does. Omit to keep the current course.",
               "properties": {
                 "verb": {"type": "string", "enum": ["hold", "intercept", "hold_range", "open_range", "station"],
-                  "description": "hold: keep the current plan. intercept: close with target and arrive inside band, matching her velocity. hold_range: stay inside band of target. open_range: burn straight away from target at full thrust. station: go to position_km and stop."},
+                  "description": "hold: keep the current plan. intercept: close with target and arrive inside band, matching her velocity. hold_range: stay inside band of target. open_range: burn straight away from target at the whole drive's thrust, releasing any dodge reserve and gunner assist this round. station: go to position_km and stop."},
                 "target": name("The ship the verb is about: a contact, or a friendly ship."),
                 "band": bands,
                 "position_km": {"type": "array", "items": {"type": "number"}, "description": "x, y, z in km, for station."},

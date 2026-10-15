@@ -535,13 +535,37 @@ fn rendezvous(own: &Ship, target: &Ship, distance: f64, thrust: f64) -> FlightPl
 
 /// The acceleration a helm order may use, in m/s²: the drive's, or less if
 /// the commander capped it. Thrust is seen, a G of it at a time.
-fn helm_thrust(own: &Ship, cap: Option<u8>) -> f64 {
-  let drive = own.max_acceleration();
+fn helm_thrust(own: &Ship, cap: Option<u8>, running: bool) -> f64 {
+  // Running uses the whole drive: the dodge reserve and the gunner assist
+  // are released for the round (see `orders`).
+  let drive = if running {
+    own.max_acceleration() + own.get_dodge_thrust() + u8::from(own.get_assist_gunners())
+  } else {
+    own.max_acceleration()
+  };
   G * f64::from(cap.map_or(drive, |cap| cap.min(drive)))
 }
 
+/// Whether this helm order means running: burning straight away from a ship.
+/// `OpenRange` always does; `HoldRange` does when she will be inside the
+/// band's near edge next round.
+fn running(world: &Entities, own: &Ship, helm: &Helm) -> bool {
+  match helm {
+    Helm::OpenRange { .. } => true,
+    Helm::HoldRange { target, band } => world.ships.get(target).is_some_and(|target| {
+      let target = target.read().unwrap();
+      let (near, _) = band_edges(*band);
+      let line = own.get_position() - target.get_position();
+      let drift = own.get_velocity() - target.get_velocity();
+      let next = (line + drift * DELTA_TIME_F64).magnitude();
+      near > 0.0 && next.min(line.magnitude()) < near * 1.1
+    }),
+    _ => false,
+  }
+}
+
 fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<u8>) -> Result<Option<FlightPlan>, String> {
-  let thrust = helm_thrust(own, cap);
+  let thrust = helm_thrust(own, cap, running(world, own, helm));
   if thrust <= 0.0 && !matches!(helm, Helm::Hold) {
     // Capped at nothing: coast.
     return Ok(Some(FlightPlan::new((Vec3::zero(), DEFAULT_ACCEL_DURATION).into(), None)));
@@ -565,9 +589,7 @@ fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<u8>) -> Resu
       // behind a ship coming on: burn straight away until the range opens,
       // as a pilot would, and match her only once it has.
       let line = own.get_position() - target.get_position();
-      let drift = own.get_velocity() - target.get_velocity();
-      let next = (line + drift * DELTA_TIME_F64).magnitude();
-      if near > 0.0 && next.min(now) < near * 1.1 {
+      if running(world, own, helm) {
         let direction = if line.magnitude() > 0.0 {
           line.normalize()
         } else {
@@ -661,6 +683,37 @@ fn engineer_action(own: &Ship, verb: &EngineerVerb, engineer: usize) -> Option<S
   }
 }
 
+/// The helm's and the pilot's requests: the release of any held-back thrust
+/// when running, then the plan, then the pilot's standing orders.
+fn helm_requests(world: &Entities, own: &Ship, ship_name: &str, intent: &Intent) -> Result<Vec<RequestMsg>, String> {
+  let mut requests = Vec::new();
+  // Running means the whole drive: a pilot told to get away does not keep
+  // a G back to dodge or to steady the guns. Sent before the plan, which the
+  // drive less any reserve would otherwise refuse.
+  let run = running(world, own, &intent.helm);
+  if run {
+    let mut pilot = SetPilotActions::new(ship_name);
+    pilot.dodge_thrust = Some(0);
+    pilot.assist_gunners = Some(false);
+    requests.push(RequestMsg::SetPilotActions(pilot));
+  }
+  if let Some(plan) = helm_plan(world, own, &intent.helm, intent.max_thrust)? {
+    requests.push(RequestMsg::SetPlan(SetPlanMsg {
+      name: ship_name.to_string(),
+      plan,
+    }));
+  }
+  requests.extend(software_requests(own, ship_name, &intent.software));
+  if !run && (intent.evade.is_some() || intent.assist_gunners.is_some()) {
+    let mut pilot = SetPilotActions::new(ship_name);
+    pilot.dodge_thrust = intent.evade.map(|thrust| thrust.min(own.max_acceleration()));
+    pilot.assist_gunners = intent.assist_gunners;
+    requests.push(RequestMsg::SetPilotActions(pilot));
+  }
+
+  Ok(requests)
+}
+
 /// The requests that carry out one ship's intent for the round.
 ///
 /// Fire orders name only mounts that can reach their target; a target that is
@@ -684,19 +737,7 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
   if let Some(posture) = intent.posture {
     requests.push(emissions(ship_name, posture));
   }
-  if let Some(plan) = helm_plan(world, &own, &intent.helm, intent.max_thrust)? {
-    requests.push(RequestMsg::SetPlan(SetPlanMsg {
-      name: ship_name.to_string(),
-      plan,
-    }));
-  }
-  requests.extend(software_requests(&own, ship_name, &intent.software));
-  if intent.evade.is_some() || intent.assist_gunners.is_some() {
-    let mut pilot = SetPilotActions::new(ship_name);
-    pilot.dodge_thrust = intent.evade.map(|thrust| thrust.min(own.max_acceleration()));
-    pilot.assist_gunners = intent.assist_gunners;
-    requests.push(RequestMsg::SetPilotActions(pilot));
-  }
+  requests.extend(helm_requests(world, &own, ship_name, intent)?);
 
   let mut actions = Vec::new();
   let mut committed = std::collections::HashSet::new();
@@ -901,6 +942,17 @@ mod tests {
     );
     world.ships["Hunter"].write().unwrap().contacts = vec!["Quarry".to_string()];
     world
+  }
+
+  /// The plan among a ship's requests.
+  fn plan_of(requests: &[RequestMsg]) -> FlightPlan {
+    requests
+      .iter()
+      .find_map(|request| match request {
+        RequestMsg::SetPlan(plan) => Some(plan.plan.clone()),
+        _ => None,
+      })
+      .unwrap_or_else(|| panic!("expected a plan, got {requests:?}"))
   }
 
   fn hunter(world: &Entities) -> Ship {
@@ -1221,10 +1273,7 @@ mod tests {
       },
       ..Intent::default()
     };
-    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
-      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
-      other => panic!("expected one plan, got {other:?}"),
-    };
+    let plan = plan_of(&orders(&world, "Hunter", &intent).unwrap());
     let burn = plan.0 .0;
     let drive = G * f64::from(hunter(&world).max_acceleration());
     assert!(burn.magnitude() <= drive * 1.001, "{burn:?} exceeds {drive}");
@@ -1249,12 +1298,38 @@ mod tests {
       },
       ..Intent::default()
     };
-    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
-      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
-      other => panic!("expected one plan, got {other:?}"),
-    };
+    let plan = plan_of(&orders(&world, "Hunter", &intent).unwrap());
     let drive = G * f64::from(hunter(&world).max_acceleration());
     assert!((plan.0 .0 - Vec3::new(-drive, 0.0, 0.0)).magnitude() < 1e-6, "{:?}", plan.0 .0);
+  }
+
+  /// Opening the range uses the whole drive: the dodge reserve and the gunner
+  /// assist are let go first, then the plan burns at full thrust.
+  #[tokio::test]
+  async fn running_releases_the_thrust_held_back() {
+    let world = two_ships(5_000.0 * KM).await;
+    world.ships["Hunter"]
+      .write()
+      .unwrap()
+      .set_pilot_actions(Some(1), Some(true))
+      .unwrap();
+    let held = hunter(&world).max_acceleration();
+    let intent = Intent {
+      helm: Helm::OpenRange {
+        target: "Quarry".to_string(),
+      },
+      evade: Some(1),
+      assist_gunners: Some(true),
+      ..Intent::default()
+    };
+    match &orders(&world, "Hunter", &intent).unwrap()[..] {
+      [RequestMsg::SetPilotActions(pilot), RequestMsg::SetPlan(plan)] => {
+        assert_eq!((pilot.dodge_thrust, pilot.assist_gunners), (Some(0), Some(false)));
+        let burn = plan.plan.0 .0.magnitude() / G;
+        assert!((burn - f64::from(held + 2)).abs() < 1e-6, "burns {burn} G, held back {held} G");
+      }
+      other => panic!("expected a release then a plan, got {other:?}"),
+    }
   }
 
   #[tokio::test]
@@ -1267,10 +1342,7 @@ mod tests {
       max_thrust: Some(1),
       ..Intent::default()
     };
-    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
-      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
-      other => panic!("expected one plan, got {other:?}"),
-    };
+    let plan = plan_of(&orders(&world, "Hunter", &intent).unwrap());
     assert!((plan.0 .0.magnitude() - G).abs() < 1e-6, "{:?}", plan.0 .0);
   }
 
@@ -1283,10 +1355,7 @@ mod tests {
       },
       ..Intent::default()
     };
-    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
-      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
-      other => panic!("expected one plan, got {other:?}"),
-    };
+    let plan = plan_of(&orders(&world, "Hunter", &intent).unwrap());
     let drive = G * f64::from(hunter(&world).max_acceleration());
     assert!((plan.0 .0 - Vec3::new(-drive, 0.0, 0.0)).magnitude() < 1e-6);
   }

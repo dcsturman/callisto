@@ -805,7 +805,7 @@ fn approach_line(contact: &Contact, nearest: Option<&Ship>) -> String {
   };
   let race = if ours <= theirs && drive > theirs {
     format!(
-      "her thrust {theirs} G against {}'s {ours} G, but only because {} holds back {} G of a {drive} G drive for dodging and assisting the gunners. Release it (evade 0, assist_gunners false) and she can hold the range open on this ship; keep it and this ship cannot get away from her",
+      "her thrust {theirs} G against {}'s {ours} G, but only because {} holds back {} G of a {drive} G drive for dodging and assisting the gunners. Running (open_range, or hold_range when she closes) releases it and uses the whole drive, so this ship can still hold the range open",
       contact.nearest,
       contact.nearest,
       drive - ours
