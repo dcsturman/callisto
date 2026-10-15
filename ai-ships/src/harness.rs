@@ -62,6 +62,25 @@ fn hull_of(world: &Entities, ships: &[String]) -> u32 {
     .sum()
 }
 
+/// Rounds with no ship holding an enemy before a game is called off as
+/// broken off: long enough to come back, short enough not to pay for two
+/// sides flying apart.
+pub const DISENGAGED_ROUNDS: u32 = 3;
+
+/// Whether any ship holds a contact on a ship of another side.
+fn in_contact(world: &Entities) -> bool {
+  world.ships.values().any(|ship| {
+    let ship = ship.read().unwrap();
+    let side = side_of(ship.team, ship.get_name());
+    ship.contacts.iter().any(|name| {
+      world.ships.get(name).is_some_and(|other| {
+        let other = other.read().unwrap();
+        side_of(other.team, other.get_name()) != side
+      })
+    })
+  })
+}
+
 /// How one side came out of a game.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct SideResult {
@@ -79,6 +98,10 @@ pub struct Outcome {
   pub rounds: u32,
   /// The one side still in play, if only one is.
   pub winner: Option<String>,
+  /// The game ended because no ship had held an enemy for
+  /// [`DISENGAGED_ROUNDS`] rounds: the sides broke off.
+  #[serde(default)]
+  pub disengaged: bool,
   pub sides: BTreeMap<String, SideResult>,
 }
 
@@ -158,8 +181,15 @@ pub async fn play(
   }
 
   let mut rounds = 0;
+  let mut out_of_contact = 0;
+  let mut disengaged = false;
   loop {
     let world = player.get_entities().map_err(|e| format!("{e:?}"))?;
+    out_of_contact = if in_contact(&world) { 0 } else { out_of_contact + 1 };
+    if rounds > 0 && out_of_contact >= DISENGAGED_ROUNDS {
+      disengaged = true;
+      break;
+    }
     let alive: Vec<&String> = rosters
       .iter()
       .filter(|(_, ships)| ships.iter().any(|ship| world.ships.contains_key(ship)))
@@ -223,6 +253,7 @@ pub async fn play(
     seed,
     rounds,
     winner: (standing.len() == 1).then(|| standing[0].clone()),
+    disengaged,
     sides: results,
   })
 }

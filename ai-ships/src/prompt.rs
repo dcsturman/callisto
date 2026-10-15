@@ -23,12 +23,39 @@ pub fn system() -> &'static str {
   include_str!("prompt/system.md")
 }
 
+/// What a commander remembers between rounds, so the fight so far can count
+/// what is gone as well as what is left: every ship the side started with,
+/// and every enemy it has ever held.
+#[derive(Debug, Clone, Default)]
+pub struct Memory {
+  /// Our ships, with the hull each was built with, in the order first seen.
+  pub roster: Vec<(String, u32)>,
+  /// Enemies ever in contact, with the hull each class is built with.
+  pub enemies: Vec<(String, u32)>,
+}
+
+impl Memory {
+  /// Take in this round's view.
+  pub fn update(&mut self, view: &Observation) {
+    for ship in &view.own {
+      if !self.roster.iter().any(|(name, _)| name == ship.get_name()) {
+        self.roster.push((ship.get_name().to_string(), ship.design.hull));
+      }
+    }
+    for contact in view.enemies() {
+      if !self.enemies.iter().any(|(name, _)| *name == contact.name) {
+        self.enemies.push((contact.name.clone(), contact.design_hull));
+      }
+    }
+  }
+}
+
 /// This round's message: everything the side may know, for the model.
 #[must_use]
-pub fn situation(view: &Observation, plan: Option<&str>) -> String {
+pub fn situation(view: &Observation, plan: Option<&str>, memory: &Memory) -> String {
   let mut out = String::new();
   heading(&mut out, view);
-  status(&mut out, view);
+  status(&mut out, view, memory);
   orders(&mut out, view);
   let _ = writeln!(out, "## Your plan from last round\n\n{}\n", plan.unwrap_or("(none yet)"));
   let _ = writeln!(out, "## Your ships\n");
@@ -37,6 +64,7 @@ pub fn situation(view: &Observation, plan: Option<&str>) -> String {
   }
   allies(&mut out, view);
   contacts(&mut out, view);
+  blips(&mut out, view);
   odds(&mut out, view);
   exposures(&mut out, view);
   missiles(&mut out, view);
@@ -54,60 +82,113 @@ fn heading(out: &mut String, view: &Observation) {
 
 /// How the fight stands, first: what each side has left, as far as we can
 /// see. Whether it is going against us is read here, not inferred.
-fn status(out: &mut String, view: &Observation) {
+fn status(out: &mut String, view: &Observation, memory: &Memory) {
   let _ = writeln!(out, "## The fight so far\n");
-  let (hull, max) = view
-    .own
+  let alive = |name: &str| view.own.iter().any(|ship| ship.get_name() == name);
+  let started: u32 = memory.roster.iter().map(|(_, hull)| hull).sum::<u32>().max(1);
+  let left: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
+  let lost: Vec<&str> = memory
+    .roster
     .iter()
-    .fold((0, 0), |(hull, max), ship| (hull + ship.current_hull, max + ship.design.hull));
+    .filter(|(name, _)| !alive(name))
+    .map(|(name, _)| name.as_str())
+    .collect();
   let ships: Vec<String> = view
     .own
     .iter()
     .map(|ship| {
+      let risk = at_risk(view, ship);
       format!(
-        "{} {}%{}",
+        "{} {}%{}{}",
         ship.get_name(),
         100 * ship.current_hull / ship.design.hull.max(1),
         if ship.current_maneuver == 0 {
           " (cannot manoeuvre)"
         } else {
           ""
+        },
+        if risk > 0.0 {
+          format!(
+            " (if every enemy in reach shot at her, they could take {} of what she has left next round)",
+            percent(risk.min(1.0))
+          )
+        } else {
+          String::new()
         }
       )
     })
     .collect();
   let _ = writeln!(
     out,
-    "- Your side: {} ships, hull {hull} of {max} ({}%): {}",
+    "- Your side: {} of {} ships left, {}% of the hull it started with. {}",
     view.own.len(),
-    100 * hull / max.max(1),
-    ships.join(", ")
+    memory.roster.len().max(view.own.len()),
+    100 * left / started,
+    ships.join("; ")
   );
-  let enemies = view.enemies();
-  if enemies.is_empty() {
-    let _ = writeln!(out, "- Enemy: none in contact.\n");
-    return;
+  if !lost.is_empty() {
+    let _ = writeln!(out, "- Your ships lost (destroyed, or jumped out): {}", lost.join(", "));
   }
-  let seen: Vec<String> = enemies
+  let enemies = view.enemies();
+  let gone: Vec<&str> = memory
+    .enemies
     .iter()
-    .map(|contact| {
-      let severity: u32 = contact.crit_level.iter().map(|level| u32::from(*level)).sum();
-      let state = if contact.current_maneuver == 0 {
-        "DISABLED, cannot manoeuvre".to_string()
-      } else if severity == 0 {
-        "no visible damage".to_string()
-      } else {
-        format!("damaged, criticals of total severity {severity}")
-      };
-      format!("{} ({state})", contact.name)
-    })
+    .filter(|(name, _)| !enemies.iter().any(|contact| contact.name == *name))
+    .map(|(name, _)| name.as_str())
     .collect();
-  let _ = writeln!(
-    out,
-    "- Enemy in contact: {} ships: {}. Their hull points are not visible.\n",
-    enemies.len(),
-    seen.join(", ")
-  );
+  if enemies.is_empty() {
+    let _ = writeln!(out, "- Enemy: none in contact.");
+  } else {
+    let seen: Vec<String> = enemies
+      .iter()
+      .map(|contact| {
+        let severity: u32 = contact.crit_level.iter().map(|level| u32::from(*level)).sum();
+        let state = if contact.current_maneuver == 0 {
+          "DISABLED, cannot manoeuvre".to_string()
+        } else if severity == 0 {
+          "no visible damage".to_string()
+        } else {
+          format!("damaged, criticals of total severity {severity}")
+        };
+        format!("{} ({state})", contact.name)
+      })
+      .collect();
+    let _ = writeln!(
+      out,
+      "- Enemy in contact: {} ships: {}. Their hull points are not visible.",
+      enemies.len(),
+      seen.join(", ")
+    );
+  }
+  if !gone.is_empty() {
+    let _ = writeln!(
+      out,
+      "- Enemies once held and no longer in contact (destroyed, jumped, or out of sight): {}",
+      gone.join(", ")
+    );
+  }
+  out.push('\n');
+}
+
+/// The share of what a ship has left that the contacts could take next
+/// round, each firing from the band it is in now: the sum of their expected
+/// damage at that band over her remaining hull.
+fn at_risk(view: &Observation, ship: &Ship) -> f64 {
+  let hull = f64::from(ship.current_hull.max(1));
+  view
+    .contacts
+    .iter()
+    .filter_map(|contact| {
+      let band = band_at((contact.position - ship.get_position()).magnitude());
+      view
+        .engagement(ship.get_name(), &contact.name)?
+        .they_hit
+        .iter()
+        .find(|odds| odds.band == band)
+        .map(|odds| odds.expected_damage)
+    })
+    .sum::<f64>()
+    / hull
 }
 
 /// Each ship's standing orders, with ships under the same orders listed
@@ -285,7 +366,7 @@ fn own_ship(out: &mut String, ship: &Ship) {
   );
   let posture = match (ship.active_sensors, ship.handoff_sensors, ship.transmitting) {
     (true, _, _) => "Active (sweeping; loud)",
-    (false, true, _) | (false, false, true) => "Passive (sharing/transmitting)",
+    (false, true, _) | (false, false, true) => "Sharing (transmitting; loud)",
     (false, false, false) => "Silent",
   };
   let _ = writeln!(
@@ -425,6 +506,29 @@ fn nearest_of(view: &Observation, point: Vec3) -> (String, f64) {
     .map(|ship| (ship.get_name().to_string(), (ship.get_position() - point).magnitude()))
     .min_by(|a, b| a.1.total_cmp(&b.1))
     .unwrap_or_else(|| ("nobody".to_string(), 0.0))
+}
+
+fn blips(out: &mut String, view: &Observation) {
+  if view.blips.is_empty() {
+    return;
+  }
+  let _ = writeln!(
+    out,
+    "## Blips: ships on the plot you have not detected\n\nYou can see that something is there and how it is moving, nothing more. You can steer toward or away from a blip (intercept, hold_range, open_range); you cannot shoot, lock or jam it until one of your ships detects it.\n"
+  );
+  for blip in &view.blips {
+    let _ = writeln!(
+      out,
+      "- {}: {} km from {} ({}); position (km) {}; velocity (km/s) {}",
+      blip.name,
+      km(blip.distance),
+      blip.nearest,
+      band_at(blip.distance),
+      vec_km(blip.position),
+      vec_kms(blip.velocity)
+    );
+  }
+  out.push('\n');
 }
 
 fn contacts(out: &mut String, view: &Observation) {
@@ -613,7 +717,7 @@ fn exposure_line(out: &mut String, exposure: &Exposure) {
   let slip = find(Posture::Silent, false).map_or(0.0, |odds| odds.slip_by_opening);
   let _ = writeln!(
     out,
-    "- {} as seen by {}: silent {}, passive {}, active {}{}",
+    "- {} as seen by {}: silent {}, sharing {}, active {}{}",
     exposure.ours,
     exposure.contact,
     cell(Posture::Silent),

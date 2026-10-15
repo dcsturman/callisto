@@ -90,7 +90,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   if let Some(side) = &args.show_prompt {
     let view = opening_view(&args.scenario, side).await?;
-    println!("{}\n\n---\n\n{}", prompt::system(), prompt::situation(&view, None));
+    println!(
+      "{}\n\n---\n\n{}",
+      prompt::system(),
+      prompt::situation(&view, None, &{
+        let mut memory = prompt::Memory::default();
+        memory.update(&view);
+        memory
+      })
+    );
     return Ok(());
   }
 

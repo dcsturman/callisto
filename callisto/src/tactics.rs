@@ -137,6 +137,11 @@ pub struct Intent {
   pub posture: Option<Posture>,
   #[serde(default)]
   pub helm: Helm,
+  /// The most thrust the helm may use, in G. Every G of burn is +1 to anyone
+  /// looking for the ship, so a ship creeping up unseen burns gently. `None`
+  /// uses the whole drive.
+  #[serde(default)]
+  pub max_thrust: Option<u8>,
   /// Thrust to hold back for dodging. `None` leaves it as it is.
   #[serde(default)]
   pub evade: Option<u8>,
@@ -498,7 +503,7 @@ pub fn detection(observer: &Ship, target: &Ship) -> Vec<DetectionOdds> {
 }
 
 /// A plan that arrives at `distance` from a ship, matching her velocity.
-fn rendezvous(own: &Ship, target: &Ship, distance: f64) -> FlightPlan {
+fn rendezvous(own: &Ship, target: &Ship, distance: f64, thrust: f64) -> FlightPlan {
   let start = own.get_position();
   let aim = target.get_position();
   let line = aim - start;
@@ -519,7 +524,7 @@ fn rendezvous(own: &Ship, target: &Ship, distance: f64) -> FlightPlan {
   plot_course(
     start,
     own.get_velocity(),
-    G * f64::from(own.max_acceleration()),
+    thrust,
     end,
     target.get_velocity(),
     Some(target.get_velocity()),
@@ -528,7 +533,19 @@ fn rendezvous(own: &Ship, target: &Ship, distance: f64) -> FlightPlan {
   .plan
 }
 
-fn helm_plan(world: &Entities, own: &Ship, helm: &Helm) -> Result<Option<FlightPlan>, String> {
+/// The acceleration a helm order may use, in m/s²: the drive's, or less if
+/// the commander capped it. Thrust is seen, a G of it at a time.
+fn helm_thrust(own: &Ship, cap: Option<u8>) -> f64 {
+  let drive = own.max_acceleration();
+  G * f64::from(cap.map_or(drive, |cap| cap.min(drive)))
+}
+
+fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<u8>) -> Result<Option<FlightPlan>, String> {
+  let thrust = helm_thrust(own, cap);
+  if thrust <= 0.0 && !matches!(helm, Helm::Hold) {
+    // Capped at nothing: coast.
+    return Ok(Some(FlightPlan::new((Vec3::zero(), DEFAULT_ACCEL_DURATION).into(), None)));
+  }
   let ship = |name: &str| -> Result<Ship, String> {
     world
       .ships
@@ -538,7 +555,7 @@ fn helm_plan(world: &Entities, own: &Ship, helm: &Helm) -> Result<Option<FlightP
   };
   Ok(match helm {
     Helm::Hold => None,
-    Helm::Intercept { target, band } => Some(rendezvous(own, &ship(target)?, aim_point(*band))),
+    Helm::Intercept { target, band } => Some(rendezvous(own, &ship(target)?, aim_point(*band), thrust)),
     Helm::HoldRange { target, band } => {
       let target = ship(target)?;
       let (near, far) = band_edges(*band);
@@ -550,7 +567,7 @@ fn helm_plan(world: &Entities, own: &Ship, helm: &Helm) -> Result<Option<FlightP
       } else {
         aim_point(*band)
       };
-      Some(rendezvous(own, &target, keep))
+      Some(rendezvous(own, &target, keep, thrust))
     }
     Helm::OpenRange { target } => {
       let away = own.get_position() - ship(target)?.get_position();
@@ -559,23 +576,12 @@ fn helm_plan(world: &Entities, own: &Ship, helm: &Helm) -> Result<Option<FlightP
       } else {
         Vec3::unit_x()
       };
-      let accel = direction * G * f64::from(own.max_acceleration());
+      let accel = direction * thrust;
       Some(FlightPlan::new((accel, DEFAULT_ACCEL_DURATION).into(), None))
     }
     Helm::Station { position } => {
       let end = Vec3::new(position[0], position[1], position[2]);
-      Some(
-        plot_course(
-          own.get_position(),
-          own.get_velocity(),
-          G * f64::from(own.max_acceleration()),
-          end,
-          Vec3::zero(),
-          None,
-          None,
-        )
-        .plan,
-      )
+      Some(plot_course(own.get_position(), own.get_velocity(), thrust, end, Vec3::zero(), None, None).plan)
     }
   })
 }
@@ -663,7 +669,7 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
   if let Some(posture) = intent.posture {
     requests.push(emissions(ship_name, posture));
   }
-  if let Some(plan) = helm_plan(world, &own, &intent.helm)? {
+  if let Some(plan) = helm_plan(world, &own, &intent.helm, intent.max_thrust)? {
     requests.push(RequestMsg::SetPlan(SetPlanMsg {
       name: ship_name.to_string(),
       plan,
@@ -1208,6 +1214,23 @@ mod tests {
     let drive = G * f64::from(hunter(&world).max_acceleration());
     assert!(burn.magnitude() <= drive * 1.001, "{burn:?} exceeds {drive}");
     assert!(burn.x > 0.0, "the first burn closes on a target out along +x: {burn:?}");
+  }
+
+  #[tokio::test]
+  async fn a_thrust_cap_holds_the_burn_down() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      helm: Helm::OpenRange {
+        target: "Quarry".to_string(),
+      },
+      max_thrust: Some(1),
+      ..Intent::default()
+    };
+    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
+      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
+      other => panic!("expected one plan, got {other:?}"),
+    };
+    assert!((plan.0 .0.magnitude() - G).abs() < 1e-6, "{:?}", plan.0 .0);
   }
 
   #[tokio::test]

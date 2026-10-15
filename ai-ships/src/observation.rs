@@ -66,6 +66,20 @@ pub struct Contact {
   pub distance: f64,
 }
 
+/// A ship on the plot that no ship of ours has detected: the dimmed blip a
+/// console shows. Where it is and how it is moving, and nothing else -- not
+/// its class, not its guns. A course can be laid toward or away from it;
+/// nothing else can be done to it.
+#[derive(Debug, Clone, Serialize)]
+pub struct Blip {
+  pub name: String,
+  pub position: Vec3,
+  pub velocity: Vec3,
+  /// The nearest of our ships to it, and how far.
+  pub nearest: String,
+  pub distance: f64,
+}
+
 /// The gunner skill a side assumes of an enemy whose crew it cannot see: a
 /// trained crew.
 pub const ASSUMED_ENEMY_GUNNERY: i32 = 2;
@@ -99,6 +113,8 @@ pub struct Observation {
   /// Other ships on the side's team, in full.
   pub allies: Vec<Ship>,
   pub contacts: Vec<Contact>,
+  /// Ships of other sides on the plot that nobody of ours has detected.
+  pub blips: Vec<Blip>,
   pub planets: Vec<Planet>,
   /// Missiles aimed at our ships, or fired by them.
   pub missiles: Vec<Missile>,
@@ -230,6 +246,24 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     })
     .collect();
 
+  let blips: Vec<Blip> = ships
+    .iter()
+    .filter(|ship| !ours(ship) && (team.is_none() || ship.team != team))
+    .filter(|ship| !contacts.iter().any(|contact| contact.name == ship.get_name()))
+    .filter_map(|blip| {
+      let (nearest, distance) = own
+        .iter()
+        .map(|ship| (ship.get_name(), (ship.get_position() - blip.get_position()).magnitude()))
+        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+      Some(Blip {
+        name: blip.get_name().to_string(),
+        position: blip.get_position(),
+        velocity: blip.get_velocity(),
+        nearest: nearest.to_string(),
+        distance,
+      })
+    })
+    .collect();
   let (engagements, exposures) = tables(&own, &ships, &contacts);
 
   let side_names: BTreeSet<&str> = own.iter().map(Entity::get_name).collect();
@@ -249,6 +283,7 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     own,
     allies,
     contacts,
+    blips,
     planets,
     missiles,
     engagements,

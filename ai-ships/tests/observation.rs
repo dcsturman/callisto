@@ -55,8 +55,18 @@ async fn a_side_sees_only_what_its_consoles_would() {
   for hidden in ["current_hull", "current_power", "crew", "orders", "plan"] {
     assert!(wire.get(hidden).is_none(), "a contact must not reveal {hidden}");
   }
-  let whole = serde_json::to_string(&view).unwrap();
-  assert!(!whole.contains("Escort"), "nothing anywhere in the view names the escort");
+  // The undetected escort is a blip on the plot: where it is and how it moves,
+  // nothing more, as the console shows it dimmed.
+  let blips: Vec<&str> = view.blips.iter().map(|blip| blip.name.as_str()).collect();
+  assert_eq!(blips, vec!["Escort"]);
+  let blip = serde_json::to_value(&view.blips[0]).unwrap();
+  for hidden in ["design", "weapons", "sensors", "current_hull", "crit_level", "team"] {
+    assert!(blip.get(hidden).is_none(), "a blip must not reveal {hidden}");
+  }
+  assert!(
+    view.engagements.iter().all(|e| e.contact != "Escort") && view.exposures.iter().all(|e| e.contact != "Escort"),
+    "nothing can be worked out about a ship nobody has found"
+  );
 }
 
 #[tokio::test]

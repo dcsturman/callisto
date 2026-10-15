@@ -35,6 +35,7 @@ pub struct Llm {
   plan: Option<String>,
   transcript: Option<Transcript>,
   rounds_asked: u32,
+  memory: prompt::Memory,
 }
 
 impl Llm {
@@ -46,6 +47,7 @@ impl Llm {
       plan: None,
       transcript: None,
       rounds_asked: 0,
+      memory: prompt::Memory::default(),
     }
   }
 
@@ -68,7 +70,8 @@ impl Llm {
 impl Commander for Llm {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     let system = prompt::system();
-    let situation = prompt::situation(view, self.plan.as_deref());
+    self.memory.update(view);
+    let situation = prompt::situation(view, self.plan.as_deref(), &self.memory);
     if self.rounds_asked == 0 {
       self.note(&format!("# Model {}\n\n## System prompt\n\n{system}\n", self.spec));
     }

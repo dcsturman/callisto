@@ -39,7 +39,7 @@ pub struct ShipOrder {
   #[serde(default)]
   pub helm: Option<HelmOrder>,
   #[serde(default)]
-  pub posture: Option<Posture>,
+  pub posture: Option<PostureName>,
   /// Thrust in G held back for dodging.
   #[serde(default, deserialize_with = "lenient_u8")]
   pub evade: Option<u8>,
@@ -87,6 +87,9 @@ pub struct HelmOrder {
   /// For `station`: where to go and stop, in km.
   #[serde(default)]
   pub position_km: Option<[f64; 3]>,
+  /// The most thrust to use, in G. Omit for the whole drive.
+  #[serde(default, deserialize_with = "lenient_u8")]
+  pub max_thrust: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -140,6 +143,27 @@ pub struct EngineerOrder {
   pub number: Option<u8>,
   #[serde(default)]
   pub online: Option<bool>,
+}
+
+/// A posture as the model names it. `Sharing` is the engine's `Passive`:
+/// listening and sharing the picture, which transmits. "Passive" read as
+/// "quiet", and a stealthed ship fired from it thinking it hidden.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PostureName {
+  Silent,
+  #[serde(alias = "Passive")]
+  Sharing,
+  Active,
+}
+
+impl From<PostureName> for Posture {
+  fn from(name: PostureName) -> Self {
+    match name {
+      PostureName::Silent => Posture::Silent,
+      PostureName::Sharing => Posture::Passive,
+      PostureName::Active => Posture::Active,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -226,12 +250,13 @@ pub fn schema() -> Value {
                   "description": "hold: keep the current plan. intercept: close with target and arrive inside band, matching her velocity. hold_range: stay inside band of target. open_range: burn straight away from target at full thrust. station: go to position_km and stop."},
                 "target": name("The ship the verb is about: a contact, or a friendly ship."),
                 "band": bands,
-                "position_km": {"type": "array", "items": {"type": "number"}, "description": "x, y, z in km, for station."}
+                "position_km": {"type": "array", "items": {"type": "number"}, "description": "x, y, z in km, for station."},
+                "max_thrust": {"type": "integer", "description": "The most thrust the helm may use, in G. Every G of burn is +1 to anyone looking for you, so creep with 1 or 2 when staying unseen matters. Omit to use the whole drive."}
               },
               "required": ["verb"]
             },
-            "posture": {"type": "string", "enum": ["Silent", "Passive", "Active"],
-              "description": "Silent: radiate nothing. Passive: listen and share with the team (transmits). Active: sweep and lock. Omit to keep the current posture."},
+            "posture": {"type": "string", "enum": ["Silent", "Sharing", "Active"],
+              "description": "Silent: radiate nothing; the only quiet posture. Sharing: listen and share the picture with the team, which transmits (+6 to be found). Active: sweep and lock. Omit to keep the current posture."},
             "evade": {"type": "integer", "description": "Thrust in G to hold back for dodging. Omit to keep the current reserve."},
             "fire": {
               "type": "array",
@@ -346,6 +371,10 @@ fn is_contact(view: &Observation, name: &str) -> bool {
   view.contacts.iter().any(|contact| contact.name == name)
 }
 
+fn is_blip(view: &Observation, name: &str) -> bool {
+  view.blips.iter().any(|blip| blip.name == name)
+}
+
 fn is_friend(view: &Observation, name: &str) -> bool {
   view.own.iter().chain(&view.allies).any(|ship| ship.get_name() == name)
 }
@@ -419,7 +448,8 @@ fn intent_of(order: &ShipOrder, view: &Observation, notes: &mut Vec<String>) -> 
     })
     .collect();
   Intent {
-    posture: order.posture,
+    posture: order.posture.map(Posture::from),
+    max_thrust: order.helm.as_ref().and_then(|helm| helm.max_thrust),
     helm,
     evade: order.evade,
     fire,
@@ -444,7 +474,9 @@ fn intent_of(order: &ShipOrder, view: &Observation, notes: &mut Vec<String>) -> 
 fn helm_of(ship: &str, helm: &HelmOrder, view: &Observation, notes: &mut Vec<String>) -> Helm {
   let mut target = |what: &str| -> Option<String> {
     match &helm.target {
-      Some(target) if is_contact(view, target) || is_friend(view, target) => Some(target.clone()),
+      Some(target) if is_contact(view, target) || is_blip(view, target) || is_friend(view, target) => {
+        Some(target.clone())
+      }
       Some(target) => {
         notes.push(format!(
           "{ship}: cannot {what} {target}, not a ship we can see; holding course."
