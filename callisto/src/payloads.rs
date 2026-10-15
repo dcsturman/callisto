@@ -44,6 +44,20 @@ pub struct LoginMsg {
   pub code: String,
 }
 
+/// A service logging in: the AI service, with a Google identity token on
+/// Cloud Run or the shared secret locally. See `service_auth`.
+#[derive(Serialize, Deserialize)]
+pub struct ServiceLoginMsg {
+  pub token: String,
+}
+
+impl std::fmt::Debug for ServiceLoginMsg {
+  // Requests are logged; the token must not be.
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("ServiceLoginMsg { token: <redacted> }")
+  }
+}
+
 // Custom Display implementation to redact the authentication code
 impl Debug for LoginMsg {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -710,6 +724,7 @@ serde_with::serde_conv!(
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 pub enum RequestMsg {
   Login(LoginMsg),
+  ServiceLogin(ServiceLoginMsg),
   Register(LoginMsg),
   AddShip(AddShipMsg),
   AddPlanet(AddPlanetMsg),

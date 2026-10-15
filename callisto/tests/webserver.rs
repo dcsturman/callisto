@@ -129,6 +129,7 @@ async fn spawn_server_full(
   let mut handle = Command::new(SERVER_PATH);
   let mut handle = handle
     .env("RUST_LOG", var("RUST_LOG").unwrap_or_else(|_| String::new()))
+    .env("CALLISTO_SERVICE_TOKEN", TEST_SERVICE_TOKEN)
     .env("RUSTFLAGS", var("RUSTFLAGS").unwrap_or_else(|_| String::new()))
     .env("CARGO_LLVM_COV", var("CARGO_LLVM_COV").unwrap_or_else(|_| String::new()))
     .env(
@@ -167,6 +168,9 @@ async fn spawn_server_full(
  * @param port The port to run the server on.
  * @return A handle to the running server.  This is critical as otherwise with `kill_on_drop` the server will be killed before the tests complete.
  */
+/// The shared secret every test server accepts for a service login.
+const TEST_SERVICE_TOKEN: &str = "integration-service-token";
+
 async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
   spawn_server(port, true, None, None, false).await
 }
@@ -2335,5 +2339,42 @@ async fn integration_last_ready_advances_the_round() {
     ResponseMsg::Users(users) => assert!(users.iter().all(|user| !user.ready), "ready is cleared for the new round"),
     other => panic!("Expected the cleared ready list, got {other:?}"),
   }
+  send_quit(&mut stream).await;
+}
+
+/// A service logs in with a token rather than a Google code. A wrong token is
+/// refused with the one pinned tag; the right one logs in, and the connection
+/// can then do what any player can.
+#[test_log::test(tokio::test)]
+async fn integration_service_login() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+  let mut stream = open_socket(port).await.unwrap();
+
+  let refused = rpc(
+    &mut stream,
+    RequestMsg::ServiceLogin(callisto::payloads::ServiceLoginMsg {
+      token: "not-the-token".to_string(),
+    }),
+  )
+  .await;
+  assert!(
+    matches!(&refused, ResponseMsg::Error(tag) if tag == "SERVICE_AUTH_FAILED"),
+    "got {refused:?}"
+  );
+
+  let accepted = rpc(
+    &mut stream,
+    RequestMsg::ServiceLogin(callisto::payloads::ServiceLoginMsg {
+      token: TEST_SERVICE_TOKEN.to_string(),
+    }),
+  )
+  .await;
+  match accepted {
+    ResponseMsg::AuthResponse(auth) => assert_eq!(auth.email, callisto::service_auth::SHARED_SECRET_IDENTITY),
+    other => panic!("Expected the service to be logged in, got {other:?}"),
+  }
+  drain_initialization_messages(&mut stream).await;
+  test_create_scenario(&mut stream).await.unwrap();
   send_quit(&mut stream).await;
 }

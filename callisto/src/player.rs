@@ -211,6 +211,33 @@ impl PlayerManager {
     })
   }
 
+  /// Log in a service whose token `service_auth` has already believed.
+  ///
+  /// The connection is then logged in exactly as a person's would be: its
+  /// session key maps to the identity, so everything after login -- joining,
+  /// taking ships, saying Ready -- works unchanged.
+  ///
+  /// # Panics
+  /// Panics if the session-keys lock is poisoned.
+  pub fn service_login(
+    &mut self, identity: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> AuthResponse {
+    let identity = identity.to_string();
+    if let Some(session_key) = self.authenticator.get_session_key() {
+      session_keys.lock().unwrap().insert(session_key, Some(identity.clone()));
+    } else {
+      warn!("(PlayerManager.service_login) No session key for {identity}.");
+    }
+    self.authenticator.set_email(Some(&identity));
+    info!("(PlayerManager.service_login) Logged in service {identity}.");
+    AuthResponse {
+      email: identity,
+      scenario: None,
+      roles: None,
+      ship: None,
+    }
+  }
+
   /// Register a new user. Mirrors `login` but reaches `register_user` on the
   /// authenticator so it can persist the email into the authorized-users
   /// directory. The `Err(String)` carries one of the wire-pinned tags

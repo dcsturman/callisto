@@ -27,11 +27,12 @@ use crate::payloads::{
 };
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
+use crate::service_auth::ServiceAuth;
 use crate::{
   get_scenario_failures_snapshot, get_scenarios_snapshot, read_local_or_cloud_file, replace_scenarios,
   write_local_or_cloud_file,
 };
-use crate::{LOGOUT, LOG_FILE_USE};
+use crate::{LOGOUT, LOG_AUTH_RESULT, LOG_FILE_USE};
 
 #[cfg(feature = "no_tls_upgrade")]
 type SubStream = TcpStream;
@@ -68,6 +69,8 @@ pub struct Processor {
   // not a particular scenario.
   test_mode: bool,
   reload_notifications_enabled: bool,
+  /// What this backend accepts from a service logging in.
+  service_auth: ServiceAuth,
 }
 
 struct Connection {
@@ -163,7 +166,15 @@ impl Processor {
       last_directory_seen,
       test_mode,
       reload_notifications_enabled: true,
+      service_auth: ServiceAuth::default(),
     }
+  }
+
+  /// Let services log in. Without this, `ServiceLogin` is refused.
+  #[must_use]
+  pub fn with_service_auth(mut self, service_auth: ServiceAuth) -> Self {
+    self.service_auth = service_auth;
+    self
   }
   /// Polls all incoming connections and transmits any messages to
   /// the processing loop.
@@ -692,6 +703,7 @@ impl Processor {
     // bypasses the gate so a fresh user can self-onboard.
     if !player.validated_user()
       && !matches!(message, RequestMsg::Login(_))
+      && !matches!(message, RequestMsg::ServiceLogin(_))
       && !matches!(message, RequestMsg::Register(_))
       && !matches!(message, RequestMsg::Quit)
       && !matches!(message, RequestMsg::ValidateSession)
@@ -711,6 +723,26 @@ impl Processor {
             // Now that we are successfully logged in, we can send back the design templates, entities, and users - no need to wait to be asked.
             self.build_successful_auth_msgs(player, auth_response)
           })
+      }
+      RequestMsg::ServiceLogin(login) => {
+        let directory = self
+          .directory_handle
+          .read()
+          .expect("(handle_request) directory lock poisoned")
+          .clone();
+        match self.service_auth.verify(&login.token, &directory) {
+          Ok(identity) => {
+            event!(target: LOG_AUTH_RESULT, Level::INFO, email = identity.as_str(), result = "Service");
+            let auth_response = player.service_login(&identity, &self.session_keys);
+            self.build_successful_auth_msgs(player, auth_response)
+          }
+          Err(e) => {
+            // The detail is for the log; the wire gets one pinned tag.
+            warn!("(handle_request) Service login refused: {e}");
+            event!(target: LOG_AUTH_RESULT, Level::INFO, result = "ServiceRefused");
+            error_msg("SERVICE_AUTH_FAILED".to_string())
+          }
+        }
       }
       RequestMsg::Register(register_msg) => player
         .register(register_msg, &self.session_keys)

@@ -15,6 +15,7 @@ pub mod player;
 pub mod processor;
 mod rules_tables;
 pub mod server;
+pub mod service_auth;
 pub mod ship;
 pub mod software;
 
