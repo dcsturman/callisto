@@ -168,14 +168,15 @@ is still model over policy over solver. The solver is the floor.
 
 Small, and each is useful on its own.
 
-**`Ship.controller: Controller`** -- `Human` (default) | `Ai`. Settable with a
-new `SetShipController` request from the referee or scenario builder, saved in
-the scenario file, shown as a chip on the ship. Later, for mixed crews, this
-becomes per station (`ai_stations: Vec<Role>`), but v1 is whole-ship.
+**`Ship.controller: Controller`** -- `Human` (default) | `Ai`. Set in the
+scenario file, or with a new `SetShipController` request from a "Switch to
+AI" button that anyone at that ship's console may press (and press again to
+take it back). Shown as a chip on the ship. Mixed crews (`ai_stations`) are
+not in this epic.
 
 **`Ship.orders: Option<String>`** -- free text, the standing orders. A new
-`SetOrders{ship, orders}` request; the referee and the ship's own captain may
-set it. Saved in the scenario file so authors can give pirates doctrine. Shown
+`SetOrders{ship, orders}` request; anyone at that ship's console, the referee,
+and later an admiral for their team may set it. Saved in the scenario file so authors can give pirates doctrine. Shown
 on the ship's card so a human crew can read their orders too, which is a nice
 thing to have regardless. Orders are world state, not a private channel, so
 the referee always sees what every machine was told.
@@ -189,6 +190,16 @@ down to Blue, every Blue station open to them, and the picture limited to
 what Blue's ships between them have detected. That is the `Admiral` of §4.4,
 and the AI service is the same kind of connection with a model where the
 human would sit. One claim, one projection, one ready flag, for both.
+
+**Rounds advance themselves when everyone is ready.** Today the referee
+presses Next Round when the ready list fills, and in a game with no referee
+anyone may press it. The backend now does what the referee does: in a game
+with no referee, when every connection holding ships has said Ready, the
+round advances. The AI is one more such connection; nobody waits on it
+specially, and nobody can run the round out from under it. If the model does
+not answer within its budget, the service says Ready with the ships' last
+plan and the results say so. With a referee, nothing changes: they still
+press. This is a backend change humans benefit from on their own.
 
 **Round number.** `MetaData.round: u32`, incremented by `update()`, included
 in `EntityResponse`. The service uses it to know a new round began; the
@@ -343,13 +354,17 @@ A compact, stable, text-and-numbers view built once per round per AI ship:
   software running, crew skills, drives and jump readiness, stealth rating
   and current emissions, whether anyone is believed to hold us as a contact,
   the standing orders.
-- **Contacts** (only ships in `contacts`, plus team-mates): name, design if
-  known and with it the sensor grade and weapons, range and range band,
-  which of *their* weapons reach us at this range and which of ours reach
-  them, closing speed, bearing relative to our velocity, whether we hold a
-  sensor lock, what we last saw it do. "Stay at Very Long because they cannot
-  hit you there" and "any ship with better than Basic sensors is the
-  priority" are both decisions the model can only make if these are stated.
+- **Contacts** (only ships in `contacts`, plus team-mates), and **only what
+  the human sensor station shows for them**: name, class and tonnage,
+  current thrust against rated, stealth and countermeasures, weapons, crit
+  levels, range and band, position and velocity (the 3D view shows them).
+  From those, derived facts a human works out by hand: closing speed, which
+  of *their* weapons reach us at this range and which of ours reach them,
+  and the sensor grade their class is built with. "Stay at Very Long because
+  they cannot hit you there" and "any ship with better than Basic sensors is
+  the priority" are decidable from what a human sees, so they are decidable
+  here. Nothing the screen does not show -- hull points, power, orders,
+  what they are about to do -- is in the Observation.
 - **Missiles** in flight at us or ours.
 - **Planets** nearby, because the solver cares and because "use the moon for
   cover" is an order someone will give.
@@ -508,6 +523,15 @@ which only a week of harness runs will tell. Both cache the fixed prompt
 prefix, which is what makes the rules digest cheap. Gemini is the default;
 the trait makes it a config line.
 
+**The model is chosen per team, not per service.** Each AI team names its
+provider and model in the scenario file or at switch time, so Claude pirates
+can fight a Gemini navy: a fair comparison in the harness, a varied opponent
+in play, and a training partner that is not a copy of oneself. Within a
+provider the tiers are a cost knob: the fast, cheap tier for the harness's
+hundreds of runs, the strong tier for a game people are playing. The exact
+versions are a week-one choice and will change under us; the trait and the
+per-team field are what stay.
+
 **Determinism for tests.** A `Replay` Commander plays back recorded
 decisions, so CI never calls a model. The integration suite drives a scenario
 with replayed pirates and asserts they close and fire.
@@ -538,9 +562,12 @@ Gemini, or this week's prompt against last week's, sides swapped each game.
 
 A headless runner, in the backend crate's tests or a small binary: load a
 scenario, assign a Commander to each team, run N rounds through
-`Entities::update` directly (no WebSocket), stop on a victory condition
-(all of a team destroyed or jumped out; a named ship boarded or escaped;
-round limit), and record every `(Observation, Intent, outcome)`.
+`Entities::update` directly (no WebSocket), stop when one side is gone or the
+round limit is reached, and record every `(Observation, Intent, outcome)`.
+Victory, for now, is which side is still alive at the end; scenario-specific
+conditions ("the yacht reaches 100 diameters") come later. For training, hull
+points -- remaining on our side, taken from theirs -- are the distance to
+victory, dense and available every round.
 
 This exists for three reasons, in order of when they matter:
 
@@ -556,24 +583,28 @@ This exists for three reasons, in order of when they matter:
 
 ### 4.8 Joining a game
 
-Nobody prompts the service. It is a client: it watches the round number in
-`EntityResponse`, and when it ticks the service builds each team's
-observation with a plain function, makes one model call per team, and sends
-the messages. The backend pushing a "your move" message instead would work
-too, but needs a new message and a backend that knows where the service
-is; watching costs nothing and survives a backend restart on its own.
+**The backend engages the service.** When a ship becomes `controller: Ai`
+-- loaded from a scenario file, or because someone at its console pressed
+"Switch to AI" -- the backend calls the service: `POST /crew {scenario_id,
+team, ships}`. The service then does what any player does: opens a WebSocket
+to the backend, logs in with its identity token, joins the scenario, claims
+those ships, and sends `SetReady(false)`. When the ships die, the scenario
+ends, or someone switches a ship back, the backend calls `/release` and the
+connection closes. The backend knows the service's address from one argument
+(`--ai-service`) and authenticates its calls with its own identity token,
+the ordinary Cloud Run service-to-service arrangement. If the service is
+down the backend logs it and the ship sits there, as a ship with no crew
+does.
 
-The service keeps one lobby connection and already receives the running
-scenario list. When a running scenario contains ships with
-`controller: Ai` that the service is not yet crewing, it opens a connection
-per ship, joins, takes all roles, and sends `SetReady(false)`. When the ship
-dies or the scenario ends, the connection closes. No new request, no button:
-mark a ship `Ai` and it wakes up.
+Once crewing, nobody prompts the service round by round. It watches the round
+number in `EntityResponse`, and when it ticks it builds each team's
+observation with a plain function, makes one model call per team, sends the
+messages, and says ready.
 
-The service's own HTTP API is small and operational: `/healthz`, `/status`
-(which ships it is crewing, last decision time, model errors), and
-`/decide/{ship}` to force a re-decision, for debugging. Everything a player
-does goes through the backend.
+The service's HTTP API is therefore: `/crew` and `/release` for the backend;
+`/healthz` and `/status` (what it is crewing, last decision time, model
+errors) for operations; `/decide/{team}` to force a re-decision, for
+debugging. Everything a player does goes through the backend.
 
 ### 4.9 Where it runs
 
@@ -734,36 +765,30 @@ Agreed 2026-10-14:
    hold us there" on the pilot's console). Not in this epic, but
    `callisto::tactics` is built knowing it.
 
-Still open, roughly in order of how much they change:
+Also agreed, later the same day:
+
+10. **Rounds advance themselves** when every ship-holding connection is ready
+    and there is no referee (§4.1). The AI is one more connection.
+11. **The Observation is the human screen** (§4.3): what the sensor station
+    shows for a contact, and nothing it does not.
+12. **The backend engages the service** when a ship becomes AI-controlled,
+    from a scenario file or a "Switch to AI" button at the ship's console
+    (§4.8).
+13. **Victory is who is alive at the end**; hull points are the training
+    reward (§4.7). Scenario-specific conditions later.
+14. **Anyone at a ship's console** may switch it to AI and set its orders;
+    so may the scenario file (§4.1).
+15. **Model per team** (§4.5), so models can play each other.
+16. **Names**: the crate and Cloud Run service are `callisto-ai`; the ship
+    field is `controller: Human | Ai`; the team-commander role is `Admiral`.
+17. **Not now**: referee overrides of an AI's decisions, mixed crews, and
+    the backend's whole-world broadcast (§3). All after there is a working
+    AI.
+
+Still open:
 
 - **The verb set.** §4.2 is a first pass checked against two real orders
   (Thebus and Marduk). It needs a read against a playthrough: anything done
   every round at a station that is not a verb is something the AI cannot do.
-- **Who waits for whom at Next Round.** With a referee they see the AI's
-  ready flag and press. Without one, the lone human may press while the model
-  is still thinking. Leaning: the server refuses `Update` until every AI team
-  is ready, with a visible "AI deciding" state and a timeout after which the
-  ships keep their last plan.
-- **How the service finds games to crew.** The running-scenario list carries
-  ids and template names, not ships. A "has AI ships" flag on that list is
-  the cleanest of the three options (the others: join everything as an
-  observer and look; a referee action).
-- **Victory conditions and reward.** Destroyed / jumped out / round limit are
-  generic; Thebus needs "the yacht reaches 100 diameters". The RL reward
-  (victory plus hull differential) has known failure modes, such as a policy
-  that learns to run away; written down before anyone trains.
-- **Who may set `controller` and `orders`.** Referee and scenario file for
-  both; a ship's own captain for its orders; an admiral for their team's.
-- **What the referee can override.** Force a re-decision, replace an
-  `Intent` by hand, or take a station back mid-fight. Probably all three,
-  eventually.
-- **Naming.** `callisto-ai` for the crate and service; `Controller::Ai` on
-  the ship; `Admiral` for the role. Open to better.
-- **Which Gemini and which Claude**, and the prompt-caching details. A
-  week-one choice.
-- **Mixed crews** (`ai_stations`): deferred to the command phase, shape not
-  yet drawn.
-
-Outside this epic but now on the record: the backend broadcasts the whole
-world to every connection on every change (§3). Anything near a hundred ships
-needs per-connection projection and deltas, AI or not.
+- **Which Gemini and which Claude** to start with, and the prompt-caching
+  details. A week-one choice.
