@@ -3599,3 +3599,19 @@ h3.control-form {
     font-style: italic;
     color: #b8c0c8;
 }
+
+/* The scenario builder's orders box: the full width of the form row. */
+.add-ship-orders {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2em;
+    flex-basis: 100%;
+}
+
+.ai-teams {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75em;
+    margin-top: 0.5em;
+}

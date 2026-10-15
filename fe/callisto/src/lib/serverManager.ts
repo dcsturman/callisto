@@ -355,6 +355,9 @@ export function addShip(ship: Ship) {
       // a ship deliberately switched on says anything.
       ...(ship.transmitting === true ? { transmitting: true } : {}),
       ...(ship.team ? { team: ship.team } : {}),
+      // Absent means the people at its consoles, and no orders.
+      ...(ship.controller === "AI" ? { controller: "AI" } : {}),
+      ...(ship.orders ? { orders: ship.orders } : {}),
       // Absent means the design's own defaults, which for every switchable
       // feature so far means off.
       ...(ship.features_on ? { features_on: ship.features_on } : {}),

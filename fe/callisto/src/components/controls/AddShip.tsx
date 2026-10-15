@@ -171,7 +171,7 @@ function SoftwareEditor(args: {
   );
 }
 
-import { addShip } from "lib/serverManager";
+import { addShip, setShipController } from "lib/serverManager";
 import { useAppSelector } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 
@@ -243,6 +243,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
       activeSensors: true,
       transmitting: false,
       team: null as Team | null,
+      // Who crews her when the scenario is played, and what she is told.
+      ai: false,
+      orders: "",
       // The design's loadout, which a scenario can change: a raider refitted
       // with Evade it was never sold with is a reasonable thing to want.
       software: (firstDesign.software ?? []) as Software[],
@@ -279,6 +282,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
         activeSensors: current.active_sensors !== false,
         transmitting: current.transmitting === true,
         team: current.team ?? null,
+        ai: current.controller === "AI",
+        orders: current.orders ?? "",
         software: current.software ?? shipDesignTemplates[current.design]?.software ?? [],
         featuresOn: featuresOnFor(current, shipDesignTemplates[current.design]),
       };
@@ -317,6 +322,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
               activeSensors: ship.active_sensors !== false,
               transmitting: ship.transmitting === true,
               team: ship.team ?? null,
+              ai: ship.controller === "AI",
+              orders: ship.orders ?? "",
               software: ship.software ?? shipDesignTemplates[ship.design]?.software ?? [],
               featuresOn: featuresOnFor(ship, shipDesignTemplates[ship.design]),
             });
@@ -382,6 +389,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
         active_sensors: addShipData.activeSensors,
         transmitting: addShipData.transmitting,
         team: addShipData.team ?? undefined,
+        controller: addShipData.ai ? ("AI" as const) : undefined,
+        orders: addShipData.orders.trim() === "" ? undefined : addShipData.orders.trim(),
         // Sent only when it differs from the design's own, so an unmodified
         // ship keeps inheriting its loadout.
         software: sameSoftwareList(addShipData.software, shipDesignTemplates[design]?.software ?? [])
@@ -596,6 +605,26 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 ))}
               </select>
             </label>
+            <label
+              className="emissions-toggle"
+              title="Crewed by the AI when the scenario is played: it plans and acts every round on its own, against its orders.">
+              <input
+                type="checkbox"
+                checked={addShipData.ai}
+                onChange={(event) => setAddShipData({ ...addShipData, ai: event.target.checked })}
+              />
+              AI crew
+            </label>
+            <label className="add-ship-orders" title="Standing orders, in plain English. An AI crew plans against them; a human crew reads them as their brief.">
+              Orders
+              <textarea
+                className="ship-command-orders-text"
+                rows={2}
+                placeholder="None. For example: hold at Very Long and cripple her drive; do not destroy her."
+                value={addShipData.orders}
+                onChange={(event) => setAddShipData({ ...addShipData, orders: event.target.value })}
+              />
+            </label>
           </div>
         </div>
         <hr />
@@ -616,9 +645,42 @@ export const AddShip: React.FC<AddShipProps> = () => {
           value={updateOrAddLabel}
         />
       </form>
+      <AiTeams ships={entities.ships} />
     </Accordion>
   );
 };
+
+/**
+ * Crew a whole team by AI in one go: every ship on it, as the scenario will be
+ * played. A team is shown as AI when all its ships are; ticking it hands every
+ * one of them over, unticking takes them all back. Single ships are set in the
+ * ship form.
+ */
+function AiTeams(args: { ships: Ship[] }) {
+  const teams = TEAMS.filter((team) => args.ships.some((ship) => ship.team === team));
+  if (teams.length === 0) {
+    return null;
+  }
+  return (
+    <div className="ai-teams" title="Crew every ship on a team by AI when the scenario is played.">
+      AI-crewed teams:
+      {teams.map((team) => {
+        const ships = args.ships.filter((ship) => ship.team === team);
+        const all = ships.every((ship) => ship.controller === "AI");
+        return (
+          <label key={team} className="emissions-toggle" style={{ color: TEAM_CSS[team] }}>
+            <input
+              type="checkbox"
+              checked={all}
+              onChange={() => ships.forEach((ship) => setShipController(ship.name, all ? "Human" : "AI"))}
+            />
+            {team}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 // Two armaments are the same when they are the same weapons in the same order.
 // Used to decide whether a ship needs its own weapon list at all.

@@ -2472,3 +2472,13 @@ async fn test_rounds_count_up_and_stay_out_of_scenario_files() {
   let saved: serde_json::Value = serde_json::from_slice(&entities.to_scenario_file_json().unwrap()).unwrap();
   assert!(saved.get("round").is_none(), "a saved scenario must open at round 1");
 }
+
+/// A scenario the builder has open is not crewed by AI: its sessions are
+/// recognised by the builder's prefix.
+#[test]
+fn builder_sessions_are_not_games() {
+  use crate::processor::is_scenario_builder;
+  assert!(is_scenario_builder("SCENARIO-Thebus-4821"));
+  assert!(!is_scenario_builder("Thebus"));
+  assert!(!is_scenario_builder("TUTORIAL-1234"));
+}

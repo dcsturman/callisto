@@ -138,6 +138,16 @@ enum ActiveProcessorEvent {
   IdleCheck,
 }
 
+/// The prefix the scenario builder gives the sessions it creates. Mirrors
+/// `SCENARIO_BUILDER_PREFIX` in the frontend's `ScenarioManager.tsx`.
+pub const SCENARIO_BUILDER_PREFIX: &str = "SCENARIO-";
+
+/// Whether a scenario session is the builder's rather than a game.
+#[must_use]
+pub fn is_scenario_builder(scenario_id: &str) -> bool {
+  scenario_id.starts_with(SCENARIO_BUILDER_PREFIX)
+}
+
 impl Processor {
   /// Build a new processor.
   ///
@@ -197,6 +207,12 @@ impl Processor {
     let after = sides_of(&entities);
     drop(entities);
     let scenario_id = server.get_id();
+    // A scenario being built is not being played: a ship marked AI there is a
+    // note for when it is, and an AI crew would only set courses that then get
+    // saved into the scenario.
+    if is_scenario_builder(scenario_id) {
+      return;
+    }
     let before = self.ai_sides.get(scenario_id).cloned().unwrap_or_default();
     for call in plan_calls(scenario_id, &before, &after) {
       client.send(call);
