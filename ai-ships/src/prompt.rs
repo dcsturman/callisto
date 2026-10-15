@@ -433,7 +433,7 @@ fn stealth_line(out: &mut String, view: &Observation, ship: &Ship) {
   };
   let _ = writeln!(
     out,
-    "- Stealth {stealth:?}. {} is the likeliest to find her this round: silent {}, silent and firing {}, sharing {}, active {}.",
+    "- Stealth {stealth:?}. {} is the likeliest to find her this round: silent {}, silent and firing {}, sharing {}, active (needed for a sensor lock) {}.",
     worst.contact,
     percent(found(worst, Posture::Silent, false)),
     percent(found(worst, Posture::Silent, true)),
