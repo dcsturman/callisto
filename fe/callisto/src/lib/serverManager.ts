@@ -42,7 +42,7 @@ import {
   MetaData,
 } from "lib/entities";
 import { ViewMode, parseRoles } from "lib/view";
-import { Acceleration } from "lib/entities";
+import { Acceleration, Controller } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
 import { Team } from "lib/teams";
@@ -425,6 +425,28 @@ export function setShipTeam(shipName: string, team: Team | null) {
     SetShipTeam: { ship_name: shipName, ...(team == null ? {} : { team }) },
   };
   socket.send(JSON.stringify(payload));
+}
+
+/** Hand a ship to the AI service, or take it back. */
+export function setShipController(shipName: string, controller: Controller) {
+  socket.send(
+    JSON.stringify({
+      SetShipController: { ship_name: shipName, controller },
+    }),
+  );
+}
+
+/** Give a ship standing orders. An empty string clears them. */
+export function setOrders(shipName: string, orders: string) {
+  const trimmed = orders.trim();
+  socket.send(
+    JSON.stringify({
+      SetOrders: {
+        ship_name: shipName,
+        ...(trimmed === "" ? {} : { orders: trimmed }),
+      },
+    }),
+  );
 }
 
 export function setCrewActions(

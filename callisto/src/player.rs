@@ -15,8 +15,9 @@ use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg,
-  SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetOrders, SetPilotActions,
+  SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg,
+  ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
@@ -323,12 +324,20 @@ impl PlayerManager {
       || ship.contacts.is_some()
       || ship.features_on.is_some()
       || ship.software.is_some()
+      || ship.controller.is_some()
+      || ship.orders.is_some()
     {
       if let Some(added) = entities.ships.get(&name) {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
         if ship.team.is_some() {
           added.team = ship.team;
+        }
+        if let Some(controller) = ship.controller {
+          added.controller = controller;
+        }
+        if ship.orders.is_some() {
+          added.orders = ship.orders.filter(|orders| !orders.trim().is_empty());
         }
         if let Some(contacts) = ship.contacts {
           added.contacts = contacts;
@@ -523,6 +532,73 @@ impl PlayerManager {
       request.ship_name, request.team
     );
     Ok("Set ship team executed".to_string())
+  }
+
+  /// Hand a ship to the AI service, or take it back.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_controller(&self, request: &SetShipController) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to hand over.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.controller = request.controller;
+    info!(
+      "(PlayerManager.set_ship_controller) {} is now controlled by {:?}.",
+      request.ship_name, request.controller
+    );
+    Ok("Set ship controller executed".to_string())
+  }
+
+  /// Give a ship standing orders, or clear them.
+  ///
+  /// Blank orders are no orders: an empty text box clears them rather than
+  /// leaving the ship holding an empty string an AI would have to interpret.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_orders(&self, request: &SetOrders) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to give orders to.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.orders = request
+      .orders
+      .as_deref()
+      .map(str::trim)
+      .filter(|orders| !orders.is_empty())
+      .map(ToString::to_string);
+    info!("(PlayerManager.set_orders) {} has orders {:?}.", request.ship_name, ship.orders);
+    Ok("Set orders executed".to_string())
   }
 
   /// Gets the current entities and returns them in a `Result`.

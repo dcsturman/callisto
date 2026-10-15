@@ -28,6 +28,7 @@ import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
+import { ShipCommand } from "./ShipCommand";
 import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
@@ -392,6 +393,7 @@ export function Controls() {
                 </div>
               </div>
             )}
+            <ShipCommand ship={computerShip} />
             <h2 className="control-form">Current Position (km)</h2>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">

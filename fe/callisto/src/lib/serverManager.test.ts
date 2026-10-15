@@ -329,3 +329,33 @@ describe("a ship that leaves the scenario", () => {
     expect(store.getState().user.roles).toEqual([ViewMode.Pilot]);
   });
 });
+
+describe("ship control and orders", () => {
+  it("hands a ship to the AI", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setShipController("Invigilator", "AI");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetShipController: { ship_name: "Invigilator", controller: "AI" },
+      }),
+    ]);
+  });
+
+  it("sends trimmed orders", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Invigilator", "  Close and board.  ");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({
+        SetOrders: { ship_name: "Invigilator", orders: "Close and board." },
+      }),
+    ]);
+  });
+
+  it("clears orders with a blank box", async () => {
+    const sm = await import("lib/serverManager");
+    sm.setOrders("Invigilator", "   ");
+    expect(mockSocket.sent).toEqual([
+      JSON.stringify({ SetOrders: { ship_name: "Invigilator" } }),
+    ]);
+  });
+});

@@ -696,6 +696,8 @@ impl Processor {
       RequestMsg::SetShipEmissions(request) => response_with_update(player, player.set_ship_emissions(&request)),
       RequestMsg::SetSoftwareRunning(request) => response_with_update(player, player.set_software_running(&request)),
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
+      RequestMsg::SetShipController(request) => response_with_update(player, player.set_ship_controller(&request)),
+      RequestMsg::SetOrders(request) => response_with_update(player, player.set_orders(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
       RequestMsg::Remove(name) => response_with_update(player, player.remove(&name)),
       RequestMsg::RenameEntity(msg) => response_with_update(player, player.rename(&msg)),

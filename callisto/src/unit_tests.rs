@@ -1304,6 +1304,8 @@ async fn test_get_entities() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     })
     .unwrap();
@@ -2286,4 +2288,108 @@ async fn test_list_gcs_dir() {
   // We can't predict the actual contents
   assert!(result.is_ok(), "Failed to list GCS directory: {:?}", result.unwrap_err());
   assert!(result.unwrap().len() > 2, "Expected at least 3 files in the GCS directory");
+}
+
+const AI_SCENARIO: &str = r#"{
+  "metadata": {"name": "Ambush", "description": "", "owner": "test@test.com"},
+  "ships": [
+    {"name":"Crewed","position":[0,0,0],"velocity":[0,0,0],"plan":[[[0,0,0],50000]],"design":"Buccaneer"},
+    {"name":"Pirate","position":[0,0,0],"velocity":[0,0,0],"plan":[[[0,0,0],50000]],"design":"Buccaneer",
+     "controller":"AI","orders":"Stay dark until the yacht passes the moon, then close."}
+  ]
+}"#;
+
+/// A scenario can hand a ship to the AI and give it doctrine, and both survive
+/// a save. A ship crewed by people saves with neither key, so every scenario
+/// written before AI control existed is unchanged.
+#[test(tokio::test)]
+async fn test_scenario_round_trip_with_controller_and_orders() {
+  use crate::ship::Controller;
+  let _server = setup_test_with_server(setup_authenticator()).await;
+
+  let entities = Entities::load_from_bytes(AI_SCENARIO.as_bytes(), "ai_test.json").unwrap();
+  {
+    let pirate = entities.ships.get("Pirate").unwrap().read().unwrap();
+    assert_eq!(pirate.controller, Controller::Ai);
+    assert_eq!(
+      pirate.orders.as_deref(),
+      Some("Stay dark until the yacht passes the moon, then close.")
+    );
+    let crewed = entities.ships.get("Crewed").unwrap().read().unwrap();
+    assert_eq!(crewed.controller, Controller::Human);
+    assert!(crewed.orders.is_none());
+  }
+
+  let saved: serde_json::Value = serde_json::from_slice(&entities.to_scenario_file_json().unwrap()).unwrap();
+  let ships = saved["ships"].as_array().unwrap();
+  let crewed = ships.iter().find(|s| s["name"] == "Crewed").unwrap();
+  let pirate = ships.iter().find(|s| s["name"] == "Pirate").unwrap();
+  assert!(crewed.get("controller").is_none() && crewed.get("orders").is_none());
+  assert_eq!(pirate["controller"], json!("AI"));
+  assert_eq!(
+    pirate["orders"],
+    json!("Stay dark until the yacht passes the moon, then close.")
+  );
+}
+
+/// Switching a ship to AI and back, and giving it orders, from a console.
+/// Blank orders clear them.
+#[test(tokio::test)]
+async fn test_set_controller_and_orders() {
+  use crate::payloads::{SetOrders, SetShipController};
+  use crate::ship::Controller;
+  let server = setup_test_with_server(setup_authenticator()).await;
+  server
+    .add_ship(AddShipMsg {
+      name: "Pirate".to_string(),
+      position: Vec3::zero(),
+      velocity: Vec3::zero(),
+      design: ShipDesignTemplate::default().name.clone(),
+      crew: None,
+      weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: None,
+      contacts: None,
+      features_on: None,
+      controller: Some(Controller::Ai),
+      orders: Some("Close and board.".to_string()),
+      software: None,
+    })
+    .unwrap();
+  let read = |server: &PlayerManager| {
+    let entities = server.get_entities().unwrap();
+    let ship = entities.ships.get("Pirate").unwrap().read().unwrap();
+    (ship.controller, ship.orders.clone())
+  };
+  assert_eq!(read(&server), (Controller::Ai, Some("Close and board.".to_string())));
+
+  server
+    .set_ship_controller(&SetShipController {
+      ship_name: "Pirate".to_string(),
+      controller: Controller::Human,
+    })
+    .unwrap();
+  server
+    .set_orders(&SetOrders {
+      ship_name: "Pirate".to_string(),
+      orders: Some("  Hold here.  ".to_string()),
+    })
+    .unwrap();
+  assert_eq!(read(&server), (Controller::Human, Some("Hold here.".to_string())));
+
+  server
+    .set_orders(&SetOrders {
+      ship_name: "Pirate".to_string(),
+      orders: Some("   ".to_string()),
+    })
+    .unwrap();
+  assert_eq!(read(&server).1, None);
+
+  assert!(server
+    .set_ship_controller(&SetShipController {
+      ship_name: "Nobody".to_string(),
+      controller: Controller::Ai,
+    })
+    .is_err());
 }

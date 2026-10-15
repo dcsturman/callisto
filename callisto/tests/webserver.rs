@@ -663,6 +663,8 @@ async fn integration_add_ship() {
     team: None,
     contacts: None,
     features_on: None,
+    controller: None,
+    orders: None,
     software: None,
   };
 
@@ -743,6 +745,8 @@ async fn integration_add_planet_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -765,6 +769,8 @@ async fn integration_add_planet_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1019,6 +1025,8 @@ async fn integration_update_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1078,6 +1086,8 @@ async fn integration_update_missile() {
       team: None,
       contacts: Some(vec!["ship2".to_string()]),
       features_on: None,
+      controller: None,
+      orders: None,
       software: Some(vec![]),
     }),
   )
@@ -1099,6 +1109,8 @@ async fn integration_update_missile() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: Some(vec![]),
     }),
   )
@@ -1227,6 +1239,8 @@ async fn integration_remove_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1364,6 +1378,8 @@ async fn integration_set_acceleration() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1429,6 +1445,8 @@ async fn integration_compute_path_basic() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1529,6 +1547,8 @@ async fn integration_compute_path_with_standoff() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1629,6 +1649,8 @@ async fn integration_malformed_requests() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1860,6 +1882,8 @@ async fn integration_set_crew_actions() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1945,6 +1969,8 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1964,6 +1990,8 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1989,6 +2017,8 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )

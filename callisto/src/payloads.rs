@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+use super::ship::{Controller, ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
 use super::software::Software;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
@@ -105,6 +105,13 @@ pub struct AddShipMsg {
   /// up says so here.
   #[serde(default)]
   pub features_on: Option<Vec<usize>>,
+  /// Whether the ship starts crewed by people or by the AI service. Absent
+  /// means people.
+  #[serde(default)]
+  pub controller: Option<Controller>,
+  /// Standing orders the ship starts with.
+  #[serde(default)]
+  pub orders: Option<String>,
 }
 
 /// Start or stop one software package.
@@ -144,6 +151,22 @@ impl SetPilotActions {
 pub struct SetShipTeam {
   pub ship_name: String,
   pub team: Option<Team>,
+}
+
+/// Hand a ship to the AI service, or take it back.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetShipController {
+  pub ship_name: String,
+  pub controller: Controller,
+}
+
+/// Give a ship standing orders. `None`, or an empty string, clears them.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetOrders {
+  pub ship_name: String,
+  #[serde(default)]
+  pub orders: Option<String>,
 }
 
 /// Set a ship's emissions: whether it runs active sensors, and whether it is
@@ -675,6 +698,8 @@ pub enum RequestMsg {
   SetShipEmissions(SetShipEmissions),
   SetSoftwareRunning(SetSoftwareRunning),
   SetShipTeam(SetShipTeam),
+  SetShipController(SetShipController),
+  SetOrders(SetOrders),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
@@ -754,6 +779,8 @@ mod tests {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     };
     let json = json!({
@@ -785,6 +812,8 @@ mod tests {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     };
     let json = json!({

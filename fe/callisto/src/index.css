@@ -3458,3 +3458,59 @@ h3.control-form {
     font-style: italic;
     opacity: 0.7;
 }
+
+/* Who is crewing the ship, and its standing orders. In the Ship's Computer
+   card, under the vital stats. */
+.ship-command {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 6px 0;
+}
+
+.ship-command-crew {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ship-command-crew h2,
+.ship-command-orders h2 {
+    margin: 0;
+}
+
+.controller-chip {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    padding: 0 5px;
+    border: 1px solid #555;
+    border-radius: 8px;
+    color: #aaa;
+}
+
+/* An AI-crewed ship should be obvious at a glance: nobody at its consoles is
+   going to answer for it. */
+.controller-chip-ai {
+    border-color: #6fa8dc;
+    color: #9fc5e8;
+}
+
+.ship-command-switch {
+    margin-left: auto;
+}
+
+.ship-command-orders {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ship-command-orders-text {
+    background-color: #1a1a1a;
+    color: inherit;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-family: "Sono", monospace;
+    font-size: var(--font-sm);
+    resize: vertical;
+}

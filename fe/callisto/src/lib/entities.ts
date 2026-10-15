@@ -53,6 +53,9 @@ export interface Entity {
   velocity: [number, number, number];
 }
 
+/** Who gives a ship its orders: people, or the AI service. */
+export type Controller = "Human" | "AI";
+
 export interface Ship extends Entity {
   plan: [Acceleration, Acceleration | null];
   design: string;
@@ -125,6 +128,10 @@ export interface Ship extends Entity {
   handoff_sensors?: boolean;
   /** Which side the ship is on. Absent means unaligned. */
   team?: Team;
+  /** Who gives the ship its orders. Absent means the people at its consoles. */
+  controller?: Controller;
+  /** Standing orders, in plain English. Absent means none. */
+  orders?: string;
   crew: Crew;
   /**
    * Which sensor operator and which engineer are working this round, as
