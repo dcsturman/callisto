@@ -19,6 +19,7 @@ pub mod server;
 pub mod service_auth;
 pub mod ship;
 pub mod software;
+pub mod tactics;
 
 #[macro_use]
 mod cov_util;

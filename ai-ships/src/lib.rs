@@ -11,6 +11,7 @@
 //! * [`crews`] -- one running crew per side, started, updated and stopped.
 //! * [`crew`] -- a single side's connection to the backend and its round loop.
 //! * [`commander`] -- what decides a side's orders each round.
+//! * [`observation`] -- what a side may know: fog of war, in one place.
 //! * [`auth`] -- the credentials the service presents to the backend.
 
 pub mod api;
@@ -18,3 +19,4 @@ pub mod auth;
 pub mod commander;
 pub mod crew;
 pub mod crews;
+pub mod observation;
