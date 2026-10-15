@@ -581,6 +581,11 @@ export const AddShip: React.FC<AddShipProps> = () => {
               processing={shipDesignTemplates[addShipData.design]?.computer ?? 0}
               onChange={(software) => setAddShipData({...addShipData, software})}
             />
+          </div>
+          {/* Who sails her: her side, whether the AI crews her, and its
+              orders. A section of its own -- in the sensors row it ran off
+              the panel's edge. */}
+          <div className="add-ship-crewing">
             <label className="emissions-toggle" title="Which side this ship is on. Teams are colour-coded in the view.">
               Team
               <select

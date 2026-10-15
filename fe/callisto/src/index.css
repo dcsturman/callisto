@@ -1892,6 +1892,7 @@ h3.control-form {
    with two switches rather than as unrelated checkboxes. */
 .emissions-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
     align-items: center;
     margin: 2px 0 4px 0;
@@ -3623,4 +3624,13 @@ h3.control-form {
     gap: 0.75em;
     margin-top: 0.5em;
     font-variant-numeric: tabular-nums;
+}
+
+/* Team, AI crew and orders: wrapped so they fit the panel's width. */
+.add-ship-crewing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin: 4px 0 6px 0;
 }
