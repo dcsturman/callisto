@@ -79,7 +79,8 @@ with the ships as fields gets a faithful account of the last round for free.
 - **No orders.** There is nowhere to put "close and board" so that a ship, a
   referee or a saved scenario can read it.
 - **One ship per connection.** `SetRole.ship` is an `Option<String>`. A
-  service minding three corsairs needs three connections, or a wider role.
+  service minding a team needs to claim several ships on one connection, and
+  one ready flag for all of them.
 - **No tactical verbs.** The backend solves "get me to this position with
   this velocity" (`ComputePath`), but not "intercept X and arrive at Medium
   range" or "keep Long range from Y". Every console works that out by hand
@@ -110,10 +111,22 @@ service deployable and restartable on its own, and means a scenario keeps
 working when the service is down: the ships just sit there, as they do when a
 human steps away.
 
-**One connection per AI ship.** Cheap, and it makes the referee's `Users`
-list read naturally: "Invigilator (AI) -- ready". It also means a crashed
-decision for one ship cannot take the others' stations down with it. The
-alternative, widening `SetRole` to many ships, saves nothing we care about.
+**One connection per AI team per scenario.** Not one per ship, and the
+reason is the backend's fan-out, not the socket count. Every change anyone
+makes deep-copies the whole world and broadcasts it to every connection in
+the scenario. With a connection per ship that is O(ships²) bytes per change:
+a thousand-ship game at a kilobyte a ship sends a gigabyte per change and
+there are thousands of changes a round. A connection per team receives one
+copy of each broadcast however many ships it minds. It costs one backend
+change: a service login may claim a set of ships (`SetRole{roles, ships}`),
+and its ready flag covers all of them, so the referee's list reads
+"Pirates (AI, 3 ships) -- ready".
+
+A thousand ships would break the backend for humans too, for the same
+reason, and the fix is the same seam as server-side fog of war: per-connection
+projection and deltas instead of whole-world copies. That is a scaling item
+of its own, outside this epic; this design must simply not make it worse,
+and with per-team connections it does not.
 
 **Three layers inside the service**, and the boundary between them is the
 whole point:
@@ -165,6 +178,12 @@ set it. Saved in the scenario file so authors can give pirates doctrine. Shown
 on the ship's card so a human crew can read their orders too, which is a nice
 thing to have regardless. Orders are world state, not a private channel, so
 the referee always sees what every machine was told.
+
+**Many ships per connection.** `SetRole` takes `ships: Vec<String>` (the
+old `ship` stays as an alias for one). `SetReady` on such a connection marks
+every claimed ship ready, and `Users` shows the connection with its ship
+count. Only a service login may claim more than one ship; a human console
+keeps one.
 
 **Round number.** `MetaData.round: u32`, incremented by `update()`, included
 in `EntityResponse`. The service uses it to know a new round began; the
@@ -352,8 +371,10 @@ the Observation layer exists for. In the usual game (humans against AI
 pirates) there is one AI team, so per team is per game anyway; the two only
 differ when AI fights AI in the harness, where the separation is what makes
 a win rate mean anything. The call returns one `Intent` per ship, so the
-model can split fire and screen. Fall back to per ship only if a team grows
-past four or five ships and the schema gets unwieldy.
+model can split fire and screen. Past a dozen or so ships one call cannot
+carry every Intent; then the team splits into squadrons and a fleet call
+issues orders to squadron calls, which is the chain of command (§4.4)
+applied recursively. The seam allows it; this epic does not build it.
 
 **Cost and latency.** Roughly 5-8k input tokens (mostly cached) and
 300-600 output per call. One call per team per round. A round of tabletop
@@ -514,7 +535,8 @@ Each phase ends in something playable or measurable, and merges into
 
 **Phase 0 -- prerequisites (backend only).** `controller` and `orders` on
 ships and in scenario files; `SetShipController` and `SetOrders`; round
-number in `MetaData`; `ServiceLogin` with the pre-shared token. Frontend shows
+number in `MetaData`; `ServiceLogin` with the pre-shared token; many ships
+per service connection. Frontend shows
 the chip, the orders, and the round. Nothing decides anything yet.
 
 **Phase 1 -- verbs, index card, harness.** `callisto::tactics` with tests;
@@ -540,9 +562,12 @@ harness. Decided by the numbers from phases 1-2.
 
 Agreed 2026-10-14:
 
-1. **A separate service**, in Rust, speaking the player protocol. The model
-   call is slow and external and does not belong inside the processor's
-   single task, and "the AI went down" must not mean "the game went down".
+1. **A separate service**, in Rust, speaking the player protocol, with
+   **one connection per AI team per scenario** (not per ship: the backend
+   broadcasts the whole world to every connection, so per-ship connections
+   are O(ships²) at scale). The model call is slow and external and does not
+   belong inside the processor's single task, and "the AI went down" must
+   not mean "the game went down".
 2. **One model call per team** (§4.5), returning an `Intent` per ship.
 3. **Fog of war is the service's job** (§4.1 A): one strip function with a
    test. Server-side projection only if ever needed.
