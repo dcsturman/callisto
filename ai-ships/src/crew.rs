@@ -25,6 +25,9 @@ use tracing::{info, warn};
 
 use crate::auth::Credential;
 use crate::commander::Commander;
+use crate::observation::observe;
+use callisto::entity::Entities;
+use callisto::tactics;
 
 /// Keepalive, matching the browser client's. Pings do not count as activity on
 /// the backend, so they keep the socket open without keeping a game alive.
@@ -117,6 +120,23 @@ fn learn_designs(designs: HashMap<String, ShipDesignTemplate>) {
   merge_ship_templates(designs);
 }
 
+/// The side's orders for the round. The commander sees only what the side may
+/// know; its intents are carried out against the world, as a console would.
+fn decide(commander: &mut dyn Commander, world: &Entities, ships: &[String]) -> Vec<RequestMsg> {
+  let view = observe(world, ships);
+  commander
+    .decide(&view)
+    .into_iter()
+    .filter(|(ship, _)| ships.contains(ship))
+    .flat_map(|(ship, intent)| {
+      tactics::orders(world, &ship, &intent).unwrap_or_else(|e| {
+        warn!("(crew) Could not carry out {ship}'s orders: {e}");
+        vec![]
+      })
+    })
+    .collect()
+}
+
 fn claim(ships: &[String]) -> RequestMsg {
   RequestMsg::SetRole(ChangeRole {
     roles: vec![Role::General],
@@ -196,7 +216,7 @@ async fn session(
             // Updates within a round (someone changed a plan) are not a new
             // decision.
             last_round = Some(world.round);
-            let mut orders = commander.decide(&world, &claimed);
+            let mut orders = decide(commander, &world, &claimed);
             orders.push(RequestMsg::SetReady(true));
             for order in &orders {
               if let Err(e) = send(&mut socket, order).await {

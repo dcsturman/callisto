@@ -381,6 +381,42 @@ A compact, stable, text-and-numbers view built once per round per AI ship:
 The same struct feeds every Commander. For the LLM it is rendered to text;
 for a learned policy it is flattened to features.
 
+**The mechanics are computed, not described.** A commander has to know the
+game: which weapons reach which band, what the to-hit modifiers are, what
+armour does to a light gun, how likely a silent ship is to be found. Writing
+all that into a prompt would be long, would drift from the code, and would
+leave the model doing the arithmetic it is worst at. Instead the Observation
+carries what the rules *mean* for this fight, computed by the rules' own code:
+
+- **Engagement tables** (built). For each of our ships against each contact,
+  by range band: the best single mount's chance to hit and the hull damage
+  expected from everything that bears, both ways. Damage is after armour,
+  penetration, the turret bonus and the mount's multiple, worked over every
+  way the dice can fall, so armour clipping a weak gun to nothing shows as a
+  small number. Missiles count their whole salvo, before point defence. The
+  to-hit sum is `combat::attack_terms`, the same function the real attack
+  rolls against, so the odds cannot drift from the dice. An enemy's crew is
+  not visible, so their side assumes gunnery 1; our side uses our gunners.
+- **Exposure tables** (built). For each of our ships against each contact,
+  by posture and whether we fire: the chance that contact finds us this
+  round, and for a stealthy hull the chance of slipping a contact by opening
+  the range a band. Range does not enter the detection roll -- only Distant
+  ends contact -- so posture, burn, firing and damage are what move it. The
+  sum is the detection pass's own (`entity::detection_terms`). We cannot see
+  who holds us, so the table answers "if they look"; the enemy is assumed to
+  be sweeping actively, since it can switch on at will. "Creep in silent and
+  stay at Very Long" becomes a choice made from numbers.
+
+What is left for the prompt is the short list of rules that are facts rather
+than odds: firing breaks silence, a ship with no drive cannot run, jump needs
+100 diameters and fuel, launchers ignore range.
+
+The baseline commander shows the tables at work. It scores each band as the
+share of the enemy's hull it expects to take in a round, less the share of
+its own it expects to lose. The Executor against a Buccaneer deals 50 and
+takes 19 at Short but 24 and nothing at Very Long; with half the Buccaneer's
+hull, Very Long wins, which is what a referee would tell the player.
+
 ### 4.4 Orders and the chain of command
 
 Orders are strings. The Commander is what gives them meaning, and the LLM is
@@ -563,6 +599,41 @@ Gemini, or this week's prompt against last week's, sides swapped each game.
 `Replay` plays back a recorded `TeamDecision` per round, for CI.
 
 ### 4.7 The harness
+
+**Built** as `ai-ships/src/harness.rs` and the `harness` binary:
+
+```
+cd ai-ships
+cargo run --release --bin harness -- --scenario ../callisto/scenarios/Thebus.json \
+  --side Blue=close --side Red=close --side "ship:Lyonesse II=idle" --games 20 --rounds 40 \
+  --log rounds.jsonl --outcomes outcomes.jsonl
+```
+
+A game loads the scenario into an in-process backend server, and each round
+every side's commander decides from its own observation, its intents become
+orders through `callisto::tactics`, the orders are applied as the processor
+would apply them, and the round resolves. Dice come from the game's seed and
+the round number, so a seed replays exactly and no two seeds roll alike. A
+hundred and fifty rounds take well under a second. `--log` writes every
+side's intents per round; `--outcomes` writes each game's result.
+
+First results, Thebus, 20 games each (pirates on Blue, the Executor on Red):
+
+| Pirates | Executor | Pirates won | Executor won | Draws |
+|---|---|---|---|---|
+| close | close | 5 | 15 | 0 |
+| hold | close | 5 | 14 | 1 |
+| close | random | 10 | 0 | 10 |
+
+Two things the first runs taught. A commander with no enemy in contact has to
+sweep for one, or a stealthy enemy is never found; `Close` now goes active
+when it has nobody. And Marduk starts every ship at about 55,000 km, which is
+Distant, where nothing can be detected: a baseline that does not know where
+to look never finds anyone. Getting there is what a scenario's briefing tells
+a human, so it is the model's orders, not the baseline's rules, that will
+have to say it.
+
+The design as first written follows.
 
 A headless runner, in the backend crate's tests or a small binary: load a
 scenario, assign a Commander to each team, run N rounds through

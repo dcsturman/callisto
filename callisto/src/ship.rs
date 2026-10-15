@@ -1274,7 +1274,7 @@ pub enum Sensors {
   Advanced,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, FromRepr)]
 pub enum Range {
   Short = 0,
   Medium,

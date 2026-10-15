@@ -11,8 +11,10 @@ description = "Crews AI-controlled ships in callisto: connects to the backend as
 [dependencies]
 callisto = { path = "../callisto", features = [] }
 axum = "0.8"
+cgmath = "0.18"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 futures-util = "0.3.31"
+rand = "0.8"
 reqwest = { version = "0.12.4", features = ["json"] }
 rustls = "0.23.21"
 serde = { version = "1.0", features = ["derive"] }

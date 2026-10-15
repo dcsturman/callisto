@@ -78,6 +78,10 @@ pub struct PlayerManager {
   // service crewing a side.
   ships: Vec<String>,
   test_mode: bool,
+  // Seeds each round's dice from this and the round number, when set. For the
+  // AI harness, which needs every game reproducible but no two alike; test
+  // mode's fixed seed would roll every round the same.
+  seed: Option<u64>,
 }
 
 /// A captain's leadership check, as the log reads it.
@@ -129,7 +133,16 @@ impl PlayerManager {
       roles: vec![Role::General],
       ship: None,
       ships: vec![],
+      seed: None,
     }
+  }
+
+  /// Roll each round's dice from `seed` and the round number: reproducible,
+  /// and different from round to round and seed to seed.
+  #[must_use]
+  pub fn with_seed(mut self, seed: u64) -> Self {
+    self.seed = Some(seed);
+    self
   }
 
   pub fn set_role_ship(&mut self, roles: Vec<Role>, ship: Option<String>) {
@@ -889,8 +902,6 @@ impl PlayerManager {
   #[must_use]
   #[allow(clippy::too_many_lines)]
   pub fn update(&self) -> Vec<EffectMsg> {
-    let mut rng = get_rng(self.test_mode);
-
     // Grab the lock on entities
     let mut entities = self
       .server
@@ -898,6 +909,11 @@ impl PlayerManager {
       .unwrap()
       .get_unlocked_entities()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut rng = self.seed.map_or_else(
+      || get_rng(self.test_mode),
+      |seed| SmallRng::seed_from_u64(seed.wrapping_mul(1_000_003).wrapping_add(u64::from(entities.round))),
+    );
 
     // Phase 0: Resolve queued LeadershipCheck actions to build the BoostMap
     // for this turn. The leadership dice roll itself happens BEFORE end-of-turn

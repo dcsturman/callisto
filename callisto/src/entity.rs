@@ -132,6 +132,42 @@ impl PartialEq for Entities {
   }
 }
 
+/// What a ship is giving off this round, for anyone looking for it.
+pub(crate) fn emissions_of(ship: &Ship, fired: bool) -> Emissions {
+  Emissions {
+    active_sensors: ship.active_sensors,
+    thrust_g: ship.thrust_in_g(),
+    power_plant: ship.current_power > 0,
+    fired_weapons: fired,
+    crit_severity: ship.total_crit_severity(),
+    transmitting: ship.is_transmitting(),
+  }
+}
+
+/// The detection DM, term by term, for `observer` looking for `target` while
+/// it gives off `emissions`: what the observer brings, then what the target
+/// gives away.
+///
+/// The one place the sum is made. The detection pass rolls against it, and
+/// the AI's detection table works out its odds from it, with the emissions a
+/// posture would give, so what the AI expects is what the dice then do.
+pub(crate) fn detection_terms(observer: &Ship, target: &Ship, emissions: Emissions) -> Vec<(&'static str, i16)> {
+  let mut terms = vec![
+    ("sensor grade", SENSOR_QUALITY_MOD[observer.current_sensors as usize]),
+    // Detection is not an action anyone queues, so it is not one operator's
+    // check: the watch as a whole is looking, and the best of them is who
+    // notices.
+    ("sensor skill", i16::from(observer.get_crew().get_sensors())),
+  ];
+  terms.extend(detection_modifier_terms(
+    observer.design.tl,
+    target.design.tl,
+    target.design.stealth,
+  ));
+  terms.extend(emissions.detection_terms());
+  terms
+}
+
 /// The effect reported when a ship is ordered to act on something it cannot see.
 ///
 /// Phrased for the referee log rather than as an error: the order was given,
@@ -2136,32 +2172,7 @@ impl Entities {
     &self, observer_name: &str, target_name: &str, target: &Ship, fired: &HashSet<String>,
   ) -> Vec<(&'static str, i16)> {
     let observer = self.ships.get(observer_name).unwrap().read().unwrap();
-    let mut terms = vec![
-      ("sensor grade", SENSOR_QUALITY_MOD[observer.current_sensors as usize]),
-      // Detection is not an action anyone queues, so it is not one operator's
-      // check: the watch as a whole is looking, and the best of them is who
-      // notices.
-      ("sensor skill", i16::from(observer.get_crew().get_sensors())),
-    ];
-    terms.extend(detection_modifier_terms(
-      observer.design.tl,
-      target.design.tl,
-      target.design.stealth,
-    ));
-    drop(observer);
-
-    terms.extend(
-      Emissions {
-        active_sensors: target.active_sensors,
-        thrust_g: target.thrust_in_g(),
-        power_plant: target.current_power > 0,
-        fired_weapons: fired.contains(target_name),
-        crit_severity: target.total_crit_severity(),
-        transmitting: target.is_transmitting(),
-      }
-      .detection_terms(),
-    );
-    terms
+    detection_terms(&observer, target, emissions_of(target, fired.contains(target_name)))
   }
 
   /// A message saying `ship_name` cannot `what` because `station` is out, or

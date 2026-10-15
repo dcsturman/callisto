@@ -1,0 +1,960 @@
+//! Tactical verbs: what a commander says, turned into what a console sends.
+//!
+//! A commander -- the AI, or one day a human pressing "Intercept to Medium"
+//! -- decides in coarse terms: close with that ship to Medium range, shoot
+//! her drive, keep quiet. Nothing here decides anything. It does the
+//! arithmetic a crew would do by hand and returns the same requests a crew's
+//! consoles would send: a plan from the same solver the pilot's computer
+//! uses, fire orders that name only guns that can reach, emissions set from a
+//! posture.
+//!
+//! [`orders`] is the entry point. The helpers it uses to read the board --
+//! [`band_between`], [`weapons_that_bear`] -- are public too, because a
+//! commander needs the same answers to decide.
+
+use cgmath::{InnerSpace, Zero};
+use serde::{Deserialize, Serialize};
+
+use crate::action::ShipAction;
+use crate::combat::{attack_terms, find_range_band, AttackSituation, HitMods, STANDARD_ROLL_THRESHOLD};
+use crate::computer::plot_course;
+use crate::entity::{detection_terms, emissions_of, Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, G};
+use crate::payloads::{RequestMsg, SetPilotActions, SetPlanMsg, SetShipEmissions};
+use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS};
+use crate::ship::{FlightPlan, MountClass, Range, Salvo, Ship, ShipSystem, WeaponMount, WeaponType};
+
+/// How hard a ship tries not to be seen. A constraint over every other order,
+/// not an order of its own.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Posture {
+  /// Nothing radiates: no active sensors, no transmitting, no sharing.
+  Silent,
+  /// Listen, and share the picture with the team. Sharing is an emission.
+  Passive,
+  /// Sweep and lock: active sensors on.
+  Active,
+}
+
+/// What the helm does this round.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub enum Helm {
+  /// Keep the current plan.
+  #[default]
+  Hold,
+  /// Close with a ship and arrive inside a range band, matching her velocity.
+  Intercept { target: String, band: Range },
+  /// Stay inside a range band of a ship, matching her velocity.
+  HoldRange { target: String, band: Range },
+  /// Burn straight away from a ship at full thrust.
+  OpenRange { target: String },
+  /// Go to a point and stop there. Metres, in the scenario's frame.
+  Station { position: [f64; 3] },
+}
+
+/// Fire on a ship.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct Engage {
+  pub target: String,
+  /// Which mounts, by index. Empty means every one that can reach.
+  #[serde(default)]
+  pub weapons: Vec<usize>,
+  /// A called shot on this system, for the guns that can call one.
+  #[serde(default)]
+  pub called: Option<ShipSystem>,
+}
+
+/// A sensor operator's order.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum SensorVerb {
+  Lock { target: String },
+  BreakLock { target: String },
+  JamMissiles,
+  JamComms { target: String },
+}
+
+/// An engineer's order.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum EngineerVerb {
+  /// Repair the worst-damaged of these systems, in this order of preference.
+  Repair {
+    priority: Vec<ShipSystem>,
+  },
+  OverloadDrive,
+  OverloadPlant,
+}
+
+/// One ship's orders for a round, in a commander's terms.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct Intent {
+  /// `None` leaves emissions as they are.
+  #[serde(default)]
+  pub posture: Option<Posture>,
+  #[serde(default)]
+  pub helm: Helm,
+  /// Thrust to hold back for dodging. `None` leaves it as it is.
+  #[serde(default)]
+  pub evade: Option<u8>,
+  #[serde(default)]
+  pub fire: Vec<Engage>,
+  /// Put every point-defence mount on defence.
+  #[serde(default)]
+  pub defend: bool,
+  /// One per sensor operator aboard, in order; extras are dropped.
+  #[serde(default)]
+  pub sensors: Vec<SensorVerb>,
+  /// One per engineer aboard, in order; extras are dropped.
+  #[serde(default)]
+  pub engineering: Vec<EngineerVerb>,
+  /// One sentence on why, for the people this ship reports to.
+  #[serde(default)]
+  pub rationale: String,
+}
+
+/// The range band two ships are in of each other.
+#[must_use]
+pub fn band_between(a: &Ship, b: &Ship) -> Range {
+  band_at((a.get_position() - b.get_position()).magnitude())
+}
+
+/// The range band a distance in metres falls into.
+#[must_use]
+pub fn band_at(distance: f64) -> Range {
+  // Saturating: anything past u32 metres is Distant anyway.
+  #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+  find_range_band(distance.clamp(0.0, f64::from(u32::MAX)) as u32)
+}
+
+/// A distance comfortably inside a band, to aim for rather than its edge: a
+/// quarter of the way in from its near side, so a little drift does not tip
+/// the ship into the next band.
+#[must_use]
+pub fn aim_point(band: Range) -> f64 {
+  let edges: Vec<f64> = std::iter::once(0.0)
+    .chain(RANGE_BANDS.iter().map(|edge| f64::from(*edge)))
+    .collect();
+  let index = band as usize;
+  match (edges.get(index), edges.get(index + 1)) {
+    (Some(near), Some(far)) => near + (far - near) / 4.0,
+    // Distant has no far side: aim a little beyond Very Long.
+    _ => f64::from(RANGE_BANDS[RANGE_BANDS.len() - 1]) * 1.2,
+  }
+}
+
+/// The edges of a band, in metres.
+fn band_edges(band: Range) -> (f64, f64) {
+  let edges: Vec<f64> = std::iter::once(0.0)
+    .chain(RANGE_BANDS.iter().map(|edge| f64::from(*edge)))
+    .collect();
+  let index = band as usize;
+  (
+    edges.get(index).copied().unwrap_or(f64::MAX),
+    edges.get(index + 1).copied().unwrap_or(f64::MAX),
+  )
+}
+
+/// Whether a gun is an attack at all: point defence, sand and repulsors are
+/// not fired at a ship.
+fn offensive(kind: WeaponType) -> bool {
+  !matches!(kind, WeaponType::Sand | WeaponType::PointDefense | WeaponType::Repulsor)
+}
+
+/// The mounts on `ship` that can fire on a target at this range, each with the
+/// gun kind that would fire: the longest-reaching offensive gun in the mount.
+/// Launchers always bear -- the salvo flies to its target. Mounts switched off
+/// do not bear.
+#[must_use]
+pub fn weapons_that_bear(ship: &Ship, range: Range) -> Vec<(usize, WeaponType)> {
+  ship
+    .weapons()
+    .iter()
+    .enumerate()
+    .filter(|(index, _)| ship.active_weapons.get(*index).copied().unwrap_or(true))
+    .filter_map(|(index, weapon)| {
+      weapon
+        .kinds()
+        .into_iter()
+        .filter(|kind| offensive(*kind))
+        .filter_map(|kind| {
+          let firing = weapon.firing(kind)?;
+          let profile = profile_for(kind, firing.mount)?.with_modifiers(kind, firing.modifiers);
+          let reaches = profile.salvo.is_some() || profile.reaches(range);
+          // Launchers first, then the longest reach.
+          reaches.then_some((profile.salvo.is_some(), profile.max_range, kind))
+        })
+        .max_by(|a, b| (a.0, a.1).partial_cmp(&(b.0, b.1)).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(_, _, kind)| (index, kind))
+    })
+    .collect()
+}
+
+/// Every range band, nearest first.
+pub const BANDS: [Range; 5] = [
+  Range::Short,
+  Range::Medium,
+  Range::Long,
+  Range::VeryLong,
+  Range::Distant,
+];
+
+/// What one ship's guns can do to another at one range, in a round.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct BandOdds {
+  pub band: Range,
+  /// The best chance any one mount has to hit.
+  pub best_chance: f64,
+  /// Hull damage expected from every mount that bears, after armour,
+  /// penetration and the mount's multiple. Launchers count every missile in
+  /// the salvo, before point defence. Ion weapons, which take Power rather
+  /// than hull, count nothing here.
+  pub expected_damage: f64,
+  /// How many mounts can fire at all.
+  pub mounts: usize,
+  /// Every mount that bears is a launcher.
+  pub missiles_only: bool,
+}
+
+/// The chance distribution of the sum of `dice` six-sided dice.
+fn dice_distribution(dice: u8) -> Vec<f64> {
+  (0..dice).fold(vec![1.0], |sums, _| {
+    let mut next = vec![0.0; sums.len() + 6];
+    for (sum, chance) in sums.iter().enumerate() {
+      for face in 1..=6 {
+        next[sum + face] += chance / 6.0;
+      }
+    }
+    next
+  })
+}
+
+/// Expected hull damage from one hit with this effect: the same arithmetic
+/// `combat::attack` does, over every way the damage dice can fall. Armour
+/// clips low rolls to nothing, which is why this is not the average roll
+/// minus armour: a weak gun against a heavy hull is nearly harmless.
+fn expected_hit_damage(dice: &[f64], effect: i32, armour: u32, turret_bonus: u32, multiple: u32) -> f64 {
+  dice
+    .iter()
+    .enumerate()
+    .map(|(roll, chance)| {
+      #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
+      let raw = roll as i32 + effect - i32::try_from(armour).unwrap_or(i32::MAX);
+      let through = u32::try_from(raw).unwrap_or(0);
+      let damage = if through == 0 {
+        0
+      } else {
+        (through + turret_bonus) * multiple
+      };
+      chance * f64::from(damage)
+    })
+    .sum()
+}
+
+/// What `attacker`'s guns can do to `defender` at each range band in a round.
+///
+/// Built on `combat::attack_terms`, the sum the dice are rolled against, so
+/// the odds are the rules' own. `gunnery` is each mount's gunner skill, by
+/// mount; a side cannot see an enemy's crew, so for a contact the caller
+/// passes what it assumes. `armour` is the defender's, likewise as known.
+/// Dodging is not assumed: these are the odds against a ship flying straight.
+#[must_use]
+pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i32, armour: u32) -> Vec<BandOdds> {
+  BANDS
+    .iter()
+    .map(|band| {
+      let bearing = weapons_that_bear(attacker, *band);
+      let mut best_chance: f64 = 0.0;
+      let mut expected = 0.0;
+      let mut launchers = 0;
+      for (index, kind) in &bearing {
+        let weapon = &attacker.weapons()[*index];
+        let Some(firing) = weapon.firing(*kind) else { continue };
+        let Some(profile) = profile_for(*kind, firing.mount).map(|p| p.with_modifiers(*kind, firing.modifiers)) else {
+          continue;
+        };
+        let situation = AttackSituation {
+          hit: HitMods::gunner(gunnery(*index)),
+          attacker,
+          defender,
+          firing: &firing,
+          profile: &profile,
+          range_band: *band,
+          called_shot: false,
+        };
+        let Some(terms) = attack_terms(&situation, 0, 0) else {
+          continue;
+        };
+        let dm: i32 = terms.iter().map(|(_, value)| value).sum();
+        let dice = dice_distribution(profile.damage_dice);
+        let armour = armour.saturating_sub(u32::from(profile.ap));
+        let (count, turret_bonus, multiple) = match profile.salvo {
+          Some(Salvo::PerGun) => (f64::from(firing.count), 0, 1),
+          Some(Salvo::Fixed(missiles)) => (f64::from(missiles), 0, 1),
+          None => (
+            1.0,
+            if matches!(firing.mount, WeaponMount::Turret) {
+              (u32::from(firing.count) - 1) * u32::from(profile.damage_dice)
+            } else {
+              0
+            },
+            if profile.use_multiple {
+              damage_multiple(MountClass::from(firing.mount))
+            } else {
+              1
+            },
+          ),
+        };
+        if profile.salvo.is_some() {
+          launchers += 1;
+        }
+        // Every way two dice can fall for the attack roll.
+        let (chance, per_attack) = (2..=12_i32).fold((0.0, 0.0), |(chance, damage), roll| {
+          let ways = f64::from(6 - (7 - roll).abs());
+          let total = roll + dm;
+          if total < STANDARD_ROLL_THRESHOLD {
+            return (chance, damage);
+          }
+          let p = ways / 36.0;
+          let hit = if profile.ion {
+            0.0
+          } else {
+            expected_hit_damage(&dice, total - STANDARD_ROLL_THRESHOLD, armour, turret_bonus, multiple)
+          };
+          (chance + p, damage + p * hit)
+        });
+        best_chance = best_chance.max(chance);
+        expected += per_attack * count;
+      }
+      BandOdds {
+        band: *band,
+        best_chance,
+        expected_damage: expected,
+        mounts: bearing.len(),
+        missiles_only: !bearing.is_empty() && launchers == bearing.len(),
+      }
+    })
+    .collect()
+}
+
+/// The chance two dice plus `dm` make the standard 8.
+fn chance_of_success(dm: i32) -> f64 {
+  (2..=12_i32)
+    .filter(|roll| roll + dm >= STANDARD_ROLL_THRESHOLD)
+    .map(|roll| f64::from(6 - (7 - roll).abs()) / 36.0)
+    .sum()
+}
+
+/// How exposed a ship is to one observer, under one posture.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DetectionOdds {
+  pub posture: Posture,
+  /// Whether the ship fires this round. Firing gives a ship away.
+  pub firing: bool,
+  /// The chance the observer finds the ship this round if it does not hold
+  /// it already. Assumes the observer is sweeping with active sensors, since
+  /// it can switch them on at will.
+  pub found: f64,
+  /// For an observer that already holds the ship: the chance of slipping
+  /// away by opening the range a band. Zero for a ship with no stealth --
+  /// only stealth can be lost.
+  pub slip_by_opening: f64,
+}
+
+/// How exposed `target` is to `observer` this round, for each posture and
+/// whether it fires, at its present burn and damage.
+///
+/// Built on the detection pass's own sum, so the odds are the rules' own.
+/// Range does not enter the roll; Distant ends contact outright, so nothing
+/// is found there.
+#[must_use]
+pub fn detection(observer: &Ship, target: &Ship) -> Vec<DetectionOdds> {
+  let distant = band_between(observer, target) == Range::Distant;
+  [Posture::Silent, Posture::Passive, Posture::Active]
+    .into_iter()
+    .flat_map(|posture| [false, true].map(|firing| (posture, firing)))
+    .map(|(posture, firing)| {
+      let mut emissions = emissions_of(target, firing);
+      emissions.active_sensors = posture == Posture::Active;
+      emissions.transmitting = posture != Posture::Silent;
+      let dm: i32 = detection_terms(observer, target, emissions)
+        .iter()
+        .map(|(_, value)| i32::from(*value))
+        .sum();
+      let found = if distant { 0.0 } else { chance_of_success(dm) };
+      let slip_by_opening = if target.design.stealth.is_some() {
+        1.0 - chance_of_success(dm)
+      } else {
+        0.0
+      };
+      DetectionOdds {
+        posture,
+        firing,
+        found,
+        slip_by_opening,
+      }
+    })
+    .collect()
+}
+
+/// A plan that arrives at `distance` from a ship, matching her velocity.
+fn rendezvous(own: &Ship, target: &Ship, distance: f64) -> FlightPlan {
+  let start = own.get_position();
+  let aim = target.get_position();
+  let line = aim - start;
+  let end = if line.magnitude() > distance && distance > 0.0 {
+    aim - line.normalize() * distance
+  } else if distance > 0.0 {
+    // Already inside: hold station at the same bearing, further out.
+    aim
+      - (if line.magnitude() > 0.0 {
+        line.normalize()
+      } else {
+        Vec3::unit_x()
+      }) * distance
+  } else {
+    aim
+  };
+  let target_accel = target.plan.0 .0;
+  plot_course(
+    start,
+    own.get_velocity(),
+    G * f64::from(own.max_acceleration()),
+    end,
+    target.get_velocity(),
+    Some(target.get_velocity()),
+    Some(target_accel),
+  )
+  .plan
+}
+
+fn helm_plan(world: &Entities, own: &Ship, helm: &Helm) -> Result<Option<FlightPlan>, String> {
+  let ship = |name: &str| -> Result<Ship, String> {
+    world
+      .ships
+      .get(name)
+      .map(|ship| ship.read().unwrap().clone())
+      .ok_or_else(|| format!("no ship named {name}"))
+  };
+  Ok(match helm {
+    Helm::Hold => None,
+    Helm::Intercept { target, band } => Some(rendezvous(own, &ship(target)?, aim_point(*band))),
+    Helm::HoldRange { target, band } => {
+      let target = ship(target)?;
+      let (near, far) = band_edges(*band);
+      let now = (own.get_position() - target.get_position()).magnitude();
+      // Where we are, if that is inside the band with room to spare;
+      // otherwise the band's aim point.
+      let keep = if now > near * 1.1 && now < far * 0.9 {
+        now
+      } else {
+        aim_point(*band)
+      };
+      Some(rendezvous(own, &target, keep))
+    }
+    Helm::OpenRange { target } => {
+      let away = own.get_position() - ship(target)?.get_position();
+      let direction = if away.magnitude() > 0.0 {
+        away.normalize()
+      } else {
+        Vec3::unit_x()
+      };
+      let accel = direction * G * f64::from(own.max_acceleration());
+      Some(FlightPlan::new((accel, DEFAULT_ACCEL_DURATION).into(), None))
+    }
+    Helm::Station { position } => {
+      let end = Vec3::new(position[0], position[1], position[2]);
+      Some(
+        plot_course(
+          own.get_position(),
+          own.get_velocity(),
+          G * f64::from(own.max_acceleration()),
+          end,
+          Vec3::zero(),
+          None,
+          None,
+        )
+        .plan,
+      )
+    }
+  })
+}
+
+fn emissions(ship: &str, posture: Posture) -> RequestMsg {
+  let (active, transmitting, handoff) = match posture {
+    Posture::Silent => (false, false, false),
+    Posture::Passive => (false, true, true),
+    Posture::Active => (true, true, true),
+  };
+  RequestMsg::SetShipEmissions(SetShipEmissions {
+    ship_name: ship.to_string(),
+    active_sensors: Some(active),
+    transmitting: Some(transmitting),
+    handoff_sensors: Some(handoff),
+  })
+}
+
+fn sensor_action(verb: &SensorVerb, operator: usize) -> ShipAction {
+  match verb {
+    SensorVerb::Lock { target } => ShipAction::SensorLock {
+      target: target.clone(),
+      operator,
+    },
+    SensorVerb::BreakLock { target } => ShipAction::BreakSensorLock {
+      target: target.clone(),
+      operator,
+    },
+    SensorVerb::JamMissiles => ShipAction::JamMissiles { operator },
+    SensorVerb::JamComms { target } => ShipAction::JamComms {
+      target: target.clone(),
+      operator,
+    },
+  }
+}
+
+fn engineer_action(own: &Ship, verb: &EngineerVerb, engineer: usize) -> Option<ShipAction> {
+  match verb {
+    EngineerVerb::Repair { priority } => {
+      // The worst-damaged system on the list; ties go to the earlier one.
+      let worst = priority
+        .iter()
+        .map(|system| (own.crit_level[*system as usize], *system))
+        .filter(|(level, _)| *level > 0)
+        .fold(None::<(u8, ShipSystem)>, |best, candidate| match best {
+          Some(best) if best.0 >= candidate.0 => Some(best),
+          _ => Some(candidate),
+        })?;
+      Some(ShipAction::Repair {
+        system: worst.1,
+        engineer,
+      })
+    }
+    EngineerVerb::OverloadDrive => Some(ShipAction::OverloadDrive { engineer }),
+    EngineerVerb::OverloadPlant => Some(ShipAction::OverloadPlant { engineer }),
+  }
+}
+
+/// The requests that carry out one ship's intent for the round.
+///
+/// Fire orders name only mounts that can reach their target; a target that is
+/// not in this ship's contacts is not fired on, since its gunners could not
+/// pick it. Sensor and engineering orders beyond the crew aboard are dropped.
+///
+/// # Errors
+/// Returns an error if the ship, or a ship its helm order names, does not
+/// exist.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<RequestMsg>, String> {
+  let own = world
+    .ships
+    .get(ship_name)
+    .map(|ship| ship.read().unwrap().clone())
+    .ok_or_else(|| format!("no ship named {ship_name}"))?;
+  let mut requests = Vec::new();
+
+  if let Some(posture) = intent.posture {
+    requests.push(emissions(ship_name, posture));
+  }
+  if let Some(plan) = helm_plan(world, &own, &intent.helm)? {
+    requests.push(RequestMsg::SetPlan(SetPlanMsg {
+      name: ship_name.to_string(),
+      plan,
+    }));
+  }
+  if let Some(thrust) = intent.evade {
+    let mut pilot = SetPilotActions::new(ship_name);
+    pilot.dodge_thrust = Some(thrust.min(own.max_acceleration()));
+    requests.push(RequestMsg::SetPilotActions(pilot));
+  }
+
+  let mut actions = Vec::new();
+  let mut committed = std::collections::HashSet::new();
+  for engage in &intent.fire {
+    if !own.contacts.contains(&engage.target) {
+      continue;
+    }
+    let Some(target) = world.ships.get(&engage.target) else {
+      continue;
+    };
+    let range = band_between(&own, &target.read().unwrap());
+    for (weapon_id, kind) in weapons_that_bear(&own, range) {
+      let chosen = engage.weapons.is_empty() || engage.weapons.contains(&weapon_id);
+      // A mount fires once a round, at whoever asked for it first.
+      if chosen && committed.insert(weapon_id) {
+        actions.push(ShipAction::FireAction {
+          weapon_id,
+          target: engage.target.clone(),
+          called_shot_system: engage.called,
+          firing_kind: Some(kind),
+          salvo_size: None,
+          fire_control_dm: 0,
+          computer_fired: false,
+        });
+      }
+    }
+  }
+  if intent.defend {
+    actions.extend(
+      own
+        .weapons()
+        .iter()
+        .enumerate()
+        .filter(|(weapon_id, weapon)| weapon.has_kind(WeaponType::PointDefense) && !committed.contains(weapon_id))
+        .map(|(weapon_id, _)| ShipAction::PointDefenseAction {
+          weapon_id,
+          protecting: None,
+        }),
+    );
+  }
+  let operators = own.get_crew().sensor_operators().max(1);
+  actions.extend(
+    intent
+      .sensors
+      .iter()
+      .take(operators)
+      .enumerate()
+      .map(|(operator, verb)| sensor_action(verb, operator)),
+  );
+  let engineers = own.get_crew().engineers().len().max(1);
+  actions.extend(
+    intent
+      .engineering
+      .iter()
+      .take(engineers)
+      .enumerate()
+      .filter_map(|(engineer, verb)| engineer_action(&own, verb, engineer)),
+  );
+  if !actions.is_empty() {
+    requests.push(RequestMsg::ModifyActions(vec![(ship_name.to_string(), actions)]));
+  }
+  Ok(requests)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::ship::{config_test_ship_templates, get_ship_template};
+
+  const KM: f64 = 1000.0;
+
+  /// A Buccaneer (three pulse turrets and a sandcaster, thrust 3) at the
+  /// origin, holding contact on a second Buccaneer `distance` metres off.
+  async fn two_ships(distance: f64) -> Entities {
+    config_test_ship_templates().await;
+    let design = get_ship_template("Buccaneer").unwrap();
+    let mut world = Entities::new();
+    world.add_ship("Hunter".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    world.add_ship(
+      "Quarry".to_string(),
+      Vec3::new(distance, 0.0, 0.0),
+      Vec3::new(0.0, 1000.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    world.ships["Hunter"].write().unwrap().contacts = vec!["Quarry".to_string()];
+    world
+  }
+
+  fn hunter(world: &Entities) -> Ship {
+    world.ships["Hunter"].read().unwrap().clone()
+  }
+
+  fn fire_actions(requests: &[RequestMsg]) -> Vec<ShipAction> {
+    requests
+      .iter()
+      .filter_map(|request| match request {
+        RequestMsg::ModifyActions(list) => Some(list[0].1.clone()),
+        _ => None,
+      })
+      .flatten()
+      .collect()
+  }
+
+  #[test]
+  fn aim_points_sit_inside_their_bands() {
+    for band in [
+      Range::Short,
+      Range::Medium,
+      Range::Long,
+      Range::VeryLong,
+      Range::Distant,
+    ] {
+      assert_eq!(band_at(aim_point(band)), band, "{band:?}");
+    }
+    assert_eq!(band_at(1_000.0 * KM), Range::Short);
+    assert_eq!(band_at(30_000.0 * KM), Range::VeryLong);
+    assert_eq!(band_at(1.0e12), Range::Distant);
+  }
+
+  #[tokio::test]
+  async fn only_guns_that_reach_bear_and_sand_never_does() {
+    let world = two_ships(20_000.0 * KM).await;
+    let own = hunter(&world);
+    assert_eq!(
+      weapons_that_bear(&own, Range::Long),
+      vec![(0, WeaponType::Pulse), (1, WeaponType::Pulse), (2, WeaponType::Pulse)]
+    );
+    assert!(weapons_that_bear(&own, Range::VeryLong).is_empty(), "pulse lasers stop at Long");
+  }
+
+  #[tokio::test]
+  async fn engage_fires_each_mount_once_and_only_at_contacts() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      fire: vec![
+        Engage {
+          target: "Quarry".to_string(),
+          weapons: vec![0, 1],
+          called: Some(ShipSystem::Maneuver),
+        },
+        // Everything else, at the same ship: only mount 2 is left.
+        Engage {
+          target: "Quarry".to_string(),
+          ..Engage::default()
+        },
+        // Not a contact: nobody aboard can pick it.
+        Engage {
+          target: "Ghost".to_string(),
+          ..Engage::default()
+        },
+      ],
+      ..Intent::default()
+    };
+    let actions = fire_actions(&orders(&world, "Hunter", &intent).unwrap());
+    let fired: Vec<(usize, Option<ShipSystem>)> = actions
+      .iter()
+      .filter_map(|action| match action {
+        ShipAction::FireAction {
+          weapon_id,
+          called_shot_system,
+          ..
+        } => Some((*weapon_id, *called_shot_system)),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(
+      fired,
+      vec![
+        (0, Some(ShipSystem::Maneuver)),
+        (1, Some(ShipSystem::Maneuver)),
+        (2, None)
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn a_target_out_of_reach_is_not_fired_on() {
+    let world = two_ships(40_000.0 * KM).await;
+    let intent = Intent {
+      fire: vec![Engage {
+        target: "Quarry".to_string(),
+        ..Engage::default()
+      }],
+      ..Intent::default()
+    };
+    assert!(orders(&world, "Hunter", &intent).unwrap().is_empty());
+  }
+
+  #[tokio::test]
+  async fn silence_turns_everything_off() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      posture: Some(Posture::Silent),
+      ..Intent::default()
+    };
+    match &orders(&world, "Hunter", &intent).unwrap()[..] {
+      [RequestMsg::SetShipEmissions(emissions)] => {
+        assert_eq!(emissions.active_sensors, Some(false));
+        assert_eq!(emissions.transmitting, Some(false));
+        assert_eq!(emissions.handoff_sensors, Some(false));
+      }
+      other => panic!("expected one emissions order, got {other:?}"),
+    }
+  }
+
+  #[tokio::test]
+  async fn repair_takes_the_worst_listed_system_and_nothing_if_whole() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      engineering: vec![EngineerVerb::Repair {
+        priority: vec![ShipSystem::Maneuver, ShipSystem::Powerplant, ShipSystem::Weapon],
+      }],
+      ..Intent::default()
+    };
+    assert!(orders(&world, "Hunter", &intent).unwrap().is_empty(), "nothing to repair");
+
+    {
+      let mut own = world.ships["Hunter"].write().unwrap();
+      own.crit_level[ShipSystem::Maneuver as usize] = 1;
+      own.crit_level[ShipSystem::Weapon as usize] = 2;
+      // Worse, but not on the list.
+      own.crit_level[ShipSystem::Cargo as usize] = 3;
+    }
+    assert_eq!(
+      fire_actions(&orders(&world, "Hunter", &intent).unwrap()),
+      vec![ShipAction::Repair {
+        system: ShipSystem::Weapon,
+        engineer: 0
+      }]
+    );
+  }
+
+  #[tokio::test]
+  async fn orders_beyond_the_crew_aboard_are_dropped() {
+    let world = two_ships(5_000.0 * KM).await;
+    let operators = hunter(&world).get_crew().sensor_operators().max(1);
+    let intent = Intent {
+      sensors: vec![
+        SensorVerb::Lock {
+          target: "Quarry".to_string()
+        };
+        operators + 2
+      ],
+      ..Intent::default()
+    };
+    assert_eq!(fire_actions(&orders(&world, "Hunter", &intent).unwrap()).len(), operators);
+  }
+
+  #[tokio::test]
+  async fn an_intercept_burns_toward_the_target_within_the_drive() {
+    let world = two_ships(30_000.0 * KM).await;
+    let intent = Intent {
+      helm: Helm::Intercept {
+        target: "Quarry".to_string(),
+        band: Range::Medium,
+      },
+      ..Intent::default()
+    };
+    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
+      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
+      other => panic!("expected one plan, got {other:?}"),
+    };
+    let burn = plan.0 .0;
+    let drive = G * f64::from(hunter(&world).max_acceleration());
+    assert!(burn.magnitude() <= drive * 1.001, "{burn:?} exceeds {drive}");
+    assert!(burn.x > 0.0, "the first burn closes on a target out along +x: {burn:?}");
+  }
+
+  #[tokio::test]
+  async fn opening_the_range_burns_straight_away_at_full_thrust() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      helm: Helm::OpenRange {
+        target: "Quarry".to_string(),
+      },
+      ..Intent::default()
+    };
+    let plan = match &orders(&world, "Hunter", &intent).unwrap()[..] {
+      [RequestMsg::SetPlan(plan)] => plan.plan.clone(),
+      other => panic!("expected one plan, got {other:?}"),
+    };
+    let drive = G * f64::from(hunter(&world).max_acceleration());
+    assert!((plan.0 .0 - Vec3::new(-drive, 0.0, 0.0)).magnitude() < 1e-6);
+  }
+
+  /// Going quiet hides a ship; firing gives it away; only a stealthy hull can
+  /// slip a contact by opening the range.
+  #[tokio::test]
+  async fn silence_hides_and_firing_reveals() {
+    config_test_ship_templates().await;
+    let watcher = ship_of("Buccaneer", 0.0);
+    let executor = ship_of("HMS Executor", 20_000.0 * KM);
+    let odds = detection(&watcher, &executor);
+    let find = |posture, firing| {
+      odds
+        .iter()
+        .find(|o| o.posture == posture && o.firing == firing)
+        .unwrap()
+        .clone()
+    };
+    assert!(
+      find(Posture::Silent, false).found < find(Posture::Active, false).found,
+      "{odds:?}"
+    );
+    assert!(
+      find(Posture::Silent, false).found < find(Posture::Silent, true).found,
+      "{odds:?}"
+    );
+
+    assert!(
+      find(Posture::Silent, false).slip_by_opening > 0.0,
+      "the Executor's stealth can shake a contact"
+    );
+
+    let plain = ship_of("Buccaneer", 20_000.0 * KM);
+    assert!(detection(&watcher, &plain).iter().all(|o| o.slip_by_opening == 0.0));
+    let far = ship_of("Buccaneer", 1.0e12);
+    assert!(
+      detection(&watcher, &far).iter().all(|o| o.found == 0.0),
+      "nothing is found at Distant"
+    );
+  }
+
+  #[test]
+  fn dice_add_up() {
+    assert!((chance_of_success(0) - 15.0 / 36.0).abs() < 1e-12);
+    assert!((chance_of_success(6) - 1.0).abs() < 1e-12);
+    assert!(chance_of_success(-5).abs() < 1e-12);
+    let two = dice_distribution(2);
+    assert!((two.iter().sum::<f64>() - 1.0).abs() < 1e-12);
+    assert!((two[7] - 6.0 / 36.0).abs() < 1e-12);
+    assert_eq!(dice_distribution(0), vec![1.0]);
+  }
+
+  fn ship_of(design: &str, x: f64) -> Ship {
+    let design = get_ship_template(design).unwrap();
+    Ship::new("x".to_string(), Vec3::new(x, 0.0, 0.0), Vec3::zero(), &design, None, None)
+  }
+
+  fn at(table: &[BandOdds], band: Range) -> &BandOdds {
+    table.iter().find(|odds| odds.band == band).unwrap()
+  }
+
+  /// The Executor's particle barbette reaches Very Long; a Buccaneer's pulse
+  /// lasers stop at Long. At Very Long the Executor hits and cannot be hit
+  /// back -- the case for staying out there.
+  #[tokio::test]
+  async fn a_longer_reach_shows_as_a_band_only_one_side_can_shoot_in() {
+    config_test_ship_templates().await;
+    let executor = ship_of("HMS Executor", 0.0);
+    let buccaneer = ship_of("Buccaneer", 30_000.0 * KM);
+    let skill = |_: usize| 2;
+    let ours = engagement(&executor, &buccaneer, &skill, buccaneer.design.armor);
+    let theirs = engagement(&buccaneer, &executor, &skill, executor.design.armor);
+
+    assert!(at(&ours, Range::VeryLong).expected_damage > 0.0, "{ours:?}");
+    assert!(at(&ours, Range::VeryLong).best_chance > 0.0);
+    assert_eq!(at(&theirs, Range::VeryLong).mounts, 0, "{theirs:?}");
+    assert!(at(&theirs, Range::Long).expected_damage > 0.0);
+    // A worse range is a worse shot.
+    assert!(at(&ours, Range::VeryLong).best_chance < at(&ours, Range::Short).best_chance);
+  }
+
+  /// Armour clips low damage rolls to nothing, so a light gun against a heavy
+  /// hull loses most of its effect.
+  #[tokio::test]
+  async fn heavy_armour_shrinks_what_a_light_gun_can_do() {
+    config_test_ship_templates().await;
+    let buccaneer = ship_of("Buccaneer", 0.0);
+    let target = ship_of("Gazulin Trader", 5_000.0 * KM);
+    let skill = |_: usize| 1;
+    let bare = at(&engagement(&buccaneer, &target, &skill, 0), Range::Medium).expected_damage;
+    let armoured = at(&engagement(&buccaneer, &target, &skill, 8), Range::Medium).expected_damage;
+    // Twin pulse turrets: about 9 expected against armour 8, 29 against none.
+    // The turret's bonus dice come after armour, which is why it is not less.
+    assert!(armoured > 0.0 && armoured < bare / 2.0, "{armoured} against {bare}");
+  }
+
+  #[tokio::test]
+  async fn a_helm_order_naming_a_missing_ship_is_an_error() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      helm: Helm::Intercept {
+        target: "Ghost".to_string(),
+        band: Range::Short,
+      },
+      ..Intent::default()
+    };
+    assert!(orders(&world, "Hunter", &intent).is_err());
+  }
+}
