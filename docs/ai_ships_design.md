@@ -92,7 +92,7 @@ with the ships as fields gets a faithful account of the last round for free.
  browsers ──ws──┐
                 ├──  callisto (backend, the rules)  ──ws──  callisto-ai (the service)
  referee ──ws──┘           │                                     │
-                           │ tactics.rs (verbs → actions)        │ Commander (scripted | llm | learned)
+                           │ tactics.rs (verbs → actions)        │ Commander (llm | baseline | learned)
                            │ computer.rs (the solver)            │ Observation (what this ship may know)
                                                                  │ Orders (standing + this round)
                                                                  └──http──  LLM (Vertex / Anthropic)
@@ -101,7 +101,7 @@ with the ships as fields gets a faithful account of the last round for free.
 **The service is Rust.** Everything it needs exists in Rust already: the
 wire types, the solver, and the tactics module it links as a library. The
 model call is one HTTPS request. The only Python in the plan is the offline
-training in phase 4, which runs over exported logs, never inside the service.
+training in phase 3, which runs over exported logs, never inside the service.
 
 **The service is a client.** It joins a scenario, takes the stations it has
 been given, and every round reads the world, decides, and sends the same
@@ -135,10 +135,11 @@ whole point:
    can be made from. Built from `Entities` and the last round's `Effects`,
    and *only* through this layer, so fog of war has one choke point.
 2. **Commander** -- a trait: `fn decide(&Observation, &Orders) -> Intent`.
-   Three implementations over time: `Scripted` (rules of thumb, no model),
-   `Llm` (a hosted model choosing among verbs), `Learned` (a fine-tuned or
-   RL-trained policy). This is the seam that turns the three approaches in
-   §5 into a sequence rather than a bet.
+   One real implementation to begin with, `Llm` (a hosted model choosing
+   among verbs), two trivial ones for measuring and testing (`Baseline`,
+   `Replay`, §4.6), and later `Learned` (a fine-tuned or RL-trained policy).
+   This is the seam that turns the three approaches in §5 into a sequence
+   rather than a bet.
 3. **Tactics** -- deterministic code that turns an `Intent` ("intercept
    Lyonesse II to Medium range; fire everything at her drive; repair the
    sensors") into `SetPlan` + `ShipActionList` + the pilot and sensor
@@ -156,7 +157,7 @@ the target's velocity. "Intercept to Medium and hold us there" is that
 solver called once a round. Every model in this design -- prompted,
 fine-tuned or RL-trained -- sits in the Commander slot and produces the same
 thing, a plan and a choice of verbs (§4.2). The one layering that is worth keeping in mind for
-phase 4 is an LLM *over* a trained policy: the LLM turns the admiral's
+phase 3 is an LLM *over* a trained policy: the LLM turns the admiral's
 English into constraints and a reward ("do not destroy her" becomes a
 penalty on hull below a fifth) and the policy picks verbs under them. That
 is still model over policy over solver. The solver is the floor.
@@ -311,9 +312,8 @@ A compact, stable, text-and-numbers view built once per round per AI ship:
 - **The clock**: round number, rounds the orders have stood, time since last
   contact.
 
-The same struct feeds all three Commanders. For the LLM it is rendered to
-text; for a learned policy it is flattened to features; for the scripted one
-it is read directly.
+The same struct feeds every Commander. For the LLM it is rendered to text;
+for a learned policy it is flattened to features.
 
 ### 4.4 Orders and the chain of command
 
@@ -394,24 +394,30 @@ prefix, which is what makes the rules digest cheap. Gemini is the default;
 the trait makes it a config line.
 
 **Determinism for tests.** A `Replay` Commander plays back recorded
-decisions, and the scripted Commander is deterministic by construction, so
-CI never calls a model. The integration suite drives a scenario with scripted
-pirates and asserts they close and fire.
+decisions, so CI never calls a model. The integration suite drives a scenario
+with replayed pirates and asserts they close and fire.
 
-### 4.6 The scripted Commander
+**When the model is down or slow.** No scripted brain steps in. The ships
+keep their last plan, the connection reports ready, and a line in the results
+says the AI did not answer this round. That is what a human crew that stepped
+away looks like, and the referee can see it.
 
-Not a placeholder. Rules of thumb that a referee would write on an index
-card:
+### 4.6 Baseline and Replay
 
-- Close to the best range band for our heaviest weapon; stay out of theirs
-  if we out-range them.
-- Fire everything at the nearest contact we hold a lock on; call the shot on
-  the M-drive if the orders say cripple, the weapons if they say survive.
-- Repair the worst crit on M-drive, then power, then weapons.
-- Break off at a third of hull unless ordered to fight to the end.
+A scripted "index card" Commander was considered and dropped: making one
+play well is real work, it would still play badly, and nobody would use it
+once the model is wired in. What the harness needs from an opponent is not
+that it be good but that it be *fixed*, and that is an afternoon:
 
-It is the opponent in phase 1 (§6), the baseline every smarter Commander is
-measured against, and the fallback when the model is down or slow.
+- `Baseline::Hold` -- keep the current plan, fire every weapon that bears at
+  the nearest contact we hold a lock on, repair the worst crit.
+- `Baseline::Random` -- any legal verb per station, seeded.
+
+Enough to tell "the model is doing something" from "the model is doing
+nothing". Real improvement is measured model against model: Claude against
+Gemini, or this week's prompt against last week's, sides swapped each game.
+
+`Replay` plays back a recorded `TeamDecision` per round, for CI.
 
 ### 4.7 The harness
 
@@ -423,7 +429,7 @@ round limit), and record every `(Observation, Intent, outcome)`.
 
 This exists for three reasons, in order of when they matter:
 
-1. **Evaluation.** "Is the LLM better than the index card?" is a win rate
+1. **Evaluation.** "Is this prompt better than last week's?" is a win rate
    over a hundred Thebus runs with the seed varied. Without it we are
    guessing. The same run with two providers on the two sides, swapped each
    game so the side advantage cancels, is how the model choice (§4.5) gets
@@ -518,11 +524,11 @@ The reasons:
   to-hit arithmetic, range geometry -- is the part we already have code for.
   The part it is good at -- "they out-range us, close fast and call the shot
   on their weapons" -- is the only part we ask of it.
-- The scripted Commander gives us an opponent and a baseline before the
-  model is even wired in, so the LLM is measured from its first round.
+- The harness and its trivial baselines exist from the first round, so the
+  LLM is measured from its first round, and model against model after that.
 - When the harness exists, 3 becomes a weekend experiment rather than a
-  programme: a policy over `Intent` trained against the scripted Commander,
-  with hull-difference as reward. Whether it is worth running is a question
+  programme: a policy over `Intent` trained against the LLM Commander, with
+  hull-difference as reward. Whether it is worth running is a question
   we can answer with numbers then.
 
 What we give up: 1 will sometimes do something odd, and it is not free to
@@ -539,24 +545,22 @@ number in `MetaData`; `ServiceLogin` with the pre-shared token; many ships
 per service connection. Frontend shows
 the chip, the orders, and the round. Nothing decides anything yet.
 
-**Phase 1 -- verbs, index card, harness.** `callisto::tactics` with tests;
-the scripted Commander; the headless runner with victory conditions; the
-service skeleton that joins, observes (with the fog-of-war test), decides
-with the scripted Commander, and says ready. Playable: Thebus with pirates
-who close and shoot. Measurable: scripted vs scripted win rates by scenario.
+**Phase 1 -- verbs, harness, model.** `callisto::tactics` with tests; the
+headless runner with victory conditions and the two `Baseline` Commanders;
+the service that joins, observes (with the fog-of-war test), decides with
+the LLM Commander behind the provider trait, and says ready; `rationale` and
+`plan` in the results window; `Replay` for CI. Playable: Thebus with real
+pirates. Measurable: model against baseline, and Claude against Gemini with
+sides swapped. The admiral use case works through `SetOrders` before it has
+a panel.
 
-**Phase 2 -- the model.** The LLM Commander behind the provider trait; the
-prompt; per-team decisions; `rationale` in the results window; `Replay` for
-CI. Measurable: model vs index card. Playable: the admiral use case through
-`SetOrders`, even before it has a panel.
-
-**Phase 3 -- command.** The `Admiral` role and the orders panel; squadron
+**Phase 2 -- command.** The `Admiral` role and the orders panel; squadron
 multi-select; mixed crews (`ai_stations`). Server-side fog of war (§4.1 B)
 if the opponent is now good enough to be worth cheating against.
 
-**Phase 4 -- learning.** Export the harness logs; fine-tune a small model on
+**Phase 3 -- learning.** Export the harness logs; fine-tune a small model on
 the LLM's better games (filtered by outcome); or RL over `Intent` in the
-harness. Decided by the numbers from phases 1-2.
+harness. Decided by the numbers from phase 1.
 
 ## 7. Decisions and what is still open
 
@@ -576,7 +580,10 @@ Agreed 2026-10-14:
 5. **Rationale reports up the chain**: each ship's line is shown to its
    squadron and fleet controllers and to the referee; never to the other
    side.
-6. **Whole-ship control in v1.** Stations come in phase 3.
+6. **Whole-ship control in v1.** Stations come in phase 2.
+8. **No scripted Commander.** A fixed trivial baseline and a replay for CI
+   are all the harness needs (§4.6); the first opponent anyone plays is the
+   model.
 7. **The verbs will be offered to humans later** ("Intercept to Medium and
    hold us there" on the pilot's console). Not in this epic, but
    `callisto::tactics` is built knowing it.
