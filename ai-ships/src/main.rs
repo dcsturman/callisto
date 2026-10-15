@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use ai_ships::api::{router, App, Callers};
 use ai_ships::auth::Credential;
-use ai_ships::commander::{Commander, Idle};
+use ai_ships::commander::{Close, Commander};
 use ai_ships::crew::CrewConfig;
 use ai_ships::crews::Crews;
 use callisto::authentication::{GoogleAuthenticator, UserDirectory};
@@ -89,7 +89,8 @@ async fn main() {
     reconnect_backoff: Duration::from_secs(2),
   };
   info!("(main) Backend {}, logging in with {:?}.", config.backend, config.credential);
-  let commander = Arc::new(|| Box::new(Idle) as Box<dyn Commander>);
+  // Until there is a model: close with the nearest enemy and fight.
+  let commander = Arc::new(|| Box::new(Close) as Box<dyn Commander>);
   let app = Arc::new(App {
     crews: Crews::new(config, commander),
     callers,
