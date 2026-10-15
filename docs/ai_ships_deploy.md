@@ -78,7 +78,8 @@ whose instance stopped mid-game is not restarted until something changes.
 
 ## Locally
 
-`docker compose -f compose.yaml -f compose.override.yaml up be ai` runs both,
+`docker-compose up --build -d` runs the backend, the AI service and the
+frontend (the override file is picked up by itself),
 with the shared secret instead of identity tokens and your
 application-default credentials for Vertex AI (run `gcloud auth
 application-default login` first if needed). `CALLISTO_AI_MODEL` and
