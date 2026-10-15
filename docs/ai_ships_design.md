@@ -101,7 +101,7 @@ with the ships as fields gets a faithful account of the last round for free.
 **The service is Rust.** Everything it needs exists in Rust already: the
 wire types, the solver, and the tactics module it links as a library. The
 model call is one HTTPS request. The only Python in the plan is the offline
-training in phase 3, which runs over exported logs, never inside the service.
+training in the learning phase, which runs over exported logs, never inside the service.
 
 **The service is a client.** It joins a scenario, takes the stations it has
 been given, and every round reads the world, decides, and sends the same
@@ -157,7 +157,7 @@ the target's velocity. "Intercept to Medium and hold us there" is that
 solver called once a round. Every model in this design -- prompted,
 fine-tuned or RL-trained -- sits in the Commander slot and produces the same
 thing, a plan and a choice of verbs (§4.2). The one layering that is worth keeping in mind for
-phase 3 is an LLM *over* a trained policy: the LLM turns the admiral's
+the learning phase is an LLM *over* a trained policy: the LLM turns the admiral's
 English into constraints and a reward ("do not destroy her" becomes a
 penalty on hull below a fifth) and the policy picks verbs under them. That
 is still model over policy over solver. The solver is the floor.
@@ -629,13 +629,41 @@ pirates. Measurable: model against baseline, and Claude against Gemini with
 sides swapped. The admiral use case works through `SetOrders` before it has
 a panel.
 
-**Phase 2 -- command.** The `Admiral` role and the orders panel; squadron
+Phase 1 also leaves the harness ready for learning, whether or not that
+comes next: it runs headless through `Entities::update` with no model in the
+loop at thousands of rounds a minute, dice seeded (test mode already does
+this), the Observation flattened to a feature vector, the Intent space
+enumerated as a discrete action set, and a reward recorded per round
+(victory, plus hull differential). Built that way, learning is an experiment
+on the harness rather than a rebuild of it.
+
+The two phases after this are independent of each other. Which comes first
+is decided with phase 1's numbers in hand, and the leaning as of this
+writing is learning before command.
+
+**Phase 2 -- learning.** Three shapes, from cheapest to dearest, and the
+numbers choose:
+
+- *A policy over `Intent`*, no language model: trained in the harness against
+  the LLM Commander and against itself. Plays the opponent role and may play
+  it better than the prompted model. Cannot read orders in English, so the
+  LLM stays wherever orders come in.
+- *LLM over policy*: the model turns the admiral's English into constraints
+  and a reward ("do not destroy her" becomes a penalty on hull below a
+  fifth); the policy plays under them. Keeps the English, keeps the
+  policy's play.
+- *RL fine-tuning of a small language model* on the harness (the MARSHAL
+  shape, §5.1): one model that reads orders and plays well. Needs GPUs and
+  the most engineering; the one to do only if the first two leave something
+  on the table.
+
+Alternatively, or as well: fine-tune on the LLM's better games from the
+harness logs, filtered by outcome, for a cheaper and more consistent
+Commander.
+
+**Phase 3 -- command.** The `Admiral` role and the orders panel; squadron
 multi-select; mixed crews (`ai_stations`). Server-side fog of war (§4.1 B)
 if the opponent is now good enough to be worth cheating against.
-
-**Phase 3 -- learning.** Export the harness logs; fine-tune a small model on
-the LLM's better games (filtered by outcome); or RL over `Intent` in the
-harness. Decided by the numbers from phase 1.
 
 ## 7. Decisions and what is still open
 
@@ -655,7 +683,7 @@ Agreed 2026-10-14:
 5. **Rationale reports up the chain**: each ship's line is shown to its
    squadron and fleet controllers and to the referee; never to the other
    side.
-6. **Whole-ship control in v1.** Stations come in phase 2.
+6. **Whole-ship control in v1.** Stations come with the command phase.
 8. **No scripted Commander.** A fixed trivial baseline and a replay for CI
    are all the harness needs (§4.6); the first opponent anyone plays is the
    model.
