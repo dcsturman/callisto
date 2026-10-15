@@ -22,7 +22,9 @@ use dyn_clone::clone_box;
 use crate::authentication::{Authenticator, UserDirectory};
 
 use crate::entity::MetaData;
-use crate::payloads::{AuthResponse, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenarioLoadErrorMsg, ScenariosMsg};
+use crate::payloads::{
+  AuthResponse, EffectsMsg, RequestMsg, ResponseMsg, SaveScenarioMsg, ScenarioLoadErrorMsg, ScenariosMsg,
+};
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
 use crate::{
@@ -776,7 +778,13 @@ impl Processor {
         }
         match player.clone_entities() {
           Ok(entities) => {
-            let mut msgs = vec![ResponseMsg::Effects(effects), ResponseMsg::EntityResponse(entities)];
+            // The entities have moved on to the next round; the results are
+            // the one before it.
+            let resolved = EffectsMsg {
+              round: entities.round.saturating_sub(1),
+              effects,
+            };
+            let mut msgs = vec![ResponseMsg::Effects(resolved), ResponseMsg::EntityResponse(entities)];
             if let Some(server_id) = &server_id {
               msgs.push(ResponseMsg::Users(self.members.get_user_context(server_id)));
             }
@@ -1299,7 +1307,10 @@ mod idle_tests {
   /// not only whoever pressed Next Round.
   #[test]
   fn effects_go_to_the_whole_scenario() {
-    assert!(is_broadcast_message(&ResponseMsg::Effects(vec![])));
+    assert!(is_broadcast_message(&ResponseMsg::Effects(crate::payloads::EffectsMsg {
+      round: 1,
+      effects: vec![]
+    })));
     assert!(!is_broadcast_message(&ResponseMsg::SimpleMsg("done".to_string())));
   }
 

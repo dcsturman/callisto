@@ -683,7 +683,7 @@ async fn integration_add_ship() {
   );
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],
          "design":"Buccaneer",
@@ -780,7 +780,7 @@ async fn integration_add_planet_ship() {
 
   let response = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
   if let ResponseMsg::EntityResponse(entities) = response {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -853,7 +853,7 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
       "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
       "gravity_radius_1":4_518_410.048_543_495,
@@ -931,7 +931,7 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"missiles":[],
     "actions":[],
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -1043,7 +1043,7 @@ async fn integration_update_ship() {
   assert!(entities.actions.is_empty(), "Expected an empty action list");
 
   let response = rpc(&mut stream, RequestMsg::Update).await;
-  assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
+  assert!(matches!(response, ResponseMsg::Effects(eq) if eq.effects.is_empty()));
 
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
@@ -1144,7 +1144,11 @@ async fn integration_update_missile() {
 
   let effects = rpc(&mut stream, RequestMsg::Update).await;
   if let ResponseMsg::Effects(effects) = effects {
-    let filtered_effects: Vec<_> = effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect();
+    let filtered_effects: Vec<_> = effects
+      .effects
+      .iter()
+      .filter(|e| !matches!(e, EffectMsg::Message { .. }))
+      .collect();
 
     let compare = vec![EffectMsg::ShipImpact {
       target: "ship2".to_string(),
@@ -1157,7 +1161,7 @@ async fn integration_update_missile() {
 
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
@@ -1725,7 +1729,7 @@ async fn integration_malformed_requests() {
   drain_entity_response(&mut stream).await;
   let message = rpc(&mut stream, RequestMsg::Update).await;
   assert!(
-    matches!(&message, ResponseMsg::Effects(x) if x.is_empty()),
+    matches!(&message, ResponseMsg::Effects(x) if x.effects.is_empty()),
     "Expected empty effects for invalid fire action, got {message:?}"
   );
 
@@ -1795,7 +1799,7 @@ async fn integration_bad_requests() {
   let response = rpc(&mut stream, RequestMsg::Update).await;
 
   assert!(
-    matches!(&response, ResponseMsg::Effects(x) if x.is_empty()),
+    matches!(&response, ResponseMsg::Effects(x) if x.effects.is_empty()),
     "Expected empty effects for invalid weapon_id. Instead got {response:?}"
   );
 

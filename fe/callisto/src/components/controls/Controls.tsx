@@ -511,6 +511,9 @@ export function Controls() {
           </>
         )}
       </Accordion>
+      <div className="round-counter" title="The round now being played">
+        Round {entities.round ?? 1}
+      </div>
       {/* The referee ends the round; everyone else says when their orders are
           in. Two people pressing Next Round ends the round before the rest of
           the table has finished giving theirs. */}

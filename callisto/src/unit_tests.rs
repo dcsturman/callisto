@@ -85,7 +85,7 @@ async fn test_simple_get() {
   let body = server.get_entities_json();
   assert_eq!(
     body,
-    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[],"missiles":[],"planets":[],"actions":[]}"#
   );
 }
 
@@ -115,7 +115,7 @@ async fn test_add_ship() {
 
   let response = server.get_entities_json();
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[{"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],
         "design":"Buccaneer", "current_hull":160, "current_armor":5, "current_power":300,
         "current_maneuver":3, "current_jump":2, "current_fuel":81, "current_crew":11,
         "current_computer": 5, "current_sensors": "Improved", "active_weapons": [true, true, true, true],
@@ -154,7 +154,7 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
 
   let entities = serde_json::from_str::<Entities>(response.as_str()).unwrap();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -212,7 +212,7 @@ async fn test_add_planet_ship() {
   let response = server.get_entities_json();
   let result = serde_json::from_str::<Entities>(response.as_str()).unwrap();
 
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
     "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
     "gravity_radius_1":4_518_410.048_543_495,
@@ -277,7 +277,7 @@ async fn test_add_planet_ship() {
   let entities = server.get_entities_json();
 
   let start = serde_json::from_str::<Entities>(entities.as_str()).unwrap();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"missiles":[],
   "actions":[],
   "planets":[
   {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -428,7 +428,7 @@ async fn test_update_missile() {
 
   let entities = server.get_entities_json();
   let compare = json!(
-        {"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+        {"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
@@ -496,7 +496,7 @@ async fn test_remove_ship() {
 
   assert_eq!(
     entities,
-    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[],"missiles":[],"planets":[],"actions":[]}"#
+    r#"{"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[],"missiles":[],"planets":[],"actions":[]}"#
   );
 
   // Try remove with non-existent ship
@@ -1007,7 +1007,7 @@ async fn test_big_fight() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":86,"current_armor":3,
@@ -1130,7 +1130,7 @@ async fn test_fight_with_crew() {
   );
 
   let entities = server.get_entities_json();
-  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+  let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
   {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
    "current_hull":152,"current_armor":3,
@@ -2392,4 +2392,21 @@ async fn test_set_controller_and_orders() {
       controller: Controller::Ai,
     })
     .is_err());
+}
+
+/// Rounds count from 1 and go up by one each update. The count goes over the
+/// wire but never into a saved scenario, which always opens at the start.
+#[test(tokio::test)]
+async fn test_rounds_count_up_and_stay_out_of_scenario_files() {
+  let server = setup_test_with_server(setup_authenticator()).await;
+  assert_eq!(server.get_entities().unwrap().round, 1);
+  let _ = server.update();
+  let _ = server.update();
+  let entities = server.get_entities().unwrap();
+  assert_eq!(entities.round, 3);
+
+  let wire: serde_json::Value = serde_json::to_value(&entities).unwrap();
+  assert_eq!(wire["round"], json!(3));
+  let saved: serde_json::Value = serde_json::from_slice(&entities.to_scenario_file_json().unwrap()).unwrap();
+  assert!(saved.get("round").is_none(), "a saved scenario must open at round 1");
 }

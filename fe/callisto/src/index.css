@@ -3514,3 +3514,12 @@ h3.control-form {
     font-size: var(--font-sm);
     resize: vertical;
 }
+
+/* Where the fight has got to, just above Next Round / Ready. */
+.round-counter {
+    font-family: "Sono", monospace;
+    font-size: var(--font-sm);
+    color: #aaa;
+    text-align: center;
+    margin-top: 6px;
+}

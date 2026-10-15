@@ -359,3 +359,29 @@ describe("ship control and orders", () => {
     ]);
   });
 });
+
+describe("round results", () => {
+  it("stamps every result with the round it resolved", async () => {
+    const { store } = await import("state/store");
+    mockSocket.onmessage!(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          Effects: {
+            round: 4,
+            effects: [
+              {
+                kind: "Message",
+                content: "%s fires at %t",
+                category: "Attack",
+                ship: { name: "Invigilator" },
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    const events = store.getState().ui.events ?? [];
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((event) => event.round === 4)).toBe(true);
+  });
+});

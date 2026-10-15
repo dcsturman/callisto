@@ -341,6 +341,19 @@ pub enum EffectMsg {
   },
 }
 
+/// One round's results, and which round they were.
+///
+/// The round is stated once for the batch rather than on every line. Without
+/// it the only thing tying results to a round was arriving just before the
+/// `EntityResponse` that opened the next one, which a client reading them to
+/// decide the next round must not depend on.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct EffectsMsg {
+  /// The round these results resolved.
+  pub round: u32,
+  pub effects: Vec<EffectMsg>,
+}
+
 /// A ship named in a result: who it was, and whose side it was on.
 ///
 /// The team travels with the message rather than being looked up when the
@@ -731,7 +744,7 @@ pub enum ResponseMsg {
   DesignTemplateResponse(ShipDesignTemplateMsg),
   EntityResponse(Entities),
   FlightPath(FlightPathMsg),
-  Effects(Vec<EffectMsg>),
+  Effects(EffectsMsg),
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
   Scenarios(ScenariosMsg),

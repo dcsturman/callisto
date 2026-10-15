@@ -869,7 +869,11 @@ function handleFlightPath(json: object) {
 // from the clock so ids never repeat ones persisted before a reload.
 let nextEventId = Date.now();
 
-function handleEffect(json: object[]) {
+/** One round's results, as the server sends them. */
+type EffectsBatch = { round: number; effects: object[] };
+
+function handleEffect(batch: EffectsBatch) {
+  const json = batch.effects;
   console.groupCollapsed("Received Effects: ");
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
   console.groupEnd();
@@ -882,6 +886,7 @@ function handleEffect(json: object[]) {
   const events: Event[] = (json as Event[]).map((event) => ({
     ...event,
     id: nextEventId++,
+    round: batch.round,
   }));
 
   store.dispatch(setEvents(events));

@@ -201,8 +201,10 @@ not answer within its budget, the service says Ready with the ships' last
 plan and the results say so. With a referee, nothing changes: they still
 press. This is a backend change humans benefit from on their own.
 
-**Round number.** `MetaData.round: u32`, incremented by `update()`, included
-in `EntityResponse`. The service uses it to know a new round began; the
+**Round number.** `Entities.round: u32`, counting from 1, incremented by
+`update()`, included in `EntityResponse`. On `Entities` beside `filename`
+rather than in `MetaData`, because `MetaData` is saved into scenario files and
+a saved scenario must open at round 1. The service uses it to know a new round began; the
 frontend can show it in the header, which players have wanted anyway.
 
 The results carry it too: `ResponseMsg::Effects{round, effects}` instead of
@@ -688,7 +690,7 @@ Each phase ends in something playable or measurable, and merges into
 
 **Phase 0 -- prerequisites (backend only).** `controller` and `orders` on
 ships and in scenario files; `SetShipController` and `SetOrders`; round
-number in `MetaData` and on `Effects`; `ServiceLogin` with the pre-shared
+number on `Entities` and on `Effects`; `ServiceLogin` with the pre-shared
 token; many ships per connection. Frontend shows
 the chip, the orders, and the round. Nothing decides anything yet.
 

@@ -85,6 +85,14 @@ pub struct Entities {
   // serialized into scenario files (the file knows its own name) but is sent
   // over the WS so the client can pre-populate save dialogs.
   pub filename: String,
+
+  /// The round now being played, counting from 1.
+  ///
+  /// On the wire, so a client can tell the `EntityResponse` that opens a round
+  /// from one sent because somebody changed a plan, and so the header can say
+  /// where the fight has got to. Never in a scenario file: a saved scenario
+  /// opens at the start, and Reset goes back to it.
+  pub round: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -274,6 +282,7 @@ impl Entities {
       actions: vec![],
       metadata: MetaData::default(),
       filename: String::new(),
+      round: 1,
     }
   }
 
@@ -341,6 +350,7 @@ impl Entities {
 
     dest.next_missile_id = self.next_missile_id;
     dest.actions.clone_from(&self.actions);
+    dest.round = self.round;
 
     // Drop anything whose target has left play before resolving pointers. The
     // live state should never contain an orphan, but if it does, failing here
@@ -3338,6 +3348,7 @@ impl Serialize for Entities {
     struct Entities<'a> {
       metadata: &'a MetaData,
       filename: &'a str,
+      round: u32,
       ships: Vec<Ship>,
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
@@ -3347,6 +3358,7 @@ impl Serialize for Entities {
     let mut entities = Entities {
       metadata: &self.metadata,
       filename: &self.filename,
+      round: self.round,
       ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
       missiles: self
         .missiles
@@ -3374,6 +3386,10 @@ impl Serialize for Entities {
   }
 }
 
+fn first_round() -> u32 {
+  1
+}
+
 /* Deserialize for Entities in the server is only ever used for writing unit tests. */
 impl<'de> Deserialize<'de> for Entities {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -3392,6 +3408,8 @@ impl<'de> Deserialize<'de> for Entities {
       actions: ShipActionList,
       #[serde(default)]
       metadata: MetaData,
+      #[serde(default = "first_round")]
+      round: u32,
     }
 
     let guts = Entities::deserialize(deserializer)?;
@@ -3416,6 +3434,7 @@ impl<'de> Deserialize<'de> for Entities {
       metadata: guts.metadata,
       // Scenario files don't carry their own basename; load_from_file populates it.
       filename: String::new(),
+      round: guts.round,
     })
   }
 }
@@ -4111,7 +4130,7 @@ mod tests {
 
     let cmp = json!({
     "metadata":{"name":"","description":"","owner":""},
-    "filename":"",
+    "filename":"","round":1,
     "ships":[
         {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,

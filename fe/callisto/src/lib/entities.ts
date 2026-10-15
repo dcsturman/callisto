@@ -432,6 +432,8 @@ export interface EntityList {
   // Basename of the scenario file this list was loaded from (e.g.
   // "planetfun.json"). Empty for from-scratch builder sessions.
   filename: string;
+  /** The round now being played, counting from 1. Absent from an older server. */
+  round?: number;
 }
 
 export const defaultEntityList = () => {
@@ -441,6 +443,7 @@ export const defaultEntityList = () => {
     missiles: [],
     metadata: createMetaData("", ""),
     filename: "",
+    round: 1,
   };
 };
 

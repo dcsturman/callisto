@@ -1137,6 +1137,7 @@ impl PlayerManager {
       effect.colour_from(&teams);
     }
 
+    entities.round += 1;
     effects
   }
 
