@@ -30,7 +30,7 @@ use std::collections::BTreeSet;
 use callisto::entity::{Entities, Entity, Vec3};
 use callisto::missile::Missile;
 use callisto::planet::Planet;
-use callisto::ship::{Range, Sensors, Ship, Team, Weapon};
+use callisto::ship::{CounterMeasures, Range, Sensors, Ship, Stealth, Team, Weapon};
 use callisto::tactics::{band_between, detection, engagement, BandOdds, DetectionOdds};
 use cgmath::InnerSpace;
 use serde::Serialize;
@@ -40,9 +40,14 @@ use serde::Serialize;
 pub struct Contact {
   pub name: String,
   pub design: String,
-  /// The hull its class is built with. Not what it has left: that the
-  /// sensor station does not show.
+  pub displacement: u32,
+  /// The hull and armour its class is built with. Not what it has left: that
+  /// the sensor station does not show.
   pub design_hull: u32,
+  pub design_armor: u32,
+  pub stealth: Option<Stealth>,
+  pub tl: u8,
+  pub countermeasures: Option<CounterMeasures>,
   pub team: Option<Team>,
   pub position: Vec3,
   pub velocity: Vec3,
@@ -61,8 +66,9 @@ pub struct Contact {
   pub distance: f64,
 }
 
-/// The gunner skill a side assumes of an enemy whose crew it cannot see.
-pub const ASSUMED_ENEMY_GUNNERY: i32 = 1;
+/// The gunner skill a side assumes of an enemy whose crew it cannot see: a
+/// trained crew.
+pub const ASSUMED_ENEMY_GUNNERY: i32 = 2;
 
 /// What one of our ships and one contact can do to each other, by band.
 #[derive(Debug, Clone, Serialize)]
@@ -125,6 +131,40 @@ impl Observation {
   }
 }
 
+/// The odds and exposure tables for every pairing of our ships with a contact.
+fn tables(own: &[Ship], ships: &[Ship], contacts: &[Contact]) -> (Vec<Engagement>, Vec<Exposure>) {
+  let known = |ship: &&Ship| contacts.iter().any(|contact| contact.name == ship.get_name());
+  let engagements = own
+    .iter()
+    .flat_map(|ship| {
+      ships.iter().filter(known).map(move |contact| Engagement {
+        ours: ship.get_name().to_string(),
+        contact: contact.get_name().to_string(),
+        // Our gunners we know; their armour is what their class carries.
+        we_hit: engagement(
+          ship,
+          contact,
+          &|mount| i32::from(ship.get_crew().get_gunnery(mount)),
+          contact.design.armor,
+        ),
+        // Their gunners we can only guess at; our armour we know.
+        they_hit: engagement(contact, ship, &|_| ASSUMED_ENEMY_GUNNERY, ship.get_current_armor()),
+      })
+    })
+    .collect();
+  let exposures = own
+    .iter()
+    .flat_map(|ship| {
+      ships.iter().filter(known).map(move |contact| Exposure {
+        ours: ship.get_name().to_string(),
+        contact: contact.get_name().to_string(),
+        odds: detection(contact, ship),
+      })
+    })
+    .collect();
+  (engagements, exposures)
+}
+
 fn snapshot(world: &Entities) -> Vec<Ship> {
   let mut ships: Vec<Ship> = world.ships.values().map(|ship| ship.read().unwrap().clone()).collect();
   ships.sort_by(|a, b| a.get_name().cmp(b.get_name()));
@@ -165,7 +205,12 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
       Some(Contact {
         name: contact.get_name().to_string(),
         design: contact.design.name.clone(),
+        displacement: contact.design.displacement,
         design_hull: contact.design.hull,
+        design_armor: contact.design.armor,
+        stealth: contact.design.stealth,
+        tl: contact.design.tl,
+        countermeasures: contact.design.countermeasures,
         team: contact.team,
         position: contact.get_position(),
         velocity: contact.get_velocity(),
@@ -185,41 +230,7 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
     })
     .collect();
 
-  let engagements = own
-    .iter()
-    .flat_map(|ship| {
-      ships
-        .iter()
-        .filter(|contact| contacts.iter().any(|known: &Contact| known.name == contact.get_name()))
-        .map(move |contact| Engagement {
-          ours: ship.get_name().to_string(),
-          contact: contact.get_name().to_string(),
-          // Our gunners we know; their armour is what their class carries.
-          we_hit: engagement(
-            ship,
-            contact,
-            &|mount| i32::from(ship.get_crew().get_gunnery(mount)),
-            contact.design.armor,
-          ),
-          // Their gunners we can only guess at; our armour we know.
-          they_hit: engagement(contact, ship, &|_| ASSUMED_ENEMY_GUNNERY, ship.get_current_armor()),
-        })
-    })
-    .collect();
-
-  let exposures = own
-    .iter()
-    .flat_map(|ship| {
-      ships
-        .iter()
-        .filter(|contact| contacts.iter().any(|known: &Contact| known.name == contact.get_name()))
-        .map(move |contact| Exposure {
-          ours: ship.get_name().to_string(),
-          contact: contact.get_name().to_string(),
-          odds: detection(contact, ship),
-        })
-    })
-    .collect();
+  let (engagements, exposures) = tables(&own, &ships, &contacts);
 
   let side_names: BTreeSet<&str> = own.iter().map(Entity::get_name).collect();
   let mut missiles: Vec<Missile> = world

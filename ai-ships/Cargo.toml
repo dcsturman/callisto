@@ -10,10 +10,14 @@ description = "Crews AI-controlled ships in callisto: connects to the backend as
 
 [dependencies]
 callisto = { path = "../callisto", features = [] }
+async-trait = "0.1"
 axum = "0.8"
 cgmath = "0.18"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 futures-util = "0.3.31"
+# The same versions the backend already builds, for Vertex AI access tokens.
+google-cloud-auth = "0.17.2"
+google-cloud-token = "0.1.2"
 rand = "0.8"
 reqwest = { version = "0.12.4", features = ["json"] }
 rustls = "0.23.21"

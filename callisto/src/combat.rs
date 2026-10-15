@@ -1881,7 +1881,7 @@ pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
 // Helper function to determine which point defense weapon is most effective.
 // Result here is one more than the bonus to the check. 0 means it cannot
 // be used for point defense.
-fn point_defense_score(weapon: &Weapon) -> u16 {
+pub(crate) fn point_defense_score(weapon: &Weapon) -> u16 {
   // Only lasers track a missile well enough to swat it (High Guard p. 30 notes
   // barbettes explicitly cannot, which the mount term below already enforces).
   //

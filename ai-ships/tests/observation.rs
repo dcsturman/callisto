@@ -64,12 +64,12 @@ async fn hold_fights_where_it_is_and_close_goes_to_its_guns_range() {
   let world = ambush().await;
   let view = observe(&world, &["Pirate".to_string()]);
 
-  let held = Hold.decide(&view);
+  let held = Hold.decide(&view).await;
   assert_eq!(held.len(), 1);
   assert_eq!(held[0].1.helm, Helm::Hold);
   assert_eq!(held[0].1.fire[0].target, "Yacht");
 
-  let closed = Close.decide(&view);
+  let closed = Close.decide(&view).await;
   let Helm::Intercept { target, band } = &closed[0].1.helm else {
     panic!("expected an intercept, got {:?}", closed[0].1.helm);
   };
@@ -93,7 +93,7 @@ async fn with_no_enemy_in_contact_a_commander_holds() {
   let world = ambush().await;
   world.ships["Pirate"].write().unwrap().contacts.clear();
   let view = observe(&world, &["Pirate".to_string()]);
-  let decided = Close.decide(&view);
+  let decided = Close.decide(&view).await;
   assert_eq!(decided[0].1.helm, Helm::Hold);
   assert_eq!(decided[0].1.fire, vec![]);
   assert_eq!(
@@ -152,7 +152,7 @@ async fn a_ship_that_out_reaches_its_enemy_stands_off() {
   assert!(silent.found < loud.found);
 
   assert_eq!(
-    Close.decide(&view)[0].1.helm,
+    Close.decide(&view).await[0].1.helm,
     Helm::Intercept {
       target: "Pirate".to_string(),
       band: Range::VeryLong

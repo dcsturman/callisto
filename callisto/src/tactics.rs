@@ -15,13 +15,20 @@
 use cgmath::{InnerSpace, Zero};
 use serde::{Deserialize, Serialize};
 
-use crate::action::ShipAction;
-use crate::combat::{attack_terms, find_range_band, AttackSituation, HitMods, STANDARD_ROLL_THRESHOLD};
+use crate::action::{BoostTarget, ShipAction};
+use crate::combat::{
+  attack_terms, find_range_band, point_defense_score, AttackSituation, HitMods, STANDARD_ROLL_THRESHOLD,
+};
 use crate::computer::plot_course;
 use crate::entity::{detection_terms, emissions_of, Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, G};
-use crate::payloads::{RequestMsg, SetPilotActions, SetPlanMsg, SetShipEmissions};
+use crate::payloads::{
+  CaptainActionMsg, RequestMsg, SetPilotActions, SetPlanMsg, SetShipEmissions, SetSoftwareRunning,
+};
 use crate::rules_tables::{damage_multiple, profile_for, RANGE_BANDS};
-use crate::ship::{FlightPlan, MountClass, Range, Salvo, Ship, ShipSystem, WeaponMount, WeaponType};
+use crate::ship::{
+  FlightPlan, MountClass, PowerSystem, Range, Salvo, Ship, ShipSystem, Weapon, WeaponMount, WeaponProfile, WeaponType,
+};
+use crate::software::SoftwareKind;
 
 /// How hard a ship tries not to be seen. A constraint over every other order,
 /// not an order of its own.
@@ -81,6 +88,45 @@ pub enum EngineerVerb {
   },
   OverloadDrive,
   OverloadPlant,
+  /// Shut a system down to free its Power, or bring it back (Offline
+  /// System). Shutting down is an Engineer (power) check.
+  Power {
+    system: PowerSystem,
+    online: bool,
+  },
+  /// Jump out: the ship leaves the fight. Needs the drive, fuel, Jump Control
+  /// running, the computer and astrogation stations working, and clear
+  /// space: 100 diameters from every body.
+  Jump,
+}
+
+/// Something the captain's leadership points can be spent on: a +1 to one of
+/// this ship's rolls this round. Listed in priority order; the captain's
+/// check decides how many are bought.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum Boost {
+  /// One mount's attack.
+  Fire { mount: usize },
+  /// One mount's point-defence shot.
+  PointDefence { mount: usize },
+  /// One sensor operator's action.
+  Sensor { operator: usize },
+  /// One engineer's check.
+  Engineer { engineer: usize },
+  /// The pilot's dodge against the first attack.
+  Dodge,
+  /// The pilot's assist-gunners check.
+  AssistGunners,
+  /// The search for one ship not yet found.
+  Detection { target: String },
+}
+
+/// Start or stop a program on the ship's computer. Free; takes effect at once,
+/// within the computer's bandwidth.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoftwareOrder {
+  pub program: SoftwareKind,
+  pub running: bool,
 }
 
 /// One ship's orders for a round, in a commander's terms.
@@ -96,15 +142,31 @@ pub struct Intent {
   pub evade: Option<u8>,
   #[serde(default)]
   pub fire: Vec<Engage>,
-  /// Put every point-defence mount on defence.
+  /// Mounts to put on point defence this round, by index: laser turrets,
+  /// which then do not fire. Batteries defend on their own and sand is thrown
+  /// on its own, so neither needs ordering.
   #[serde(default)]
-  pub defend: bool,
+  pub defend: Vec<usize>,
   /// One per sensor operator aboard, in order; extras are dropped.
   #[serde(default)]
   pub sensors: Vec<SensorVerb>,
   /// One per engineer aboard, in order; extras are dropped.
   #[serde(default)]
   pub engineering: Vec<EngineerVerb>,
+  /// Programs to stop or start. Stops are applied first, so a program can be
+  /// swapped for another in one round.
+  #[serde(default)]
+  pub software: Vec<SoftwareOrder>,
+  /// The pilot assists the gunners. `None` leaves it as it is.
+  #[serde(default)]
+  pub assist_gunners: Option<bool>,
+  /// Systems for the Auto-Repair program to attempt, one per point it has.
+  #[serde(default)]
+  pub computer_repair: Vec<ShipSystem>,
+  /// The captain's boosts, most wanted first. Empty: the captain does not
+  /// make the check.
+  #[serde(default)]
+  pub boosts: Vec<Boost>,
   /// One sentence on why, for the people this ship reports to.
   #[serde(default)]
   pub rationale: String,
@@ -185,6 +247,47 @@ pub fn weapons_that_bear(ship: &Ship, range: Range) -> Vec<(usize, WeaponType)> 
         .map(|(_, _, kind)| (index, kind))
     })
     .collect()
+}
+
+/// What one mount can do, as a gunner's card would put it: the gun it
+/// attacks with and that gun's profile in this mount, the mount's damage
+/// multiple, and the reactions it offers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MountCard {
+  /// The attacking gun: the longest-reaching offensive gun in the mount.
+  /// `None` for a mount that cannot attack (sand alone, a battery).
+  pub attack: Option<(WeaponType, WeaponProfile)>,
+  /// How many of that gun the mount holds.
+  pub guns: usize,
+  /// Damage multiple from the mount: 1 for turrets, 3 for a barbette, 10 and
+  /// up for bays.
+  pub multiple: u32,
+  /// Can be ordered to point defence: a turret with lasers in it.
+  pub point_defence: bool,
+  /// Carries a sandcaster, which reacts on its own.
+  pub sand: bool,
+  /// A point-defence battery, which defends on its own.
+  pub battery: bool,
+}
+
+/// The card for one mount.
+#[must_use]
+pub fn mount_card(weapon: &Weapon) -> MountCard {
+  let attack = weapon
+    .guns
+    .iter()
+    .filter(|gun| offensive(gun.kind))
+    .filter_map(|gun| profile_for(gun.kind, &weapon.mount).map(|profile| (gun.kind, profile)))
+    .max_by_key(|(_, profile)| profile.max_range.map_or(u8::MAX, |range| range as u8));
+  let guns = attack.map_or(0, |(kind, _)| weapon.guns.iter().filter(|gun| gun.kind == kind).count());
+  MountCard {
+    attack,
+    guns,
+    multiple: damage_multiple(MountClass::from(&weapon.mount)),
+    point_defence: point_defense_score(weapon) > 0,
+    sand: weapon.has_kind(WeaponType::Sand),
+    battery: weapon.has_kind(WeaponType::PointDefense),
+  }
 }
 
 /// Every range band, nearest first.
@@ -527,6 +630,12 @@ fn engineer_action(own: &Ship, verb: &EngineerVerb, engineer: usize) -> Option<S
       })
     }
     EngineerVerb::OverloadDrive => Some(ShipAction::OverloadDrive { engineer }),
+    EngineerVerb::Jump => Some(ShipAction::Jump { engineer }),
+    EngineerVerb::Power { system, online } => Some(ShipAction::SetPower {
+      system: *system,
+      online: *online,
+      engineer,
+    }),
     EngineerVerb::OverloadPlant => Some(ShipAction::OverloadPlant { engineer }),
   }
 }
@@ -560,14 +669,30 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
       plan,
     }));
   }
-  if let Some(thrust) = intent.evade {
+  requests.extend(software_requests(&own, ship_name, &intent.software));
+  if intent.evade.is_some() || intent.assist_gunners.is_some() {
     let mut pilot = SetPilotActions::new(ship_name);
-    pilot.dodge_thrust = Some(thrust.min(own.max_acceleration()));
+    pilot.dodge_thrust = intent.evade.map(|thrust| thrust.min(own.max_acceleration()));
+    pilot.assist_gunners = intent.assist_gunners;
     requests.push(RequestMsg::SetPilotActions(pilot));
   }
 
   let mut actions = Vec::new();
   let mut committed = std::collections::HashSet::new();
+  // Defence first: a mount on point defence is spoken for before any fire
+  // order can claim it.
+  for &weapon_id in &intent.defend {
+    let can_defend = own
+      .weapons()
+      .get(weapon_id)
+      .is_some_and(|weapon| point_defense_score(weapon) > 0);
+    if can_defend && committed.insert(weapon_id) {
+      actions.push(ShipAction::PointDefenseAction {
+        weapon_id,
+        protecting: None,
+      });
+    }
+  }
   for engage in &intent.fire {
     if !own.contacts.contains(&engage.target) {
       continue;
@@ -576,6 +701,9 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
       continue;
     };
     let range = band_between(&own, &target.read().unwrap());
+    // A called shot is only offered at Short range, as the gunner's console
+    // offers it; further out the gun fires as an ordinary shot.
+    let called = engage.called.filter(|_| range == Range::Short);
     for (weapon_id, kind) in weapons_that_bear(&own, range) {
       let chosen = engage.weapons.is_empty() || engage.weapons.contains(&weapon_id);
       // A mount fires once a round, at whoever asked for it first.
@@ -583,7 +711,7 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
         actions.push(ShipAction::FireAction {
           weapon_id,
           target: engage.target.clone(),
-          called_shot_system: engage.called,
+          called_shot_system: called,
           firing_kind: Some(kind),
           salvo_size: None,
           fire_control_dm: 0,
@@ -591,19 +719,6 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
         });
       }
     }
-  }
-  if intent.defend {
-    actions.extend(
-      own
-        .weapons()
-        .iter()
-        .enumerate()
-        .filter(|(weapon_id, weapon)| weapon.has_kind(WeaponType::PointDefense) && !committed.contains(weapon_id))
-        .map(|(weapon_id, _)| ShipAction::PointDefenseAction {
-          weapon_id,
-          protecting: None,
-        }),
-    );
   }
   let operators = own.get_crew().sensor_operators().max(1);
   actions.extend(
@@ -623,10 +738,122 @@ pub fn orders(world: &Entities, ship_name: &str, intent: &Intent) -> Result<Vec<
       .enumerate()
       .filter_map(|(engineer, verb)| engineer_action(&own, verb, engineer)),
   );
+  actions.extend(
+    intent
+      .computer_repair
+      .iter()
+      .filter(|system| own.crit_level[**system as usize] > 0)
+      .map(|system| ShipAction::ComputerRepair { system: *system }),
+  );
+  if !intent.boosts.is_empty() && own.get_crew().get_leadership() > 0 {
+    requests.push(RequestMsg::CaptainAction(CaptainActionMsg {
+      ship_name: ship_name.to_string(),
+    }));
+    actions.push(ShipAction::LeadershipCheck {
+      boosts: intent.boosts.iter().map(|boost| boost_target(ship_name, boost)).collect(),
+    });
+  }
+  spend_fire_control(&own, &mut actions);
   if !actions.is_empty() {
     requests.push(RequestMsg::ModifyActions(vec![(ship_name.to_string(), actions)]));
   }
   Ok(requests)
+}
+
+/// Start and stop programs: stops first, so the bandwidth is free for what
+/// starts. Each names the package of that kind aboard at its highest level.
+fn software_requests(own: &Ship, ship_name: &str, orders: &[SoftwareOrder]) -> Vec<RequestMsg> {
+  let mut requests = Vec::new();
+  // Software: stops first, so the bandwidth is free for what starts.
+  let mut software: Vec<&SoftwareOrder> = orders.iter().collect();
+  software.sort_by_key(|order| order.running);
+  for order in software {
+    // The package aboard of that kind, at its highest level.
+    let Some(package) = own
+      .software
+      .iter()
+      .filter(|package| package.kind == order.program)
+      .max_by_key(|package| package.level)
+    else {
+      continue;
+    };
+    requests.push(RequestMsg::SetSoftwareRunning(SetSoftwareRunning {
+      ship_name: ship_name.to_string(),
+      software: *package,
+      running: order.running,
+    }));
+  }
+  requests
+}
+
+fn boost_target(ship: &str, boost: &Boost) -> BoostTarget {
+  let ship = ship.to_string();
+  match boost {
+    Boost::Fire { mount } => BoostTarget::Fire {
+      ship,
+      weapon_id: *mount,
+    },
+    Boost::PointDefence { mount } => BoostTarget::PointDefense {
+      ship,
+      weapon_id: *mount,
+    },
+    Boost::Sensor { operator } => BoostTarget::Sensor {
+      ship,
+      operator: *operator,
+    },
+    Boost::Engineer { engineer } => BoostTarget::Engineer {
+      ship,
+      engineer: *engineer,
+    },
+    Boost::Dodge => BoostTarget::Evade { ship },
+    Boost::AssistGunners => BoostTarget::AssistGunner { ship },
+    Boost::Detection { target } => BoostTarget::Detection {
+      ship,
+      target: target.clone(),
+    },
+  }
+}
+
+/// Spend the Fire Control program's points as to-hit DMs, spread over this
+/// round's fire orders: a point each, round robin, until they run out. The
+/// console lets a gunner choose; a commander would not want to.
+fn spend_fire_control(own: &Ship, actions: &mut [ShipAction]) {
+  let mut pool = own.running_level(SoftwareKind::FireControl).unwrap_or(0);
+  // A mount nobody is at fires only if the computer fires it, for a point.
+  for action in actions.iter_mut() {
+    if let ShipAction::FireAction {
+      weapon_id,
+      computer_fired,
+      ..
+    } = action
+    {
+      if pool > 0 && !own.get_crew().has_gunner(*weapon_id) {
+        *computer_fired = true;
+        pool -= 1;
+      }
+    }
+  }
+  let firing = actions
+    .iter()
+    .filter(|action| matches!(action, ShipAction::FireAction { .. }))
+    .count();
+  if firing == 0 {
+    return;
+  }
+  while pool > 0 {
+    let before = pool;
+    for action in actions.iter_mut() {
+      if let ShipAction::FireAction { fire_control_dm, .. } = action {
+        if pool > 0 {
+          *fire_control_dm += 1;
+          pool -= 1;
+        }
+      }
+    }
+    if pool == before {
+      break;
+    }
+  }
 }
 
 #[cfg(test)]
@@ -697,9 +924,157 @@ mod tests {
     assert!(weapons_that_bear(&own, Range::VeryLong).is_empty(), "pulse lasers stop at Long");
   }
 
+  /// Jump Control is switched on for the jump, and Evade switched off to make
+  /// room, in one round: the stop goes out before the start.
+  #[tokio::test]
+  async fn software_orders_stop_before_they_start() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      software: vec![
+        SoftwareOrder {
+          program: SoftwareKind::JumpControl,
+          running: true,
+        },
+        SoftwareOrder {
+          program: SoftwareKind::Manoeuvre,
+          running: false,
+        },
+      ],
+      engineering: vec![EngineerVerb::Jump],
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Hunter", &intent).unwrap();
+    let changes: Vec<(SoftwareKind, bool)> = requests
+      .iter()
+      .filter_map(|request| match request {
+        RequestMsg::SetSoftwareRunning(change) => Some((change.software.kind, change.running)),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(
+      changes,
+      vec![(SoftwareKind::Manoeuvre, false), (SoftwareKind::JumpControl, true)],
+      "{requests:?}"
+    );
+    assert_eq!(
+      fire_actions(&requests),
+      vec![ShipAction::Jump { engineer: 0 }],
+      "the jump itself is the engineer's action"
+    );
+  }
+
+  /// A captain with boosts rolls and queues them; the pilot can assist; the
+  /// engineer can shut a mount down.
+  #[tokio::test]
+  async fn captain_pilot_and_power_orders() {
+    let world = two_ships(5_000.0 * KM).await;
+    world.ships["Hunter"]
+      .write()
+      .unwrap()
+      .get_crew_mut()
+      .set_skill(crate::crew::Skills::Leadership, 2);
+    let intent = Intent {
+      assist_gunners: Some(true),
+      boosts: vec![Boost::Fire { mount: 0 }, Boost::Dodge],
+      engineering: vec![EngineerVerb::Power {
+        system: PowerSystem::Weapon(2),
+        online: false,
+      }],
+      ..Intent::default()
+    };
+    let requests = orders(&world, "Hunter", &intent).unwrap();
+    assert!(
+      requests.iter().any(|r| matches!(r, RequestMsg::CaptainAction(_))),
+      "{requests:?}"
+    );
+    assert!(requests
+      .iter()
+      .any(|r| matches!(r, RequestMsg::SetPilotActions(p) if p.assist_gunners == Some(true))));
+    let actions = fire_actions(&requests);
+    assert!(actions.contains(&ShipAction::SetPower {
+      system: PowerSystem::Weapon(2),
+      online: false,
+      engineer: 0
+    }));
+    assert!(actions
+      .iter()
+      .any(|a| matches!(a, ShipAction::LeadershipCheck { boosts } if boosts.len() == 2)));
+  }
+
+  /// A laser turret on point defence is spoken for: it defends and does not
+  /// fire, even if a fire order would have used it.
+  #[tokio::test]
+  async fn a_mount_on_point_defence_does_not_fire() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      defend: vec![0, 3, 9],
+      fire: vec![Engage {
+        target: "Quarry".to_string(),
+        ..Engage::default()
+      }],
+      ..Intent::default()
+    };
+    let actions = fire_actions(&orders(&world, "Hunter", &intent).unwrap());
+    let defending: Vec<usize> = actions
+      .iter()
+      .filter_map(|action| match action {
+        ShipAction::PointDefenseAction { weapon_id, .. } => Some(*weapon_id),
+        _ => None,
+      })
+      .collect();
+    let firing: Vec<usize> = actions
+      .iter()
+      .filter_map(|action| match action {
+        ShipAction::FireAction { weapon_id, .. } => Some(*weapon_id),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(
+      defending,
+      vec![0],
+      "the pulse turret defends; the sandcaster (3) cannot, 9 does not exist"
+    );
+    assert_eq!(firing, vec![1, 2]);
+  }
+
+  #[tokio::test]
+  async fn a_mount_card_knows_a_barbette_from_a_turret() {
+    config_test_ship_templates().await;
+    let executor = ship_of("HMS Executor", 0.0);
+    let barbette = mount_card(&executor.weapons()[0]);
+    let (kind, profile) = barbette.attack.unwrap();
+    assert_eq!((kind, profile.damage_dice, barbette.multiple), (WeaponType::Particle, 4, 3));
+    assert!(!barbette.point_defence, "a barbette cannot track a missile");
+    let turret = mount_card(&executor.weapons()[1]);
+    assert_eq!(turret.attack.map(|(kind, _)| kind), Some(WeaponType::Missile));
+    assert!(
+      turret.sand && !turret.point_defence,
+      "missiles and sand: no laser to defend with"
+    );
+  }
+
+  #[tokio::test]
+  async fn a_called_shot_is_only_called_at_short_range() {
+    let world = two_ships(5_000.0 * KM).await;
+    let intent = Intent {
+      fire: vec![Engage {
+        target: "Quarry".to_string(),
+        weapons: vec![0],
+        called: Some(ShipSystem::Maneuver),
+      }],
+      ..Intent::default()
+    };
+    match &fire_actions(&orders(&world, "Hunter", &intent).unwrap())[..] {
+      [ShipAction::FireAction { called_shot_system, .. }] => {
+        assert_eq!(*called_shot_system, None, "Medium range: the gun fires, but not a called shot");
+      }
+      other => panic!("expected one fire action, got {other:?}"),
+    }
+  }
+
   #[tokio::test]
   async fn engage_fires_each_mount_once_and_only_at_contacts() {
-    let world = two_ships(5_000.0 * KM).await;
+    let world = two_ships(1_000.0 * KM).await;
     let intent = Intent {
       fire: vec![
         Engage {

@@ -23,7 +23,7 @@ use callisto::payloads::RequestMsg;
 use callisto::player::PlayerManager;
 use callisto::server::Server;
 use callisto::tactics::{self, Intent};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::commander::Commander;
 use crate::observation::observe;
@@ -82,13 +82,17 @@ pub struct Outcome {
   pub sides: BTreeMap<String, SideResult>,
 }
 
-/// One line of the round log.
-#[derive(Serialize)]
-struct Logged<'a> {
-  seed: u64,
-  round: u32,
-  side: &'a str,
-  intents: &'a [(String, Intent)],
+/// One line of the round log: what one side decided in one round. What
+/// [`crate::commander::Replay`] reads back.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Record {
+  pub seed: u64,
+  pub round: u32,
+  pub side: String,
+  /// The commander's standing plan after deciding, if it keeps one.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub plan: Option<String>,
+  pub intents: Vec<(String, Intent)>,
 }
 
 /// Apply a console's request the way the backend's processor would.
@@ -101,11 +105,34 @@ fn apply(player: &PlayerManager, request: RequestMsg) {
     }
     RequestMsg::SetShipEmissions(emissions) => player.set_ship_emissions(&emissions).map(|_| ()),
     RequestMsg::SetPilotActions(pilot) => player.set_pilot_actions(&pilot).map(|_| ()),
+    RequestMsg::SetSoftwareRunning(software) => player.set_software_running(&software).map(|_| ()),
+    RequestMsg::CaptainAction(captain) => {
+      let _ = player.captain_action(&captain);
+      Ok(())
+    }
     other => Err(format!("the harness does not apply {other:?}")),
   };
   if let Err(e) = result {
     tracing::debug!("(harness) Refused: {e}");
   }
+}
+
+/// The opening observation of one side of `scenario`, for seeing what a
+/// commander is shown before any round is played.
+///
+/// # Errors
+/// Returns an error if the side has no ships in the scenario.
+///
+/// # Panics
+/// Panics if the scenario cannot be loaded, as the backend does.
+pub async fn opening_view(scenario: &str, side: &str) -> Result<crate::observation::Observation, String> {
+  let server = Arc::new(Server::new("harness-view", scenario).await);
+  let player = PlayerManager::new(Some(server), Box::new(MockAuthenticator::new("")), true).with_seed(1);
+  let world = player.get_entities().map_err(|e| format!("{e:?}"))?;
+  let ships = sides(&world)
+    .remove(side)
+    .ok_or_else(|| format!("no side {side} in {scenario}"))?;
+  Ok(observe(&world, &ships))
 }
 
 /// Play one game of `scenario` (a scenario file path), with the commander
@@ -149,13 +176,14 @@ pub async fn play(
         .cloned()
         .collect();
       let (_, commander) = deciders.get_mut(side).expect("every side has a commander");
-      let intents = commander.decide(&observe(&world, &ships));
+      let intents = commander.decide(&observe(&world, &ships)).await;
       if let Some(log) = log.as_mut() {
-        let line = serde_json::to_string(&Logged {
+        let line = serde_json::to_string(&Record {
           seed,
           round: world.round,
-          side,
-          intents: &intents,
+          side: side.clone(),
+          plan: commander.plan().map(str::to_string),
+          intents: intents.clone(),
         })
         .map_err(|e| e.to_string())?;
         writeln!(log, "{line}").map_err(|e| e.to_string())?;

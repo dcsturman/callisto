@@ -36,6 +36,14 @@ triple pulse turret on the yacht.
 - The lurkers are dark, and have to be detected or will announce themselves by
   shooting.
 
+## Standing orders
+
+Every ship carries orders in the scenario file, which an AI crew follows and a
+human crew can read: the trap and its trigger, Yang's escort, the yacht closing
+to board once the trap is sprung, the PRC breaking off rather than dying, and
+the Executor standing off at Very Long. Change them in play from the ship's
+console.
+
 ## Two things from the text
 
 - The yacht's jump drive is shot and irreparable, so her jump rating is 0, and

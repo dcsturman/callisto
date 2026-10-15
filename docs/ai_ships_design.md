@@ -876,6 +876,22 @@ Also agreed, later the same day:
 
 Still open:
 
+- **Verbs the model is told about but cannot use yet:** point defence on
+  behalf of another ship, and choosing a smaller missile salvo than the
+  launcher's. The
+  prompt says so for each, so the model does not try. Fire Control points
+  are spent for it, spread across the round's fire orders.
+- **Called shots are only checked in the frontend.** The book allows them at
+  Short or less with direct-fire weapons (CRB p. 169); the gunner's console
+  offers the menu only at Short, and `tactics::orders` drops a called shot
+  further out, but the backend accepts one at any range from any client.
+  Validate it server-side.
+- **Missile damage adds the attack's Effect.** The book multiplies missile
+  damage by the Effect, capped at the salvo's remaining missiles (CRB p. 169);
+  with Callisto's singleton missiles that cap is 1, so the Effect should not
+  count at all. `combat::attack` and the odds table in `tactics` both add it,
+  about 3 points a hit. Minor; fix both together and note it in `FAQ.md`.
+
 - **The verb set.** §4.2 is a first pass checked against two real orders
   (Thebus and Marduk). It needs a read against a playthrough: anything done
   every round at a station that is not a verb is something the AI cannot do.

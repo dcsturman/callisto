@@ -10,34 +10,51 @@
 //! * [`Hold`] keeps its plans and fights whatever is in reach: a fixed
 //!   opponent to measure smarter commanders against.
 //! * [`Close`] heads for the nearest enemy, to the range band where it does
-//!   the most harm for the least taken, and fights. What the service uses
-//!   until there is a model.
+//!   the most harm for the least taken, and fights. A fixed opponent that
+//!   fights back.
+//! * [`Replay`] plays back a recorded game's decisions, round by round, so
+//!   the tests never call a model.
+//!
+//! The one that asks a model is [`crate::llm::Llm`].
 
+use std::collections::BTreeMap;
+use std::io::BufRead;
+
+use async_trait::async_trait;
 use callisto::entity::Entity;
 use callisto::ship::{Range, ShipSystem};
 use callisto::tactics::{BandOdds, Engage, EngineerVerb, Helm, Intent, SensorVerb};
 
+use crate::harness::Record;
 use crate::observation::{Contact, Observation};
 
 /// One side's decision-maker.
+#[async_trait]
 pub trait Commander: Send {
   /// Each of the side's ships' orders for this round.
-  fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)>;
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)>;
+
+  /// The standing plan the side is working to, for the log. Only a commander
+  /// that thinks ahead has one.
+  fn plan(&self) -> Option<&str> {
+    None
+  }
 }
 
 /// Gives no orders. Ships hold their current plans.
 #[derive(Debug, Default)]
 pub struct Idle;
 
+#[async_trait]
 impl Commander for Idle {
-  fn decide(&mut self, _view: &Observation) -> Vec<(String, Intent)> {
+  async fn decide(&mut self, _view: &Observation) -> Vec<(String, Intent)> {
     vec![]
   }
 }
 
 /// The order an engineer repairs in: what keeps a ship fighting and moving
 /// first.
-const REPAIR_PRIORITY: [ShipSystem; 9] = [
+pub const REPAIR_PRIORITY: [ShipSystem; 9] = [
   ShipSystem::Maneuver,
   ShipSystem::Powerplant,
   ShipSystem::Weapon,
@@ -63,7 +80,7 @@ fn fight(target: Option<&Contact>, helm: Helm) -> Intent {
       })
       .into_iter()
       .collect(),
-    defend: true,
+    defend: vec![],
     sensors: target
       .map(|target| SensorVerb::Lock {
         target: target.name.clone(),
@@ -85,8 +102,9 @@ fn fight(target: Option<&Contact>, helm: Helm) -> Intent {
 #[derive(Debug, Default)]
 pub struct Hold;
 
+#[async_trait]
 impl Commander for Hold {
-  fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     let target = view.enemies().into_iter().next();
     view
       .own
@@ -136,8 +154,9 @@ fn best_band(view: &Observation, ours: &str, contact: &Contact) -> Range {
 #[derive(Debug, Default)]
 pub struct Close;
 
+#[async_trait]
 impl Commander for Close {
-  fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     let target = view.enemies().into_iter().next();
     view
       .own
@@ -169,8 +188,9 @@ impl Random {
   }
 }
 
+#[async_trait]
 impl Commander for Random {
-  fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     use callisto::tactics::{Posture, BANDS};
     use rand::seq::SliceRandom;
     use rand::Rng;
@@ -201,10 +221,70 @@ impl Commander for Random {
   }
 }
 
+/// Plays back one side's decisions from a harness log, by round.
+///
+/// A round the log has nothing for gets no orders. Which game's decisions is
+/// up to the file: a log of one game replays that game, which is what a test
+/// wants.
+pub struct Replay {
+  by_round: BTreeMap<u32, Record>,
+}
+
+impl Replay {
+  /// Read `side`'s records from a harness log (JSON lines of [`Record`]).
+  ///
+  /// # Errors
+  /// Returns an error if the file cannot be read or a line is not a record.
+  pub fn from_log(path: &str, side: &str) -> Result<Self, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("{path}: {e}"))?;
+    let mut by_round = BTreeMap::new();
+    for line in std::io::BufReader::new(file).lines() {
+      let line = line.map_err(|e| format!("{path}: {e}"))?;
+      if line.trim().is_empty() {
+        continue;
+      }
+      let record: Record = serde_json::from_str(&line).map_err(|e| format!("{path}: {e}"))?;
+      if record.side == side {
+        by_round.insert(record.round, record);
+      }
+    }
+    Ok(Replay { by_round })
+  }
+
+  /// The rounds the log has decisions for.
+  #[must_use]
+  pub fn rounds(&self) -> Vec<u32> {
+    self.by_round.keys().copied().collect()
+  }
+}
+
+#[async_trait]
+impl Commander for Replay {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    self
+      .by_round
+      .get(&view.round)
+      .map(|record| record.intents.clone())
+      .unwrap_or_default()
+  }
+
+  fn plan(&self) -> Option<&str> {
+    self.by_round.values().last().and_then(|record| record.plan.as_deref())
+  }
+}
+
 /// A commander by name, for the harness and configuration: `idle`, `hold`,
-/// `close` or `random`. `seed` is used by those that roll dice of their own.
+/// `close`, `random`, or `replay:<log file>:<side>`. `seed` is used by those
+/// that roll dice of their own. Models are named through
+/// [`crate::llm::named`].
 #[must_use]
 pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
+  if let Some(rest) = name.strip_prefix("replay:") {
+    let (path, side) = rest.rsplit_once(':')?;
+    return Replay::from_log(path, side)
+      .ok()
+      .map(|replay| Box::new(replay) as Box<dyn Commander>);
+  }
   match name {
     "idle" => Some(Box::new(Idle)),
     "hold" => Some(Box::new(Hold)),
