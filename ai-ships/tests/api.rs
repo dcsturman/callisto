@@ -24,7 +24,7 @@ fn app() -> Arc<App> {
     reconnect_backoff: Duration::from_millis(1),
   };
   Arc::new(App {
-    crews: Crews::new(config, Arc::new(|| Box::new(Idle) as Box<dyn Commander>)),
+    crews: Crews::new(config, Arc::new(|_: &str, _: &str| Box::new(Idle) as Box<dyn Commander>)),
     callers: Callers {
       auth: ServiceAuth::new(Some("local-secret".to_string()), None, None),
       allowed: UserDirectory::default(),
