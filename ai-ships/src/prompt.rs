@@ -451,11 +451,17 @@ fn computer_line(out: &mut String, ship: &Ship) {
     .filter(|package| !ship.software_running.contains(package))
     .filter_map(describe)
     .collect();
+  let spare = ship.bandwidth_spare();
   let _ = writeln!(
     out,
-    "- Computer: {} bandwidth, {} in use. Running: {}. Aboard but not running: {}",
-    ship.bandwidth_used() + ship.bandwidth_spare(),
+    "- Computer: {} bandwidth, {} in use, {spare} spare ({}). Running: {}. Aboard but not running: {}",
+    ship.bandwidth_used() + spare,
     ship.bandwidth_used(),
+    if spare >= 1 {
+      "enough to send or receive a sensor hand-off"
+    } else {
+      "NONE: this ship can neither send nor receive a sensor hand-off until a program is stopped"
+    },
     if running.is_empty() {
       "nothing beyond the basics".to_string()
     } else {
