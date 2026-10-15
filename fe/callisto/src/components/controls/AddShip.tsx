@@ -615,16 +615,20 @@ export const AddShip: React.FC<AddShipProps> = () => {
               />
               AI crew
             </label>
-            <label className="add-ship-orders" title="Standing orders, in plain English. An AI crew plans against them; a human crew reads them as their brief.">
-              Orders
-              <textarea
-                className="ship-command-orders-text"
-                rows={2}
-                placeholder="None. For example: hold at Very Long and cripple her drive; do not destroy her."
-                value={addShipData.orders}
-                onChange={(event) => setAddShipData({ ...addShipData, orders: event.target.value })}
-              />
-            </label>
+            {/* Orders follow the AI box: they are what an AI crew plans
+                against, so they appear once there is one to give them to. */}
+            {addShipData.ai && (
+              <label className="add-ship-orders" title="Standing orders, in plain English. The AI crew plans against them every round.">
+                Orders
+                <textarea
+                  className="ship-command-orders-text"
+                  rows={2}
+                  placeholder="None. For example: hold at Very Long and cripple her drive; do not destroy her."
+                  value={addShipData.orders}
+                  onChange={(event) => setAddShipData({ ...addShipData, orders: event.target.value })}
+                />
+              </label>
+            )}
           </div>
         </div>
         <hr />
