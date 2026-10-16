@@ -554,7 +554,13 @@ fn rendezvous(own: &Ship, target: &Ship, distance: f64, thrust: f64) -> FlightPl
   } else {
     aim
   };
-  let target_accel = target.plan.0 .0;
+  // Against where she is and how she is moving, not how she is burning: the
+  // course is re-plotted every round, as a navigator would, so her burn is
+  // answered next round. Assuming she burns for the whole course turns a
+  // rendezvous a ship could fly into one it cannot, and the computer falls
+  // back to a pursuit that never brakes -- ships closing at hundreds of km/s
+  // and flashing through the fight. It is also the console's rule for a ship
+  // not in contact, whose burn nobody can see.
   plot_course(
     start,
     own.get_velocity(),
@@ -562,7 +568,7 @@ fn rendezvous(own: &Ship, target: &Ship, distance: f64, thrust: f64) -> FlightPl
     end,
     target.get_velocity(),
     Some(target.get_velocity()),
-    Some(target_accel),
+    None,
   )
   .plan
 }
@@ -1364,6 +1370,28 @@ mod tests {
       }
       other => panic!("expected a release then a plan, got {other:?}"),
     }
+  }
+
+  /// An intercept on a ship burning hard away still brakes: the course is
+  /// plotted against her velocity, not her burn, so it is a rendezvous (burn,
+  /// then turn and brake) rather than a pursuit that never slows down.
+  #[tokio::test]
+  async fn an_intercept_on_a_burning_ship_still_brakes() {
+    let world = two_ships(1_000_000.0 * KM).await;
+    {
+      let mut quarry = world.ships["Quarry"].write().unwrap();
+      let away = Vec3::new(G * 3.0, 0.0, 0.0);
+      quarry.plan = FlightPlan::new((away, DEFAULT_ACCEL_DURATION).into(), None);
+    }
+    let intent = Intent {
+      helm: Helm::Intercept {
+        target: "Quarry".to_string(),
+        band: Range::Medium,
+      },
+      ..Intent::default()
+    };
+    let plan = plan_of(&orders(&world, "Hunter", &intent).unwrap());
+    assert!(plan.1.is_some(), "a rendezvous has a braking leg: {plan:?}");
   }
 
   #[tokio::test]
