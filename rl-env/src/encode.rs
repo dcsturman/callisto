@@ -4,7 +4,8 @@
 //! The vector is in the deciding ship's frame: everyone else's position and
 //! velocity are relative to hers. Three blocks, in order:
 //!
-//! - herself ([`SELF_LEN`] numbers);
+//! - herself, her side's goal, and what a withdrawal, a hand-off, the
+//!   captain and jamming depend on ([`SELF_LEN`] numbers);
 //! - the rest of her side, nearest first, [`FRIENDS`] slots of [`FRIEND_LEN`];
 //! - every enemy on the plot, contacts and blips alike, nearest first,
 //!   [`ENEMIES`] slots of [`ENEMY_LEN`].
@@ -21,11 +22,13 @@ use std::collections::HashMap;
 
 use ai_ships::observation::{Contact, Observation};
 use callisto::entity::{Entity, Vec3};
-use callisto::ship::Ship;
+use callisto::ship::{Goal, Ship};
+use callisto::software::SoftwareKind;
 use callisto::tactics::{self, BandOdds, BANDS};
 use cgmath::InnerSpace;
 
 use crate::action::{self, Head, MASK_LEN};
+use crate::orders;
 
 /// The most ships a side may have.
 pub const MAX_SHIPS: usize = 20;
@@ -34,7 +37,7 @@ pub const FRIENDS: usize = MAX_SHIPS - 1;
 /// Slots for enemies.
 pub const ENEMIES: usize = MAX_SHIPS;
 
-pub const SELF_LEN: usize = 40;
+pub const SELF_LEN: usize = 53;
 pub const FRIEND_LEN: usize = 16;
 pub const ENEMY_LEN: usize = 42;
 /// One ship's observation.
@@ -70,7 +73,12 @@ pub struct Context<'a> {
   pub own_hull_share: f32,
   /// The enemy's hull left as the side believes it: what it last saw.
   pub enemy_hull_share: f32,
+  /// What the side is trying to do.
+  pub goal: Goal,
 }
+
+/// The goals, in the order the observation flags them.
+pub const GOALS: [Goal; 4] = [Goal::Destroy, Goal::Hold, Goal::Raid, Goal::Escape];
 
 /// One enemy on the plot, contact or blip.
 struct Enemy<'a> {
@@ -220,7 +228,7 @@ pub fn encode_ship(ctx: &Context, me: &Ship, out: &mut [f32], mask: &mut [bool])
     encode_enemy(ctx, me, enemy, &mut out[at..at + ENEMY_LEN]);
   }
 
-  masks(me, &friends, &enemies, mask);
+  masks(me, view, &friends, &enemies, mask);
 
   Picture {
     enemies: enemies.iter().map(|enemy| enemy.name.to_string()).collect(),
@@ -261,6 +269,19 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
     watchers.fold((0, 0), |(seen, locked), watcher| (seen + 1, locked + usize::from(watcher.lock)));
   row[38] = watching.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
   row[39] = locking.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
+  let goal = GOALS.iter().position(|goal| *goal == ctx.goal).unwrap_or(0);
+  row[40 + goal] = 1.0;
+  // What a withdrawal, a hand-off, the captain and jamming turn on.
+  row[44] = f32::from(u8::from(me.running_level(SoftwareKind::JumpControl).is_some()));
+  row[45] = f32::from(u8::from(me.jump_powered()));
+  let well = orders::well(me, view);
+  row[46] = f32::from(u8::from(well.is_none()));
+  row[47] = well.map_or(0.0, |(short, _)| log_distance(short));
+  row[48] = f32::from(u8::from(me.bandwidth_spare() > 0));
+  row[49] = f32::from(u8::from(me.comms_jammed));
+  row[50] = f32::from(u8::from(me.get_crew().sensor_operators() >= 2));
+  row[51] = f32::from(me.get_crew().get_leadership()).min(6.0) / 6.0;
+  row[52] = (orders::missiles_inbound(view) as f32 / 10.0).min(1.0);
 }
 
 fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
@@ -307,7 +328,7 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
 }
 
 /// Which choices of each head are open to `me`.
-fn masks(me: &Ship, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
+fn masks(me: &Ship, view: &Observation, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
   mask.fill(false);
   let moves = me.max_acceleration() > 0;
   let any_enemy = !enemies.is_empty();
@@ -336,6 +357,23 @@ fn masks(me: &Ship, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
   let dodges: Vec<bool> = (0..action::DODGES).map(|g| g <= usize::from(me.max_acceleration())).collect();
   set(mask, Head::Dodge, &dodges);
   set(mask, Head::Assist, &[true, true]);
+  set(mask, Head::Jump, &[true, orders::can_withdraw(me)]);
+
+  // Sensor orders: lock and jam comms need a contact, jamming missiles needs
+  // missiles coming in. A second operator's heads only if there is one.
+  let any_contact = enemies.iter().any(|enemy| enemy.contact.is_some());
+  let missiles = orders::missiles_inbound(view) > 0;
+  let operators = me.get_crew().sensor_operators();
+  let verbs = orders::SENSOR_ORDERS.map(|order| match order {
+    orders::SensorOrder::Lock | orders::SensorOrder::JamComms => any_contact,
+    orders::SensorOrder::JamMissiles => missiles,
+  });
+  set(mask, Head::Sensor1, if operators >= 1 { &verbs } else { &[false; 3] });
+  set(mask, Head::Sensor2, if operators >= 2 { &verbs } else { &[false; 3] });
+  let none_only: Vec<bool> = std::iter::once(true).chain(std::iter::repeat_n(false, ENEMIES)).collect();
+  set(mask, Head::Target2, if operators >= 2 { &contacts } else { &none_only });
+  set(mask, Head::Captain, &[true; orders::RANKINGS.len()]);
+  set(mask, Head::Computer, &[true, true]);
 }
 
 /// Open the choices `open` says in `head`, and the first one whatever, so a

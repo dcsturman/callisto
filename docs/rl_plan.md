@@ -38,12 +38,28 @@ RL needs a number per game and, in practice, a little signal per round.
 |---|---|
 | Every enemy ship destroyed | +1.0 |
 | Enemy fled: every enemy ship jumped out or out of contact for 3 rounds | +0.6 |
-| Round limit reached with both sides still in it | hull share taken minus hull share lost, scaled to [-0.3, +0.3] |
+| Draw: round limit with both sides still in it, or both running at once | -1.0, as bad as being destroyed |
 | Our side fled | -0.6 |
 | Our side destroyed | -1.0 |
 
 Fleeing is worth more than dying, for either side, which is what the
 objective asks for.
+
+A draw was first scored on hull alone, up to ±0.3. The first self-play run
+showed why that fails: playing copies of itself, the network learned that
+keeping its distance after a little long-range damage scored as well as a
+risky fight, and drew 40% of its games against the baselines, winning almost
+none in Tessaly or Jupiter. A draw then cost both sides 0.2. The second run
+showed that was not enough: in an uneven scenario the weaker side, playing a
+competent copy of itself, learned to decline battle (a draw at -0.2 beats a
+loss at -1), and carried that into games it used to win against `close`. A
+draw now counts as a loss for both sides, -1, so a side's only ways out of a
+fight are winning it or leaving it (-0.6, which the objective prefers to
+dying). This may be refined later; for now it makes them fight. The Elo
+ladder leaves draws out of its fit and reports them on their own.
+That run also started from scratch; self-play now starts from the network
+trained against `close`, which already attacks, and plays half its games
+against the baselines at first, tapering to 15% over ten million steps.
 
 **What "fled" means.** Judged by the engine on true positions, not on either
 side's fogged view. A side has fled when every one of its surviving ships
@@ -71,6 +87,32 @@ The incentives then line up in self-play. The chaser prefers destroying
 (+1.0) to driving off (+0.6), so it pursues. The loser prefers fleeing
 (-0.6) to dying (-1.0). A policy that ran at round 1 would score -0.6
 against one that wins by fighting, so that is not learned.
+
+**Goals.** One objective for every side turned out to be too blunt: a side
+meant to hold had no way to win by holding, and against a strong defensive
+position the best score was to run. So each side now has a goal from a small
+menu, set per ship in the scenario beside its orders (a side's goal is the
+one its ships share), given to the network as an input, and scored by its
+own table:
+
+| Outcome | Destroy | Hold | Raid | Escape |
+|---|---|---|---|---|
+| Enemy destroyed | +1 | +1 | +1 | +1 |
+| Enemy fled | +0.6 | +1 | +0.6 if 25% dealt, else -0.6 | share jumped |
+| Draw | -1 | +0.6 if still holding, else -1 | +0.6 if 25% dealt, else -1 | share jumped |
+| We fled | -0.9 | -1 | +0.6 if 25% dealt, else -0.6 | share jumped |
+| ...with more than half our hull | -1.1 | -1.1 | +0.6 if 25% dealt, else -1.1 | share jumped |
+| We were destroyed | -1 | -1 | -1 | share jumped |
+
+Holding means a ship still within 25,000 km (Long) of where the side
+started. A raid must destroy a quarter of the enemy's hull however the game
+ends. Escape means jumping out of the system and nothing else; "share
+jumped" runs from -1 (no ship jumped) to +1 (all did). Running with more than
+half the hull left, when leaving is not the goal, is cowardice and scores
+worse than being destroyed. A quarter of training games draw each side's
+goal at random, so the network learns what the goals mean rather than which
+one a scenario has. Ships can now jump: a tenth action head, open only when
+the engine would allow the jump, which also starts Jump Control.
 
 **Per round, small.** OpenAI Five found pure win/loss too sparse to learn
 from and used shaped rewards; so will we. Each round: 0.1 times (share of
@@ -225,8 +267,30 @@ Compiler settings are not the lever. The numbers were always from an
 optimised release build, and link-time optimisation with tuning for this CPU
 measured the same. A profile shows why: the time is in the solver itself,
 a general nonlinear solver working on heap-allocated, dynamically sized
-matrices, with a factorisation and allocations every iteration. Fixed-size
-matrices, warm starts from last round's course, and caching are phase 2.
+matrices, with a factorisation and allocations every iteration.
+
+**Phase 2, done: a new rendezvous solver.** Writing each burn as the velocity
+it adds makes the rendezvous equations linear; for a given flight time the
+first burn's length comes from a quadratic, which leaves a single equation in
+the flight time. The flight computer now scans that one number for its first
+root and refines it by bisection, instead of solving for eight unknowns from
+up to a hundred random starts. On 2,157 courses recorded from games of the
+pool, it found every rendezvous the old solver found, plus ten, always the
+earliest; 66 of the old solver's "rendezvous" did not arrive when flown. It
+takes about 35 µs a course against 1.5 ms, and the old solver and its
+sampling library are gone. Caching was dropped from the plan: 11% of courses
+repeat, not worth it at this cost.
+
+| Through the Python layer | Before | After |
+|---|---|---|
+| Game-rounds a second, 1 thread | 157 | 3,633 |
+| Game-rounds a second, 10 threads | 751 | 17,868 |
+| Ship decisions a second, self-play | 6,835 | 120,197 |
+
+Training is now limited by the learner, not the game. The pursuit fallback
+(one burn through the target's path) and missile guidance still use the
+general solver; they reduce the same way, to one equation in time, if they
+ever matter.
 
 ## 6. Toolkit
 
@@ -279,8 +343,9 @@ is worth having, but a cheap one.
    action heads with masks; reward; vectorised stepping; scenario
    randomisation. Test: a random policy plays legal games; `close` encoded
    through the same path plays as it does today.
-2. **Solver speed.** Profile and cache; approximate if needed. Test: 1,000
-   rounds a second per core with every ship plotting.
+2. **Solver speed.** Done: a one-variable rendezvous search, exact, 40 times
+   faster per course and 23 times faster per game round. Test was 1,000
+   rounds a second per core; it does 3,600.
 3. **First training, locally.** PPO against `hold`, then `close`. Test: the
    policy beats `close` in most games within a few hours. This is where the
    reward design gets debugged.

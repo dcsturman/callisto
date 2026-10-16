@@ -498,6 +498,12 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub orders: Option<String>,
+  /// What the ship's side is trying to do, from a small menu: what a trained
+  /// commander is scored on, where a model reads `orders`. A side's goal is
+  /// the one its ships share. `None` is [`Goal::Destroy`].
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub goal: Option<Goal>,
   /// What the AI crewing this ship last reported: whether it is still
   /// deciding the round, its side's plan, and why it gave this ship the orders
   /// it did. Set by the AI service, for the people this ship reports to and
@@ -1342,6 +1348,22 @@ pub enum Stealth {
 /// point is that the display codes them: a referee reading "Red" on a dropdown
 /// and seeing a red ship in the view needs no translation step. `None` means
 /// unaligned, which is how every ship built before teams existed arrives.
+/// What a side is trying to do: the menu a trained commander is scored on.
+/// Written in lower case in scenario files and on the wire.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum Goal {
+  /// Destroy the enemy or drive them off.
+  #[default]
+  Destroy,
+  /// Keep the position: still there at the end, or the enemy beaten or gone.
+  Hold,
+  /// Destroy at least a quarter of the enemy's hull, then leave or see it out.
+  Raid,
+  /// Jump out of the system.
+  Escape,
+}
+
 /// Who is giving a ship its orders.
 ///
 /// Whole-ship for now: a ship is crewed by people or by the AI service, not
@@ -1743,6 +1765,7 @@ impl Ship {
       controller: Controller::Human,
       ai_report: None,
       orders: None,
+      goal: None,
     }
   }
 

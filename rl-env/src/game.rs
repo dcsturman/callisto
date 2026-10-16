@@ -8,23 +8,27 @@
 //! there.
 //!
 //! The reward is the objective in `docs/rl_plan.md`: destroy the other side
-//! (+1), drive it off (+0.6), or failing that come out ahead on hull at the
-//! round limit (up to ±0.3); and the same, negated, for being destroyed or
-//! running. A small shaping term each round pays for hull taken and charges
-//! for hull lost and for time.
+//! (+1) or drive it off (+0.6, judged by [`Retreats`], as the harness judges
+//! it); be destroyed (-1) or run (-0.6). A draw -- the round limit with both
+//! still in it, or both running at once -- counts as a loss for both (-1), so
+//! stalling is never a goal and a side outmatched does better to leave. A small
+//! shaping term each round pays for hull taken and charges for hull lost and
+//! for time.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use ai_ships::commander::{self, Commander};
-use ai_ships::harness::{apply, hull_of, sides};
+use ai_ships::harness::{apply, hull_of, sides, Retreats};
 use ai_ships::observation::{observe, Observation};
 use callisto::authentication::MockAuthenticator;
-use callisto::entity::{Entities, Entity};
+use callisto::entity::{Entities, Entity, Vec3};
 use callisto::player::PlayerManager;
 use callisto::server::Server;
+use callisto::ship::{Goal, Ship};
 use callisto::tactics::{self, EngineerVerb, Intent};
 use cgmath::InnerSpace;
+use rand::{Rng, SeedableRng};
 
 use crate::action::{side_intents, Choice, MASK_LEN};
 use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, Seen, MAX_SHIPS, OBS_LEN};
@@ -86,20 +90,121 @@ pub enum End {
   Draw,
 }
 
-/// The end-of-game reward for each side.
-pub const DESTROYED: f32 = 1.0;
-pub const FLED: f32 = 0.6;
-/// The most a draw on hull is worth.
-pub const DRAW_SCALE: f32 = 0.3;
+/// How a game ended, for one side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ending {
+  EnemyDestroyed,
+  EnemyFled,
+  /// The round limit with both still in it, both running at once, or both
+  /// wiped out.
+  Draw,
+  WeFled,
+  WeDestroyed,
+}
+
+/// What a side did over a game, for the goals that need more than how it
+/// ended.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Tally {
+  /// The share of the enemy's hull destroyed.
+  pub dealt: f32,
+  /// The share of the side's ships that jumped out.
+  pub jumped: f32,
+  /// At least one of the side's ships is within [`HOLD_RADIUS`] of where the
+  /// side started.
+  pub holding: bool,
+  /// The share of its own hull the side has left, ships that jumped out
+  /// counted at the hull they left with.
+  pub kept: f32,
+}
+
+/// How far from where it started a side may be and still hold its position:
+/// the edge of Long range.
+pub const HOLD_RADIUS: f64 = 25_000_000.0;
+/// The share of the enemy's hull a raid must destroy to have done its job.
+pub const RAID_DAMAGE: f32 = 0.25;
+/// Running while above this share of its hull, when the goal is not to run,
+/// is cowardice: it scores [`COWARDICE`], worse than being destroyed.
+pub const COWARD_HULL: f32 = 0.5;
+pub const COWARDICE: f32 = -1.1;
+
+/// The end-of-game reward for one side, by its goal.
+///
+/// | Outcome          | Destroy | Hold                    | Raid                          | Escape      |
+/// |------------------|---------|-------------------------|-------------------------------|-------------|
+/// | Enemy destroyed  | +1      | +1                      | +1                            | +1          |
+/// | Enemy fled       | +0.6    | +1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
+/// | Draw             | -1      | +0.6 if holding, else -1 | +0.6 if 25% dealt, else -1   | share jumped |
+/// | We fled          | -0.9    | -1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
+/// | ...above half hull | -1.1  | -1.1                    | +0.6 if 25% dealt, else -1.1  | share jumped |
+/// | We were destroyed| -1      | -1                      | -1                            | share jumped |
+///
+/// "Share jumped" runs from -1 (none) to +1 (every ship jumped out). Under
+/// Destroy, running is nearly as bad as dying: leaving is for goals that
+/// allow it. Running with more than half its hull left, unless leaving is
+/// the goal or the raid is done, is cowardice, and worse than dying.
+#[must_use]
+pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
+  let coward = ending == Ending::WeFled && tally.kept > COWARD_HULL;
+  match goal {
+    Goal::Destroy => match ending {
+      Ending::EnemyDestroyed => 1.0,
+      Ending::EnemyFled => 0.6,
+      Ending::WeFled if coward => COWARDICE,
+      Ending::WeFled => -0.9,
+      Ending::Draw | Ending::WeDestroyed => -1.0,
+    },
+    Goal::Hold => match ending {
+      Ending::EnemyDestroyed | Ending::EnemyFled => 1.0,
+      Ending::Draw if tally.holding => 0.6,
+      Ending::WeFled if coward => COWARDICE,
+      Ending::Draw | Ending::WeFled | Ending::WeDestroyed => -1.0,
+    },
+    Goal::Raid => {
+      let done = tally.dealt >= RAID_DAMAGE;
+      match ending {
+        Ending::EnemyDestroyed => 1.0,
+        Ending::WeDestroyed => -1.0,
+        _ if done => 0.6,
+        Ending::WeFled if coward => COWARDICE,
+        Ending::EnemyFled | Ending::WeFled => -0.6,
+        Ending::Draw => -1.0,
+      }
+    }
+    Goal::Escape => match ending {
+      Ending::EnemyDestroyed => 1.0,
+      _ => 2.0 * tally.jumped - 1.0,
+    },
+  }
+}
+
+/// A side's goal: the one most of its ships carry, Destroy if none do.
+pub fn side_goal<'a>(ships: impl IntoIterator<Item = &'a Ship>) -> Goal {
+  let mut counts: HashMap<Goal, usize> = HashMap::new();
+  for ship in ships {
+    *counts.entry(ship.goal.unwrap_or_default()).or_default() += 1;
+  }
+  crate::encode::GOALS
+    .into_iter()
+    .max_by_key(|goal| counts.get(goal).copied().unwrap_or(0))
+    .filter(|goal| counts.contains_key(goal))
+    .unwrap_or_default()
+}
+
+/// The goals a side can be given at random: Escape only if every ship has a
+/// jump drive.
+fn goals_open_to(ships: &[&Ship]) -> Vec<Goal> {
+  let mut goals = vec![Goal::Destroy, Goal::Hold, Goal::Raid];
+  if ships.iter().all(|ship| ship.design.jump > 0) {
+    goals.push(Goal::Escape);
+  }
+  goals
+}
+
 /// Shaping, per round: this times hull share taken less hull share lost.
 pub const SHAPING: f32 = 0.1;
 /// Shaping, per round: the cost of time.
 pub const ROUND_COST: f32 = 0.002;
-/// A ship this far from every enemy is out of the fight, if she keeps going:
-/// the edge of Distant.
-pub const FLEE_DISTANCE: f64 = 50_000_000.0;
-/// Rounds a side must keep opening past [`FLEE_DISTANCE`] to have fled.
-pub const FLEE_ROUNDS: u32 = 3;
 
 /// What a round brought each side.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -117,14 +222,10 @@ struct Side {
   memory: Memory,
   hull_at_start: u32,
   hull_last: u32,
-  /// Rounds running that this side has been out past [`FLEE_DISTANCE`] and
-  /// moving away.
-  opening: u32,
-  /// Whether any of this side's ships has yet come inside
-  /// [`FLEE_DISTANCE`] of an enemy. Only a side that has come into the fight
-  /// can run from it: one that opens the game far off and stays there has
-  /// not fled, it has not arrived.
-  engaged: bool,
+  /// What the side is trying to do.
+  goal: Goal,
+  /// The middle of the side's ships at the start, for Hold.
+  start: Vec3,
 }
 
 /// One slot: an agent ship, and the picture her last observation was made
@@ -159,6 +260,13 @@ pub struct Game {
   pub rounds: u32,
   pub max_rounds: u32,
   pub seed: u64,
+  /// Baselines playing network sides; see [`Game::stand_in`].
+  stand_ins: [Option<String>; 2],
+  /// Who has run, as the harness judges it.
+  retreats: Retreats,
+  rosters: BTreeMap<String, Vec<String>>,
+  /// The share of games where each side's goal is drawn at random.
+  random_goals: f32,
 }
 
 fn player_for(scenario: &Scenario, seed: u64) -> PlayerManager {
@@ -191,6 +299,16 @@ impl Game {
         Control::Baseline(name) => Some(commander::named(name, seed).unwrap_or_else(|| panic!("no baseline {name}"))),
       };
       let hull = hull_of(&world, ships);
+      let own: Vec<Ship> = ships
+        .iter()
+        .filter_map(|ship| world.ships.get(ship))
+        .map(|ship| ship.read().unwrap().clone())
+        .collect();
+      let start = own
+        .iter()
+        .map(Entity::get_position)
+        .fold(Vec3::new(0.0, 0.0, 0.0), |sum, at| sum + at)
+        / own.len().max(1) as f64;
       Side {
         name: name.clone(),
         ships: ships.clone(),
@@ -199,8 +317,8 @@ impl Game {
         memory: Memory::new(),
         hull_at_start: hull,
         hull_last: hull,
-        opening: 0,
-        engaged: false,
+        goal: side_goal(&own),
+        start,
       }
     });
     let slots = sides
@@ -216,6 +334,7 @@ impl Game {
       })
       .collect();
     let views = [0, 1].map(|index| observe(&world, &present(&world, &sides[index].ships)));
+    let scenario_rosters: BTreeMap<String, Vec<String>> = scenario.sides.iter().cloned().collect();
     Game {
       scenario,
       player,
@@ -227,13 +346,79 @@ impl Game {
       rounds: 0,
       max_rounds,
       seed,
+      stand_ins: [None, None],
+      retreats: Retreats::default(),
+      rosters: scenario_rosters,
+      random_goals: 0.0,
     }
+  }
+
+  /// In this share of games, from now on, each side gets a goal drawn at
+  /// random instead of the scenario's, so the network learns what the goals
+  /// mean rather than which one each scenario has.
+  #[must_use]
+  pub fn with_random_goals(mut self, share: f32) -> Self {
+    self.random_goals = share;
+    self.draw_goals();
+    self
+  }
+
+  fn draw_goals(&mut self) {
+    let mut rng = rand::rngs::SmallRng::seed_from_u64(self.seed ^ 0x6F41_5EED);
+    if rng.gen::<f32>() >= self.random_goals {
+      return;
+    }
+    for side in &mut self.sides {
+      let ships: Vec<&Ship> = self
+        .views
+        .iter()
+        .flat_map(|view| view.own.iter())
+        .filter(|ship| side.ships.iter().any(|name| name == ship.get_name()))
+        .collect();
+      let open = goals_open_to(&ships);
+      side.goal = open[rng.gen_range(0..open.len())];
+    }
+  }
+
+  /// Each side's goal.
+  #[must_use]
+  pub fn goals(&self) -> [Goal; 2] {
+    [self.sides[0].goal, self.sides[1].goal]
   }
 
   /// The same scenario and sides again, from the start, with a new seed.
   pub fn reset(&mut self, seed: u64) {
     let controls = [self.sides[0].control.clone(), self.sides[1].control.clone()];
-    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds);
+    let stand_ins = self.stand_ins.clone();
+    let random_goals = self.random_goals;
+    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds).with_random_goals(random_goals);
+    for (side, stand_in) in stand_ins.into_iter().enumerate() {
+      self.stand_in(side, stand_in);
+    }
+  }
+
+  /// Hand a network side to a baseline, by name, or back to the network
+  /// with `None`. The side's slots stay, so the batch keeps its shape; their
+  /// choices are ignored while a baseline plays. Kept across resets.
+  ///
+  /// # Panics
+  /// Panics if the baseline is not one the commander module knows.
+  pub fn stand_in(&mut self, side: usize, baseline: Option<String>) {
+    let commander = match (&self.sides[side].control, &baseline) {
+      (Control::Baseline(name), None) => {
+        Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}")))
+      }
+      (_, Some(name)) => Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}"))),
+      (Control::Agent, None) => None,
+    };
+    self.sides[side].commander = commander;
+    self.stand_ins[side] = baseline;
+  }
+
+  /// The baseline standing in for each side, if any.
+  #[must_use]
+  pub fn stand_ins(&self) -> &[Option<String>; 2] {
+    &self.stand_ins
   }
 
   #[must_use]
@@ -303,6 +488,7 @@ impl Game {
         max_rounds: self.max_rounds,
         own_hull_share: shares[slot.side],
         enemy_hull_share: believed_hull(memory),
+        goal: self.sides[slot.side].goal,
       };
       slot.picture = encode_ship(&ctx, me, out, mask);
     }
@@ -334,7 +520,7 @@ impl Game {
               .map(|ship| (ship, choice, &slot.picture))
           })
           .collect();
-        side_intents(&own)
+        side_intents(&own, view)
       };
       let ours = &view.own;
       orders.extend(
@@ -388,26 +574,40 @@ impl Game {
 
     let end = self.end();
     if let Some(end) = end {
-      let shares = self.hull_shares();
-      let terminal = match end {
-        End::Destroyed { side } => {
-          let mut terminal = [DESTROYED; 2];
-          terminal[side] = -DESTROYED;
-          terminal
-        }
-        End::Fled { side } => {
-          let mut terminal = [FLED; 2];
-          terminal[side] = -FLED;
-          terminal
-        }
-        // Hull share taken less hull share lost, onto ±DRAW_SCALE.
-        End::Draw => [0, 1].map(|side| DRAW_SCALE * ((1.0 - shares[1 - side]) - (1.0 - shares[side]))),
-      };
-      for (reward, terminal) in rewards.iter_mut().zip(terminal) {
-        *reward += terminal;
+      for (side, reward) in rewards.iter_mut().enumerate() {
+        let ending = match end {
+          End::Destroyed { side: loser } if loser == side => Ending::WeDestroyed,
+          End::Destroyed { .. } => Ending::EnemyDestroyed,
+          End::Fled { side: runner } if runner == side => Ending::WeFled,
+          End::Fled { .. } => Ending::EnemyFled,
+          End::Draw => Ending::Draw,
+        };
+        *reward += terminal(self.sides[side].goal, ending, &self.tally(side));
       }
     }
     Step { rewards, end }
+  }
+
+  /// What a side has done so far, for its goal's score.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  #[must_use]
+  pub fn tally(&self, side: usize) -> Tally {
+    let enemy = &self.sides[1 - side];
+    let ours = &self.sides[side];
+    let jumped = ours.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count();
+    let holding = ours
+      .ships
+      .iter()
+      .filter_map(|ship| self.world.ships.get(ship))
+      .any(|ship| (ship.read().unwrap().get_position() - ours.start).magnitude() <= HOLD_RADIUS);
+    Tally {
+      dealt: 1.0 - enemy.hull_last as f32 / enemy.hull_at_start.max(1) as f32,
+      jumped: jumped as f32 / ours.ships.len().max(1) as f32,
+      holding,
+      kept: ours.hull_last as f32 / ours.hull_at_start.max(1) as f32,
+    }
   }
 
   /// Whether the game is over, and how.
@@ -427,41 +627,10 @@ impl Game {
       });
     }
 
-    // Who is out past Distant and running. The range opens for both sides
-    // alike, so who is running is judged by each ship's own burn and motion,
-    // in the scenario's frame. She runs when she is moving away from her
-    // nearest enemy and not burning back toward her: a fighter that
-    // overshoots and brakes to come round is still in the fight, and a ship
-    // that burns clear and then coasts away has still run. A chaser falling
-    // behind is heading in, so she has not fled; two sides flying apart have
-    // both run, and that is a draw.
-    for side in 0..2 {
-      let mut out = true;
-      let mut engaged = false;
-      for ship in &in_play[side] {
-        let (here, velocity, burn) = {
-          let ship = self.world.ships[ship].read().unwrap();
-          (ship.get_position(), ship.get_velocity(), ship.plan.0 .0)
-        };
-        let nearest = in_play[1 - side]
-          .iter()
-          .map(|enemy| self.world.ships[enemy].read().unwrap().get_position() - here)
-          .min_by(|a, b| a.magnitude().total_cmp(&b.magnitude()));
-        let Some(towards) = nearest else { continue };
-        engaged |= towards.magnitude() <= FLEE_DISTANCE;
-        out &= towards.magnitude() > FLEE_DISTANCE && velocity.dot(towards) < 0.0 && burn.dot(towards) <= 0.0;
-      }
-      let side = &mut self.sides[side];
-      side.engaged |= engaged;
-      side.opening = if out && side.engaged { side.opening + 1 } else { 0 };
-    }
-    let can_fight = [0, 1].map(|side| {
-      in_play[side]
-        .iter()
-        .any(|ship| !self.world.ships[ship].read().unwrap().weapons().is_empty())
-    });
-    let fled = [0, 1].map(|side| self.sides[side].opening >= FLEE_ROUNDS && can_fight[1 - side]);
-    match fled {
+    // Who has run, by the rule the harness ends games by.
+    let fled = self.retreats.update(&self.world, &self.rosters);
+    let ran = [0, 1].map(|side| fled.contains(&self.sides[side].name));
+    match ran {
       [true, true] => return Some(End::Draw),
       [true, false] => return Some(End::Fled { side: 0 }),
       [false, true] => return Some(End::Fled { side: 1 }),
@@ -486,7 +655,7 @@ impl Game {
 
 /// Update a side's memory from its view: contacts as they are now; ships no
 /// longer on the plot at all are gone, so their hull is none.
-fn remember(memory: &mut Memory, view: &Observation, round: u32) {
+pub fn remember(memory: &mut Memory, view: &Observation, round: u32) {
   for contact in view.enemies() {
     memory.insert(
       contact.name.clone(),
@@ -510,7 +679,8 @@ fn remember(memory: &mut Memory, view: &Observation, round: u32) {
 
 /// The enemy's hull left as a side believes it: over the enemies it has
 /// ever held, their last-seen hull against their design. All of it if none.
-fn believed_hull(memory: &Memory) -> f32 {
+#[must_use]
+pub fn believed_hull(memory: &Memory) -> f32 {
   let (left, whole) = memory.values().fold((0.0, 0.0), |(left, whole), seen| {
     let design = seen.design_hull as f32;
     (left + seen.hull_share * design, whole + design)

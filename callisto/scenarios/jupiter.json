@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fire over Jupiter",
     "owner": "dcsturman@gmail.com",
-    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 300,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escort Ailreaui and her six light fighters. Can the Imperials defeat them?"
+    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 100,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escort Ailreaui and her six light fighters. Can the Imperials defeat them?"
   },
   "planets": [
     {
@@ -53,31 +53,34 @@
   "ships": [
     {
       "name": "INS Unicorn",
-      "position": [1.52e8, 0, 3.91e8],
+      "position": [5.0615e7, 0, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Gazelle",
       "team": "Blue",
+      "goal": "destroy",
       "orders": "Seek out and destroy the Aslan raiders.",
       "crew": {"pilot": 3, "sensors": [2], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 2, 1], "leadership": 2}
     },
     {
       "name": "INS Righteous",
-      "position": [1.53e8, 0, 3.91e8],
+      "position": [5.1615e7, 0, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Gazelle",
       "team": "Blue",
+      "goal": "destroy",
       "orders": "Seek out and destroy the Aslan raiders.",
       "crew": {"pilot": 2, "sensors": [2], "engineers": [{"jump": 1, "power": 2, "maneuver": 2, "mechanic": 2}], "gunnery": [3, 2, 1, 2], "leadership": 2}
     },
     {
       "name": "INS Stag",
-      "position": [1.52e8, 1e6, 3.91e8],
+      "position": [5.0615e7, 1e6, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Gazelle",
       "team": "Blue",
+      "goal": "destroy",
       "orders": "Seek out and destroy the Aslan raiders.",
       "crew": {"pilot": 2, "sensors": [1], "engineers": [{"jump": 2, "power": 2, "maneuver": 3, "mechanic": 2}], "gunnery": [2, 3, 2, 2], "leadership": 1}
     },
@@ -88,6 +91,7 @@
       "plan": [[[0, 0, 0], 50000]],
       "design": "Ekawsiykua Escort",
       "team": "Red",
+      "goal": "hold",
       "orders": "Defend your position.",
       "crew": {"pilot": 2, "sensors": [2, 1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 3, 2, 2, 2, 1, 2], "leadership": 3}
     },
@@ -98,6 +102,7 @@
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",
       "team": "Red",
+      "goal": "hold",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -108,6 +113,7 @@
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",
       "team": "Red",
+      "goal": "hold",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -118,6 +124,7 @@
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",
       "team": "Red",
+      "goal": "hold",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -128,6 +135,7 @@
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",
       "team": "Red",
+      "goal": "hold",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -138,6 +146,7 @@
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",
       "team": "Red",
+      "goal": "hold",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     },
@@ -148,6 +157,7 @@
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",
       "team": "Red",
+      "goal": "hold",
       "orders": "Defend your position.",
       "crew": {"pilot": 4, "gunnery": [2]}
     }

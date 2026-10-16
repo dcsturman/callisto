@@ -4,18 +4,21 @@
 //! in the [`Picture`] the ship's observation was encoded with, so slot 3 is
 //! whichever enemy was fourth nearest when she looked.
 //!
-//! Only the choices that decide a fight are the network's. The rest stay on
-//! the rules every baseline uses: engineers repair in [`REPAIR_PRIORITY`],
-//! point defence is left to the tactics layer, the captain and the computer
-//! are not used.
+//! The network's choices are the decisions; how each is carried out, when
+//! it takes more than one step, is [`crate::orders`]: a withdrawal by jump,
+//! the captain's boosts from a ranking, the computer's loadout, the sensor
+//! operators' verbs. Engineers repair in [`REPAIR_PRIORITY`] when nothing
+//! else needs them; point defence is left to the tactics layer.
 
 use std::collections::{BTreeMap, HashMap};
 
-use ai_ships::commander::REPAIR_PRIORITY;
 use ai_ships::decision::{straggler_margin, STRAGGLER_STEP};
+use ai_ships::observation::Observation;
 use callisto::entity::Entity;
 use callisto::ship::{Range, Ship};
 use callisto::tactics::{Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
+
+use crate::orders;
 use cgmath::InnerSpace;
 
 use crate::encode::{posture_of, Picture, ENEMIES, FRIENDS};
@@ -60,10 +63,20 @@ pub enum Head {
   Posture,
   Dodge,
   Assist,
+  Jump,
+  /// The first sensor operator's verb; her target is the lock head's.
+  Sensor1,
+  /// The second sensor operator's verb and target, if there is one.
+  Sensor2,
+  Target2,
+  /// The captain's ranking of guns, defence and detection.
+  Captain,
+  /// Fight or link.
+  Computer,
 }
 
 impl Head {
-  pub const ALL: [Head; 9] = [
+  pub const ALL: [Head; 15] = [
     Head::Verb,
     Head::HelmTarget,
     Head::Band,
@@ -73,6 +86,12 @@ impl Head {
     Head::Posture,
     Head::Dodge,
     Head::Assist,
+    Head::Jump,
+    Head::Sensor1,
+    Head::Sensor2,
+    Head::Target2,
+    Head::Captain,
+    Head::Computer,
   ];
 
   /// How many choices the head has.
@@ -83,10 +102,12 @@ impl Head {
       Head::HelmTarget => ENEMIES,
       Head::Band => HELM_BANDS.len(),
       Head::Guide => FRIENDS,
-      Head::Fire | Head::Lock => ENEMIES + 1,
+      Head::Fire | Head::Lock | Head::Target2 => ENEMIES + 1,
       Head::Posture => POSTURES.len(),
       Head::Dodge => DODGES,
-      Head::Assist => 2,
+      Head::Assist | Head::Jump | Head::Computer => 2,
+      Head::Sensor1 | Head::Sensor2 => orders::SENSOR_ORDERS.len(),
+      Head::Captain => orders::RANKINGS.len(),
     }
   }
 
@@ -106,7 +127,7 @@ impl Head {
 /// The number of heads.
 pub const HEADS: usize = Head::ALL.len();
 /// One ship's mask: every head's choices, end to end.
-pub const MASK_LEN: usize = Head::Assist.offset() + Head::Assist.size();
+pub const MASK_LEN: usize = Head::Computer.offset() + Head::Computer.size();
 /// Each head's size, for the Python side's action space.
 pub const HEAD_SIZES: [usize; HEADS] = {
   let mut sizes = [0; HEADS];
@@ -157,14 +178,40 @@ fn helm_of(choice: &Choice, picture: &Picture) -> (Helm, Option<String>) {
 
 /// A ship's orders from her choice, the helm aside: fire, lock, posture,
 /// dodge, assist, and the standing repair order.
-fn intent_of(choice: &Choice, picture: &Picture, helm: Helm) -> Intent {
+fn intent_of(choice: &Choice, picture: &Picture, helm: Helm, ship: &Ship, view: &Observation) -> Intent {
   let fire = pick_or_none(&picture.enemies, choice[Head::Fire as usize]);
-  let lock = pick_or_none(&picture.enemies, choice[Head::Lock as usize]);
   let index = |head: Head| usize::try_from(choice[head as usize]).unwrap_or(0).min(head.size() - 1);
+  let leaving = index(Head::Jump) == 1 && orders::can_withdraw(ship);
+  let evade = u8::try_from(index(Head::Dodge)).ok();
+
+  // One verb per sensor operator: the first's target is the lock head's,
+  // the second's its own.
+  let operators = ship.get_crew().sensor_operators();
+  let sensors: Vec<SensorVerb> = [
+    (Head::Sensor1, pick_or_none(&picture.enemies, choice[Head::Lock as usize])),
+    (Head::Sensor2, pick_or_none(&picture.enemies, choice[Head::Target2 as usize])),
+  ]
+  .into_iter()
+  .take(operators)
+  .filter_map(|(head, target)| orders::sensor_verb(orders::SENSOR_ORDERS[index(head)], target))
+  .collect();
+
+  let computer = if index(Head::Computer) == 1 {
+    orders::Computer::Link
+  } else {
+    orders::Computer::Fight
+  };
+  let (helm, engineering) = if leaving {
+    let withdrawal = orders::withdraw(ship, view);
+    (withdrawal.helm.unwrap_or(helm), withdrawal.engineering)
+  } else {
+    (helm, orders::restore(ship))
+  };
+  let ranking = orders::RANKINGS[index(Head::Captain)];
   Intent {
     posture: Some(POSTURES[index(Head::Posture)]),
     helm,
-    evade: u8::try_from(index(Head::Dodge)).ok(),
+    evade,
     assist_gunners: Some(index(Head::Assist) == 1),
     fire: fire
       .map(|target| Engage {
@@ -173,15 +220,10 @@ fn intent_of(choice: &Choice, picture: &Picture, helm: Helm) -> Intent {
       })
       .into_iter()
       .collect(),
-    sensors: lock
-      .map(|target| SensorVerb::Lock {
-        target: target.to_string(),
-      })
-      .into_iter()
-      .collect(),
-    engineering: vec![EngineerVerb::Repair {
-      priority: REPAIR_PRIORITY.to_vec(),
-    }],
+    sensors,
+    engineering,
+    software: orders::software_orders(ship, computer, leaving),
+    boosts: orders::captain_boosts(ship, view, ranking, evade.is_some_and(|g| g > 0)),
     ..Intent::default()
   }
 }
@@ -208,7 +250,7 @@ fn root_of<'a>(ship: &'a str, guides: &'a HashMap<String, String>) -> Option<&'a
 /// member's thrust, eased off while anyone is out of station, exactly as a
 /// model commander's squadrons fly. Follows that go round in a loop hold.
 #[must_use]
-pub fn side_intents(own: &[(&Ship, &Choice, &Picture)]) -> Vec<(String, Intent)> {
+pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> Vec<(String, Intent)> {
   let mut helms: BTreeMap<String, Helm> = BTreeMap::new();
   let mut guides: HashMap<String, String> = HashMap::new();
   for (ship, choice, picture) in own {
@@ -278,7 +320,7 @@ pub fn side_intents(own: &[(&Ship, &Choice, &Picture)]) -> Vec<(String, Intent)>
           .remove(name)
           .unwrap_or_else(|| helms.get(name).cloned().unwrap_or_default())
       };
-      let mut intent = intent_of(choice, picture, helm);
+      let mut intent = intent_of(choice, picture, helm, ship, view);
       intent.max_thrust = caps.get(name).copied();
       (name.to_string(), intent)
     })
@@ -339,5 +381,6 @@ pub fn choice_of(intent: &Intent, ship: &Ship, picture: &Picture) -> Choice {
   choice[Head::Posture as usize] = i64::try_from(posture).unwrap_or(0);
   choice[Head::Dodge as usize] = i64::from(intent.evade.unwrap_or_else(|| ship.get_dodge_thrust())).min(2);
   choice[Head::Assist as usize] = i64::from(intent.assist_gunners.unwrap_or_else(|| ship.get_assist_gunners()));
+  choice[Head::Jump as usize] = i64::from(intent.engineering.iter().any(|verb| matches!(verb, EngineerVerb::Jump)));
   choice
 }

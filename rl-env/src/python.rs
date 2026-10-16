@@ -38,6 +38,18 @@ fn finished_dict<'py>(py: Python<'py>, finished: &Finished) -> PyResult<Bound<'p
   dict.set_item("loser", loser)?;
   dict.set_item("sides", finished.sides.to_vec())?;
   dict.set_item("agent", finished.agent.to_vec())?;
+  dict.set_item("stand_ins", finished.stand_ins.to_vec())?;
+  let goals: Vec<String> = finished
+    .goals
+    .iter()
+    .map(|goal| {
+      serde_json::to_value(goal)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+    })
+    .collect();
+  dict.set_item("goals", goals)?;
   dict.set_item("returns", finished.returns.to_vec())?;
   dict.set_item("hull_shares", finished.hull_shares.to_vec())?;
   Ok(dict)
@@ -46,10 +58,11 @@ fn finished_dict<'py>(py: Python<'py>, finished: &Finished) -> PyResult<Bound<'p
 #[pymethods]
 impl Engine {
   #[new]
-  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10))]
+  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10, random_goals = 0.0))]
+  #[allow(clippy::too_many_arguments)]
   fn new(
     scenarios: Vec<String>, designs: String, games: usize, max_rounds: u32, opponent: Option<String>, seed: u64,
-    threads: usize,
+    threads: usize, random_goals: f32,
   ) -> PyResult<Self> {
     let config = Config {
       scenarios,
@@ -59,6 +72,7 @@ impl Engine {
       opponent,
       seed,
       threads,
+      random_goals,
     };
     Batch::new(&config).map(|batch| Engine { batch }).map_err(PyValueError::new_err)
   }
@@ -72,6 +86,13 @@ impl Engine {
   #[getter]
   fn num_games(&self) -> usize {
     self.batch.games()
+  }
+
+  /// Hand one side of one game to a baseline (`close`, `hold`, `idle`,
+  /// `random`), or back to the network with `None`. Kept across resets.
+  #[pyo3(signature = (game, side, baseline = None))]
+  fn stand_in(&mut self, game: usize, side: usize, baseline: Option<&str>) -> PyResult<()> {
+    self.batch.stand_in(game, side, baseline).map_err(PyValueError::new_err)
   }
 
   /// For each slot: its game, its side (0 or 1) and its ship.

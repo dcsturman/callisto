@@ -17,7 +17,7 @@ that train on it. The why and the roadmap are in `docs/rl_plan.md`.
 ```
 cd rl-env
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python maturin numpy gymnasium torch stable-baselines3 sb3-contrib tensorboard pytest
+uv pip install --python .venv/bin/python maturin numpy gymnasium torch stable-baselines3 sb3-contrib tensorboard tqdm rich pytest
 ```
 
 ## Build the module
@@ -45,6 +45,10 @@ cargo test --release                          # Rust: random play is legal; clos
 cargo run --release --example trace -- ../callisto/scenarios/Thebus.json 3   # one random game, round by round
 ```
 
-`--threads` (default 10) is every core training uses, engine and PyTorch
+Training stops after `--steps` ship decisions, about 2,000 a second on this
+Mac, so 2,000,000 is a quarter of an hour; a progress bar shows how far it
+has got. To follow a run on Weights & Biases as well as TensorBoard, log in once with
+`.venv/bin/wandb login` and add `--wandb`; runs go to the `callisto-rl`
+project (`--wandb-project` to change it). `--threads` (default 10) is every core training uses, engine and PyTorch
 together, so the machine stays usable. Logs go to `runs/`, checkpoints to
 `checkpoints/`; both are ignored by git.

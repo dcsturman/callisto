@@ -7,6 +7,17 @@ one policy. See ``docs/rl_plan.md``.
 """
 
 from ._engine import HEAD_SIZES, MASK_LEN, OBS_LEN, Engine
+from .selfplay import Mix, Opponent, SelfPlayVecEnv
 from .vec_env import ShipVecEnv, default_pool
 
-__all__ = ["Engine", "ShipVecEnv", "default_pool", "HEAD_SIZES", "MASK_LEN", "OBS_LEN"]
+__all__ = [
+    "Engine",
+    "Mix",
+    "Opponent",
+    "SelfPlayVecEnv",
+    "ShipVecEnv",
+    "default_pool",
+    "HEAD_SIZES",
+    "MASK_LEN",
+    "OBS_LEN",
+]

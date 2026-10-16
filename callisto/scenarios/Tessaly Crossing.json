@@ -47,6 +47,7 @@
       ],
       "design": "Gazelle",
       "team": "Red",
+      "goal": "destroy",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -88,6 +89,7 @@
       ],
       "design": "Fleet Picket - Watchdog",
       "team": "Red",
+      "goal": "destroy",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -130,6 +132,7 @@
       ],
       "design": "Patrol Corvette - Type T",
       "team": "Red",
+      "goal": "destroy",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -171,6 +174,7 @@
       ],
       "design": "Gazelle",
       "team": "Red",
+      "goal": "destroy",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -212,6 +216,7 @@
       ],
       "design": "Gunship - Fiery",
       "team": "Blue",
+      "goal": "raid",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -253,6 +258,7 @@
       ],
       "design": "Gazelle",
       "team": "Blue",
+      "goal": "raid",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -294,6 +300,7 @@
       ],
       "design": "Fleet Picket - Watchdog",
       "team": "Blue",
+      "goal": "raid",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -336,6 +343,7 @@
       ],
       "design": "Fleet Picket - Watchdog",
       "team": "Blue",
+      "goal": "raid",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,

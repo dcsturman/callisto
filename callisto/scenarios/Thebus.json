@@ -64,6 +64,7 @@
       ],
       "design": "Yacht - Type Y",
       "team": "Blue",
+      "goal": "destroy",
       "weapons": [
         {
           "kind": "Pulse",
@@ -132,6 +133,7 @@
         }
       ],
       "team": "Blue",
+      "goal": "destroy",
       "active_sensors": false,
       "crew": {
         "pilot": 2,
@@ -189,6 +191,7 @@
         }
       ],
       "team": "Blue",
+      "goal": "destroy",
       "active_sensors": false,
       "crew": {
         "pilot": 2,
@@ -253,6 +256,7 @@
         }
       ],
       "team": "Blue",
+      "goal": "destroy",
       "active_sensors": false,
       "crew": {
         "pilot": 1,
@@ -296,6 +300,7 @@
       ],
       "design": "HMS Executor",
       "team": "Red",
+      "goal": "destroy",
       "contacts": [
         "Lyonesse II"
       ],

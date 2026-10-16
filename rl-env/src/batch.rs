@@ -30,6 +30,9 @@ pub struct Config {
   pub seed: u64,
   /// Threads to step games on. Leave the machine some.
   pub threads: usize,
+  /// The share of games where each side's goal is drawn at random rather
+  /// than taken from the scenario.
+  pub random_goals: f32,
 }
 
 /// A game that finished this step.
@@ -43,6 +46,10 @@ pub struct Finished {
   /// The side names, in order, and which of them the network played.
   pub sides: [String; 2],
   pub agent: [bool; 2],
+  /// The baseline that played each side, if one did.
+  pub stand_ins: [Option<String>; 2],
+  /// Each side's goal.
+  pub goals: [callisto::ship::Goal; 2],
   /// The whole game's reward for each side.
   pub returns: [f32; 2],
   pub hull_shares: [f32; 2],
@@ -118,7 +125,8 @@ impl Batch {
           }
         };
         Running {
-          game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds),
+          game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds)
+            .with_random_goals(config.random_goals),
           returns: [0.0; 2],
         }
       })
@@ -171,6 +179,22 @@ impl Batch {
           .map(move |slot| (index, slot.side, slot.ship.clone()))
       })
       .collect()
+  }
+
+  /// Hand one side of one game to a baseline, or back to the network.
+  ///
+  /// # Errors
+  /// Returns an error if there is no such game or side, or no such baseline.
+  pub fn stand_in(&mut self, game: usize, side: usize, baseline: Option<&str>) -> Result<(), String> {
+    if let Some(name) = baseline {
+      ai_ships::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
+    }
+    let running = self.games.get_mut(game).ok_or_else(|| format!("no game {game}"))?;
+    if side > 1 {
+      return Err(format!("no side {side}"));
+    }
+    running.game.stand_in(side, baseline.map(str::to_string));
+    Ok(())
   }
 
   /// Every slot's observation and mask, as the games stand.
@@ -254,7 +278,10 @@ impl Batch {
               rounds: game.rounds,
               end,
               sides: [game.side_name(0).to_string(), game.side_name(1).to_string()],
-              agent: [0, 1].map(|side| game.slots().iter().any(|slot| slot.side == side)),
+              agent: [0, 1]
+                .map(|side| game.stand_ins()[side].is_none() && game.slots().iter().any(|slot| slot.side == side)),
+              stand_ins: game.stand_ins().clone(),
+              goals: game.goals(),
               returns: running.returns,
               hull_shares: game.hull_shares(),
             };

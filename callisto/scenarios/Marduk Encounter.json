@@ -73,7 +73,8 @@
         0,
         0
       ],
-      "team": "Red"
+      "team": "Red",
+      "goal": "destroy"
     },
     {
       "name": "HMS Executor",
@@ -128,7 +129,8 @@
         0,
         0
       ],
-      "team": "Blue"
+      "team": "Blue",
+      "goal": "destroy"
     },
     {
       "name": "Thrasher",
@@ -198,7 +200,8 @@
         0,
         0
       ],
-      "team": "Red"
+      "team": "Red",
+      "goal": "destroy"
     },
     {
       "name": "Dragon",
@@ -257,7 +260,8 @@
         0,
         0
       ],
-      "team": "Red"
+      "team": "Red",
+      "goal": "destroy"
     }
   ],
   "planets": [
