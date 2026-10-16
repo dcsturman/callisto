@@ -11,7 +11,7 @@ use std::sync::Arc;
 use ai_ships::commander::Commander;
 use ai_ships::observation::Observation;
 use async_trait::async_trait;
-use callisto::tactics::{Helm, Intent};
+use callisto::tactics::{EngineerVerb, Helm, Intent, SensorVerb};
 use rand::SeedableRng;
 
 use crate::action::{side_intents, Choice, MASK_LEN};
@@ -69,7 +69,28 @@ fn rationale(intent: &Intent) -> String {
     .evade
     .filter(|g| *g > 0)
     .map_or_else(String::new, |g| format!(", {g} G kept to dodge"));
-  format!("{}{fire}{dodge}.", capitalise(&helm))
+  let jamming: String = intent
+    .sensors
+    .iter()
+    .filter_map(|verb| match verb {
+      SensorVerb::JamComms { target } => Some(format!(", jamming {target}'s comms")),
+      SensorVerb::JamMissiles => Some(", jamming missiles".to_string()),
+      _ => None,
+    })
+    .collect();
+  let withdrawing = intent
+    .engineering
+    .iter()
+    .any(|verb| matches!(verb, EngineerVerb::Jump | EngineerVerb::Power { online: false, .. }))
+    || intent
+      .software
+      .iter()
+      .any(|order| order.running && order.program == callisto::software::SoftwareKind::JumpControl);
+  let lead = if withdrawing { "Withdrawing to jump: " } else { "" };
+  format!(
+    "{lead}{}{fire}{dodge}{jamming}.",
+    if withdrawing { helm } else { capitalise(&helm) }
+  )
 }
 
 fn capitalise(text: &str) -> String {
@@ -113,7 +134,7 @@ impl Commander for Net {
       .zip(&decided)
       .map(|(ship, (choice, picture))| (ship, choice, picture))
       .collect();
-    side_intents(&own)
+    side_intents(&own, view)
       .into_iter()
       .map(|(ship, mut intent)| {
         intent.rationale = rationale(&intent);

@@ -1980,20 +1980,6 @@ impl Ship {
     self.can_jump = true;
   }
 
-  /// Everything a jump needs this round but Jump Control, which is started
-  /// at no cost: clear of gravity wells, astrogation and the computer
-  /// working, the drive powered, fuel for at least a jump-1, and an engineer
-  /// to make the check.
-  #[must_use]
-  pub fn jump_possible(&self) -> bool {
-    self.can_jump
-      && self.station_working(BridgeStation::Astrogation)
-      && self.station_working(BridgeStation::Computer)
-      && self.jump_powered()
-      && self.jump_range_available() > 0
-      && !self.get_crew().engineers().is_empty()
-  }
-
   /// Clear of gravity wells, with astrogation and the computer to plot it.
   #[must_use]
   pub fn can_jump(&self) -> bool {

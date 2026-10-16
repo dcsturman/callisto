@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use ai_ships::commander::{Close, Commander};
 use callisto::entity::Entity;
-use callisto_rl::action::{choice_of, Choice, Head, HEADS, MASK_LEN};
+use callisto::tactics::Posture;
+use callisto_rl::action::{choice_of, side_intents, Choice, Head, HEADS, MASK_LEN};
 use callisto_rl::batch::{Batch, Config, Outputs};
 use callisto_rl::encode::OBS_LEN;
-use callisto_rl::game::{Control, Game, Scenario, Step};
+use callisto_rl::game::{Control, Game, Scenario};
 use rand::{Rng, SeedableRng};
 
 const DESIGNS: &str = "../callisto/ship_templates";
@@ -91,53 +92,77 @@ fn load(path: &str) -> Arc<Scenario> {
   })
 }
 
-/// Play a game with `close` on the first side, given either through the
-/// action space or straight, against `close` on the second.
-fn play_close(scenario: &Arc<Scenario>, seed: u64, through_choices: bool) -> Vec<Step> {
+/// Every round of a game of `close` against `close`, `close`'s orders for the
+/// first side put through the action heads and back must keep its decisions:
+/// helm, fire, lock, posture, dodge and assist. The heads add what `close`
+/// never orders (the captain's boosts, every engineer repairing), so whole
+/// games are no longer identical; the decisions must be.
+fn close_survives_the_heads(scenario: &Arc<Scenario>, seed: u64) -> usize {
   let controls = [Control::Agent, Control::Baseline("close".to_string())];
   let mut game = Game::new(Arc::clone(scenario), &controls, seed, 40);
   let mut close = Close;
-  let mut steps = Vec::new();
+  let mut checked = 0;
   loop {
     let slots = game.slots().len();
     let mut obs = vec![0.0; slots * OBS_LEN];
     let mut masks = vec![false; slots * MASK_LEN];
     game.observe_into(&mut obs, &mut masks);
-    let intents = futures::executor::block_on(close.decide(game.view(0)));
-    let step = if through_choices {
-      let choices: Vec<Choice> = game
-        .slots()
-        .iter()
-        .map(|slot| {
-          let ship = game.view(0).own.iter().find(|ship| ship.get_name() == slot.ship);
-          let intent = intents.iter().find(|(name, _)| *name == slot.ship);
-          match (ship, intent) {
-            (Some(ship), Some((_, intent))) => choice_of(intent, ship, slot.picture()),
-            _ => [0; HEADS],
-          }
-        })
-        .collect();
-      game.step(&choices)
-    } else {
-      game.step_intents(&intents)
-    };
-    steps.push(step);
+    let view = game.view(0).clone();
+    let intents = futures::executor::block_on(close.decide(&view));
+    let decided: Vec<(&callisto::ship::Ship, Choice, callisto_rl::encode::Picture)> = game
+      .slots()
+      .iter()
+      .filter_map(|slot| {
+        let ship = view.own.iter().find(|ship| ship.get_name() == slot.ship)?;
+        let (_, intent) = intents.iter().find(|(name, _)| *name == slot.ship)?;
+        Some((ship, choice_of(intent, ship, slot.picture()), slot.picture().clone()))
+      })
+      .collect();
+    let own: Vec<_> = decided.iter().map(|(ship, choice, picture)| (*ship, choice, picture)).collect();
+    for (name, back) in side_intents(&own, &view) {
+      let (_, given) = intents.iter().find(|(ship, _)| *ship == name).unwrap();
+      let ship = view.own.iter().find(|ship| ship.get_name() == name).unwrap();
+      assert_eq!(back.helm, given.helm, "{name}: helm");
+      assert_eq!(back.fire, given.fire, "{name}: fire");
+      assert_eq!(back.sensors, given.sensors, "{name}: lock");
+      let posture_now = callisto_rl::encode::posture_of(ship);
+      let posture = given.posture.map_or(posture_now, |p| {
+        [Posture::Silent, Posture::Passive, Posture::Active]
+          .iter()
+          .position(|q| *q == p)
+          .unwrap()
+      });
+      assert_eq!(
+        back.posture,
+        Some([Posture::Silent, Posture::Passive, Posture::Active][posture]),
+        "{name}: posture"
+      );
+      assert_eq!(
+        back.evade,
+        Some(given.evade.unwrap_or_else(|| ship.get_dodge_thrust())),
+        "{name}: dodge"
+      );
+      assert_eq!(
+        back.assist_gunners,
+        Some(given.assist_gunners.unwrap_or_else(|| ship.get_assist_gunners())),
+        "{name}: assist"
+      );
+      checked += 1;
+    }
+    let step = game.step_intents(&intents);
     if step.end.is_some() {
-      return steps;
+      return checked;
     }
   }
 }
 
 #[test]
-fn close_plays_the_same_through_the_action_space() {
+fn close_keeps_its_decisions_through_the_heads() {
   for path in [POOL[0], POOL[2]] {
     let scenario = load(path);
     for seed in 1..=4 {
-      let straight = play_close(&scenario, seed, false);
-      let through = play_close(&scenario, seed, true);
-      assert_eq!(straight, through, "{path} seed {seed}");
-      let last = straight.last().unwrap();
-      println!("{path} seed {seed}: {} rounds, {:?}", straight.len(), last.end);
+      let checked = close_survives_the_heads(&scenario, seed);
+      assert!(checked > 0, "{path} seed {seed}: nothing checked");
     }
   }
 }

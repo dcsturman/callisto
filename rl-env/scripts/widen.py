@@ -20,21 +20,29 @@ from sb3_contrib import MaskablePPO
 
 from callisto_rl import HEAD_SIZES, OBS_LEN, ShipVecEnv, default_pool
 
-# Where this build added inputs: (position in the new observation, how many).
-# The goal flags sit after the 40 numbers the ship's own block had.
-NEW_INPUTS = [(40, 4)]
-# Heads added at the end of the action outputs: how many choices each.
-NEW_HEADS = [2]
-# The bias that starts a new head on its first choice.
-FIRST_CHOICE_BIAS = 8.0
+# Where each earlier layout's network is missing inputs, by its input count:
+# (position in this build's observation, how many). The goal flags came at
+# 40; the withdrawal, hand-off, captain and jamming inputs at 44.
+NEW_INPUTS = {1184: [(40, 13)], 1188: [(44, 9)]}
+# The heads each earlier layout lacks, appended after its own, by its output
+# count: (choices, the bias that starts it on its first choice). The bias is
+# strong for the jump (a withdrawal tried at random is costly) and mild for
+# the rest, so training still explores them.
+NEW_HEADS = {
+    98: [(2, 5.0), (3, 2.0), (3, 2.0), (21, 0.0), (6, 0.0), (2, 2.0)],
+    100: [(3, 2.0), (3, 2.0), (21, 0.0), (6, 0.0), (2, 2.0)],
+}
 
 
 def widen(old_path: str, new_path: str) -> None:
     old = MaskablePPO.load(old_path, device="cpu")
     old_obs = old.observation_space.shape[0]
-    added = sum(n for _, n in NEW_INPUTS)
-    if old_obs + added != OBS_LEN:
-        raise SystemExit(f"old network takes {old_obs} inputs; adding {added} gives {old_obs + added}, not {OBS_LEN}")
+    old_outputs = old.policy.action_net.out_features
+    if old_obs not in NEW_INPUTS or old_outputs not in NEW_HEADS:
+        raise SystemExit(f"no record of a layout with {old_obs} inputs and {old_outputs} outputs")
+    inputs, heads = NEW_INPUTS[old_obs], NEW_HEADS[old_outputs]
+    if old_obs + sum(n for _, n in inputs) != OBS_LEN or old_outputs + sum(n for n, _ in heads) != sum(HEAD_SIZES):
+        raise SystemExit("this build's layout does not match the records in widen.py")
     env = ShipVecEnv(default_pool(["Thebus.json"]), games=1, threads=1)
     new = MaskablePPO(
         "MlpPolicy",
@@ -52,9 +60,8 @@ def widen(old_path: str, new_path: str) -> None:
     old_state = old.policy.state_dict()
     new_state = new.policy.state_dict()
     kept = np.ones(OBS_LEN, dtype=bool)
-    for at, n in NEW_INPUTS:
+    for at, n in inputs:
         kept[at : at + n] = False
-    old_outputs = old.policy.action_net.out_features
     widened = {}
     for name, new_tensor in new_state.items():
         old_tensor = old_state[name]
@@ -73,8 +80,8 @@ def widen(old_path: str, new_path: str) -> None:
             tensor = torch.zeros_like(new_tensor)
             tensor[:old_outputs] = old_tensor
             at = old_outputs
-            for size in NEW_HEADS:
-                tensor[at] = FIRST_CHOICE_BIAS
+            for size, bias in heads:
+                tensor[at] = bias
                 at += size
             widened[name] = tensor
         else:

@@ -14,5 +14,6 @@ pub mod commander;
 pub mod encode;
 pub mod game;
 pub mod net;
+pub mod orders;
 #[cfg(feature = "python")]
 mod python;

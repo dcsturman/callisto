@@ -520,7 +520,7 @@ impl Game {
               .map(|ship| (ship, choice, &slot.picture))
           })
           .collect();
-        side_intents(&own)
+        side_intents(&own, view)
       };
       let ours = &view.own;
       orders.extend(
