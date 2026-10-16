@@ -19,7 +19,7 @@ use crate::action::{BoostTarget, ShipAction};
 use crate::combat::{
   attack_terms, find_range_band, point_defense_score, AttackSituation, HitMods, STANDARD_ROLL_THRESHOLD,
 };
-use crate::computer::plot_course;
+use crate::computer::{plot_course, PathMode};
 use crate::entity::{detection_terms, emissions_of, Entities, Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use crate::payloads::{
   CaptainActionMsg, RequestMsg, SetPilotActions, SetPlanMsg, SetShipEmissions, SetSoftwareRunning,
@@ -56,6 +56,17 @@ pub enum Helm {
   OpenRange { target: String },
   /// Go to a point and stop there. Metres, in the scenario's frame.
   Station { position: [f64; 3] },
+  /// Fly in a squadron behind its guide: keep station on her while she flies
+  /// `guide_helm`, held to `guide_cap` G. In station -- inside Short of her
+  /// and drifting less than that in a round -- a follower flies the guide's
+  /// own course, so the two stay together; out of it, she plots a rendezvous
+  /// back to the guide, knowing the guide's burn because the guide is a friend.
+  /// The guide flies `guide_helm` under her own order; this is for the rest.
+  Follow {
+    guide: String,
+    guide_helm: Box<Helm>,
+    guide_cap: Option<u8>,
+  },
 }
 
 /// Fire on a ship.
@@ -537,7 +548,26 @@ pub fn detection(observer: &Ship, target: &Ship) -> Vec<DetectionOdds> {
 }
 
 /// A plan that arrives at `distance` from a ship, matching her velocity.
+///
+/// Her burn is used if this ship has contact on her, as the pilot's console
+/// does: a blip's thrust is not known, so a course to one assumes she holds
+/// her velocity (FAQ, "a course can be plotted toward a ship with no
+/// contact").
 fn rendezvous(own: &Ship, target: &Ship, distance: f64, thrust: f64) -> FlightPlan {
+  let burn = own.detects(target).then_some(target.plan.0 .0);
+  rendezvous_with(own, target, distance, thrust, burn)
+}
+
+/// A rendezvous, given what is known of the target's burn.
+///
+/// The computer assumes a burn goes on for the whole course. Against a ship
+/// burning as hard as this one can, that leaves no rendezvous, and the
+/// computer falls back to a pursuit that never brakes: ships closing at
+/// hundreds of km/s and flashing through the fight. So if her burn gives only
+/// a pursuit, plot against her velocity instead -- a course that burns, turns
+/// and brakes, which every round's re-plot then corrects for her burn, as a
+/// navigator would.
+fn rendezvous_with(own: &Ship, target: &Ship, distance: f64, thrust: f64, burn: Option<Vec3>) -> FlightPlan {
   let start = own.get_position();
   let aim = target.get_position();
   let line = aim - start;
@@ -554,23 +584,22 @@ fn rendezvous(own: &Ship, target: &Ship, distance: f64, thrust: f64) -> FlightPl
   } else {
     aim
   };
-  // Against where she is and how she is moving, not how she is burning: the
-  // course is re-plotted every round, as a navigator would, so her burn is
-  // answered next round. Assuming she burns for the whole course turns a
-  // rendezvous a ship could fly into one it cannot, and the computer falls
-  // back to a pursuit that never brakes -- ships closing at hundreds of km/s
-  // and flashing through the fight. It is also the console's rule for a ship
-  // not in contact, whose burn nobody can see.
-  plot_course(
-    start,
-    own.get_velocity(),
-    thrust,
-    end,
-    target.get_velocity(),
-    Some(target.get_velocity()),
-    None,
-  )
-  .plan
+  let plot = |burn: Option<Vec3>| {
+    plot_course(
+      start,
+      own.get_velocity(),
+      thrust,
+      end,
+      target.get_velocity(),
+      Some(target.get_velocity()),
+      burn,
+    )
+  };
+  let course = plot(burn);
+  if burn.is_some() && course.mode != PathMode::Intercept {
+    return plot(None).plan;
+  }
+  course.plan
 }
 
 /// The acceleration a helm order may use, in m/s²: the drive's, or less if
@@ -660,7 +689,43 @@ fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<u8>) -> Resu
       let end = Vec3::new(position[0], position[1], position[2]);
       Some(plot_course(own.get_position(), own.get_velocity(), thrust, end, Vec3::zero(), None, None).plan)
     }
+    Helm::Follow {
+      guide,
+      guide_helm,
+      guide_cap,
+    } => Some(follow_plan(world, own, &ship(guide)?, guide_helm, *guide_cap, thrust)?),
   })
+}
+
+/// A follower's course: the guide's own, while in station; a rendezvous back
+/// to her otherwise.
+fn follow_plan(
+  world: &Entities, own: &Ship, guide: &Ship, guide_helm: &Helm, guide_cap: Option<u8>, thrust: f64,
+) -> Result<FlightPlan, String> {
+  if matches!(guide_helm, Helm::Follow { .. }) {
+    return Err(format!("{} cannot guide while following", guide.get_name()));
+  }
+  // The guide's course this round, worked out as her own order will be.
+  let course = helm_plan(world, guide, guide_helm, guide_cap)?.unwrap_or_else(|| guide.plan.clone());
+  let (_, short) = band_edges(Range::Short);
+  let apart = (own.get_position() - guide.get_position()).magnitude();
+  let drift = (own.get_velocity() - guide.get_velocity()).magnitude() * DELTA_TIME_F64;
+  if apart <= short && drift <= short {
+    // In station: fly her course, no harder than this ship can.
+    let scale = |accel: Vec3| {
+      let magnitude = accel.magnitude();
+      if magnitude > thrust && magnitude > 0.0 {
+        accel * (thrust / magnitude)
+      } else {
+        accel
+      }
+    };
+    let first = (scale(course.0 .0), course.0 .1);
+    let second = course.1.as_ref().map(|leg| (scale(leg.0), leg.1));
+    return Ok(FlightPlan::new(first.into(), second.map(Into::into)));
+  }
+  // Out of station: close on her, at half of Short, matching her velocity.
+  Ok(rendezvous_with(own, guide, short / 2.0, thrust, Some(course.0 .0)))
 }
 
 fn emissions(ship: &str, posture: Posture) -> RequestMsg {
@@ -1392,6 +1457,112 @@ mod tests {
     };
     let plan = plan_of(&orders(&world, "Hunter", &intent).unwrap());
     assert!(plan.1.is_some(), "a rendezvous has a braking leg: {plan:?}");
+  }
+
+  /// With contact, the course allows for her burn; without it, a blip's burn
+  /// is not known and the course assumes she holds her velocity.
+  #[tokio::test]
+  async fn only_a_contacts_burn_is_used() {
+    let world = two_ships(1_000_000.0 * KM).await;
+    {
+      let mut quarry = world.ships["Quarry"].write().unwrap();
+      let sideways = Vec3::new(0.0, G, 0.0);
+      quarry.plan = FlightPlan::new((sideways, DEFAULT_ACCEL_DURATION).into(), None);
+    }
+    let intent = Intent {
+      helm: Helm::Intercept {
+        target: "Quarry".to_string(),
+        band: Range::Medium,
+      },
+      ..Intent::default()
+    };
+    let in_contact = plan_of(&orders(&world, "Hunter", &intent).unwrap());
+    world.ships["Hunter"].write().unwrap().contacts.clear();
+    let blip = plan_of(&orders(&world, "Hunter", &intent).unwrap());
+    assert_ne!(in_contact, blip, "the contact's burn changes the course");
+  }
+
+  /// Two ships of a squadron side by side: the follower flies the guide's
+  /// course, so they stay together.
+  #[tokio::test]
+  async fn a_follower_in_station_flies_the_guides_course() {
+    let world = two_ships(1_000_000.0 * KM).await;
+    let design = get_ship_template("Buccaneer").unwrap();
+    let mut world = world;
+    world.add_ship(
+      "Wing".to_string(),
+      Vec3::new(0.0, 300.0 * KM, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let guide_helm = Helm::Intercept {
+      target: "Quarry".to_string(),
+      band: Range::Medium,
+    };
+    let guide = plan_of(
+      &orders(
+        &world,
+        "Hunter",
+        &Intent {
+          helm: guide_helm.clone(),
+          max_thrust: Some(1),
+          ..Intent::default()
+        },
+      )
+      .unwrap(),
+    );
+    let wing = plan_of(
+      &orders(
+        &world,
+        "Wing",
+        &Intent {
+          helm: Helm::Follow {
+            guide: "Hunter".to_string(),
+            guide_helm: Box::new(guide_helm),
+            guide_cap: Some(1),
+          },
+          ..Intent::default()
+        },
+      )
+      .unwrap(),
+    );
+    assert_eq!(wing, guide);
+  }
+
+  /// A follower far from her guide closes on the guide, not on the enemy.
+  #[tokio::test]
+  async fn a_follower_out_of_station_closes_on_her_guide() {
+    let mut world = two_ships(1_000_000.0 * KM).await;
+    let design = get_ship_template("Buccaneer").unwrap();
+    world.add_ship(
+      "Wing".to_string(),
+      Vec3::new(-200_000.0 * KM, 0.0, 0.0),
+      Vec3::zero(),
+      &design,
+      None,
+      None,
+    );
+    let wing = plan_of(
+      &orders(
+        &world,
+        "Wing",
+        &Intent {
+          helm: Helm::Follow {
+            guide: "Hunter".to_string(),
+            guide_helm: Box::new(Helm::Hold),
+            guide_cap: None,
+          },
+          ..Intent::default()
+        },
+      )
+      .unwrap(),
+    );
+    // The guide sits still at the origin; the wing burns toward her (+x)
+    // and brakes to stop beside her.
+    assert!(wing.0 .0.x > 0.0, "{wing:?}");
+    assert!(wing.1.as_ref().is_some_and(|leg| leg.0.x < 0.0), "{wing:?}");
   }
 
   #[tokio::test]
