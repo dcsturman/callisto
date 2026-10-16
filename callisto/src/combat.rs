@@ -2039,26 +2039,124 @@ pub fn interception_cost(kind: WeaponType) -> u32 {
 /// Total missiles this ship's gunners will remove this round.
 #[must_use]
 pub fn roll_point_defense_pool(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> u32 {
+  roll_point_defense_checks(point_defense_list, rng)
+    .iter()
+    .map(|check| check.removed)
+    .sum()
+}
+
+/// One gunner's point-defence check for the round: the mount, the 2D rolled,
+/// the bonus (turret, gunnery, leadership), and how many missiles it stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PointDefenseCheck {
+  pub weapon: usize,
+  pub roll: u8,
+  pub bonus: u16,
+  pub removed: u32,
+}
+
+impl PointDefenseCheck {
+  /// The check as a results line about `defender`, covering `ward` if it is
+  /// another ship's missiles it is shooting at; the arithmetic on the hover.
+  #[must_use]
+  pub fn message(&self, defender: &str, ward: Option<&str>) -> EffectMsg {
+    let mount = self.weapon;
+    let whose = if ward.is_some() { " covering %t" } else { "" };
+    let content = if self.removed > 0 {
+      format!(
+        "%s's mount #{mount} on point defence{whose} can stop {} missile{} this round.",
+        self.removed,
+        if self.removed == 1 { "" } else { "s" }
+      )
+    } else {
+      format!("%s's mount #{mount} on point defence{whose} misses: it stops nothing this round.")
+    };
+    let total = i32::from(self.roll) + i32::from(self.bonus);
+    let effect = total - STANDARD_ROLL_THRESHOLD;
+    let message = EffectMsg::outcome(defender, MessageCategory::Attack, content, self.removed > 0).rolled(format!(
+      "roll {} + turret, gunner and leadership {} = {total} vs {STANDARD_ROLL_THRESHOLD}, effect {effect:+}{}",
+      self.roll,
+      self.bonus,
+      if self.removed > 0 && effect == 0 {
+        " (a bare success stops one)"
+      } else {
+        ""
+      }
+    ));
+    match ward {
+      Some(ward) => message.at(ward),
+      None => message,
+    }
+  }
+}
+
+/// Roll each gunner's point-defence check: see [`roll_point_defense_pool`],
+/// which sums them. The dice are thrown in the same order, so the two give the
+/// same game.
+#[must_use]
+pub fn roll_point_defense_checks(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> Vec<PointDefenseCheck> {
   point_defense_list
     .iter()
     .map(|(weapon, bonus)| {
       let roll = roll_dice(2, rng);
       let effect = i32::from(roll) + i32::from(*bonus) - STANDARD_ROLL_THRESHOLD;
-      if effect >= 0 {
-        // A successful check always stops at least the missile it was made
-        // against, so a bare success is worth one.
-        #[allow(clippy::cast_sign_loss)]
-        let removed = effect.max(1) as u32;
-        debug!(
-          "(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
-        );
-        removed
-      } else {
-        debug!("(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: failed.");
-        0
+      // A successful check always stops at least the missile it was made
+      // against, so a bare success is worth one.
+      #[allow(clippy::cast_sign_loss)]
+      let removed = if effect >= 0 { effect.max(1) as u32 } else { 0 };
+      debug!(
+        "(Combat.roll_point_defense_checks) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
+      );
+      PointDefenseCheck {
+        weapon: *weapon,
+        roll,
+        bonus: *bonus,
+        removed,
       }
     })
-    .sum()
+    .collect()
+}
+
+#[cfg(test)]
+mod point_defense_message_tests {
+  use super::*;
+
+  #[test]
+  fn a_check_reports_its_roll() {
+    let check = PointDefenseCheck {
+      weapon: 2,
+      roll: 9,
+      bonus: 3,
+      removed: 4,
+    };
+    let line = check.message("INS Righteous", None);
+    assert_eq!(
+      line.rendered(),
+      "INS Righteous's mount #2 on point defence can stop 4 missiles this round."
+    );
+    let EffectMsg::Message { roll, .. } = &line else {
+      panic!("expected a message, got {line:?}");
+    };
+    assert_eq!(
+      roll.as_deref(),
+      Some("roll 9 + turret, gunner and leadership 3 = 12 vs 8, effect +4")
+    );
+  }
+
+  #[test]
+  fn a_miss_says_so_and_names_the_ship_covered() {
+    let check = PointDefenseCheck {
+      weapon: 0,
+      roll: 3,
+      bonus: 2,
+      removed: 0,
+    };
+    let line = check.message("INS Stag", Some("INS Righteous"));
+    assert_eq!(
+      line.rendered(),
+      "INS Stag's mount #0 on point defence covering INS Righteous misses: it stops nothing this round."
+    );
+  }
 }
 
 #[cfg(test)]

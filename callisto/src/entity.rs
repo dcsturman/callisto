@@ -17,7 +17,7 @@ use crate::action::{
 };
 use crate::combat::{
   apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
-  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, HitMods,
+  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, HitMods,
   STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
@@ -967,7 +967,9 @@ impl Entities {
       // (Core Rulebook p. 171), so roll the whole list now rather than one
       // weapon per incoming missile.  Nothing pairs a gunner with a particular
       // missile, so there is no reason to hold any of them back.
-      let pool = roll_point_defense_pool(&tallies, rng);
+      let checks = roll_point_defense_checks(&tallies, rng);
+      let pool: u32 = checks.iter().map(|check| check.removed).sum();
+      battery_effects.extend(checks.iter().map(|check| check.message(defender, None)));
       debug!("(Entities.fire_actions) {defender}'s gunners contribute {pool} point(s) of point defence this round.");
       ship.add_point_defense_pool(pool);
       ship.set_point_defense_list(tallies);
@@ -1019,7 +1021,9 @@ impl Entities {
         let covering = self.ships.get(defender).unwrap().read().unwrap();
         let tallies = build_point_defense_tallies(&covering, &ward_actions, boost_map, defender);
         drop(covering);
-        let pool = roll_point_defense_pool(&tallies, rng);
+        let checks = roll_point_defense_checks(&tallies, rng);
+        let pool: u32 = checks.iter().map(|check| check.removed).sum();
+        battery_effects.extend(checks.iter().map(|check| check.message(defender, Some(&ward))));
         if pool > 0 {
           ward_ship.write().unwrap().add_point_defense_pool(pool);
           battery_effects.push(EffectMsg::about(
