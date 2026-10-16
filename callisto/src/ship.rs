@@ -5055,8 +5055,11 @@ mod tests {
 
   /// A client reading the world sees each ship's criticals: they survive the
   /// trip to the wire and back.
-  #[test]
-  fn criticals_survive_a_round_trip() {
+  #[tokio::test]
+  async fn criticals_survive_a_round_trip() {
+    // Reading a ship back resolves its design, so the designs must be loaded:
+    // under nextest each test is a process of its own, and nothing else has.
+    config_test_ship_templates().await;
     let mut ship = Ship::default();
     ship.crit_level[ShipSystem::Maneuver as usize] = 2;
     ship.crit_level[ShipSystem::Weapon as usize] = 1;
