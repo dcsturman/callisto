@@ -32,7 +32,13 @@ def is_baseline(player: str) -> bool:
 
 
 def load_policy(path: str) -> Any:
-    policy = MaskablePPO.load(path, device="cpu").policy
+    """A checkpoint from either learner: Stable-Baselines3's .zip or a .pt."""
+    if path.endswith(".zip"):
+        policy = MaskablePPO.load(path, device="cpu").policy
+    else:
+        from .policy import Policy
+
+        policy = Policy.load(path)
     policy.set_training_mode(False)
     return policy
 

@@ -265,8 +265,9 @@ pub struct Game {
   /// Who has run, as the harness judges it.
   retreats: Retreats,
   rosters: BTreeMap<String, Vec<String>>,
-  /// The share of games where each side's goal is drawn at random.
-  random_goals: f32,
+  /// The shares of games where every side destroys (holders aside), and
+  /// where goals are drawn at random; see [`Game::with_goals`].
+  goal_mix: (f32, f32),
 }
 
 fn player_for(scenario: &Scenario, seed: u64) -> PlayerManager {
@@ -349,34 +350,44 @@ impl Game {
       stand_ins: [None, None],
       retreats: Retreats::default(),
       rosters: scenario_rosters,
-      random_goals: 0.0,
+      goal_mix: (0.0, 0.0),
     }
   }
 
-  /// In this share of games, from now on, each side gets a goal drawn at
-  /// random instead of the scenario's, so the network learns what the goals
-  /// mean rather than which one each scenario has.
+  /// Draw each game's goals from now on: in a `destroy` share of games every
+  /// side's goal is Destroy, but for a side whose scenario has it hold, which
+  /// keeps Hold; in a `random` share each side gets a goal drawn at random;
+  /// otherwise the scenario's own. Destroy is what wins games outright, so
+  /// most games train it; the rest keep the network knowing what the other
+  /// goals mean.
   #[must_use]
-  pub fn with_random_goals(mut self, share: f32) -> Self {
-    self.random_goals = share;
+  pub fn with_goals(mut self, destroy: f32, random: f32) -> Self {
+    self.goal_mix = (destroy, random);
     self.draw_goals();
     self
   }
 
   fn draw_goals(&mut self) {
+    let (destroy, random) = self.goal_mix;
     let mut rng = rand::rngs::SmallRng::seed_from_u64(self.seed ^ 0x6F41_5EED);
-    if rng.gen::<f32>() >= self.random_goals {
-      return;
-    }
-    for side in &mut self.sides {
-      let ships: Vec<&Ship> = self
-        .views
-        .iter()
-        .flat_map(|view| view.own.iter())
-        .filter(|ship| side.ships.iter().any(|name| name == ship.get_name()))
-        .collect();
-      let open = goals_open_to(&ships);
-      side.goal = open[rng.gen_range(0..open.len())];
+    let roll = rng.gen::<f32>();
+    if roll < destroy {
+      for side in &mut self.sides {
+        if side.goal != Goal::Hold {
+          side.goal = Goal::Destroy;
+        }
+      }
+    } else if roll < destroy + random {
+      for side in &mut self.sides {
+        let ships: Vec<&Ship> = self
+          .views
+          .iter()
+          .flat_map(|view| view.own.iter())
+          .filter(|ship| side.ships.iter().any(|name| name == ship.get_name()))
+          .collect();
+        let open = goals_open_to(&ships);
+        side.goal = open[rng.gen_range(0..open.len())];
+      }
     }
   }
 
@@ -390,8 +401,8 @@ impl Game {
   pub fn reset(&mut self, seed: u64) {
     let controls = [self.sides[0].control.clone(), self.sides[1].control.clone()];
     let stand_ins = self.stand_ins.clone();
-    let random_goals = self.random_goals;
-    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds).with_random_goals(random_goals);
+    let (destroy, random) = self.goal_mix;
+    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds).with_goals(destroy, random);
     for (side, stand_in) in stand_ins.into_iter().enumerate() {
       self.stand_in(side, stand_in);
     }

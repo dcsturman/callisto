@@ -74,6 +74,7 @@ class SelfPlayVecEnv(VecEnv):
         max_snapshots: int = 20,
         choose: Callable[[int], Opponent] | None = None,
         random_goals: float = 0.0,
+        destroy_goals: float = 0.0,
     ):
         scenarios = list(scenarios or default_pool())
         self.engine = Engine(
@@ -85,6 +86,7 @@ class SelfPlayVecEnv(VecEnv):
             seed=seed,
             threads=threads,
             random_goals=random_goals,
+            destroy_goals=destroy_goals,
         )
         self.mix = mix or Mix()
         self.max_snapshots = max_snapshots

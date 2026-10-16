@@ -44,7 +44,8 @@ fn random_play_is_legal() {
     opponent: None,
     seed: 1,
     threads: 4,
-    random_goals: 0.5,
+    random_goals: 0.3,
+    destroy_goals: 0.4,
   };
   let mut batch = Batch::new(&config).expect("the pool loads");
   let slots = batch.slots();
