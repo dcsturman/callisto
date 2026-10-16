@@ -30,6 +30,21 @@ pub struct TeamDecision {
   pub plan: String,
   #[serde(default)]
   pub ships: Vec<ShipOrder>,
+  /// Ships flying together this round, each behind a guide.
+  #[serde(default)]
+  pub squadrons: Vec<SquadronOrder>,
+}
+
+/// A squadron for the round: ships that fly together behind a guide. The
+/// guide flies the squadron's helm order, held a G below its slowest ship so
+/// the rest can keep up; the others keep station on her. Their guns, sensors
+/// and engineering come from their own orders as usual.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SquadronOrder {
+  pub ships: Vec<String>,
+  pub guide: String,
+  #[serde(default)]
+  pub helm: Option<HelmOrder>,
 }
 
 /// One ship's orders, as the model writes them.
@@ -231,7 +246,7 @@ pub fn schema() -> Value {
     "type": "string",
     "enum": ["Maneuver", "Weapon", "Powerplant", "Sensors", "Bridge", "Jump", "Fuel"]
   });
-  json!({
+  let mut schema = json!({
     "type": "object",
     "properties": {
       "plan": {"type": "string", "description": "The side's standing plan, two or three sentences; what each ship is for."},
@@ -334,7 +349,57 @@ pub fn schema() -> Value {
       }
     },
     "required": ["plan", "ships"]
-  })
+  });
+  // A squadron's helm order is a ship's, given to the guide.
+  let helm = schema["properties"]["ships"]["items"]["properties"]["helm"].clone();
+  schema["properties"]["squadrons"] = json!({
+    "type": "array",
+    "description": "Ships flying together this round, each squadron behind a guide. The guide flies the squadron's helm order, held 1 G below its slowest ship so the rest can keep up; the others keep station on her and arrive with her. A ship in a squadron takes her course from it; her other orders (fire, posture, sensors, engineering) still come from her own entry. Omit, or leave a ship out, for ships flying on their own.",
+    "items": {
+      "type": "object",
+      "properties": {
+        "ships": {"type": "array", "items": {"type": "string"}, "description": "The ships in the squadron, the guide among them."},
+        "guide": name("The ship the others form on."),
+        "helm": helm
+      },
+      "required": ["ships", "guide", "helm"]
+    }
+  });
+  schema
+}
+
+/// The squadrons, as a line for the plan: shown back to the model next round,
+/// so it keeps them unless something has changed, and to the GM in Fleet Comms.
+#[must_use]
+pub fn squadrons_line(squadrons: &[SquadronOrder]) -> Option<String> {
+  let each: Vec<String> = squadrons
+    .iter()
+    .map(|squadron| {
+      let others: Vec<&str> = squadron
+        .ships
+        .iter()
+        .filter(|ship| **ship != squadron.guide)
+        .map(String::as_str)
+        .collect();
+      let order = squadron.helm.as_ref().map_or_else(
+        || "holding course".to_string(),
+        |helm| {
+          let verb = match helm.verb {
+            HelmVerb::Hold => "holding course",
+            HelmVerb::Intercept => "intercepting",
+            HelmVerb::HoldRange => "holding range on",
+            HelmVerb::OpenRange => "opening range from",
+            HelmVerb::Station => "going to station",
+          };
+          let target = helm.target.as_deref().map_or_else(String::new, |target| format!(" {target}"));
+          let band = helm.band.map_or_else(String::new, |band| format!(" at {band:?}"));
+          format!("{verb}{target}{band}")
+        },
+      );
+      format!("{} leading {} ({order})", squadron.guide, others.join(", "))
+    })
+    .collect();
+  (!each.is_empty()).then(|| format!("Squadrons: {}.", each.join("; ")))
 }
 
 /// What the tool is for, as the model is told.
@@ -364,7 +429,79 @@ pub fn to_intents(decision: &TeamDecision, view: &Observation) -> Conversion {
     let intent = intent_of(order, view, &mut conversion.notes);
     conversion.intents.push((order.ship.clone(), intent));
   }
+  let mut placed = std::collections::HashSet::new();
+  for squadron in &decision.squadrons {
+    squadron_helms(squadron, view, &mut placed, &mut conversion);
+  }
   conversion
+}
+
+/// Give a squadron's ships their courses: the guide the squadron's helm order,
+/// capped a G below the slowest ship; the rest `Follow` her.
+fn squadron_helms(
+  squadron: &SquadronOrder, view: &Observation, placed: &mut std::collections::HashSet<String>,
+  conversion: &mut Conversion,
+) {
+  let notes = &mut conversion.notes;
+  let own = |name: &str| view.own.iter().find(|ship| ship.get_name() == name);
+  let mut members: Vec<&callisto::ship::Ship> = Vec::new();
+  for name in &squadron.ships {
+    match own(name) {
+      None => notes.push(format!("squadron of {}: {name} is not ours; left out.", squadron.guide)),
+      Some(ship) if ship.max_acceleration() == 0 => notes.push(format!(
+        "squadron of {}: {name} has no thrust to keep station with; left out.",
+        squadron.guide
+      )),
+      Some(_) if placed.contains(name) => notes.push(format!(
+        "squadron of {}: {name} is already in another squadron; left out.",
+        squadron.guide
+      )),
+      Some(ship) => members.push(ship),
+    }
+  }
+  if !members.iter().any(|ship| ship.get_name() == squadron.guide) {
+    notes.push(format!(
+      "squadron of {}: the guide is not one of its ships that can fly; the squadron is not formed.",
+      squadron.guide
+    ));
+    return;
+  }
+  if members.len() < 2 {
+    notes.push(format!(
+      "squadron of {}: no other ship to fly with; she flies on her own orders.",
+      squadron.guide
+    ));
+    return;
+  }
+  let slowest = members.iter().map(|ship| ship.max_acceleration()).min().unwrap_or(1);
+  let cap = slowest.saturating_sub(1).max(1);
+  let helm = squadron.helm.as_ref();
+  let guide_helm = helm.map_or(Helm::Hold, |helm| helm_of(&squadron.guide, helm, view, notes));
+  let guide_cap = Some(helm.and_then(|helm| helm.max_thrust).map_or(cap, |wanted| wanted.min(cap)));
+  for ship in members {
+    let name = ship.get_name().to_string();
+    placed.insert(name.clone());
+    let index = conversion
+      .intents
+      .iter()
+      .position(|(ship, _)| *ship == name)
+      .unwrap_or_else(|| {
+        conversion.intents.push((name.clone(), Intent::default()));
+        conversion.intents.len() - 1
+      });
+    let intent = &mut conversion.intents[index].1;
+    if name == squadron.guide {
+      intent.helm = guide_helm.clone();
+      intent.max_thrust = guide_cap;
+    } else {
+      intent.helm = Helm::Follow {
+        guide: squadron.guide.clone(),
+        guide_helm: Box::new(guide_helm.clone()),
+        guide_cap,
+      };
+      intent.max_thrust = None;
+    }
+  }
 }
 
 fn is_contact(view: &Observation, name: &str) -> bool {

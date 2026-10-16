@@ -145,10 +145,18 @@ impl Commander for Llm {
           self.spent
         );
         info!("(llm {side}) Round {}: plan: {}", view.round, reply.decision.plan);
+        if let Some(line) = crate::decision::squadrons_line(&reply.decision.squadrons) {
+          info!("(llm {side}) Round {}: {line}", view.round);
+        }
         for (ship, intent) in &intents {
           info!("(llm {side}) {ship}: {}", intent.rationale);
         }
-        self.plan = Some(reply.decision.plan);
+        // The squadrons go with the plan: the model sees them next round,
+        // and so does anyone reading Fleet Comms.
+        self.plan = Some(match crate::decision::squadrons_line(&reply.decision.squadrons) {
+          Some(line) => format!("{}\n{line}", reply.decision.plan),
+          None => reply.decision.plan,
+        });
         self.answered = true;
         intents
       }

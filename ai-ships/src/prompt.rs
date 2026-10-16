@@ -10,7 +10,7 @@
 
 use std::fmt::Write;
 
-use callisto::entity::{Entity, Vec3, DELTA_TIME_F64};
+use callisto::entity::{Entity, Vec3, DEFAULT_ACCEL_DURATION, DELTA_TIME_F64, G};
 use callisto::ship::{Ship, ShipSystem, Weapon, WeaponType};
 use callisto::tactics::{band_at, mount_card, BandOdds, Posture};
 use cgmath::InnerSpace;
@@ -132,6 +132,7 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
   if !lost.is_empty() {
     let _ = writeln!(out, "- Your ships lost (destroyed, or jumped out): {}", lost.join(", "));
   }
+  spread(out, view);
   let enemies = view.enemies();
   let gone: Vec<&str> = memory
     .enemies
@@ -171,6 +172,43 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
     );
   }
   out.push('\n');
+}
+
+/// How spread out the side is: the two ships furthest apart, and the two
+/// whose velocities differ most. A side strung out over a band or more cannot
+/// support itself, and is beaten a ship at a time.
+fn spread(out: &mut String, view: &Observation) {
+  let pairs: Vec<(&Ship, &Ship)> = view
+    .own
+    .iter()
+    .enumerate()
+    .flat_map(|(i, a)| view.own[i + 1..].iter().map(move |b| (a, b)))
+    .collect();
+  let widest = |measure: &dyn Fn(&Ship, &Ship) -> f64| {
+    pairs
+      .iter()
+      .map(|(a, b)| (measure(a, b), a.get_name(), b.get_name()))
+      .max_by(|x, y| x.0.total_cmp(&y.0))
+  };
+  let Some((apart, a, b)) = widest(&|a, b| (a.get_position() - b.get_position()).magnitude()) else {
+    return;
+  };
+  let (drift, c, d) = widest(&|a, b| (a.get_velocity() - b.get_velocity()).magnitude()).unwrap_or((0.0, "", ""));
+  let drifting = if drift < 100.0 {
+    "; all moving together".to_string()
+  } else {
+    format!(
+      "; {c} and {d} differ in velocity by {:.1} km/s, {} km a round",
+      drift / 1000.0,
+      km(drift * DELTA_TIME_F64)
+    )
+  };
+  let _ = writeln!(
+    out,
+    "- Your formation: {a} and {b} are {} km apart ({}){drifting}.",
+    km(apart),
+    band_at(apart)
+  );
 }
 
 /// "Eyes on us": who has found this ship, as her sensor station shows it.
@@ -267,6 +305,48 @@ fn vec_km(v: Vec3) -> String {
 
 fn vec_kms(v: Vec3) -> String {
   format!("[{:.1}, {:.1}, {:.1}]", v.x / 1000.0, v.y / 1000.0, v.z / 1000.0)
+}
+
+/// What it takes to match a ship's velocity: the distance and the rounds of
+/// braking at `thrust` G, from a relative speed in m/s. The fact a pilot needs
+/// several rounds ahead: speed built up is speed that has to be shed.
+fn braking(speed: f64, thrust: u8) -> (f64, u32) {
+  if thrust == 0 {
+    return (f64::INFINITY, u32::MAX);
+  }
+  let accel = G * f64::from(thrust);
+  let rounds = (speed / (accel * DELTA_TIME_F64)).ceil();
+  #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+  (speed * speed / (2.0 * accel), rounds as u32)
+}
+
+/// The braking clause for a contact or a blip: worth saying only once the
+/// relative speed is more than a few km/s, and urgent when the distance it
+/// takes is more than the distance left while closing.
+fn braking_clause(name: &str, ship: &Ship, relative: Vec3, line: Vec3) -> String {
+  let speed = relative.magnitude();
+  let thrust = ship.current_maneuver;
+  if speed < 3_000.0 || thrust == 0 {
+    return String::new();
+  }
+  let (distance, rounds) = braking(speed, thrust);
+  let closing = -(line.dot(relative)) > 0.0;
+  let overshoot = if closing && distance > line.magnitude() {
+    format!(
+      " That is more than the {} km between you: unless {} starts braking now she will overshoot {name} at speed, through the fight and out the other side.",
+      km(line.magnitude()),
+      ship.get_name()
+    )
+  } else {
+    String::new()
+  };
+  format!(
+    " Relative speed {:.0} km/s: matching {name}'s velocity takes {} km and {rounds} round{} of braking at {}'s full {thrust} G.{overshoot}",
+    speed / 1000.0,
+    km(distance),
+    if rounds == 1 { "" } else { "s" },
+    ship.get_name()
+  )
 }
 
 fn percent(p: f64) -> String {
@@ -386,18 +466,7 @@ fn own_ship(out: &mut String, view: &Observation, ship: &Ship) {
     ship.current_fuel,
     design.fuel
   );
-  let burn = ship.plan.0 .0;
-  let burning = if burn.magnitude() < 1e-6 {
-    "coasting".to_string()
-  } else {
-    format!(
-      "burning {:.1} G toward [{:.2}, {:.2}, {:.2}]",
-      burn.magnitude() / callisto::entity::G,
-      burn.x / burn.magnitude(),
-      burn.y / burn.magnitude(),
-      burn.z / burn.magnitude()
-    )
-  };
+  let burning = course(ship);
   let _ = writeln!(
     out,
     "- Position (km) {}; velocity (km/s) {}; {burning}",
@@ -452,6 +521,37 @@ fn own_ship(out: &mut String, view: &Observation, ship: &Ship) {
   );
   computer_line(out, ship);
   let _ = writeln!(out, "- Damage: {}\n", crits(&ship.crit_level));
+}
+
+/// The ship's course as the navigation computer has it: each leg's burn and
+/// how many rounds it lasts, so a course with no braking leg is seen to have
+/// none.
+fn course(ship: &Ship) -> String {
+  let leg = |accel: Vec3, seconds: u64| {
+    if accel.magnitude() < 1e-6 {
+      return "coasting".to_string();
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let rounds = seconds as f64 / DELTA_TIME_F64;
+    let length = if seconds >= DEFAULT_ACCEL_DURATION {
+      "until changed".to_string()
+    } else {
+      format!("for {rounds:.1} rounds")
+    };
+    format!(
+      "burning {:.1} G toward [{:.2}, {:.2}, {:.2}] {length}",
+      accel.magnitude() / G,
+      accel.x / accel.magnitude(),
+      accel.y / accel.magnitude(),
+      accel.z / accel.magnitude()
+    )
+  };
+  let first = &ship.plan.0;
+  match &ship.plan.1 {
+    Some(second) => format!("course: {}, then {}", leg(first.0, first.1), leg(second.0, second.1)),
+    None if first.0.magnitude() < 1e-6 => "coasting".to_string(),
+    None => format!("course: {}, with no braking leg", leg(first.0, first.1)),
+  }
 }
 
 /// For a stealthed ship, what each posture costs her this round against the
@@ -683,9 +783,21 @@ fn blips(out: &mut String, view: &Observation) {
     "## Blips: ships on the plot you have not detected\n\nYou can see that something is there and how it is moving, nothing more. You can steer toward or away from a blip (intercept, hold_range, open_range); you cannot shoot, lock or jam it until one of your ships detects it.\n"
   );
   for blip in &view.blips {
+    let braking = view
+      .own
+      .iter()
+      .find(|ship| ship.get_name() == blip.nearest)
+      .map_or_else(String::new, |ship| {
+        braking_clause(
+          &blip.name,
+          ship,
+          blip.velocity - ship.get_velocity(),
+          blip.position - ship.get_position(),
+        )
+      });
     let _ = writeln!(
       out,
-      "- {}: {} km from {} ({}); position (km) {}; velocity (km/s) {}",
+      "- {}: {} km from {} ({}); position (km) {}; velocity (km/s) {}.{braking}",
       blip.name,
       km(blip.distance),
       blip.nearest,
@@ -830,10 +942,11 @@ fn approach_line(contact: &Contact, nearest: Option<&Ship>) -> String {
     }
   };
   format!(
-    "- From {} (your nearest): {} km, {}; {motion}{pass}. {race}",
+    "- From {} (your nearest): {} km, {}; {motion}{pass}. {race}.{}",
     contact.nearest,
     km(contact.distance),
-    contact.band
+    contact.band,
+    braking_clause(&contact.name, ship, v, r)
   )
 }
 
@@ -843,10 +956,10 @@ fn odds(out: &mut String, view: &Observation) {
   }
   let _ = writeln!(
     out,
-    "## Odds per round, flying straight\n\nEach cell is `you / them`: your best gun's chance to hit and the share of their built hull your guns take in a round, then theirs against your hull as it stands. `-` is out of reach; `m` means missiles only. Enemy gunners, whom you cannot see, are assumed skill 2.\n"
+    "## Odds per round, flying straight\n\n`Range now` is the band between the two this round: only the guns that reach it fire. Each cell is `you / them`: your best gun's chance to hit and the share of their built hull your guns take in a round, then theirs against your hull as it stands. `-` is out of reach; `m` means missiles only. Enemy gunners, whom you cannot see, are assumed skill 2.\n"
   );
-  let _ = writeln!(out, "| You vs them | Short | Medium | Long | Very Long |");
-  let _ = writeln!(out, "|---|---|---|---|---|");
+  let _ = writeln!(out, "| You vs them | Range now | Short | Medium | Long | Very Long |");
+  let _ = writeln!(out, "|---|---|---|---|---|---|");
   for engagement in &view.engagements {
     odds_row(out, view, engagement);
   }
@@ -868,7 +981,14 @@ fn odds_row(out: &mut String, view: &Observation, engagement: &Engagement) {
     .filter(|(we, _)| we.band != callisto::ship::Range::Distant)
     .map(|(we, they)| format!("{} / {}", odds_cell(we, their_hull), odds_cell(they, our_hull)))
     .collect();
-  let _ = writeln!(out, "| {} vs {} | {} |", ours.get_name(), contact.name, cells.join(" | "));
+  let now = band_at((contact.position - ours.get_position()).magnitude());
+  let _ = writeln!(
+    out,
+    "| {} vs {} | {now:?} | {} |",
+    ours.get_name(),
+    contact.name,
+    cells.join(" | ")
+  );
 }
 
 /// `72% 45%`: chance to hit, and the share of the hull taken per round.
