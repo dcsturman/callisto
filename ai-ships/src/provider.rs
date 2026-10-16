@@ -526,7 +526,8 @@ fn claude_request(system: &str, situation: &str) -> Value {
   json!({
     "anthropic_version": "vertex-2023-10-16",
     "max_tokens": 8192,
-    "temperature": 0.3,
+    // No temperature: Claude 5.5 models refuse one ("deprecated for this
+    // model").
     // The fixed part is cached; the situation is not.
     "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
     "messages": [{"role": "user", "content": situation}],
