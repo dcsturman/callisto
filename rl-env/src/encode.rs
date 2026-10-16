@@ -4,7 +4,7 @@
 //! The vector is in the deciding ship's frame: everyone else's position and
 //! velocity are relative to hers. Three blocks, in order:
 //!
-//! - herself ([`SELF_LEN`] numbers);
+//! - herself and her side's goal ([`SELF_LEN`] numbers);
 //! - the rest of her side, nearest first, [`FRIENDS`] slots of [`FRIEND_LEN`];
 //! - every enemy on the plot, contacts and blips alike, nearest first,
 //!   [`ENEMIES`] slots of [`ENEMY_LEN`].
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 
 use ai_ships::observation::{Contact, Observation};
 use callisto::entity::{Entity, Vec3};
-use callisto::ship::Ship;
+use callisto::ship::{Goal, Ship};
 use callisto::tactics::{self, BandOdds, BANDS};
 use cgmath::InnerSpace;
 
@@ -34,7 +34,7 @@ pub const FRIENDS: usize = MAX_SHIPS - 1;
 /// Slots for enemies.
 pub const ENEMIES: usize = MAX_SHIPS;
 
-pub const SELF_LEN: usize = 40;
+pub const SELF_LEN: usize = 44;
 pub const FRIEND_LEN: usize = 16;
 pub const ENEMY_LEN: usize = 42;
 /// One ship's observation.
@@ -70,7 +70,12 @@ pub struct Context<'a> {
   pub own_hull_share: f32,
   /// The enemy's hull left as the side believes it: what it last saw.
   pub enemy_hull_share: f32,
+  /// What the side is trying to do.
+  pub goal: Goal,
 }
+
+/// The goals, in the order the observation flags them.
+pub const GOALS: [Goal; 4] = [Goal::Destroy, Goal::Hold, Goal::Raid, Goal::Escape];
 
 /// One enemy on the plot, contact or blip.
 struct Enemy<'a> {
@@ -261,6 +266,8 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
     watchers.fold((0, 0), |(seen, locked), watcher| (seen + 1, locked + usize::from(watcher.lock)));
   row[38] = watching.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
   row[39] = locking.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
+  let goal = GOALS.iter().position(|goal| *goal == ctx.goal).unwrap_or(0);
+  row[40 + goal] = 1.0;
 }
 
 fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
@@ -336,6 +343,7 @@ fn masks(me: &Ship, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
   let dodges: Vec<bool> = (0..action::DODGES).map(|g| g <= usize::from(me.max_acceleration())).collect();
   set(mask, Head::Dodge, &dodges);
   set(mask, Head::Assist, &[true, true]);
+  set(mask, Head::Jump, &[true, me.jump_possible()]);
 }
 
 /// Open the choices `open` says in `head`, and the first one whatever, so a

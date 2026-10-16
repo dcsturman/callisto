@@ -9,7 +9,7 @@ use callisto::entity::Entity;
 use callisto_rl::action::{choice_of, Choice, Head, HEADS, MASK_LEN};
 use callisto_rl::batch::{Batch, Config, Outputs};
 use callisto_rl::encode::OBS_LEN;
-use callisto_rl::game::{Control, End, Game, Scenario, Step, DRAW_COST};
+use callisto_rl::game::{Control, Game, Scenario, Step};
 use rand::{Rng, SeedableRng};
 
 const DESIGNS: &str = "../callisto/ship_templates";
@@ -43,6 +43,7 @@ fn random_play_is_legal() {
     opponent: None,
     seed: 1,
     threads: 4,
+    random_goals: 0.5,
   };
   let mut batch = Batch::new(&config).expect("the pool loads");
   let slots = batch.slots();
@@ -69,14 +70,16 @@ fn random_play_is_legal() {
   }
   assert!(!finished.is_empty(), "some games finish in 80 rounds");
   for game in &finished {
-    // Zero-sum but for what a draw costs both sides and the cost of time.
-    let draw_cost = if game.end == End::Draw { 2.0 * DRAW_COST } else { 0.0 };
-    let total: f32 = game.returns.iter().sum::<f32>() + draw_cost;
+    let total: f32 = game.returns.iter().sum::<f32>();
     println!(
       "{} seed {}: {:?} in {} rounds, returns {:?}",
       game.scenario, game.seed, game.end, game.rounds, game.returns
     );
-    assert!(total.abs() < 0.5, "returns are near zero-sum: {:?}", game.returns);
+    assert!(
+      game.returns.iter().all(|r| r.abs() <= 1.5),
+      "a side's return is its goal's score and a little shaping: {:?} ({total})",
+      game.returns
+    );
   }
 }
 
@@ -137,4 +140,42 @@ fn close_plays_the_same_through_the_action_space() {
       println!("{path} seed {seed}: {} rounds, {:?}", straight.len(), last.end);
     }
   }
+}
+
+#[test]
+fn each_goal_scores_as_agreed() {
+  use callisto::ship::Goal;
+  use callisto_rl::game::{terminal, Ending, Tally};
+  // Hull kept below half unless a test says otherwise, so cowardice is not in play.
+  let tally = |dealt: f32, jumped: f32, holding: bool| Tally {
+    dealt,
+    jumped,
+    holding,
+    kept: 0.4,
+  };
+  let none = tally(0.0, 0.0, false);
+  // Destroy: running is nearly as bad as dying; a draw is as bad.
+  assert!((terminal(Goal::Destroy, Ending::EnemyFled, &none) - 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::WeFled, &none) + 0.9).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::Draw, &none) + 1.0).abs() < 1e-6);
+  // Hold: a draw is good only while still holding; running is failure.
+  assert!((terminal(Goal::Hold, Ending::Draw, &tally(0.0, 0.0, true)) - 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::Draw, &none) + 1.0).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::EnemyFled, &none) - 1.0).abs() < 1e-6);
+  // Raid: the damage is the point, however the game ends.
+  assert!((terminal(Goal::Raid, Ending::WeFled, &tally(0.3, 0.0, false)) - 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Raid, Ending::WeFled, &tally(0.2, 0.0, false)) + 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Raid, Ending::EnemyFled, &tally(0.2, 0.0, false)) + 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Raid, Ending::Draw, &tally(0.2, 0.0, false)) + 1.0).abs() < 1e-6);
+  // Escape: only jumping out counts.
+  assert!((terminal(Goal::Escape, Ending::WeFled, &tally(0.0, 1.0, false)) - 1.0).abs() < 1e-6);
+  assert!((terminal(Goal::Escape, Ending::WeFled, &none) + 1.0).abs() < 1e-6);
+  assert!(terminal(Goal::Escape, Ending::WeDestroyed, &tally(0.0, 0.5, false)).abs() < 1e-6);
+  // Cowardice: running with more than half the hull left, unless leaving is the goal.
+  let healthy = Tally { kept: 0.8, ..none };
+  assert!((terminal(Goal::Destroy, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
+  assert!((terminal(Goal::Raid, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
+  assert!((terminal(Goal::Raid, Ending::WeFled, &Tally { dealt: 0.3, ..healthy }) - 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Escape, Ending::WeFled, &Tally { jumped: 1.0, ..healthy }) - 1.0).abs() < 1e-6);
 }

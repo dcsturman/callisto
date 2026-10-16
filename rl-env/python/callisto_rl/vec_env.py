@@ -43,6 +43,7 @@ class ShipVecEnv(VecEnv):
         seed: int = 0,
         threads: int = 10,
         designs: str | None = None,
+        random_goals: float = 0.0,
     ):
         self.engine = Engine(
             list(scenarios or default_pool()),
@@ -52,6 +53,7 @@ class ShipVecEnv(VecEnv):
             opponent=opponent,
             seed=seed,
             threads=threads,
+            random_goals=random_goals,
         )
         self.slot_info = self.engine.slot_info()
         observation_space = spaces.Box(low=-1.5, high=1.5, shape=(OBS_LEN,), dtype=np.float32)
@@ -91,6 +93,7 @@ class ShipVecEnv(VecEnv):
                         {
                             "scenario": game["scenario"],
                             "side": game["sides"][side],
+                            "goal": game["goals"][side],
                             "opponent": self.opponent or "self",
                             "outcome": outcome_for(game, side),
                             "return": float(game["returns"][side]),

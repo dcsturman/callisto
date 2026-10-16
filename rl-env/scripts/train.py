@@ -58,6 +58,13 @@ class Outcomes(BaseCallback):
             self.logger.record(f"vs_{opponent}/win_rate", sum(counts[w] for w in WINS) / len(outcomes))
         for key, wins in by_scenario_side.items():
             self.logger.record(f"win_rate/{key}", sum(wins) / len(wins))
+        # How often each goal was met, against every opponent: a win, or for
+        # a raid, hold or escape, the outcome that goal counts as success.
+        by_goal = collections.defaultdict(list)
+        for result in self.recent:
+            by_goal[result.get("goal", "destroy")].append(result["return"] > 0)
+        for goal, met in by_goal.items():
+            self.logger.record(f"goal/{goal}", sum(met) / len(met))
 
 
 class Taper(BaseCallback):
@@ -124,6 +131,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-rounds", type=int, default=40)
     parser.add_argument(
+        "--random-goals", type=float, default=0.25, help="share of games where each side's goal is drawn at random"
+    )
+    parser.add_argument(
         "--wandb", action="store_true", help="also send the run to Weights & Biases (after `.venv/bin/wandb login`)"
     )
     parser.add_argument("--wandb-project", default="callisto-rl")
@@ -135,7 +145,13 @@ def main() -> None:
     engine_threads = max(1, args.threads - torch_threads)
     if args.opponent == "self":
         env = SelfPlayVecEnv(
-            scenarios, games=args.games, seed=args.seed, threads=engine_threads, max_rounds=args.max_rounds, mix=Mix()
+            scenarios,
+            games=args.games,
+            seed=args.seed,
+            threads=engine_threads,
+            max_rounds=args.max_rounds,
+            mix=Mix(),
+            random_goals=args.random_goals,
         )
     else:
         env = ShipVecEnv(
@@ -145,6 +161,7 @@ def main() -> None:
             seed=args.seed,
             threads=engine_threads,
             max_rounds=args.max_rounds,
+            random_goals=args.random_goals,
         )
     name = args.name or f"{args.opponent}-{time.strftime('%Y%m%d-%H%M%S')}"
     folder = HERE / "checkpoints" / name

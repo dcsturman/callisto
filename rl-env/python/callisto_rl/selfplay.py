@@ -73,10 +73,18 @@ class SelfPlayVecEnv(VecEnv):
         mix: Mix | None = None,
         max_snapshots: int = 20,
         choose: Callable[[int], Opponent] | None = None,
+        random_goals: float = 0.0,
     ):
         scenarios = list(scenarios or default_pool())
         self.engine = Engine(
-            scenarios, str(designs or DESIGNS), games, max_rounds=max_rounds, opponent=None, seed=seed, threads=threads
+            scenarios,
+            str(designs or DESIGNS),
+            games,
+            max_rounds=max_rounds,
+            opponent=None,
+            seed=seed,
+            threads=threads,
+            random_goals=random_goals,
         )
         self.mix = mix or Mix()
         self.max_snapshots = max_snapshots
@@ -186,6 +194,7 @@ class SelfPlayVecEnv(VecEnv):
                 {
                     "scenario": game["scenario"],
                     "side": game["sides"][side],
+                    "goal": game["goals"][side],
                     "opponent": opponent.label,
                     "outcome": outcome_for(game, side),
                     "return": float(game["returns"][side]),

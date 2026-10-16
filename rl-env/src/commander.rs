@@ -16,7 +16,7 @@ use rand::SeedableRng;
 
 use crate::action::{side_intents, Choice, MASK_LEN};
 use crate::encode::{encode_ship, Context, Memory, Picture, OBS_LEN};
-use crate::game::{believed_hull, remember};
+use crate::game::{believed_hull, remember, side_goal};
 use crate::net::Policy;
 
 /// The rounds a game is assumed to last, for the round-progress input, as in
@@ -92,6 +92,7 @@ impl Commander for Net {
       max_rounds: MAX_ROUNDS,
       own_hull_share: hull as f32 / start.max(1) as f32,
       enemy_hull_share: believed_hull(&self.memory),
+      goal: side_goal(&view.own),
     };
     let mut obs = vec![0.0; OBS_LEN];
     let mut mask = vec![false; MASK_LEN];

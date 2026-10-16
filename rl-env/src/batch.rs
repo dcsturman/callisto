@@ -30,6 +30,9 @@ pub struct Config {
   pub seed: u64,
   /// Threads to step games on. Leave the machine some.
   pub threads: usize,
+  /// The share of games where each side's goal is drawn at random rather
+  /// than taken from the scenario.
+  pub random_goals: f32,
 }
 
 /// A game that finished this step.
@@ -45,6 +48,8 @@ pub struct Finished {
   pub agent: [bool; 2],
   /// The baseline that played each side, if one did.
   pub stand_ins: [Option<String>; 2],
+  /// Each side's goal.
+  pub goals: [callisto::ship::Goal; 2],
   /// The whole game's reward for each side.
   pub returns: [f32; 2],
   pub hull_shares: [f32; 2],
@@ -120,7 +125,8 @@ impl Batch {
           }
         };
         Running {
-          game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds),
+          game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds)
+            .with_random_goals(config.random_goals),
           returns: [0.0; 2],
         }
       })
@@ -275,6 +281,7 @@ impl Batch {
               agent: [0, 1]
                 .map(|side| game.stand_ins()[side].is_none() && game.slots().iter().any(|slot| slot.side == side)),
               stand_ins: game.stand_ins().clone(),
+              goals: game.goals(),
               returns: running.returns,
               hull_shares: game.hull_shares(),
             };

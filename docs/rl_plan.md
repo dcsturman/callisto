@@ -88,6 +88,32 @@ The incentives then line up in self-play. The chaser prefers destroying
 (-0.6) to dying (-1.0). A policy that ran at round 1 would score -0.6
 against one that wins by fighting, so that is not learned.
 
+**Goals.** One objective for every side turned out to be too blunt: a side
+meant to hold had no way to win by holding, and against a strong defensive
+position the best score was to run. So each side now has a goal from a small
+menu, set per ship in the scenario beside its orders (a side's goal is the
+one its ships share), given to the network as an input, and scored by its
+own table:
+
+| Outcome | Destroy | Hold | Raid | Escape |
+|---|---|---|---|---|
+| Enemy destroyed | +1 | +1 | +1 | +1 |
+| Enemy fled | +0.6 | +1 | +0.6 if 25% dealt, else -0.6 | share jumped |
+| Draw | -1 | +0.6 if still holding, else -1 | +0.6 if 25% dealt, else -1 | share jumped |
+| We fled | -0.9 | -1 | +0.6 if 25% dealt, else -0.6 | share jumped |
+| ...with more than half our hull | -1.1 | -1.1 | +0.6 if 25% dealt, else -1.1 | share jumped |
+| We were destroyed | -1 | -1 | -1 | share jumped |
+
+Holding means a ship still within 25,000 km (Long) of where the side
+started. A raid must destroy a quarter of the enemy's hull however the game
+ends. Escape means jumping out of the system and nothing else; "share
+jumped" runs from -1 (no ship jumped) to +1 (all did). Running with more than
+half the hull left, when leaving is not the goal, is cowardice and scores
+worse than being destroyed. A quarter of training games draw each side's
+goal at random, so the network learns what the goals mean rather than which
+one a scenario has. Ships can now jump: a tenth action head, open only when
+the engine would allow the jump, which also starts Jump Control.
+
 **Per round, small.** OpenAI Five found pure win/loss too sparse to learn
 from and used shaped rewards; so will we. Each round: 0.1 times (share of
 enemy hull destroyed this round minus share of our hull lost this round), and
