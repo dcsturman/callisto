@@ -11,6 +11,7 @@ import { AppMode, setAppMode } from "state/tutorialSlice";
 import {
   scenarioLoadErrorsSelector,
   dismissScenarioLoadErrors,
+  aiAllowedSelector,
 } from "state/serverSlice";
 
 const TUTORIAL_SCENARIO = "tutorial.json";
@@ -194,6 +195,11 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
     sortedFilteredScenarios[0] ?? null,
   );
   const [template, setTemplate] = React.useState<string | null>(null);
+  // AI crews for the game about to be created. Offered only to a user the
+  // server allows: the AI costs money every round.
+  const aiAllowed = useAppSelector(aiAllowedSelector);
+  const [aiCrews, setAiCrewsChoice] = React.useState(false);
+  const withAi = aiAllowed && aiCrews;
   const [screen, setScreen] =
     React.useState<ScenarioManagerScreen>("mode-select");
   const [showScenarioIntro, setShowScenarioIntro] = React.useState<{
@@ -290,7 +296,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
     // error before doing the right thing anyway.
     if (template == null || template === "") {
       prepareScenarioLaunch(AppMode.Game);
-      createScenario(scenarioName, "");
+      createScenario(scenarioName, "", withAi);
       return;
     }
 
@@ -301,7 +307,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
         "(ScenarioManager.handleCreateScenario) No scenario data found for scenario " +
           template,
       );
-      createScenario(scenarioName, template ?? "");
+      createScenario(scenarioName, template ?? "", withAi);
       return;
     }
 
@@ -311,7 +317,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
       handler: () => {
         setShowScenarioIntro(null);
         prepareScenarioLaunch(AppMode.Game);
-        createScenario(scenarioName, template ?? "");
+        createScenario(scenarioName, template ?? "", withAi);
       },
     });
   }
@@ -457,6 +463,19 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
                       </option>
                     ))}
                   </select>
+                  {aiAllowed && (
+                    <label
+                      className="scenario-ai-crews"
+                      title="Let ships in this game be crewed by the AI. Each AI round costs money, so only allowed users see this."
+                    >
+                      <input
+                        type="checkbox"
+                        checked={aiCrews}
+                        onChange={(event) => setAiCrewsChoice(event.target.checked)}
+                      />
+                      AI crews
+                    </label>
+                  )}
                   <button
                     className="control-input control-button blue-button"
                     type="submit"

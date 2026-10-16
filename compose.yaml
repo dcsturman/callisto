@@ -55,6 +55,8 @@ services:
       # Which model decides, and whose project pays. Your application-default
       # credentials reach Vertex AI; `gcloud auth application-default login`
       # once if the service cannot get a token. `close` plays without a model.
+      # `CALLISTO_AI_MODEL=deepseek docker-compose up --build -d` plays with
+      # DeepSeek V4.1 Flash, on the same credentials and bill.
       CALLISTO_AI_MODEL: ${CALLISTO_AI_MODEL:-gemini}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-callisto-1731280702227}
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials

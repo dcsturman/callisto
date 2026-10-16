@@ -1,0 +1,19 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "callisto-rl"
+version = "0.1.0"
+description = "Train callisto ship commanders by reinforcement learning."
+requires-python = ">=3.10"
+dependencies = ["numpy>=2", "gymnasium>=1.0"]
+
+[project.optional-dependencies]
+train = ["torch>=2.6", "stable-baselines3>=2.6", "sb3-contrib>=2.6", "tensorboard>=2.18"]
+dev = ["pytest>=8"]
+
+[tool.maturin]
+features = ["python"]
+python-source = "python"
+module-name = "callisto_rl._engine"

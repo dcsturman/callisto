@@ -237,6 +237,8 @@ impl PlayerManager {
       scenario: None,
       roles: None,
       ship: None,
+      // Filled in by the processor, which holds the users file.
+      ai_allowed: false,
     })
   }
 
@@ -265,6 +267,7 @@ impl PlayerManager {
       scenario: None,
       roles: None,
       ship: None,
+      ai_allowed: false,
     }
   }
 
@@ -292,6 +295,8 @@ impl PlayerManager {
       scenario: None,
       roles: None,
       ship: None,
+      // Filled in by the processor, which holds the users file.
+      ai_allowed: false,
     })
   }
 

@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fire over Jupiter",
     "owner": "dcsturman@gmail.com",
-    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 300,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escort Ailreaui and her five light fighters. Can the Imperials defeat them?"
+    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 300,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escort Ailreaui and her six light fighters. Can the Imperials defeat them?"
   },
   "planets": [
     {
@@ -134,6 +134,16 @@
     {
       "name": "AF5",
       "position": [0, 4000000, 7.2e8],
+      "velocity": [0, 0, 0],
+      "plan": [[[0, 0, 0], 50000]],
+      "design": "Light Fighter",
+      "team": "Red",
+      "orders": "Defend your position.",
+      "crew": {"pilot": 4, "gunnery": [2]}
+    },
+    {
+      "name": "AF6",
+      "position": [-4000000, 4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",

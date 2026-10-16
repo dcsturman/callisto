@@ -39,7 +39,12 @@ pub fn side_of(team: Option<callisto::ship::Team>, ship: &str) -> String {
   team.map_or_else(|| format!("ship:{ship}"), |team| format!("{team:?}"))
 }
 
-fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
+/// Every side in the world and its ships, by name.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
   let mut sides = BTreeMap::<String, Vec<String>>::new();
   for ship in world.ships.values() {
     let ship = ship.read().unwrap();
@@ -54,7 +59,12 @@ fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
   sides
 }
 
-fn hull_of(world: &Entities, ships: &[String]) -> u32 {
+/// The hull these ships have left, counting none for a ship no longer in play.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn hull_of(world: &Entities, ships: &[String]) -> u32 {
   ships
     .iter()
     .filter_map(|name| world.ships.get(name))
@@ -82,17 +92,21 @@ fn in_contact(world: &Entities) -> bool {
 }
 
 /// How one side came out of a game.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct SideResult {
   pub commander: String,
   pub ships_at_start: usize,
   pub ships_at_end: usize,
   pub hull_at_start: u32,
   pub hull_at_end: u32,
+  /// What the side's model calls cost, in US dollars, for a commander that
+  /// makes them at a known price.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub model_cost_usd: Option<f64>,
 }
 
 /// One game's result.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Outcome {
   pub seed: u64,
   pub rounds: u32,
@@ -119,7 +133,7 @@ pub struct Record {
 }
 
 /// Apply a console's request the way the backend's processor would.
-fn apply(player: &PlayerManager, request: RequestMsg) {
+pub fn apply(player: &PlayerManager, request: RequestMsg) {
   let result = match request {
     RequestMsg::SetPlan(plan) => player.set_plan(&plan).map(|_| ()),
     RequestMsg::ModifyActions(actions) => {
@@ -248,6 +262,7 @@ pub async fn play(
           ships_at_end: ships.iter().filter(|ship| end.ships.contains_key(*ship)).count(),
           hull_at_start: hull_of(&start, ships),
           hull_at_end: hull_of(&end, ships),
+          model_cost_usd: deciders[side].1.spent(),
         },
       )
     })

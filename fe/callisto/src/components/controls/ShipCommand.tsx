@@ -2,6 +2,8 @@ import * as React from "react";
 import { useEffect, useState } from "react";
 import { Ship } from "lib/entities";
 import { setOrders, setShipController } from "lib/serverManager";
+import { useAppSelector } from "state/hooks";
+import { aiCrewsSelector } from "state/serverSlice";
 
 /**
  * Who is giving this ship its orders, and what they are.
@@ -17,6 +19,8 @@ import { setOrders, setShipController } from "lib/serverManager";
  */
 export function ShipCommand(args: { ship: Ship }) {
   const ai = args.ship.controller === "AI";
+  // A game without AI crews shows nothing about them.
+  const aiCrews = useAppSelector(aiCrewsSelector);
   const [draft, setDraft] = useState(args.ship.orders ?? "");
 
   // Someone else changed the orders: show theirs.
@@ -30,6 +34,7 @@ export function ShipCommand(args: { ship: Ship }) {
 
   return (
     <div className="ship-command">
+      {(aiCrews || ai) && (
       <div className="ship-command-crew">
         <h2>Crew</h2>
         <span className={ai ? "controller-chip controller-chip-ai" : "controller-chip"}>
@@ -47,6 +52,7 @@ export function ShipCommand(args: { ship: Ship }) {
           {ai ? "Take back" : "Switch to AI"}
         </button>
       </div>
+      )}
       {ai && args.ship.ai_report != null && (
         <p className="ship-command-report">
           {args.ship.ai_report.status === "Deciding"

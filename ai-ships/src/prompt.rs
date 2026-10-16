@@ -150,25 +150,38 @@ fn status(out: &mut String, view: &Observation, memory: &Memory) {
         let state = if contact.current_maneuver == 0 {
           "DISABLED, cannot manoeuvre".to_string()
         } else if severity == 0 {
-          "no visible damage".to_string()
+          "no criticals".to_string()
         } else {
-          format!("damaged, criticals of total severity {severity}")
+          format!("criticals of total severity {severity}")
         };
-        format!("{} ({state})", contact.name)
+        format!(
+          "{} (hull {}/{}, {}%; {state})",
+          contact.name,
+          contact.current_hull,
+          contact.design_hull,
+          100 * contact.current_hull / contact.design_hull.max(1)
+        )
       })
       .collect();
+    let _ = writeln!(out, "- Enemy in contact: {} ships: {}.", enemies.len(), seen.join(", "));
+  }
+  // Every ship on the board is on the plot, if only as a blip, so an enemy
+  // once held that is still a blip has only been lost; one that has left the
+  // plot altogether was destroyed or jumped out.
+  let (lost, removed): (Vec<&str>, Vec<&str>) =
+    gone.iter().partition(|name| view.blips.iter().any(|blip| blip.name == **name));
+  if !removed.is_empty() {
     let _ = writeln!(
       out,
-      "- Enemy in contact: {} ships: {}. Their hull points are not visible.",
-      enemies.len(),
-      seen.join(", ")
+      "- Enemies destroyed or jumped out (gone from the plot): {}",
+      removed.join(", ")
     );
   }
-  if !gone.is_empty() {
+  if !lost.is_empty() {
     let _ = writeln!(
       out,
-      "- Enemies once held and no longer in contact (destroyed, jumped, or out of sight): {}",
-      gone.join(", ")
+      "- Enemies once held and now out of contact, still on the plot as blips (NOT destroyed): {}",
+      lost.join(", ")
     );
   }
   out.push('\n');
@@ -832,11 +845,12 @@ fn contact_block(out: &mut String, view: &Observation, contact: &Contact) {
     .map_or_else(|| "no team".to_string(), |team| format!("{team:?} team"));
   let _ = writeln!(
     out,
-    "### {} ({}, {} tons, TL {}, {team}; built with hull {}, armour {}{}{})\n",
+    "### {} ({}, {} tons, TL {}, {team}; hull {}/{}, armour {}{}{})\n",
     contact.name,
     contact.design,
     contact.displacement,
     contact.tl,
+    contact.current_hull,
     contact.design_hull,
     contact.design_armor,
     contact
@@ -958,7 +972,7 @@ fn odds(out: &mut String, view: &Observation) {
   }
   let _ = writeln!(
     out,
-    "## Odds per round, flying straight\n\n`Range now` is the band between the two this round: only the guns that reach it fire. Each cell is `you / them`: your best gun's chance to hit and the share of their built hull your guns take in a round, then theirs against your hull as it stands. `-` is out of reach; `m` means missiles only. Enemy gunners, whom you cannot see, are assumed skill 2.\n"
+    "## Odds per round, flying straight\n\n`Range now` is the band between the two this round: only the guns that reach it fire. Each cell is `you / them`: your best gun's chance to hit and the share of their hull as it stands that your guns take in a round, then theirs against your hull as it stands. `-` is out of reach; `m` means missiles only. Enemy gunners, whom you cannot see, are assumed skill 2.\n"
   );
   let _ = writeln!(out, "| You vs them | Range now | Short | Medium | Long | Very Long |");
   let _ = writeln!(out, "|---|---|---|---|---|---|");
@@ -974,7 +988,7 @@ fn odds_row(out: &mut String, view: &Observation, engagement: &Engagement) {
   let (Some(ours), Some(contact)) = (ours, contact) else {
     return;
   };
-  let their_hull = f64::from(contact.design_hull.max(1));
+  let their_hull = f64::from(contact.current_hull.max(1));
   let our_hull = f64::from(ours.current_hull.max(1));
   let cells: Vec<String> = engagement
     .we_hit

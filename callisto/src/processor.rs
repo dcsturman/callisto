@@ -29,6 +29,7 @@ use crate::payloads::{
 use crate::player::PlayerManager;
 use crate::server::{Server, ServerMembersTable};
 use crate::service_auth::ServiceAuth;
+use crate::ship::Controller;
 use crate::{
   get_scenario_failures_snapshot, get_scenarios_snapshot, read_local_or_cloud_file, replace_scenarios,
   write_local_or_cloud_file,
@@ -205,12 +206,41 @@ impl Processor {
     self
   }
 
+  /// Whether this player's game offers AI crews: a game started with them,
+  /// or a scenario being built by a user who may use them. Where it does
+  /// not, the client shows no AI controls and the server refuses any order
+  /// to hand a ship to the AI.
+  fn ai_crews_shown(&self, player: &PlayerManager) -> bool {
+    let Some(server) = &player.server else {
+      return false;
+    };
+    if is_scenario_builder(server.get_id()) {
+      return player.get_email().is_some_and(|email| self.may_use_ai(&email));
+    }
+    server.ai_enabled()
+  }
+
+  /// Whether this user may start games with AI crews, by the users file as
+  /// it stands now.
+  fn may_use_ai(&self, email: &str) -> bool {
+    self
+      .directory_handle
+      .read()
+      .expect("(may_use_ai) directory lock poisoned")
+      .may_use_ai(email)
+  }
+
   /// Tell the AI service about any change to which ships in this scenario it
   /// should be crewing. Cheap when nothing changed: one pass over the ships.
   fn reconcile_ai_crews(&mut self, server: Option<&Arc<Server>>) {
     let (Some(client), Some(server)) = (&self.ai_service, server) else {
       return;
     };
+    // A game started without AI crews never asks for any, whatever its ships
+    // say: this is the one place the AI service is told to crew a ship.
+    if !server.ai_enabled() {
+      return;
+    }
     let Ok(entities) = server.get_unlocked_entities() else {
       return;
     };
@@ -695,6 +725,7 @@ impl Processor {
           scenario: connection.player.server.as_ref().map(|s| s.id.clone()),
           roles: Some(role),
           ship,
+          ai_allowed: false,
         },
       );
 
@@ -864,12 +895,26 @@ impl Processor {
         }),
 
       RequestMsg::Reset => response_with_update(player, player.reset()),
-      RequestMsg::AddShip(ship) => response_with_update(player, player.add_ship(ship)),
+      RequestMsg::AddShip(ship) => {
+        if ship.controller == Some(Controller::Ai) && !self.ai_crews_shown(player) {
+          return vec![ResponseMsg::Error(
+            "AI crews are not available in this game.".to_string(),
+          )];
+        }
+        response_with_update(player, player.add_ship(ship))
+      }
       RequestMsg::SetPilotActions(request) => response_with_update(player, player.set_pilot_actions(&request)),
       RequestMsg::SetShipEmissions(request) => response_with_update(player, player.set_ship_emissions(&request)),
       RequestMsg::SetSoftwareRunning(request) => response_with_update(player, player.set_software_running(&request)),
       RequestMsg::SetShipTeam(request) => response_with_update(player, player.set_ship_team(&request)),
-      RequestMsg::SetShipController(request) => response_with_update(player, player.set_ship_controller(&request)),
+      RequestMsg::SetShipController(request) => {
+        if request.controller == Controller::Ai && !self.ai_crews_shown(player) {
+          return vec![ResponseMsg::Error(
+            "AI crews are not available in this game.".to_string(),
+          )];
+        }
+        response_with_update(player, player.set_ship_controller(&request))
+      }
       RequestMsg::SetOrders(request) => response_with_update(player, player.set_orders(&request)),
       RequestMsg::SetAiReport(request) => response_with_update(player, player.set_ai_report(&request)),
       RequestMsg::AddPlanet(planet) => response_with_update(player, player.add_planet(planet)),
@@ -1024,11 +1069,13 @@ impl Processor {
               return vec![ResponseMsg::PleaseLogin];
             }
             let (role, ship) = player.get_roles();
+            let ai_allowed = self.may_use_ai(&email_clone);
             vec![ResponseMsg::AuthResponse(AuthResponse {
               email: email_clone,
               scenario: player.server.as_ref().map(|s| s.id.clone()),
               roles: Some(role),
               ship,
+              ai_allowed,
             })]
           } else {
             // Session key exists but no email (not logged in yet)
@@ -1087,8 +1134,23 @@ impl Processor {
           "(Processor.handle_request) Creating scenario {} from {scenario_full_name}",
           create_scenario.name
         );
+        // AI crews cost money every round, so only a user the users file
+        // allows may start a game with them. A scenario being built keeps
+        // whatever AI markings its file has -- nothing plays there -- so an
+        // edit by anyone does not strip them.
+        let builder = is_scenario_builder(&create_scenario.name);
+        let allowed = player.get_email().is_some_and(|email| self.may_use_ai(&email));
+        if create_scenario.ai && !allowed {
+          warn!(
+            "(handle_request) {:?} asked for AI crews in {} and may not use them.",
+            player.get_email(),
+            create_scenario.name
+          );
+          return vec![ResponseMsg::Error("NOT_AUTHORIZED_FOR_AI".to_string())];
+        }
+        let ai = builder || (create_scenario.ai && allowed);
         // Create the new server, register it in the servers tables, in the membership table, and with the player structure.
-        let server = Arc::new(Server::new(&create_scenario.name, &scenario_full_name).await);
+        let server = Arc::new(Server::new(&create_scenario.name, &scenario_full_name).await.with_ai(ai));
         // Every game is recorded; a scenario being built is not a game.
         if let Some(dir) = &self.game_log_dir {
           if !is_scenario_builder(&create_scenario.name) {
@@ -1175,7 +1237,10 @@ impl Processor {
   /// If the session keys cannot be locked.
   #[allow(clippy::implicit_hasher)]
   #[must_use]
-  pub fn build_successful_auth_msgs(&self, player: &PlayerManager, auth_response: AuthResponse) -> Vec<ResponseMsg> {
+  pub fn build_successful_auth_msgs(
+    &self, player: &PlayerManager, mut auth_response: AuthResponse,
+  ) -> Vec<ResponseMsg> {
+    auth_response.ai_allowed = self.may_use_ai(&auth_response.email);
     let mut msgs = vec![
       ResponseMsg::AuthResponse(auth_response),
       ResponseMsg::Scenarios(self.build_scenarios_msg()),
@@ -1207,6 +1272,7 @@ impl Processor {
   pub fn build_post_join_msgs(&self, player: &PlayerManager) -> Vec<ResponseMsg> {
     if let Some(server) = &player.server {
       vec![
+        ResponseMsg::AiCrews(self.ai_crews_shown(player)),
         ResponseMsg::EntityResponse(server.get_unlocked_entities().unwrap().clone()),
         ResponseMsg::Users(self.members.get_user_context(server.get_id())),
       ]

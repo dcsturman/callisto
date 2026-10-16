@@ -43,6 +43,9 @@ pub struct Llm {
   game: String,
   /// What the calls so far have cost, in US dollars, where the price is known.
   spent: f64,
+  /// The fixed part of the prompt: the built-in one unless the commander was
+  /// named with a prompt file of its own.
+  system: String,
 }
 
 impl Llm {
@@ -59,7 +62,15 @@ impl Llm {
       calls: None,
       game: String::new(),
       spent: 0.0,
+      system: prompt::system().to_string(),
     }
+  }
+
+  /// Give the model this system prompt instead of the built-in one.
+  #[must_use]
+  pub fn with_system(mut self, system: String) -> Self {
+    self.system = system;
+    self
   }
 
   /// Record every call as a JSON line here, for the game's record: what the
@@ -96,7 +107,8 @@ impl Llm {
 #[async_trait]
 impl Commander for Llm {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
-    let system = prompt::system();
+    let system = self.system.clone();
+    let system = system.as_str();
     self.memory.update(view);
     let situation = prompt::situation(view, self.plan.as_deref(), &self.memory);
     if self.rounds_asked == 0 {
@@ -185,6 +197,23 @@ impl Commander for Llm {
   fn answered(&self) -> bool {
     self.answered
   }
+
+  fn spent(&self) -> Option<f64> {
+    crate::provider::price(&self.spec).map(|_| self.spent)
+  }
+}
+
+/// The system prompt for a commander named `name`: the built-in one, or for
+/// `model@path` the file at `path` -- so a prompt can be tried on one model
+/// while another keeps the built-in one, and edited without a rebuild.
+///
+/// # Errors
+/// Returns why, if the file cannot be read.
+pub fn system_for(name: &str) -> Result<String, String> {
+  match name.split_once('@') {
+    None => Ok(prompt::system().to_string()),
+    Some((_, path)) => std::fs::read_to_string(path).map_err(|e| format!("cannot read the prompt {path}: {e}")),
+  }
 }
 
 /// A commander by name: a model's (`gemini`, `claude:<model>`), given a
@@ -192,7 +221,9 @@ impl Commander for Llm {
 #[must_use]
 pub fn named(name: &str, seed: u64, vertex: Option<&Arc<Vertex>>) -> Option<Box<dyn Commander>> {
   match (ModelSpec::parse(name), vertex) {
-    (Some(spec), Some(vertex)) => Some(Box::new(Llm::new(Arc::clone(vertex), spec))),
+    (Some(spec), Some(vertex)) => {
+      Some(Box::new(Llm::new(Arc::clone(vertex), spec).with_system(system_for(name).ok()?)))
+    }
     (Some(_), None) => None,
     (None, _) => commander::named(name, seed),
   }

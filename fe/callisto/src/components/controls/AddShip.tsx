@@ -175,13 +175,15 @@ function SoftwareEditor(args: {
 import { addShip, setOrders, setShipController } from "lib/serverManager";
 import { shipsTakingTeamOrders, teamOrders } from "lib/teamOrders";
 import { useAppSelector } from "state/hooks";
-import { entitiesSelector } from "state/serverSlice";
+import { aiCrewsSelector, entitiesSelector } from "state/serverSlice";
 
 type AddShipProps = unknown;
 
 export const AddShip: React.FC<AddShipProps> = () => {
   const entities = useAppSelector(entitiesSelector);
   const shipDesignTemplates = useAppSelector((state) => state.server.templates);
+  // Whether this game offers AI crews; without them no AI control is shown.
+  const aiCrews = useAppSelector(aiCrewsSelector);
 
   const shipNames = useMemo(
     () => entities.ships.map((ship: Ship) => ship.name),
@@ -391,7 +393,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
         active_sensors: addShipData.activeSensors,
         transmitting: addShipData.transmitting,
         team: addShipData.team ?? undefined,
-        controller: addShipData.ai ? ("AI" as const) : undefined,
+        controller: aiCrews && addShipData.ai ? ("AI" as const) : undefined,
         orders: addShipData.orders.trim() === "" ? undefined : addShipData.orders.trim(),
         // Sent only when it differs from the design's own, so an unmodified
         // ship keeps inheriting its loadout.
@@ -612,6 +614,9 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 ))}
               </select>
             </label>
+            {/* A game without AI crews shows nothing about them. */}
+            {aiCrews && (
+              <>
             <label
               className="emissions-toggle"
               title="Crewed by the AI when the scenario is played: it plans and acts every round on its own, against its orders.">
@@ -636,6 +641,8 @@ export const AddShip: React.FC<AddShipProps> = () => {
                 />
               </label>
             )}
+              </>
+            )}
           </div>
         </div>
         <hr />
@@ -656,7 +663,7 @@ export const AddShip: React.FC<AddShipProps> = () => {
           value={updateOrAddLabel}
         />
       </form>
-      <AiTeams ships={entities.ships} />
+      {aiCrews && <AiTeams ships={entities.ships} />}
       <SideCosts ships={entities.ships} designs={shipDesignTemplates} />
     </Accordion>
   );

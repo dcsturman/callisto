@@ -50,9 +50,15 @@ async fn a_side_sees_only_what_its_consoles_would() {
   assert_eq!(yacht.held_by, vec!["Pirate"]);
   assert_eq!(yacht.band, Range::Long);
 
-  // A contact carries what the sensor station shows, and not the rest.
+  // A contact carries what the player's screen shows -- including the hull
+  // she has left, which the ship list gives for any contact -- and not the
+  // rest.
+  assert_eq!(
+    yacht.current_hull, yacht.design_hull,
+    "an undamaged contact shows her whole hull"
+  );
   let wire = serde_json::to_value(yacht).unwrap();
-  for hidden in ["current_hull", "current_power", "crew", "orders", "plan"] {
+  for hidden in ["current_power", "crew", "orders", "plan"] {
     assert!(wire.get(hidden).is_none(), "a contact must not reveal {hidden}");
   }
   // The undetected escort is a blip on the plot: where it is and how it moves,

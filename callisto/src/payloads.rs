@@ -73,6 +73,10 @@ pub struct AuthResponse {
   pub scenario: Option<String>,
   pub roles: Option<Vec<Role>>,
   pub ship: Option<String>,
+  /// Whether this user may start games with AI crews: the client shows the
+  /// choice only when it is true.
+  #[serde(default)]
+  pub ai_allowed: bool,
 }
 
 #[serde_as]
@@ -695,6 +699,10 @@ pub struct ScenariosMsg {
 pub struct CreateScenarioMsg {
   pub name: String,
   pub scenario: String,
+  /// Start the game with AI crews available. Refused unless the user may use
+  /// AI; see `UserDirectory::may_use_ai`.
+  #[serde(default)]
+  pub ai: bool,
 }
 
 /// Save the player's current scenario to the configured scenario directory
@@ -788,6 +796,9 @@ pub enum ResponseMsg {
   // file is broken instead of silently disappearing from the picker.
   ScenarioLoadErrors(Vec<ScenarioLoadErrorMsg>),
   JoinedScenario(String),
+  /// Whether AI crews can be used in the game just created or joined. The
+  /// client shows no AI controls when they cannot.
+  AiCrews(bool),
   ScenarioSaved(String),
   CaptainActionResult(CaptainActionResult),
   SimpleMsg(String),

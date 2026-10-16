@@ -1,11 +1,13 @@
 //! The models a commander can ask, all on Vertex AI.
 //!
-//! Gemini and Claude are both reached through the GCP project's own
-//! credentials and billed to it: a service account's on Cloud Run, the
-//! developer's application-default credentials locally. They differ in request
-//! shape (`generateContent` against the Anthropic Messages API), in which
-//! region serves them, and in how the forced tool call comes back. Both are
-//! asked the same thing: here is the situation, call `plan_round`.
+//! Gemini, Claude and Vertex's pay-per-call partner models (`DeepSeek`, Qwen
+//! and the rest) are all reached through the GCP project's own credentials
+//! and billed to it: a service account's on Cloud Run, the developer's
+//! application-default credentials locally. They differ in request shape
+//! (`generateContent`, the Anthropic Messages API, and the OpenAI-style chat
+//! completions endpoint Vertex serves partner models through), in which region
+//! serves them, and in how the forced tool call comes back. All are asked the
+//! same thing: here is the situation, call `plan_round`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,33 +25,61 @@ use crate::decision::{self, TeamDecision};
 pub enum Family {
   Gemini,
   Claude,
+  /// A partner model Vertex serves as a model (pay per call) through its
+  /// OpenAI-compatible chat completions endpoint: `DeepSeek`, Qwen, GLM and
+  /// the like. Named by publisher and model, `deepseek-ai/deepseek-v4.1-flash-maas`.
+  Maas,
+  /// Claude through Anthropic's own API, on an Anthropic API key, for when
+  /// the Vertex quota for Claude is not there.
+  Anthropic,
 }
 
-/// A model, named as `gemini:<model>` or `claude:<model>`; `gemini` and
-/// `claude` alone pick the defaults.
+/// A model, named as `gemini:<model>`, `claude:<model>` or
+/// `maas:<publisher>/<model>`; `gemini`, `claude` and `deepseek` alone pick
+/// the defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelSpec {
   pub family: Family,
   pub model: String,
+  /// Thinking, for a Claude model through Anthropic's API, as an effort
+  /// level: `haiku+think` for medium, `haiku+thinklow` or `haiku+thinkhigh`.
+  pub thinking: Option<String>,
 }
+
+/// The effort `+think` alone asks for.
+pub const DEFAULT_THINKING: &str = "medium";
 
 /// The cheap, fast tier of each, for the harness's hundreds of games.
 pub const DEFAULT_GEMINI: &str = "gemini-3.8-flash";
 pub const DEFAULT_CLAUDE: &str = "claude-sonnet-5-5";
+pub const DEFAULT_DEEPSEEK: &str = "deepseek-ai/deepseek-v4.1-flash-maas";
+pub const DEFAULT_HAIKU: &str = "claude-haiku-5-5";
 
 impl ModelSpec {
   /// `None` if the name is not a model's.
   #[must_use]
   pub fn parse(name: &str) -> Option<Self> {
+    // `model@prompt-file` names the model and, separately, the system prompt
+    // it is given (see `llm::system_for`); the model is the part before.
+    let name = name.split_once('@').map_or(name, |(model, _)| model);
+    let (name, thinking) = match name.split_once("+think") {
+      Some((model, "")) => (model, Some(DEFAULT_THINKING.to_string())),
+      Some((model, effort @ ("low" | "medium" | "high"))) => (model, Some(effort.to_string())),
+      Some(_) => return None,
+      None => (name, None),
+    };
     let (family, model) = name.split_once(':').unwrap_or((name, ""));
     let (family, default) = match family {
       "gemini" => (Family::Gemini, DEFAULT_GEMINI),
       "claude" => (Family::Claude, DEFAULT_CLAUDE),
+      "maas" | "deepseek" => (Family::Maas, DEFAULT_DEEPSEEK),
+      "anthropic" | "haiku" => (Family::Anthropic, DEFAULT_HAIKU),
       _ => return None,
     };
     Some(ModelSpec {
       family,
       model: if model.is_empty() { default } else { model }.to_string(),
+      thinking,
     })
   }
 
@@ -59,8 +89,14 @@ impl ModelSpec {
     let family = match self.family {
       Family::Gemini => "gemini",
       Family::Claude => "claude",
+      Family::Maas => "maas",
+      Family::Anthropic => "anthropic",
     };
-    format!("{family}:{}", self.model)
+    let thinking = self
+      .thinking
+      .as_ref()
+      .map_or_else(String::new, |effort| format!("+think{effort}"));
+    format!("{family}:{}{thinking}", self.model)
   }
 }
 
@@ -77,6 +113,15 @@ impl std::fmt::Display for ModelSpec {
 pub fn price(spec: &ModelSpec) -> Option<(f64, f64, f64)> {
   match spec.model.as_str() {
     "gemini-3.8-flash" => Some((0.75, 0.075, 3.75)),
+    // Published rates for Flash-Lite; cached input assumed at a tenth, as for
+    // Flash.
+    "gemini-3.5-flash-lite" => Some((0.30, 0.03, 2.50)),
+    // As listed for Vertex; no cached rate, so repeated input is full price.
+    "deepseek-ai/deepseek-v4.1-flash-maas" => Some((0.30, 0.30, 1.20)),
+    // Anthropic's published rates; the same on Vertex.
+    "claude-haiku-5-5" => Some((0.10, 0.01, 0.50)),
+    "claude-sonnet-5-5" => Some((2.00, 0.10, 10.00)),
+    "claude-opus-5-5" => Some((4.00, 0.20, 20.00)),
     _ => None,
   }
 }
@@ -133,9 +178,43 @@ pub struct Vertex {
   token: Arc<dyn TokenSource>,
   project: String,
   region: String,
-  /// Gemini's explicit caches of the fixed part of the prompt, by model:
+  /// Gemini's explicit caches of the fixed part of the prompt, by model and
+  /// a hash of the prompt, so two prompts on one model never share one:
   /// the cache's resource name and when to stop trusting it.
   caches: tokio::sync::Mutex<std::collections::HashMap<String, (String, std::time::Instant)>>,
+  /// An Anthropic API key and workspace, if one is configured, for Claude
+  /// through Anthropic's own API. Never logged.
+  anthropic: Option<AnthropicKey>,
+}
+
+/// An Anthropic API key, and the workspace a key not scoped to one must name.
+struct AnthropicKey {
+  key: String,
+  workspace: Option<String>,
+}
+
+/// A setting from the environment: the variable itself, or the contents of
+/// the file named by the same variable with `_FILE` after it, trimmed. The
+/// file keeps a key out of the shell's history and the process listing.
+fn setting(name: &str) -> Option<String> {
+  std::env::var(name)
+    .ok()
+    .or_else(|| {
+      std::env::var(format!("{name}_FILE"))
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+    })
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
+}
+
+/// How a request proves who is asking.
+#[derive(Clone, Copy)]
+enum Auth {
+  /// The GCP project's credentials, for anything on Vertex.
+  Google,
+  /// The Anthropic API key.
+  Anthropic,
 }
 
 /// How long a cache lives, and how long we use it before making a new one.
@@ -179,6 +258,10 @@ impl Vertex {
       project,
       region: region.to_string(),
       caches: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+      anthropic: setting("ANTHROPIC_API_KEY").map(|key| AnthropicKey {
+        key,
+        workspace: setting("ANTHROPIC_WORKSPACE_ID"),
+      }),
     })
   }
 
@@ -211,7 +294,50 @@ impl Vertex {
         let url = self.endpoint("anthropic", &spec.model, "rawPredict");
         claude_reply(&self.post(&url, &claude_request(system, situation)).await?)
       }
+      Family::Maas => {
+        let url = self.chat_completions();
+        maas_reply(&self.post(&url, &maas_request(&spec.model, system, situation)).await?)
+      }
+      Family::Anthropic => {
+        let mut request = claude_request(system, situation);
+        request["model"] = json!(spec.model);
+        if let Some(fields) = request.as_object_mut() {
+          fields.remove("anthropic_version");
+        }
+        if let Some(effort) = &spec.thinking {
+          // Thinking cannot be had with a forced tool call, so the tool is
+          // offered, not forced, and the model told to use it; an answer
+          // without the call fails as any unreadable answer does. Claude 5.5
+          // thinks adaptively, at an effort, rather than to a token budget.
+          request["thinking"] = json!({"type": "adaptive"});
+          // Thinking comes out of the same allowance as the answer; at 8,192
+          // a long think now and then used it all and never reached the call.
+          request["max_tokens"] = json!(16_384);
+          request["output_config"] = json!({"effort": effort});
+          request["tool_choice"] = json!({"type": "auto"});
+          request["messages"][0]["content"] =
+            json!(format!("{situation}\n\nThink it through, then answer by calling `plan_round`."));
+        }
+        claude_reply(
+          &self
+            .post_as(Auth::Anthropic, "https://api.anthropic.com/v1/messages", &request)
+            .await?,
+        )
+      }
     }
+  }
+
+  /// Vertex's OpenAI-compatible endpoint, which serves the partner models.
+  fn chat_completions(&self) -> String {
+    let host = if self.region == "global" {
+      "aiplatform.googleapis.com".to_string()
+    } else {
+      format!("{}-aiplatform.googleapis.com", self.region)
+    };
+    format!(
+      "https://{host}/v1/projects/{}/locations/{}/endpoints/openapi/chat/completions",
+      self.project, self.region
+    )
   }
 
   /// A Gemini round, through an explicit cache of the system prompt and tool
@@ -224,7 +350,7 @@ impl Vertex {
         Ok(answer) => return gemini_reply(&answer),
         Err(Error::Refused { status, body }) if status == 400 || status == 404 || status == 403 => {
           warn!("(provider) The prompt cache was refused ({status}); going without it this round: {body}");
-          self.caches.lock().await.remove(model);
+          self.caches.lock().await.remove(&cache_key(model, system));
         }
         Err(e) => return Err(e),
       }
@@ -234,8 +360,9 @@ impl Vertex {
 
   /// The cache for this model, made if there is none or it is about to lapse.
   async fn gemini_cache(&self, model: &str, system: &str) -> Option<String> {
+    let key = cache_key(model, system);
     let mut caches = self.caches.lock().await;
-    if let Some((name, until)) = caches.get(model) {
+    if let Some((name, until)) = caches.get(&key) {
       if std::time::Instant::now() < *until {
         return Some(name.clone());
       }
@@ -258,7 +385,7 @@ impl Vertex {
     match self.post(&url, &body).await {
       Ok(made) => {
         let name = made["name"].as_str()?.to_string();
-        caches.insert(model.to_string(), (name.clone(), std::time::Instant::now() + CACHE_TRUSTED));
+        caches.insert(key, (name.clone(), std::time::Instant::now() + CACHE_TRUSTED));
         Some(name)
       }
       Err(e) => {
@@ -271,9 +398,13 @@ impl Vertex {
   /// Post, retrying a few times on a rate limit, a server error, or a
   /// dropped connection.
   async fn post(&self, url: &str, body: &Value) -> Result<Value, Error> {
+    self.post_as(Auth::Google, url, body).await
+  }
+
+  async fn post_as(&self, auth: Auth, url: &str, body: &Value) -> Result<Value, Error> {
     let mut wait = Duration::from_secs(2);
     for attempt in 1..=ATTEMPTS {
-      match self.post_once(url, body).await {
+      match self.post_once(auth, url, body).await {
         Ok(answer) => return Ok(answer),
         Err(e) if attempt < ATTEMPTS && e.is_transient() => {
           warn!("(provider) {e}; retrying in {wait:?}.");
@@ -286,21 +417,50 @@ impl Vertex {
     unreachable!("the loop returns on its last attempt")
   }
 
-  async fn post_once(&self, url: &str, body: &Value) -> Result<Value, Error> {
-    let token = self
-      .token
-      .token()
-      .await
-      .map_err(|e| Error::Transport(format!("no access token: {e}")))?;
-    let response = self
-      .client
-      .post(url)
-      .header("Authorization", token)
-      .header("x-goog-user-project", &self.project)
+  async fn post_once(&self, auth: Auth, url: &str, body: &Value) -> Result<Value, Error> {
+    let request = match auth {
+      Auth::Google => {
+        let token = self
+          .token
+          .token()
+          .await
+          .map_err(|e| Error::Transport(format!("no access token: {e}")))?;
+        self
+          .client
+          .post(url)
+          .header("Authorization", token)
+          .header("x-goog-user-project", &self.project)
+      }
+      Auth::Anthropic => {
+        let anthropic = self.anthropic.as_ref().ok_or_else(|| {
+          Error::Transport("no Anthropic API key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE".to_string())
+        })?;
+        let request = self
+          .client
+          .post(url)
+          .header("x-api-key", &anthropic.key)
+          .header("anthropic-version", "2023-06-01");
+        match &anthropic.workspace {
+          Some(workspace) => request.header("anthropic-workspace-id", workspace),
+          None => request,
+        }
+      }
+    };
+    // Partner models answer slowly now and then: give them longer before
+    // giving up, and log how long every call takes.
+    let limit = if url.contains("/endpoints/openapi/") {
+      Duration::from_secs(150)
+    } else {
+      Duration::from_secs(40)
+    };
+    let started = std::time::Instant::now();
+    let response = request
+      .timeout(limit)
       .json(body)
       .send()
       .await
-      .map_err(|e| Error::Transport(e.to_string()))?;
+      .map_err(|e| Error::Transport(format!("{e} after {:.1}s", started.elapsed().as_secs_f64())))?;
+    tracing::debug!("(provider) answered in {:.1}s", started.elapsed().as_secs_f64());
     let status = response.status().as_u16();
     if !response.status().is_success() {
       return Err(Error::Refused {
@@ -411,7 +571,8 @@ fn claude_request(system: &str, situation: &str) -> Value {
   json!({
     "anthropic_version": "vertex-2023-10-16",
     "max_tokens": 8192,
-    "temperature": 0.3,
+    // No temperature: Claude 5.5 models refuse one ("deprecated for this
+    // model").
     // The fixed part is cached; the situation is not.
     "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
     "messages": [{"role": "user", "content": situation}],
@@ -435,10 +596,61 @@ fn claude_reply(answer: &Value) -> Result<Reply, Error> {
   Ok(Reply {
     decision: serde_json::from_value(input.clone()).map_err(|e| bad(&e.to_string(), &input))?,
     raw: input.to_string(),
-    input_tokens: usage["input_tokens"].as_u64().unwrap_or(0),
+    // Anthropic counts cache reads and writes apart from `input_tokens`;
+    // input here is all of it, of which `cached_tokens` were read from cache.
+    input_tokens: usage["input_tokens"].as_u64().unwrap_or(0)
+      + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+      + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
     cached_tokens: usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
     output_tokens: usage["output_tokens"].as_u64().unwrap_or(0),
   })
+}
+
+fn maas_request(model: &str, system: &str, situation: &str) -> Value {
+  json!({
+    "model": model,
+    "max_tokens": 8192,
+    "temperature": 0.3,
+    "messages": [
+      {"role": "system", "content": system},
+      {"role": "user", "content": situation}
+    ],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": decision::TOOL_NAME,
+        "description": decision::TOOL_DESCRIPTION,
+        "parameters": decision::schema()
+      }
+    }],
+    "tool_choice": {"type": "function", "function": {"name": decision::TOOL_NAME}}
+  })
+}
+
+fn maas_reply(answer: &Value) -> Result<Reply, Error> {
+  let usage = &answer["usage"];
+  let arguments = answer["choices"][0]["message"]["tool_calls"]
+    .as_array()
+    .and_then(|calls| calls.iter().find(|call| call["function"]["name"] == decision::TOOL_NAME))
+    .and_then(|call| call["function"]["arguments"].as_str())
+    .ok_or_else(|| bad("no plan_round call", answer))?;
+  let input: Value = serde_json::from_str(arguments).map_err(|e| bad(&e.to_string(), answer))?;
+  Ok(Reply {
+    decision: serde_json::from_value(input.clone()).map_err(|e| bad(&e.to_string(), &input))?,
+    raw: input.to_string(),
+    input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0),
+    cached_tokens: usage["prompt_tokens_details"]["cached_tokens"].as_u64().unwrap_or(0),
+    // Reasoning, where a model reports it, is part of the completion.
+    output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0),
+  })
+}
+
+/// What a Gemini cache is kept under: the model and the prompt it holds.
+fn cache_key(model: &str, system: &str) -> String {
+  use std::hash::{Hash, Hasher};
+  let mut hasher = std::collections::hash_map::DefaultHasher::new();
+  system.hash(&mut hasher);
+  format!("{model}#{:016x}", hasher.finish())
 }
 
 fn bad(why: &str, raw: &Value) -> Error {
@@ -456,6 +668,8 @@ fn bad(why: &str, raw: &Value) -> Error {
 pub fn parse_reply(family: Family, answer: &Value) -> Result<Reply, Error> {
   match family {
     Family::Gemini => gemini_reply(answer),
-    Family::Claude => claude_reply(answer),
+    // Anthropic's own API answers in the same shape as Claude on Vertex.
+    Family::Claude | Family::Anthropic => claude_reply(answer),
+    Family::Maas => maas_reply(answer),
   }
 }
