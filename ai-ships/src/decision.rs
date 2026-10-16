@@ -13,6 +13,7 @@ use callisto::entity::Entity;
 use callisto::ship::{PowerSystem, Range, ShipSystem};
 use callisto::software::SoftwareKind;
 use callisto::tactics::{self, Boost, Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
+use cgmath::InnerSpace;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
@@ -36,9 +37,10 @@ pub struct TeamDecision {
 }
 
 /// A squadron for the round: ships that fly together behind a guide. The
-/// guide flies the squadron's helm order, held a G below its slowest ship so
-/// the rest can keep up; the others keep station on her. Their guns, sensors
-/// and engineering come from their own orders as usual.
+/// guide flies the squadron's helm order at its slowest ship's thrust, a
+/// quarter G less while one is out of station; the others keep station on
+/// her. Their guns, sensors and engineering come from their own orders as
+/// usual.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct SquadronOrder {
   pub ships: Vec<String>,
@@ -102,9 +104,10 @@ pub struct HelmOrder {
   /// For `station`: where to go and stop, in km.
   #[serde(default)]
   pub position_km: Option<[f64; 3]>,
-  /// The most thrust to use, in G. Omit for the whole drive.
-  #[serde(default, deserialize_with = "lenient_u8")]
-  pub max_thrust: Option<u8>,
+  /// The most thrust to use, in G, fractions allowed. Omit for the whole
+  /// drive.
+  #[serde(default, deserialize_with = "lenient_thrust")]
+  pub max_thrust: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -226,6 +229,11 @@ fn lenient_u8<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u8>, 
   Ok(value.map(|value| value.round().clamp(0.0, 255.0) as u8))
 }
 
+fn lenient_thrust<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
+  let value = Option::<f64>::deserialize(deserializer)?;
+  Ok(value.filter(|value| value.is_finite()).map(|value| value.max(0.0)))
+}
+
 fn lenient_indices<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<usize>, D::Error> {
   let values = Vec::<f64>::deserialize(deserializer)?;
   #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -266,7 +274,7 @@ pub fn schema() -> Value {
                 "target": name("The ship the verb is about: a contact, or a friendly ship."),
                 "band": bands,
                 "position_km": {"type": "array", "items": {"type": "number"}, "description": "x, y, z in km, for station."},
-                "max_thrust": {"type": "integer", "description": "The most thrust the helm may use, in G. Every G of burn is +1 to anyone looking for you, so creep with 1 or 2 when staying unseen matters. Omit to use the whole drive."}
+                "max_thrust": {"type": "number", "description": "The most thrust the helm may use, in G; fractions such as 2.5 are allowed. Every G of burn is +1 to anyone looking for you, so creep with 1 or 2 when staying unseen matters. Omit to use the whole drive."}
               },
               "required": ["verb"]
             },
@@ -354,7 +362,7 @@ pub fn schema() -> Value {
   let helm = schema["properties"]["ships"]["items"]["properties"]["helm"].clone();
   schema["properties"]["squadrons"] = json!({
     "type": "array",
-    "description": "Ships flying together this round, each squadron behind a guide. The guide flies the squadron's helm order, held 1 G below its slowest ship so the rest can keep up; the others keep station on her and arrive with her. A ship in a squadron takes her course from it; her other orders (fire, posture, sensors, engineering) still come from her own entry. Omit, or leave a ship out, for ships flying on their own.",
+    "description": "Ships flying together this round, each squadron behind a guide. The guide flies the squadron's helm order at its slowest ship's thrust, a quarter G less while one is out of station so she can catch up; the others keep station on her and arrive with her. A ship in a squadron takes her course from it; her other orders (fire, posture, sensors, engineering) still come from her own entry. Omit, or leave a ship out, for ships flying on their own.",
     "items": {
       "type": "object",
       "properties": {
@@ -436,8 +444,12 @@ pub fn to_intents(decision: &TeamDecision, view: &Observation) -> Conversion {
   conversion
 }
 
+/// The thrust, in G, a guide gives up while one of her squadron is out of
+/// station, so the straggler has some to close up with.
+pub const STRAGGLER_MARGIN: f64 = 0.25;
+
 /// Give a squadron's ships their courses: the guide the squadron's helm order,
-/// capped a G below the slowest ship; the rest `Follow` her.
+/// at the slowest ship's thrust; the rest `Follow` her.
 fn squadron_helms(
   squadron: &SquadronOrder, view: &Observation, placed: &mut std::collections::HashSet<String>,
   conversion: &mut Conversion,
@@ -473,8 +485,23 @@ fn squadron_helms(
     ));
     return;
   }
-  let slowest = members.iter().map(|ship| ship.max_acceleration()).min().unwrap_or(1);
-  let cap = slowest.saturating_sub(1).max(1);
+  // The guide flies at the slowest ship's thrust, so a squadron in station
+  // loses nothing by flying together. While a ship is out of station the
+  // guide gives up a quarter G, the thrust the straggler closes up with.
+  let slowest = f64::from(members.iter().map(|ship| ship.max_acceleration()).min().unwrap_or(1));
+  let guide = members.iter().find(|ship| ship.get_name() == squadron.guide);
+  let straggling = guide.is_some_and(|guide| {
+    members.iter().any(|ship| {
+      let apart = (ship.get_position() - guide.get_position()).magnitude();
+      let drift = (ship.get_velocity() - guide.get_velocity()).magnitude() * callisto::entity::DELTA_TIME_F64;
+      tactics::band_at(apart) != Range::Short || tactics::band_at(drift) != Range::Short
+    })
+  });
+  let cap = if straggling {
+    (slowest - STRAGGLER_MARGIN).max(STRAGGLER_MARGIN)
+  } else {
+    slowest
+  };
   let helm = squadron.helm.as_ref();
   let guide_helm = helm.map_or(Helm::Hold, |helm| helm_of(&squadron.guide, helm, view, notes));
   let guide_cap = Some(helm.and_then(|helm| helm.max_thrust).map_or(cap, |wanted| wanted.min(cap)));

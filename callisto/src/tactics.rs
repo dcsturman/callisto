@@ -65,7 +65,7 @@ pub enum Helm {
   Follow {
     guide: String,
     guide_helm: Box<Helm>,
-    guide_cap: Option<u8>,
+    guide_cap: Option<f64>,
   },
 }
 
@@ -148,11 +148,11 @@ pub struct Intent {
   pub posture: Option<Posture>,
   #[serde(default)]
   pub helm: Helm,
-  /// The most thrust the helm may use, in G. Every G of burn is +1 to anyone
-  /// looking for the ship, so a ship creeping up unseen burns gently. `None`
-  /// uses the whole drive.
+  /// The most thrust the helm may use, in G, fractions allowed. Every G of
+  /// burn is +1 to anyone looking for the ship, so a ship creeping up unseen
+  /// burns gently. `None` uses the whole drive.
   #[serde(default)]
-  pub max_thrust: Option<u8>,
+  pub max_thrust: Option<f64>,
   /// Thrust to hold back for dodging. `None` leaves it as it is.
   #[serde(default)]
   pub evade: Option<u8>,
@@ -603,8 +603,8 @@ fn rendezvous_with(own: &Ship, target: &Ship, distance: f64, thrust: f64, burn: 
 }
 
 /// The acceleration a helm order may use, in m/s²: the drive's, or less if
-/// the commander capped it. Thrust is seen, a G of it at a time.
-fn helm_thrust(own: &Ship, cap: Option<u8>, running: bool) -> f64 {
+/// the commander capped it.
+fn helm_thrust(own: &Ship, cap: Option<f64>, running: bool) -> f64 {
   // Running uses the whole drive: the dodge reserve and the gunner assist
   // are released for the round (see `orders`).
   let drive = if running {
@@ -612,7 +612,8 @@ fn helm_thrust(own: &Ship, cap: Option<u8>, running: bool) -> f64 {
   } else {
     own.max_acceleration()
   };
-  G * f64::from(cap.map_or(drive, |cap| cap.min(drive)))
+  let drive = f64::from(drive);
+  G * cap.map_or(drive, |cap| cap.clamp(0.0, drive))
 }
 
 /// Whether this helm order means running: burning straight away from a ship.
@@ -633,7 +634,7 @@ fn running(world: &Entities, own: &Ship, helm: &Helm) -> bool {
   }
 }
 
-fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<u8>) -> Result<Option<FlightPlan>, String> {
+fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<f64>) -> Result<Option<FlightPlan>, String> {
   let thrust = helm_thrust(own, cap, running(world, own, helm));
   if thrust <= 0.0 && !matches!(helm, Helm::Hold) {
     // Capped at nothing: coast.
@@ -700,7 +701,7 @@ fn helm_plan(world: &Entities, own: &Ship, helm: &Helm, cap: Option<u8>) -> Resu
 /// A follower's course: the guide's own, while in station; a rendezvous back
 /// to her otherwise.
 fn follow_plan(
-  world: &Entities, own: &Ship, guide: &Ship, guide_helm: &Helm, guide_cap: Option<u8>, thrust: f64,
+  world: &Entities, own: &Ship, guide: &Ship, guide_helm: &Helm, guide_cap: Option<f64>, thrust: f64,
 ) -> Result<FlightPlan, String> {
   if matches!(guide_helm, Helm::Follow { .. }) {
     return Err(format!("{} cannot guide while following", guide.get_name()));
@@ -1542,7 +1543,7 @@ mod tests {
         "Hunter",
         &Intent {
           helm: guide_helm.clone(),
-          max_thrust: Some(1),
+          max_thrust: Some(1.0),
           ..Intent::default()
         },
       )
@@ -1556,7 +1557,7 @@ mod tests {
           helm: Helm::Follow {
             guide: "Hunter".to_string(),
             guide_helm: Box::new(guide_helm),
-            guide_cap: Some(1),
+            guide_cap: Some(1.0),
           },
           ..Intent::default()
         },
@@ -1641,7 +1642,7 @@ mod tests {
       target: "Quarry".to_string(),
       band: Range::Long,
     };
-    let cap = Some(drive - 1);
+    let cap = Some(f64::from(drive) - 0.25);
     let (_, short) = band_edges(Range::Short);
     let mut in_station_from = None;
     for round in 0..40 {
@@ -1701,7 +1702,7 @@ mod tests {
       helm: Helm::OpenRange {
         target: "Quarry".to_string(),
       },
-      max_thrust: Some(1),
+      max_thrust: Some(1.0),
       ..Intent::default()
     };
     let plan = plan_of(&orders(&world, "Hunter", &intent).unwrap());

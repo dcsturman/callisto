@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use ai_ships::decision::{to_intents, HelmOrder, HelmVerb, SquadronOrder, TeamDecision};
+use ai_ships::decision::{to_intents, HelmOrder, HelmVerb, SquadronOrder, TeamDecision, STRAGGLER_MARGIN};
 use ai_ships::observation::observe;
-use callisto::entity::{Entities, Vec3};
+use callisto::entity::{Entities, Entity, Vec3};
 use callisto::ship::{load_ship_templates_from_dir, replace_ship_templates, Range, Team};
 use callisto::tactics::{self, Helm};
 use cgmath::Zero;
@@ -62,8 +62,8 @@ async fn a_squadron_flies_together() {
   assert!(matches!(intent("Pirate").helm, Helm::Intercept { .. }));
   assert_eq!(
     intent("Pirate").max_thrust,
-    Some(drive - 1),
-    "the guide is held a G below the slowest, so the rest can keep up"
+    Some(f64::from(drive)),
+    "in station, the guide flies at the slowest ship's full thrust"
   );
   assert!(matches!(&intent("Wingman").helm, Helm::Follow { guide, .. } if guide == "Pirate"));
 
@@ -79,6 +79,21 @@ async fn a_squadron_flies_together() {
       .unwrap()
   };
   assert_eq!(plan("Wingman"), plan("Pirate"));
+}
+
+#[tokio::test]
+async fn a_straggler_costs_the_guide_a_quarter_g() {
+  let world = pair().await;
+  world.ships["Wingman"]
+    .write()
+    .unwrap()
+    .set_position(Vec3::new(80_000.0 * KM, 0.0, 0.0));
+  let side = ["Pirate".to_string(), "Wingman".to_string()];
+  let view = observe(&world, &side);
+  let conversion = to_intents(&squadron(&["Pirate", "Wingman"], "Pirate"), &view);
+  let guide = &conversion.intents.iter().find(|(ship, _)| ship == "Pirate").unwrap().1;
+  let drive = f64::from(world.ships["Pirate"].read().unwrap().max_acceleration());
+  assert_eq!(guide.max_thrust, Some(drive - STRAGGLER_MARGIN));
 }
 
 #[tokio::test]
