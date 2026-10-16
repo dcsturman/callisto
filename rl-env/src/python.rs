@@ -137,26 +137,30 @@ impl Engine {
         actions.shape()
       )));
     }
-    let obs = PyArray2::<f32>::zeros(py, [slots, OBS_LEN], false);
-    let masks = PyArray2::<bool>::zeros(py, [slots, MASK_LEN], false);
-    let rewards = PyArray1::<f32>::zeros(py, [slots], false);
-    let dones = PyArray1::<bool>::zeros(py, [slots], false);
-    let terminal = PyArray2::<f32>::zeros(py, [slots, OBS_LEN], false);
-    let finished = {
-      let mut obs_rw = obs.readwrite();
-      let mut masks_rw = masks.readwrite();
-      let mut rewards_rw = rewards.readwrite();
-      let mut dones_rw = dones.readwrite();
-      let mut terminal_rw = terminal.readwrite();
+    // The games are stepped with Python's lock released, so a learner can
+    // train on another thread meanwhile; the results are copied out after.
+    let choices: Vec<i64> = actions.as_slice()?.to_vec();
+    let mut obs = vec![0.0_f32; slots * OBS_LEN];
+    let mut masks = vec![false; slots * MASK_LEN];
+    let mut rewards = vec![0.0_f32; slots];
+    let mut dones = vec![false; slots];
+    let mut terminal = vec![0.0_f32; slots * OBS_LEN];
+    let batch = &mut self.batch;
+    let finished = py.detach(|| {
       let mut out = Outputs {
-        obs: obs_rw.as_slice_mut()?,
-        masks: masks_rw.as_slice_mut()?,
-        rewards: rewards_rw.as_slice_mut()?,
-        dones: dones_rw.as_slice_mut()?,
-        terminal_obs: terminal_rw.as_slice_mut()?,
+        obs: &mut obs,
+        masks: &mut masks,
+        rewards: &mut rewards,
+        dones: &mut dones,
+        terminal_obs: &mut terminal,
       };
-      self.batch.step(actions.as_slice()?, &mut out)
-    };
+      batch.step(&choices, &mut out)
+    });
+    let obs = PyArray1::from_vec(py, obs).reshape([slots, OBS_LEN])?;
+    let masks = PyArray1::from_vec(py, masks).reshape([slots, MASK_LEN])?;
+    let rewards = PyArray1::from_vec(py, rewards);
+    let dones = PyArray1::from_vec(py, dones);
+    let terminal = PyArray1::from_vec(py, terminal).reshape([slots, OBS_LEN])?;
     let finished = finished
       .iter()
       .map(|finished| finished_dict(py, finished))

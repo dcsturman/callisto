@@ -1,6 +1,6 @@
 """Export a checkpoint's policy for Rust: `<checkpoint>.cpol` beside it.
 
-    .venv/bin/python scripts/export.py checkpoints/selfplay-1/final.zip
+    .venv/bin/python scripts/export.py checkpoints/selfplay-1/final.zip   (or a .pt)
 
 The file is what `callisto_rl::net::Policy` reads: the bytes ``CPOL``, a
 little-endian u32 header length, a JSON header, then each layer's weights
@@ -18,15 +18,25 @@ import torch
 from sb3_contrib import MaskablePPO
 
 from callisto_rl import HEAD_SIZES, OBS_LEN
+from callisto_rl.policy import Policy
+
+
+def actor_layers(checkpoint: str):
+    """The policy's hidden stack and output layer, from either kind of checkpoint."""
+    if checkpoint.endswith(".zip"):
+        policy = MaskablePPO.load(checkpoint, device="cpu").policy
+        return policy.mlp_extractor.policy_net, policy.action_net
+    policy = Policy.load(checkpoint)
+    return policy.pi, policy.action_net
 
 
 def export(checkpoint: str, out: str | None = None) -> Path:
-    policy = MaskablePPO.load(checkpoint, device="cpu").policy
-    linears = [m for m in policy.mlp_extractor.policy_net if isinstance(m, torch.nn.Linear)]
-    activations = {type(m).__name__ for m in policy.mlp_extractor.policy_net if not isinstance(m, torch.nn.Linear)}
+    stack, action_net = actor_layers(checkpoint)
+    linears = [m for m in stack if isinstance(m, torch.nn.Linear)]
+    activations = {type(m).__name__ for m in stack if not isinstance(m, torch.nn.Linear)}
     if activations != {"Tanh"}:
         raise SystemExit(f"only tanh networks are supported, not {activations}")
-    linears.append(policy.action_net)
+    linears.append(action_net)
     header = {
         "activation": "tanh",
         "obs_len": OBS_LEN,
@@ -48,11 +58,10 @@ def export(checkpoint: str, out: str | None = None) -> Path:
 def check(checkpoint: str, path: Path) -> float:
     """The largest difference between PyTorch's scores and a NumPy replay of
     the exported file, on random observations."""
-    policy = MaskablePPO.load(checkpoint, device="cpu").policy
+    stack, action_net = actor_layers(checkpoint)
     obs = np.random.default_rng(0).uniform(-1, 1, (16, OBS_LEN)).astype(np.float32)
     with torch.no_grad():
-        latent = policy.mlp_extractor.forward_actor(policy.extract_features(torch.tensor(obs)))
-        expected = policy.action_net(latent).numpy()
+        expected = action_net(stack(torch.tensor(obs))).numpy()
     data = path.read_bytes()
     length = struct.unpack("<I", data[4:8])[0]
     header = json.loads(data[8 : 8 + length])
