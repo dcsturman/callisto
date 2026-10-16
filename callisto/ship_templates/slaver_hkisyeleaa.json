@@ -1,6 +1,7 @@
 {
   "name": "Slaver - Hkisyeleaa",
   "displacement": 1000,
+  "cost_mcr": 302.327,
   "hull": 400,
   "armor": 0,
   "maneuver": 2,

@@ -1,6 +1,7 @@
 {
   "name": "Midu Agasham",
   "displacement": 3000,
+  "cost_mcr": 1850.634,
   "hull": 1320,
   "armor": 4,
   "maneuver": 6,

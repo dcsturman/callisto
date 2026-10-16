@@ -1,6 +1,7 @@
 {
   "name": "Light Fighter",
   "displacement": 10,
+  "cost_mcr": 9.432,
   "hull": 4,
   "armor": 2,
   "maneuver": 6,

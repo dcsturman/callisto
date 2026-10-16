@@ -1,6 +1,7 @@
 {
   "name": "HMS Executor",
   "displacement": 200,
+  "cost_mcr": 318.94875,
   "hull": 80,
   "armor": 4,
   "maneuver": 6,

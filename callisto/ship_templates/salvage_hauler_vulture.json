@@ -1,6 +1,7 @@
 {
   "name": "Salvage Hauler - Vulture",
   "displacement": 400,
+  "cost_mcr": 98.822,
   "hull": 160,
   "armor": 0,
   "maneuver": 1,

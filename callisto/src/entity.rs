@@ -17,7 +17,7 @@ use crate::action::{
 };
 use crate::combat::{
   apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
-  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, HitMods,
+  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, HitMods,
   STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
@@ -967,7 +967,9 @@ impl Entities {
       // (Core Rulebook p. 171), so roll the whole list now rather than one
       // weapon per incoming missile.  Nothing pairs a gunner with a particular
       // missile, so there is no reason to hold any of them back.
-      let pool = roll_point_defense_pool(&tallies, rng);
+      let checks = roll_point_defense_checks(&tallies, rng);
+      let pool: u32 = checks.iter().map(|check| check.removed).sum();
+      battery_effects.extend(checks.iter().map(|check| check.message(defender, None)));
       debug!("(Entities.fire_actions) {defender}'s gunners contribute {pool} point(s) of point defence this round.");
       ship.add_point_defense_pool(pool);
       ship.set_point_defense_list(tallies);
@@ -1019,7 +1021,9 @@ impl Entities {
         let covering = self.ships.get(defender).unwrap().read().unwrap();
         let tallies = build_point_defense_tallies(&covering, &ward_actions, boost_map, defender);
         drop(covering);
-        let pool = roll_point_defense_pool(&tallies, rng);
+        let checks = roll_point_defense_checks(&tallies, rng);
+        let pool: u32 = checks.iter().map(|check| check.removed).sum();
+        battery_effects.extend(checks.iter().map(|check| check.message(defender, Some(&ward))));
         if pool > 0 {
           ward_ship.write().unwrap().add_point_defense_pool(pool);
           battery_effects.push(EffectMsg::about(
@@ -1130,6 +1134,10 @@ impl Entities {
     }
 
     let mut cleanup_missile_list = Vec::<String>::new();
+    // Missiles each ship's point defence stops, by the ship and the kind of
+    // weapon: reported as one line apiece after the pass, not one a missile,
+    // whose names say nothing.
+    let mut intercepted = std::collections::BTreeMap::<(String, String), u32>::new();
 
     // Creating this sorted list is necessary ONLY to ensure unit tests run consistently
     // If it ends up being slow we should take it out.
@@ -1201,14 +1209,8 @@ impl Entities {
                 );
                 cleanup_missile_list.push(missile.clone());
                 let what = String::from(&launcher.primary_kind());
-                Some(vec![
-                  EffectMsg::ExhaustedMissile { position: target.get_position() },
-                  EffectMsg::about(
-                    &target_name,
-                    MessageCategory::Damage,
-                    format!("{what} {missile} destroyed by %s's point defence."),
-                  ),
-                ])
+                *intercepted.entry((target_name.clone(), what)).or_default() += 1;
+                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }])
               } else {
                 // The attack gets through point defense
                 // A launched object resolves as the gun that threw it.
@@ -1256,6 +1258,17 @@ impl Entities {
       })
       .flatten()
       .collect::<Vec<_>>();
+
+    effects.extend(intercepted.into_iter().map(|((ship, what), count)| {
+      EffectMsg::about(
+        &ship,
+        MessageCategory::Damage,
+        format!(
+          "{count} {what}{} destroyed by %s's point defence.",
+          if count == 1 { "" } else { "s" }
+        ),
+      )
+    }));
 
     let mut cleanup_ships_list = Vec::<String>::new();
 

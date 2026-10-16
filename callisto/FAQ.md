@@ -388,6 +388,13 @@ salvo" (CRB p. 169). Callisto's missiles fly one at a time, so that cap is
 always one: a missile or torpedo does its damage dice and nothing more. Every
 other weapon still adds the Effect.
 
+#### Rule enforced — bay weapons struggle against small ships
+"All bay weapons suffer DM-2 when attacking targets of 2,000 tons or less and
+DM-4 when attacking targets of 100 tons or less. Missile and torpedo salvoes do
+not use these modifiers" (HG p. 31). It shows in a shot's breakdown as "small
+target", the same term as the torpedo's own DM-2; a torpedo bay is a salvo and
+takes only the torpedo's.
+
 #### Rule enforced — called shots only at Short, and not with missiles
 "Ships at a range of Short or less may attempt to make called shots with
 direct-fire weapons (not missiles or torpedoes)" (CRB p. 169). The server holds

@@ -460,8 +460,9 @@ select.control-input,
     gap: 4px;
     z-index: 12;
     /* Three panels can outgrow a laptop screen, and the results are the one
-       that scrolls rather than the stack. */
-    max-height: 100vh;
+       that scrolls rather than the stack. The stack also stops above the
+       session panel in the bottom corner, whose height App measures. */
+    max-height: calc(100vh - var(--admin-window-height, 0px) - 4px);
 }
 
 /* The reference's own title. It is a disclosure line inside View Controls, not
@@ -1892,6 +1893,7 @@ h3.control-form {
    with two switches rather than as unrelated checkboxes. */
 .emissions-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
     align-items: center;
     margin: 2px 0 4px 0;
@@ -3580,6 +3582,8 @@ h3.control-form {
 
 .fleet-comms-plan {
     margin: 0 0 0.4em 0;
+    /* The plan, then its squadrons on a line of their own. */
+    white-space: pre-line;
     color: #d8dee4;
 }
 
@@ -3614,4 +3618,34 @@ h3.control-form {
     align-items: center;
     gap: 0.75em;
     margin-top: 0.5em;
+}
+
+.side-costs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75em;
+    margin-top: 0.5em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Team, AI crew and orders: wrapped so they fit the panel's width. */
+.add-ship-crewing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin: 4px 0 6px 0;
+}
+
+.ai-teams-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.team-orders-note {
+    font-size: var(--font-sm);
+    font-style: italic;
+    color: #b8c0c8;
 }

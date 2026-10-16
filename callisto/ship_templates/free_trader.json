@@ -1,6 +1,7 @@
 {
   "name": "Free Trader",
   "displacement": 200,
+  "cost_mcr": 46.332,
   "hull": 80,
   "armor": 2,
   "maneuver": 1,

@@ -13,6 +13,7 @@ use callisto::entity::Entity;
 use callisto::ship::{PowerSystem, Range, ShipSystem};
 use callisto::software::SoftwareKind;
 use callisto::tactics::{self, Boost, Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
+use cgmath::InnerSpace;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
@@ -30,6 +31,22 @@ pub struct TeamDecision {
   pub plan: String,
   #[serde(default)]
   pub ships: Vec<ShipOrder>,
+  /// Ships flying together this round, each behind a guide.
+  #[serde(default)]
+  pub squadrons: Vec<SquadronOrder>,
+}
+
+/// A squadron for the round: ships that fly together behind a guide. The
+/// guide flies the squadron's helm order at its slowest ship's thrust, easing
+/// off while one is out of station; the others keep station on
+/// her. Their guns, sensors and engineering come from their own orders as
+/// usual.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SquadronOrder {
+  pub ships: Vec<String>,
+  pub guide: String,
+  #[serde(default)]
+  pub helm: Option<HelmOrder>,
 }
 
 /// One ship's orders, as the model writes them.
@@ -87,9 +104,10 @@ pub struct HelmOrder {
   /// For `station`: where to go and stop, in km.
   #[serde(default)]
   pub position_km: Option<[f64; 3]>,
-  /// The most thrust to use, in G. Omit for the whole drive.
-  #[serde(default, deserialize_with = "lenient_u8")]
-  pub max_thrust: Option<u8>,
+  /// The most thrust to use, in G, fractions allowed. Omit for the whole
+  /// drive.
+  #[serde(default, deserialize_with = "lenient_thrust")]
+  pub max_thrust: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -211,6 +229,11 @@ fn lenient_u8<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u8>, 
   Ok(value.map(|value| value.round().clamp(0.0, 255.0) as u8))
 }
 
+fn lenient_thrust<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
+  let value = Option::<f64>::deserialize(deserializer)?;
+  Ok(value.filter(|value| value.is_finite()).map(|value| value.max(0.0)))
+}
+
 fn lenient_indices<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<usize>, D::Error> {
   let values = Vec::<f64>::deserialize(deserializer)?;
   #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -231,7 +254,7 @@ pub fn schema() -> Value {
     "type": "string",
     "enum": ["Maneuver", "Weapon", "Powerplant", "Sensors", "Bridge", "Jump", "Fuel"]
   });
-  json!({
+  let mut schema = json!({
     "type": "object",
     "properties": {
       "plan": {"type": "string", "description": "The side's standing plan, two or three sentences; what each ship is for."},
@@ -251,7 +274,7 @@ pub fn schema() -> Value {
                 "target": name("The ship the verb is about: a contact, or a friendly ship."),
                 "band": bands,
                 "position_km": {"type": "array", "items": {"type": "number"}, "description": "x, y, z in km, for station."},
-                "max_thrust": {"type": "integer", "description": "The most thrust the helm may use, in G. Every G of burn is +1 to anyone looking for you, so creep with 1 or 2 when staying unseen matters. Omit to use the whole drive."}
+                "max_thrust": {"type": "number", "description": "The most thrust the helm may use, in G; fractions such as 2.5 are allowed. Every G of burn is +1 to anyone looking for you, so creep with 1 or 2 when staying unseen matters. Omit to use the whole drive."}
               },
               "required": ["verb"]
             },
@@ -334,7 +357,57 @@ pub fn schema() -> Value {
       }
     },
     "required": ["plan", "ships"]
-  })
+  });
+  // A squadron's helm order is a ship's, given to the guide.
+  let helm = schema["properties"]["ships"]["items"]["properties"]["helm"].clone();
+  schema["properties"]["squadrons"] = json!({
+    "type": "array",
+    "description": "Ships flying together this round, each squadron behind a guide. The guide flies the squadron's helm order at its slowest ship's thrust, easing off a quarter G for each band a ship is out of station (up to 1 G) so she can catch up; the others keep station on her and arrive with her. A ship in a squadron takes her course from it; her other orders (fire, posture, sensors, engineering) still come from her own entry. Omit, or leave a ship out, for ships flying on their own.",
+    "items": {
+      "type": "object",
+      "properties": {
+        "ships": {"type": "array", "items": {"type": "string"}, "description": "The ships in the squadron, the guide among them."},
+        "guide": name("The ship the others form on."),
+        "helm": helm
+      },
+      "required": ["ships", "guide", "helm"]
+    }
+  });
+  schema
+}
+
+/// The squadrons, as a line for the plan: shown back to the model next round,
+/// so it keeps them unless something has changed, and to the GM in Fleet Comms.
+#[must_use]
+pub fn squadrons_line(squadrons: &[SquadronOrder]) -> Option<String> {
+  let each: Vec<String> = squadrons
+    .iter()
+    .map(|squadron| {
+      let others: Vec<&str> = squadron
+        .ships
+        .iter()
+        .filter(|ship| **ship != squadron.guide)
+        .map(String::as_str)
+        .collect();
+      let order = squadron.helm.as_ref().map_or_else(
+        || "holding course".to_string(),
+        |helm| {
+          let verb = match helm.verb {
+            HelmVerb::Hold => "holding course",
+            HelmVerb::Intercept => "intercepting",
+            HelmVerb::HoldRange => "holding range on",
+            HelmVerb::OpenRange => "opening range from",
+            HelmVerb::Station => "going to station",
+          };
+          let target = helm.target.as_deref().map_or_else(String::new, |target| format!(" {target}"));
+          let band = helm.band.map_or_else(String::new, |band| format!(" at {band:?}"));
+          format!("{verb}{target}{band}")
+        },
+      );
+      format!("{} leading {} ({order})", squadron.guide, others.join(", "))
+    })
+    .collect();
+  (!each.is_empty()).then(|| format!("Squadrons: {}.", each.join("; ")))
 }
 
 /// What the tool is for, as the model is told.
@@ -364,7 +437,131 @@ pub fn to_intents(decision: &TeamDecision, view: &Observation) -> Conversion {
     let intent = intent_of(order, view, &mut conversion.notes);
     conversion.intents.push((order.ship.clone(), intent));
   }
+  let mut placed = std::collections::HashSet::new();
+  for squadron in &decision.squadrons {
+    squadron_helms(squadron, view, &mut placed, &mut conversion);
+  }
   conversion
+}
+
+/// The step, in G, by which a guide eases off for a straggler, up to a whole
+/// G.
+pub const STRAGGLER_STEP: f64 = 0.25;
+
+/// What a guide gives up, in G, for one ship `apart` metres from her and
+/// moving at `drift` m/s relative to her: nothing for a ship settled in
+/// station (inside Short and drifting less than a twentieth of it a round,
+/// as `tactics` keeps station), otherwise enough for her to rejoin in about
+/// [`REJOIN_ROUNDS`] -- shed her relative speed and close the gap -- rounded
+/// up to a quarter G, and never more than a whole G.
+///
+/// Sized by what rejoining takes, not by how far out she is: a ship left
+/// 17 km/s behind in one round is only a band away at first, but a quarter G
+/// takes twenty rounds to stop her falling further back, and by then she is
+/// out of the fight.
+#[must_use]
+pub fn straggler_margin(apart: f64, drift: f64) -> f64 {
+  let per_round = drift * callisto::entity::DELTA_TIME_F64;
+  if tactics::band_at(apart) == Range::Short && per_round <= SETTLED_DRIFT {
+    return 0.0;
+  }
+  let time = f64::from(REJOIN_ROUNDS) * callisto::entity::DELTA_TIME_F64;
+  // Stop the drift, then cover the gap from rest: accelerate half way, brake
+  // the other half.
+  let needed = drift / time + 4.0 * apart / (time * time);
+  let steps = (needed / callisto::entity::G / STRAGGLER_STEP).ceil().max(1.0);
+  (steps * STRAGGLER_STEP).min(1.0)
+}
+
+/// The rounds a straggler is given to rejoin her squadron.
+pub const REJOIN_ROUNDS: u8 = 5;
+
+/// Drift a round, in metres, below which a ship inside Short is settled in
+/// station: a twentieth of Short, as `tactics` keeps it.
+const SETTLED_DRIFT: f64 = 1_250_000.0 / 20.0;
+
+/// Give a squadron's ships their courses: the guide the squadron's helm order,
+/// at the slowest ship's thrust; the rest `Follow` her.
+fn squadron_helms(
+  squadron: &SquadronOrder, view: &Observation, placed: &mut std::collections::HashSet<String>,
+  conversion: &mut Conversion,
+) {
+  let notes = &mut conversion.notes;
+  let own = |name: &str| view.own.iter().find(|ship| ship.get_name() == name);
+  let mut members: Vec<&callisto::ship::Ship> = Vec::new();
+  for name in &squadron.ships {
+    match own(name) {
+      None => notes.push(format!("squadron of {}: {name} is not ours; left out.", squadron.guide)),
+      Some(ship) if ship.max_acceleration() == 0 => notes.push(format!(
+        "squadron of {}: {name} has no thrust to keep station with; left out.",
+        squadron.guide
+      )),
+      Some(_) if placed.contains(name) => notes.push(format!(
+        "squadron of {}: {name} is already in another squadron; left out.",
+        squadron.guide
+      )),
+      Some(ship) => members.push(ship),
+    }
+  }
+  if !members.iter().any(|ship| ship.get_name() == squadron.guide) {
+    notes.push(format!(
+      "squadron of {}: the guide is not one of its ships that can fly; the squadron is not formed.",
+      squadron.guide
+    ));
+    return;
+  }
+  if members.len() < 2 {
+    notes.push(format!(
+      "squadron of {}: no other ship to fly with; she flies on her own orders.",
+      squadron.guide
+    ));
+    return;
+  }
+  // The guide flies at the slowest ship's thrust, so a squadron in station
+  // loses nothing by flying together. While a ship is out of station the
+  // guide eases off by how far out she is, so a straggler just off her slot
+  // costs the squadron little and one left far behind gets thrust to catch up.
+  let slowest = f64::from(members.iter().map(|ship| ship.max_acceleration()).min().unwrap_or(1));
+  let guide = members.iter().find(|ship| ship.get_name() == squadron.guide);
+  let margin = guide.map_or(0.0, |guide| {
+    members
+      .iter()
+      .map(|ship| {
+        straggler_margin(
+          (ship.get_position() - guide.get_position()).magnitude(),
+          (ship.get_velocity() - guide.get_velocity()).magnitude(),
+        )
+      })
+      .fold(0.0, f64::max)
+  });
+  let cap = (slowest - margin).max(STRAGGLER_STEP);
+  let helm = squadron.helm.as_ref();
+  let guide_helm = helm.map_or(Helm::Hold, |helm| helm_of(&squadron.guide, helm, view, notes));
+  let guide_cap = Some(helm.and_then(|helm| helm.max_thrust).map_or(cap, |wanted| wanted.min(cap)));
+  for ship in members {
+    let name = ship.get_name().to_string();
+    placed.insert(name.clone());
+    let index = conversion
+      .intents
+      .iter()
+      .position(|(ship, _)| *ship == name)
+      .unwrap_or_else(|| {
+        conversion.intents.push((name.clone(), Intent::default()));
+        conversion.intents.len() - 1
+      });
+    let intent = &mut conversion.intents[index].1;
+    if name == squadron.guide {
+      intent.helm = guide_helm.clone();
+      intent.max_thrust = guide_cap;
+    } else {
+      intent.helm = Helm::Follow {
+        guide: squadron.guide.clone(),
+        guide_helm: Box::new(guide_helm.clone()),
+        guide_cap,
+      };
+      intent.max_thrust = None;
+    }
+  }
 }
 
 fn is_contact(view: &Observation, name: &str) -> bool {

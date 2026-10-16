@@ -1,6 +1,7 @@
 {
   "name": "Safari Ship - Type K",
   "displacement": 200,
+  "cost_mcr": 61.227,
   "hull": 80,
   "armor": 0,
   "maneuver": 1,

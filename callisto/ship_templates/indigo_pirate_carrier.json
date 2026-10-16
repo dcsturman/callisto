@@ -1,6 +1,7 @@
 {
   "name": "Indigo Pirate Carrier",
   "displacement": 300,
+  "cost_mcr": 184.96,
   "hull": 180,
   "armor": 0,
   "maneuver": 1,

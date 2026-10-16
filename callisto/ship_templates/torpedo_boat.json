@@ -1,6 +1,7 @@
 {
   "name": "Torpedo Boat",
   "displacement": 70,
+  "cost_mcr": 41.4072,
   "hull": 30,
   "armor": 12,
   "maneuver": 6,

@@ -1,6 +1,7 @@
 {
   "name": "Far Trader - Type A2",
   "displacement": 200,
+  "cost_mcr": 53.3205,
   "hull": 80,
   "armor": 2,
   "maneuver": 1,

@@ -924,15 +924,23 @@ async fn test_point_defense_battery_intercepts_missiles() {
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
-  let intercepted = effects
+  // One line for everything the defender's point defence stopped, with the
+  // count, not a line a missile.
+  let intercepted: Vec<String> = effects
     .iter()
-    .filter(
-      |e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("destroyed by defender's point defence")),
-    )
-    .count();
+    .filter(|e| matches!(e, EffectMsg::Message { .. }))
+    .map(EffectMsg::rendered)
+    .filter(|line| line.contains("destroyed by defender's point defence"))
+    .collect();
 
+  assert_eq!(intercepted.len(), 1, "one summary line: {effects:#?}");
+  let count: u32 = intercepted[0]
+    .split_whitespace()
+    .next()
+    .and_then(|n| n.parse().ok())
+    .unwrap_or_else(|| panic!("the line leads with a count: {}", intercepted[0]));
   assert!(
-    intercepted > 0,
+    count > 0,
     "the Dragon's battery should have intercepted at least one missile: {effects:#?}"
   );
   // Its pool comfortably exceeds a three-missile salvo, so nothing should get
@@ -1022,7 +1030,7 @@ async fn test_big_fight() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship2"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "crit_level": [0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0],
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1038,7 +1046,7 @@ async fn test_big_fight() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0]
   }],
     "missiles":[],
     "planets":[],
@@ -1163,7 +1171,7 @@ async fn test_fight_with_crew() {
    "can_jump":false,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 1, 3, 0, 0, 1, 1, 2, 1, 0]
   }],
     "missiles":[],
     "planets":[],
@@ -1188,9 +1196,10 @@ async fn test_slugfest() {
   let server = setup_test_with_server(authenticator).await;
 
   // Destroyer also has a professional crew! Though deployed nonsensically as missiles don't get benefit from gunner skill.
-  // Boost weapon #10 as its firing a pules laser at the harrier.
+  // Boost weapon #10 as its firing a pules laser at the harrier. The particle bay (#0) has a veteran on it: a bay
+  // takes DM-2 against a ship of 2,000 tons or less (High Guard p. 31), and this test is about massed fire, not that.
   let destroyer = r#"{"name":"Evil Destroyer","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Midu Agasham",
-        "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1]}}"#;
+        "crew":{"pilot":3,"sensors":[],"engineers":[],"gunnery":[4, 2, 2, 2, 2, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1]}}"#;
 
   let response = server.add_ship(serde_json::from_str(destroyer).unwrap()).unwrap();
   assert_eq!(response, "Add ship action executed");

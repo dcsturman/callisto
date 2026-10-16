@@ -160,8 +160,17 @@ impl Vertex {
       .map(str::to_string)
       .or(provider.project_id.clone())
       .ok_or_else(|| Error::Transport("no GCP project: set GOOGLE_CLOUD_PROJECT".to_string()))?;
+    // A round's answer normally takes 4 to 10 seconds. Now and then a
+    // request stalls -- most often on a pooled connection the far end has
+    // quietly dropped -- and the whole side waits on it, so give up on one
+    // after 40 seconds and retry on a fresh connection, rather than after two
+    // minutes. Idle connections are let go after 20 seconds for the same
+    // reason: a round between AI turns can be longer than the far end keeps
+    // them.
     let client = reqwest::Client::builder()
-      .timeout(Duration::from_secs(120))
+      .connect_timeout(Duration::from_secs(10))
+      .timeout(Duration::from_secs(40))
+      .pool_idle_timeout(Duration::from_secs(20))
       .build()
       .map_err(|e| Error::Transport(e.to_string()))?;
     Ok(Vertex {

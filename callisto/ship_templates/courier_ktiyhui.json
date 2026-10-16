@@ -1,6 +1,7 @@
 {
   "name": "Courier - Ktiyhui",
   "displacement": 200,
+  "cost_mcr": 103.905,
   "hull": 88,
   "armor": 12,
   "maneuver": 4,

@@ -1,6 +1,7 @@
 {
   "name": "Slow Pinnace",
   "displacement": 40,
+  "cost_mcr": 5.967,
   "hull": 16,
   "armor": 0,
   "maneuver": 3,

@@ -1,6 +1,7 @@
 {
   "name": "Messenger - Iyeliy",
   "displacement": 200,
+  "cost_mcr": 99.85,
   "hull": 80,
   "armor": 0,
   "maneuver": 1,

@@ -184,8 +184,21 @@ pub(crate) fn attack_terms(
   // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
   // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
   // capital ships and struggle to connect with anything nimble.
-  let small_target_mod = if firing.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
+  //
+  // Bays likewise: "All bay weapons suffer DM-2 when attacking targets of 2,000
+  // tons or less and DM-4 when attacking targets of 100 tons or less. Missile
+  // and torpedo salvoes do not use these modifiers" (High Guard p. 31). A bay
+  // gun is laid for a capital ship. One term, since a torpedo bay is a salvo
+  // and takes only the torpedo's DM.
+  let tons = defender.design.displacement;
+  let small_target_mod = if firing.kind == WeaponType::Torpedo && tons < 2_000 {
     -2
+  } else if matches!(firing.mount, WeaponMount::Bay(_)) && profile.salvo.is_none() {
+    match tons {
+      0..=100 => -4,
+      101..=2_000 => -2,
+      _ => 0,
+    }
   } else {
     0
   };
@@ -2026,26 +2039,124 @@ pub fn interception_cost(kind: WeaponType) -> u32 {
 /// Total missiles this ship's gunners will remove this round.
 #[must_use]
 pub fn roll_point_defense_pool(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> u32 {
+  roll_point_defense_checks(point_defense_list, rng)
+    .iter()
+    .map(|check| check.removed)
+    .sum()
+}
+
+/// One gunner's point-defence check for the round: the mount, the 2D rolled,
+/// the bonus (turret, gunnery, leadership), and how many missiles it stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PointDefenseCheck {
+  pub weapon: usize,
+  pub roll: u8,
+  pub bonus: u16,
+  pub removed: u32,
+}
+
+impl PointDefenseCheck {
+  /// The check as a results line about `defender`, covering `ward` if it is
+  /// another ship's missiles it is shooting at; the arithmetic on the hover.
+  #[must_use]
+  pub fn message(&self, defender: &str, ward: Option<&str>) -> EffectMsg {
+    let mount = self.weapon;
+    let whose = if ward.is_some() { " covering %t" } else { "" };
+    let content = if self.removed > 0 {
+      format!(
+        "%s's mount #{mount} on point defence{whose} can stop {} missile{} this round.",
+        self.removed,
+        if self.removed == 1 { "" } else { "s" }
+      )
+    } else {
+      format!("%s's mount #{mount} on point defence{whose} misses: it stops nothing this round.")
+    };
+    let total = i32::from(self.roll) + i32::from(self.bonus);
+    let effect = total - STANDARD_ROLL_THRESHOLD;
+    let message = EffectMsg::outcome(defender, MessageCategory::Attack, content, self.removed > 0).rolled(format!(
+      "roll {} + turret, gunner and leadership {} = {total} vs {STANDARD_ROLL_THRESHOLD}, effect {effect:+}{}",
+      self.roll,
+      self.bonus,
+      if self.removed > 0 && effect == 0 {
+        " (a bare success stops one)"
+      } else {
+        ""
+      }
+    ));
+    match ward {
+      Some(ward) => message.at(ward),
+      None => message,
+    }
+  }
+}
+
+/// Roll each gunner's point-defence check: see [`roll_point_defense_pool`],
+/// which sums them. The dice are thrown in the same order, so the two give the
+/// same game.
+#[must_use]
+pub fn roll_point_defense_checks(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> Vec<PointDefenseCheck> {
   point_defense_list
     .iter()
     .map(|(weapon, bonus)| {
       let roll = roll_dice(2, rng);
       let effect = i32::from(roll) + i32::from(*bonus) - STANDARD_ROLL_THRESHOLD;
-      if effect >= 0 {
-        // A successful check always stops at least the missile it was made
-        // against, so a bare success is worth one.
-        #[allow(clippy::cast_sign_loss)]
-        let removed = effect.max(1) as u32;
-        debug!(
-          "(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
-        );
-        removed
-      } else {
-        debug!("(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: failed.");
-        0
+      // A successful check always stops at least the missile it was made
+      // against, so a bare success is worth one.
+      #[allow(clippy::cast_sign_loss)]
+      let removed = if effect >= 0 { effect.max(1) as u32 } else { 0 };
+      debug!(
+        "(Combat.roll_point_defense_checks) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
+      );
+      PointDefenseCheck {
+        weapon: *weapon,
+        roll,
+        bonus: *bonus,
+        removed,
       }
     })
-    .sum()
+    .collect()
+}
+
+#[cfg(test)]
+mod point_defense_message_tests {
+  use super::*;
+
+  #[test]
+  fn a_check_reports_its_roll() {
+    let check = PointDefenseCheck {
+      weapon: 2,
+      roll: 9,
+      bonus: 3,
+      removed: 4,
+    };
+    let line = check.message("INS Righteous", None);
+    assert_eq!(
+      line.rendered(),
+      "INS Righteous's mount #2 on point defence can stop 4 missiles this round."
+    );
+    let EffectMsg::Message { roll, .. } = &line else {
+      panic!("expected a message, got {line:?}");
+    };
+    assert_eq!(
+      roll.as_deref(),
+      Some("roll 9 + turret, gunner and leadership 3 = 12 vs 8, effect +4")
+    );
+  }
+
+  #[test]
+  fn a_miss_says_so_and_names_the_ship_covered() {
+    let check = PointDefenseCheck {
+      weapon: 0,
+      roll: 3,
+      bonus: 2,
+      removed: 0,
+    };
+    let line = check.message("INS Stag", Some("INS Righteous"));
+    assert_eq!(
+      line.rendered(),
+      "INS Stag's mount #0 on point defence covering INS Righteous misses: it stops nothing this round."
+    );
+  }
 }
 
 #[cfg(test)]
@@ -3362,6 +3473,53 @@ mod tests {
   /// the attacker may choose which location is hit" (CRB p. 169) does not say
   /// which critical, and restricting it to the Effect 6 one made a called
   /// shot a DM-2 for nothing in the ordinary case.
+  #[test]
+  fn bay_weapons_struggle_against_small_targets() {
+    let bay = Weapon::single(WeaponType::Fusion, WeaponMount::Bay(BaySize::Small));
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Gunship".to_string(),
+      weapons: vec![bay.clone()],
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Gunship".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    let firing = bay.firing_default().unwrap();
+    let profile = profile_for(firing.kind, firing.mount).unwrap();
+    let small_target = |tons: u32| {
+      let design = Arc::new(ShipDesignTemplate {
+        name: "Target".to_string(),
+        displacement: tons,
+        ..ShipDesignTemplate::default()
+      });
+      let defender = Ship::new(
+        "Target".to_string(),
+        Vec3::new(1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let terms = attack_terms(
+        &AttackSituation {
+          hit: HitMods::default(),
+          attacker: &attacker,
+          defender: &defender,
+          firing: &firing,
+          profile: &profile,
+          range_band: Range::Short,
+          called_shot: false,
+        },
+        0,
+        0,
+      )
+      .unwrap();
+      terms.iter().find(|(name, _)| *name == "small target").unwrap().1
+    };
+    assert_eq!(small_target(50), -4, "100 tons or less");
+    assert_eq!(small_target(400), -2, "2,000 tons or less");
+    assert_eq!(small_target(2_000), -2);
+    assert_eq!(small_target(5_000), 0, "a capital ship is what a bay is for");
+  }
+
   #[test]
   fn a_called_shot_is_only_called_at_short_range() {
     let design = Arc::new(ShipDesignTemplate {

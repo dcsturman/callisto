@@ -906,6 +906,11 @@ function handleUsers(json: [UserContext]) {
     c.roles = parseRoles(raw.roles ?? raw.role);
     c.ship = user.ship;
     c.ready = user.ready ?? false;
+    // The further ships a player answers for: a team's commander, or the AI
+    // crewing a side. Dropped here before, so the list could not say so.
+    if (user.ships != null && user.ships.length > 0) {
+      c.ships = user.ships;
+    }
     users.push(c);
   }
   store.dispatch(setUsers(users));

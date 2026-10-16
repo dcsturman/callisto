@@ -1,6 +1,7 @@
 {
   "name": "Merchant Cruiser - Leviathan",
   "displacement": 1800,
+  "cost_mcr": 839.2995,
   "hull": 720,
   "armor": 0,
   "maneuver": 4,

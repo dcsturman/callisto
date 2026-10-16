@@ -1,6 +1,7 @@
 {
   "name": "Yacht - Type Y",
   "displacement": 200,
+  "cost_mcr": 69.479,
   "hull": 80,
   "armor": 0,
   "maneuver": 1,

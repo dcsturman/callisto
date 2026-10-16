@@ -1,6 +1,7 @@
 {
   "name": "Destroyer Escort - Chrysanthemum",
   "displacement": 1000,
+  "cost_mcr": 559.602,
   "hull": 440,
   "armor": 2,
   "maneuver": 6,

@@ -1,6 +1,7 @@
 {
   "name": "Seeker - Kteiroa",
   "displacement": 200,
+  "cost_mcr": 57.495,
   "hull": 80,
   "armor": 0,
   "maneuver": 2,

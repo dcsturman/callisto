@@ -1,6 +1,7 @@
 {
   "name": "Herald Fast Messenger",
   "displacement": 300,
+  "cost_mcr": 140.127,
   "hull": 120,
   "armor": 4,
   "maneuver": 2,
