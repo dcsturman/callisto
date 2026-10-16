@@ -82,17 +82,16 @@ async fn a_squadron_flies_together() {
 }
 
 #[test]
-fn the_margin_grows_with_the_gap() {
+fn the_margin_grows_with_what_rejoining_takes() {
   let km = |n: f64| n * KM;
-  assert!(straggler_margin(km(500.0), 10.0).abs() < f64::EPSILON, "settled: nothing");
-  assert!((straggler_margin(km(500.0), 1_000.0) - 0.25).abs() < 1e-9, "close but drifting");
-  assert!((straggler_margin(km(5_000.0), 0.0) - 0.25).abs() < 1e-9, "Medium");
-  assert!((straggler_margin(km(20_000.0), 0.0) - 0.5).abs() < 1e-9, "Long");
-  assert!((straggler_margin(km(40_000.0), 0.0) - 0.75).abs() < 1e-9, "Very Long");
-  assert!((straggler_margin(km(200_000.0), 0.0) - 1.0).abs() < 1e-9, "Distant");
+  let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+  assert!(close(straggler_margin(km(500.0), 10.0), 0.0), "settled: nothing");
+  assert!(close(straggler_margin(km(500.0), 1_000.0), 0.25), "close but drifting");
+  assert!(close(straggler_margin(km(5_000.0), 0.0), 0.75), "Medium, at rest");
+  assert!(close(straggler_margin(km(20_000.0), 0.0), 1.0), "Long: the most there is");
   assert!(
-    (straggler_margin(km(500.0), 100_000.0) - 0.75).abs() < 1e-9,
-    "drifting 36,000 km a round counts as Very Long"
+    close(straggler_margin(km(2_667.0), 17_653.0), 1.0),
+    "left 17.6 km/s behind in one round: a whole G, though only Medium away"
   );
 }
 

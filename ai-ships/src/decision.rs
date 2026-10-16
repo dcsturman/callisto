@@ -444,31 +444,37 @@ pub fn to_intents(decision: &TeamDecision, view: &Observation) -> Conversion {
   conversion
 }
 
-/// The step, in G, by which a guide eases off for a straggler: one for each
-/// band she is out of station, up to a whole G.
+/// The step, in G, by which a guide eases off for a straggler, up to a whole
+/// G.
 pub const STRAGGLER_STEP: f64 = 0.25;
 
 /// What a guide gives up, in G, for one ship `apart` metres from her and
 /// moving at `drift` m/s relative to her: nothing for a ship settled in
 /// station (inside Short and drifting less than a twentieth of it a round,
-/// as `tactics` keeps station), then a quarter G for each band out, counting
-/// her drift over a round as distance too, to a whole G at Distant.
+/// as `tactics` keeps station), otherwise enough for her to rejoin in about
+/// [`REJOIN_ROUNDS`] -- shed her relative speed and close the gap -- rounded
+/// up to a quarter G, and never more than a whole G.
+///
+/// Sized by what rejoining takes, not by how far out she is: a ship left
+/// 17 km/s behind in one round is only a band away at first, but a quarter G
+/// takes twenty rounds to stop her falling further back, and by then she is
+/// out of the fight.
 #[must_use]
 pub fn straggler_margin(apart: f64, drift: f64) -> f64 {
   let per_round = drift * callisto::entity::DELTA_TIME_F64;
   if tactics::band_at(apart) == Range::Short && per_round <= SETTLED_DRIFT {
     return 0.0;
   }
-  let bands = |metres: f64| -> f64 {
-    match tactics::band_at(metres) {
-      Range::Short | Range::Medium => 1.0,
-      Range::Long => 2.0,
-      Range::VeryLong => 3.0,
-      Range::Distant => 4.0,
-    }
-  };
-  STRAGGLER_STEP * bands(apart).max(bands(per_round))
+  let time = f64::from(REJOIN_ROUNDS) * callisto::entity::DELTA_TIME_F64;
+  // Stop the drift, then cover the gap from rest: accelerate half way, brake
+  // the other half.
+  let needed = drift / time + 4.0 * apart / (time * time);
+  let steps = (needed / callisto::entity::G / STRAGGLER_STEP).ceil().max(1.0);
+  (steps * STRAGGLER_STEP).min(1.0)
 }
+
+/// The rounds a straggler is given to rejoin her squadron.
+pub const REJOIN_ROUNDS: u8 = 5;
 
 /// Drift a round, in metres, below which a ship inside Short is settled in
 /// station: a twentieth of Short, as `tactics` keeps it.

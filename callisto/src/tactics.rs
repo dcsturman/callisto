@@ -711,10 +711,12 @@ fn follow_plan(
   let (_, short) = band_edges(Range::Short);
   let apart = (own.get_position() - guide.get_position()).magnitude();
   let drift = (own.get_velocity() - guide.get_velocity()).magnitude() * DELTA_TIME_F64;
-  // Settled: close by and all but matched -- a twentieth of Short a round.
-  // Only then is copying her course enough; a follower inside Short but
-  // still drifting keeps correcting, or the drift carries her out again.
-  if apart <= short && drift <= short / 20.0 {
+  // Matched: close by and drifting less than a kilometre a round. Only then
+  // is copying her course enough; any more drift and copying carries it
+  // forward round after round until it takes her out of station, so a
+  // follower keeps making small corrections for as long as she is not quite
+  // matched -- with whatever thrust is spare, however little.
+  if apart <= short && drift <= 1_000.0 {
     // In station: fly her course, no harder than this ship can.
     let scale = |accel: Vec3| {
       let magnitude = accel.magnitude();
@@ -756,43 +758,43 @@ fn follow_plan(
     None,
   )
   .plan;
-  let with_burn = |accel: Vec3| {
-    let total = accel + burn;
-    if total.magnitude() > thrust && total.magnitude() > 0.0 {
-      total * (thrust / total.magnitude())
+  // The correction spread evenly over the round: the same change of
+  // velocity by the round's end, and never a part of the round left
+  // coasting. A rendezvous with the thrust left over can finish inside a
+  // round, and a plan holds only two legs, so flying it as plotted left the
+  // follower coasting for the rest of the round while her guide burned on.
+  // Re-plotted every round, so the averaging costs nothing over time.
+  let round = DELTA_TIME_F64;
+  // Leg durations are seconds, far inside f64's exact range.
+  #[allow(clippy::cast_precision_loss)]
+  let first_time = (correction.0 .1 as f64).min(round);
+  #[allow(clippy::cast_precision_loss)]
+  let second_time = correction.1.as_ref().map_or(0.0, |leg| (leg.1 as f64).min(round - first_time));
+  let nudge =
+    (correction.0 .0 * first_time + correction.1.as_ref().map_or(Vec3::zero(), |leg| leg.0) * second_time) / round;
+  let scale = |accel: Vec3| {
+    if accel.magnitude() > thrust && accel.magnitude() > 0.0 {
+      accel * (thrust / accel.magnitude())
     } else {
-      total
+      accel
     }
   };
-  // If the guide turns this round -- her first leg ends inside it -- split
-  // the round where she turns, so the follower turns with her: a follower
-  // still flying her old burn after she has turned is off by twice her
-  // thrust for the rest of the round, and never closes.
-  let flips = course.0 .1 < DELTA_TIME_ROUND && course.1.is_some();
-  if flips {
-    let turn = course.0 .1;
-    let then = course.1.as_ref().map_or(burn, |leg| leg.0);
-    let correction_at = |t: u64| {
-      if t < correction.0 .1 {
-        correction.0 .0
-      } else {
-        correction.1.as_ref().map_or(Vec3::zero(), |leg| leg.0)
-      }
-    };
-    let scale = |accel: Vec3| {
-      if accel.magnitude() > thrust && accel.magnitude() > 0.0 {
-        accel * (thrust / accel.magnitude())
-      } else {
-        accel
-      }
-    };
-    let first = (scale(burn + correction_at(0)), turn);
-    let second = (scale(then + correction_at(turn)), DEFAULT_ACCEL_DURATION);
-    return Ok(FlightPlan::new(first.into(), Some(second.into())));
+  // If the guide turns this round -- her first leg ends inside it -- turn
+  // with her: a follower still flying her old burn after she has turned is
+  // off by twice her thrust for the rest of the round.
+  match &course.1 {
+    Some(then) if course.0 .1 < DELTA_TIME_ROUND => Ok(FlightPlan::new(
+      (scale(burn + nudge), course.0 .1).into(),
+      Some((scale(then.0 + nudge), DEFAULT_ACCEL_DURATION).into()),
+    )),
+    // The nudge for this round only, then the guide's burn: if no fresh
+    // order comes next round -- the model fails to answer -- she flies on
+    // with her guide rather than nudging for ever.
+    _ => Ok(FlightPlan::new(
+      (scale(burn + nudge), DELTA_TIME_ROUND).into(),
+      Some((scale(burn), course.0 .1.saturating_sub(DELTA_TIME_ROUND).max(1)).into()),
+    )),
   }
-  let first = (with_burn(correction.0 .0), correction.0 .1);
-  let second = correction.1.as_ref().map(|leg| (with_burn(leg.0), leg.1));
-  Ok(FlightPlan::new(first.into(), second.map(Into::into)))
 }
 
 /// A round, in whole seconds.
@@ -1630,10 +1632,12 @@ mod tests {
       )
       .unwrap(),
     );
-    // The guide sits still at the origin; the wing burns toward her (+x)
-    // and brakes to stop beside her.
+    // The guide sits still at the origin: this round the wing burns toward
+    // her (+x), and then flies the guide's own course -- here, none -- until
+    // the next round's order. Braking is decided round by round.
     assert!(wing.0 .0.x > 0.0, "{wing:?}");
-    assert!(wing.1.as_ref().is_some_and(|leg| leg.0.x < 0.0), "{wing:?}");
+    assert_eq!(wing.0 .1, DELTA_TIME_ROUND, "{wing:?}");
+    assert!(wing.1.as_ref().is_some_and(|leg| leg.0.magnitude() < 1e-9), "{wing:?}");
   }
 
   /// Fly a plan for one round: each leg for as much of the round as it lasts,
@@ -1663,22 +1667,33 @@ mod tests {
   /// other side.
   #[tokio::test]
   async fn a_follower_closes_up_and_stays_in_station() {
-    let mut world = two_ships(2_000_000.0 * KM).await;
-    let design = get_ship_template("Buccaneer").unwrap();
-    world.add_ship(
-      "Wing".to_string(),
+    follower_rejoins(
       Vec3::new(-12_000.0 * KM, 16_000.0 * KM, 0.0),
       Vec3::new(-1_000.0, 1_700.0, 0.0),
-      &design,
-      None,
-      None,
-    );
+      0.25,
+      30,
+    )
+    .await;
+  }
+
+  /// The opening of Fire over Jupiter as it went wrong: a follower left to
+  /// coast for a round while her guide burned, 2,667 km behind and 17.6 km/s
+  /// slower. With the whole G the guide gives up for that, she rejoins.
+  #[tokio::test]
+  async fn a_follower_left_behind_for_a_round_rejoins() {
+    follower_rejoins(Vec3::new(-2_667.0 * KM, 0.0, 0.0), Vec3::new(-17_653.0, 0.0, 0.0), 1.0, 15).await;
+  }
+
+  async fn follower_rejoins(offset: Vec3, drift: Vec3, margin: f64, within: u32) {
+    let mut world = two_ships(2_000_000.0 * KM).await;
+    let design = get_ship_template("Buccaneer").unwrap();
+    world.add_ship("Wing".to_string(), offset, drift, &design, None, None);
     let drive = hunter(&world).max_acceleration();
     let guide_helm = Helm::Intercept {
       target: "Quarry".to_string(),
       band: Range::Long,
     };
-    let cap = Some(f64::from(drive) - 0.25);
+    let cap = Some(f64::from(drive) - margin);
     let (_, short) = band_edges(Range::Short);
     let mut in_station_from = None;
     for round in 0..40 {
@@ -1726,7 +1741,7 @@ mod tests {
       }
     }
     assert!(
-      in_station_from.is_some_and(|round| round < 30),
+      in_station_from.is_some_and(|round| round < within),
       "never closed up: in station from {in_station_from:?}"
     );
   }
