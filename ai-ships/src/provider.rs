@@ -41,7 +41,13 @@ pub enum Family {
 pub struct ModelSpec {
   pub family: Family,
   pub model: String,
+  /// Thinking, for a Claude model through Anthropic's API, as an effort
+  /// level: `haiku+think` for medium, `haiku+thinklow` or `haiku+thinkhigh`.
+  pub thinking: Option<String>,
 }
+
+/// The effort `+think` alone asks for.
+pub const DEFAULT_THINKING: &str = "medium";
 
 /// The cheap, fast tier of each, for the harness's hundreds of games.
 pub const DEFAULT_GEMINI: &str = "gemini-3.8-flash";
@@ -56,6 +62,12 @@ impl ModelSpec {
     // `model@prompt-file` names the model and, separately, the system prompt
     // it is given (see `llm::system_for`); the model is the part before.
     let name = name.split_once('@').map_or(name, |(model, _)| model);
+    let (name, thinking) = match name.split_once("+think") {
+      Some((model, "")) => (model, Some(DEFAULT_THINKING.to_string())),
+      Some((model, effort @ ("low" | "medium" | "high"))) => (model, Some(effort.to_string())),
+      Some(_) => return None,
+      None => (name, None),
+    };
     let (family, model) = name.split_once(':').unwrap_or((name, ""));
     let (family, default) = match family {
       "gemini" => (Family::Gemini, DEFAULT_GEMINI),
@@ -67,6 +79,7 @@ impl ModelSpec {
     Some(ModelSpec {
       family,
       model: if model.is_empty() { default } else { model }.to_string(),
+      thinking,
     })
   }
 
@@ -79,7 +92,11 @@ impl ModelSpec {
       Family::Maas => "maas",
       Family::Anthropic => "anthropic",
     };
-    format!("{family}:{}", self.model)
+    let thinking = self
+      .thinking
+      .as_ref()
+      .map_or_else(String::new, |effort| format!("+think{effort}"));
+    format!("{family}:{}{thinking}", self.model)
   }
 }
 
@@ -286,6 +303,17 @@ impl Vertex {
         request["model"] = json!(spec.model);
         if let Some(fields) = request.as_object_mut() {
           fields.remove("anthropic_version");
+        }
+        if let Some(effort) = &spec.thinking {
+          // Thinking cannot be had with a forced tool call, so the tool is
+          // offered, not forced, and the model told to use it; an answer
+          // without the call fails as any unreadable answer does. Claude 5.5
+          // thinks adaptively, at an effort, rather than to a token budget.
+          request["thinking"] = json!({"type": "adaptive"});
+          request["output_config"] = json!({"effort": effort});
+          request["tool_choice"] = json!({"type": "auto"});
+          request["messages"][0]["content"] =
+            json!(format!("{situation}\n\nThink it through, then answer by calling `plan_round`."));
         }
         claude_reply(
           &self

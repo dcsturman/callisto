@@ -93,3 +93,16 @@ fn a_claude_reply_counts_cached_input_in_its_input() {
     "{cost}"
   );
 }
+
+#[test]
+fn a_thinking_effort_is_part_of_the_name() {
+  let spec = ModelSpec::parse("haiku+think").unwrap();
+  assert_eq!(
+    (spec.model.as_str(), spec.thinking.as_deref()),
+    ("claude-haiku-5-5", Some("medium"))
+  );
+  assert_eq!(ModelSpec::parse("haiku+thinkhigh").unwrap().thinking.as_deref(), Some("high"));
+  assert_eq!(ModelSpec::parse(&spec.name()), Some(spec));
+  assert_eq!(ModelSpec::parse("haiku").unwrap().thinking, None);
+  assert!(ModelSpec::parse("haiku+thinkhard").is_none());
+}
