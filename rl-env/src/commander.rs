@@ -29,6 +29,8 @@ pub struct Net {
   hull_at_start: Option<u32>,
   /// Choices drawn as in training, rather than always the best scored.
   rng: Option<rand::rngs::SmallRng>,
+  /// The goal to play for, in place of the scenario's.
+  goal: Option<callisto::ship::Goal>,
 }
 
 impl Net {
@@ -40,7 +42,15 @@ impl Net {
       memory: Memory::new(),
       hull_at_start: None,
       rng: None,
+      goal: None,
     }
+  }
+
+  /// Plays for this goal, whatever the scenario gives its side.
+  #[must_use]
+  pub fn with_goal(mut self, goal: callisto::ship::Goal) -> Self {
+    self.goal = Some(goal);
+    self
   }
 
   /// Draws its choices in proportion to the network's scores, as in training.
@@ -113,7 +123,7 @@ impl Commander for Net {
       max_rounds: MAX_ROUNDS,
       own_hull_share: hull as f32 / start.max(1) as f32,
       enemy_hull_share: believed_hull(&self.memory),
-      goal: side_goal(&view.own),
+      goal: self.goal.unwrap_or_else(|| side_goal(&view.own)),
     };
     let mut obs = vec![0.0; OBS_LEN];
     let mut mask = vec![false; MASK_LEN];

@@ -30,8 +30,11 @@ pub struct Config {
   pub seed: u64,
   /// Threads to step games on. Leave the machine some.
   pub threads: usize,
-  /// The share of games where each side's goal is drawn at random rather
-  /// than taken from the scenario.
+  /// The share of games where every side's goal is Destroy (a side meant to
+  /// hold keeps Hold).
+  pub destroy_goals: f32,
+  /// The share where each side's goal is drawn at random. The rest play the
+  /// scenario's goals.
   pub random_goals: f32,
 }
 
@@ -126,7 +129,7 @@ impl Batch {
         };
         Running {
           game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds)
-            .with_random_goals(config.random_goals),
+            .with_goals(config.destroy_goals, config.random_goals),
           returns: [0.0; 2],
         }
       })

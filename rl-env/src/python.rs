@@ -58,11 +58,11 @@ fn finished_dict<'py>(py: Python<'py>, finished: &Finished) -> PyResult<Bound<'p
 #[pymethods]
 impl Engine {
   #[new]
-  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10, random_goals = 0.0))]
+  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10, random_goals = 0.0, destroy_goals = 0.0))]
   #[allow(clippy::too_many_arguments)]
   fn new(
     scenarios: Vec<String>, designs: String, games: usize, max_rounds: u32, opponent: Option<String>, seed: u64,
-    threads: usize, random_goals: f32,
+    threads: usize, random_goals: f32, destroy_goals: f32,
   ) -> PyResult<Self> {
     let config = Config {
       scenarios,
@@ -72,6 +72,7 @@ impl Engine {
       opponent,
       seed,
       threads,
+      destroy_goals,
       random_goals,
     };
     Batch::new(&config).map(|batch| Engine { batch }).map_err(PyValueError::new_err)
