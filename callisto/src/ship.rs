@@ -380,10 +380,13 @@ pub struct Ship {
   leadership_rolled: bool,
 
   // Index by turning ShipSystem enum into usize.
-  // Skip deserializing as we don't expect them when loading from a file
-  // and don't intend to receive them from the client.
-  // But we do serialize them to send to the client.
-  #[serde(skip_deserializing)]
+  //
+  // Read back as well as written: a client that reads the world -- the AI
+  // service, which crews ships from what the server sends -- has to see a
+  // ship's criticals, or it is told she is undamaged and never repairs her.
+  // No client request carries a ship, and a scenario load clears them in
+  // `fixup_current_values`, so a ship cannot be sent in already damaged.
+  #[serde(default)]
   pub crit_level: [u8; 11],
   /// The state of each bridge station, indexed by `BridgeStation`. Omitted from
   /// the wire while every station works.
@@ -5048,6 +5051,17 @@ mod tests {
     assert!(Sensors::Civilian < Sensors::Military);
     assert!(Sensors::Military < Sensors::Improved);
     assert!(Sensors::Improved < Sensors::Advanced);
+  }
+
+  /// A client reading the world sees each ship's criticals: they survive the
+  /// trip to the wire and back.
+  #[test]
+  fn criticals_survive_a_round_trip() {
+    let mut ship = Ship::default();
+    ship.crit_level[ShipSystem::Maneuver as usize] = 2;
+    ship.crit_level[ShipSystem::Weapon as usize] = 1;
+    let read: Ship = serde_json::from_str(&serde_json::to_string(&ship).unwrap()).unwrap();
+    assert_eq!(read.crit_level, ship.crit_level);
   }
 
   #[test_log::test]

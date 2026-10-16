@@ -1022,7 +1022,7 @@ async fn test_big_fight() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship2"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "crit_level": [0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0],
   },
   {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
    "plan":[[[0.0,0.0,0.0],50000]],"design":"Gazelle",
@@ -1038,7 +1038,7 @@ async fn test_big_fight() {
    "can_jump":true,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0]
   }],
     "missiles":[],
     "planets":[],
@@ -1163,7 +1163,7 @@ async fn test_fight_with_crew() {
    "can_jump":false,
    "sensor_locks": [],
    "contacts": ["ship1"],
-   "crit_level": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+   "crit_level": [0, 0, 1, 3, 0, 0, 1, 1, 2, 1, 0]
   }],
     "missiles":[],
     "planets":[],
