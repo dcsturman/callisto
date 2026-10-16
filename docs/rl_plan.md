@@ -48,10 +48,20 @@ objective asks for.
 **What "fled" means.** Judged by the engine on true positions, not on either
 side's fogged view. A side has fled when every one of its surviving ships
 has either jumped out, or has been more than 50,000 km (beyond Distant) from
-every enemy ship *and* opening the range for 3 rounds running, while the
-other side still has a ship able to fight. If both sides are opening, nobody
-fled: the game is a draw, scored on hull. Both conditions matter: a 6 G
-fighter can pass 50,000 km in a few rounds and come straight back.
+every enemy ship *and* moving away from her nearest enemy for 3 rounds
+running, while the other side still has a ship able to fight. If both sides
+are running, nobody fled: the game is a draw, scored on hull. Both
+conditions matter: a 6 G fighter can pass 50,000 km in a few rounds and come
+straight back.
+
+Two refinements found in building it. "Opening the range" cannot be the
+test, because range opens for both sides alike: whenever one side ran, the
+other was opening too, and every escape scored as a draw. So who is running
+is judged by each ship's own velocity in the scenario's frame, pointing away
+from her nearest enemy; a chaser falling behind is still heading in. And a
+side can only flee once it has been inside 50,000 km of an enemy: Marduk and
+Thebus-like openings start far apart, and a side that never closed has not
+run, it has not arrived.
 
 The incentives then line up in self-play. The chaser prefers destroying
 (+1.0) to driving off (+0.6), so it pursues. The loser prefers fleeing
@@ -111,9 +121,12 @@ roughly [-1, 1]:
   contacts held, best reach band, magazine, criticals, jump readiness.
 - Own side: up to 20 ships, each as relative position, relative velocity,
   hull share, thrust, reach; nearest first, padded and masked.
-- Enemies: up to 20 contacts, each as relative position and velocity, hull
-  share (now visible), thrust, reach, criticals, held/locked flags; plus up
-  to 20 blips as position and velocity only. Nearest first.
+- Enemies: up to 20, contacts and blips in one list, nearest first, each
+  as relative position and velocity, a contact flag, and for contacts hull
+  share (now visible), thrust, criticals, held/locked/watching flags and the
+  odds both ways at every band. A blip carries what was known of her when
+  last held. One list, because an enemy's slot is also her index in the
+  target heads.
 - Odds: for the deciding ship against each contact, hit chance and hull
   share both ways at each band (the odds table, as numbers).
 - Memory for fog of war: rounds since each enemy was last seen and where.
@@ -121,8 +134,8 @@ roughly [-1, 1]:
   features in the observation get most of the benefit for an MLP.
 - Round number and rounds remaining.
 
-About 1,200 floats. Hidden layers of 512, 512, 256: under a million
-parameters. The cap of 20 a side costs little compute; its cost is dilution,
+1,184 floats as built (40 for the ship, 19 × 16 for her side, 20 × 42 for
+the enemy). Hidden layers of 512, 512, 256: under a million parameters. The cap of 20 a side costs little compute; its cost is dilution,
 since a 4-ship game leaves 16 slots empty and the network has to learn that
 empty means nothing. Nearest-first ordering keeps that learnable. If it ever
 hurts, the remedy is an attention-based encoder that takes any number of
@@ -134,14 +147,20 @@ gun cannot reach):
 
 | Head | Choices |
 |---|---|
-| Helm verb | hold, intercept, hold_range, open_range, follow guide |
-| Helm target | one of up to 20 enemies, or a friend for follow |
+| Helm verb | hold, intercept, hold_range, open_range, follow (5) |
+| Helm target | one of the 20 enemy slots |
 | Band | Short, Medium, Long, Very Long |
-| Fire target | one of up to 20 contacts, or none (every gun that reaches) |
-| Lock target | same, or none |
+| Guide | one of the 19 friend slots, for follow |
+| Fire target | none, or an enemy in contact, with every gun that reaches (21) |
+| Lock target | none, or an enemy in contact (21) |
 | Posture | silent, sharing, active |
 | Dodge reserve | 0, 1, 2 G |
 | Assist gunners | yes, no |
+
+Heads are independent, so a head the verb does not use (the guide, for an
+intercept) is simply ignored. A ship that follows joins her guide's
+squadron, flown exactly as a model commander's squadrons are: the guide at
+the slowest member's thrust, eased off while anyone straggles.
 
 `follow` is in from the start: a side's ships are decided in one step, so
 guides' courses are resolved before their followers', and the engine
@@ -184,6 +203,26 @@ fallback brute-forces), cache courses while a target's motion has not
 changed, and if needed give training an analytic rendezvous approximation
 and keep the exact solver for play. Target: 1,000 rounds a second per core
 with all ships plotting.
+
+**As built (phase 1).** Through the Python layer, with random masked
+choices across the four-scenario pool, 40 games at once:
+
+| Threads | Game-rounds per second |
+|---|---|
+| 1 | 157 |
+| 10, against `close` | 751 |
+| 10, self-play | 1,013 |
+
+A short MaskablePPO run trains at about 1,600 ship decisions a second,
+learning included. Ten threads give five times one, not ten, because each
+step waits for the slowest game in the batch.
+
+Compiler settings are not the lever. The numbers were always from an
+optimised release build, and link-time optimisation with tuning for this CPU
+measured the same. A profile shows why: the time is in the solver itself,
+a general nonlinear solver working on heap-allocated, dynamically sized
+matrices, with a factorisation and allocations every iteration. Fixed-size
+matrices, warm starts from last round's course, and caching are phase 2.
 
 ## 6. Toolkit
 
@@ -262,6 +301,8 @@ For the person doing this for the first time, in order:
 
 - Python tooling: `uv` for environments; `maturin` to build the Rust module;
   PyTorch; `stable-baselines3` and `sb3-contrib`; `gymnasium`; TensorBoard.
+  Done: see `rl-env/README.md`. Training uses 10 of this Mac's 12 cores, the
+  engine's threads and PyTorch's together, to leave two for everything else.
 - A RunPod account with a small credit, for phase 5. Nothing is rented
   before then.
 - Reading, one hour each: OpenAI's Dota 2 paper for the self-play and

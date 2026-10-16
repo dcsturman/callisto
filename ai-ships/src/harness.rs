@@ -39,7 +39,12 @@ pub fn side_of(team: Option<callisto::ship::Team>, ship: &str) -> String {
   team.map_or_else(|| format!("ship:{ship}"), |team| format!("{team:?}"))
 }
 
-fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
+/// Every side in the world and its ships, by name.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
   let mut sides = BTreeMap::<String, Vec<String>>::new();
   for ship in world.ships.values() {
     let ship = ship.read().unwrap();
@@ -54,7 +59,12 @@ fn sides(world: &Entities) -> BTreeMap<String, Vec<String>> {
   sides
 }
 
-fn hull_of(world: &Entities, ships: &[String]) -> u32 {
+/// The hull these ships have left, counting none for a ship no longer in play.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn hull_of(world: &Entities, ships: &[String]) -> u32 {
   ships
     .iter()
     .filter_map(|name| world.ships.get(name))
@@ -123,7 +133,7 @@ pub struct Record {
 }
 
 /// Apply a console's request the way the backend's processor would.
-fn apply(player: &PlayerManager, request: RequestMsg) {
+pub fn apply(player: &PlayerManager, request: RequestMsg) {
   let result = match request {
     RequestMsg::SetPlan(plan) => player.set_plan(&plan).map(|_| ()),
     RequestMsg::ModifyActions(actions) => {

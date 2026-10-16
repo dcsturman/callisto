@@ -106,7 +106,26 @@ impl Server {
           Entities::new()
         })
     };
+    Self::with_scenario(id, initial_scenario, ship_templates)
+  }
 
+  /// A server for a scenario already loaded: what a trainer that plays the
+  /// same scenario many times uses, loading the file once.
+  ///
+  /// # Panics
+  /// Panics if the scenario has dangling references (a missile's target or a
+  /// planet's primary that is not in it).
+  #[must_use]
+  pub fn from_scenario(id: &str, scenario: &Entities) -> Self {
+    let initial_scenario = scenario
+      .deep_copy()
+      .expect("Server::from_scenario: the scenario has dangling references");
+    Self::with_scenario(id, initial_scenario, get_ship_templates_snapshot())
+  }
+
+  fn with_scenario(
+    id: &str, initial_scenario: Entities, ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
+  ) -> Self {
     // `deep_copy` returns an error on dangling references inside the
     // scenario file (missile target / planet primary). At Server::new
     // time this is a hard-failure: the file is malformed and the scenario
