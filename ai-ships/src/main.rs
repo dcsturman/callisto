@@ -157,7 +157,12 @@ async fn main() {
     // A model side records every call beside the backend's record of the game.
     if let (Some(spec), Some(vertex), Some(dir)) = (ModelSpec::parse(&model), vertex.as_ref(), game_log_dir.as_ref()) {
       if let Some(file) = call_log(dir, game, side) {
-        return Box::new(Llm::new(Arc::clone(vertex), spec).with_call_log(game, Box::new(file)));
+        let system = llm::system_for(&model).expect("checked at startup");
+        return Box::new(
+          Llm::new(Arc::clone(vertex), spec)
+            .with_system(system)
+            .with_call_log(game, Box::new(file)),
+        );
       }
     }
     llm::named(&model, 0, vertex.as_ref()).expect("checked at startup")

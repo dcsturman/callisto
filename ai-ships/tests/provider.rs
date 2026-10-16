@@ -46,3 +46,21 @@ fn an_answer_without_the_tool_call_is_refused() {
   let answer = json!({"choices": [{"message": {"content": "I would close."}}], "usage": {}});
   assert!(parse_reply(Family::Maas, &answer).is_err());
 }
+
+#[test]
+fn a_prompt_file_is_named_after_the_model() {
+  let spec = ModelSpec::parse("deepseek@prompts/deepseek.md").unwrap();
+  assert_eq!(spec.model, "deepseek-ai/deepseek-v4.1-flash-maas");
+  assert_eq!(ModelSpec::parse("gemini@x.md").unwrap().model, "gemini-3.8-flash");
+}
+
+#[test]
+fn a_prompt_file_replaces_the_built_in_prompt() {
+  let path = std::env::temp_dir().join(format!("callisto-prompt-{}.md", std::process::id()));
+  std::fs::write(&path, "You command ships. Lock everything.").unwrap();
+  let name = format!("deepseek@{}", path.display());
+  assert_eq!(ai_ships::llm::system_for(&name).unwrap(), "You command ships. Lock everything.");
+  assert_eq!(ai_ships::llm::system_for("deepseek").unwrap(), ai_ships::prompt::system());
+  assert!(ai_ships::llm::system_for("deepseek@/no/such/prompt.md").is_err());
+  let _ = std::fs::remove_file(&path);
+}

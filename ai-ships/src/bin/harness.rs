@@ -121,10 +121,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       (Some(spec), Some(vertex), Some(dir)) => {
         let path = format!("{dir}/seed-{seed}-{}.md", side.replace(':', "_"));
         let file = File::create(&path).ok()?;
-        Some(
-          Box::new(Llm::new(Arc::clone(vertex), spec).with_transcript(Box::new(BufWriter::new(file))))
-            as Box<dyn Commander>,
-        )
+        let system = llm::system_for(&name).map_err(|e| eprintln!("{e}")).ok()?;
+        Some(Box::new(
+          Llm::new(Arc::clone(vertex), spec)
+            .with_system(system)
+            .with_transcript(Box::new(BufWriter::new(file))),
+        ) as Box<dyn Commander>)
       }
       _ => llm::named(&name, seed, vertex.as_ref()),
     };

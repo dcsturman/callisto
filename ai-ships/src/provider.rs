@@ -49,6 +49,9 @@ impl ModelSpec {
   /// `None` if the name is not a model's.
   #[must_use]
   pub fn parse(name: &str) -> Option<Self> {
+    // `model@prompt-file` names the model and, separately, the system prompt
+    // it is given (see `llm::system_for`); the model is the part before.
+    let name = name.split_once('@').map_or(name, |(model, _)| model);
     let (family, model) = name.split_once(':').unwrap_or((name, ""));
     let (family, default) = match family {
       "gemini" => (Family::Gemini, DEFAULT_GEMINI),
@@ -148,7 +151,8 @@ pub struct Vertex {
   token: Arc<dyn TokenSource>,
   project: String,
   region: String,
-  /// Gemini's explicit caches of the fixed part of the prompt, by model:
+  /// Gemini's explicit caches of the fixed part of the prompt, by model and
+  /// a hash of the prompt, so two prompts on one model never share one:
   /// the cache's resource name and when to stop trusting it.
   caches: tokio::sync::Mutex<std::collections::HashMap<String, (String, std::time::Instant)>>,
 }
@@ -256,7 +260,7 @@ impl Vertex {
         Ok(answer) => return gemini_reply(&answer),
         Err(Error::Refused { status, body }) if status == 400 || status == 404 || status == 403 => {
           warn!("(provider) The prompt cache was refused ({status}); going without it this round: {body}");
-          self.caches.lock().await.remove(model);
+          self.caches.lock().await.remove(&cache_key(model, system));
         }
         Err(e) => return Err(e),
       }
@@ -266,8 +270,9 @@ impl Vertex {
 
   /// The cache for this model, made if there is none or it is about to lapse.
   async fn gemini_cache(&self, model: &str, system: &str) -> Option<String> {
+    let key = cache_key(model, system);
     let mut caches = self.caches.lock().await;
-    if let Some((name, until)) = caches.get(model) {
+    if let Some((name, until)) = caches.get(&key) {
       if std::time::Instant::now() < *until {
         return Some(name.clone());
       }
@@ -290,7 +295,7 @@ impl Vertex {
     match self.post(&url, &body).await {
       Ok(made) => {
         let name = made["name"].as_str()?.to_string();
-        caches.insert(model.to_string(), (name.clone(), std::time::Instant::now() + CACHE_TRUSTED));
+        caches.insert(key, (name.clone(), std::time::Instant::now() + CACHE_TRUSTED));
         Some(name)
       }
       Err(e) => {
@@ -510,6 +515,14 @@ fn maas_reply(answer: &Value) -> Result<Reply, Error> {
     // Reasoning, where a model reports it, is part of the completion.
     output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0),
   })
+}
+
+/// What a Gemini cache is kept under: the model and the prompt it holds.
+fn cache_key(model: &str, system: &str) -> String {
+  use std::hash::{Hash, Hasher};
+  let mut hasher = std::collections::hash_map::DefaultHasher::new();
+  system.hash(&mut hasher);
+  format!("{model}#{:016x}", hasher.finish())
 }
 
 fn bad(why: &str, raw: &Value) -> Error {
