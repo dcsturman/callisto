@@ -3581,6 +3581,8 @@ h3.control-form {
 
 .fleet-comms-plan {
     margin: 0 0 0.4em 0;
+    /* The plan, then its squadrons on a line of their own. */
+    white-space: pre-line;
     color: #d8dee4;
 }
 
