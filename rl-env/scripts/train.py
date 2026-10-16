@@ -63,7 +63,9 @@ def main() -> None:
     parser.add_argument("--opponent", default="close", help="a baseline (close, hold, idle, random), or 'self'")
     parser.add_argument("--scenario", action="append", help="scenario file name; repeat; default the pool")
     parser.add_argument("--games", type=int, default=32)
-    parser.add_argument("--steps", type=int, default=1_000_000, help="ship decisions to train on")
+    parser.add_argument(
+        "--steps", type=int, default=1_000_000, help="ship decisions to train on; training stops there (about 2,000 a second)"
+    )
     parser.add_argument("--rollout", type=int, default=64, help="rounds per entry per update")
     parser.add_argument("--threads", type=int, default=10, help="all cores used, engine and PyTorch together")
     parser.add_argument("--device", default="cpu", help="cpu or mps")
@@ -101,7 +103,7 @@ def main() -> None:
     checkpoints = CheckpointCallback(
         save_freq=max(1, 200_000 // env.num_envs), save_path=str(HERE / "checkpoints" / name), name_prefix="policy"
     )
-    model.learn(total_timesteps=args.steps, callback=[Outcomes(env), checkpoints], tb_log_name=name)
+    model.learn(total_timesteps=args.steps, callback=[Outcomes(env), checkpoints], tb_log_name=name, progress_bar=True)
     model.save(HERE / "checkpoints" / name / "final")
 
 

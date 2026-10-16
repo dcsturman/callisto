@@ -16,6 +16,8 @@ crate-type = ["cdylib", "rlib"]
 # The Python bindings. Off for `cargo test`, which cannot link an extension
 # module; maturin turns it on (see pyproject.toml).
 python = ["dep:pyo3", "dep:numpy"]
+# Record the courses games plot: `cargo run --release --features corpus --example corpus`.
+corpus = ["callisto/solver_corpus"]
 
 [dependencies]
 callisto = { path = "../callisto", features = [] }
@@ -37,3 +39,8 @@ cast_possible_truncation = "allow"
 
 [dev-dependencies]
 rand = "0.8"
+serde_json = "1.0"
+
+[[example]]
+name = "corpus"
+required-features = ["corpus"]

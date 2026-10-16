@@ -7,6 +7,12 @@ pub mod ai_service;
 pub mod authentication;
 pub mod combat;
 mod computer;
+/// The flight computer's course solver, for measuring it on recorded problems.
+pub mod solver {
+  #[cfg(feature = "solver_corpus")]
+  pub use crate::computer::take_corpus;
+  pub use crate::computer::{solve_course, CourseProblem, FlightPathResult, PathMode};
+}
 pub mod crew;
 pub mod entity;
 pub mod game_log;

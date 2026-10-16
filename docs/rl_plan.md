@@ -225,8 +225,30 @@ Compiler settings are not the lever. The numbers were always from an
 optimised release build, and link-time optimisation with tuning for this CPU
 measured the same. A profile shows why: the time is in the solver itself,
 a general nonlinear solver working on heap-allocated, dynamically sized
-matrices, with a factorisation and allocations every iteration. Fixed-size
-matrices, warm starts from last round's course, and caching are phase 2.
+matrices, with a factorisation and allocations every iteration.
+
+**Phase 2, done: a new rendezvous solver.** Writing each burn as the velocity
+it adds makes the rendezvous equations linear; for a given flight time the
+first burn's length comes from a quadratic, which leaves a single equation in
+the flight time. The flight computer now scans that one number for its first
+root and refines it by bisection, instead of solving for eight unknowns from
+up to a hundred random starts. On 2,157 courses recorded from games of the
+pool, it found every rendezvous the old solver found, plus ten, always the
+earliest; 66 of the old solver's "rendezvous" did not arrive when flown. It
+takes about 35 µs a course against 1.5 ms, and the old solver and its
+sampling library are gone. Caching was dropped from the plan: 11% of courses
+repeat, not worth it at this cost.
+
+| Through the Python layer | Before | After |
+|---|---|---|
+| Game-rounds a second, 1 thread | 157 | 3,633 |
+| Game-rounds a second, 10 threads | 751 | 17,868 |
+| Ship decisions a second, self-play | 6,835 | 120,197 |
+
+Training is now limited by the learner, not the game. The pursuit fallback
+(one burn through the target's path) and missile guidance still use the
+general solver; they reduce the same way, to one equation in time, if they
+ever matter.
 
 ## 6. Toolkit
 
@@ -279,8 +301,9 @@ is worth having, but a cheap one.
    action heads with masks; reward; vectorised stepping; scenario
    randomisation. Test: a random policy plays legal games; `close` encoded
    through the same path plays as it does today.
-2. **Solver speed.** Profile and cache; approximate if needed. Test: 1,000
-   rounds a second per core with every ship plotting.
+2. **Solver speed.** Done: a one-variable rendezvous search, exact, 40 times
+   faster per course and 23 times faster per game round. Test was 1,000
+   rounds a second per core; it does 3,600.
 3. **First training, locally.** PPO against `hold`, then `close`. Test: the
    policy beats `close` in most games within a few hours. This is where the
    reward design gets debugged.
