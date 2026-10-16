@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 use crate::entity::Entities;
 use crate::payloads::{email_to_display_name, Role, UserData};
-use crate::ship::{get_ship_templates_snapshot, ShipDesignTemplate};
+use crate::ship::{get_ship_templates_snapshot, Controller, ShipDesignTemplate};
 use crate::{error, warn, LOG_SCENARIO_ACTIVITY};
 use tracing::{event, Level};
 
@@ -28,6 +28,9 @@ pub struct Server {
   ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
   /// This game's record, when games are being recorded.
   log: std::sync::OnceLock<crate::game_log::GameLog>,
+  /// Whether AI crews can be used in this game. Chosen when it is created,
+  /// by a user the users file allows; see `with_ai`.
+  ai_enabled: bool,
 }
 
 /// Maps a server ID to a server table that contains
@@ -120,7 +123,34 @@ impl Server {
       initial_scenario,
       ship_templates,
       log: std::sync::OnceLock::new(),
+      ai_enabled: false,
     }
+  }
+
+  /// Make AI crews usable in this game, or not. Without them, a ship the
+  /// scenario file hands to the AI is crewed by people instead -- in the game
+  /// and in the copy a reset goes back to -- so no AI is ever asked to play.
+  #[must_use]
+  pub fn with_ai(mut self, enabled: bool) -> Self {
+    self.ai_enabled = enabled;
+    if !enabled {
+      let to_people = |entities: &Entities| {
+        for ship in entities.ships.values() {
+          let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+          ship.controller = Controller::Human;
+          ship.ai_report = None;
+        }
+      };
+      to_people(&self.initial_scenario);
+      to_people(self.entities.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner));
+    }
+    self
+  }
+
+  /// Whether AI crews can be used in this game.
+  #[must_use]
+  pub fn ai_enabled(&self) -> bool {
+    self.ai_enabled
   }
 
   /// Start recording this game in `dir`, from the world as it is now. Does
@@ -396,6 +426,59 @@ impl Default for MembershipTable {
 impl Default for ServerMembersTable {
   fn default() -> Self {
     Self::new()
+  }
+}
+
+#[cfg(test)]
+mod ai_tests {
+  use super::Server;
+  use crate::entity::{Entities, Vec3};
+  use crate::ship::{config_test_ship_templates, get_ship_template, Controller};
+  use cgmath::Zero;
+
+  fn with_an_ai_ship(entities: &mut Entities) {
+    let design = get_ship_template("Buccaneer").unwrap();
+    entities.add_ship("Pirate".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.ships["Pirate"].write().unwrap().controller = Controller::Ai;
+  }
+
+  /// A game started without AI crews hands any ship its scenario gave the AI
+  /// to people instead, in play and in what a reset goes back to.
+  #[tokio::test]
+  async fn a_game_without_ai_crews_has_no_ai_ships() {
+    config_test_ship_templates().await;
+    let mut server = Server::new("game", "").await;
+    with_an_ai_ship(&mut server.initial_scenario);
+    with_an_ai_ship(server.entities.get_mut().unwrap());
+    let server = server.with_ai(false);
+    assert!(!server.ai_enabled());
+    assert_eq!(
+      server.initial_scenario.ships["Pirate"].read().unwrap().controller,
+      Controller::Human
+    );
+    assert_eq!(
+      server.get_unlocked_entities().unwrap().ships["Pirate"]
+        .read()
+        .unwrap()
+        .controller,
+      Controller::Human
+    );
+  }
+
+  #[tokio::test]
+  async fn a_game_with_ai_crews_keeps_them() {
+    config_test_ship_templates().await;
+    let mut server = Server::new("game", "").await;
+    with_an_ai_ship(server.entities.get_mut().unwrap());
+    let server = server.with_ai(true);
+    assert!(server.ai_enabled());
+    assert_eq!(
+      server.get_unlocked_entities().unwrap().ships["Pirate"]
+        .read()
+        .unwrap()
+        .controller,
+      Controller::Ai
+    );
   }
 }
 

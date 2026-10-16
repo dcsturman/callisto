@@ -66,6 +66,7 @@ async fn admit(socket: &mut Backend) {
       scenario: None,
       roles: None,
       ship: None,
+      ai_allowed: false,
     }),
   )
   .await;

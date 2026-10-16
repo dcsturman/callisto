@@ -13,6 +13,8 @@ import {
 import {
   setSocketReady,
   setAuthenticated,
+  setAiAllowed,
+  setAiCrews,
   setTemplates,
   setEntities,
   setUsers,
@@ -237,6 +239,11 @@ const handleMessage = (event: MessageEvent) => {
 
   if ("JoinedScenario" in json) {
     handleJoinedScenario(json);
+    return;
+  }
+
+  if ("AiCrews" in json) {
+    store.dispatch(setAiCrews(json.AiCrews === true));
     return;
   }
 
@@ -666,8 +673,12 @@ export function joinScenario(scenario_name: string) {
   store.dispatch(setScenarioDirty(false));
 }
 
-export function createScenario(name: string, scenario: string) {
-  const payload = { CreateScenario: { name: name, scenario: scenario } };
+/**
+ * Start a game. `ai` asks for AI crews to be available in it, which the
+ * server refuses unless this user may use them.
+ */
+export function createScenario(name: string, scenario: string, ai = false) {
+  const payload = { CreateScenario: { name: name, scenario: scenario, ai: ai } };
   socket.send(JSON.stringify(payload));
   store.dispatch(setScenarioDirty(false));
 }
@@ -953,6 +964,7 @@ function handleAuthenticated(json: {
   roles?: string[] | null;
   role?: string | null;
   ship: string | null;
+  ai_allowed?: boolean;
 }): void {
   console.log(
     "(handleAuthenticated) Received Authenticated: " + JSON.stringify(json),
@@ -960,6 +972,7 @@ function handleAuthenticated(json: {
   if (json.email != null) {
     store.dispatch(setEmail(json.email));
     store.dispatch(setAuthenticated(true));
+    store.dispatch(setAiAllowed(json.ai_allowed === true));
     // Clear any prior auth-banner state once we successfully authenticate.
     store.dispatch(setAuthBanner(null));
     if (json.scenario != null) {
