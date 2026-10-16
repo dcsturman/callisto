@@ -37,8 +37,8 @@ pub struct TeamDecision {
 }
 
 /// A squadron for the round: ships that fly together behind a guide. The
-/// guide flies the squadron's helm order at its slowest ship's thrust, a
-/// quarter G less while one is out of station; the others keep station on
+/// guide flies the squadron's helm order at its slowest ship's thrust, easing
+/// off while one is out of station; the others keep station on
 /// her. Their guns, sensors and engineering come from their own orders as
 /// usual.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -362,7 +362,7 @@ pub fn schema() -> Value {
   let helm = schema["properties"]["ships"]["items"]["properties"]["helm"].clone();
   schema["properties"]["squadrons"] = json!({
     "type": "array",
-    "description": "Ships flying together this round, each squadron behind a guide. The guide flies the squadron's helm order at its slowest ship's thrust, a quarter G less while one is out of station so she can catch up; the others keep station on her and arrive with her. A ship in a squadron takes her course from it; her other orders (fire, posture, sensors, engineering) still come from her own entry. Omit, or leave a ship out, for ships flying on their own.",
+    "description": "Ships flying together this round, each squadron behind a guide. The guide flies the squadron's helm order at its slowest ship's thrust, easing off a quarter G for each band a ship is out of station (up to 1 G) so she can catch up; the others keep station on her and arrive with her. A ship in a squadron takes her course from it; her other orders (fire, posture, sensors, engineering) still come from her own entry. Omit, or leave a ship out, for ships flying on their own.",
     "items": {
       "type": "object",
       "properties": {
@@ -444,9 +444,35 @@ pub fn to_intents(decision: &TeamDecision, view: &Observation) -> Conversion {
   conversion
 }
 
-/// The thrust, in G, a guide gives up while one of her squadron is out of
-/// station, so the straggler has some to close up with.
-pub const STRAGGLER_MARGIN: f64 = 0.25;
+/// The step, in G, by which a guide eases off for a straggler: one for each
+/// band she is out of station, up to a whole G.
+pub const STRAGGLER_STEP: f64 = 0.25;
+
+/// What a guide gives up, in G, for one ship `apart` metres from her and
+/// moving at `drift` m/s relative to her: nothing for a ship settled in
+/// station (inside Short and drifting less than a twentieth of it a round,
+/// as `tactics` keeps station), then a quarter G for each band out, counting
+/// her drift over a round as distance too, to a whole G at Distant.
+#[must_use]
+pub fn straggler_margin(apart: f64, drift: f64) -> f64 {
+  let per_round = drift * callisto::entity::DELTA_TIME_F64;
+  if tactics::band_at(apart) == Range::Short && per_round <= SETTLED_DRIFT {
+    return 0.0;
+  }
+  let bands = |metres: f64| -> f64 {
+    match tactics::band_at(metres) {
+      Range::Short | Range::Medium => 1.0,
+      Range::Long => 2.0,
+      Range::VeryLong => 3.0,
+      Range::Distant => 4.0,
+    }
+  };
+  STRAGGLER_STEP * bands(apart).max(bands(per_round))
+}
+
+/// Drift a round, in metres, below which a ship inside Short is settled in
+/// station: a twentieth of Short, as `tactics` keeps it.
+const SETTLED_DRIFT: f64 = 1_250_000.0 / 20.0;
 
 /// Give a squadron's ships their courses: the guide the squadron's helm order,
 /// at the slowest ship's thrust; the rest `Follow` her.
@@ -487,21 +513,22 @@ fn squadron_helms(
   }
   // The guide flies at the slowest ship's thrust, so a squadron in station
   // loses nothing by flying together. While a ship is out of station the
-  // guide gives up a quarter G, the thrust the straggler closes up with.
+  // guide eases off by how far out she is, so a straggler just off her slot
+  // costs the squadron little and one left far behind gets thrust to catch up.
   let slowest = f64::from(members.iter().map(|ship| ship.max_acceleration()).min().unwrap_or(1));
   let guide = members.iter().find(|ship| ship.get_name() == squadron.guide);
-  let straggling = guide.is_some_and(|guide| {
-    members.iter().any(|ship| {
-      let apart = (ship.get_position() - guide.get_position()).magnitude();
-      let drift = (ship.get_velocity() - guide.get_velocity()).magnitude() * callisto::entity::DELTA_TIME_F64;
-      tactics::band_at(apart) != Range::Short || tactics::band_at(drift) != Range::Short
-    })
+  let margin = guide.map_or(0.0, |guide| {
+    members
+      .iter()
+      .map(|ship| {
+        straggler_margin(
+          (ship.get_position() - guide.get_position()).magnitude(),
+          (ship.get_velocity() - guide.get_velocity()).magnitude(),
+        )
+      })
+      .fold(0.0, f64::max)
   });
-  let cap = if straggling {
-    (slowest - STRAGGLER_MARGIN).max(STRAGGLER_MARGIN)
-  } else {
-    slowest
-  };
+  let cap = (slowest - margin).max(STRAGGLER_STEP);
   let helm = squadron.helm.as_ref();
   let guide_helm = helm.map_or(Helm::Hold, |helm| helm_of(&squadron.guide, helm, view, notes));
   let guide_cap = Some(helm.and_then(|helm| helm.max_thrust).map_or(cap, |wanted| wanted.min(cap)));

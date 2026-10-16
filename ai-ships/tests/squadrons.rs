@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use ai_ships::decision::{to_intents, HelmOrder, HelmVerb, SquadronOrder, TeamDecision, STRAGGLER_MARGIN};
+use ai_ships::decision::{straggler_margin, to_intents, HelmOrder, HelmVerb, SquadronOrder, TeamDecision};
 use ai_ships::observation::observe;
 use callisto::entity::{Entities, Entity, Vec3};
 use callisto::ship::{load_ship_templates_from_dir, replace_ship_templates, Range, Team};
@@ -81,8 +81,23 @@ async fn a_squadron_flies_together() {
   assert_eq!(plan("Wingman"), plan("Pirate"));
 }
 
+#[test]
+fn the_margin_grows_with_the_gap() {
+  let km = |n: f64| n * KM;
+  assert!(straggler_margin(km(500.0), 10.0).abs() < f64::EPSILON, "settled: nothing");
+  assert!((straggler_margin(km(500.0), 1_000.0) - 0.25).abs() < 1e-9, "close but drifting");
+  assert!((straggler_margin(km(5_000.0), 0.0) - 0.25).abs() < 1e-9, "Medium");
+  assert!((straggler_margin(km(20_000.0), 0.0) - 0.5).abs() < 1e-9, "Long");
+  assert!((straggler_margin(km(40_000.0), 0.0) - 0.75).abs() < 1e-9, "Very Long");
+  assert!((straggler_margin(km(200_000.0), 0.0) - 1.0).abs() < 1e-9, "Distant");
+  assert!(
+    (straggler_margin(km(500.0), 100_000.0) - 0.75).abs() < 1e-9,
+    "drifting 36,000 km a round counts as Very Long"
+  );
+}
+
 #[tokio::test]
-async fn a_straggler_costs_the_guide_a_quarter_g() {
+async fn a_straggler_costs_the_guide_thrust() {
   let world = pair().await;
   world.ships["Wingman"]
     .write()
@@ -93,7 +108,7 @@ async fn a_straggler_costs_the_guide_a_quarter_g() {
   let conversion = to_intents(&squadron(&["Pirate", "Wingman"], "Pirate"), &view);
   let guide = &conversion.intents.iter().find(|(ship, _)| ship == "Pirate").unwrap().1;
   let drive = f64::from(world.ships["Pirate"].read().unwrap().max_acceleration());
-  assert_eq!(guide.max_thrust, Some(drive - STRAGGLER_MARGIN));
+  assert_eq!(guide.max_thrust, Some(drive - 1.0), "80,000 km behind is Distant: a whole G");
 }
 
 #[tokio::test]
