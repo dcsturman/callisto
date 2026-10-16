@@ -724,8 +724,43 @@ fn follow_plan(
     let second = course.1.as_ref().map(|leg| (scale(leg.0), leg.1));
     return Ok(FlightPlan::new(first.into(), second.map(Into::into)));
   }
-  // Out of station: close on her, at half of Short, matching her velocity.
-  Ok(rendezvous_with(own, guide, short / 2.0, thrust, Some(course.0 .0)))
+  // Out of station: close on her in her own frame. She is burning, and a
+  // rendezvous plotted in the system's frame has to allow for that burn for
+  // the whole course -- which the computer cannot always do, and a course that
+  // leaves it out is a round's burn wrong every round, so the follower swings
+  // through her guide and out the other side. In her frame she is standing
+  // still: fly her burn, plus a rendezvous with a point beside her made with
+  // the thrust left over. The guide is held a G below the slowest of her
+  // squadron, so there is always some.
+  let burn = course.0 .0;
+  let spare = (thrust - burn.magnitude()).max(G / 2.0);
+  let offset = own.get_position() - guide.get_position();
+  let beside = if offset.magnitude() > 0.0 {
+    offset.normalize() * (short / 2.0)
+  } else {
+    Vec3::unit_x() * (short / 2.0)
+  };
+  let correction = plot_course(
+    offset,
+    own.get_velocity() - guide.get_velocity(),
+    spare,
+    beside,
+    Vec3::zero(),
+    None,
+    None,
+  )
+  .plan;
+  let with_burn = |accel: Vec3| {
+    let total = accel + burn;
+    if total.magnitude() > thrust && total.magnitude() > 0.0 {
+      total * (thrust / total.magnitude())
+    } else {
+      total
+    }
+  };
+  let first = (with_burn(correction.0 .0), correction.0 .1);
+  let second = correction.1.as_ref().map(|leg| (with_burn(leg.0), leg.1));
+  Ok(FlightPlan::new(first.into(), second.map(Into::into)))
 }
 
 fn emissions(ship: &str, posture: Posture) -> RequestMsg {
@@ -1563,6 +1598,100 @@ mod tests {
     // and brakes to stop beside her.
     assert!(wing.0 .0.x > 0.0, "{wing:?}");
     assert!(wing.1.as_ref().is_some_and(|leg| leg.0.x < 0.0), "{wing:?}");
+  }
+
+  /// Fly a plan for one round: each leg for as much of the round as it lasts,
+  /// then coast.
+  fn fly(ship: &mut Ship, plan: &FlightPlan) {
+    let mut left = DELTA_TIME_F64;
+    let mut position = ship.get_position();
+    let mut velocity = ship.get_velocity();
+    let legs = std::iter::once(&plan.0).chain(plan.1.as_ref());
+    for leg in legs {
+      #[allow(clippy::cast_precision_loss)]
+      let t = (leg.1 as f64).min(left);
+      position += velocity * t + leg.0 * (0.5 * t * t);
+      velocity += leg.0 * t;
+      left -= t;
+    }
+    position += velocity * left;
+    ship.set_position(position);
+    ship.set_velocity(velocity);
+    ship.plan = plan.clone();
+  }
+
+  /// A follower that starts well out of station, drifting away, while her
+  /// guide burns hard for a distant enemy: round by round she closes on the
+  /// guide and then stays with her, rather than swinging through and out the
+  /// other side.
+  #[tokio::test]
+  async fn a_follower_closes_up_and_stays_in_station() {
+    let mut world = two_ships(2_000_000.0 * KM).await;
+    let design = get_ship_template("Buccaneer").unwrap();
+    world.add_ship(
+      "Wing".to_string(),
+      Vec3::new(-60_000.0 * KM, 40_000.0 * KM, 0.0),
+      Vec3::new(-5_000.0, 15_000.0, 0.0),
+      &design,
+      None,
+      None,
+    );
+    let drive = hunter(&world).max_acceleration();
+    let guide_helm = Helm::Intercept {
+      target: "Quarry".to_string(),
+      band: Range::Long,
+    };
+    let cap = Some(drive - 1);
+    let (_, short) = band_edges(Range::Short);
+    let mut in_station_from = None;
+    for round in 0..40 {
+      let guide = plan_of(
+        &orders(
+          &world,
+          "Hunter",
+          &Intent {
+            helm: guide_helm.clone(),
+            max_thrust: cap,
+            ..Intent::default()
+          },
+        )
+        .unwrap(),
+      );
+      let wing = plan_of(
+        &orders(
+          &world,
+          "Wing",
+          &Intent {
+            helm: Helm::Follow {
+              guide: "Hunter".to_string(),
+              guide_helm: Box::new(guide_helm.clone()),
+              guide_cap: cap,
+            },
+            ..Intent::default()
+          },
+        )
+        .unwrap(),
+      );
+      fly(&mut world.ships["Hunter"].write().unwrap(), &guide);
+      fly(&mut world.ships["Wing"].write().unwrap(), &wing);
+      let (hunter_ship, wing_ship) = (hunter(&world), world.ships["Wing"].read().unwrap().clone());
+      let apart = (hunter_ship.get_position() - wing_ship.get_position()).magnitude();
+      let drift = (hunter_ship.get_velocity() - wing_ship.get_velocity()).magnitude() * DELTA_TIME_F64;
+      let in_station = apart <= short && drift <= short;
+      match (in_station_from, in_station) {
+        (None, true) => in_station_from = Some(round),
+        (Some(from), false) => panic!(
+          "in station from round {from}, out again at round {round}: {:.0} km apart, drifting {:.0} km a round",
+          apart / KM,
+          drift / KM
+        ),
+        _ => {}
+      }
+    }
+    assert!(
+      in_station_from.is_some_and(|round| round < 25),
+      "never closed up: in station from {in_station_from:?}"
+    );
   }
 
   #[tokio::test]
