@@ -711,7 +711,10 @@ fn follow_plan(
   let (_, short) = band_edges(Range::Short);
   let apart = (own.get_position() - guide.get_position()).magnitude();
   let drift = (own.get_velocity() - guide.get_velocity()).magnitude() * DELTA_TIME_F64;
-  if apart <= short && drift <= short {
+  // Settled: close by and all but matched -- a twentieth of Short a round.
+  // Only then is copying her course enough; a follower inside Short but
+  // still drifting keeps correcting, or the drift carries her out again.
+  if apart <= short && drift <= short / 20.0 {
     // In station: fly her course, no harder than this ship can.
     let scale = |accel: Vec3| {
       let magnitude = accel.magnitude();
@@ -734,7 +737,9 @@ fn follow_plan(
   // the thrust left over. The guide is held a G below the slowest of her
   // squadron, so there is always some.
   let burn = course.0 .0;
-  let spare = (thrust - burn.magnitude()).max(G / 2.0);
+  // Exactly what is left over, so the plan is one she can fly: planning
+  // with more than she has undershoots every round, and she never closes.
+  let spare = (thrust - burn.magnitude()).max(G / 100.0);
   let offset = own.get_position() - guide.get_position();
   let beside = if offset.magnitude() > 0.0 {
     offset.normalize() * (short / 2.0)
@@ -759,10 +764,40 @@ fn follow_plan(
       total
     }
   };
+  // If the guide turns this round -- her first leg ends inside it -- split
+  // the round where she turns, so the follower turns with her: a follower
+  // still flying her old burn after she has turned is off by twice her
+  // thrust for the rest of the round, and never closes.
+  let flips = course.0 .1 < DELTA_TIME_ROUND && course.1.is_some();
+  if flips {
+    let turn = course.0 .1;
+    let then = course.1.as_ref().map_or(burn, |leg| leg.0);
+    let correction_at = |t: u64| {
+      if t < correction.0 .1 {
+        correction.0 .0
+      } else {
+        correction.1.as_ref().map_or(Vec3::zero(), |leg| leg.0)
+      }
+    };
+    let scale = |accel: Vec3| {
+      if accel.magnitude() > thrust && accel.magnitude() > 0.0 {
+        accel * (thrust / accel.magnitude())
+      } else {
+        accel
+      }
+    };
+    let first = (scale(burn + correction_at(0)), turn);
+    let second = (scale(then + correction_at(turn)), DEFAULT_ACCEL_DURATION);
+    return Ok(FlightPlan::new(first.into(), Some(second.into())));
+  }
   let first = (with_burn(correction.0 .0), correction.0 .1);
   let second = correction.1.as_ref().map(|leg| (with_burn(leg.0), leg.1));
   Ok(FlightPlan::new(first.into(), second.map(Into::into)))
 }
+
+/// A round, in whole seconds.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+const DELTA_TIME_ROUND: u64 = DELTA_TIME_F64 as u64;
 
 fn emissions(ship: &str, posture: Posture) -> RequestMsg {
   let (active, transmitting, handoff) = match posture {
@@ -1621,9 +1656,10 @@ mod tests {
     ship.plan = plan.clone();
   }
 
-  /// A follower that starts well out of station, drifting away, while her
-  /// guide burns hard for a distant enemy: round by round she closes on the
-  /// guide and then stays with her, rather than swinging through and out the
+  /// A follower 20,000 km out of station and drifting away, while her guide
+  /// burns for a distant enemy a quarter G below her drive (and turns to
+  /// brake partway): round by round she closes on the guide on that quarter
+  /// G and then stays with her, rather than swinging through and out the
   /// other side.
   #[tokio::test]
   async fn a_follower_closes_up_and_stays_in_station() {
@@ -1631,8 +1667,8 @@ mod tests {
     let design = get_ship_template("Buccaneer").unwrap();
     world.add_ship(
       "Wing".to_string(),
-      Vec3::new(-60_000.0 * KM, 40_000.0 * KM, 0.0),
-      Vec3::new(-5_000.0, 15_000.0, 0.0),
+      Vec3::new(-12_000.0 * KM, 16_000.0 * KM, 0.0),
+      Vec3::new(-1_000.0, 1_700.0, 0.0),
       &design,
       None,
       None,
@@ -1690,7 +1726,7 @@ mod tests {
       }
     }
     assert!(
-      in_station_from.is_some_and(|round| round < 25),
+      in_station_from.is_some_and(|round| round < 30),
       "never closed up: in station from {in_station_from:?}"
     );
   }
