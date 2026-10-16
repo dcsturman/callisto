@@ -172,7 +172,8 @@ function SoftwareEditor(args: {
   );
 }
 
-import { addShip, setShipController } from "lib/serverManager";
+import { addShip, setOrders, setShipController } from "lib/serverManager";
+import { shipsTakingTeamOrders, teamOrders } from "lib/teamOrders";
 import { useAppSelector } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
 
@@ -700,6 +701,11 @@ function SideCosts(args: { ships: Ship[]; designs: ShipDesignTemplates }) {
  * played. A team is shown as AI when all its ships are; ticking it hands every
  * one of them over, unticking takes them all back. Single ships are set in the
  * ship form.
+ *
+ * A ticked team gets one orders box: its squadron's orders. Orders live on
+ * ships, so the box shows what most of the team's ships carry and writes to
+ * every ship following it; a ship given orders of her own in the ship form
+ * keeps them.
  */
 function AiTeams(args: { ships: Ship[] }) {
   const teams = TEAMS.filter((team) => args.ships.some((ship) => ship.team === team));
@@ -707,23 +713,67 @@ function AiTeams(args: { ships: Ship[] }) {
     return null;
   }
   return (
-    <div className="ai-teams" title="Crew every ship on a team by AI when the scenario is played.">
-      AI-crewed teams:
-      {teams.map((team) => {
-        const ships = args.ships.filter((ship) => ship.team === team);
-        const all = ships.every((ship) => ship.controller === "AI");
-        return (
-          <label key={team} className="emissions-toggle" style={{ color: TEAM_CSS[team] }}>
-            <input
-              type="checkbox"
-              checked={all}
-              onChange={() => ships.forEach((ship) => setShipController(ship.name, all ? "Human" : "AI"))}
-            />
-            {team}
-          </label>
-        );
-      })}
+    <div className="ai-teams-block">
+      <div className="ai-teams" title="Crew every ship on a team by AI when the scenario is played.">
+        AI-crewed teams:
+        {teams.map((team) => {
+          const ships = args.ships.filter((ship) => ship.team === team);
+          const all = ships.every((ship) => ship.controller === "AI");
+          return (
+            <label key={team} className="emissions-toggle" style={{ color: TEAM_CSS[team] }}>
+              <input
+                type="checkbox"
+                checked={all}
+                onChange={() => ships.forEach((ship) => setShipController(ship.name, all ? "Human" : "AI"))}
+              />
+              {team}
+            </label>
+          );
+        })}
+      </div>
+      {teams
+        .map((team) => ({ team, ships: args.ships.filter((ship) => ship.team === team) }))
+        .filter(({ ships }) => ships.every((ship) => ship.controller === "AI"))
+        .map(({ team, ships }) => (
+          <TeamOrdersBox key={team} team={team} ships={ships} />
+        ))}
     </div>
+  );
+}
+
+/** One AI-crewed team's orders, given to every ship following them. */
+function TeamOrdersBox(args: { team: Team; ships: Ship[] }) {
+  const current = teamOrders(args.ships);
+  const [draft, setDraft] = useState(current.orders);
+  // Someone changed a ship's orders: show the team's as they now stand.
+  useEffect(() => setDraft(current.orders), [current.orders]);
+
+  const commit = () => {
+    if (draft.trim() === current.orders) {
+      return;
+    }
+    shipsTakingTeamOrders(args.ships).forEach((name) => setOrders(name, draft));
+  };
+
+  return (
+    <label className="add-ship-orders team-orders" style={{ color: TEAM_CSS[args.team] }}>
+      {args.team} team&apos;s orders
+      <textarea
+        className="ship-command-orders-text"
+        rows={2}
+        placeholder="None. For example: destroy or drive off the corsairs; do not lose the flagship."
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+      />
+      {current.own.length > 0 && (
+        <span className="team-orders-note">
+          {current.following.length} of {args.ships.length} ships follow these;{" "}
+          {current.own.join(", ")} {current.own.length === 1 ? "has her" : "have their"} own, set in the
+          ship form, and keep{current.own.length === 1 ? "s" : ""} them.
+        </span>
+      )}
+    </label>
   );
 }
 

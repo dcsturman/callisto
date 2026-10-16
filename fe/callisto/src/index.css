@@ -3634,3 +3634,15 @@ h3.control-form {
     gap: 8px 16px;
     margin: 4px 0 6px 0;
 }
+
+.ai-teams-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.team-orders-note {
+    font-size: var(--font-sm);
+    font-style: italic;
+    color: #b8c0c8;
+}
