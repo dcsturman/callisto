@@ -223,7 +223,7 @@ function Simulator() {
                   ? `Scenario Builder`
                   : joinedScenario)}
           </h2>
-          <Users users={users} email={email} />
+          <Users users={users} email={email} ships={entities.ships} />
           {!scenarioBuilderMode && <RoleChooser />}
           <div className="reset-and-logout-buttons">
             <Exit email={email} />
