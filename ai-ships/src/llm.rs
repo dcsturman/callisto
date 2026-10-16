@@ -185,6 +185,10 @@ impl Commander for Llm {
   fn answered(&self) -> bool {
     self.answered
   }
+
+  fn spent(&self) -> Option<f64> {
+    crate::provider::price(&self.spec).map(|_| self.spent)
+  }
 }
 
 /// A commander by name: a model's (`gemini`, `claude:<model>`), given a

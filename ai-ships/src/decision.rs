@@ -434,7 +434,21 @@ pub fn to_intents(decision: &TeamDecision, view: &Observation) -> Conversion {
         .push(format!("{}: not a ship under this side's command; ignored.", order.ship));
       continue;
     }
-    let intent = intent_of(order, view, &mut conversion.notes);
+    // A ship in a squadron takes her course from it, so her own helm order is
+    // not checked: a model often leaves the target off one it knows the
+    // squadron will replace, and saying it was dropped is only noise.
+    let in_squadron = decision.squadrons.iter().any(|squadron| {
+      squadron.ships.contains(&order.ship)
+        && squadron.ships.contains(&squadron.guide)
+        && view.own.iter().any(|ship| ship.get_name() == squadron.guide)
+    });
+    let intent = if in_squadron {
+      let mut own = order.clone();
+      own.helm = None;
+      intent_of(&own, view, &mut conversion.notes)
+    } else {
+      intent_of(order, view, &mut conversion.notes)
+    };
     conversion.intents.push((order.ship.clone(), intent));
   }
   let mut placed = std::collections::HashSet::new();

@@ -47,7 +47,8 @@ struct Args {
   allowed_callers: Vec<String>,
 
   /// Who decides for the ships: a model (`gemini`, `gemini:<model>`,
-  /// `claude`, `claude:<model>`) or a baseline (`close`, `hold`, `idle`).
+  /// `claude`, `claude:<model>`, `deepseek`, `maas:<publisher>/<model>`) or a
+  /// baseline (`close`, `hold`, `idle`).
   #[arg(long, env = "CALLISTO_AI_MODEL", default_value = "gemini")]
   model: String,
 

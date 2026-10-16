@@ -161,8 +161,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     outcomes.push(outcome);
   }
 
-  // The summary: wins per side, and the average share of its hull each side
-  // kept.
+  summarise(&outcomes);
+  Ok(())
+}
+
+/// The summary: wins per side, the average share of its hull each side
+/// kept, and what its model calls cost.
+fn summarise(outcomes: &[Outcome]) {
   println!("\n{} games:", outcomes.len());
   let draws = outcomes.iter().filter(|outcome| outcome.winner.is_none()).count();
   let sides: Vec<String> = outcomes.first().map(|o| o.sides.keys().cloned().collect()).unwrap_or_default();
@@ -178,11 +183,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       .sum::<f64>()
       / outcomes.len().max(1) as f64;
     let commander = &outcomes[0].sides[side].commander;
+    let costs: Vec<f64> = outcomes.iter().filter_map(|o| o.sides[side].model_cost_usd).collect();
+    let cost = if costs.is_empty() {
+      String::new()
+    } else {
+      #[allow(clippy::cast_precision_loss)]
+      let each = costs.iter().sum::<f64>() / costs.len() as f64;
+      format!(", model calls ${:.3} in all, ${each:.3} a game", costs.iter().sum::<f64>())
+    };
     println!(
-      "  {side:<12} ({commander:<6}) won {wins:>3}, kept {:>5.1}% of its hull",
+      "  {side:<12} ({commander:<6}) won {wins:>3}, kept {:>5.1}% of its hull{cost}",
       kept * 100.0
     );
   }
   println!("  draws {draws}");
-  Ok(())
 }

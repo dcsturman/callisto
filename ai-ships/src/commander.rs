@@ -45,6 +45,12 @@ pub trait Commander: Send {
   fn answered(&self) -> bool {
     true
   }
+
+  /// What the commander's model calls have cost this game, in US dollars,
+  /// if it makes any and their price is known.
+  fn spent(&self) -> Option<f64> {
+    None
+  }
 }
 
 /// Gives no orders. Ships hold their current plans.

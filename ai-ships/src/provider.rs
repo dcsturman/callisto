@@ -1,11 +1,13 @@
 //! The models a commander can ask, all on Vertex AI.
 //!
-//! Gemini and Claude are both reached through the GCP project's own
-//! credentials and billed to it: a service account's on Cloud Run, the
-//! developer's application-default credentials locally. They differ in request
-//! shape (`generateContent` against the Anthropic Messages API), in which
-//! region serves them, and in how the forced tool call comes back. Both are
-//! asked the same thing: here is the situation, call `plan_round`.
+//! Gemini, Claude and Vertex's pay-per-call partner models (`DeepSeek`, Qwen
+//! and the rest) are all reached through the GCP project's own credentials
+//! and billed to it: a service account's on Cloud Run, the developer's
+//! application-default credentials locally. They differ in request shape
+//! (`generateContent`, the Anthropic Messages API, and the OpenAI-style chat
+//! completions endpoint Vertex serves partner models through), in which region
+//! serves them, and in how the forced tool call comes back. All are asked the
+//! same thing: here is the situation, call `plan_round`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,10 +25,15 @@ use crate::decision::{self, TeamDecision};
 pub enum Family {
   Gemini,
   Claude,
+  /// A partner model Vertex serves as a model (pay per call) through its
+  /// OpenAI-compatible chat completions endpoint: `DeepSeek`, Qwen, GLM and
+  /// the like. Named by publisher and model, `deepseek-ai/deepseek-v4.1-flash-maas`.
+  Maas,
 }
 
-/// A model, named as `gemini:<model>` or `claude:<model>`; `gemini` and
-/// `claude` alone pick the defaults.
+/// A model, named as `gemini:<model>`, `claude:<model>` or
+/// `maas:<publisher>/<model>`; `gemini`, `claude` and `deepseek` alone pick
+/// the defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelSpec {
   pub family: Family,
@@ -36,6 +43,7 @@ pub struct ModelSpec {
 /// The cheap, fast tier of each, for the harness's hundreds of games.
 pub const DEFAULT_GEMINI: &str = "gemini-3.8-flash";
 pub const DEFAULT_CLAUDE: &str = "claude-sonnet-5-5";
+pub const DEFAULT_DEEPSEEK: &str = "deepseek-ai/deepseek-v4.1-flash-maas";
 
 impl ModelSpec {
   /// `None` if the name is not a model's.
@@ -45,6 +53,7 @@ impl ModelSpec {
     let (family, default) = match family {
       "gemini" => (Family::Gemini, DEFAULT_GEMINI),
       "claude" => (Family::Claude, DEFAULT_CLAUDE),
+      "maas" | "deepseek" => (Family::Maas, DEFAULT_DEEPSEEK),
       _ => return None,
     };
     Some(ModelSpec {
@@ -59,6 +68,7 @@ impl ModelSpec {
     let family = match self.family {
       Family::Gemini => "gemini",
       Family::Claude => "claude",
+      Family::Maas => "maas",
     };
     format!("{family}:{}", self.model)
   }
@@ -80,6 +90,8 @@ pub fn price(spec: &ModelSpec) -> Option<(f64, f64, f64)> {
     // Published rates for Flash-Lite; cached input assumed at a tenth, as for
     // Flash.
     "gemini-3.5-flash-lite" => Some((0.30, 0.03, 2.50)),
+    // As listed for Vertex; no cached rate, so repeated input is full price.
+    "deepseek-ai/deepseek-v4.1-flash-maas" => Some((0.30, 0.30, 1.20)),
     _ => None,
   }
 }
@@ -214,7 +226,24 @@ impl Vertex {
         let url = self.endpoint("anthropic", &spec.model, "rawPredict");
         claude_reply(&self.post(&url, &claude_request(system, situation)).await?)
       }
+      Family::Maas => {
+        let url = self.chat_completions();
+        maas_reply(&self.post(&url, &maas_request(&spec.model, system, situation)).await?)
+      }
     }
+  }
+
+  /// Vertex's OpenAI-compatible endpoint, which serves the partner models.
+  fn chat_completions(&self) -> String {
+    let host = if self.region == "global" {
+      "aiplatform.googleapis.com".to_string()
+    } else {
+      format!("{}-aiplatform.googleapis.com", self.region)
+    };
+    format!(
+      "https://{host}/v1/projects/{}/locations/{}/endpoints/openapi/chat/completions",
+      self.project, self.region
+    )
   }
 
   /// A Gemini round, through an explicit cache of the system prompt and tool
@@ -444,6 +473,45 @@ fn claude_reply(answer: &Value) -> Result<Reply, Error> {
   })
 }
 
+fn maas_request(model: &str, system: &str, situation: &str) -> Value {
+  json!({
+    "model": model,
+    "max_tokens": 8192,
+    "temperature": 0.3,
+    "messages": [
+      {"role": "system", "content": system},
+      {"role": "user", "content": situation}
+    ],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": decision::TOOL_NAME,
+        "description": decision::TOOL_DESCRIPTION,
+        "parameters": decision::schema()
+      }
+    }],
+    "tool_choice": {"type": "function", "function": {"name": decision::TOOL_NAME}}
+  })
+}
+
+fn maas_reply(answer: &Value) -> Result<Reply, Error> {
+  let usage = &answer["usage"];
+  let arguments = answer["choices"][0]["message"]["tool_calls"]
+    .as_array()
+    .and_then(|calls| calls.iter().find(|call| call["function"]["name"] == decision::TOOL_NAME))
+    .and_then(|call| call["function"]["arguments"].as_str())
+    .ok_or_else(|| bad("no plan_round call", answer))?;
+  let input: Value = serde_json::from_str(arguments).map_err(|e| bad(&e.to_string(), answer))?;
+  Ok(Reply {
+    decision: serde_json::from_value(input.clone()).map_err(|e| bad(&e.to_string(), &input))?,
+    raw: input.to_string(),
+    input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0),
+    cached_tokens: usage["prompt_tokens_details"]["cached_tokens"].as_u64().unwrap_or(0),
+    // Reasoning, where a model reports it, is part of the completion.
+    output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0),
+  })
+}
+
 fn bad(why: &str, raw: &Value) -> Error {
   Error::BadReply {
     why: why.to_string(),
@@ -460,5 +528,6 @@ pub fn parse_reply(family: Family, answer: &Value) -> Result<Reply, Error> {
   match family {
     Family::Gemini => gemini_reply(answer),
     Family::Claude => claude_reply(answer),
+    Family::Maas => maas_reply(answer),
   }
 }
