@@ -415,7 +415,21 @@ impl Vertex {
         }
       }
     };
-    let response = request.json(body).send().await.map_err(|e| Error::Transport(e.to_string()))?;
+    // Partner models answer slowly now and then: give them longer before
+    // giving up, and log how long every call takes.
+    let limit = if url.contains("/endpoints/openapi/") {
+      Duration::from_secs(150)
+    } else {
+      Duration::from_secs(40)
+    };
+    let started = std::time::Instant::now();
+    let response = request
+      .timeout(limit)
+      .json(body)
+      .send()
+      .await
+      .map_err(|e| Error::Transport(format!("{e} after {:.1}s", started.elapsed().as_secs_f64())))?;
+    tracing::debug!("(provider) answered in {:.1}s", started.elapsed().as_secs_f64());
     let status = response.status().as_u16();
     if !response.status().is_success() {
       return Err(Error::Refused {
