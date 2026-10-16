@@ -163,6 +163,6 @@ describe("an AI player's side", () => {
       ships,
     );
     expect(container.textContent).toContain("ai-ships (Red side, 2 ships)");
-    expect(container.textContent).toContain("ai-ships (Blue side, 1 ship)");
+    expect(container.textContent).toContain("ai-ships (Blue side, INS Stag)");
   });
 });

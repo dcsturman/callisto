@@ -80,7 +80,8 @@ export function Users(args: {users: UserList, email: string | null, ships?: Ship
                             <>
                                 {" ("}
                                 <span style={{ color: TEAM_CSS[side] }}>{side} side</span>
-                                {`, ${fleet.size} ${fleet.size === 1 ? "ship" : "ships"})`}
+                                {/* One ship is named: its name says more than a count. */}
+                                {fleet.size === 1 ? `, ${[...fleet][0]})` : `, ${fleet.size} ships)`}
                             </>
                         )}
                     </li>
