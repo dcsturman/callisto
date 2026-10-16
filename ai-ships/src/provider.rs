@@ -310,6 +310,9 @@ impl Vertex {
           // without the call fails as any unreadable answer does. Claude 5.5
           // thinks adaptively, at an effort, rather than to a token budget.
           request["thinking"] = json!({"type": "adaptive"});
+          // Thinking comes out of the same allowance as the answer; at 8,192
+          // a long think now and then used it all and never reached the call.
+          request["max_tokens"] = json!(16_384);
           request["output_config"] = json!({"effort": effort});
           request["tool_choice"] = json!({"type": "auto"});
           request["messages"][0]["content"] =
