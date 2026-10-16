@@ -5,7 +5,7 @@
 Every checkpoint plays every baseline given (default close and hold) and, with
 --round-robin, every other checkpoint. Prints each match's score, each
 checkpoint's win rate against close by scenario and side, and Elo ratings
-with close at 1000.
+with close at 1000, fitted on decisive games (draws are reported, not rated).
 """
 
 import argparse
@@ -32,7 +32,11 @@ def main() -> None:
         for opponent in opponents:
             match = arena.play(player, opponent, args.games, threads=args.threads, policies=policies)
             matches.append(match)
-            print(f"{arena.short(player):45s} vs {arena.short(opponent):45s} score {match.score:.2f}", flush=True)
+            print(
+                f"{arena.short(player):40s} vs {arena.short(opponent):40s} "
+                f"won {match.wins:.2f}  drew {match.draws:.2f}  lost {match.losses:.2f}",
+                flush=True,
+            )
             if opponent == "close":
                 for key, rate in arena.breakdown(match).items():
                     print(f"    {key:40s} {rate:.2f}")

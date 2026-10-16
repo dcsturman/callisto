@@ -38,7 +38,7 @@ RL needs a number per game and, in practice, a little signal per round.
 |---|---|
 | Every enemy ship destroyed | +1.0 |
 | Enemy fled: every enemy ship jumped out or out of contact for 3 rounds | +0.6 |
-| Draw: round limit with both sides still in it, or both running at once | -0.2, plus hull share taken minus hull share lost scaled to [-0.1, +0.1] |
+| Draw: round limit with both sides still in it, or both running at once | -1.0, as bad as being destroyed |
 | Our side fled | -0.6 |
 | Our side destroyed | -1.0 |
 
@@ -49,8 +49,14 @@ A draw was first scored on hull alone, up to ±0.3. The first self-play run
 showed why that fails: playing copies of itself, the network learned that
 keeping its distance after a little long-range damage scored as well as a
 risky fight, and drew 40% of its games against the baselines, winning almost
-none in Tessaly or Jupiter. A draw now costs both sides, so stalling is never
-a goal: worse than winning or driving them off, better than running or dying.
+none in Tessaly or Jupiter. A draw then cost both sides 0.2. The second run
+showed that was not enough: in an uneven scenario the weaker side, playing a
+competent copy of itself, learned to decline battle (a draw at -0.2 beats a
+loss at -1), and carried that into games it used to win against `close`. A
+draw now counts as a loss for both sides, -1, so a side's only ways out of a
+fight are winning it or leaving it (-0.6, which the objective prefers to
+dying). This may be refined later; for now it makes them fight. The Elo
+ladder leaves draws out of its fit and reports them on their own.
 That run also started from scratch; self-play now starts from the network
 trained against `close`, which already attacks, and plays half its games
 against the baselines at first, tapering to 15% over ten million steps.

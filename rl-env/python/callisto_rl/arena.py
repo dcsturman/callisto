@@ -2,9 +2,11 @@
 
 A *player* is a checkpoint (a MaskablePPO ``.zip``) or a baseline name. A
 match is one player playing the learner's side against another, alternating
-sides, over the scenario pool. Ratings are Elo, fitted to every match at once
-(a Bradley-Terry fit), with ``close`` held at 1000 so numbers from different
-runs can be compared.
+sides, over the scenario pool. Ratings are Elo, fitted to every decisive game
+at once (a Bradley-Terry fit), with ``close`` held at 1000 so numbers from
+different runs can be compared. Draws are left out of the fit and reported on
+their own: training counts a draw as a loss for both sides, and Elo's usual
+half a point would reward exactly the stalling it is meant to stop.
 """
 
 from __future__ import annotations
@@ -36,9 +38,8 @@ def load_policy(path: str) -> Any:
 
 
 def score(outcome: str) -> float:
-    if outcome in WINS:
-        return 1.0
-    return 0.5 if outcome == "draw" else 0.0
+    """1 for a win or driving them off; 0 otherwise, a draw included."""
+    return 1.0 if outcome in WINS else 0.0
 
 
 @dataclass
@@ -47,10 +48,21 @@ class Match:
     opponent: str
     results: list[dict[str, Any]]
 
+    def rate(self, *outcomes: str) -> float:
+        """The share of games that ended in one of these outcomes."""
+        return sum(r["outcome"] in outcomes for r in self.results) / max(1, len(self.results))
+
     @property
-    def score(self) -> float:
-        """The player's average score: 1 a win, a half a draw."""
-        return sum(score(r["outcome"]) for r in self.results) / max(1, len(self.results))
+    def wins(self) -> float:
+        return self.rate(*WINS)
+
+    @property
+    def draws(self) -> float:
+        return self.rate("draw")
+
+    @property
+    def losses(self) -> float:
+        return self.rate("lost", "fled")
 
 
 def play(
@@ -83,10 +95,15 @@ def play(
 
 
 def ratings(matches: Sequence[Match], iterations: int = 2_000) -> dict[str, float]:
-    """Elo ratings that best explain every match, ``close`` at 1000."""
+    """Elo ratings that best explain every decisive game, ``close`` at 1000."""
     players = sorted({m.player for m in matches} | {m.opponent for m in matches})
     index = {p: i for i, p in enumerate(players)}
-    games = [(index[m.player], index[m.opponent], score(r["outcome"])) for m in matches for r in m.results]
+    games = [
+        (index[m.player], index[m.opponent], score(r["outcome"]))
+        for m in matches
+        for r in m.results
+        if r["outcome"] != "draw"
+    ]
     strength = np.zeros(len(players))
     scale = 400.0 / math.log(10.0)
     for _ in range(iterations):

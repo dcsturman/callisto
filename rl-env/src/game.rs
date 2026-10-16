@@ -10,8 +10,8 @@
 //! The reward is the objective in `docs/rl_plan.md`: destroy the other side
 //! (+1) or drive it off (+0.6, judged by [`Retreats`], as the harness judges
 //! it); be destroyed (-1) or run (-0.6). A draw -- the round limit with both
-//! still in it, or both running at once -- costs both sides 0.2, with up to
-//! ±0.1 for the hull difference, so stalling is never a goal. A small
+//! still in it, or both running at once -- counts as a loss for both (-1), so
+//! stalling is never a goal and a side outmatched does better to leave. A small
 //! shaping term each round pays for hull taken and charges for hull lost and
 //! for time.
 
@@ -91,11 +91,12 @@ pub enum End {
 pub const DESTROYED: f32 = 1.0;
 pub const FLED: f32 = 0.6;
 /// What a draw costs each side: the round limit with both still in it, both
-/// running at once, or both wiped out. Stalling is never a goal: a draw is
-/// worse than winning or driving them off, better than running or dying.
-pub const DRAW_COST: f32 = 0.2;
-/// The most the hull difference adds to or takes from a draw.
-pub const DRAW_SCALE: f32 = 0.1;
+/// running at once, or both wiped out. As much as being destroyed, so the
+/// only ways out of a fight are winning it or leaving it: a weaker side that
+/// keeps out of reach until the clock runs out has gained nothing by it.
+pub const DRAW_COST: f32 = 1.0;
+/// The most the hull difference adds to or takes from a draw: nothing.
+pub const DRAW_SCALE: f32 = 0.0;
 /// Shaping, per round: this times hull share taken less hull share lost.
 pub const SHAPING: f32 = 0.1;
 /// Shaping, per round: the cost of time.
