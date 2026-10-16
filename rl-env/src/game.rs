@@ -159,6 +159,8 @@ pub struct Game {
   pub rounds: u32,
   pub max_rounds: u32,
   pub seed: u64,
+  /// Baselines playing network sides; see [`Game::stand_in`].
+  stand_ins: [Option<String>; 2],
 }
 
 fn player_for(scenario: &Scenario, seed: u64) -> PlayerManager {
@@ -227,13 +229,42 @@ impl Game {
       rounds: 0,
       max_rounds,
       seed,
+      stand_ins: [None, None],
     }
   }
 
   /// The same scenario and sides again, from the start, with a new seed.
   pub fn reset(&mut self, seed: u64) {
     let controls = [self.sides[0].control.clone(), self.sides[1].control.clone()];
+    let stand_ins = self.stand_ins.clone();
     *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds);
+    for (side, stand_in) in stand_ins.into_iter().enumerate() {
+      self.stand_in(side, stand_in);
+    }
+  }
+
+  /// Hand a network side to a baseline, by name, or back to the network
+  /// with `None`. The side's slots stay, so the batch keeps its shape; their
+  /// choices are ignored while a baseline plays. Kept across resets.
+  ///
+  /// # Panics
+  /// Panics if the baseline is not one the commander module knows.
+  pub fn stand_in(&mut self, side: usize, baseline: Option<String>) {
+    let commander = match (&self.sides[side].control, &baseline) {
+      (Control::Baseline(name), None) => {
+        Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}")))
+      }
+      (_, Some(name)) => Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}"))),
+      (Control::Agent, None) => None,
+    };
+    self.sides[side].commander = commander;
+    self.stand_ins[side] = baseline;
+  }
+
+  /// The baseline standing in for each side, if any.
+  #[must_use]
+  pub fn stand_ins(&self) -> &[Option<String>; 2] {
+    &self.stand_ins
   }
 
   #[must_use]

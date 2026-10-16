@@ -43,6 +43,8 @@ pub struct Finished {
   /// The side names, in order, and which of them the network played.
   pub sides: [String; 2],
   pub agent: [bool; 2],
+  /// The baseline that played each side, if one did.
+  pub stand_ins: [Option<String>; 2],
   /// The whole game's reward for each side.
   pub returns: [f32; 2],
   pub hull_shares: [f32; 2],
@@ -173,6 +175,22 @@ impl Batch {
       .collect()
   }
 
+  /// Hand one side of one game to a baseline, or back to the network.
+  ///
+  /// # Errors
+  /// Returns an error if there is no such game or side, or no such baseline.
+  pub fn stand_in(&mut self, game: usize, side: usize, baseline: Option<&str>) -> Result<(), String> {
+    if let Some(name) = baseline {
+      ai_ships::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
+    }
+    let running = self.games.get_mut(game).ok_or_else(|| format!("no game {game}"))?;
+    if side > 1 {
+      return Err(format!("no side {side}"));
+    }
+    running.game.stand_in(side, baseline.map(str::to_string));
+    Ok(())
+  }
+
   /// Every slot's observation and mask, as the games stand.
   ///
   /// # Panics
@@ -254,7 +272,9 @@ impl Batch {
               rounds: game.rounds,
               end,
               sides: [game.side_name(0).to_string(), game.side_name(1).to_string()],
-              agent: [0, 1].map(|side| game.slots().iter().any(|slot| slot.side == side)),
+              agent: [0, 1]
+                .map(|side| game.stand_ins()[side].is_none() && game.slots().iter().any(|slot| slot.side == side)),
+              stand_ins: game.stand_ins().clone(),
               returns: running.returns,
               hull_shares: game.hull_shares(),
             };

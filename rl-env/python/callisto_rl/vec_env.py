@@ -60,8 +60,12 @@ class ShipVecEnv(VecEnv):
         self._masks = np.ones((self.num_envs, MASK_LEN), dtype=bool)
         self._actions: np.ndarray | None = None
         self._rounds = np.zeros(self.num_envs, dtype=np.int64)
+        self.opponent = opponent
         #: Every game finished so far, as the engine reported it.
         self.finished: list[dict[str, Any]] = []
+        #: The same, one entry per side the network played: scenario, side
+        #: name, opponent, outcome, return, rounds.
+        self.results: list[dict[str, Any]] = []
 
     # -- VecEnv -------------------------------------------------------------
 
@@ -80,6 +84,19 @@ class ShipVecEnv(VecEnv):
         infos: list[dict[str, Any]] = [{} for _ in range(self.num_envs)]
         by_game = {game["game"]: game for game in finished}
         self.finished.extend(finished)
+        for game in finished:
+            for side in (0, 1):
+                if game["agent"][side]:
+                    self.results.append(
+                        {
+                            "scenario": game["scenario"],
+                            "side": game["sides"][side],
+                            "opponent": self.opponent or "self",
+                            "outcome": outcome_for(game, side),
+                            "return": float(game["returns"][side]),
+                            "rounds": int(game["rounds"]),
+                        }
+                    )
         for entry in np.flatnonzero(dones):
             game_index, side, _ship = self.slot_info[entry]
             game = by_game.get(game_index)

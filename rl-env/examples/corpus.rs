@@ -27,7 +27,9 @@ fn main() {
   let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
   let scenarios: Vec<Arc<Scenario>> = runtime.block_on(async {
     callisto::ship::replace_ship_templates(
-      callisto::ship::load_ship_templates_from_dir("../callisto/ship_templates").await.unwrap(),
+      callisto::ship::load_ship_templates_from_dir("../callisto/ship_templates")
+        .await
+        .unwrap(),
     );
     let mut scenarios = Vec::new();
     for path in POOL {
