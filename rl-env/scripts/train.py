@@ -96,6 +96,10 @@ def main() -> None:
     parser.add_argument("--name", default=None)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-rounds", type=int, default=40)
+    parser.add_argument(
+        "--wandb", action="store_true", help="also send the run to Weights & Biases (after `.venv/bin/wandb login`)"
+    )
+    parser.add_argument("--wandb-project", default="callisto-rl")
     args = parser.parse_args()
 
     torch_threads = 2
@@ -117,6 +121,13 @@ def main() -> None:
         )
     name = args.name or f"{args.opponent}-{time.strftime('%Y%m%d-%H%M%S')}"
     folder = HERE / "checkpoints" / name
+    run = None
+    if args.wandb:
+        import wandb
+
+        # Copies the TensorBoard logs as they are written, so both work.
+        settings = vars(args) | {"mix": vars(Mix())} if args.opponent == "self" else vars(args)
+        run = wandb.init(project=args.wandb_project, name=name, config=settings, sync_tensorboard=True)
     print(f"{name}: {env.num_envs} learner ships in {args.games} games")
     if args.resume:
         model = MaskablePPO.load(args.resume, env=env, device=args.device)
@@ -148,6 +159,8 @@ def main() -> None:
     )
     model.save(folder / "final")
     print(f"saved {folder / 'final.zip'}")
+    if run is not None:
+        run.finish()
 
 
 if __name__ == "__main__":

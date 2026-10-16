@@ -47,6 +47,8 @@ cargo run --release --example trace -- ../callisto/scenarios/Thebus.json 3   # o
 
 Training stops after `--steps` ship decisions, about 2,000 a second on this
 Mac, so 2,000,000 is a quarter of an hour; a progress bar shows how far it
-has got. `--threads` (default 10) is every core training uses, engine and PyTorch
+has got. To follow a run on Weights & Biases as well as TensorBoard, log in once with
+`.venv/bin/wandb login` and add `--wandb`; runs go to the `callisto-rl`
+project (`--wandb-project` to change it). `--threads` (default 10) is every core training uses, engine and PyTorch
 together, so the machine stays usable. Logs go to `runs/`, checkpoints to
 `checkpoints/`; both are ignored by git.

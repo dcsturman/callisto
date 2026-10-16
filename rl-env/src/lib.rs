@@ -10,7 +10,9 @@
 
 pub mod action;
 pub mod batch;
+pub mod commander;
 pub mod encode;
 pub mod game;
+pub mod net;
 #[cfg(feature = "python")]
 mod python;

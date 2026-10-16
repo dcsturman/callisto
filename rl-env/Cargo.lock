@@ -570,6 +570,7 @@ name = "callisto-rl"
 version = "0.1.0"
 dependencies = [
  "ai-ships",
+ "async-trait",
  "callisto",
  "cgmath",
  "futures",
@@ -577,8 +578,10 @@ dependencies = [
  "pyo3",
  "rand 0.8.8",
  "rayon",
+ "serde",
  "serde_json",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]

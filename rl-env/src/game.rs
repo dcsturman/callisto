@@ -8,7 +8,7 @@
 //! there.
 //!
 //! The reward is the objective in `docs/rl_plan.md`: destroy the other side
-//! (+1), drive it off (+0.6), or failing that come out ahead on hull at the
+//! (+1), drive it off (+0.6, judged by [`Retreats`], as the harness judges it), or failing that come out ahead on hull at the
 //! round limit (up to ±0.3); and the same, negated, for being destroyed or
 //! running. A small shaping term each round pays for hull taken and charges
 //! for hull lost and for time.
@@ -17,14 +17,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use ai_ships::commander::{self, Commander};
-use ai_ships::harness::{apply, hull_of, sides};
+use ai_ships::harness::{apply, hull_of, sides, Retreats};
 use ai_ships::observation::{observe, Observation};
 use callisto::authentication::MockAuthenticator;
 use callisto::entity::{Entities, Entity};
 use callisto::player::PlayerManager;
 use callisto::server::Server;
 use callisto::tactics::{self, EngineerVerb, Intent};
-use cgmath::InnerSpace;
 
 use crate::action::{side_intents, Choice, MASK_LEN};
 use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, Seen, MAX_SHIPS, OBS_LEN};
@@ -95,11 +94,6 @@ pub const DRAW_SCALE: f32 = 0.3;
 pub const SHAPING: f32 = 0.1;
 /// Shaping, per round: the cost of time.
 pub const ROUND_COST: f32 = 0.002;
-/// A ship this far from every enemy is out of the fight, if she keeps going:
-/// the edge of Distant.
-pub const FLEE_DISTANCE: f64 = 50_000_000.0;
-/// Rounds a side must keep opening past [`FLEE_DISTANCE`] to have fled.
-pub const FLEE_ROUNDS: u32 = 3;
 
 /// What a round brought each side.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -117,14 +111,6 @@ struct Side {
   memory: Memory,
   hull_at_start: u32,
   hull_last: u32,
-  /// Rounds running that this side has been out past [`FLEE_DISTANCE`] and
-  /// moving away.
-  opening: u32,
-  /// Whether any of this side's ships has yet come inside
-  /// [`FLEE_DISTANCE`] of an enemy. Only a side that has come into the fight
-  /// can run from it: one that opens the game far off and stays there has
-  /// not fled, it has not arrived.
-  engaged: bool,
 }
 
 /// One slot: an agent ship, and the picture her last observation was made
@@ -161,6 +147,9 @@ pub struct Game {
   pub seed: u64,
   /// Baselines playing network sides; see [`Game::stand_in`].
   stand_ins: [Option<String>; 2],
+  /// Who has run, as the harness judges it.
+  retreats: Retreats,
+  rosters: BTreeMap<String, Vec<String>>,
 }
 
 fn player_for(scenario: &Scenario, seed: u64) -> PlayerManager {
@@ -201,8 +190,6 @@ impl Game {
         memory: Memory::new(),
         hull_at_start: hull,
         hull_last: hull,
-        opening: 0,
-        engaged: false,
       }
     });
     let slots = sides
@@ -218,6 +205,7 @@ impl Game {
       })
       .collect();
     let views = [0, 1].map(|index| observe(&world, &present(&world, &sides[index].ships)));
+    let scenario_rosters: BTreeMap<String, Vec<String>> = scenario.sides.iter().cloned().collect();
     Game {
       scenario,
       player,
@@ -230,6 +218,8 @@ impl Game {
       max_rounds,
       seed,
       stand_ins: [None, None],
+      retreats: Retreats::default(),
+      rosters: scenario_rosters,
     }
   }
 
@@ -458,41 +448,10 @@ impl Game {
       });
     }
 
-    // Who is out past Distant and running. The range opens for both sides
-    // alike, so who is running is judged by each ship's own burn and motion,
-    // in the scenario's frame. She runs when she is moving away from her
-    // nearest enemy and not burning back toward her: a fighter that
-    // overshoots and brakes to come round is still in the fight, and a ship
-    // that burns clear and then coasts away has still run. A chaser falling
-    // behind is heading in, so she has not fled; two sides flying apart have
-    // both run, and that is a draw.
-    for side in 0..2 {
-      let mut out = true;
-      let mut engaged = false;
-      for ship in &in_play[side] {
-        let (here, velocity, burn) = {
-          let ship = self.world.ships[ship].read().unwrap();
-          (ship.get_position(), ship.get_velocity(), ship.plan.0 .0)
-        };
-        let nearest = in_play[1 - side]
-          .iter()
-          .map(|enemy| self.world.ships[enemy].read().unwrap().get_position() - here)
-          .min_by(|a, b| a.magnitude().total_cmp(&b.magnitude()));
-        let Some(towards) = nearest else { continue };
-        engaged |= towards.magnitude() <= FLEE_DISTANCE;
-        out &= towards.magnitude() > FLEE_DISTANCE && velocity.dot(towards) < 0.0 && burn.dot(towards) <= 0.0;
-      }
-      let side = &mut self.sides[side];
-      side.engaged |= engaged;
-      side.opening = if out && side.engaged { side.opening + 1 } else { 0 };
-    }
-    let can_fight = [0, 1].map(|side| {
-      in_play[side]
-        .iter()
-        .any(|ship| !self.world.ships[ship].read().unwrap().weapons().is_empty())
-    });
-    let fled = [0, 1].map(|side| self.sides[side].opening >= FLEE_ROUNDS && can_fight[1 - side]);
-    match fled {
+    // Who has run, by the rule the harness ends games by.
+    let fled = self.retreats.update(&self.world, &self.rosters);
+    let ran = [0, 1].map(|side| fled.contains(&self.sides[side].name));
+    match ran {
       [true, true] => return Some(End::Draw),
       [true, false] => return Some(End::Fled { side: 0 }),
       [false, true] => return Some(End::Fled { side: 1 }),
@@ -517,7 +476,7 @@ impl Game {
 
 /// Update a side's memory from its view: contacts as they are now; ships no
 /// longer on the plot at all are gone, so their hull is none.
-fn remember(memory: &mut Memory, view: &Observation, round: u32) {
+pub fn remember(memory: &mut Memory, view: &Observation, round: u32) {
   for contact in view.enemies() {
     memory.insert(
       contact.name.clone(),
@@ -541,7 +500,8 @@ fn remember(memory: &mut Memory, view: &Observation, round: u32) {
 
 /// The enemy's hull left as a side believes it: over the enemies it has
 /// ever held, their last-seen hull against their design. All of it if none.
-fn believed_hull(memory: &Memory) -> f32 {
+#[must_use]
+pub fn believed_hull(memory: &Memory) -> f32 {
   let (left, whole) = memory.values().fold((0.0, 0.0), |(left, whole), seen| {
     let design = seen.design_hull as f32;
     (left + seen.hull_share * design, whole + design)
