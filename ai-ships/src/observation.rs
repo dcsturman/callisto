@@ -41,9 +41,11 @@ pub struct Contact {
   pub name: String,
   pub design: String,
   pub displacement: u32,
-  /// The hull and armour its class is built with. Not what it has left: that
-  /// the sensor station does not show.
+  /// The hull and armour its class is built with.
   pub design_hull: u32,
+  /// The hull it has left. A player's ship list shows this for any ship one
+  /// of their side holds as a contact, so the AI is shown it too.
+  pub current_hull: u32,
   pub design_armor: u32,
   pub stealth: Option<Stealth>,
   pub tl: u8,
@@ -253,6 +255,7 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
         design: contact.design.name.clone(),
         displacement: contact.design.displacement,
         design_hull: contact.design.hull,
+        current_hull: contact.current_hull,
         design_armor: contact.design.armor,
         stealth: contact.design.stealth,
         tl: contact.design.tl,
