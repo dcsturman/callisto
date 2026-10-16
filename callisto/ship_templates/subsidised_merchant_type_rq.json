@@ -1,6 +1,7 @@
 {
   "name": "Subsidised Merchant - Type RQ",
   "displacement": 400,
+  "cost_mcr": 227.65,
   "hull": 160,
   "armor": 8,
   "maneuver": 4,

@@ -1,6 +1,7 @@
 {
   "name": "Liner - Queen Elizabeth",
   "displacement": 1200,
+  "cost_mcr": 396.137,
   "hull": 480,
   "armor": 0,
   "maneuver": 1,
