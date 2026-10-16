@@ -29,6 +29,9 @@ pub enum Family {
   /// OpenAI-compatible chat completions endpoint: `DeepSeek`, Qwen, GLM and
   /// the like. Named by publisher and model, `deepseek-ai/deepseek-v4.1-flash-maas`.
   Maas,
+  /// Claude through Anthropic's own API, on an Anthropic API key, for when
+  /// the Vertex quota for Claude is not there.
+  Anthropic,
 }
 
 /// A model, named as `gemini:<model>`, `claude:<model>` or
@@ -44,6 +47,7 @@ pub struct ModelSpec {
 pub const DEFAULT_GEMINI: &str = "gemini-3.8-flash";
 pub const DEFAULT_CLAUDE: &str = "claude-sonnet-5-5";
 pub const DEFAULT_DEEPSEEK: &str = "deepseek-ai/deepseek-v4.1-flash-maas";
+pub const DEFAULT_HAIKU: &str = "claude-haiku-5-5";
 
 impl ModelSpec {
   /// `None` if the name is not a model's.
@@ -57,6 +61,7 @@ impl ModelSpec {
       "gemini" => (Family::Gemini, DEFAULT_GEMINI),
       "claude" => (Family::Claude, DEFAULT_CLAUDE),
       "maas" | "deepseek" => (Family::Maas, DEFAULT_DEEPSEEK),
+      "anthropic" | "haiku" => (Family::Anthropic, DEFAULT_HAIKU),
       _ => return None,
     };
     Some(ModelSpec {
@@ -72,6 +77,7 @@ impl ModelSpec {
       Family::Gemini => "gemini",
       Family::Claude => "claude",
       Family::Maas => "maas",
+      Family::Anthropic => "anthropic",
     };
     format!("{family}:{}", self.model)
   }
@@ -95,6 +101,10 @@ pub fn price(spec: &ModelSpec) -> Option<(f64, f64, f64)> {
     "gemini-3.5-flash-lite" => Some((0.30, 0.03, 2.50)),
     // As listed for Vertex; no cached rate, so repeated input is full price.
     "deepseek-ai/deepseek-v4.1-flash-maas" => Some((0.30, 0.30, 1.20)),
+    // Anthropic's published rates; the same on Vertex.
+    "claude-haiku-5-5" => Some((0.10, 0.01, 0.50)),
+    "claude-sonnet-5-5" => Some((2.00, 0.10, 10.00)),
+    "claude-opus-5-5" => Some((4.00, 0.20, 20.00)),
     _ => None,
   }
 }
@@ -155,6 +165,39 @@ pub struct Vertex {
   /// a hash of the prompt, so two prompts on one model never share one:
   /// the cache's resource name and when to stop trusting it.
   caches: tokio::sync::Mutex<std::collections::HashMap<String, (String, std::time::Instant)>>,
+  /// An Anthropic API key and workspace, if one is configured, for Claude
+  /// through Anthropic's own API. Never logged.
+  anthropic: Option<AnthropicKey>,
+}
+
+/// An Anthropic API key, and the workspace a key not scoped to one must name.
+struct AnthropicKey {
+  key: String,
+  workspace: Option<String>,
+}
+
+/// A setting from the environment: the variable itself, or the contents of
+/// the file named by the same variable with `_FILE` after it, trimmed. The
+/// file keeps a key out of the shell's history and the process listing.
+fn setting(name: &str) -> Option<String> {
+  std::env::var(name)
+    .ok()
+    .or_else(|| {
+      std::env::var(format!("{name}_FILE"))
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+    })
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
+}
+
+/// How a request proves who is asking.
+#[derive(Clone, Copy)]
+enum Auth {
+  /// The GCP project's credentials, for anything on Vertex.
+  Google,
+  /// The Anthropic API key.
+  Anthropic,
 }
 
 /// How long a cache lives, and how long we use it before making a new one.
@@ -198,6 +241,10 @@ impl Vertex {
       project,
       region: region.to_string(),
       caches: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+      anthropic: setting("ANTHROPIC_API_KEY").map(|key| AnthropicKey {
+        key,
+        workspace: setting("ANTHROPIC_WORKSPACE_ID"),
+      }),
     })
   }
 
@@ -233,6 +280,18 @@ impl Vertex {
       Family::Maas => {
         let url = self.chat_completions();
         maas_reply(&self.post(&url, &maas_request(&spec.model, system, situation)).await?)
+      }
+      Family::Anthropic => {
+        let mut request = claude_request(system, situation);
+        request["model"] = json!(spec.model);
+        if let Some(fields) = request.as_object_mut() {
+          fields.remove("anthropic_version");
+        }
+        claude_reply(
+          &self
+            .post_as(Auth::Anthropic, "https://api.anthropic.com/v1/messages", &request)
+            .await?,
+        )
       }
     }
   }
@@ -308,9 +367,13 @@ impl Vertex {
   /// Post, retrying a few times on a rate limit, a server error, or a
   /// dropped connection.
   async fn post(&self, url: &str, body: &Value) -> Result<Value, Error> {
+    self.post_as(Auth::Google, url, body).await
+  }
+
+  async fn post_as(&self, auth: Auth, url: &str, body: &Value) -> Result<Value, Error> {
     let mut wait = Duration::from_secs(2);
     for attempt in 1..=ATTEMPTS {
-      match self.post_once(url, body).await {
+      match self.post_once(auth, url, body).await {
         Ok(answer) => return Ok(answer),
         Err(e) if attempt < ATTEMPTS && e.is_transient() => {
           warn!("(provider) {e}; retrying in {wait:?}.");
@@ -323,21 +386,36 @@ impl Vertex {
     unreachable!("the loop returns on its last attempt")
   }
 
-  async fn post_once(&self, url: &str, body: &Value) -> Result<Value, Error> {
-    let token = self
-      .token
-      .token()
-      .await
-      .map_err(|e| Error::Transport(format!("no access token: {e}")))?;
-    let response = self
-      .client
-      .post(url)
-      .header("Authorization", token)
-      .header("x-goog-user-project", &self.project)
-      .json(body)
-      .send()
-      .await
-      .map_err(|e| Error::Transport(e.to_string()))?;
+  async fn post_once(&self, auth: Auth, url: &str, body: &Value) -> Result<Value, Error> {
+    let request = match auth {
+      Auth::Google => {
+        let token = self
+          .token
+          .token()
+          .await
+          .map_err(|e| Error::Transport(format!("no access token: {e}")))?;
+        self
+          .client
+          .post(url)
+          .header("Authorization", token)
+          .header("x-goog-user-project", &self.project)
+      }
+      Auth::Anthropic => {
+        let anthropic = self.anthropic.as_ref().ok_or_else(|| {
+          Error::Transport("no Anthropic API key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE".to_string())
+        })?;
+        let request = self
+          .client
+          .post(url)
+          .header("x-api-key", &anthropic.key)
+          .header("anthropic-version", "2023-06-01");
+        match &anthropic.workspace {
+          Some(workspace) => request.header("anthropic-workspace-id", workspace),
+          None => request,
+        }
+      }
+    };
+    let response = request.json(body).send().await.map_err(|e| Error::Transport(e.to_string()))?;
     let status = response.status().as_u16();
     if !response.status().is_success() {
       return Err(Error::Refused {
@@ -472,7 +550,11 @@ fn claude_reply(answer: &Value) -> Result<Reply, Error> {
   Ok(Reply {
     decision: serde_json::from_value(input.clone()).map_err(|e| bad(&e.to_string(), &input))?,
     raw: input.to_string(),
-    input_tokens: usage["input_tokens"].as_u64().unwrap_or(0),
+    // Anthropic counts cache reads and writes apart from `input_tokens`;
+    // input here is all of it, of which `cached_tokens` were read from cache.
+    input_tokens: usage["input_tokens"].as_u64().unwrap_or(0)
+      + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+      + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
     cached_tokens: usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
     output_tokens: usage["output_tokens"].as_u64().unwrap_or(0),
   })
@@ -540,7 +622,8 @@ fn bad(why: &str, raw: &Value) -> Error {
 pub fn parse_reply(family: Family, answer: &Value) -> Result<Reply, Error> {
   match family {
     Family::Gemini => gemini_reply(answer),
-    Family::Claude => claude_reply(answer),
+    // Anthropic's own API answers in the same shape as Claude on Vertex.
+    Family::Claude | Family::Anthropic => claude_reply(answer),
     Family::Maas => maas_reply(answer),
   }
 }

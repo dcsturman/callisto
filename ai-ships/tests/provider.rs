@@ -64,3 +64,32 @@ fn a_prompt_file_replaces_the_built_in_prompt() {
   assert!(ai_ships::llm::system_for("deepseek@/no/such/prompt.md").is_err());
   let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn haiku_names_claude_on_anthropics_own_api() {
+  let spec = ModelSpec::parse("haiku").unwrap();
+  assert_eq!(spec.family, Family::Anthropic);
+  assert_eq!(spec.model, "claude-haiku-5-5");
+  assert_eq!(ModelSpec::parse(&spec.name()), Some(spec));
+}
+
+/// Anthropic counts tokens read from and written to the cache apart from
+/// `input_tokens`; a reply's input is all three, of which the reads were
+/// cached.
+#[test]
+fn a_claude_reply_counts_cached_input_in_its_input() {
+  let answer = json!({
+    "content": [{"type": "tool_use", "name": "plan_round", "input": {"plan": "Hold.", "ships": []}}],
+    "usage": {"input_tokens": 2700, "cache_read_input_tokens": 5800, "cache_creation_input_tokens": 0, "output_tokens": 300}
+  });
+  let reply = parse_reply(Family::Anthropic, &answer).unwrap();
+  assert_eq!(
+    (reply.input_tokens, reply.cached_tokens, reply.output_tokens),
+    (8500, 5800, 300)
+  );
+  let cost = reply.cost(&ModelSpec::parse("haiku").unwrap()).unwrap();
+  assert!(
+    (cost - (2700.0 * 0.10 + 5800.0 * 0.01 + 300.0 * 0.50) / 1e6).abs() < 1e-12,
+    "{cost}"
+  );
+}

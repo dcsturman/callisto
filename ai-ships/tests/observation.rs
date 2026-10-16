@@ -53,7 +53,10 @@ async fn a_side_sees_only_what_its_consoles_would() {
   // A contact carries what the player's screen shows -- including the hull
   // she has left, which the ship list gives for any contact -- and not the
   // rest.
-  assert_eq!(yacht.current_hull, yacht.design_hull, "an undamaged contact shows her whole hull");
+  assert_eq!(
+    yacht.current_hull, yacht.design_hull,
+    "an undamaged contact shows her whole hull"
+  );
   let wire = serde_json::to_value(yacht).unwrap();
   for hidden in ["current_power", "crew", "orders", "plan"] {
     assert!(wire.get(hidden).is_none(), "a contact must not reveal {hidden}");
