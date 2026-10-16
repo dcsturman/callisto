@@ -38,12 +38,22 @@ RL needs a number per game and, in practice, a little signal per round.
 |---|---|
 | Every enemy ship destroyed | +1.0 |
 | Enemy fled: every enemy ship jumped out or out of contact for 3 rounds | +0.6 |
-| Round limit reached with both sides still in it | hull share taken minus hull share lost, scaled to [-0.3, +0.3] |
+| Draw: round limit with both sides still in it, or both running at once | -0.2, plus hull share taken minus hull share lost scaled to [-0.1, +0.1] |
 | Our side fled | -0.6 |
 | Our side destroyed | -1.0 |
 
 Fleeing is worth more than dying, for either side, which is what the
 objective asks for.
+
+A draw was first scored on hull alone, up to ±0.3. The first self-play run
+showed why that fails: playing copies of itself, the network learned that
+keeping its distance after a little long-range damage scored as well as a
+risky fight, and drew 40% of its games against the baselines, winning almost
+none in Tessaly or Jupiter. A draw now costs both sides, so stalling is never
+a goal: worse than winning or driving them off, better than running or dying.
+That run also started from scratch; self-play now starts from the network
+trained against `close`, which already attacks, and plays half its games
+against the baselines at first, tapering to 15% over ten million steps.
 
 **What "fled" means.** Judged by the engine on true positions, not on either
 side's fogged view. A side has fled when every one of its surviving ships

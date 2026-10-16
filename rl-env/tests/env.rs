@@ -9,7 +9,7 @@ use callisto::entity::Entity;
 use callisto_rl::action::{choice_of, Choice, Head, HEADS, MASK_LEN};
 use callisto_rl::batch::{Batch, Config, Outputs};
 use callisto_rl::encode::OBS_LEN;
-use callisto_rl::game::{Control, Game, Scenario, Step};
+use callisto_rl::game::{Control, End, Game, Scenario, Step, DRAW_COST};
 use rand::{Rng, SeedableRng};
 
 const DESIGNS: &str = "../callisto/ship_templates";
@@ -69,7 +69,9 @@ fn random_play_is_legal() {
   }
   assert!(!finished.is_empty(), "some games finish in 80 rounds");
   for game in &finished {
-    let total: f32 = game.returns.iter().sum();
+    // Zero-sum but for what a draw costs both sides and the cost of time.
+    let draw_cost = if game.end == End::Draw { 2.0 * DRAW_COST } else { 0.0 };
+    let total: f32 = game.returns.iter().sum::<f32>() + draw_cost;
     println!(
       "{} seed {}: {:?} in {} rounds, returns {:?}",
       game.scenario, game.seed, game.end, game.rounds, game.returns

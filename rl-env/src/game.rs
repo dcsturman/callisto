@@ -8,10 +8,12 @@
 //! there.
 //!
 //! The reward is the objective in `docs/rl_plan.md`: destroy the other side
-//! (+1), drive it off (+0.6, judged by [`Retreats`], as the harness judges it), or failing that come out ahead on hull at the
-//! round limit (up to ±0.3); and the same, negated, for being destroyed or
-//! running. A small shaping term each round pays for hull taken and charges
-//! for hull lost and for time.
+//! (+1) or drive it off (+0.6, judged by [`Retreats`], as the harness judges
+//! it); be destroyed (-1) or run (-0.6). A draw -- the round limit with both
+//! still in it, or both running at once -- costs both sides 0.2, with up to
+//! ±0.1 for the hull difference, so stalling is never a goal. A small
+//! shaping term each round pays for hull taken and charges for hull lost and
+//! for time.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -88,8 +90,12 @@ pub enum End {
 /// The end-of-game reward for each side.
 pub const DESTROYED: f32 = 1.0;
 pub const FLED: f32 = 0.6;
-/// The most a draw on hull is worth.
-pub const DRAW_SCALE: f32 = 0.3;
+/// What a draw costs each side: the round limit with both still in it, both
+/// running at once, or both wiped out. Stalling is never a goal: a draw is
+/// worse than winning or driving them off, better than running or dying.
+pub const DRAW_COST: f32 = 0.2;
+/// The most the hull difference adds to or takes from a draw.
+pub const DRAW_SCALE: f32 = 0.1;
 /// Shaping, per round: this times hull share taken less hull share lost.
 pub const SHAPING: f32 = 0.1;
 /// Shaping, per round: the cost of time.
@@ -421,8 +427,9 @@ impl Game {
           terminal[side] = -FLED;
           terminal
         }
-        // Hull share taken less hull share lost, onto ±DRAW_SCALE.
-        End::Draw => [0, 1].map(|side| DRAW_SCALE * ((1.0 - shares[1 - side]) - (1.0 - shares[side]))),
+        // A cost to both, and hull share taken less hull share lost, onto
+        // ±DRAW_SCALE.
+        End::Draw => [0, 1].map(|side| -DRAW_COST + DRAW_SCALE * ((1.0 - shares[1 - side]) - (1.0 - shares[side]))),
       };
       for (reward, terminal) in rewards.iter_mut().zip(terminal) {
         *reward += terminal;

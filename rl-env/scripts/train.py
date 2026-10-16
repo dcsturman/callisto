@@ -60,6 +60,27 @@ class Outcomes(BaseCallback):
             self.logger.record(f"win_rate/{key}", sum(wins) / len(wins))
 
 
+class Taper(BaseCallback):
+    """In self-play, start with more games against the baselines and taper to
+    the usual share: the baselines punish waiting, which self-play alone can
+    drift into."""
+
+    def __init__(self, env, start: float, end: float, steps: int):
+        super().__init__()
+        self.env, self.start, self.end, self.steps = env, start, end, max(1, steps)
+
+    def _on_rollout_start(self) -> None:
+        done = min(1.0, self.num_timesteps / self.steps)
+        share = self.start + (self.end - self.start) * done
+        mix = self.env.mix
+        mix.current = max(0.0, 1.0 - mix.past - share)
+        mix.baselines = share
+        self.logger.record("pool/baseline_share", share)
+
+    def _on_step(self) -> bool:
+        return True
+
+
 class Snapshots(BaseCallback):
     """Save a checkpoint every so often, and in self-play add it to the pool."""
 
@@ -92,7 +113,13 @@ def main() -> None:
     parser.add_argument("--threads", type=int, default=10, help="all cores used, engine and PyTorch together")
     parser.add_argument("--device", default="cpu", help="cpu or mps")
     parser.add_argument("--snapshot-every", type=int, default=500_000, help="steps between checkpoints / pool snapshots")
-    parser.add_argument("--resume", default=None, help="a checkpoint .zip to continue from")
+    parser.add_argument("--resume", default=None, help="a checkpoint .zip to continue, step count and all")
+    parser.add_argument(
+        "--init-from", default=None, help="a checkpoint .zip whose network to start from, as a new run"
+    )
+    parser.add_argument("--baselines-start", type=float, default=0.5, help="self-play: share of baseline games at first")
+    parser.add_argument("--baselines-end", type=float, default=0.15, help="self-play: share once tapered")
+    parser.add_argument("--taper-steps", type=int, default=10_000_000, help="self-play: steps to taper over")
     parser.add_argument("--name", default=None)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-rounds", type=int, default=40)
@@ -129,8 +156,10 @@ def main() -> None:
         settings = vars(args) | {"mix": vars(Mix())} if args.opponent == "self" else vars(args)
         run = wandb.init(project=args.wandb_project, name=name, config=settings, sync_tensorboard=True)
     print(f"{name}: {env.num_envs} learner ships in {args.games} games")
-    if args.resume:
-        model = MaskablePPO.load(args.resume, env=env, device=args.device)
+    if args.resume or args.init_from:
+        model = MaskablePPO.load(
+            args.resume or args.init_from, env=env, device=args.device, tensorboard_log=str(HERE / "runs")
+        )
     else:
         model = MaskablePPO(
             "MlpPolicy",
@@ -150,9 +179,12 @@ def main() -> None:
         )
     if isinstance(env, SelfPlayVecEnv):
         env.set_learner(model.policy)
+    callbacks = [Outcomes(env), Snapshots(env, args.snapshot_every, folder)]
+    if isinstance(env, SelfPlayVecEnv):
+        callbacks.append(Taper(env, args.baselines_start, args.baselines_end, args.taper_steps))
     model.learn(
         total_timesteps=args.steps,
-        callback=[Outcomes(env), Snapshots(env, args.snapshot_every, folder)],
+        callback=callbacks,
         tb_log_name=name,
         progress_bar=True,
         reset_num_timesteps=not args.resume,

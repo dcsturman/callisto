@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fire over Jupiter",
     "owner": "dcsturman@gmail.com",
-    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 300,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escort Ailreaui and her six light fighters. Can the Imperials defeat them?"
+    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 100,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escort Ailreaui and her six light fighters. Can the Imperials defeat them?"
   },
   "planets": [
     {
@@ -53,7 +53,7 @@
   "ships": [
     {
       "name": "INS Unicorn",
-      "position": [1.52e8, 0, 3.91e8],
+      "position": [5.0615e7, 0, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Gazelle",
@@ -63,7 +63,7 @@
     },
     {
       "name": "INS Righteous",
-      "position": [1.53e8, 0, 3.91e8],
+      "position": [5.1615e7, 0, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Gazelle",
@@ -73,7 +73,7 @@
     },
     {
       "name": "INS Stag",
-      "position": [1.52e8, 1e6, 3.91e8],
+      "position": [5.0615e7, 1e6, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Gazelle",
