@@ -924,15 +924,23 @@ async fn test_point_defense_battery_intercepts_missiles() {
   server.merge_actions(serde_json::from_str(&fire_actions).unwrap());
   let effects = server.update();
 
-  let intercepted = effects
+  // One line for everything the defender's point defence stopped, with the
+  // count, not a line a missile.
+  let intercepted: Vec<String> = effects
     .iter()
-    .filter(
-      |e| matches!(e, EffectMsg::Message { .. } if e.rendered().contains("destroyed by defender's point defence")),
-    )
-    .count();
+    .filter(|e| matches!(e, EffectMsg::Message { .. }))
+    .map(EffectMsg::rendered)
+    .filter(|line| line.contains("destroyed by defender's point defence"))
+    .collect();
 
+  assert_eq!(intercepted.len(), 1, "one summary line: {effects:#?}");
+  let count: u32 = intercepted[0]
+    .split_whitespace()
+    .next()
+    .and_then(|n| n.parse().ok())
+    .unwrap_or_else(|| panic!("the line leads with a count: {}", intercepted[0]));
   assert!(
-    intercepted > 0,
+    count > 0,
     "the Dragon's battery should have intercepted at least one missile: {effects:#?}"
   );
   // Its pool comfortably exceeds a three-missile salvo, so nothing should get

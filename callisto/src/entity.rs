@@ -1134,6 +1134,10 @@ impl Entities {
     }
 
     let mut cleanup_missile_list = Vec::<String>::new();
+    // Missiles each ship's point defence stops, by the ship and the kind of
+    // weapon: reported as one line apiece after the pass, not one a missile,
+    // whose names say nothing.
+    let mut intercepted = std::collections::BTreeMap::<(String, String), u32>::new();
 
     // Creating this sorted list is necessary ONLY to ensure unit tests run consistently
     // If it ends up being slow we should take it out.
@@ -1205,14 +1209,8 @@ impl Entities {
                 );
                 cleanup_missile_list.push(missile.clone());
                 let what = String::from(&launcher.primary_kind());
-                Some(vec![
-                  EffectMsg::ExhaustedMissile { position: target.get_position() },
-                  EffectMsg::about(
-                    &target_name,
-                    MessageCategory::Damage,
-                    format!("{what} {missile} destroyed by %s's point defence."),
-                  ),
-                ])
+                *intercepted.entry((target_name.clone(), what)).or_default() += 1;
+                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }])
               } else {
                 // The attack gets through point defense
                 // A launched object resolves as the gun that threw it.
@@ -1260,6 +1258,17 @@ impl Entities {
       })
       .flatten()
       .collect::<Vec<_>>();
+
+    effects.extend(intercepted.into_iter().map(|((ship, what), count)| {
+      EffectMsg::about(
+        &ship,
+        MessageCategory::Damage,
+        format!(
+          "{count} {what}{} destroyed by %s's point defence.",
+          if count == 1 { "" } else { "s" }
+        ),
+      )
+    }));
 
     let mut cleanup_ships_list = Vec::<String>::new();
 
