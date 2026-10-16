@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fire over Jupiter",
     "owner": "dcsturman@gmail.com",
-    "description": "A scenario set in the Jupiter system.  Can three Imperial Gazelle escorts defeat the Aslan raiding force?"
+    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue) hunt an Aslan raiding force (Red): the escort Ailreaui and her five light fighters. Can the Imperials defeat them?"
   },
   "planets": [
     {
@@ -56,63 +56,81 @@
       "position": [1e9, 0, -1.2e9],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Gazelle"
+      "design": "Gazelle",
+      "team": "Blue",
+      "orders": "Seek out and destroy the Aslan raiders."
     },
     {
       "name": "INS Righteous",
       "position": [1.1e9, 0, -1.3e9],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Gazelle"
+      "design": "Gazelle",
+      "team": "Blue",
+      "orders": "Seek out and destroy the Aslan raiders."
     },
     {
       "name": "INS Stag",
       "position": [1.2e9, 0, -1.18e9],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Gazelle"
+      "design": "Gazelle",
+      "team": "Blue",
+      "orders": "Seek out and destroy the Aslan raiders."
     },
     {
       "name": "Ailreaui",
       "position": [0, 0, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Ekawsiykua Escort"
+      "design": "Ekawsiykua Escort",
+      "team": "Red",
+      "orders": "Defend your position."
     },
     {
       "name": "AF1",
       "position": [0, 4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "orders": "Defend your position."
     },
     {
       "name": "AF2",
       "position": [0, -4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "orders": "Defend your position."
     },
     {
       "name": "AF3",
       "position": [4000000, 4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "orders": "Defend your position."
     },
     {
       "name": "AF4",
       "position": [-4000000, -4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "orders": "Defend your position."
     },
     {
       "name": "AF5",
       "position": [0, 4000000, 7.2e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "orders": "Defend your position."
     }
   ]
 }
