@@ -524,8 +524,8 @@ fn own_ship(out: &mut String, view: &Observation, ship: &Ship) {
 }
 
 /// The ship's course as the navigation computer has it: each leg's burn and
-/// how many rounds it lasts, so a course with no braking leg is seen to have
-/// none.
+/// how many rounds it lasts, beside her velocity, so whether she will stop
+/// where she means to can be read off it.
 fn course(ship: &Ship) -> String {
   let leg = |accel: Vec3, seconds: u64| {
     if accel.magnitude() < 1e-6 {
@@ -550,7 +550,9 @@ fn course(ship: &Ship) -> String {
   match &ship.plan.1 {
     Some(second) => format!("course: {}, then {}", leg(first.0, first.1), leg(second.0, second.1)),
     None if first.0.magnitude() < 1e-6 => "coasting".to_string(),
-    None => format!("course: {}, with no braking leg", leg(first.0, first.1)),
+    // One leg, then nothing: whether it brakes depends on which way she is
+    // moving, which the velocity beside it shows.
+    None => format!("course: {}, then coasting", leg(first.0, first.1)),
   }
 }
 
