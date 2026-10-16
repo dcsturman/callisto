@@ -460,8 +460,9 @@ select.control-input,
     gap: 4px;
     z-index: 12;
     /* Three panels can outgrow a laptop screen, and the results are the one
-       that scrolls rather than the stack. */
-    max-height: 100vh;
+       that scrolls rather than the stack. The stack also stops above the
+       session panel in the bottom corner, whose height App measures. */
+    max-height: calc(100vh - var(--admin-window-height, 0px) - 4px);
 }
 
 /* The reference's own title. It is a disclosure line inside View Controls, not

@@ -160,6 +160,26 @@ function Simulator() {
     );
   }, [entities.ships, computerShipName]);
 
+  // The panels down the right-hand side stop above the session panel in the
+  // bottom corner, whose height changes with its user list: on a short screen
+  // they otherwise ran down behind it and the two drew over each other.
+  const adminWindow = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = adminWindow.current;
+    if (element == null || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty("--admin-window-height", `${element.offsetHeight}px`),
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--admin-window-height");
+    };
+  }, []);
+
   return (
     <>
       <div className="mainscreen-container">
@@ -194,7 +214,7 @@ function Simulator() {
               side without opening each ship. Nothing when no ship is AI. */}
           {joinedScenario && !scenarioBuilderMode && <FleetComms />}
         </div>
-        <div className="admin-button-window">
+        <div className="admin-button-window" ref={adminWindow}>
           <h2>
             {joinedScenario &&
               (tutorialMode
