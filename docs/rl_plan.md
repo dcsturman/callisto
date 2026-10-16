@@ -48,8 +48,8 @@ objective asks for.
 **What "fled" means.** Judged by the engine on true positions, not on either
 side's fogged view. A side has fled when every one of its surviving ships
 has either jumped out, or has been more than 50,000 km (beyond Distant) from
-every enemy ship *and* moving away from her nearest enemy for 3 rounds
-running, while the other side still has a ship able to fight. If both sides
+every enemy ship *and* moving away from her nearest enemy, without burning
+back toward her, for 3 rounds running, while the other side still has a ship able to fight. If both sides
 are running, nobody fled: the game is a draw, scored on hull. Both
 conditions matter: a 6 G fighter can pass 50,000 km in a few rounds and come
 straight back.
@@ -57,8 +57,12 @@ straight back.
 Two refinements found in building it. "Opening the range" cannot be the
 test, because range opens for both sides alike: whenever one side ran, the
 other was opening too, and every escape scored as a draw. So who is running
-is judged by each ship's own velocity in the scenario's frame, pointing away
-from her nearest enemy; a chaser falling behind is still heading in. And a
+is judged by each ship's own burn and motion in the scenario's frame: moving
+away from her nearest enemy and not burning toward her. Both, because each
+alone misleads. On velocity alone, a fighter that overshoots and brakes to
+come round would count as running. On thrust alone, a ship that burns clear
+and then coasts away would not, and would take a draw instead of the
+penalty for fleeing. A chaser falling behind is heading in either way. And a
 side can only flee once it has been inside 50,000 km of an enemy: Marduk and
 Thebus-like openings start far apart, and a side that never closed has not
 run, it has not arrived.

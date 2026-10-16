@@ -428,17 +428,20 @@ impl Game {
     }
 
     // Who is out past Distant and running. The range opens for both sides
-    // alike, so who is running is judged by each ship's own motion, in the
-    // scenario's frame: away from her nearest enemy. A chaser falling behind
-    // is still heading in, so she has not fled; two sides flying apart have
+    // alike, so who is running is judged by each ship's own burn and motion,
+    // in the scenario's frame. She runs when she is moving away from her
+    // nearest enemy and not burning back toward her: a fighter that
+    // overshoots and brakes to come round is still in the fight, and a ship
+    // that burns clear and then coasts away has still run. A chaser falling
+    // behind is heading in, so she has not fled; two sides flying apart have
     // both run, and that is a draw.
     for side in 0..2 {
       let mut out = true;
       let mut engaged = false;
       for ship in &in_play[side] {
-        let (here, velocity) = {
+        let (here, velocity, burn) = {
           let ship = self.world.ships[ship].read().unwrap();
-          (ship.get_position(), ship.get_velocity())
+          (ship.get_position(), ship.get_velocity(), ship.plan.0 .0)
         };
         let nearest = in_play[1 - side]
           .iter()
@@ -446,7 +449,7 @@ impl Game {
           .min_by(|a, b| a.magnitude().total_cmp(&b.magnitude()));
         let Some(towards) = nearest else { continue };
         engaged |= towards.magnitude() <= FLEE_DISTANCE;
-        out &= towards.magnitude() > FLEE_DISTANCE && velocity.dot(towards) < 0.0;
+        out &= towards.magnitude() > FLEE_DISTANCE && velocity.dot(towards) < 0.0 && burn.dot(towards) <= 0.0;
       }
       let side = &mut self.sides[side];
       side.engaged |= engaged;
