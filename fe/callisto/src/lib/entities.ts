@@ -145,6 +145,8 @@ export interface Ship extends Entity {
   controller?: Controller;
   /** Standing orders, in plain English. Absent means none. */
   orders?: string;
+  /** What the ship's side is trying to do: the goal a trained commander is scored on. */
+  goal?: "destroy" | "hold" | "raid" | "escape";
   /** The AI's last report on this ship. Only an AI-crewed ship has one. */
   ai_report?: AiReport;
   crew: Crew;
