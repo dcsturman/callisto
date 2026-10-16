@@ -43,7 +43,20 @@ RL needs a number per game and, in practice, a little signal per round.
 | Our side destroyed | -1.0 |
 
 Fleeing is worth more than dying, for either side, which is what the
-objective asks for. "Fled" reuses the harness's disengagement rule.
+objective asks for.
+
+**What "fled" means.** Judged by the engine on true positions, not on either
+side's fogged view. A side has fled when every one of its surviving ships
+has either jumped out, or has been more than 50,000 km (beyond Distant) from
+every enemy ship *and* opening the range for 3 rounds running, while the
+other side still has a ship able to fight. If both sides are opening, nobody
+fled: the game is a draw, scored on hull. Both conditions matter: a 6 G
+fighter can pass 50,000 km in a few rounds and come straight back.
+
+The incentives then line up in self-play. The chaser prefers destroying
+(+1.0) to driving off (+0.6), so it pursues. The loser prefers fleeing
+(-0.6) to dying (-1.0). A policy that ran at round 1 would score -0.6
+against one that wins by fighting, so that is not learned.
 
 **Per round, small.** OpenAI Five found pure win/loss too sparse to learn
 from and used shaped rewards; so will we. Each round: 0.1 times (share of
@@ -96,11 +109,11 @@ roughly [-1, 1]:
 
 - Own ship: hull share, armour, thrust available, dodge reserve, posture,
   contacts held, best reach band, magazine, criticals, jump readiness.
-- Own side: up to 8 ships, each as relative position, relative velocity,
-  hull share, thrust, reach; padded and masked.
-- Enemies: up to 8 contacts, each as relative position and velocity, hull
+- Own side: up to 20 ships, each as relative position, relative velocity,
+  hull share, thrust, reach; nearest first, padded and masked.
+- Enemies: up to 20 contacts, each as relative position and velocity, hull
   share (now visible), thrust, reach, criticals, held/locked flags; plus up
-  to 8 blips as position and velocity only.
+  to 20 blips as position and velocity only. Nearest first.
 - Odds: for the deciding ship against each contact, hit chance and hull
   share both ways at each band (the odds table, as numbers).
 - Memory for fog of war: rounds since each enemy was last seen and where.
@@ -108,7 +121,12 @@ roughly [-1, 1]:
   features in the observation get most of the benefit for an MLP.
 - Round number and rounds remaining.
 
-About 600 floats. Hidden layers of 512, 512, 256: half a million parameters.
+About 1,200 floats. Hidden layers of 512, 512, 256: under a million
+parameters. The cap of 20 a side costs little compute; its cost is dilution,
+since a 4-ship game leaves 16 slots empty and the network has to learn that
+empty means nothing. Nearest-first ordering keeps that learnable. If it ever
+hurts, the remedy is an attention-based encoder that takes any number of
+ships, which is what OpenAI Five used.
 
 **Actions**, one set per ship, as independent discrete heads with masks for
 what is impossible this round (no fire at a ship not in contact, no band a
@@ -117,18 +135,20 @@ gun cannot reach):
 | Head | Choices |
 |---|---|
 | Helm verb | hold, intercept, hold_range, open_range, follow guide |
-| Helm target | one of up to 8 enemies, or a friend for follow |
+| Helm target | one of up to 20 enemies, or a friend for follow |
 | Band | Short, Medium, Long, Very Long |
-| Fire target | one of up to 8 contacts, or none (every gun that reaches) |
+| Fire target | one of up to 20 contacts, or none (every gun that reaches) |
 | Lock target | same, or none |
 | Posture | silent, sharing, active |
 | Dodge reserve | 0, 1, 2 G |
 | Assist gunners | yes, no |
 
-Squadrons, point defence allocation, software, engineering and the captain
-start out automated by rules (the tactics layer already spends Fire Control
-and can default point defence), and join the action space later if the
-policy plateaus without them.
+`follow` is in from the start: a side's ships are decided in one step, so
+guides' courses are resolved before their followers', and the engine
+already refuses a guide who follows. Point defence allocation, software,
+engineering and the captain start out automated by rules (the tactics layer
+already spends Fire Control and can default point defence), and join the
+action space later if the policy plateaus without them.
 
 ## 5. The environment: the engine in Python
 
@@ -154,14 +174,16 @@ game simulators do it (Zarena, Toybox, rlgym-sim-rs):
 | Marduk, 4 ships, plotting | 23,000 |
 
 Round resolution is fast. The flight-path solver, called once per ship per
-round when every ship re-plots, costs about 20 ms a call in Tessaly and
-dominates by a factor of 75. A PPO run wants 10 to 50 million rounds; at 52
-a core that is weeks, at 2,000 a core it is hours. So before training at
-scale the solver must get cheaper for training use: profile it first (its
-"out of guesses" fallback brute-forces), cache courses while a target's
-motion has not changed, and if needed give training an analytic rendezvous
-approximation and keep the exact solver for play. Target: 1,000 rounds a
-second per core with all ships plotting.
+round when every ship re-plots, takes a Tessaly round from a quarter of a
+millisecond to about 20 ms (eight courses at roughly 2.5 ms each) and so
+dominates by a factor of 75. On this machine's 12 cores that is about 600
+rounds a second: 10 million rounds in some 5 hours, 50 million in a day.
+Enough to start. Making the solver cheaper for training is then a tenfold
+speedup for scaling, not a blocker: profile it first (its "out of guesses"
+fallback brute-forces), cache courses while a target's motion has not
+changed, and if needed give training an analytic rendezvous approximation
+and keep the exact solver for play. Target: 1,000 rounds a second per core
+with all ships plotting.
 
 ## 6. Toolkit
 
@@ -194,8 +216,9 @@ a forward pass for 8 ships is microseconds. The time goes to simulating
 games, which is Rust on CPU cores. A GPU speeds up the training updates and
 is worth having, but a cheap one.
 
-- **Phase 1 runs locally.** This machine has 12 cores and PyTorch supports
-  Apple's GPU (MPS). It can play the plumbing and the first curriculum runs.
+- **Phases 1 to 4 run on this Mac.** It has 12 cores for simulation, and
+  PyTorch drives Apple's GPU through MPS for the training updates, which SB3
+  supports with `device="mps"`.
 - **Scale on a rented box with many cores and one modest GPU.** An RTX 4090
   pod on RunPod is about $0.34 an hour; Vast.ai spot instances about
   $0.29 to $0.50 and interruptible; Lambda more. RunPod bills by the second
@@ -224,10 +247,13 @@ is worth having, but a cheap one.
 5. **Scale.** Rented pod; scenario randomisation across the priced designs;
    longer runs; add action heads (squadrons, point defence) if the policy
    plateaus; try a recurrent policy for fog of war.
-6. **Deploy.** Export the policy (ONNX) and run it inside the AI service as
-   a `Commander`, through an ONNX runtime crate in Rust, so there is no
-   Python in production. Fleet Comms gets a one-line templated rationale
-   from the chosen verbs. The AI gate applies unchanged; the cost per round
+6. **Deploy.** Export the policy as ONNX, a standard file format for a
+   trained network's layers and weights that many runtimes can execute, and
+   run it inside the AI service as a `Commander` through an ONNX runtime
+   crate in Rust, so there is no Python in production. Fleet Comms gets a
+   rationale made from the chosen verbs, no model involved: "Kestrel:
+   intercept Red Morrow to Medium, firing on her, locked, 1 G in reserve."
+ The AI gate applies unchanged; the cost per round
    becomes zero, which changes who it can be offered to.
 
 ## 9. Setting up
@@ -242,16 +268,36 @@ For the person doing this for the first time, in order:
   reward-shaping choices; SB3's PPO and MaskablePPO docs; CleanRL's PPO
   file, to see the whole algorithm in one place.
 
-## 10. Open questions
+## 10. Decisions and open questions
 
-- One policy for all ships with shared weights, as proposed, or one head
-  per ship of a joint action? Shared weights is the recommendation.
-- Which scenarios go in the training pool, and how much random-fleet play.
-- Whether `follow` (squadrons) is in the first action space or automated.
-- Whether to keep a text rationale for Fleet Comms, and how to make one
-  from verbs.
-- How the trained policy and the LLM coexist: the LLM stays for promptable,
-  storyline play; the policy for cheap, strong, objective-only play.
+Decided:
+
+- One network with shared weights, run once per ship. The alternative, a
+  joint network with a separate output block per ship slot, needs a fixed
+  fleet and cannot carry what one slot learned to another.
+- The training pool starts with the scenarios played so far: Tessaly
+  Crossing, Fire over Jupiter, Marduk Encounter and Thebus. Fire over
+  Jupiter is unbalanced (the Imperials won every LLM game) and gets more
+  Aslan fighters or a modest extra ship, balanced first by the free
+  baseline harness (100 games of `close` against `close`, as Tessaly was)
+  and confirmed with a few LLM games. Random fleets come in phase 5.
+- `follow` is in the first action space.
+- Fleet Comms gets a programmatic rationale from the verbs. No LLM is
+  called anywhere in this path: the policy is a complete alternative to the
+  LLM commander.
+
+Open:
+
+- How much random-fleet play, and how to balance random fleets by MCr.
+- Whether a recurrent policy is needed for fog of war, or memory features
+  suffice.
+- How the trained policy and the LLM coexist in play: the LLM for
+  promptable, storyline games; the policy for cheap, strong, objective-only
+  games.
+
+Later, once this works: an LLM that turns a human's orders into an objective
+function for the policy, as some robotics work does, so promptable play
+comes back without an LLM in the loop every round. Not before.
 
 ## Sources
 
