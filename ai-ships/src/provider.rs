@@ -77,6 +77,9 @@ impl std::fmt::Display for ModelSpec {
 pub fn price(spec: &ModelSpec) -> Option<(f64, f64, f64)> {
   match spec.model.as_str() {
     "gemini-3.8-flash" => Some((0.75, 0.075, 3.75)),
+    // Published rates for Flash-Lite; cached input assumed at a tenth, as for
+    // Flash.
+    "gemini-3.5-flash-lite" => Some((0.30, 0.03, 2.50)),
     _ => None,
   }
 }
