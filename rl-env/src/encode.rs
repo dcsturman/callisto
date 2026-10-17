@@ -28,6 +28,7 @@ use callisto::tactics::{self, BandOdds, Posture, BANDS};
 use cgmath::InnerSpace;
 
 use crate::action::{self, Head, MASK_LEN};
+use crate::history::History;
 use crate::orders;
 
 /// The most ships a side may have.
@@ -37,9 +38,9 @@ pub const FRIENDS: usize = MAX_SHIPS - 1;
 /// Slots for enemies.
 pub const ENEMIES: usize = MAX_SHIPS;
 
-pub const SELF_LEN: usize = 67;
-pub const FRIEND_LEN: usize = 16;
-pub const ENEMY_LEN: usize = 53;
+pub const SELF_LEN: usize = 80;
+pub const FRIEND_LEN: usize = 23;
+pub const ENEMY_LEN: usize = 58;
 /// One ship's observation.
 pub const OBS_LEN: usize = SELF_LEN + FRIENDS * FRIEND_LEN + ENEMIES * ENEMY_LEN;
 
@@ -75,6 +76,8 @@ pub struct Context<'a> {
   pub enemy_hull_share: f32,
   /// What the side is trying to do.
   pub goal: Goal,
+  /// What the side remembers from the last round.
+  pub history: &'a History,
 }
 
 /// The goals, in the order the observation flags them.
@@ -221,6 +224,14 @@ pub fn encode_ship(ctx: &Context, me: &Ship, out: &mut [f32], mask: &mut [bool])
     row[13] = band_index(me, friend.get_position());
     row[14] = friend.contacts.len().min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
     row[15] = f32::from(friend.get_dodge_thrust()) / 3.0;
+    // Her orders last round: helm verb, withdrawing, following me.
+    if let Some(last) = ctx.history.orders(friend.get_name()) {
+      if let Some(verb) = last.verb {
+        row[16 + verb as usize] = 1.0;
+      }
+      row[21] = f32::from(u8::from(last.withdrawing));
+      row[22] = f32::from(u8::from(last.guide.as_deref() == Some(name)));
+    }
   }
 
   for (slot, enemy) in enemies.iter().enumerate() {
@@ -326,6 +337,22 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
     .mul_add(-0.2, 1.0)
     .max(0.0);
   row[66] = (view.missiles.iter().filter(|missile| missile.source == name).count() as f32 / 10.0).min(1.0);
+  // Her orders last round, and what happened to her.
+  if let Some(last) = ctx.history.orders(name) {
+    if let Some(verb) = last.verb {
+      row[67 + verb as usize] = 1.0;
+    }
+    if let Some(band) = last.band_index() {
+      row[72 + band] = 1.0;
+    }
+    row[76] = f32::from(u8::from(last.withdrawing));
+  }
+  row[77] = share(ctx.history.lost(name), me.design.hull);
+  row[78] = ctx.history.since_hit(name).map_or(1.0, |rounds| rounds.min(10) as f32 / 10.0);
+  // The enemy's loss last round, as a share of what the side started with.
+  let enemy_loss: u32 = view.contacts.iter().map(|contact| ctx.history.lost(&contact.name)).sum();
+  let enemy_design: u32 = view.contacts.iter().map(|contact| contact.design_hull).sum();
+  row[79] = share(enemy_loss, enemy_design);
 }
 
 /// Rounds until something at `position` moving at `velocity` reaches `me`,
@@ -418,6 +445,17 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
     .count() as f32
     / 5.0)
     .min(1.0);
+  // Last round: did I steer by her, fire at her, lock her; how much of my
+  // side fired at her; what she lost.
+  if let Some(last) = ctx.history.orders(name) {
+    row[53] = f32::from(u8::from(last.steered_by.as_deref() == Some(enemy.name)));
+    row[54] = f32::from(u8::from(last.fired_at.as_deref() == Some(enemy.name)));
+    row[55] = f32::from(u8::from(last.locked.as_deref() == Some(enemy.name)));
+  }
+  row[56] = ctx.history.fire_share(enemy.name);
+  if let Some(contact) = enemy.contact {
+    row[57] = share(ctx.history.lost(enemy.name), contact.design_hull);
+  }
 }
 
 /// Which choices of each head are open to `me`.

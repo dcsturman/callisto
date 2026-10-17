@@ -13,6 +13,7 @@ pub mod batch;
 pub mod commander;
 pub mod encode;
 pub mod game;
+pub mod history;
 pub mod net;
 pub mod orders;
 #[cfg(feature = "python")]

@@ -32,6 +32,7 @@ use rand::{Rng, SeedableRng};
 
 use crate::action::{side_intents, Choice, MASK_LEN};
 use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, Seen, MAX_SHIPS, OBS_LEN};
+use crate::history::History;
 
 /// A scenario loaded once and played many times.
 pub struct Scenario {
@@ -226,6 +227,8 @@ struct Side {
   goal: Goal,
   /// The middle of the side's ships at the start, for Hold.
   start: Vec3,
+  /// What the side remembers from the last round.
+  history: History,
 }
 
 /// One slot: an agent ship, and the picture her last observation was made
@@ -320,6 +323,7 @@ impl Game {
         hull_last: hull,
         goal: side_goal(&own),
         start,
+        history: History::default(),
       }
     });
     let slots = sides
@@ -478,6 +482,7 @@ impl Game {
     assert_eq!(masks.len(), self.slots.len() * MASK_LEN);
     for side in 0..2 {
       remember(&mut self.sides[side].memory, &self.views[side], self.rounds);
+      self.sides[side].history.look(&self.views[side]);
     }
     let shares = self.hull_shares();
     for (slot, (out, mask)) in self
@@ -500,6 +505,7 @@ impl Game {
         own_hull_share: shares[slot.side],
         enemy_hull_share: believed_hull(memory),
         goal: self.sides[slot.side].goal,
+        history: &self.sides[slot.side].history,
       };
       slot.picture = encode_ship(&ctx, me, out, mask);
     }
@@ -534,11 +540,12 @@ impl Game {
         side_intents(&own, view)
       };
       let ours = &view.own;
-      orders.extend(
-        intents
-          .into_iter()
-          .filter(|(ship, _)| ours.iter().any(|own| own.get_name() == ship)),
-      );
+      let intents: Vec<(String, Intent)> = intents
+        .into_iter()
+        .filter(|(ship, _)| ours.iter().any(|own| own.get_name() == ship))
+        .collect();
+      self.sides[side].history.record(&intents);
+      orders.extend(intents);
     }
     self.play(&orders)
   }
@@ -659,6 +666,11 @@ impl Game {
       if let Some(commander) = self.sides[side].commander.as_mut() {
         orders.extend(futures::executor::block_on(commander.decide(&self.views[side])));
       }
+    }
+    for side in &mut self.sides {
+      let theirs: Vec<(String, Intent)> =
+        orders.iter().filter(|(ship, _)| side.ships.contains(ship)).cloned().collect();
+      side.history.record(&theirs);
     }
     self.play(&orders)
   }

@@ -17,6 +17,7 @@ use rand::SeedableRng;
 use crate::action::{side_intents, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
 use crate::encode::{encode_ship, Context, Memory, Picture, OBS_LEN};
 use crate::game::{believed_hull, remember, side_goal};
+use crate::history::History;
 use crate::net::Policy;
 use crate::orders;
 use callisto::entity::Entity;
@@ -36,6 +37,8 @@ pub struct Net {
   /// The last decision, explained: per ship, each head's choice, how likely
   /// the network thought it, and the runner-up.
   last: serde_json::Value,
+  /// What the side remembers from the last round, as in training.
+  history: History,
 }
 
 impl Net {
@@ -49,6 +52,7 @@ impl Net {
       rng: None,
       goal: None,
       last: serde_json::Value::Null,
+      history: History::default(),
     }
   }
 
@@ -164,6 +168,7 @@ fn explain(choice: &Choice, probabilities: &[Vec<(usize, f32)>], picture: &Pictu
 impl Commander for Net {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
     remember(&mut self.memory, view, view.round);
+    self.history.look(view);
     let hull: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
     let start = *self.hull_at_start.get_or_insert(hull);
     let ctx = Context {
@@ -174,6 +179,7 @@ impl Commander for Net {
       own_hull_share: hull as f32 / start.max(1) as f32,
       enemy_hull_share: believed_hull(&self.memory),
       goal: self.goal.unwrap_or_else(|| side_goal(&view.own)),
+      history: &self.history,
     };
     let mut obs = vec![0.0; OBS_LEN];
     let mut mask = vec![false; MASK_LEN];
@@ -200,13 +206,15 @@ impl Commander for Net {
       .zip(&decided)
       .map(|(ship, (choice, picture))| (ship, choice, picture))
       .collect();
-    side_intents(&own, view)
+    let intents: Vec<(String, Intent)> = side_intents(&own, view)
       .into_iter()
       .map(|(ship, mut intent)| {
         intent.rationale = rationale(&intent);
         (ship, intent)
       })
-      .collect()
+      .collect();
+    self.history.record(&intents);
+    intents
   }
 
   fn explain(&self) -> Option<serde_json::Value> {
