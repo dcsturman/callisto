@@ -213,6 +213,34 @@ impl Commander for Close {
   }
 }
 
+/// [`Close`], with its fire spread: every ship flies exactly as `Close`
+/// does, but the ships share the enemies out between them, nearest first,
+/// one each in turn, instead of all firing at one. Playing one against the
+/// other measures what concentrating fire is worth on its own.
+#[derive(Debug, Default)]
+pub struct Spread;
+
+#[async_trait]
+impl Commander for Spread {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    let target = target(view);
+    let enemies = view.enemies();
+    view
+      .own
+      .iter()
+      .enumerate()
+      .map(|(i, ship)| {
+        let helm = target.map_or(Helm::Hold, |target| Helm::Intercept {
+          target: target.name.clone(),
+          band: best_band(view, ship.get_name(), target),
+        });
+        let mine = (!enemies.is_empty()).then(|| enemies[i % enemies.len()]);
+        (ship.get_name().to_string(), fight(mine, helm))
+      })
+      .collect()
+  }
+}
+
 /// [`Close`], flown as one squadron: every ship that can manoeuvre keeps
 /// station on the slowest, who heads for the nearest enemy to her best band,
 /// at the thrust a model commander's squadron would fly. The same fire,
@@ -388,7 +416,7 @@ impl Commander for Replay {
 }
 
 /// A commander by name, for the harness and configuration: `idle`, `hold`,
-/// `close`, `squadron`, `random`, or `replay:<log file>:<side>`. `seed` is used by those
+/// `close`, `squadron`, `spread`, `random`, or `replay:<log file>:<side>`. `seed` is used by those
 /// that roll dice of their own. Models are named through
 /// [`crate::llm::named`].
 #[must_use]
@@ -404,6 +432,7 @@ pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
     "hold" => Some(Box::new(Hold)),
     "close" => Some(Box::new(Close)),
     "squadron" => Some(Box::new(Squadron)),
+    "spread" => Some(Box::new(Spread)),
     "random" => Some(Box::new(Random::seeded(seed))),
     _ => None,
   }
