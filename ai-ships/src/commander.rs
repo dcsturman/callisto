@@ -213,6 +213,79 @@ impl Commander for Close {
   }
 }
 
+/// [`Close`], flown as one squadron: every ship that can manoeuvre keeps
+/// station on the slowest, who heads for the nearest enemy to her best band,
+/// at the thrust a model commander's squadron would fly. The same fire,
+/// sensors and engineering as `Close`, so the two differ only in keeping
+/// together: playing one against the other measures what formation is worth.
+#[derive(Debug, Default)]
+pub struct Squadron;
+
+#[async_trait]
+impl Commander for Squadron {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    use crate::decision::{straggler_margin, STRAGGLER_STEP};
+    use cgmath::InnerSpace;
+    let target = target(view);
+    let movers: Vec<&callisto::ship::Ship> = view.own.iter().filter(|ship| ship.max_acceleration() > 0).collect();
+    let guide = movers
+      .iter()
+      .min_by(|a, b| {
+        a.max_acceleration()
+          .cmp(&b.max_acceleration())
+          .then_with(|| a.get_name().cmp(b.get_name()))
+      })
+      .copied();
+    let guide_helm = |guide: &callisto::ship::Ship| {
+      target.map_or(Helm::Hold, |target| Helm::Intercept {
+        target: target.name.clone(),
+        band: best_band(view, guide.get_name(), target),
+      })
+    };
+    let cap = guide.map(|guide| {
+      let slowest = f64::from(guide.max_acceleration());
+      let margin = movers
+        .iter()
+        .map(|ship| {
+          straggler_margin(
+            (ship.get_position() - guide.get_position()).magnitude(),
+            (ship.get_velocity() - guide.get_velocity()).magnitude(),
+          )
+        })
+        .fold(0.0, f64::max);
+      (slowest - margin).max(STRAGGLER_STEP)
+    });
+    view
+      .own
+      .iter()
+      .map(|ship| {
+        let name = ship.get_name();
+        let (helm, max_thrust) = match guide {
+          Some(guide) if movers.len() > 1 && name == guide.get_name() => (guide_helm(guide), cap),
+          Some(guide) if movers.len() > 1 && ship.max_acceleration() > 0 => (
+            Helm::Follow {
+              guide: guide.get_name().to_string(),
+              guide_helm: Box::new(guide_helm(guide)),
+              guide_cap: cap,
+            },
+            None,
+          ),
+          _ => (
+            target.map_or(Helm::Hold, |target| Helm::Intercept {
+              target: target.name.clone(),
+              band: best_band(view, name, target),
+            }),
+            None,
+          ),
+        };
+        let mut intent = fight(target, helm);
+        intent.max_thrust = max_thrust;
+        (name.to_string(), intent)
+      })
+      .collect()
+  }
+}
+
 /// Any legal verb at each station, by chance. The floor every other commander
 /// should clear: a commander that cannot beat this is not deciding anything.
 pub struct Random {
@@ -315,7 +388,7 @@ impl Commander for Replay {
 }
 
 /// A commander by name, for the harness and configuration: `idle`, `hold`,
-/// `close`, `random`, or `replay:<log file>:<side>`. `seed` is used by those
+/// `close`, `squadron`, `random`, or `replay:<log file>:<side>`. `seed` is used by those
 /// that roll dice of their own. Models are named through
 /// [`crate::llm::named`].
 #[must_use]
@@ -330,6 +403,7 @@ pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
     "idle" => Some(Box::new(Idle)),
     "hold" => Some(Box::new(Hold)),
     "close" => Some(Box::new(Close)),
+    "squadron" => Some(Box::new(Squadron)),
     "random" => Some(Box::new(Random::seeded(seed))),
     _ => None,
   }
