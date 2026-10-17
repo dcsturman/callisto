@@ -40,7 +40,7 @@ pub const FOE_FEATS: usize = 26;
 pub const SIDE_FEATS: usize = 10;
 pub const PAIR_FEATS: usize = 39;
 
-/// The heads, as the side network sizes them: the targets point at enemy
+/// The heads, as the per-side network sizes them: the targets point at enemy
 /// tokens (with "none" first for fire, lock and the second operator), the
 /// guide at any of the side's own tokens.
 pub const HEAD_SIZES: [usize; action::HEADS] = {

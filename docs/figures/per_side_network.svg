@@ -10,7 +10,7 @@
     .thin { stroke: #8899aa; stroke-width: 0.8; fill: none; }
   </style>
   <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#34506b"/></marker></defs>
-  <text x="20" y="24" class="lbl" font-size="15" font-weight="bold">The side network: one pass decides every ship of a side</text>
+  <text x="20" y="24" class="lbl" font-size="15" font-weight="bold">The per-side network: one pass decides every ship of a side</text>
 
   <!-- inputs -->
   <text x="20" y="58" class="lbl" font-weight="bold">Inputs, one side, one round</text>

@@ -1,4 +1,4 @@
-"""PPO for the side network: one sample per side per round.
+"""PPO for the per-side network: one sample per side per round.
 
 As :mod:`callisto_rl.ppo` -- one thread plays while the other learns, and
 every batch is re-scored with the current network before learning -- but an

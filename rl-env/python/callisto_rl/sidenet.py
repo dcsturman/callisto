@@ -1,4 +1,4 @@
-"""The side network: attention over every ship, orders for every ship.
+"""The per-side network: attention over every ship, orders for every ship.
 
 Each of the side's ships, each enemy, and the side itself is a token. Three
 attention layers let every token take in every other; between one of our

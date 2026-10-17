@@ -1,4 +1,4 @@
-"""Train the side network (attention over every ship) with self-play.
+"""Train the per-side network (attention over every ship) with self-play.
 
     .venv/bin/python scripts/side_ppo.py --steps 20000000 --name side-1 --wandb
 

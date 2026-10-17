@@ -1,4 +1,4 @@
-# The side network
+# The per-side network
 
 How the network that commands a whole side is wired, set against the
 per-ship network it replaces. The code is `rl-env/python/callisto_rl/sidenet.py`
@@ -17,7 +17,7 @@ habits, measured from logged games:
 | Orders that follow a guide | 62–68% | 7–25% |
 
 Concentrating fire and flying in formation both need ships to agree, so
-neither can be learned by ships that decide alone. The side network decides
+neither can be learned by ships that decide alone. The per-side network decides
 for every ship of a side in one pass, with the ships wired to each other.
 
 ## The per-ship network, for comparison
@@ -33,9 +33,9 @@ first. It runs once per ship with the same weights, so it has no wiring
 between ships at all. About 2.5 million parameters, counting the separate
 tower that estimates the value.
 
-## The side network
+## The per-side network
 
-![The side network](figures/side_network.svg)
+![The per-side network](figures/per_side_network.svg)
 
 ### Inputs: one side, one round
 
@@ -109,14 +109,14 @@ of how the game will go, used only in training.
 
 ## Size and cost
 
-| | Per-ship network | Side network |
+| | Per-ship network | Per-side network |
 |---|---|---|
 | Parameters | about 2.5 million | about 620,000 |
 | Runs | once per ship | once per side |
 | Work per decision | one pass of a plain network | every ship against every other, every own ship against every enemy |
 | Training on this Mac | 14,700 ship decisions a second | 5,550 |
 
-The side network is smaller because its layers are shared by every row and
+The per-side network is smaller because its layers are shared by every row and
 do not grow with the fleet. It does more arithmetic because the mixing layers
 and the target scorer run on every pairing. Its operations are large and
 regular, so it learns on the Mac's GPU (the per-ship network could not use it

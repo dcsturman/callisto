@@ -1,4 +1,4 @@
-//! Many games stepped at once, each side decided whole: what the side
+//! Many games stepped at once, each side decided whole: what the per-side
 //! network trains on.
 //!
 //! Every game has two entries, its two sides, so the batch keeps its shape;
