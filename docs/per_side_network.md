@@ -48,6 +48,7 @@ tower that estimates the value.
 
 Rows no ship fills are zeros and are masked out. Eight a side covers every
 scenario in the training pool; the largest side is Jupiter's Aslan at seven.
+Every number in each row is listed in [the appendix](#appendix-every-input).
 
 ### Stage 1: input layers
 
@@ -126,3 +127,108 @@ The orders the network chooses are turned into the game's orders exactly as
 for the per-ship network (squadrons, withdrawal by jump, the captain's
 boosts, the computer and the sensor operators), by `rl-env/src/action.rs`
 and `rl-env/src/orders.rs`.
+
+## Appendix: every input
+
+Each count below is one number in the row. Everything is scaled to about
+−1 to 1. Positions and velocities are given as a direction (three numbers)
+and a logarithm of the size (one), since they span a kilometre to a million.
+"Relative to the side" means measured from the middle of the side's ships and
+their average velocity. Shares are of the ship's design value: 0.5 hull means
+half her hull left.
+
+### Own ship: 73
+
+| Numbers | What |
+|---|---|
+| 1 | present (1, or 0 for an empty row) |
+| 8 | position and velocity relative to the side: direction 3, log distance 1, velocity direction 3, log speed 1 |
+| 1 | hull left, as a share |
+| 1 | armour |
+| 1 | thrust she can make now |
+| 1 | thrust she was built for |
+| 1 | thrust held back to dodge |
+| 1 | pilot assisting the gunners |
+| 3 | posture: silent, sharing or active (one is 1) |
+| 1 | how many ships she holds as contacts |
+| 1 | how many she has locked |
+| 5 | whether her guns reach each band: Short, Medium, Long, Very Long, Distant |
+| 11 | damage to each of her 11 systems |
+| 1 | stealth |
+| 1 | countermeasures |
+| 4 | crew: pilot, average gunner, best sensor operator, best engineer |
+| 1 | missiles left, as a share of a full magazine |
+| 4 | her current burn: size 1, direction 3 |
+| 2 | missiles coming at her, and how soon the first arrives |
+| 1 | her own missiles in flight |
+| 4 | jumping: Jump Control running, jump drive powered, clear of gravity wells, distance still to clear |
+| 1 | a spare point on her computer, for hand-offs |
+| 1 | her comms jammed |
+| 1 | a second sensor operator aboard |
+| 1 | her captain's leadership |
+| 5 | last round's helm verb: hold, intercept, hold range, open range, follow (one is 1) |
+| 4 | last round's band: Short, Medium, Long, Very Long |
+| 1 | withdrawing last round |
+| 1 | hull she lost last round |
+| 1 | rounds since she was last hit |
+| 2 | enemies holding her as a contact, and enemies locked on her |
+| 1 | her size: the logarithm of her design hull |
+| **73** | |
+
+### Enemy: 26
+
+| Numbers | What |
+|---|---|
+| 1 | present |
+| 1 | a contact (1) or only a blip (0) |
+| 8 | position and velocity relative to the side, as for own ships |
+| 1 | hull left as a share: now, for a contact; as last seen, for a blip |
+| 1 | rounds since last held, for a blip |
+| 1 | its size: the logarithm of its design hull |
+| 1 | thrust it can make |
+| 1 | damage, all systems together |
+| 1 | stealth |
+| 1 | countermeasures |
+| 4 | its current burn: size 1, direction 3 (contacts only; a blip's burn is not on the plot) |
+| 1 | the share of our side that fired at it last round |
+| 1 | hull it lost last round |
+| 1 | how many of our ships hold it as a contact |
+| 1 | how many of our ships it holds |
+| 1 | missiles it has in flight at our side |
+| **26** | |
+
+Blank for a blip: everything only a contact shows, which is its hull now,
+damage, stealth, countermeasures and burn.
+
+### The side: 10
+
+| Numbers | What |
+|---|---|
+| 1 | how far through the game: round over the round limit |
+| 4 | the side's goal: destroy, hold, raid or escape (one is 1) |
+| 1 | our hull left, as a share of what we started with |
+| 1 | the enemy's hull left, as we last saw it |
+| 2 | how many ships each side has |
+| 1 | missiles coming at our side |
+| **10** | |
+
+### Pair, one own ship and one enemy: 39
+
+| Numbers | What |
+|---|---|
+| 1 | present (both ships there) |
+| 4 | from her to it: direction 3, log distance 1 |
+| 1 | how fast they are closing (negative when opening) |
+| 1 | the range band between them |
+| 4 | she holds it as a contact; she has it locked; it holds her; it has her locked |
+| 10 | her guns against it, at each of the five bands: best chance to hit 5, expected damage as a share of its hull 5 |
+| 10 | its guns against her, the same 10 (its gunners assumed skill 2, as the models are told) |
+| 4 | the chance it finds her this round if she is silent, sharing, active, and active while firing |
+| 3 | last round: she steered by it, fired at it, locked it |
+| 1 | missiles it has in flight at her |
+| **39** | |
+
+The pair table carries what depends on both ships at once, the odds above
+all. The mixing layers use it to decide how much each own ship and enemy
+attend to each other, and the target scorer uses it to score each enemy for
+each ship.
