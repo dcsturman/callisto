@@ -2,7 +2,8 @@
 //! and out. `callisto_rl` wraps it for Gymnasium and Stable-Baselines3.
 
 use numpy::{
-  PyArray1, PyArray2, PyArray3, PyArray4, PyArrayMethods, PyReadonlyArray2, PyReadonlyArray3, PyUntypedArrayMethods,
+  PyArray1, PyArray2, PyArray3, PyArray4, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
+  PyUntypedArrayMethods,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -310,8 +311,23 @@ impl SideEngine {
   }
 }
 
+/// The per-side network's scores as the Rust port computes them, for
+/// checking the port against `PyTorch`: one side's view in, own ships × mask
+/// length out.
+#[pyfunction]
+#[allow(clippy::needless_pass_by_value)]
+fn side_net_logits<'py>(
+  py: Python<'py>, path: &str, own: PyReadonlyArray2<'py, f32>, foes: PyReadonlyArray2<'py, f32>,
+  side: PyReadonlyArray1<'py, f32>, pairs: PyReadonlyArray3<'py, f32>,
+) -> PyResult<Bound<'py, PyArray2<f32>>> {
+  let net = crate::side_net::SideNet::load(path).map_err(PyValueError::new_err)?;
+  let logits = net.logits(own.as_slice()?, foes.as_slice()?, side.as_slice()?, pairs.as_slice()?);
+  PyArray1::from_vec(py, logits).reshape([side::OWN, side::MASK_LEN])
+}
+
 #[pymodule]
 fn _engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+  m.add_function(wrap_pyfunction!(side_net_logits, m)?)?;
   m.add_class::<Engine>()?;
   m.add_class::<SideEngine>()?;
   m.add("SIDE_HEAD_SIZES", side::HEAD_SIZES.to_vec())?;

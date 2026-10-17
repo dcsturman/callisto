@@ -1,56 +1,29 @@
-//! The harness, with trained networks as commanders: `net:<file.cpol>` plays
-//! its best-scored choice, `net~:<file.cpol>` draws as in training, and a
-//! goal after the file (`net:<file.cpol>#destroy`) plays for that goal rather
-//! than the scenario's. Every other commander and option is the harness's
-//! own (see `ai_ships::cli`).
+//! The harness, with trained networks as commanders, beside the baselines
+//! and the models: `net:<file.cpol>` for the per-ship network and
+//! `side:<file.cside>` for the per-side one, playing their best choice; with
+//! `~` (`net~:`, `side~:`) drawing as in training; and a goal after the file
+//! (`side:<file.cside>#destroy`) to play for that goal rather than the
+//! scenario's. Every other commander and option is the harness's own (see
+//! `ai_ships::cli`).
 //!
 //! ```text
 //! cargo run --release --bin versus -- --scenario "../callisto/scenarios/Tessaly Crossing.json" \
-//!   --side Blue=net:checkpoints/selfplay-1/final.cpol --side Red=gemini --games 10
+//!   --side Blue=side:checkpoints/side-2/final.cside#destroy --side Red=haiku+think --games 10
 //! ```
-
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-use ai_ships::commander::Commander;
-use callisto_rl::commander::Net;
-use callisto_rl::net::Policy;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
   tracing_subscriber::fmt()
     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
     .init();
-  // Each file is read once, however many games it plays.
-  let loaded: Mutex<HashMap<String, Arc<Policy>>> = Mutex::new(HashMap::new());
-  let net = |name: &str, seed: u64| -> Option<Box<dyn Commander>> {
-    let (sampling, path) = name
-      .strip_prefix("net~:")
-      .map(|path| (true, path))
-      .or_else(|| name.strip_prefix("net:").map(|path| (false, path)))?;
-    let (path, goal) = match path.split_once('#') {
-      Some((path, goal)) => {
-        let goal = serde_json::from_value(serde_json::Value::String(goal.to_string()))
-          .map_err(|_| eprintln!("no goal {goal}: destroy, hold, raid or escape"))
-          .ok()?;
-        (path, Some(goal))
-      }
-      None => (path, None),
-    };
-    let mut loaded = loaded.lock().ok()?;
-    let policy = if let Some(policy) = loaded.get(path) {
-      Arc::clone(policy)
+  // Only the networks: the baselines and models are the harness's own.
+  let networks = |name: &str, seed: u64| {
+    let kind = name.split(':').next().unwrap_or_default().trim_end_matches('~');
+    if kind == "net" || kind == "side" {
+      callisto_rl::commander::named(name, seed)
     } else {
-      let policy = Arc::new(Policy::load(path).map_err(|e| eprintln!("{e}")).ok()?);
-      loaded.insert(path.to_string(), Arc::clone(&policy));
-      policy
-    };
-    let commander = Net::new(policy);
-    let commander = match goal {
-      Some(goal) => commander.with_goal(goal),
-      None => commander,
-    };
-    Some(Box::new(if sampling { commander.sampling(seed) } else { commander }))
+      None
+    }
   };
-  ai_ships::cli::run(&net).await
+  ai_ships::cli::run(&networks).await
 }
