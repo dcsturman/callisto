@@ -51,6 +51,13 @@ pub trait Commander: Send {
   fn spent(&self) -> Option<f64> {
     None
   }
+
+  /// Why the last decision came out as it did, for the round log, if the
+  /// commander can say more than its orders do: a trained network, for
+  /// instance, records each head's choice and how sure it was.
+  fn explain(&self) -> Option<serde_json::Value> {
+    None
+  }
 }
 
 /// Gives no orders. Ships hold their current plans.
