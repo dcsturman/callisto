@@ -36,8 +36,12 @@ const WELL: &str = r#"{
 }"#;
 
 fn well_game() -> Game {
-  let path = std::env::temp_dir().join(format!("callisto-rl-well-{}.json", std::process::id()));
-  std::fs::write(&path, WELL).unwrap();
+  game_of(WELL, "well")
+}
+
+fn game_of(scenario: &str, tag: &str) -> Game {
+  let path = std::env::temp_dir().join(format!("callisto-rl-{tag}-{}.json", std::process::id()));
+  std::fs::write(&path, scenario).unwrap();
   let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
   let scenario = runtime.block_on(async {
     callisto::ship::replace_ship_templates(callisto::ship::load_ship_templates_from_dir(DESIGNS).await.unwrap());
@@ -97,6 +101,45 @@ fn withdraw(name: &str) -> (usize, usize) {
     game.step(&choices(&game, &[(name, Head::Jump, 1)]));
   }
   panic!("{name} never jumped");
+}
+
+/// Whether the Leaver may choose to withdraw, with her side given `goal`.
+fn may_withdraw(goal: &str) -> bool {
+  let mut game = game_of(&WELL.replace("\"escape\"", &format!("\"{goal}\"")), goal);
+  let slots = game.slots().len();
+  let mut obs = vec![0.0; slots * OBS_LEN];
+  let mut masks = vec![false; slots * MASK_LEN];
+  game.observe_into(&mut obs, &mut masks);
+  let slot = game.slots().iter().position(|slot| slot.ship == "Leaver").unwrap();
+  masks[slot * MASK_LEN + Head::Jump.offset() + 1]
+}
+
+/// Whether any of Blue's ships may choose to withdraw in the per-side
+/// network's view, with the side given `goal`.
+fn side_may_withdraw(goal: &str) -> bool {
+  use callisto_rl::side::{offset, Buffers, FOES, FOE_FEATS, MASK_LEN, OWN, OWN_FEATS, PAIR_FEATS, SIDE_FEATS};
+  let mut game = game_of(&WELL.replace("\"escape\"", &format!("\"{goal}\"")), &format!("side-{goal}"));
+  let (mut own, mut foes, mut side) = (vec![0.0; OWN * OWN_FEATS], vec![0.0; FOES * FOE_FEATS], vec![0.0; SIDE_FEATS]);
+  let (mut pairs, mut masks) = (vec![0.0; OWN * FOES * PAIR_FEATS], vec![false; OWN * MASK_LEN]);
+  let mut buffers = Buffers {
+    own: &mut own,
+    foes: &mut foes,
+    side: &mut side,
+    pairs: &mut pairs,
+    masks: &mut masks,
+  };
+  game.observe_side(0, &mut buffers);
+  (0..OWN).any(|i| masks[i * MASK_LEN + offset(Head::Jump) + 1])
+}
+
+#[test]
+fn only_an_escaping_side_may_withdraw() {
+  assert!(may_withdraw("escape"), "escaping is what the withdrawal is for");
+  assert!(side_may_withdraw("escape"), "the per-side network too");
+  for goal in ["destroy", "hold", "raid"] {
+    assert!(!may_withdraw(goal), "a side told to {goal} must not be able to leave");
+    assert!(!side_may_withdraw(goal), "nor through the per-side network, told to {goal}");
+  }
 }
 
 #[test]

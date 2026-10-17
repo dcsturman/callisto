@@ -24,10 +24,11 @@ use ai_ships::observation::{Contact, Observation};
 use callisto::entity::{Entity, Vec3};
 use callisto::ship::{Goal, Ship};
 use callisto::software::SoftwareKind;
-use callisto::tactics::{self, BandOdds, BANDS};
+use callisto::tactics::{self, BandOdds, Posture, BANDS};
 use cgmath::InnerSpace;
 
 use crate::action::{self, Head, MASK_LEN};
+use crate::history::History;
 use crate::orders;
 
 /// The most ships a side may have.
@@ -37,9 +38,9 @@ pub const FRIENDS: usize = MAX_SHIPS - 1;
 /// Slots for enemies.
 pub const ENEMIES: usize = MAX_SHIPS;
 
-pub const SELF_LEN: usize = 53;
-pub const FRIEND_LEN: usize = 16;
-pub const ENEMY_LEN: usize = 42;
+pub const SELF_LEN: usize = 80;
+pub const FRIEND_LEN: usize = 23;
+pub const ENEMY_LEN: usize = 58;
 /// One ship's observation.
 pub const OBS_LEN: usize = SELF_LEN + FRIENDS * FRIEND_LEN + ENEMIES * ENEMY_LEN;
 
@@ -75,6 +76,8 @@ pub struct Context<'a> {
   pub enemy_hull_share: f32,
   /// What the side is trying to do.
   pub goal: Goal,
+  /// What the side remembers from the last round.
+  pub history: &'a History,
 }
 
 /// The goals, in the order the observation flags them.
@@ -89,16 +92,16 @@ struct Enemy<'a> {
 }
 
 /// Distance in metres, from 1 km to 1,000,000 km, onto [0, 1].
-fn log_distance(metres: f64) -> f32 {
+pub(crate) fn log_distance(metres: f64) -> f32 {
   ((1.0 + metres / 1_000.0).log10() / 6.0) as f32
 }
 
 /// Speed in m/s, up to about 100 km/s, onto [0, 1]; signed for a rate.
-fn log_speed(metres_per_second: f64) -> f32 {
+pub(crate) fn log_speed(metres_per_second: f64) -> f32 {
   (metres_per_second.signum() * (1.0 + metres_per_second.abs() / 10.0).log10() / 4.0) as f32
 }
 
-fn direction(v: Vec3) -> [f32; 3] {
+pub(crate) fn direction(v: Vec3) -> [f32; 3] {
   let length = v.magnitude();
   if length < 1e-9 {
     [0.0; 3]
@@ -107,7 +110,7 @@ fn direction(v: Vec3) -> [f32; 3] {
   }
 }
 
-fn share(part: u32, whole: u32) -> f32 {
+pub(crate) fn share(part: u32, whole: u32) -> f32 {
   (part as f32 / whole.max(1) as f32).min(1.0)
 }
 
@@ -145,7 +148,7 @@ pub fn posture_of(ship: &Ship) -> usize {
 
 /// The odds by band, best chance and expected damage as a share of `hull`:
 /// ten numbers.
-fn odds(out: &mut [f32], table: &[BandOdds], hull: u32) {
+pub(crate) fn odds(out: &mut [f32], table: &[BandOdds], hull: u32) {
   for odds in table {
     let band = odds.band as usize;
     out[band] = odds.best_chance as f32;
@@ -221,6 +224,14 @@ pub fn encode_ship(ctx: &Context, me: &Ship, out: &mut [f32], mask: &mut [bool])
     row[13] = band_index(me, friend.get_position());
     row[14] = friend.contacts.len().min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
     row[15] = f32::from(friend.get_dodge_thrust()) / 3.0;
+    // Her orders last round: helm verb, withdrawing, following me.
+    if let Some(last) = ctx.history.orders(friend.get_name()) {
+      if let Some(verb) = last.verb {
+        row[16 + verb as usize] = 1.0;
+      }
+      row[21] = f32::from(u8::from(last.withdrawing));
+      row[22] = f32::from(u8::from(last.guide.as_deref() == Some(name)));
+    }
   }
 
   for (slot, enemy) in enemies.iter().enumerate() {
@@ -228,7 +239,7 @@ pub fn encode_ship(ctx: &Context, me: &Ship, out: &mut [f32], mask: &mut [bool])
     encode_enemy(ctx, me, enemy, &mut out[at..at + ENEMY_LEN]);
   }
 
-  masks(me, view, &friends, &enemies, mask);
+  masks(me, view, ctx.goal, &friends, &enemies, mask);
 
   Picture {
     enemies: enemies.iter().map(|enemy| enemy.name.to_string()).collect(),
@@ -282,6 +293,83 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
   row[50] = f32::from(u8::from(me.get_crew().sensor_operators() >= 2));
   row[51] = f32::from(me.get_crew().get_leadership()).min(6.0) / 6.0;
   row[52] = (orders::missiles_inbound(view) as f32 / 10.0).min(1.0);
+  // Stealth and electronics, crew, magazine, burn, and missiles in flight.
+  row[53] = me.design.stealth.map_or(0.0, |stealth| (stealth as usize + 1) as f32 / 4.0);
+  row[54] = me.design.countermeasures.map_or(0.0, |cm| (cm as usize + 1) as f32 / 2.0);
+  let crew = me.get_crew();
+  row[55] = f32::from(crew.get_pilot()).min(4.0) / 4.0;
+  let mounts = me.weapons().len();
+  row[56] = if mounts == 0 {
+    0.0
+  } else {
+    (0..mounts).map(|mount| f32::from(crew.get_gunnery(mount))).sum::<f32>() / mounts as f32 / 4.0
+  };
+  row[57] = crew
+    .sensor_skills()
+    .iter()
+    .copied()
+    .max()
+    .map_or(0.0, |skill| f32::from(skill).min(4.0) / 4.0);
+  row[58] = crew
+    .engineers()
+    .iter()
+    .map(|e| f32::from(e.maneuver.max(e.power).max(e.jump)))
+    .fold(0.0, f32::max)
+    .min(4.0)
+    / 4.0;
+  let full = callisto::ship::Magazine::for_design(&me.design).missiles;
+  row[59] = if full == 0 {
+    0.0
+  } else {
+    (me.magazine.missiles as f32 / full as f32).min(1.0)
+  };
+  let burn = me.plan.0 .0;
+  row[60] = (burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;
+  row[61..64].copy_from_slice(&direction(burn));
+  let inbound: Vec<&callisto::missile::Missile> =
+    view.missiles.iter().filter(|missile| missile.target == name).collect();
+  row[64] = (inbound.len() as f32 / 5.0).min(1.0);
+  row[65] = inbound
+    .iter()
+    .map(|missile| rounds_to_reach(missile.get_position(), missile.get_velocity(), me))
+    .fold(f32::INFINITY, f32::min)
+    .min(5.0)
+    .mul_add(-0.2, 1.0)
+    .max(0.0);
+  row[66] = (view.missiles.iter().filter(|missile| missile.source == name).count() as f32 / 10.0).min(1.0);
+  // Her orders last round, and what happened to her.
+  if let Some(last) = ctx.history.orders(name) {
+    if let Some(verb) = last.verb {
+      row[67 + verb as usize] = 1.0;
+    }
+    if let Some(band) = last.band_index() {
+      row[72 + band] = 1.0;
+    }
+    row[76] = f32::from(u8::from(last.withdrawing));
+  }
+  row[77] = share(ctx.history.lost(name), me.design.hull);
+  row[78] = ctx.history.since_hit(name).map_or(1.0, |rounds| rounds.min(10) as f32 / 10.0);
+  // The enemy's loss last round, as a share of what the side started with.
+  let enemy_loss: u32 = view.contacts.iter().map(|contact| ctx.history.lost(&contact.name)).sum();
+  let enemy_design: u32 = view.contacts.iter().map(|contact| contact.design_hull).sum();
+  row[79] = share(enemy_loss, enemy_design);
+}
+
+/// Rounds until something at `position` moving at `velocity` reaches `me`,
+/// at its present closing speed: a missile's time to impact.
+pub(crate) fn rounds_to_reach(position: Vec3, velocity: Vec3, me: &Ship) -> f32 {
+  let offset = me.get_position() - position;
+  let distance = offset.magnitude();
+  let closing = if distance > 1e-9 {
+    (velocity - me.get_velocity()).dot(offset) / distance
+  } else {
+    1.0
+  };
+  if closing <= 0.0 {
+    f32::INFINITY
+  } else {
+    (distance / closing / callisto::entity::DELTA_TIME_F64) as f32
+  }
 }
 
 fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
@@ -325,10 +413,53 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
     .find(|watcher| watcher.ours == name && watcher.by == enemy.name);
   row[18] = f32::from(u8::from(watcher.is_some()));
   row[19] = f32::from(u8::from(watcher.is_some_and(|watcher| watcher.lock)));
+  if let Some(contact) = enemy.contact {
+    // How likely this enemy is to find us this round, silent, sharing and
+    // active, and active while firing.
+    if let Some(exposure) = view
+      .exposures
+      .iter()
+      .find(|exposure| exposure.ours == name && exposure.contact == contact.name)
+    {
+      let found = |posture: Posture, firing: bool| {
+        exposure
+          .odds
+          .iter()
+          .find(|odds| odds.posture == posture && odds.firing == firing)
+          .map_or(0.0, |odds| odds.found as f32)
+      };
+      row[42] = found(Posture::Silent, false);
+      row[43] = found(Posture::Passive, false);
+      row[44] = found(Posture::Active, false);
+      row[45] = found(Posture::Active, true);
+    }
+    row[46] = contact.stealth.map_or(0.0, |stealth| (stealth as usize + 1) as f32 / 4.0);
+    row[47] = contact.countermeasures.map_or(0.0, |cm| (cm as usize + 1) as f32 / 2.0);
+    row[48] = (contact.burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;
+    row[49..52].copy_from_slice(&direction(contact.burn));
+  }
+  row[52] = (view
+    .missiles
+    .iter()
+    .filter(|missile| missile.source == enemy.name && missile.target == name)
+    .count() as f32
+    / 5.0)
+    .min(1.0);
+  // Last round: did I steer by her, fire at her, lock her; how much of my
+  // side fired at her; what she lost.
+  if let Some(last) = ctx.history.orders(name) {
+    row[53] = f32::from(u8::from(last.steered_by.as_deref() == Some(enemy.name)));
+    row[54] = f32::from(u8::from(last.fired_at.as_deref() == Some(enemy.name)));
+    row[55] = f32::from(u8::from(last.locked.as_deref() == Some(enemy.name)));
+  }
+  row[56] = ctx.history.fire_share(enemy.name);
+  if let Some(contact) = enemy.contact {
+    row[57] = share(ctx.history.lost(enemy.name), contact.design_hull);
+  }
 }
 
 /// Which choices of each head are open to `me`.
-fn masks(me: &Ship, view: &Observation, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
+fn masks(me: &Ship, view: &Observation, goal: Goal, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
   mask.fill(false);
   let moves = me.max_acceleration() > 0;
   let any_enemy = !enemies.is_empty();
@@ -357,7 +488,11 @@ fn masks(me: &Ship, view: &Observation, friends: &[&Ship], enemies: &[Enemy], ma
   let dodges: Vec<bool> = (0..action::DODGES).map(|g| g <= usize::from(me.max_acceleration())).collect();
   set(mask, Head::Dodge, &dodges);
   set(mask, Head::Assist, &[true, true]);
-  set(mask, Head::Jump, &[true, orders::can_withdraw(me)]);
+  set(
+    mask,
+    Head::Jump,
+    &[true, orders::goal_allows_withdrawal(goal) && orders::can_withdraw(me)],
+  );
 
   // Sensor orders: lock and jam comms need a contact, jamming missiles needs
   // missiles coming in. A second operator's heads only if there is one.

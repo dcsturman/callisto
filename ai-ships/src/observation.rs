@@ -55,6 +55,9 @@ pub struct Contact {
   pub velocity: Vec3,
   /// The thrust it can make now.
   pub current_maneuver: u8,
+  /// The burn it is making this round, m/s². A contact's course is on the
+  /// plot, as a console shows it; a blip's is not.
+  pub burn: Vec3,
   /// The sensors its class is built with.
   pub sensors: Sensors,
   pub weapons: Vec<Weapon>,
@@ -264,6 +267,7 @@ pub fn observe(world: &Entities, side: &[String]) -> Observation {
         position: contact.get_position(),
         velocity: contact.get_velocity(),
         current_maneuver: contact.current_maneuver,
+        burn: contact.plan.0 .0,
         sensors: contact.design.sensors,
         weapons: contact.weapons().to_vec(),
         crit_level: contact.crit_level,

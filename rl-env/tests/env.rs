@@ -44,7 +44,9 @@ fn random_play_is_legal() {
     opponent: None,
     seed: 1,
     threads: 4,
-    random_goals: 0.5,
+    random_goals: 0.3,
+    destroy_goals: 0.4,
+    shaping: callisto_rl::game::Shaping::default(),
   };
   let mut batch = Batch::new(&config).expect("the pool loads");
   let slots = batch.slots();
@@ -203,4 +205,59 @@ fn each_goal_scores_as_agreed() {
   assert!((terminal(Goal::Raid, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Raid, Ending::WeFled, &Tally { dealt: 0.3, ..healthy }) - 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Escape, Ending::WeFled, &Tally { jumped: 1.0, ..healthy }) - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn random_whole_side_play_is_legal() {
+  use callisto_rl::side::{HEAD_SIZES, MASK_LEN as SIDE_MASK, OWN};
+  use callisto_rl::side_batch::{SideBatch, Views, WIDTHS};
+  let config = Config {
+    scenarios: POOL.iter().map(ToString::to_string).collect(),
+    designs: DESIGNS.to_string(),
+    games: 8,
+    max_rounds: 30,
+    opponent: None,
+    seed: 3,
+    threads: 4,
+    random_goals: 0.3,
+    destroy_goals: 0.4,
+    shaping: callisto_rl::game::Shaping::default(),
+  };
+  let mut batch = SideBatch::new(&config).expect("the pool loads");
+  let entries = 2 * batch.games();
+  let mut own = vec![0.0; entries * WIDTHS[0]];
+  let mut foes = vec![0.0; entries * WIDTHS[1]];
+  let mut side = vec![0.0; entries * WIDTHS[2]];
+  let mut pairs = vec![0.0; entries * WIDTHS[3]];
+  let mut masks = vec![false; entries * WIDTHS[4]];
+  let mut views = Views {
+    own: &mut own,
+    foes: &mut foes,
+    side: &mut side,
+    pairs: &mut pairs,
+    masks: &mut masks,
+  };
+  batch.observe(&mut views);
+  let mut rng = rand::rngs::SmallRng::seed_from_u64(5);
+  let mut finished = 0;
+  for _ in 0..80 {
+    // A random open choice per head, for every own-ship row of every entry.
+    let mut choices = Vec::with_capacity(entries * OWN * HEADS);
+    for mask in views.masks.chunks(SIDE_MASK) {
+      let mut at = 0;
+      for size in HEAD_SIZES {
+        let open: Vec<usize> = (0..size).filter(|c| mask[at + c]).collect();
+        assert!(!open.is_empty(), "every head has a choice");
+        choices.push(i64::try_from(open[rng.gen_range(0..open.len())]).unwrap());
+        at += size;
+      }
+    }
+    let mut rewards = vec![0.0; entries];
+    let mut dones = vec![false; entries];
+    finished += batch.step(&choices, &mut views, &mut rewards, &mut dones).len();
+    for buffer in [&*views.own, &*views.foes, &*views.side, &*views.pairs] {
+      assert!(buffer.iter().all(|x| x.is_finite() && x.abs() <= 1.5), "views are scaled");
+    }
+  }
+  assert!(finished > 0, "games finish");
 }

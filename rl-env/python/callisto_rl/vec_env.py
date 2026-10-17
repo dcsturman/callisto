@@ -44,6 +44,7 @@ class ShipVecEnv(VecEnv):
         threads: int = 10,
         designs: str | None = None,
         random_goals: float = 0.0,
+        destroy_goals: float = 0.0,
     ):
         self.engine = Engine(
             list(scenarios or default_pool()),
@@ -54,6 +55,7 @@ class ShipVecEnv(VecEnv):
             seed=seed,
             threads=threads,
             random_goals=random_goals,
+            destroy_goals=destroy_goals,
         )
         self.slot_info = self.engine.slot_info()
         observation_space = spaces.Box(low=-1.5, high=1.5, shape=(OBS_LEN,), dtype=np.float32)

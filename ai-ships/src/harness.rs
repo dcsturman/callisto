@@ -194,6 +194,70 @@ pub struct Record {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub plan: Option<String>,
   pub intents: Vec<(String, Intent)>,
+  /// Every ship in play as the round began, true state: what the orders are
+  /// judged against.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub ships: Vec<ShipState>,
+  /// The commander's own account of the decision, if it gives one.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub explain: Option<serde_json::Value>,
+}
+
+/// One ship as a round began, for the log.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ShipState {
+  pub name: String,
+  pub side: String,
+  pub design: String,
+  pub position: [f64; 3],
+  pub velocity: [f64; 3],
+  pub hull: u32,
+  pub design_hull: u32,
+  pub armour: u32,
+  /// Thrust she can make now, in G.
+  pub thrust: u8,
+  pub dodge: u8,
+  pub active_sensors: bool,
+  pub transmitting: bool,
+  pub contacts: Vec<String>,
+  pub locks: Vec<String>,
+  /// Systems powered down.
+  pub offline: Vec<String>,
+}
+
+/// Every ship in the world as the log records it.
+///
+/// # Panics
+/// Panics if a ship's lock is poisoned.
+#[must_use]
+pub fn ship_states(world: &Entities) -> Vec<ShipState> {
+  let mut states: Vec<ShipState> = world
+    .ships
+    .values()
+    .map(|ship| {
+      let ship = ship.read().unwrap();
+      let (p, v) = (ship.get_position(), ship.get_velocity());
+      ShipState {
+        name: ship.get_name().to_string(),
+        side: side_of(ship.team, ship.get_name()),
+        design: ship.design.name.clone(),
+        position: [p.x, p.y, p.z],
+        velocity: [v.x, v.y, v.z],
+        hull: ship.current_hull,
+        design_hull: ship.design.hull,
+        armour: ship.get_current_armor(),
+        thrust: ship.max_acceleration(),
+        dodge: ship.get_dodge_thrust(),
+        active_sensors: ship.active_sensors,
+        transmitting: ship.transmitting,
+        contacts: ship.contacts.clone(),
+        locks: ship.sensor_locks.clone(),
+        offline: ship.offline.iter().map(|system| format!("{system:?}")).collect(),
+      }
+    })
+    .collect();
+  states.sort_by(|a, b| a.name.cmp(&b.name));
+  states
 }
 
 /// Apply a console's request the way the backend's processor would.
@@ -245,7 +309,31 @@ pub async fn opening_view(scenario: &str, side: &str) -> Result<crate::observati
 /// # Panics
 /// Panics if the scenario cannot be loaded, as the backend does.
 pub async fn play(
+  scenario: &str, commanders: &CommanderPicker<'_>, max_rounds: u32, seed: u64, log: Option<&mut dyn Write>,
+) -> Result<Outcome, String> {
+  play_recorded(scenario, commanders, max_rounds, seed, log, None).await
+}
+
+/// One round's combat events, as the engine reports them to the players:
+/// who fired at whom, hits and misses, damage, interceptions, ships lost.
+#[derive(Debug, Clone, Serialize)]
+pub struct RoundEvents {
+  pub seed: u64,
+  pub round: u32,
+  pub effects: Vec<callisto::payloads::EffectMsg>,
+}
+
+/// [`play`], also writing every round's combat events to `events`, one JSON
+/// line per round.
+///
+/// # Errors
+/// As [`play`], and if an event line cannot be written.
+///
+/// # Panics
+/// As [`play`].
+pub async fn play_recorded(
   scenario: &str, commanders: &CommanderPicker<'_>, max_rounds: u32, seed: u64, mut log: Option<&mut dyn Write>,
+  mut events: Option<&mut dyn Write>,
 ) -> Result<Outcome, String> {
   let server = Arc::new(Server::new(&format!("harness-{seed}"), scenario).await);
   let player = PlayerManager::new(Some(server), Box::new(MockAuthenticator::new("")), true).with_seed(seed);
@@ -297,6 +385,8 @@ pub async fn play(
           side: side.clone(),
           plan: commander.plan().map(str::to_string),
           intents: intents.clone(),
+          ships: ship_states(&world),
+          explain: commander.explain(),
         })
         .map_err(|e| e.to_string())?;
         writeln!(log, "{line}").map_err(|e| e.to_string())?;
@@ -307,7 +397,12 @@ pub async fn play(
         }
       }
     }
-    let _ = player.update();
+    let round = player.get_entities().map(|world| world.round).unwrap_or_default();
+    let effects = player.update();
+    if let Some(events) = events.as_mut() {
+      let line = serde_json::to_string(&RoundEvents { seed, round, effects }).map_err(|e| e.to_string())?;
+      writeln!(events, "{line}").map_err(|e| e.to_string())?;
+    }
     rounds += 1;
   }
 

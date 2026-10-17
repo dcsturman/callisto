@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use ai_ships::commander::{self, Commander};
+use ai_ships::commander::Commander;
 use ai_ships::harness::{apply, hull_of, sides, Retreats};
 use ai_ships::observation::{observe, Observation};
 use callisto::authentication::MockAuthenticator;
@@ -32,6 +32,7 @@ use rand::{Rng, SeedableRng};
 
 use crate::action::{side_intents, Choice, MASK_LEN};
 use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, Seen, MAX_SHIPS, OBS_LEN};
+use crate::history::History;
 
 /// A scenario loaded once and played many times.
 pub struct Scenario {
@@ -206,6 +207,44 @@ pub const SHAPING: f32 = 0.1;
 /// Shaping, per round: the cost of time.
 pub const ROUND_COST: f32 = 0.002;
 
+/// Shaping beyond the hull term, for what wins fights rather than what
+/// scratches paint: both off unless a run sets them.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Shaping {
+  /// Per round, this times the share of the enemy's ships destroyed, less
+  /// the share of ours.
+  pub kills: f32,
+  /// Per round, this times the share of the enemy's firepower taken out, less
+  /// the share of ours. See [`firepower`].
+  pub firepower: f32,
+}
+
+/// Gunners assumed for firepower, on both sides alike: the skill the models
+/// are told to assume of an enemy.
+const FIREPOWER_GUNNERY: i32 = 2;
+
+/// How hard `ship` can hit: the hull damage her working offensive guns are
+/// expected to do in a round at the band that suits her best, averaged over
+/// `foes`, the enemy fleet as it began. Guns knocked out by a critical or
+/// powered down count nothing; hull damage alone takes nothing away, so this
+/// falls in steps, a little at a weapons critical and all at once at a kill.
+#[must_use]
+pub fn firepower(ship: &Ship, foes: &[Ship]) -> f32 {
+  if foes.is_empty() {
+    return 0.0;
+  }
+  let total: f64 = foes
+    .iter()
+    .map(|foe| {
+      callisto::tactics::engagement(ship, foe, &|_| FIREPOWER_GUNNERY, foe.get_current_armor())
+        .iter()
+        .map(|odds| odds.expected_damage)
+        .fold(0.0, f64::max)
+    })
+    .sum();
+  (total / foes.len() as f64) as f32
+}
+
 /// What a round brought each side.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Step {
@@ -226,6 +265,14 @@ struct Side {
   goal: Goal,
   /// The middle of the side's ships at the start, for Hold.
   start: Vec3,
+  /// What the side remembers from the last round.
+  history: History,
+  /// The enemy fleet as it began, which firepower is measured against.
+  foes_at_start: Vec<Ship>,
+  firepower_at_start: f32,
+  firepower_last: f32,
+  /// Ships still in the game (jumped out counts), as of last round.
+  ships_last: usize,
 }
 
 /// One slot: an agent ship, and the picture her last observation was made
@@ -257,6 +304,8 @@ pub struct Game {
   /// orders are given against.
   world: Entities,
   views: [Observation; 2],
+  /// Which ship is which token, for each side, as last observed whole.
+  tokens: [crate::side::Tokens; 2],
   pub rounds: u32,
   pub max_rounds: u32,
   pub seed: u64,
@@ -265,8 +314,12 @@ pub struct Game {
   /// Who has run, as the harness judges it.
   retreats: Retreats,
   rosters: BTreeMap<String, Vec<String>>,
-  /// The share of games where each side's goal is drawn at random.
-  random_goals: f32,
+  /// The shares of games where every side destroys (holders aside), and
+  /// where goals are drawn at random; see [`Game::with_goals`].
+  goal_mix: (f32, f32),
+  shaping: Shaping,
+  /// The firepower of each ship that jumped out, as she left.
+  departed_firepower: HashMap<String, f32>,
 }
 
 fn player_for(scenario: &Scenario, seed: u64) -> PlayerManager {
@@ -291,19 +344,25 @@ impl Game {
   pub fn new(scenario: Arc<Scenario>, controls: &[Control; 2], seed: u64, max_rounds: u32) -> Self {
     let player = player_for(&scenario, seed);
     let world = entities(&player);
+    let fleets: [Vec<Ship>; 2] = [0, 1].map(|index| {
+      scenario.sides[index]
+        .1
+        .iter()
+        .filter_map(|ship| world.ships.get(ship))
+        .map(|ship| ship.read().unwrap().clone())
+        .collect()
+    });
     let sides = [0, 1].map(|index| {
       let (name, ships) = &scenario.sides[index];
       let control = controls[index].clone();
       let commander = match &control {
         Control::Agent => None,
-        Control::Baseline(name) => Some(commander::named(name, seed).unwrap_or_else(|| panic!("no baseline {name}"))),
+        Control::Baseline(name) => {
+          Some(crate::commander::named(name, seed).unwrap_or_else(|| panic!("no baseline {name}")))
+        }
       };
       let hull = hull_of(&world, ships);
-      let own: Vec<Ship> = ships
-        .iter()
-        .filter_map(|ship| world.ships.get(ship))
-        .map(|ship| ship.read().unwrap().clone())
-        .collect();
+      let own = &fleets[index];
       let start = own
         .iter()
         .map(Entity::get_position)
@@ -317,8 +376,13 @@ impl Game {
         memory: Memory::new(),
         hull_at_start: hull,
         hull_last: hull,
-        goal: side_goal(&own),
+        goal: side_goal(own),
         start,
+        history: History::default(),
+        foes_at_start: fleets[1 - index].clone(),
+        firepower_at_start: 0.0,
+        firepower_last: 0.0,
+        ships_last: own.len(),
       }
     });
     let slots = sides
@@ -343,40 +407,85 @@ impl Game {
       departed: HashMap::new(),
       world,
       views,
+      tokens: Default::default(),
       rounds: 0,
       max_rounds,
       seed,
       stand_ins: [None, None],
       retreats: Retreats::default(),
       rosters: scenario_rosters,
-      random_goals: 0.0,
+      goal_mix: (0.0, 0.0),
+      shaping: Shaping::default(),
+      departed_firepower: HashMap::new(),
     }
   }
 
-  /// In this share of games, from now on, each side gets a goal drawn at
-  /// random instead of the scenario's, so the network learns what the goals
-  /// mean rather than which one each scenario has.
+  /// Shape each round's reward with `shaping` from now on, on top of the
+  /// hull term.
   #[must_use]
-  pub fn with_random_goals(mut self, share: f32) -> Self {
-    self.random_goals = share;
+  pub fn with_shaping(mut self, shaping: Shaping) -> Self {
+    self.shaping = shaping;
+    for side in 0..2 {
+      let firepower = self.side_firepower(side);
+      self.sides[side].firepower_at_start = firepower;
+      self.sides[side].firepower_last = firepower;
+    }
+    self
+  }
+
+  /// A side's firepower now, ships that jumped out at what they had as they
+  /// left. Measured only when the shaping uses it.
+  fn side_firepower(&self, side: usize) -> f32 {
+    if self.shaping.firepower == 0.0 {
+      return 0.0;
+    }
+    let state = &self.sides[side];
+    state
+      .ships
+      .iter()
+      .map(|name| {
+        self.world.ships.get(name).map_or_else(
+          || self.departed_firepower.get(name).copied().unwrap_or(0.0),
+          |ship| firepower(&ship.read().unwrap(), &state.foes_at_start),
+        )
+      })
+      .sum()
+  }
+
+  /// Draw each game's goals from now on: in a `destroy` share of games every
+  /// side's goal is Destroy, but for a side whose scenario has it hold, which
+  /// keeps Hold; in a `random` share each side gets a goal drawn at random;
+  /// otherwise the scenario's own. Destroy is what wins games outright, so
+  /// most games train it; the rest keep the network knowing what the other
+  /// goals mean.
+  #[must_use]
+  pub fn with_goals(mut self, destroy: f32, random: f32) -> Self {
+    self.goal_mix = (destroy, random);
     self.draw_goals();
     self
   }
 
   fn draw_goals(&mut self) {
+    let (destroy, random) = self.goal_mix;
     let mut rng = rand::rngs::SmallRng::seed_from_u64(self.seed ^ 0x6F41_5EED);
-    if rng.gen::<f32>() >= self.random_goals {
-      return;
-    }
-    for side in &mut self.sides {
-      let ships: Vec<&Ship> = self
-        .views
-        .iter()
-        .flat_map(|view| view.own.iter())
-        .filter(|ship| side.ships.iter().any(|name| name == ship.get_name()))
-        .collect();
-      let open = goals_open_to(&ships);
-      side.goal = open[rng.gen_range(0..open.len())];
+    let roll = rng.gen::<f32>();
+    if roll < destroy {
+      for side in &mut self.sides {
+        if side.goal != Goal::Hold {
+          side.goal = Goal::Destroy;
+        }
+      }
+    } else if roll < destroy + random {
+      for side in &mut self.sides {
+        let ships: Vec<&Ship> = self
+          .views
+          .iter()
+          .flat_map(|view| view.own.iter())
+          .filter(|ship| side.ships.iter().any(|name| name == ship.get_name()))
+          .collect();
+        let open = goals_open_to(&ships);
+        side.goal = open[rng.gen_range(0..open.len())];
+      }
     }
   }
 
@@ -390,8 +499,11 @@ impl Game {
   pub fn reset(&mut self, seed: u64) {
     let controls = [self.sides[0].control.clone(), self.sides[1].control.clone()];
     let stand_ins = self.stand_ins.clone();
-    let random_goals = self.random_goals;
-    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds).with_random_goals(random_goals);
+    let (destroy, random) = self.goal_mix;
+    let shaping = self.shaping;
+    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds)
+      .with_goals(destroy, random)
+      .with_shaping(shaping);
     for (side, stand_in) in stand_ins.into_iter().enumerate() {
       self.stand_in(side, stand_in);
     }
@@ -406,9 +518,9 @@ impl Game {
   pub fn stand_in(&mut self, side: usize, baseline: Option<String>) {
     let commander = match (&self.sides[side].control, &baseline) {
       (Control::Baseline(name), None) => {
-        Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}")))
+        Some(crate::commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}")))
       }
-      (_, Some(name)) => Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}"))),
+      (_, Some(name)) => Some(crate::commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}"))),
       (Control::Agent, None) => None,
     };
     self.sides[side].commander = commander;
@@ -457,6 +569,70 @@ impl Game {
     })
   }
 
+  /// Encode one side's whole view as tokens into `buffers`, and remember
+  /// which ship is which token for the choices that come back.
+  pub fn observe_side(&mut self, side: usize, buffers: &mut crate::side::Buffers) {
+    remember(&mut self.sides[side].memory, &self.views[side], self.rounds);
+    self.sides[side].history.look(&self.views[side]);
+    let shares = self.hull_shares();
+    let state = &self.sides[side];
+    let ctx = crate::side::SideContext {
+      view: &self.views[side],
+      memory: &state.memory,
+      history: &state.history,
+      round: self.rounds,
+      max_rounds: self.max_rounds,
+      own_hull_share: shares[side],
+      enemy_hull_share: believed_hull(&state.memory),
+      goal: state.goal,
+    };
+    self.tokens[side] = crate::side::encode_side(&ctx, buffers);
+  }
+
+  /// Play a round with whole-side choices: for each network side, one choice
+  /// per own-ship token, in token order. Baselines play their sides; `None`
+  /// for a network side gives it no orders.
+  pub fn step_sides(&mut self, choices: [Option<&[Choice]>; 2]) -> Step {
+    let mut orders: Vec<(String, Intent)> = Vec::new();
+    for side in 0..2 {
+      let view = &self.views[side];
+      let intents = if let Some(commander) = self.sides[side].commander.as_mut() {
+        futures::executor::block_on(commander.decide(view))
+      } else if let Some(choices) = choices[side] {
+        let picture = self.tokens[side].picture();
+        let own: Vec<_> = self.tokens[side]
+          .own
+          .iter()
+          .zip(choices)
+          .filter_map(|(name, choice)| {
+            view
+              .own
+              .iter()
+              .find(|ship| ship.get_name() == name)
+              .map(|ship| (ship, choice, &picture))
+          })
+          .collect();
+        side_intents(&own, view)
+      } else {
+        vec![]
+      };
+      let ours = &view.own;
+      let intents: Vec<(String, Intent)> = intents
+        .into_iter()
+        .filter(|(ship, _)| ours.iter().any(|own| own.get_name() == ship))
+        .collect();
+      self.sides[side].history.record(&intents);
+      orders.extend(intents);
+    }
+    self.play(&orders)
+  }
+
+  /// Whether a side is played by the network (no baseline standing in).
+  #[must_use]
+  pub fn network_side(&self, side: usize) -> bool {
+    self.sides[side].commander.is_none()
+  }
+
   /// Write every slot's observation into `obs` (slots × [`OBS_LEN`]) and mask
   /// into `masks` (slots × [`MASK_LEN`]), and remember what each side has seen.
   ///
@@ -467,6 +643,7 @@ impl Game {
     assert_eq!(masks.len(), self.slots.len() * MASK_LEN);
     for side in 0..2 {
       remember(&mut self.sides[side].memory, &self.views[side], self.rounds);
+      self.sides[side].history.look(&self.views[side]);
     }
     let shares = self.hull_shares();
     for (slot, (out, mask)) in self
@@ -489,6 +666,7 @@ impl Game {
         own_hull_share: shares[slot.side],
         enemy_hull_share: believed_hull(memory),
         goal: self.sides[slot.side].goal,
+        history: &self.sides[slot.side].history,
       };
       slot.picture = encode_ship(&ctx, me, out, mask);
     }
@@ -523,11 +701,12 @@ impl Game {
         side_intents(&own, view)
       };
       let ours = &view.own;
-      orders.extend(
-        intents
-          .into_iter()
-          .filter(|(ship, _)| ours.iter().any(|own| own.get_name() == ship)),
-      );
+      let intents: Vec<(String, Intent)> = intents
+        .into_iter()
+        .filter(|(ship, _)| ours.iter().any(|own| own.get_name() == ship))
+        .collect();
+      self.sides[side].history.record(&intents);
+      orders.extend(intents);
     }
     self.play(&orders)
   }
@@ -552,6 +731,14 @@ impl Game {
       if !self.world.ships.contains_key(ship) {
         let hull = before.ships.get(ship).map_or(0, |ship| ship.read().unwrap().current_hull);
         self.departed.insert(ship.to_string(), hull);
+        if self.shaping.firepower != 0.0 {
+          let side = usize::from(self.sides[1].ships.iter().any(|name| name == ship));
+          let firepower = before
+            .ships
+            .get(ship)
+            .map_or(0.0, |left| firepower(&left.read().unwrap(), &self.sides[side].foes_at_start));
+          self.departed_firepower.insert(ship.to_string(), firepower);
+        }
       }
     }
     self.views = [0, 1].map(|side| observe(&self.world, &present(&self.world, &self.sides[side].ships)));
@@ -570,6 +757,39 @@ impl Game {
     let mut rewards = [0, 1].map(|side| SHAPING * (lost[1 - side] - lost[side]) - ROUND_COST);
     for (side, hull) in self.sides.iter_mut().zip(hulls) {
       side.hull_last = hull;
+    }
+    if self.shaping.kills != 0.0 {
+      let still = [0, 1].map(|side| {
+        let ships = &self.sides[side].ships;
+        ships
+          .iter()
+          .filter(|ship| self.world.ships.contains_key(*ship) || self.departed.contains_key(*ship))
+          .count()
+      });
+      let killed = [0, 1].map(|side| {
+        let state = &self.sides[side];
+        state.ships_last.saturating_sub(still[side]) as f32 / state.ships.len().max(1) as f32
+      });
+      for side in 0..2 {
+        rewards[side] += self.shaping.kills * (killed[1 - side] - killed[side]);
+        self.sides[side].ships_last = still[side];
+      }
+    }
+    if self.shaping.firepower != 0.0 {
+      let now = [0, 1].map(|side| self.side_firepower(side));
+      // Signed: guns powered down and brought back net to nothing.
+      let lost = [0, 1].map(|side| {
+        let state = &self.sides[side];
+        if state.firepower_at_start > 0.0 {
+          (state.firepower_last - now[side]) / state.firepower_at_start
+        } else {
+          0.0
+        }
+      });
+      for side in 0..2 {
+        rewards[side] += self.shaping.firepower * (lost[1 - side] - lost[side]);
+        self.sides[side].firepower_last = now[side];
+      }
     }
 
     let end = self.end();
@@ -648,6 +868,11 @@ impl Game {
       if let Some(commander) = self.sides[side].commander.as_mut() {
         orders.extend(futures::executor::block_on(commander.decide(&self.views[side])));
       }
+    }
+    for side in &mut self.sides {
+      let theirs: Vec<(String, Intent)> =
+        orders.iter().filter(|(ship, _)| side.ships.contains(ship)).cloned().collect();
+      side.history.record(&theirs);
     }
     self.play(&orders)
   }

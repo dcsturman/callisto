@@ -21,7 +21,7 @@ use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
 use crate::commander::Commander;
-use crate::harness::{opening_view, play, Outcome};
+use crate::harness::{opening_view, play_recorded, Outcome};
 use crate::llm::{self, Llm};
 use crate::prompt;
 use crate::provider::{ModelSpec, Vertex};
@@ -55,6 +55,10 @@ struct Args {
   /// Write every side's intents, round by round, to this JSON-lines file.
   #[arg(long)]
   log: Option<String>,
+  /// Write every round's combat events (fire, hits, damage, interceptions,
+  /// ships lost) as JSON lines to this file.
+  #[arg(long)]
+  events: Option<String>,
   /// Also write each game's outcome as JSON lines to this file.
   #[arg(long)]
   outcomes: Option<String>,
@@ -141,15 +145,17 @@ pub async fn run(extra: &Extra<'_>) -> Result<(), Box<dyn std::error::Error>> {
   };
 
   let mut log = args.log.as_deref().map(File::create).transpose()?.map(BufWriter::new);
+  let mut events = args.events.as_deref().map(File::create).transpose()?.map(BufWriter::new);
   let mut outcomes_file = args.outcomes.as_deref().map(File::create).transpose()?.map(BufWriter::new);
   let mut outcomes: Vec<Outcome> = Vec::new();
   for seed in args.seed..args.seed + args.games {
-    let outcome = play(
+    let outcome = play_recorded(
       &args.scenario,
       &commanders,
       args.rounds,
       seed,
       log.as_mut().map(|log| log as &mut dyn Write),
+      events.as_mut().map(|events| events as &mut dyn Write),
     )
     .await?;
     let line = outcome.sides.iter().map(|(side, result)| {

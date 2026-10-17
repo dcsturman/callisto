@@ -409,6 +409,49 @@ Later, once this works: an LLM that turns a human's orders into an objective
 function for the policy, as some robotics work does, so promptable play
 comes back without an LLM in the loop every round. Not before.
 
+## 11. Results so far
+
+**The benchmark.** Tessaly Crossing, 5 or 10 games a side against each
+model, the network playing Destroy. Tessaly is not even under strong play:
+the per-side network against itself, 300 games, wins 87–95% as Red. So the
+benchmark plays both sides equally, and a Blue win counts for a lot.
+
+**The per-side network.** One network decides for a whole side at once
+(`docs/per_side_network.md`). Runs, each from the one before:
+
+| Run | What changed | Against Haiku | Against Gemini Flash |
+|---|---|---|---|
+| selfplay-8 (per ship) | | 15–3–2 of 20 | 3 of 20 on Tessaly |
+| side-2 | per-side network, selfplay-9 as teacher | 17–2–1 of 20 | 4–6 |
+| side-3 | learning rate falling to zero over 40M | | 6–4 |
+| side-4 | Destroy only (the Aslan hold), no jump unless escaping, firepower reward 0.2 | | 7–1–2: 5–0 as Red, 2–1–2 as Blue |
+
+side-4 beat side-3 in self-play by every measure, from the first 8M
+decisions on: in the last 8M it won 62% against the teacher to side-3's 58%,
+94% against `close` to 90%, and drew against itself half as often. Against
+Gemini as Blue it fired on 1.2 targets a round, where side-3 fired on 1.5
+and Gemini on 1.1: the firepower reward is teaching focus.
+
+**What the logged games showed.**
+
+- *The jump order was a loophole.* Its helm burns straight out of the well,
+  which cut the damage a ship took while a jump seldom completed, so the
+  game seldom ended as a flight. side-2 chose it in 56% of ship-rounds as
+  Blue against Gemini and fired a fifth as many shots. Now only a side told
+  to escape may withdraw.
+- *Concentrating fire matters; formation alone does not.* Two scripted
+  players differ from `close` in one thing each. `squadron` flies as one
+  squadron and came out about even with `close` on Tessaly and Thebus.
+  `spread` shares its fire out, one enemy a ship, and lost 146 of 196
+  decisive games on Tessaly. A squadron's worth is that it lets every gun
+  reach the same target.
+- *The hull reward is blind to focus.* 100 points spread over four ships
+  scores the same as 100 into one, though only the second kills anything.
+  The firepower reward pays for the enemy's working guns taken out, each
+  weighed by its expected damage, so a kill pays all at once.
+- *`close` and `hold` never find the enemy on Jupiter and Marduk:* every
+  game there between the scripted players is a draw.
+
 ## Sources
 
 - [Dota 2 with Large Scale Deep Reinforcement Learning (OpenAI Five)](https://arxiv.org/pdf/1912.06680)

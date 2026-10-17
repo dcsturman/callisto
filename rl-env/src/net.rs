@@ -119,6 +119,29 @@ impl Policy {
     })
   }
 
+  /// For each head, the open choices in order of the network's probability:
+  /// `(choice, probability)`, most likely first.
+  ///
+  /// # Panics
+  /// Panics if `obs` or `mask` is the wrong length.
+  #[must_use]
+  pub fn probabilities(&self, obs: &[f32], mask: &[bool]) -> Vec<Vec<(usize, f32)>> {
+    assert_eq!(mask.len(), MASK_LEN);
+    let logits = self.logits(obs);
+    Head::ALL
+      .iter()
+      .map(|head| {
+        let at = head.offset();
+        let open: Vec<(usize, f32)> = (0..head.size()).filter(|c| mask[at + c]).map(|c| (c, logits[at + c])).collect();
+        let top = open.iter().map(|(_, l)| *l).fold(f32::NEG_INFINITY, f32::max);
+        let total: f32 = open.iter().map(|(_, l)| (l - top).exp()).sum();
+        let mut probabilities: Vec<(usize, f32)> = open.iter().map(|(c, l)| (*c, (l - top).exp() / total)).collect();
+        probabilities.sort_by(|a, b| b.1.total_cmp(&a.1));
+        probabilities
+      })
+      .collect()
+  }
+
   /// One choice per head among those `mask` leaves open: the best scored,
   /// or with `rng`, drawn in proportion to the scores as in training.
   ///

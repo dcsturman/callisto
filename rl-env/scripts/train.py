@@ -119,6 +119,12 @@ def main() -> None:
     parser.add_argument("--rollout", type=int, default=64, help="rounds per entry per update")
     parser.add_argument("--threads", type=int, default=10, help="all cores used, engine and PyTorch together")
     parser.add_argument("--device", default="cpu", help="cpu or mps")
+    parser.add_argument(
+        "--torch-threads",
+        type=int,
+        default=None,
+        help="PyTorch threads; default all of --threads, since learning and playing take turns",
+    )
     parser.add_argument("--snapshot-every", type=int, default=500_000, help="steps between checkpoints / pool snapshots")
     parser.add_argument("--resume", default=None, help="a checkpoint .zip to continue, step count and all")
     parser.add_argument(
@@ -131,7 +137,16 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-rounds", type=int, default=40)
     parser.add_argument(
-        "--random-goals", type=float, default=0.25, help="share of games where each side's goal is drawn at random"
+        "--batch-size", type=int, default=8192, help="ship decisions per gradient step; larger is faster per step"
+    )
+    parser.add_argument(
+        "--destroy-goals",
+        type=float,
+        default=0.7,
+        help="share of games where every side's goal is destroy (a side meant to hold keeps hold)",
+    )
+    parser.add_argument(
+        "--random-goals", type=float, default=0.15, help="share of games where each side's goal is drawn at random"
     )
     parser.add_argument(
         "--wandb", action="store_true", help="also send the run to Weights & Biases (after `.venv/bin/wandb login`)"
@@ -139,10 +154,11 @@ def main() -> None:
     parser.add_argument("--wandb-project", default="callisto-rl")
     args = parser.parse_args()
 
-    torch_threads = 2
-    torch.set_num_threads(torch_threads)
+    # PPO plays a batch of games, then learns from it, then plays again: the
+    # engine and PyTorch take turns, so each can have every core allowed.
+    torch.set_num_threads(args.torch_threads or args.threads)
     scenarios = default_pool(args.scenario) if args.scenario else None
-    engine_threads = max(1, args.threads - torch_threads)
+    engine_threads = args.threads
     if args.opponent == "self":
         env = SelfPlayVecEnv(
             scenarios,
@@ -152,6 +168,7 @@ def main() -> None:
             max_rounds=args.max_rounds,
             mix=Mix(),
             random_goals=args.random_goals,
+            destroy_goals=args.destroy_goals,
         )
     else:
         env = ShipVecEnv(
@@ -162,6 +179,7 @@ def main() -> None:
             threads=engine_threads,
             max_rounds=args.max_rounds,
             random_goals=args.random_goals,
+            destroy_goals=args.destroy_goals,
         )
     name = args.name or f"{args.opponent}-{time.strftime('%Y%m%d-%H%M%S')}"
     folder = HERE / "checkpoints" / name
@@ -175,14 +193,18 @@ def main() -> None:
     print(f"{name}: {env.num_envs} learner ships in {args.games} games")
     if args.resume or args.init_from:
         model = MaskablePPO.load(
-            args.resume or args.init_from, env=env, device=args.device, tensorboard_log=str(HERE / "runs")
+            args.resume or args.init_from,
+            env=env,
+            device=args.device,
+            tensorboard_log=str(HERE / "runs"),
+            custom_objects={"batch_size": args.batch_size, "n_steps": args.rollout},
         )
     else:
         model = MaskablePPO(
             "MlpPolicy",
             env,
             n_steps=args.rollout,
-            batch_size=4096,
+            batch_size=args.batch_size,
             n_epochs=4,
             learning_rate=3e-4,
             gamma=0.99,

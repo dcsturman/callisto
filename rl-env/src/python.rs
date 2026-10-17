@@ -1,7 +1,10 @@
 //! The Python module `callisto_rl._engine`: the batch, with `NumPy` arrays in
 //! and out. `callisto_rl` wraps it for Gymnasium and Stable-Baselines3.
 
-use numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2, PyUntypedArrayMethods};
+use numpy::{
+  PyArray1, PyArray2, PyArray3, PyArray4, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
+  PyUntypedArrayMethods,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -10,6 +13,8 @@ use crate::action::{HEADS, HEAD_SIZES, MASK_LEN};
 use crate::batch::{Batch, Config, Finished, Outputs};
 use crate::encode::OBS_LEN;
 use crate::game::End;
+use crate::side;
+use crate::side_batch::{SideBatch, Views, WIDTHS};
 
 type ObsMasks<'py> = (Bound<'py, PyArray2<f32>>, Bound<'py, PyArray2<bool>>);
 
@@ -58,11 +63,11 @@ fn finished_dict<'py>(py: Python<'py>, finished: &Finished) -> PyResult<Bound<'p
 #[pymethods]
 impl Engine {
   #[new]
-  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10, random_goals = 0.0))]
+  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10, random_goals = 0.0, destroy_goals = 0.0, kill_bonus = 0.0, firepower_bonus = 0.0))]
   #[allow(clippy::too_many_arguments)]
   fn new(
     scenarios: Vec<String>, designs: String, games: usize, max_rounds: u32, opponent: Option<String>, seed: u64,
-    threads: usize, random_goals: f32,
+    threads: usize, random_goals: f32, destroy_goals: f32, kill_bonus: f32, firepower_bonus: f32,
   ) -> PyResult<Self> {
     let config = Config {
       scenarios,
@@ -72,7 +77,12 @@ impl Engine {
       opponent,
       seed,
       threads,
+      destroy_goals,
       random_goals,
+      shaping: crate::game::Shaping {
+        kills: kill_bonus,
+        firepower: firepower_bonus,
+      },
     };
     Batch::new(&config).map(|batch| Engine { batch }).map_err(PyValueError::new_err)
   }
@@ -136,26 +146,30 @@ impl Engine {
         actions.shape()
       )));
     }
-    let obs = PyArray2::<f32>::zeros(py, [slots, OBS_LEN], false);
-    let masks = PyArray2::<bool>::zeros(py, [slots, MASK_LEN], false);
-    let rewards = PyArray1::<f32>::zeros(py, [slots], false);
-    let dones = PyArray1::<bool>::zeros(py, [slots], false);
-    let terminal = PyArray2::<f32>::zeros(py, [slots, OBS_LEN], false);
-    let finished = {
-      let mut obs_rw = obs.readwrite();
-      let mut masks_rw = masks.readwrite();
-      let mut rewards_rw = rewards.readwrite();
-      let mut dones_rw = dones.readwrite();
-      let mut terminal_rw = terminal.readwrite();
+    // The games are stepped with Python's lock released, so a learner can
+    // train on another thread meanwhile; the results are copied out after.
+    let choices: Vec<i64> = actions.as_slice()?.to_vec();
+    let mut obs = vec![0.0_f32; slots * OBS_LEN];
+    let mut masks = vec![false; slots * MASK_LEN];
+    let mut rewards = vec![0.0_f32; slots];
+    let mut dones = vec![false; slots];
+    let mut terminal = vec![0.0_f32; slots * OBS_LEN];
+    let batch = &mut self.batch;
+    let finished = py.detach(|| {
       let mut out = Outputs {
-        obs: obs_rw.as_slice_mut()?,
-        masks: masks_rw.as_slice_mut()?,
-        rewards: rewards_rw.as_slice_mut()?,
-        dones: dones_rw.as_slice_mut()?,
-        terminal_obs: terminal_rw.as_slice_mut()?,
+        obs: &mut obs,
+        masks: &mut masks,
+        rewards: &mut rewards,
+        dones: &mut dones,
+        terminal_obs: &mut terminal,
       };
-      self.batch.step(actions.as_slice()?, &mut out)
-    };
+      batch.step(&choices, &mut out)
+    });
+    let obs = PyArray1::from_vec(py, obs).reshape([slots, OBS_LEN])?;
+    let masks = PyArray1::from_vec(py, masks).reshape([slots, MASK_LEN])?;
+    let rewards = PyArray1::from_vec(py, rewards);
+    let dones = PyArray1::from_vec(py, dones);
+    let terminal = PyArray1::from_vec(py, terminal).reshape([slots, OBS_LEN])?;
     let finished = finished
       .iter()
       .map(|finished| finished_dict(py, finished))
@@ -164,9 +178,174 @@ impl Engine {
   }
 }
 
+/// Many callisto games, each side decided whole: two entries per game.
+#[pyclass(unsendable, module = "callisto_rl._engine")]
+struct SideEngine {
+  batch: SideBatch,
+}
+
+type SideViews<'py> = (
+  Bound<'py, PyArray3<f32>>,
+  Bound<'py, PyArray3<f32>>,
+  Bound<'py, PyArray2<f32>>,
+  Bound<'py, PyArray4<f32>>,
+  Bound<'py, PyArray3<bool>>,
+);
+
+struct SideOut {
+  own: Vec<f32>,
+  foes: Vec<f32>,
+  side: Vec<f32>,
+  pairs: Vec<f32>,
+  masks: Vec<bool>,
+}
+
+impl SideOut {
+  fn new(entries: usize) -> Self {
+    SideOut {
+      own: vec![0.0; entries * WIDTHS[0]],
+      foes: vec![0.0; entries * WIDTHS[1]],
+      side: vec![0.0; entries * WIDTHS[2]],
+      pairs: vec![0.0; entries * WIDTHS[3]],
+      masks: vec![false; entries * WIDTHS[4]],
+    }
+  }
+
+  fn views(&mut self) -> Views<'_> {
+    Views {
+      own: &mut self.own,
+      foes: &mut self.foes,
+      side: &mut self.side,
+      pairs: &mut self.pairs,
+      masks: &mut self.masks,
+    }
+  }
+
+  fn arrays(self, py: Python<'_>, entries: usize) -> PyResult<SideViews<'_>> {
+    Ok((
+      PyArray1::from_vec(py, self.own).reshape([entries, side::OWN, side::OWN_FEATS])?,
+      PyArray1::from_vec(py, self.foes).reshape([entries, side::FOES, side::FOE_FEATS])?,
+      PyArray1::from_vec(py, self.side).reshape([entries, side::SIDE_FEATS])?,
+      PyArray1::from_vec(py, self.pairs).reshape([entries, side::OWN, side::FOES, side::PAIR_FEATS])?,
+      PyArray1::from_vec(py, self.masks).reshape([entries, side::OWN, side::MASK_LEN])?,
+    ))
+  }
+}
+
+#[pymethods]
+impl SideEngine {
+  #[new]
+  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, seed = 0, threads = 10, random_goals = 0.0, destroy_goals = 0.0, kill_bonus = 0.0, firepower_bonus = 0.0))]
+  #[allow(clippy::too_many_arguments)]
+  fn new(
+    scenarios: Vec<String>, designs: String, games: usize, max_rounds: u32, seed: u64, threads: usize,
+    random_goals: f32, destroy_goals: f32, kill_bonus: f32, firepower_bonus: f32,
+  ) -> PyResult<Self> {
+    let config = Config {
+      scenarios,
+      designs,
+      games,
+      max_rounds,
+      opponent: None,
+      seed,
+      threads,
+      destroy_goals,
+      random_goals,
+      shaping: crate::game::Shaping {
+        kills: kill_bonus,
+        firepower: firepower_bonus,
+      },
+    };
+    SideBatch::new(&config)
+      .map(|batch| SideEngine { batch })
+      .map_err(PyValueError::new_err)
+  }
+
+  #[getter]
+  fn num_games(&self) -> usize {
+    self.batch.games()
+  }
+
+  #[pyo3(signature = (game, side, baseline = None))]
+  fn stand_in(&mut self, game: usize, side: usize, baseline: Option<&str>) -> PyResult<()> {
+    self.batch.stand_in(game, side, baseline).map_err(PyValueError::new_err)
+  }
+
+  /// Every entry's view: own tokens, enemy tokens, the side token, the pair
+  /// table, and each own ship's mask.
+  fn observe<'py>(&mut self, py: Python<'py>) -> PyResult<SideViews<'py>> {
+    let entries = 2 * self.batch.games();
+    let mut out = SideOut::new(entries);
+    let batch = &mut self.batch;
+    py.detach(|| batch.observe(&mut out.views()));
+    out.arrays(py, entries)
+  }
+
+  /// Step with `actions` (entries × own ships × heads). Returns the new
+  /// views, each entry's reward and done flag, and a dict per finished game.
+  #[allow(clippy::needless_pass_by_value, clippy::type_complexity)]
+  fn step<'py>(
+    &mut self, py: Python<'py>, actions: PyReadonlyArray3<'py, i64>,
+  ) -> PyResult<(
+    SideViews<'py>,
+    Bound<'py, PyArray1<f32>>,
+    Bound<'py, PyArray1<bool>>,
+    Vec<Bound<'py, PyDict>>,
+  )> {
+    let entries = 2 * self.batch.games();
+    if actions.shape() != [entries, side::OWN, HEADS] {
+      return Err(PyValueError::new_err(format!(
+        "actions are {:?}, not [{entries}, {}, {HEADS}]",
+        actions.shape(),
+        side::OWN
+      )));
+    }
+    let choices: Vec<i64> = actions.as_slice()?.to_vec();
+    let mut out = SideOut::new(entries);
+    let mut rewards = vec![0.0_f32; entries];
+    let mut dones = vec![false; entries];
+    let batch = &mut self.batch;
+    let finished = py.detach(|| batch.step(&choices, &mut out.views(), &mut rewards, &mut dones));
+    let finished = finished
+      .iter()
+      .map(|finished| finished_dict(py, finished))
+      .collect::<PyResult<Vec<_>>>()?;
+    Ok((
+      out.arrays(py, entries)?,
+      PyArray1::from_vec(py, rewards),
+      PyArray1::from_vec(py, dones),
+      finished,
+    ))
+  }
+}
+
+/// The per-side network's scores as the Rust port computes them, for
+/// checking the port against `PyTorch`: one side's view in, own ships × mask
+/// length out.
+#[pyfunction]
+#[allow(clippy::needless_pass_by_value)]
+fn side_net_logits<'py>(
+  py: Python<'py>, path: &str, own: PyReadonlyArray2<'py, f32>, foes: PyReadonlyArray2<'py, f32>,
+  side: PyReadonlyArray1<'py, f32>, pairs: PyReadonlyArray3<'py, f32>,
+) -> PyResult<Bound<'py, PyArray2<f32>>> {
+  let net = crate::side_net::SideNet::load(path).map_err(PyValueError::new_err)?;
+  let logits = net.logits(own.as_slice()?, foes.as_slice()?, side.as_slice()?, pairs.as_slice()?);
+  PyArray1::from_vec(py, logits).reshape([side::OWN, side::MASK_LEN])
+}
+
 #[pymodule]
 fn _engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+  m.add_function(wrap_pyfunction!(side_net_logits, m)?)?;
   m.add_class::<Engine>()?;
+  m.add_class::<SideEngine>()?;
+  m.add("SIDE_HEAD_SIZES", side::HEAD_SIZES.to_vec())?;
+  m.add("SIDE_MASK_LEN", side::MASK_LEN)?;
+  m.add("OWN", side::OWN)?;
+  m.add("FOES", side::FOES)?;
+  m.add("OWN_FEATS", side::OWN_FEATS)?;
+  m.add("FOE_FEATS", side::FOE_FEATS)?;
+  m.add("SIDE_FEATS", side::SIDE_FEATS)?;
+  m.add("PAIR_FEATS", side::PAIR_FEATS)?;
   m.add("OBS_LEN", OBS_LEN)?;
   m.add("MASK_LEN", MASK_LEN)?;
   m.add("HEAD_SIZES", HEAD_SIZES.to_vec())?;

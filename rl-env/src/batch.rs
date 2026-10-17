@@ -30,9 +30,14 @@ pub struct Config {
   pub seed: u64,
   /// Threads to step games on. Leave the machine some.
   pub threads: usize,
-  /// The share of games where each side's goal is drawn at random rather
-  /// than taken from the scenario.
+  /// The share of games where every side's goal is Destroy (a side meant to
+  /// hold keeps Hold).
+  pub destroy_goals: f32,
+  /// The share where each side's goal is drawn at random. The rest play the
+  /// scenario's goals.
   pub random_goals: f32,
+  /// Reward for kills and firepower taken out, beyond hull.
+  pub shaping: crate::game::Shaping,
 }
 
 /// A game that finished this step.
@@ -92,23 +97,9 @@ impl Batch {
       return Err("a batch needs at least one scenario and one game".to_string());
     }
     if let Some(opponent) = &config.opponent {
-      ai_ships::commander::named(opponent, 0).ok_or_else(|| format!("no baseline {opponent}"))?;
+      crate::commander::named(opponent, 0).ok_or_else(|| format!("no baseline {opponent}"))?;
     }
-    let runtime = tokio::runtime::Builder::new_current_thread()
-      .enable_all()
-      .build()
-      .map_err(|e| e.to_string())?;
-    let scenarios: Vec<Arc<Scenario>> = runtime.block_on(async {
-      let designs = callisto::ship::load_ship_templates_from_dir(&config.designs)
-        .await
-        .map_err(|e| format!("{}: {e}", config.designs))?;
-      callisto::ship::replace_ship_templates(designs);
-      let mut scenarios = Vec::new();
-      for path in &config.scenarios {
-        scenarios.push(Arc::new(Scenario::load(path).await?));
-      }
-      Ok::<_, String>(scenarios)
-    })?;
+    let scenarios = load(config)?;
 
     let games: Vec<Running> = (0..config.games)
       .map(|index| {
@@ -126,7 +117,8 @@ impl Batch {
         };
         Running {
           game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds)
-            .with_random_goals(config.random_goals),
+            .with_goals(config.destroy_goals, config.random_goals)
+            .with_shaping(config.shaping),
           returns: [0.0; 2],
         }
       })
@@ -187,7 +179,7 @@ impl Batch {
   /// Returns an error if there is no such game or side, or no such baseline.
   pub fn stand_in(&mut self, game: usize, side: usize, baseline: Option<&str>) -> Result<(), String> {
     if let Some(name) = baseline {
-      ai_ships::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
+      crate::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
     }
     let running = self.games.get_mut(game).ok_or_else(|| format!("no game {game}"))?;
     if side > 1 {
@@ -295,6 +287,28 @@ impl Batch {
         .collect()
     })
   }
+}
+
+/// Load the designs and the scenarios a batch plays.
+///
+/// # Errors
+/// Returns an error if a design or scenario cannot be loaded.
+pub fn load(config: &Config) -> Result<Vec<Arc<Scenario>>, String> {
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .map_err(|e| e.to_string())?;
+  runtime.block_on(async {
+    let designs = callisto::ship::load_ship_templates_from_dir(&config.designs)
+      .await
+      .map_err(|e| format!("{}: {e}", config.designs))?;
+    callisto::ship::replace_ship_templates(designs);
+    let mut scenarios = Vec::new();
+    for path in &config.scenarios {
+      scenarios.push(Arc::new(Scenario::load(path).await?));
+    }
+    Ok::<_, String>(scenarios)
+  })
 }
 
 /// Cut a flat buffer into each game's part, `width` per slot.

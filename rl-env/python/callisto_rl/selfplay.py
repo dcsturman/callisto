@@ -36,9 +36,11 @@ from .vec_env import DESIGNS, default_pool, outcome_for
 class Opponent:
     """Who plays the other side of a game."""
 
-    kind: str  # "self", "past" or "baseline"
+    kind: str  # "self", "past", "baseline" or "teacher"
     #: The snapshot's index in the pool, or the baseline's name.
     which: int | str | None = None
+    #: A teacher's short name, for one of several; logged as "teacher_<name>".
+    name: str | None = None
 
     @property
     def label(self) -> str:
@@ -46,6 +48,8 @@ class Opponent:
             return "self"
         if self.kind == "past":
             return "past"
+        if self.kind == "teacher":
+            return "teacher" if self.name is None else f"teacher_{self.name}"
         return str(self.which)
 
 
@@ -74,6 +78,7 @@ class SelfPlayVecEnv(VecEnv):
         max_snapshots: int = 20,
         choose: Callable[[int], Opponent] | None = None,
         random_goals: float = 0.0,
+        destroy_goals: float = 0.0,
     ):
         scenarios = list(scenarios or default_pool())
         self.engine = Engine(
@@ -85,6 +90,7 @@ class SelfPlayVecEnv(VecEnv):
             seed=seed,
             threads=threads,
             random_goals=random_goals,
+            destroy_goals=destroy_goals,
         )
         self.mix = mix or Mix()
         self.max_snapshots = max_snapshots
