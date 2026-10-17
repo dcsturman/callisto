@@ -239,7 +239,7 @@ pub fn encode_ship(ctx: &Context, me: &Ship, out: &mut [f32], mask: &mut [bool])
     encode_enemy(ctx, me, enemy, &mut out[at..at + ENEMY_LEN]);
   }
 
-  masks(me, view, &friends, &enemies, mask);
+  masks(me, view, ctx.goal, &friends, &enemies, mask);
 
   Picture {
     enemies: enemies.iter().map(|enemy| enemy.name.to_string()).collect(),
@@ -459,7 +459,7 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
 }
 
 /// Which choices of each head are open to `me`.
-fn masks(me: &Ship, view: &Observation, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
+fn masks(me: &Ship, view: &Observation, goal: Goal, friends: &[&Ship], enemies: &[Enemy], mask: &mut [bool]) {
   mask.fill(false);
   let moves = me.max_acceleration() > 0;
   let any_enemy = !enemies.is_empty();
@@ -488,7 +488,11 @@ fn masks(me: &Ship, view: &Observation, friends: &[&Ship], enemies: &[Enemy], ma
   let dodges: Vec<bool> = (0..action::DODGES).map(|g| g <= usize::from(me.max_acceleration())).collect();
   set(mask, Head::Dodge, &dodges);
   set(mask, Head::Assist, &[true, true]);
-  set(mask, Head::Jump, &[true, orders::can_withdraw(me)]);
+  set(
+    mask,
+    Head::Jump,
+    &[true, orders::goal_allows_withdrawal(goal) && orders::can_withdraw(me)],
+  );
 
   // Sensor orders: lock and jam comms need a contact, jamming missiles needs
   // missiles coming in. A second operator's heads only if there is one.

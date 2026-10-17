@@ -12,7 +12,7 @@
 use ai_ships::commander::REPAIR_PRIORITY;
 use ai_ships::observation::Observation;
 use callisto::entity::{Entity, Vec3, DELTA_TIME_F64, G};
-use callisto::ship::{BridgeStation, PowerSystem, Ship};
+use callisto::ship::{BridgeStation, Goal, PowerSystem, Ship};
 use callisto::software::{Software, SoftwareKind};
 use callisto::tactics::{Boost, EngineerVerb, Helm, SensorVerb, SoftwareOrder};
 use cgmath::InnerSpace;
@@ -192,6 +192,15 @@ pub fn software_orders(ship: &Ship, mode: Computer, withdrawing: bool) -> Vec<So
 
 /// Whether a ship could ever jump out of this fight: a working jump drive,
 /// fuel for a jump-1, an engineer, and astrogation and the computer up.
+/// Whether the side's goal lets a ship withdraw at all. Only Escape does:
+/// for every other goal, leaving is never the job. (Left open, the order was
+/// a loophole: its helm burns straight out of the well, away from the fight,
+/// cutting the damage taken while rarely ending the game as a flight.)
+#[must_use]
+pub fn goal_allows_withdrawal(goal: Goal) -> bool {
+  goal == Goal::Escape
+}
+
 /// Whether she is clear of gravity wells and powered is for the withdrawal
 /// to see to.
 #[must_use]

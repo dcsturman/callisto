@@ -63,7 +63,9 @@ pub const MASK_LEN: usize = {
   total
 };
 
-const fn offset(head: Head) -> usize {
+/// Where head `head` starts in one ship's mask or scores.
+#[must_use]
+pub const fn offset(head: Head) -> usize {
   let mut at = 0;
   let mut i = 0;
   while i < head as usize {
@@ -194,7 +196,15 @@ pub fn encode_side(ctx: &SideContext, buffers: &mut Buffers) -> Tokens {
       let at = (i * FOES + j) * PAIR_FEATS;
       pair(ctx, ship, foe, &mut buffers.pairs[at..at + PAIR_FEATS]);
     }
-    ship_mask(view, ship, i, &own, &foes, &mut buffers.masks[i * MASK_LEN..(i + 1) * MASK_LEN]);
+    ship_mask(
+      view,
+      ctx.goal,
+      ship,
+      i,
+      &own,
+      &foes,
+      &mut buffers.masks[i * MASK_LEN..(i + 1) * MASK_LEN],
+    );
   }
   for (j, foe) in foes.iter().enumerate() {
     foe_token(ctx, foe, frame, &own, &mut buffers.foes[j * FOE_FEATS..(j + 1) * FOE_FEATS]);
@@ -408,7 +418,7 @@ fn pair(ctx: &SideContext, me: &Ship, foe: &Foe, row: &mut [f32]) {
 }
 
 /// Which choices of each head are open to ship `me` (token `index`).
-fn ship_mask(view: &Observation, me: &Ship, index: usize, own: &[&Ship], foes: &[Foe], mask: &mut [bool]) {
+fn ship_mask(view: &Observation, goal: Goal, me: &Ship, index: usize, own: &[&Ship], foes: &[Foe], mask: &mut [bool]) {
   let set = |mask: &mut [bool], head: Head, open: &[bool]| {
     let at = offset(head);
     let size = HEAD_SIZES[head as usize];
@@ -441,7 +451,11 @@ fn ship_mask(view: &Observation, me: &Ship, index: usize, own: &[&Ship], foes: &
   let dodges: Vec<bool> = (0..action::DODGES).map(|g| g <= usize::from(me.max_acceleration())).collect();
   set(mask, Head::Dodge, &dodges);
   set(mask, Head::Assist, &[true, true]);
-  set(mask, Head::Jump, &[true, orders::can_withdraw(me)]);
+  set(
+    mask,
+    Head::Jump,
+    &[true, orders::goal_allows_withdrawal(goal) && orders::can_withdraw(me)],
+  );
   let any_contact = foes.iter().any(|foe| foe.contact.is_some());
   let missiles = orders::missiles_inbound(view) > 0;
   let operators = me.get_crew().sensor_operators();
