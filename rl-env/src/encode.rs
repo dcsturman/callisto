@@ -92,16 +92,16 @@ struct Enemy<'a> {
 }
 
 /// Distance in metres, from 1 km to 1,000,000 km, onto [0, 1].
-fn log_distance(metres: f64) -> f32 {
+pub(crate) fn log_distance(metres: f64) -> f32 {
   ((1.0 + metres / 1_000.0).log10() / 6.0) as f32
 }
 
 /// Speed in m/s, up to about 100 km/s, onto [0, 1]; signed for a rate.
-fn log_speed(metres_per_second: f64) -> f32 {
+pub(crate) fn log_speed(metres_per_second: f64) -> f32 {
   (metres_per_second.signum() * (1.0 + metres_per_second.abs() / 10.0).log10() / 4.0) as f32
 }
 
-fn direction(v: Vec3) -> [f32; 3] {
+pub(crate) fn direction(v: Vec3) -> [f32; 3] {
   let length = v.magnitude();
   if length < 1e-9 {
     [0.0; 3]
@@ -110,7 +110,7 @@ fn direction(v: Vec3) -> [f32; 3] {
   }
 }
 
-fn share(part: u32, whole: u32) -> f32 {
+pub(crate) fn share(part: u32, whole: u32) -> f32 {
   (part as f32 / whole.max(1) as f32).min(1.0)
 }
 
@@ -148,7 +148,7 @@ pub fn posture_of(ship: &Ship) -> usize {
 
 /// The odds by band, best chance and expected damage as a share of `hull`:
 /// ten numbers.
-fn odds(out: &mut [f32], table: &[BandOdds], hull: u32) {
+pub(crate) fn odds(out: &mut [f32], table: &[BandOdds], hull: u32) {
   for odds in table {
     let band = odds.band as usize;
     out[band] = odds.best_chance as f32;
@@ -357,7 +357,7 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
 
 /// Rounds until something at `position` moving at `velocity` reaches `me`,
 /// at its present closing speed: a missile's time to impact.
-fn rounds_to_reach(position: Vec3, velocity: Vec3, me: &Ship) -> f32 {
+pub(crate) fn rounds_to_reach(position: Vec3, velocity: Vec3, me: &Ship) -> f32 {
   let offset = me.get_position() - position;
   let distance = offset.magnitude();
   let closing = if distance > 1e-9 {

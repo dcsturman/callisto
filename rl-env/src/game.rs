@@ -260,6 +260,8 @@ pub struct Game {
   /// orders are given against.
   world: Entities,
   views: [Observation; 2],
+  /// Which ship is which token, for each side, as last observed whole.
+  tokens: [crate::side::Tokens; 2],
   pub rounds: u32,
   pub max_rounds: u32,
   pub seed: u64,
@@ -348,6 +350,7 @@ impl Game {
       departed: HashMap::new(),
       world,
       views,
+      tokens: Default::default(),
       rounds: 0,
       max_rounds,
       seed,
@@ -470,6 +473,70 @@ impl Game {
       let side = &self.sides[side];
       side.hull_last as f32 / side.hull_at_start.max(1) as f32
     })
+  }
+
+  /// Encode one side's whole view as tokens into `buffers`, and remember
+  /// which ship is which token for the choices that come back.
+  pub fn observe_side(&mut self, side: usize, buffers: &mut crate::side::Buffers) {
+    remember(&mut self.sides[side].memory, &self.views[side], self.rounds);
+    self.sides[side].history.look(&self.views[side]);
+    let shares = self.hull_shares();
+    let state = &self.sides[side];
+    let ctx = crate::side::SideContext {
+      view: &self.views[side],
+      memory: &state.memory,
+      history: &state.history,
+      round: self.rounds,
+      max_rounds: self.max_rounds,
+      own_hull_share: shares[side],
+      enemy_hull_share: believed_hull(&state.memory),
+      goal: state.goal,
+    };
+    self.tokens[side] = crate::side::encode_side(&ctx, buffers);
+  }
+
+  /// Play a round with whole-side choices: for each network side, one choice
+  /// per own-ship token, in token order. Baselines play their sides; `None`
+  /// for a network side gives it no orders.
+  pub fn step_sides(&mut self, choices: [Option<&[Choice]>; 2]) -> Step {
+    let mut orders: Vec<(String, Intent)> = Vec::new();
+    for side in 0..2 {
+      let view = &self.views[side];
+      let intents = if let Some(commander) = self.sides[side].commander.as_mut() {
+        futures::executor::block_on(commander.decide(view))
+      } else if let Some(choices) = choices[side] {
+        let picture = self.tokens[side].picture();
+        let own: Vec<_> = self.tokens[side]
+          .own
+          .iter()
+          .zip(choices)
+          .filter_map(|(name, choice)| {
+            view
+              .own
+              .iter()
+              .find(|ship| ship.get_name() == name)
+              .map(|ship| (ship, choice, &picture))
+          })
+          .collect();
+        side_intents(&own, view)
+      } else {
+        vec![]
+      };
+      let ours = &view.own;
+      let intents: Vec<(String, Intent)> = intents
+        .into_iter()
+        .filter(|(ship, _)| ours.iter().any(|own| own.get_name() == ship))
+        .collect();
+      self.sides[side].history.record(&intents);
+      orders.extend(intents);
+    }
+    self.play(&orders)
+  }
+
+  /// Whether a side is played by the network (no baseline standing in).
+  #[must_use]
+  pub fn network_side(&self, side: usize) -> bool {
+    self.sides[side].commander.is_none()
   }
 
   /// Write every slot's observation into `obs` (slots × [`OBS_LEN`]) and mask

@@ -97,21 +97,7 @@ impl Batch {
     if let Some(opponent) = &config.opponent {
       ai_ships::commander::named(opponent, 0).ok_or_else(|| format!("no baseline {opponent}"))?;
     }
-    let runtime = tokio::runtime::Builder::new_current_thread()
-      .enable_all()
-      .build()
-      .map_err(|e| e.to_string())?;
-    let scenarios: Vec<Arc<Scenario>> = runtime.block_on(async {
-      let designs = callisto::ship::load_ship_templates_from_dir(&config.designs)
-        .await
-        .map_err(|e| format!("{}: {e}", config.designs))?;
-      callisto::ship::replace_ship_templates(designs);
-      let mut scenarios = Vec::new();
-      for path in &config.scenarios {
-        scenarios.push(Arc::new(Scenario::load(path).await?));
-      }
-      Ok::<_, String>(scenarios)
-    })?;
+    let scenarios = load(config)?;
 
     let games: Vec<Running> = (0..config.games)
       .map(|index| {
@@ -298,6 +284,28 @@ impl Batch {
         .collect()
     })
   }
+}
+
+/// Load the designs and the scenarios a batch plays.
+///
+/// # Errors
+/// Returns an error if a design or scenario cannot be loaded.
+pub fn load(config: &Config) -> Result<Vec<Arc<Scenario>>, String> {
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .map_err(|e| e.to_string())?;
+  runtime.block_on(async {
+    let designs = callisto::ship::load_ship_templates_from_dir(&config.designs)
+      .await
+      .map_err(|e| format!("{}: {e}", config.designs))?;
+    callisto::ship::replace_ship_templates(designs);
+    let mut scenarios = Vec::new();
+    for path in &config.scenarios {
+      scenarios.push(Arc::new(Scenario::load(path).await?));
+    }
+    Ok::<_, String>(scenarios)
+  })
 }
 
 /// Cut a flat buffer into each game's part, `width` per slot.
