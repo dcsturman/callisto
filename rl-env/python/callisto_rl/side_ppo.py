@@ -18,6 +18,7 @@ import queue
 import random
 import threading
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -66,11 +67,26 @@ class Settings:
     #: the engine in Rust. Logged as "teacher".
     teacher: str = ""
     teacher_share: float = 0.0
+    #: More teachers, of either kind: comma-separated `share=commander`, as
+    #: "0.3=side~:checkpoints/teachers/side-4.cside,0.05=net~:...selfplay-9.cpol".
+    #: Each is drawn its share of games and logged as "teacher_<file name>".
+    teachers: str = ""
     #: Let the learning rate fall in a straight line to this fraction of
     #: itself by the end of the run (1.0 keeps it constant).
     final_lr_fraction: float = 1.0
     #: Where learning runs. Playing stays on the cpu, in small batches.
     device: str = "mps" if torch.backends.mps.is_available() else "cpu"
+
+
+def teachers(spec: str) -> list[tuple[float, str, str]]:
+    """The `teachers` setting as (share, commander name, short name)."""
+    out = []
+    for entry in filter(None, (e.strip() for e in spec.split(","))):
+        share, commander = entry.split("=", 1)
+        out.append((float(share), commander, Path(commander.split(":", 1)[-1].split("#")[0]).stem))
+    if sum(share for share, _, _ in out) > 1.0:
+        raise ValueError(f"teachers' shares add up to more than 1: {spec}")
+    return out
 
 
 class Player(threading.Thread):
@@ -103,6 +119,11 @@ class Player(threading.Thread):
         mix = self.s.mix
         if self.s.teacher and self.rng.random() < self.s.teacher_share:
             return Opponent("teacher", f"net~:{self.s.teacher}")
+        roll = self.rng.random()
+        for share, commander, name in teachers(self.s.teachers):
+            if roll < share:
+                return Opponent("teacher", commander, name)
+            roll -= share
         roll = self.rng.random()
         if roll < self.baseline_share:
             return Opponent("baseline", self.rng.choice(mix.baseline_names))
@@ -287,7 +308,7 @@ class Learner:
         by_goal = collections.defaultdict(list)
         for r in self.recent:
             by_opponent[r["opponent"]].append(r["outcome"])
-            if r["opponent"] not in ("self", "past", "teacher"):
+            if r["opponent"] not in ("self", "past") and not r["opponent"].startswith("teacher"):
                 by_side[f"{r['scenario']}/{r['side']}"].append(r["outcome"] in WINS)
             by_goal[r["goal"]].append(r["return"] > 0)
         for opponent, outcomes in by_opponent.items():

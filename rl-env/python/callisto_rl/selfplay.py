@@ -39,6 +39,8 @@ class Opponent:
     kind: str  # "self", "past", "baseline" or "teacher"
     #: The snapshot's index in the pool, or the baseline's name.
     which: int | str | None = None
+    #: A teacher's short name, for one of several; logged as "teacher_<name>".
+    name: str | None = None
 
     @property
     def label(self) -> str:
@@ -47,7 +49,7 @@ class Opponent:
         if self.kind == "past":
             return "past"
         if self.kind == "teacher":
-            return "teacher"
+            return "teacher" if self.name is None else f"teacher_{self.name}"
         return str(self.which)
 
 

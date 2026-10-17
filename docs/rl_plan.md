@@ -424,11 +424,13 @@ benchmark plays both sides equally, and a Blue win counts for a lot.
 | selfplay-8 (per ship) | | 15–3–2 of 20 | 3 of 20 on Tessaly |
 | side-2 | per-side network, selfplay-9 as teacher | 17–2–1 of 20 | 4–6 |
 | side-3 | learning rate falling to zero over 40M | | 6–4 |
-| side-4 | Destroy only (the Aslan hold), no jump unless escaping, firepower reward 0.2 | | running |
+| side-4 | Destroy only (the Aslan hold), no jump unless escaping, firepower reward 0.2 | | 7–1–2: 5–0 as Red, 2–1–2 as Blue |
 
 side-4 beat side-3 in self-play by every measure, from the first 8M
 decisions on: in the last 8M it won 62% against the teacher to side-3's 58%,
-94% against `close` to 90%, and drew against itself half as often.
+94% against `close` to 90%, and drew against itself half as often. Against
+Gemini as Blue it fired on 1.2 targets a round, where side-3 fired on 1.5
+and Gemini on 1.1: the firepower reward is teaching focus.
 
 **What the logged games showed.**
 
