@@ -20,17 +20,35 @@ from sb3_contrib import MaskablePPO
 
 from callisto_rl import HEAD_SIZES, OBS_LEN, ShipVecEnv, default_pool
 
-# Where each earlier layout's network is missing inputs, by its input count:
-# (position in this build's observation, how many). The goal flags came at
-# 40; the withdrawal, hand-off, captain and jamming inputs at 44.
-NEW_INPUTS = {1184: [(40, 13)], 1188: [(44, 9)]}
-# The heads each earlier layout lacks, appended after its own, by its output
-# count: (choices, the bias that starts it on its first choice). The bias is
-# strong for the jump (a withdrawal tried at random is costly) and mild for
-# the rest, so training still explores them.
+# Every observation layout so far, by its total size: the length of the
+# ship's own block, of each of the 19 friend slots, and of each of the 20 enemy
+# slots. Each block only ever grew at its end, so an old input keeps its place
+# within its block.
+LAYOUTS = {
+    1184: (40, 16, 42),
+    1188: (44, 16, 42),
+    1197: (53, 16, 42),
+    1431: (67, 16, 53),
+}
+FRIENDS, ENEMIES = 19, 20
+
+
+def column_map(old_size: int, new_size: int) -> list[int]:
+    """For each input of the old layout, its place in the new one."""
+    (old_self, old_friend, old_enemy), (new_self, new_friend, new_enemy) = LAYOUTS[old_size], LAYOUTS[new_size]
+    places = list(range(old_self))
+    for slot in range(FRIENDS):
+        places += [new_self + slot * new_friend + i for i in range(old_friend)]
+    for slot in range(ENEMIES):
+        places += [new_self + FRIENDS * new_friend + slot * new_enemy + i for i in range(old_enemy)]
+    assert len(places) == old_size
+    return places
+
+
 NEW_HEADS = {
     98: [(2, 5.0), (3, 2.0), (3, 2.0), (21, 0.0), (6, 0.0), (2, 2.0)],
     100: [(3, 2.0), (3, 2.0), (21, 0.0), (6, 0.0), (2, 2.0)],
+    135: [],
 }
 
 
@@ -38,11 +56,12 @@ def widen(old_path: str, new_path: str) -> None:
     old = MaskablePPO.load(old_path, device="cpu")
     old_obs = old.observation_space.shape[0]
     old_outputs = old.policy.action_net.out_features
-    if old_obs not in NEW_INPUTS or old_outputs not in NEW_HEADS:
+    if old_obs not in LAYOUTS or OBS_LEN not in LAYOUTS or old_outputs not in NEW_HEADS:
         raise SystemExit(f"no record of a layout with {old_obs} inputs and {old_outputs} outputs")
-    inputs, heads = NEW_INPUTS[old_obs], NEW_HEADS[old_outputs]
-    if old_obs + sum(n for _, n in inputs) != OBS_LEN or old_outputs + sum(n for n, _ in heads) != sum(HEAD_SIZES):
-        raise SystemExit("this build's layout does not match the records in widen.py")
+    places = torch.tensor(column_map(old_obs, OBS_LEN))
+    heads = NEW_HEADS[old_outputs]
+    if old_outputs + sum(n for n, _ in heads) != sum(HEAD_SIZES):
+        raise SystemExit("this build's heads do not match the records in widen.py")
     env = ShipVecEnv(default_pool(["Thebus.json"]), games=1, threads=1)
     new = MaskablePPO(
         "MlpPolicy",
@@ -59,9 +78,6 @@ def widen(old_path: str, new_path: str) -> None:
     )
     old_state = old.policy.state_dict()
     new_state = new.policy.state_dict()
-    kept = np.ones(OBS_LEN, dtype=bool)
-    for at, n in inputs:
-        kept[at : at + n] = False
     widened = {}
     for name, new_tensor in new_state.items():
         old_tensor = old_state[name]
@@ -70,7 +86,7 @@ def widen(old_path: str, new_path: str) -> None:
         elif name.endswith("0.weight") and old_tensor.shape[1] == old_obs:
             # A first layer: old columns into the kept inputs, zeros for the new.
             tensor = torch.zeros_like(new_tensor)
-            tensor[:, torch.from_numpy(kept)] = old_tensor
+            tensor[:, places] = old_tensor
             widened[name] = tensor
         elif name == "action_net.weight":
             tensor = new_tensor.clone() * 0.01
@@ -91,12 +107,53 @@ def widen(old_path: str, new_path: str) -> None:
     print(f"{old_path} ({old_obs} inputs, {old_outputs} outputs) -> {new_path} ({OBS_LEN}, {sum(HEAD_SIZES)})")
 
 
+def widen_pt(old_path: str, new_path: str) -> None:
+    """The same for the new learner's .pt checkpoints."""
+    from callisto_rl.policy import Policy
+
+    saved = torch.load(old_path, map_location="cpu", weights_only=False)
+    old_state = saved["state"]
+    old_obs = old_state["pi.0.weight"].shape[1]
+    old_outputs = old_state["action_net.weight"].shape[0]
+    if old_obs not in LAYOUTS or OBS_LEN not in LAYOUTS or old_outputs not in NEW_HEADS:
+        raise SystemExit(f"no record of a layout with {old_obs} inputs and {old_outputs} outputs")
+    places = torch.tensor(column_map(old_obs, OBS_LEN))
+    heads = NEW_HEADS[old_outputs]
+    new = Policy(saved.get("hidden", (512, 512, 256)))
+    new_state = new.state_dict()
+    for name, tensor in new_state.items():
+        old = old_state[name]
+        if old.shape == tensor.shape:
+            new_state[name] = old.clone()
+        elif name in ("pi.0.weight", "vf.0.weight"):
+            widened = torch.zeros_like(tensor)
+            widened[:, places] = old
+            new_state[name] = widened
+        elif name == "action_net.weight":
+            widened = tensor.clone() * 0.01
+            widened[:old_outputs] = old
+            new_state[name] = widened
+        elif name == "action_net.bias":
+            widened = torch.zeros_like(tensor)
+            widened[:old_outputs] = old
+            at = old_outputs
+            for size, bias in heads:
+                widened[at] = bias
+                at += size
+            new_state[name] = widened
+        else:
+            raise SystemExit(f"cannot carry {name} from {tuple(old.shape)} to {tuple(tensor.shape)}")
+    new.load_state_dict(new_state)
+    new.save(new_path, {k: v for k, v in saved.items() if k not in ("state", "hidden")})
+    print(f"{old_path} ({old_obs} inputs, {old_outputs} outputs) -> {new_path} ({OBS_LEN}, {sum(HEAD_SIZES)})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("old")
     parser.add_argument("new")
     args = parser.parse_args()
-    widen(args.old, args.new)
+    (widen if args.old.endswith(".zip") else widen_pt)(args.old, args.new)
 
 
 if __name__ == "__main__":

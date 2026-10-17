@@ -24,7 +24,7 @@ use ai_ships::observation::{Contact, Observation};
 use callisto::entity::{Entity, Vec3};
 use callisto::ship::{Goal, Ship};
 use callisto::software::SoftwareKind;
-use callisto::tactics::{self, BandOdds, BANDS};
+use callisto::tactics::{self, BandOdds, Posture, BANDS};
 use cgmath::InnerSpace;
 
 use crate::action::{self, Head, MASK_LEN};
@@ -37,9 +37,9 @@ pub const FRIENDS: usize = MAX_SHIPS - 1;
 /// Slots for enemies.
 pub const ENEMIES: usize = MAX_SHIPS;
 
-pub const SELF_LEN: usize = 53;
+pub const SELF_LEN: usize = 67;
 pub const FRIEND_LEN: usize = 16;
-pub const ENEMY_LEN: usize = 42;
+pub const ENEMY_LEN: usize = 53;
 /// One ship's observation.
 pub const OBS_LEN: usize = SELF_LEN + FRIENDS * FRIEND_LEN + ENEMIES * ENEMY_LEN;
 
@@ -282,6 +282,67 @@ fn encode_self(ctx: &Context, me: &Ship, row: &mut [f32], friends: usize, enemie
   row[50] = f32::from(u8::from(me.get_crew().sensor_operators() >= 2));
   row[51] = f32::from(me.get_crew().get_leadership()).min(6.0) / 6.0;
   row[52] = (orders::missiles_inbound(view) as f32 / 10.0).min(1.0);
+  // Stealth and electronics, crew, magazine, burn, and missiles in flight.
+  row[53] = me.design.stealth.map_or(0.0, |stealth| (stealth as usize + 1) as f32 / 4.0);
+  row[54] = me.design.countermeasures.map_or(0.0, |cm| (cm as usize + 1) as f32 / 2.0);
+  let crew = me.get_crew();
+  row[55] = f32::from(crew.get_pilot()).min(4.0) / 4.0;
+  let mounts = me.weapons().len();
+  row[56] = if mounts == 0 {
+    0.0
+  } else {
+    (0..mounts).map(|mount| f32::from(crew.get_gunnery(mount))).sum::<f32>() / mounts as f32 / 4.0
+  };
+  row[57] = crew
+    .sensor_skills()
+    .iter()
+    .copied()
+    .max()
+    .map_or(0.0, |skill| f32::from(skill).min(4.0) / 4.0);
+  row[58] = crew
+    .engineers()
+    .iter()
+    .map(|e| f32::from(e.maneuver.max(e.power).max(e.jump)))
+    .fold(0.0, f32::max)
+    .min(4.0)
+    / 4.0;
+  let full = callisto::ship::Magazine::for_design(&me.design).missiles;
+  row[59] = if full == 0 {
+    0.0
+  } else {
+    (me.magazine.missiles as f32 / full as f32).min(1.0)
+  };
+  let burn = me.plan.0 .0;
+  row[60] = (burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;
+  row[61..64].copy_from_slice(&direction(burn));
+  let inbound: Vec<&callisto::missile::Missile> =
+    view.missiles.iter().filter(|missile| missile.target == name).collect();
+  row[64] = (inbound.len() as f32 / 5.0).min(1.0);
+  row[65] = inbound
+    .iter()
+    .map(|missile| rounds_to_reach(missile.get_position(), missile.get_velocity(), me))
+    .fold(f32::INFINITY, f32::min)
+    .min(5.0)
+    .mul_add(-0.2, 1.0)
+    .max(0.0);
+  row[66] = (view.missiles.iter().filter(|missile| missile.source == name).count() as f32 / 10.0).min(1.0);
+}
+
+/// Rounds until something at `position` moving at `velocity` reaches `me`,
+/// at its present closing speed: a missile's time to impact.
+fn rounds_to_reach(position: Vec3, velocity: Vec3, me: &Ship) -> f32 {
+  let offset = me.get_position() - position;
+  let distance = offset.magnitude();
+  let closing = if distance > 1e-9 {
+    (velocity - me.get_velocity()).dot(offset) / distance
+  } else {
+    1.0
+  };
+  if closing <= 0.0 {
+    f32::INFINITY
+  } else {
+    (distance / closing / callisto::entity::DELTA_TIME_F64) as f32
+  }
 }
 
 fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
@@ -325,6 +386,38 @@ fn encode_enemy(ctx: &Context, me: &Ship, enemy: &Enemy, row: &mut [f32]) {
     .find(|watcher| watcher.ours == name && watcher.by == enemy.name);
   row[18] = f32::from(u8::from(watcher.is_some()));
   row[19] = f32::from(u8::from(watcher.is_some_and(|watcher| watcher.lock)));
+  if let Some(contact) = enemy.contact {
+    // How likely this enemy is to find us this round, silent, sharing and
+    // active, and active while firing.
+    if let Some(exposure) = view
+      .exposures
+      .iter()
+      .find(|exposure| exposure.ours == name && exposure.contact == contact.name)
+    {
+      let found = |posture: Posture, firing: bool| {
+        exposure
+          .odds
+          .iter()
+          .find(|odds| odds.posture == posture && odds.firing == firing)
+          .map_or(0.0, |odds| odds.found as f32)
+      };
+      row[42] = found(Posture::Silent, false);
+      row[43] = found(Posture::Passive, false);
+      row[44] = found(Posture::Active, false);
+      row[45] = found(Posture::Active, true);
+    }
+    row[46] = contact.stealth.map_or(0.0, |stealth| (stealth as usize + 1) as f32 / 4.0);
+    row[47] = contact.countermeasures.map_or(0.0, |cm| (cm as usize + 1) as f32 / 2.0);
+    row[48] = (contact.burn.magnitude() / (10.0 * callisto::entity::G)).min(1.0) as f32;
+    row[49..52].copy_from_slice(&direction(contact.burn));
+  }
+  row[52] = (view
+    .missiles
+    .iter()
+    .filter(|missile| missile.source == enemy.name && missile.target == name)
+    .count() as f32
+    / 5.0)
+    .min(1.0);
 }
 
 /// Which choices of each head are open to `me`.
