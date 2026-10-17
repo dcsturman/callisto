@@ -81,6 +81,56 @@ only the scores, which depend on the vectors themselves. After three layers,
 a ship's vector carries what mattered to her from the rest of her side and
 from the enemy.
 
+#### Query, key and value are positions, not kinds of layer
+
+The three projections are ordinary linear layers, each a 128 × 128 matrix of
+weights plus a bias, applied to every vector alike. Nothing inside a layer
+makes it a query, a key or a value. What gives each its role is where its
+output goes in the two formulas:
+
+```
+score(A, B)  = query(A) · key(B) / √32  +  pair bias(A, B)
+weight(A, B) = softmax of score(A, ·) over every B     (A's weights sum to 1)
+new A        = A + output( Σ over B of weight(A, B) × value(B) )
+```
+
+The query is only ever the left of a score, the key only the right of one,
+the value only summed. Training shapes each layer for its place: query and
+key so that their product is high when B's information helps A win, value
+so that what B passes on is useful. The names come from the paper that
+introduced this design (2017), by analogy with looking something up: the
+query is what you search for, the key what each entry is indexed by, the
+value what you read when it matches.
+
+**Attention belongs to a pair, not to a ship.** How much A takes from B,
+`weight(A, B)`, depends on A's query and B's key together, and on every
+other ship's score too:
+
+* *The same key draws different attention from different ships.* B has one
+  key, the same for every A that looks at it; but each A has its own query,
+  so B can matter a great deal to one ship and hardly at all to another. A
+  gunship's key may match a frigate's query strongly (a threat to her) and a
+  squadron-mate's weakly.
+* *Attention is shared out.* The softmax makes A's weights over all ships sum
+  to one, so a good match to B still counts for less if another ship matches
+  A better.
+* *It need not be mutual.* Query and key are different layers, so
+  `score(A, B)` is not `score(B, A)`: a frigate can watch a gunship closely
+  while the gunship pays her little attention.
+
+A key is best read as a ship's profile, what she offers to be matched
+against; attention is the result of the match, one weight for every pair of
+ships, in every group of 32 and every layer.
+
+**Why √32.** Each score is a dot product of two 32-number vectors: a sum of
+32 products. If each product is about 1 in size and they vary at random,
+their sum is typically about √32 ≈ 5.7 in size (sums of random terms grow
+with the square root of their count). Scores that large make the softmax
+lopsided -- one weight near 1, the rest near 0 -- and training learns almost
+nothing through the weights stuck near zero. Dividing by √32 brings typical
+scores back to about 1, where the softmax stays soft. The 32 is the size of
+a group: 128 numbers in four groups.
+
 ### Stage 3: orders for each ship
 
 ![The output heads](figures/output_heads.svg)
