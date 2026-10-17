@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use ai_ships::commander::{self, Commander};
+use ai_ships::commander::Commander;
 use ai_ships::harness::{apply, hull_of, sides, Retreats};
 use ai_ships::observation::{observe, Observation};
 use callisto::authentication::MockAuthenticator;
@@ -302,7 +302,9 @@ impl Game {
       let control = controls[index].clone();
       let commander = match &control {
         Control::Agent => None,
-        Control::Baseline(name) => Some(commander::named(name, seed).unwrap_or_else(|| panic!("no baseline {name}"))),
+        Control::Baseline(name) => {
+          Some(crate::commander::named(name, seed).unwrap_or_else(|| panic!("no baseline {name}")))
+        }
       };
       let hull = hull_of(&world, ships);
       let own: Vec<Ship> = ships
@@ -424,9 +426,9 @@ impl Game {
   pub fn stand_in(&mut self, side: usize, baseline: Option<String>) {
     let commander = match (&self.sides[side].control, &baseline) {
       (Control::Baseline(name), None) => {
-        Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}")))
+        Some(crate::commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}")))
       }
-      (_, Some(name)) => Some(commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}"))),
+      (_, Some(name)) => Some(crate::commander::named(name, self.seed).unwrap_or_else(|| panic!("no baseline {name}"))),
       (Control::Agent, None) => None,
     };
     self.sides[side].commander = commander;

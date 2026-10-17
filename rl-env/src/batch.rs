@@ -95,7 +95,7 @@ impl Batch {
       return Err("a batch needs at least one scenario and one game".to_string());
     }
     if let Some(opponent) = &config.opponent {
-      ai_ships::commander::named(opponent, 0).ok_or_else(|| format!("no baseline {opponent}"))?;
+      crate::commander::named(opponent, 0).ok_or_else(|| format!("no baseline {opponent}"))?;
     }
     let scenarios = load(config)?;
 
@@ -176,7 +176,7 @@ impl Batch {
   /// Returns an error if there is no such game or side, or no such baseline.
   pub fn stand_in(&mut self, game: usize, side: usize, baseline: Option<&str>) -> Result<(), String> {
     if let Some(name) = baseline {
-      ai_ships::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
+      crate::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
     }
     let running = self.games.get_mut(game).ok_or_else(|| format!("no game {game}"))?;
     if side > 1 {

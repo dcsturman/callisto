@@ -58,6 +58,10 @@ class Settings:
     max_snapshots: int = 20
     scenarios: list[str] | None = None
     mix: Mix = field(default_factory=Mix)
+    #: A fixed, strong opponent: a per-ship network's exported file, played by
+    #: the engine in Rust. Logged as "teacher".
+    teacher: str = ""
+    teacher_share: float = 0.0
     #: Where learning runs. Playing stays on the cpu, in small batches.
     device: str = "mps" if torch.backends.mps.is_available() else "cpu"
 
@@ -90,6 +94,8 @@ class Player(threading.Thread):
 
     def draw(self) -> Opponent:
         mix = self.s.mix
+        if self.s.teacher and self.rng.random() < self.s.teacher_share:
+            return Opponent("teacher", f"net~:{self.s.teacher}")
         roll = self.rng.random()
         if roll < self.baseline_share:
             return Opponent("baseline", self.rng.choice(mix.baseline_names))
@@ -112,7 +118,8 @@ class Player(threading.Thread):
 
         def seat(game: int) -> None:
             opponents[game] = self.draw()
-            eng.stand_in(game, int(1 - learner_side[game]), opponents[game].which if opponents[game].kind == "baseline" else None)
+            played_by_engine = opponents[game].kind in ("baseline", "teacher")
+            eng.stand_in(game, int(1 - learner_side[game]), opponents[game].which if played_by_engine else None)
 
         for g in range(games):
             seat(g)
@@ -272,7 +279,7 @@ class Learner:
         by_goal = collections.defaultdict(list)
         for r in self.recent:
             by_opponent[r["opponent"]].append(r["outcome"])
-            if r["opponent"] not in ("self", "past"):
+            if r["opponent"] not in ("self", "past", "teacher"):
                 by_side[f"{r['scenario']}/{r['side']}"].append(r["outcome"] in WINS)
             by_goal[r["goal"]].append(r["return"] > 0)
         for opponent, outcomes in by_opponent.items():

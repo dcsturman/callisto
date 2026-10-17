@@ -221,3 +221,32 @@ impl Commander for Net {
     Some(self.last.clone())
   }
 }
+
+/// Networks read once and shared, by file.
+static LOADED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Arc<Policy>>>> =
+  std::sync::OnceLock::new();
+
+/// A commander by name: a baseline (`close`, `hold`, ...), or a trained
+/// per-ship network from its exported file, `net:<file.cpol>` playing its
+/// best choice or `net~:<file.cpol>` drawing as in training. Each file is
+/// read once.
+#[must_use]
+pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
+  let Some((sampling, path)) = name
+    .strip_prefix("net~:")
+    .map(|path| (true, path))
+    .or_else(|| name.strip_prefix("net:").map(|path| (false, path)))
+  else {
+    return ai_ships::commander::named(name, seed);
+  };
+  let mut loaded = LOADED.get_or_init(Default::default).lock().ok()?;
+  let policy = if let Some(policy) = loaded.get(path) {
+    Arc::clone(policy)
+  } else {
+    let policy = Arc::new(Policy::load(path).map_err(|e| eprintln!("{e}")).ok()?);
+    loaded.insert(path.to_string(), Arc::clone(&policy));
+    policy
+  };
+  let net = Net::new(policy);
+  Some(Box::new(if sampling { net.sampling(seed) } else { net }))
+}

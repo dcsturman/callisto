@@ -140,7 +140,7 @@ impl SideBatch {
   /// Returns an error if there is no such game or side, or no such baseline.
   pub fn stand_in(&mut self, game: usize, side: usize, baseline: Option<&str>) -> Result<(), String> {
     if let Some(name) = baseline {
-      ai_ships::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
+      crate::commander::named(name, 0).ok_or_else(|| format!("no baseline {name}"))?;
     }
     if side > 1 {
       return Err(format!("no side {side}"));

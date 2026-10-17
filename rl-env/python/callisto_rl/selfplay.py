@@ -36,7 +36,7 @@ from .vec_env import DESIGNS, default_pool, outcome_for
 class Opponent:
     """Who plays the other side of a game."""
 
-    kind: str  # "self", "past" or "baseline"
+    kind: str  # "self", "past", "baseline" or "teacher"
     #: The snapshot's index in the pool, or the baseline's name.
     which: int | str | None = None
 
@@ -46,6 +46,8 @@ class Opponent:
             return "self"
         if self.kind == "past":
             return "past"
+        if self.kind == "teacher":
+            return "teacher"
         return str(self.which)
 
 
