@@ -62,6 +62,9 @@ class Settings:
     #: the engine in Rust. Logged as "teacher".
     teacher: str = ""
     teacher_share: float = 0.0
+    #: Let the learning rate fall in a straight line to this fraction of
+    #: itself by the end of the run (1.0 keeps it constant).
+    final_lr_fraction: float = 1.0
     #: Where learning runs. Playing stays on the cpu, in small batches.
     device: str = "mps" if torch.backends.mps.is_available() else "cpu"
 
@@ -303,6 +306,10 @@ def train(net: SideNet, s: Settings, total_steps: int, log: Callable, save: Call
     started = time.perf_counter()
     try:
         while learner.decisions < total_steps:
+            done_share = min(1.0, learner.decisions / max(1, total_steps))
+            rate = s.learning_rate * (1.0 - (1.0 - s.final_lr_fraction) * done_share)
+            for group in learner.optimizer.param_groups:
+                group["lr"] = rate
             batch = batches.get()
             if batch is None:
                 raise RuntimeError("the player stopped") from player.error
@@ -312,6 +319,7 @@ def train(net: SideNet, s: Settings, total_steps: int, log: Callable, save: Call
             done = min(1.0, learner.decisions / max(1, s.taper_steps))
             player.baseline_share = s.baselines_start + (s.baselines_end - s.baselines_start) * done
             stats["pool/baseline_share"] = player.baseline_share
+            stats["train/learning_rate"] = rate
             stats["pool/snapshots"] = len(player.snapshots)
             stats["time/fps"] = learner.decisions / (time.perf_counter() - started)
             if learner.decisions >= next_snapshot:
