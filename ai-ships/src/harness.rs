@@ -309,7 +309,31 @@ pub async fn opening_view(scenario: &str, side: &str) -> Result<crate::observati
 /// # Panics
 /// Panics if the scenario cannot be loaded, as the backend does.
 pub async fn play(
+  scenario: &str, commanders: &CommanderPicker<'_>, max_rounds: u32, seed: u64, log: Option<&mut dyn Write>,
+) -> Result<Outcome, String> {
+  play_recorded(scenario, commanders, max_rounds, seed, log, None).await
+}
+
+/// One round's combat events, as the engine reports them to the players:
+/// who fired at whom, hits and misses, damage, interceptions, ships lost.
+#[derive(Debug, Clone, Serialize)]
+pub struct RoundEvents {
+  pub seed: u64,
+  pub round: u32,
+  pub effects: Vec<callisto::payloads::EffectMsg>,
+}
+
+/// [`play`], also writing every round's combat events to `events`, one JSON
+/// line per round.
+///
+/// # Errors
+/// As [`play`], and if an event line cannot be written.
+///
+/// # Panics
+/// As [`play`].
+pub async fn play_recorded(
   scenario: &str, commanders: &CommanderPicker<'_>, max_rounds: u32, seed: u64, mut log: Option<&mut dyn Write>,
+  mut events: Option<&mut dyn Write>,
 ) -> Result<Outcome, String> {
   let server = Arc::new(Server::new(&format!("harness-{seed}"), scenario).await);
   let player = PlayerManager::new(Some(server), Box::new(MockAuthenticator::new("")), true).with_seed(seed);
@@ -373,7 +397,12 @@ pub async fn play(
         }
       }
     }
-    let _ = player.update();
+    let round = player.get_entities().map(|world| world.round).unwrap_or_default();
+    let effects = player.update();
+    if let Some(events) = events.as_mut() {
+      let line = serde_json::to_string(&RoundEvents { seed, round, effects }).map_err(|e| e.to_string())?;
+      writeln!(events, "{line}").map_err(|e| e.to_string())?;
+    }
     rounds += 1;
   }
 
