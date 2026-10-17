@@ -51,6 +51,10 @@ class Settings:
     seed: int = 0
     destroy_goals: float = 0.7
     random_goals: float = 0.15
+    # Reward per round for the share of the enemy's ships destroyed, and of
+    # its firepower taken out, less the same for ours; off by default.
+    kill_bonus: float = 0.0
+    firepower_bonus: float = 0.0
     baselines_start: float = 0.3
     baselines_end: float = 0.15
     taper_steps: int = 10_000_000
@@ -112,6 +116,7 @@ class Player(threading.Thread):
         eng = SideEngine(
             scenarios, str(DESIGNS), s.games, max_rounds=s.max_rounds, seed=s.seed, threads=s.threads,
             random_goals=s.random_goals, destroy_goals=s.destroy_goals,
+            kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus,
         )
         games = eng.num_games
         learner_side = np.array([(g // len(scenarios)) % 2 for g in range(games)])

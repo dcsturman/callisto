@@ -46,6 +46,7 @@ fn random_play_is_legal() {
     threads: 4,
     random_goals: 0.3,
     destroy_goals: 0.4,
+    shaping: callisto_rl::game::Shaping::default(),
   };
   let mut batch = Batch::new(&config).expect("the pool loads");
   let slots = batch.slots();
@@ -220,6 +221,7 @@ fn random_whole_side_play_is_legal() {
     threads: 4,
     random_goals: 0.3,
     destroy_goals: 0.4,
+    shaping: callisto_rl::game::Shaping::default(),
   };
   let mut batch = SideBatch::new(&config).expect("the pool loads");
   let entries = 2 * batch.games();

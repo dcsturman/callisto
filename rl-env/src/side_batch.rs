@@ -114,7 +114,8 @@ impl SideBatch {
           config.seed + index as u64,
           config.max_rounds,
         )
-        .with_goals(config.destroy_goals, config.random_goals),
+        .with_goals(config.destroy_goals, config.random_goals)
+        .with_shaping(config.shaping),
         returns: [0.0; 2],
       })
       .collect();

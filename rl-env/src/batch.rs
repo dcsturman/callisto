@@ -36,6 +36,8 @@ pub struct Config {
   /// The share where each side's goal is drawn at random. The rest play the
   /// scenario's goals.
   pub random_goals: f32,
+  /// Reward for kills and firepower taken out, beyond hull.
+  pub shaping: crate::game::Shaping,
 }
 
 /// A game that finished this step.
@@ -115,7 +117,8 @@ impl Batch {
         };
         Running {
           game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds)
-            .with_goals(config.destroy_goals, config.random_goals),
+            .with_goals(config.destroy_goals, config.random_goals)
+            .with_shaping(config.shaping),
           returns: [0.0; 2],
         }
       })
