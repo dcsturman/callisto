@@ -430,7 +430,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -443,7 +443,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Wyvern",
@@ -469,7 +469,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -482,7 +482,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Drake",
@@ -508,7 +508,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -521,7 +521,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Basilisk",
@@ -547,7 +547,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -560,7 +560,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Lindworm",
@@ -586,7 +586,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -599,7 +599,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Amphiptere",
@@ -625,7 +625,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -638,7 +638,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Tarasque",
@@ -664,7 +664,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -677,7 +677,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Ouroboros",
@@ -703,7 +703,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -716,7 +716,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Zilant",
@@ -742,7 +742,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -755,7 +755,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Lung",
@@ -781,7 +781,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -794,7 +794,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Ryu",
@@ -820,7 +820,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -833,7 +833,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     },
     {
       "name": "Vouivre",
@@ -859,7 +859,7 @@
       ],
       "design": "System Defense Boat",
       "team": "Red",
-      "goal": "destroy",
+      "goal": "hold",
       "crew": {
         "pilot": 2,
         "engineering_jump": 2,
@@ -872,7 +872,7 @@
         ],
         "leadership": 2
       },
-      "orders": "System defence squadron. Destroy the intruders."
+      "orders": "System defence squadron. Hold this space: do not let the intruders drive you off."
     }
   ]
 }

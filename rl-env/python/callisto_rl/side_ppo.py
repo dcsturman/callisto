@@ -56,6 +56,13 @@ class Settings:
     # Reward per round for the share of the enemy's ships destroyed, and of
     # its firepower taken out, less the same for ours; off by default.
     kill_bonus: float = 0.0
+    #: Reward per round to a holding side while it keeps a ship near where it
+    #: started; 0 for none.
+    hold_bonus: float = 0.0
+    #: The scripted opponents baselines are drawn from, comma-separated: of
+    #: close, hold, charger (rushes to its biggest guns' range), kiter (holds
+    #: at its best edge, backing off), squadron, spread.
+    baselines: str = "close,hold"
     firepower_bonus: float = 0.0
     #: How much each game's opening is varied, 0 for none: at 0.3 the fleets'
     #: distance apart changes by up to 30%, the second fleet shifts sideways,
@@ -185,7 +192,7 @@ class Player(threading.Thread):
             roll -= share
         roll = self.rng.random()
         if roll < self.baseline_share:
-            return Opponent("baseline", self.rng.choice(mix.baseline_names))
+            return Opponent("baseline", self.rng.choice([n.strip() for n in self.s.baselines.split(",") if n.strip()]))
         if roll < self.baseline_share + mix.past and self.snapshots:
             return Opponent("past", self.rng.randrange(len(self.snapshots)))
         return Opponent("self")
@@ -196,6 +203,7 @@ class Player(threading.Thread):
             scenarios, str(DESIGNS), s.games // max(1, s.groups), max_rounds=s.max_rounds, seed=s.seed + 1_000_003 * k,
             threads=s.threads, random_goals=s.random_goals, destroy_goals=s.destroy_goals,
             kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus, random_starts=s.random_starts,
+            hold_bonus=s.hold_bonus,
         )
         group = Group(eng, scenarios)
         for g in range(group.games):

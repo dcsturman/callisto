@@ -227,6 +227,10 @@ pub struct Shaping {
   /// Per round, this times the share of the enemy's firepower taken out, less
   /// the share of ours. See [`firepower`].
   pub firepower: f32,
+  /// Per round, this to a side whose goal is Hold while one of its ships is
+  /// within [`HOLD_RADIUS`] of where it started: holding pays as it goes,
+  /// not only in a draw at the end.
+  pub hold: f32,
 }
 
 /// Gunners assumed for firepower, on both sides alike: the skill the models
@@ -848,6 +852,19 @@ impl Game {
     let mut rewards = [0, 1].map(|side| SHAPING * (lost[1 - side] - lost[side]) - ROUND_COST);
     for (side, hull) in self.sides.iter_mut().zip(hulls) {
       side.hull_last = hull;
+    }
+    if self.shaping.hold != 0.0 {
+      for (reward, state) in rewards.iter_mut().zip(&self.sides) {
+        let holding = state.goal == Goal::Hold
+          && state
+            .ships
+            .iter()
+            .filter_map(|ship| self.world.ships.get(ship))
+            .any(|ship| (ship.read().unwrap().get_position() - state.start).magnitude() <= HOLD_RADIUS);
+        if holding {
+          *reward += self.shaping.hold;
+        }
+      }
     }
     if self.shaping.kills != 0.0 {
       let still = [0, 1].map(|side| {

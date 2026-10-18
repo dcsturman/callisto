@@ -213,6 +213,81 @@ impl Commander for Close {
   }
 }
 
+/// The band against `contact` that `score` rates highest for our ship
+/// `ours`, from each band's (our expected damage, theirs) as shares of the
+/// target's and our hull; bands where we cannot hurt them are never chosen.
+/// Ties go to the nearer band if `nearer`, else the farther.
+fn band_by(view: &Observation, ours: &str, contact: &Contact, score: impl Fn(f64, f64) -> f64, nearer: bool) -> Range {
+  let our_hull = view
+    .own
+    .iter()
+    .find(|ship| ship.get_name() == ours)
+    .map_or(1.0, |ship| f64::from(ship.current_hull.max(1)));
+  let their_hull = f64::from(contact.design_hull.max(1));
+  view.engagement(ours, &contact.name).map_or(Range::Long, |table| {
+    let rated: Vec<(f64, Range)> = table
+      .we_hit
+      .iter()
+      .zip(&table.they_hit)
+      .filter(|(we, _)| we.expected_damage > 0.0)
+      .map(|(we, they)| (score(we.expected_damage / their_hull, they.expected_damage / our_hull), we.band))
+      .collect();
+    let best = rated.iter().map(|(rating, _)| *rating).fold(f64::NEG_INFINITY, f64::max);
+    let tied = rated.iter().filter(|(rating, _)| *rating >= best - 1e-9).map(|(_, band)| *band);
+    let order = |a: &Range, b: &Range| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal);
+    if nearer { tied.min_by(order) } else { tied.max_by(order) }.unwrap_or(Range::Long)
+  })
+}
+
+/// [`Close`], but always to the band where its own guns do the most damage,
+/// whatever the enemy's do there, and the nearer on a tie: a brawler that
+/// brings its biggest gun to bear. With a fusion bay that means Medium or
+/// Short, and it charges.
+#[derive(Debug, Default)]
+pub struct Charger;
+
+#[async_trait]
+impl Commander for Charger {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    let target = target(view);
+    view
+      .own
+      .iter()
+      .map(|ship| {
+        let helm = target.map_or(Helm::Hold, |target| Helm::Intercept {
+          target: target.name.clone(),
+          band: band_by(view, ship.get_name(), target, |ours, _| ours, true),
+        });
+        (ship.get_name().to_string(), fight(target, helm))
+      })
+      .collect()
+  }
+}
+
+/// [`Close`], but holding at the band where it out-damages the enemy most,
+/// and the farther on a tie, backing away if the enemy closes: a kiter that
+/// keeps its long guns' edge and never lets a brawler in.
+#[derive(Debug, Default)]
+pub struct Kiter;
+
+#[async_trait]
+impl Commander for Kiter {
+  async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
+    let target = target(view);
+    view
+      .own
+      .iter()
+      .map(|ship| {
+        let helm = target.map_or(Helm::Hold, |target| Helm::HoldRange {
+          target: target.name.clone(),
+          band: band_by(view, ship.get_name(), target, |ours, theirs| ours - theirs, false),
+        });
+        (ship.get_name().to_string(), fight(target, helm))
+      })
+      .collect()
+  }
+}
+
 /// [`Close`], with its fire spread: every ship flies exactly as `Close`
 /// does, but the ships share the enemies out between them, nearest first,
 /// one each in turn, instead of all firing at one. Playing one against the
@@ -416,7 +491,7 @@ impl Commander for Replay {
 }
 
 /// A commander by name, for the harness and configuration: `idle`, `hold`,
-/// `close`, `squadron`, `spread`, `random`, or `replay:<log file>:<side>`. `seed` is used by those
+/// `close`, `squadron`, `spread`, `charger`, `kiter`, `random`, or `replay:<log file>:<side>`. `seed` is used by those
 /// that roll dice of their own. Models are named through
 /// [`crate::llm::named`].
 #[must_use]
@@ -433,6 +508,8 @@ pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
     "close" => Some(Box::new(Close)),
     "squadron" => Some(Box::new(Squadron)),
     "spread" => Some(Box::new(Spread)),
+    "charger" => Some(Box::new(Charger)),
+    "kiter" => Some(Box::new(Kiter)),
     "random" => Some(Box::new(Random::seeded(seed))),
     _ => None,
   }
