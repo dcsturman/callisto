@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Measure training speed on this machine: a short run with side-5's settings, then the
+# decisions a second and where the time went. Run from rl-env/ after cloud_setup.sh,
+# with checkpoints/side-4/final.pt and checkpoints/teachers/ in place.
+set -euo pipefail
+STEPS=${STEPS:-1500000}
+THREADS=${THREADS:-$(( $(nproc 2>/dev/null || sysctl -n hw.ncpu) - 2 ))}
+NAME=${NAME:-bench-$(hostname -s)}
+.venv/bin/python scripts/side_ppo.py --init-from checkpoints/side-4/final.pt --steps "$STEPS" --games 128 --threads "$THREADS" \
+  --teachers "0.35=side~:checkpoints/teachers/side-4.cside,0.05=net~:checkpoints/teachers/selfplay-9.cpol" \
+  --baselines-start 0.08 --baselines-end 0.08 --destroy-goals 1.0 --random-goals 0 --firepower-bonus 0.2 \
+  --name "$NAME" > "bench-$NAME.log" 2>&1
+.venv/bin/python - "$NAME" "$THREADS" <<'PY'
+import glob, sys, numpy as np, torch
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+name, threads = sys.argv[1], sys.argv[2]
+ea = EventAccumulator(sorted(glob.glob(f"runs/{name}/events*"))[-1]); ea.Reload()
+def med(tag, skip=10):
+    v = np.array([x.value for x in ea.Scalars(tag)]); return float(np.median(v[skip:])) if len(v) > skip else float(np.median(v))
+print(f"device {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu/mps'}, threads {threads}")
+fps = [x for x in ea.Scalars("time/fps")]
+print(f"decisions a second, at the end: {fps[-1].value:,.0f}")
+for t in ["time/play_net", "time/play_engine", "time/learn", "time/learn_waiting"]:
+    print(f"{t:20s} {med(t):6.3f} s a batch")
+PY
