@@ -97,7 +97,8 @@ fn load(path: &str) -> Arc<Scenario> {
 
 /// Every round of a game of `close` against `close`, `close`'s orders for the
 /// first side put through the action heads and back must keep its decisions:
-/// helm, fire, lock, posture, dodge and assist. The heads add what `close`
+/// helm, lock, posture, dodge and assist, and fire whenever it fired (shared
+/// out past overkill). The heads add what `close`
 /// never orders (the captain's boosts, every engineer repairing), so whole
 /// games are no longer identical; the decisions must be.
 fn close_survives_the_heads(scenario: &Arc<Scenario>, seed: u64) -> usize {
@@ -126,7 +127,17 @@ fn close_survives_the_heads(scenario: &Arc<Scenario>, seed: u64) -> usize {
       let (_, given) = intents.iter().find(|(ship, _)| *ship == name).unwrap();
       let ship = view.own.iter().find(|ship| ship.get_name() == name).unwrap();
       assert_eq!(back.helm, given.helm, "{name}: helm");
-      assert_eq!(back.fire, given.fire, "{name}: fire");
+      // Fire is shared out past overkill (see `action::share_fire`), so a
+      // ship's guns may go to other targets than the one chosen, but she
+      // still fires whenever she was told to, and only at enemies she sees.
+      assert_eq!(back.fire.is_empty(), given.fire.is_empty(), "{name}: fire");
+      for engage in &back.fire {
+        assert!(
+          view.enemies().iter().any(|contact| contact.name == engage.target),
+          "{name}: fire at {}, not an enemy in contact",
+          engage.target
+        );
+      }
       assert_eq!(back.sensors, given.sensors, "{name}: lock");
       let posture_now = callisto_rl::encode::posture_of(ship);
       let posture = given.posture.map_or(posture_now, |p| {
