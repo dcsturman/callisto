@@ -31,6 +31,9 @@ SIDE_POOL = POOL + [
     # A convoy that must jump clear against corsairs that must stop it: the
     # one scenario where a side's goal is Escape.
     "Convoy Escape.json",
+    # Short-reach heavy guns against long-reach ones: the brawlers must close,
+    # the kiters must keep their distance.
+    "Brawlers and Kiters.json",
 ]
 
 
