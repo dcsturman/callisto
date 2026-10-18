@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fighter Screen",
     "owner": "dcsturman@gmail.com",
-    "description": "Two mirror forces in open space: each a Kinunir colonial cruiser standing in for a carrier, with fifteen heavy fighters formed up 2,000 km ahead of her, five abreast in three rows. The fighter screens start 55,000 km apart, at rest: at Distant, where each side has only the other's blips until they close. For training a network on fights larger than eight ships a side."
+    "description": "Two mirror forces in open space: each a Kinunir colonial cruiser standing in for a carrier, with fifteen light fighters formed up 2,000 km ahead of her, five abreast in three rows. The fighter screens start 20,000 km apart, at rest, inside Long range. For training a network on fights larger than eight ships a side."
   },
   "planets": [],
   "ships": [
@@ -71,14 +71,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -106,14 +105,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -141,14 +139,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -176,14 +173,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -211,14 +207,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -246,14 +241,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -281,14 +275,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -316,14 +309,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -351,14 +343,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -386,14 +377,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -421,14 +411,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -456,14 +445,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -491,14 +479,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -526,14 +513,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -561,14 +547,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Blue",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -577,7 +562,7 @@
     {
       "name": "CS Tarsis",
       "position": [
-        57000000.0,
+        22000000.0,
         0.0,
         0.0
       ],
@@ -620,7 +605,7 @@
     {
       "name": "Spear 01",
       "position": [
-        54750000.0,
+        19750000.0,
         -500000.0,
         0.0
       ],
@@ -639,14 +624,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -655,7 +639,7 @@
     {
       "name": "Spear 02",
       "position": [
-        54750000.0,
+        19750000.0,
         -250000.0,
         0.0
       ],
@@ -674,14 +658,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -690,7 +673,7 @@
     {
       "name": "Spear 03",
       "position": [
-        54750000.0,
+        19750000.0,
         0.0,
         0.0
       ],
@@ -709,14 +692,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -725,7 +707,7 @@
     {
       "name": "Spear 04",
       "position": [
-        54750000.0,
+        19750000.0,
         250000.0,
         0.0
       ],
@@ -744,14 +726,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -760,7 +741,7 @@
     {
       "name": "Spear 05",
       "position": [
-        54750000.0,
+        19750000.0,
         500000.0,
         0.0
       ],
@@ -779,14 +760,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -795,7 +775,7 @@
     {
       "name": "Spear 06",
       "position": [
-        55000000.0,
+        20000000.0,
         -500000.0,
         0.0
       ],
@@ -814,14 +794,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -830,7 +809,7 @@
     {
       "name": "Spear 07",
       "position": [
-        55000000.0,
+        20000000.0,
         -250000.0,
         0.0
       ],
@@ -849,14 +828,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -865,7 +843,7 @@
     {
       "name": "Spear 08",
       "position": [
-        55000000.0,
+        20000000.0,
         0.0,
         0.0
       ],
@@ -884,14 +862,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -900,7 +877,7 @@
     {
       "name": "Spear 09",
       "position": [
-        55000000.0,
+        20000000.0,
         250000.0,
         0.0
       ],
@@ -919,14 +896,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -935,7 +911,7 @@
     {
       "name": "Spear 10",
       "position": [
-        55000000.0,
+        20000000.0,
         500000.0,
         0.0
       ],
@@ -954,14 +930,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -970,7 +945,7 @@
     {
       "name": "Spear 11",
       "position": [
-        55250000.0,
+        20250000.0,
         -500000.0,
         0.0
       ],
@@ -989,14 +964,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -1005,7 +979,7 @@
     {
       "name": "Spear 12",
       "position": [
-        55250000.0,
+        20250000.0,
         -250000.0,
         0.0
       ],
@@ -1024,14 +998,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -1040,7 +1013,7 @@
     {
       "name": "Spear 13",
       "position": [
-        55250000.0,
+        20250000.0,
         0.0,
         0.0
       ],
@@ -1059,14 +1032,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -1075,7 +1047,7 @@
     {
       "name": "Spear 14",
       "position": [
-        55250000.0,
+        20250000.0,
         250000.0,
         0.0
       ],
@@ -1094,14 +1066,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },
@@ -1110,7 +1081,7 @@
     {
       "name": "Spear 15",
       "position": [
-        55250000.0,
+        20250000.0,
         500000.0,
         0.0
       ],
@@ -1129,14 +1100,13 @@
           50000
         ]
       ],
-      "design": "Heavy Fighter",
+      "design": "Light Fighter",
       "team": "Red",
       "goal": "destroy",
       "crew": {
         "pilot": 4,
         "sensors": 2,
         "gunnery": [
-          2,
           2
         ]
       },

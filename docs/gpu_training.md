@@ -110,25 +110,44 @@ rsync -avz -e "ssh -p <port>" root@<ip>:callisto/rl-env/checkpoints/side-20-1 rl
 
 ## Unattended runs, overnight
 
-The Mac runs the whole thing through RunPod's API: create the pod, set it
-up, train, copy the network and results home, terminate it, and check that
-nothing is left running.
+`rl-env/scripts/cloud_train.sh` runs a training on a pod and brings it home;
+`rl-env/scripts/pod_supervise.sh` runs on the pod and removes it afterwards.
 
-- **A hard deadline.** Whatever happens, the pod is terminated when the run's
-  time budget is spent, finished or not, after copying what exists.
-- **The Mac must stay awake and online,** held by `caffeinate`, since it is
-  the one that terminates. If it sleeps or loses its connection, the pod
-  keeps billing.
-- **A backup on the pod itself:** a timer that terminates the pod through
-  the API a little after the deadline. That needs the API key on the pod for
-  the run; it is deleted with the pod.
-- **The credit balance is the last line:** at $0 RunPod stops the pod
-  itself.
+1. **Create the pod** (Claude does this through the RunPod plugin): Secure
+   Cloud, the PyTorch 2.8 CUDA 12.8 image, SSH on port 22, and at least 16
+   vCPUs. Note its SSH address and port.
+2. **Start the controller on the Mac**, with the run's name, a time limit in
+   hours, and the training's settings:
 
-RunPod's REST API is at `https://rest.runpod.io/v1` (`POST /pods`,
-`DELETE /pods/{id}` to terminate, `GET /pods`), with
-`Authorization: Bearer <key>`; `runpodctl` and the `runpod` Python package
-do the same.
+   ```
+   cd rl-env
+   nohup caffeinate -i scripts/cloud_train.sh <ip> <port> side-20-2 3 \
+     --init-from checkpoints/side-20-1/final.pt --games 256 --groups 2 --threads 14 \
+     ...the run's settings... --wandb > /dev/null 2>&1 &
+   ```
+
+   It sets the pod up and copies the starting networks over (`UPLOAD`).
+3. **Sign in to W&B on the pod** when it asks; it prints the two commands:
+
+   ```
+   ssh -i ~/.ssh/id_ed25519 -p <port> root@<ip>
+   cd callisto/rl-env && .venv/bin/wandb login --host https://api.forge.coreweave.com
+   ```
+
+   It waits for that, then starts training, and its log
+   (`rl-env/logs/cloud-<run name>.log`) says so.
+4. **Nothing else.** Every ten minutes the Mac copies the run's checkpoints and
+   charts home (`checkpoints/<run name>`, `runs/<run name>`). When training
+   ends, or the time limit passes, it makes a last copy and tells the pod,
+   which removes itself.
+
+**If the Mac sleeps or goes offline,** the pod still removes itself 45 minutes
+after training stops, with whatever the Mac copied before. It uses RunPod's own
+tool and the key RunPod gives every pod; no account API key is needed. The
+credit balance is the last line: at $0 RunPod stops the pod.
+
+Tested end to end on a 4090 pod (18 October 2026): set up, trained, copied
+home, and the pod removed itself.
 
 ## Before the first rental
 
@@ -142,7 +161,5 @@ Work that needs no GPU, done on the Mac while side-5 trains:
 - a round limit of 60 to 80 for big scenarios;
 - the firepower reward capped at a target's hull, so overkill counts nothing;
 - choosing orders on the GPU, not the cpu;
-- the unattended controller: create the pod, train, copy home, terminate,
-  with the deadline and the backup timer;
 - a short run on the machine's first hour to measure its speed, so the
   budget above becomes a number.
