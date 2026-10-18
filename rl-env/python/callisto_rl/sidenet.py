@@ -162,13 +162,16 @@ class SideNet(nn.Module):
         log_probs, open_ = self.layout.log_probs(flat_logits, flat_masks)
         return log_probs, open_
 
-    def act(self, own, foes, side, pairs, masks, deterministic: bool = False):
+    def act(self, own, foes, side, pairs, masks, deterministic: bool = False, per_ship: bool = False):
+        """Sampled actions, their log-probability summed over each entry's
+        ships (or each ship's, ``[entries, OWN]``, with `per_ship`), and the
+        side's value."""
         logits, value = self(own, foes, side, pairs, masks)
         log_probs, open_ = self._dist(logits, masks)
         actions = Heads.sample(log_probs, open_, deterministic)  # [b*OWN, H]
         b = own.shape[0]
-        logp = Heads.log_prob(log_probs, actions).view(b, OWN).sum(1)
-        return actions.view(b, OWN, -1), logp, value
+        logp = Heads.log_prob(log_probs, actions).view(b, OWN)
+        return actions.view(b, OWN, -1), (logp if per_ship else logp.sum(1)), value
 
     def evaluate(self, own, foes, side, pairs, masks, actions, per_ship: bool = False):
         """Log-probability and entropy of each entry's actions, summed over its

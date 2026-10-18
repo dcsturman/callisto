@@ -86,6 +86,13 @@ class Settings:
     #: the side, and learning blows up; per ship, as multi-agent PPO does, it
     #: does not.
     ratio: str = "ship"
+    #: Leave a ship's move out of an update when the network learning from it
+    #: gives it less than this fraction of the chance the player gave it. The
+    #: player is one update behind, so now and then it makes a move the
+    #: learner thinks next to impossible; PPO's ratio for such a move swings
+    #: wildly, wrecking approx_kl and, for a move that went badly, pushing hard
+    #: past the clip. 0 keeps every move.
+    stale: float = 1e-3
     #: Let the learning rate fall in a straight line to this fraction of
     #: itself by the end of the run (1.0 keeps it constant).
     final_lr_fraction: float = 1.0
@@ -209,16 +216,16 @@ class Player(threading.Thread):
         # Every view to the playing device in one transfer.
         on_device = [t.to(self.device) for t in tensors]
 
-        def play(net: SideNet, rows: np.ndarray):
+        def play(net: SideNet, rows: np.ndarray, per_ship: bool = False):
             index = torch.as_tensor(rows, device=self.device)
             with torch.no_grad():
-                return net.act(*[t[index] for t in on_device])
+                return net.act(*[t[index] for t in on_device], per_ship=per_ship)
 
         opponents, games = group.opponents, group.games
         # The network now: the learner's sides and the "self" opponents in one pass.
         selfish = [group.opponent_rows[g] for g in range(games) if opponents[g].kind == "self"]
         rows = np.concatenate([group.learner_rows, np.array(selfish, dtype=np.int64)])
-        a, logp, value = (x.cpu() for x in play(self.copy, rows))
+        a, logp, value = (x.cpu() for x in play(self.copy, rows, per_ship=True))
         actions[rows] = a.numpy()
         for key in sorted({o.which for o in opponents if o.kind == "past"}):
             past_rows = np.array([group.opponent_rows[g] for g in range(games) if opponents[g].kind == "past" and opponents[g].which == key])
@@ -333,7 +340,10 @@ class Learner:
 
     @torch.no_grad()
     def rescore(self, batch: dict) -> None:
+        """Score the batch with the network as it is now, and mark the moves
+        it finds stale: far less likely now than when they were played."""
         steps, n = batch["rewards"].shape
+        played = batch["log_probs"]
         flat = [v.reshape(steps * n, *v.shape[2:]) for v in batch["views"]]
         actions = batch["actions"].reshape(steps * n, *batch["actions"].shape[2:])
         lps, vals = [], []
@@ -344,6 +354,10 @@ class Learner:
             lps.append(lp.cpu())
             vals.append(v.cpu())
         batch["log_probs"] = torch.cat(lps).view(steps, n, -1)
+        if self.s.stale > 0 and played.dim() == 3:
+            batch["fresh"] = (batch["log_probs"] - played) > float(np.log(self.s.stale))
+        else:
+            batch["fresh"] = torch.ones_like(batch["log_probs"], dtype=torch.bool)
         batch["values"] = torch.cat(vals).view(steps, n)
         batch["last_value"] = self.net(*[v.to(d) for v in batch["last_views"]])[1].cpu()
 
@@ -369,8 +383,11 @@ class Learner:
         flat = [v.reshape(n, *v.shape[2:]).to(d) for v in batch["views"]]
         actions = batch["actions"].reshape(n, *batch["actions"].shape[2:]).to(d)
         old_lp, old_v = batch["log_probs"].reshape(n, -1).to(d), values.reshape(n).to(d)
-        # The ships each entry has, for averaging over ships.
+        # The ships each entry has, and whose moves are not stale, for
+        # averaging over ships.
         present = (flat[0][..., 0] > 0.5).float()
+        stale_share = 1.0 - float((batch["fresh"].reshape(n, -1).float().to(d) * present).sum() / present.sum().clamp(min=1.0))
+        present = present * batch["fresh"].reshape(n, -1).float().to(d)
         per_ship = s.ratio == "ship"
         if not per_ship:
             old_lp = old_lp.sum(1, keepdim=True)
@@ -414,6 +431,7 @@ class Learner:
         self.decisions += int((batch["views"][0][..., 0] > 0.5).sum())
         out = {f"train/{k}": float(np.mean(v)) for k, v in stats.items()}
         out["train/explained_variance"] = float(explained)
+        out["train/stale_share"] = stale_share
         return out
 
     def record(self, batch: dict) -> dict[str, float]:

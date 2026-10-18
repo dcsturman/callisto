@@ -16,7 +16,7 @@ use ai_ships::decision::{straggler_margin, STRAGGLER_STEP};
 use ai_ships::observation::Observation;
 use callisto::entity::Entity;
 use callisto::ship::{Range, Ship};
-use callisto::tactics::{Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
+use callisto::tactics::{self, Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
 
 use crate::orders;
 use cgmath::InnerSpace;
@@ -309,7 +309,7 @@ pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> V
     }
   }
 
-  own
+  let mut intents = own
     .iter()
     .map(|(ship, choice, picture)| {
       let name = ship.get_name();
@@ -324,7 +324,120 @@ pub fn side_intents(own: &[(&Ship, &Choice, &Picture)], view: &Observation) -> V
       intent.max_thrust = caps.get(name).copied();
       (name.to_string(), intent)
     })
-    .collect()
+    .collect::<Vec<_>>();
+  share_fire(&mut intents, own, view);
+  intents
+}
+
+/// Expected damage, against a target's hull, that counts as enough: past it,
+/// more guns on the same target are wasted. Above 1 because expected damage
+/// is an average, and dice run short.
+pub const ENOUGH: f64 = 1.5;
+
+/// Share each ship's guns out across the side's targets so that none are
+/// wasted on a target already dealt with. A ship's chosen fire target is her
+/// priority: her guns go to it, smallest first, until the side's expected
+/// damage on it is [`ENOUGH`] times its hull. Then the rest go, again
+/// smallest first, to whichever targets they would do most good against --
+/// the damage they would land, capped at what each target has left -- each up
+/// to `ENOUGH` times its hull, counting what the ships before her sent. A big
+/// ship takes every gun; a fighter takes one, and the rest move on. Guns left
+/// over still fire at the priority. Called shots and named mounts are left
+/// as they are.
+fn share_fire(intents: &mut [(String, Intent)], own: &[(&Ship, &Choice, &Picture)], view: &Observation) {
+  let enemies = view.enemies();
+  let hull = |name: &str| {
+    enemies
+      .iter()
+      .find(|contact| contact.name == name)
+      .map_or(0.0, |contact| f64::from(contact.current_hull.max(1)))
+  };
+  // The side's expected damage on each target so far this round.
+  let mut sent: HashMap<String, f64> = HashMap::new();
+  for (name, intent) in intents.iter_mut() {
+    let Some(ship) = own.iter().map(|(ship, _, _)| *ship).find(|ship| ship.get_name() == name) else {
+      continue;
+    };
+    let [first] = intent.fire.as_slice() else { continue };
+    if !first.weapons.is_empty() || first.called.is_some() {
+      continue;
+    }
+    let priority = first.target.clone();
+    // Each target's per-mount expected damage from this ship, at the band
+    // she is at from it.
+    let by_mount = |target: &str| -> Vec<(usize, f64)> {
+      let Some(contact) = enemies.iter().find(|contact| contact.name == target) else {
+        return vec![];
+      };
+      let band = tactics::band_at((contact.position - ship.get_position()).magnitude());
+      view
+        .engagement(name, target)
+        .and_then(|table| table.we_hit.iter().find(|odds| odds.band == band))
+        .map(|odds| odds.by_mount.iter().copied().filter(|(_, damage)| *damage > 0.0).collect())
+        .unwrap_or_default()
+    };
+    let room = |target: &str, sent: &HashMap<String, f64>| {
+      (ENOUGH * hull(target) - sent.get(target).copied().unwrap_or(0.0)).max(0.0)
+    };
+    let mut free: Vec<usize> = by_mount(&priority).iter().map(|(mount, _)| *mount).collect();
+    let mut shares: Vec<(String, Vec<usize>)> = Vec::new();
+    let mut target = Some(priority.clone());
+    while let Some(aim) = target.take() {
+      // This target's guns, smallest first, until it has enough.
+      let mut mounts = by_mount(&aim);
+      mounts.retain(|(mount, _)| free.contains(mount));
+      mounts.sort_by(|a, b| a.1.total_cmp(&b.1));
+      let mut given = Vec::new();
+      for (mount, damage) in mounts {
+        if room(&aim, &sent) <= 0.0 {
+          break;
+        }
+        *sent.entry(aim.clone()).or_default() += damage;
+        given.push(mount);
+        free.retain(|left| *left != mount);
+      }
+      shares.push((aim, given));
+      if free.is_empty() {
+        break;
+      }
+      // The next target: where the free guns would land the most damage,
+      // up to what it has room for.
+      target = enemies
+        .iter()
+        .filter(|contact| !shares.iter().any(|(taken, _)| *taken == contact.name))
+        .map(|contact| {
+          let lands = by_mount(&contact.name)
+            .iter()
+            .filter(|(mount, _)| free.contains(mount))
+            .map(|(_, damage)| damage)
+            .sum::<f64>()
+            .min(room(&contact.name, &sent));
+          (contact.name.clone(), lands)
+        })
+        .filter(|(_, lands)| *lands > 0.0)
+        .max_by(|a, b| a.1.total_cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
+        .map(|(name, _)| name);
+    }
+    shares.retain(|(_, mounts)| !mounts.is_empty());
+    if shares.iter().all(|(aim, _)| *aim == priority) {
+      // Nothing moved: fire as chosen, every mount that bears.
+      continue;
+    }
+    // Guns left over stay on the priority.
+    match shares.iter_mut().find(|(aim, _)| *aim == priority) {
+      Some((_, mounts)) => mounts.extend(free.iter().copied()),
+      None if !free.is_empty() => shares.push((priority.clone(), free.clone())),
+      None => {}
+    }
+    intent.fire = shares
+      .into_iter()
+      .map(|(target, weapons)| Engage {
+        target,
+        weapons,
+        ..Engage::default()
+      })
+      .collect();
+  }
 }
 
 /// The choice that asks for `intent`, as near as the heads can say it: what a
