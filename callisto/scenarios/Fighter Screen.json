@@ -1,0 +1,1146 @@
+{
+  "metadata": {
+    "name": "Fighter Screen",
+    "owner": "dcsturman@gmail.com",
+    "description": "Two mirror forces in open space: each a Kinunir colonial cruiser standing in for a carrier, with fifteen heavy fighters formed up 2,000 km ahead of her, five abreast in three rows. The fighter screens start 55,000 km apart, at rest: at Distant, where each side has only the other's blips until they close. For training a network on fights larger than eight ships a side."
+  },
+  "planets": [],
+  "ships": [
+    {
+      "name": "CS Hesperus",
+      "position": [
+        -2000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Colonial Cruiser - Kinunir",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Carrier and flagship. Destroy the enemy force; do not lose the cruiser."
+    },
+    {
+      "name": "Lance 01",
+      "position": [
+        250000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 02",
+      "position": [
+        250000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 03",
+      "position": [
+        250000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 04",
+      "position": [
+        250000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 05",
+      "position": [
+        250000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 06",
+      "position": [
+        0.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 07",
+      "position": [
+        0.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 08",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 09",
+      "position": [
+        0.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 10",
+      "position": [
+        0.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 11",
+      "position": [
+        -250000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 12",
+      "position": [
+        -250000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 13",
+      "position": [
+        -250000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 14",
+      "position": [
+        -250000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Lance 15",
+      "position": [
+        -250000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "CS Tarsis",
+      "position": [
+        57000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Colonial Cruiser - Kinunir",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Carrier and flagship. Destroy the enemy force; do not lose the cruiser."
+    },
+    {
+      "name": "Spear 01",
+      "position": [
+        54750000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 02",
+      "position": [
+        54750000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 03",
+      "position": [
+        54750000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 04",
+      "position": [
+        54750000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 05",
+      "position": [
+        54750000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 06",
+      "position": [
+        55000000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 07",
+      "position": [
+        55000000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 08",
+      "position": [
+        55000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 09",
+      "position": [
+        55000000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 10",
+      "position": [
+        55000000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 11",
+      "position": [
+        55250000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 12",
+      "position": [
+        55250000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 13",
+      "position": [
+        55250000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 14",
+      "position": [
+        55250000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    },
+    {
+      "name": "Spear 15",
+      "position": [
+        55250000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Heavy Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ]
+      },
+      "orders": "Fighter screen. Destroy the enemy force; the cruiser behind you is your carrier."
+    }
+  ]
+}

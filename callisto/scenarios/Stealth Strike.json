@@ -1,0 +1,878 @@
+{
+  "metadata": {
+    "name": "Stealth Strike",
+    "owner": "dcsturman@gmail.com",
+    "description": "Ten Harriers, an all-stealth strike group, against twelve 200-ton system defence boats, three rows of four: the groups' centres 60,000 km apart at rest, at Distant, so each side starts with only the other's blips."
+  },
+  "planets": [],
+  "ships": [
+    {
+      "name": "Shrike",
+      "position": [
+        125000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Kite",
+      "position": [
+        125000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Merlin",
+      "position": [
+        125000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Hobby",
+      "position": [
+        125000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Saker",
+      "position": [
+        125000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Lanner",
+      "position": [
+        -125000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Peregrine",
+      "position": [
+        -125000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Gyrfalcon",
+      "position": [
+        -125000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Kestrel",
+      "position": [
+        -125000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Harrier",
+      "position": [
+        -125000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Harrier",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Stealth strike group. Destroy the defence boats."
+    },
+    {
+      "name": "Dragon",
+      "position": [
+        59750000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Wyvern",
+      "position": [
+        59750000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Drake",
+      "position": [
+        59750000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Basilisk",
+      "position": [
+        59750000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Lindworm",
+      "position": [
+        60000000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Amphiptere",
+      "position": [
+        60000000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Tarasque",
+      "position": [
+        60000000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Ouroboros",
+      "position": [
+        60000000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Zilant",
+      "position": [
+        60250000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Lung",
+      "position": [
+        60250000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Ryu",
+      "position": [
+        60250000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    },
+    {
+      "name": "Vouivre",
+      "position": [
+        60250000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defense Boat",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "System defence squadron. Destroy the intruders."
+    }
+  ]
+}
