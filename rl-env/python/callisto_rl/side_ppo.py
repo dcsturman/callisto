@@ -68,23 +68,33 @@ class Settings:
     teacher: str = ""
     teacher_share: float = 0.0
     #: More teachers, of either kind: comma-separated `share=commander`, as
-    #: "0.3=side~:checkpoints/teachers/side-4.cside,0.05=net~:...selfplay-9.cpol".
-    #: Each is drawn its share of games and logged as "teacher_<file name>".
+    #: "0.3=pt~:checkpoints/side-4/final.pt,0.05=net~:...selfplay-9.cpol".
+    #: Each is drawn its share of games and logged as "teacher_<name>". A
+    #: per-side network given as `pt~:<checkpoint>.pt` is played here, on
+    #: the playing device, batched across games; any other name (`side~:`,
+    #: `net~:`, a baseline) is played by the engine on the cpu, game by game.
     teachers: str = ""
     #: Let the learning rate fall in a straight line to this fraction of
     #: itself by the end of the run (1.0 keeps it constant).
     final_lr_fraction: float = 1.0
-    #: Where learning runs: an NVIDIA GPU, else the Mac's, else the cpu. Playing stays
-    #: on the cpu, in small batches.
+    #: Where learning runs: an NVIDIA GPU, else the Mac's, else the cpu.
     device: str = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    #: Where the player chooses orders, for the network, its snapshots and
+    #: Python-played teachers. Empty means the learning device on an NVIDIA
+    #: GPU, and the cpu on a Mac: the Mac's GPU is slower than its cpu for the
+    #: player's small batches while it is also learning (measured: 4,574
+    #: decisions a second choosing on the cpu, 3,907 on the GPU).
+    play_device: str = ""
 
 
 def teachers(spec: str) -> list[tuple[float, str, str]]:
-    """The `teachers` setting as (share, commander name, short name)."""
+    """The `teachers` setting as (share, commander name, short name). The
+    short name is the file's, or its folder's for a run's `final`."""
     out = []
     for entry in filter(None, (e.strip() for e in spec.split(","))):
         share, commander = entry.split("=", 1)
-        out.append((float(share), commander, Path(commander.split(":", 1)[-1].split("#")[0]).stem))
+        path = Path(commander.split(":", 1)[-1].split("#")[0])
+        out.append((float(share), commander, path.parent.name if path.stem == "final" else path.stem))
     if sum(share for share, _, _ in out) > 1.0:
         raise ValueError(f"teachers' shares add up to more than 1: {spec}")
     return out
@@ -94,7 +104,14 @@ class Player(threading.Thread):
     def __init__(self, settings: Settings, learner: SideNet, out: queue.Queue):
         super().__init__(daemon=True)
         self.s = settings
-        self.copy = copy.deepcopy(learner).to("cpu").eval()
+        self.device = settings.play_device or ("cpu" if settings.device == "mps" else settings.device)
+        self.copy = copy.deepcopy(learner).to(self.device).eval()
+        # Teachers played here rather than by the engine, by commander name.
+        self.played_here: dict[str, SideNet] = {
+            commander: SideNet.load(commander.split(":", 1)[1], self.device).eval()
+            for _, commander, _ in teachers(settings.teachers)
+            if commander.startswith("pt~:")
+        }
         self.lock = threading.Lock()
         self.pending: dict | None = None
         self.out = out
@@ -148,7 +165,7 @@ class Player(threading.Thread):
 
         def seat(game: int) -> None:
             opponents[game] = self.draw()
-            played_by_engine = opponents[game].kind in ("baseline", "teacher")
+            played_by_engine = opponents[game].kind in ("baseline", "teacher") and opponents[game].which not in self.played_here
             eng.stand_in(game, int(1 - learner_side[game]), opponents[game].which if played_by_engine else None)
 
         for g in range(games):
@@ -173,19 +190,28 @@ class Player(threading.Thread):
             for _ in range(s.rollout):
                 tensors = [torch.as_tensor(v) for v in views]
                 actions = np.zeros((2 * games, views[4].shape[1], 15), dtype=np.int64)
+                clock = time.perf_counter()
+                # Every view to the playing device in one transfer.
+                on_device = [t.to(self.device) for t in tensors]
+
+                def play(net: SideNet, rows: np.ndarray):
+                    index = torch.as_tensor(rows, device=self.device)
+                    with torch.no_grad():
+                        return net.act(*[t[index] for t in on_device])
+
                 # The network now: the learner's sides and the "self" opponents in one pass.
                 selfish = [opponent_rows[g] for g in range(games) if opponents[g].kind == "self"]
                 rows = np.concatenate([learner_rows, np.array(selfish, dtype=np.int64)])
-                clock = time.perf_counter()
-                with torch.no_grad():
-                    a, logp, value = self.copy.act(*[t[rows] for t in tensors])
+                a, logp, value = (x.cpu() for x in play(self.copy, rows))
                 actions[rows] = a.numpy()
                 n = games
                 for key in sorted({o.which for o in opponents if o.kind == "past"}):
                     past_rows = np.array([opponent_rows[g] for g in range(games) if opponents[g].kind == "past" and opponents[g].which == key])
-                    with torch.no_grad():
-                        pa, _, _ = self.snapshots[key].act(*[t[past_rows] for t in tensors])
-                    actions[past_rows] = pa.numpy()
+                    actions[past_rows] = play(self.snapshots[key], past_rows)[0].cpu().numpy()
+                for commander, teacher in self.played_here.items():
+                    taught = np.array([opponent_rows[g] for g in range(games) if opponents[g].kind == "teacher" and opponents[g].which == commander], dtype=np.int64)
+                    if len(taught):
+                        actions[taught] = play(teacher, taught)[0].cpu().numpy()
                 timing["net"] += time.perf_counter() - clock
                 store["views"].append([t[learner_rows] for t in tensors])
                 store["actions"].append(a[:n])
@@ -208,7 +234,7 @@ class Player(threading.Thread):
                     seat(g)
             with torch.no_grad():
                 last = [torch.as_tensor(v)[learner_rows] for v in views]
-                last_value = self.copy(*last)[1]
+                last_value = self.copy(*[t.to(self.device) for t in last])[1].cpu()
             batch = {
                 "views": [torch.stack([step[i] for step in store["views"]]) for i in range(VIEWS)],
                 "actions": torch.stack(store["actions"]),
