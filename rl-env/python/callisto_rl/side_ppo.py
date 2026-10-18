@@ -74,8 +74,9 @@ class Settings:
     #: Let the learning rate fall in a straight line to this fraction of
     #: itself by the end of the run (1.0 keeps it constant).
     final_lr_fraction: float = 1.0
-    #: Where learning runs. Playing stays on the cpu, in small batches.
-    device: str = "mps" if torch.backends.mps.is_available() else "cpu"
+    #: Where learning runs: an NVIDIA GPU, else the Mac's, else the cpu. Playing stays
+    #: on the cpu, in small batches.
+    device: str = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
 
 def teachers(spec: str) -> list[tuple[float, str, str]]:
