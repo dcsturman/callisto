@@ -168,12 +168,15 @@ class Player(threading.Thread):
                 self.want_snapshot.clear()
             store = {k: [] for k in ("views", "actions", "log_probs", "values", "rewards", "dones")}
             results: list[dict[str, Any]] = []
+            # Seconds this batch spent choosing orders and stepping the engine.
+            timing = {"net": 0.0, "engine": 0.0}
             for _ in range(s.rollout):
                 tensors = [torch.as_tensor(v) for v in views]
                 actions = np.zeros((2 * games, views[4].shape[1], 15), dtype=np.int64)
                 # The network now: the learner's sides and the "self" opponents in one pass.
                 selfish = [opponent_rows[g] for g in range(games) if opponents[g].kind == "self"]
                 rows = np.concatenate([learner_rows, np.array(selfish, dtype=np.int64)])
+                clock = time.perf_counter()
                 with torch.no_grad():
                     a, logp, value = self.copy.act(*[t[rows] for t in tensors])
                 actions[rows] = a.numpy()
@@ -183,12 +186,15 @@ class Player(threading.Thread):
                     with torch.no_grad():
                         pa, _, _ = self.snapshots[key].act(*[t[past_rows] for t in tensors])
                     actions[past_rows] = pa.numpy()
+                timing["net"] += time.perf_counter() - clock
                 store["views"].append([t[learner_rows] for t in tensors])
                 store["actions"].append(a[:n])
                 store["log_probs"].append(logp[:n])
                 store["values"].append(value[:n])
                 store["dones"].append(torch.as_tensor(done))
+                clock = time.perf_counter()
                 views, rewards, dones, finished = eng.step(actions)
+                timing["engine"] += time.perf_counter() - clock
                 store["rewards"].append(torch.as_tensor(rewards[learner_rows]))
                 done = dones[learner_rows]
                 for game in finished:
@@ -215,8 +221,11 @@ class Player(threading.Thread):
                 "last_done": torch.as_tensor(done),
                 "results": results,
                 "steps": s.rollout * games,
+                "timing": timing,
             }
+            clock = time.perf_counter()
             self.out.put(batch)
+            timing["handover"] = time.perf_counter() - clock
 
 
 class Learner:
@@ -337,10 +346,22 @@ def train(net: SideNet, s: Settings, total_steps: int, log: Callable, save: Call
             rate = s.learning_rate * (1.0 - (1.0 - s.final_lr_fraction) * done_share)
             for group in learner.optimizer.param_groups:
                 group["lr"] = rate
+            clock = time.perf_counter()
             batch = batches.get()
             if batch is None:
                 raise RuntimeError("the player stopped") from player.error
+            waited = time.perf_counter() - clock
+            clock = time.perf_counter()
             stats = learner.update(batch)
+            # Where the time goes, in seconds per batch: the player choosing
+            # orders and stepping the engine (the engine includes baselines and
+            # teachers, which it plays), the learner learning, and the learner
+            # waiting for the player. The player's wait to hand a batch over is
+            # the previous batch's, as it is measured after the hand-over.
+            stats["time/play_net"] = batch["timing"]["net"]
+            stats["time/play_engine"] = batch["timing"]["engine"]
+            stats["time/learn"] = time.perf_counter() - clock
+            stats["time/learn_waiting"] = waited
             player.refresh({k: v.detach().to("cpu").clone() for k, v in net.state_dict().items()})
             stats.update(learner.record(batch))
             done = min(1.0, learner.decisions / max(1, s.taper_steps))
