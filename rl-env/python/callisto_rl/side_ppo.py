@@ -29,7 +29,7 @@ from ._engine import SideEngine
 from .ppo import WINS
 from .selfplay import Mix, Opponent
 from .sidenet import SideNet
-from .vec_env import DESIGNS, default_pool, outcome_for
+from .vec_env import DESIGNS, SIDE_POOL, default_pool, outcome_for
 
 VIEWS = 5  # own, foes, side, pairs, masks
 
@@ -56,6 +56,10 @@ class Settings:
     # its firepower taken out, less the same for ours; off by default.
     kill_bonus: float = 0.0
     firepower_bonus: float = 0.0
+    #: How much each game's opening is varied, 0 for none: at 0.3 the fleets'
+    #: distance apart changes by up to 30%, the second fleet shifts sideways,
+    #: each formation turns by up to 27 degrees and each fleet drifts.
+    random_starts: float = 0.0
     baselines_start: float = 0.3
     baselines_end: float = 0.15
     taper_steps: int = 10_000_000
@@ -74,6 +78,13 @@ class Settings:
     #: the playing device, batched across games; any other name (`side~:`,
     #: `net~:`, a baseline) is played by the engine on the cpu, game by game.
     teachers: str = ""
+    #: PPO's ratio, clipped against `clip`: per "ship", each ship's own choice
+    #: against her old one, with the side's advantage; or per "side", the
+    #: whole side's choice at once. A side's ratio is the product of its
+    #: ships', so with twenty ships a small step for each is a huge one for
+    #: the side, and learning blows up; per ship, as multi-agent PPO does, it
+    #: does not.
+    ratio: str = "ship"
     #: Let the learning rate fall in a straight line to this fraction of
     #: itself by the end of the run (1.0 keeps it constant).
     final_lr_fraction: float = 1.0
@@ -151,11 +162,11 @@ class Player(threading.Thread):
 
     def _run(self) -> None:
         s = self.s
-        scenarios = list(s.scenarios or default_pool())
+        scenarios = list(s.scenarios or default_pool(SIDE_POOL))
         eng = SideEngine(
             scenarios, str(DESIGNS), s.games, max_rounds=s.max_rounds, seed=s.seed, threads=s.threads,
             random_goals=s.random_goals, destroy_goals=s.destroy_goals,
-            kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus,
+            kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus, random_starts=s.random_starts,
         )
         games = eng.num_games
         learner_side = np.array([(g // len(scenarios)) % 2 for g in range(games)])
@@ -272,10 +283,10 @@ class Learner:
         d = self.device
         for start in range(0, steps * n, self.s.batch_size):
             part = slice(start, start + self.s.batch_size)
-            lp, _, v = self.net.evaluate(*[f[part].to(d) for f in flat], actions[part].to(d))
+            lp, _, v = self.net.evaluate(*[f[part].to(d) for f in flat], actions[part].to(d), per_ship=True)
             lps.append(lp.cpu())
             vals.append(v.cpu())
-        batch["log_probs"] = torch.cat(lps).view(steps, n)
+        batch["log_probs"] = torch.cat(lps).view(steps, n, -1)
         batch["values"] = torch.cat(vals).view(steps, n)
         batch["last_value"] = self.net(*[v.to(d) for v in batch["last_views"]])[1].cpu()
 
@@ -300,7 +311,12 @@ class Learner:
         d = self.device
         flat = [v.reshape(n, *v.shape[2:]).to(d) for v in batch["views"]]
         actions = batch["actions"].reshape(n, *batch["actions"].shape[2:]).to(d)
-        old_lp, old_v = batch["log_probs"].reshape(n).to(d), values.reshape(n).to(d)
+        old_lp, old_v = batch["log_probs"].reshape(n, -1).to(d), values.reshape(n).to(d)
+        # The ships each entry has, for averaging over ships.
+        present = (flat[0][..., 0] > 0.5).float()
+        per_ship = s.ratio == "ship"
+        if not per_ship:
+            old_lp = old_lp.sum(1, keepdim=True)
         adv, returns = adv.reshape(n).to(d), returns.reshape(n).to(d)
         stats = collections.defaultdict(list)
         self.net.train()
@@ -308,13 +324,20 @@ class Learner:
             order = torch.randperm(n, device=d)
             for start in range(0, n, s.batch_size):
                 idx = order[start : start + s.batch_size]
-                lp, entropy, value = self.net.evaluate(*[f[idx] for f in flat], actions[idx])
+                lp, entropy, value = self.net.evaluate(*[f[idx] for f in flat], actions[idx], per_ship=True)
                 a = adv[idx]
-                a = (a - a.mean()) / (a.std() + 1e-8)
+                a = ((a - a.mean()) / (a.std() + 1e-8)).unsqueeze(1)
+                if per_ship:
+                    weight = present[idx]
+                else:
+                    lp, weight = lp.sum(1, keepdim=True), torch.ones_like(a)
+                count = weight.sum().clamp(min=1.0)
                 ratio = torch.exp(lp - old_lp[idx])
-                pg = -torch.min(ratio * a, torch.clamp(ratio, 1 - s.clip, 1 + s.clip) * a).mean()
+                pg = -(torch.min(ratio * a, torch.clamp(ratio, 1 - s.clip, 1 + s.clip) * a) * weight).sum() / count
                 vl = (returns[idx] - value).pow(2).mean()
-                el = -entropy.mean()
+                # Per ship too: summed over a side, twenty ships' entropy
+                # outweighs everything else the loss says.
+                el = -(entropy * weight).sum() / count if per_ship else -entropy.sum(1).mean()
                 loss = pg + s.entropy * el + s.value * vl
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -322,8 +345,8 @@ class Learner:
                 self.optimizer.step()
                 with torch.no_grad():
                     lr = lp - old_lp[idx]
-                    stats["approx_kl"].append(((torch.exp(lr) - 1) - lr).mean().item())
-                    stats["clip_fraction"].append(((ratio - 1).abs() > s.clip).float().mean().item())
+                    stats["approx_kl"].append((((torch.exp(lr) - 1) - lr) * weight).sum().item() / count.item())
+                    stats["clip_fraction"].append(((((ratio - 1).abs() > s.clip).float()) * weight).sum().item() / count.item())
                 stats["policy_gradient_loss"].append(pg.item())
                 stats["value_loss"].append(vl.item())
                 stats["entropy_loss"].append(el.item())

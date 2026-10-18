@@ -38,6 +38,8 @@ pub struct Config {
   pub random_goals: f32,
   /// Reward for kills and firepower taken out, beyond hull.
   pub shaping: crate::game::Shaping,
+  /// How much each game's opening is varied, 0 for none; see `Game::varied`.
+  pub variation: f64,
 }
 
 /// A game that finished this step.
@@ -116,9 +118,15 @@ impl Batch {
           }
         };
         Running {
-          game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds)
-            .with_goals(config.destroy_goals, config.random_goals)
-            .with_shaping(config.shaping),
+          game: Game::varied(
+            scenario,
+            &controls,
+            config.seed + index as u64,
+            config.max_rounds,
+            config.variation,
+          )
+          .with_goals(config.destroy_goals, config.random_goals)
+          .with_shaping(config.shaping),
           returns: [0.0; 2],
         }
       })

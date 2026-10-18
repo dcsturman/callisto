@@ -225,9 +225,12 @@ const FIREPOWER_GUNNERY: i32 = 2;
 
 /// How hard `ship` can hit: the hull damage her working offensive guns are
 /// expected to do in a round at the band that suits her best, averaged over
-/// `foes`, the enemy fleet as it began. Guns knocked out by a critical or
-/// powered down count nothing; hull damage alone takes nothing away, so this
-/// falls in steps, a little at a weapons critical and all at once at a kill.
+/// `foes`, the enemy fleet as it began. Against each foe it is capped at that
+/// foe's hull, since damage past a kill is wasted: a big gun aimed at a
+/// fighter is worth the fighter, not the gun. Guns knocked out by a critical
+/// or powered down count nothing; hull damage alone takes nothing away, so
+/// this falls in steps, a little at a weapons critical and all at once at a
+/// kill.
 #[must_use]
 pub fn firepower(ship: &Ship, foes: &[Ship]) -> f32 {
   if foes.is_empty() {
@@ -240,6 +243,7 @@ pub fn firepower(ship: &Ship, foes: &[Ship]) -> f32 {
         .iter()
         .map(|odds| odds.expected_damage)
         .fold(0.0, f64::max)
+        .min(f64::from(foe.current_hull))
     })
     .sum();
   (total / foes.len() as f64) as f32
@@ -318,13 +322,80 @@ pub struct Game {
   /// where goals are drawn at random; see [`Game::with_goals`].
   goal_mix: (f32, f32),
   shaping: Shaping,
+  /// How much each game's opening is varied; see [`varied`].
+  variation: f64,
   /// The firepower of each ship that jumped out, as she left.
   departed_firepower: HashMap<String, f32>,
 }
 
-fn player_for(scenario: &Scenario, seed: u64) -> PlayerManager {
-  let server = Arc::new(Server::from_scenario(&format!("rl-{seed}"), &scenario.entities));
+fn player_for(scenario: &Scenario, seed: u64, variation: f64) -> PlayerManager {
+  let opening = varied(scenario, variation, seed);
+  let server = Arc::new(Server::from_scenario(&format!("rl-{seed}"), &opening));
   PlayerManager::new(Some(server), Box::new(MockAuthenticator::new("")), true).with_seed(seed)
+}
+
+/// Fastest drift a varied opening gives a fleet, metres a second, at full
+/// variation.
+const MAX_DRIFT: f64 = 1000.0;
+
+/// The scenario's opening, varied for one game so that training never sees
+/// the same layout twice: with `amount` 0.3, the fleets' distance apart is
+/// scaled by up to 30% either way, the second fleet is shifted sideways by up
+/// to 15% of that distance, each fleet's formation is turned about its own
+/// middle by up to 27 degrees, and each fleet is given a drift of up to 300 m/s.
+/// Planets stay where they are. `amount` 0 is the scenario as written.
+fn varied(scenario: &Scenario, amount: f64, seed: u64) -> Entities {
+  use cgmath::{Matrix3, Rad};
+  let opening = scenario.entities.deep_copy().expect("the scenario has dangling references");
+  if amount <= 0.0 {
+    return opening;
+  }
+  let mut rng = rand::rngs::SmallRng::seed_from_u64(seed ^ 0x5741_2757);
+  let middle = |names: &[String]| {
+    let ships: Vec<Vec3> = names
+      .iter()
+      .filter_map(|name| opening.ships.get(name))
+      .map(|ship| ship.read().unwrap().get_position())
+      .collect();
+    ships.iter().fold(Vec3::new(0.0, 0.0, 0.0), |sum, at| sum + at) / ships.len().max(1) as f64
+  };
+  let from = [middle(&scenario.sides[0].1), middle(&scenario.sides[1].1)];
+  let apart = from[1] - from[0];
+  let across = {
+    let flat = apart.cross(Vec3::unit_z());
+    if flat.magnitude() > 1.0 {
+      flat
+    } else {
+      apart.cross(Vec3::unit_x())
+    }
+  };
+  let sideways = if across.magnitude() > 0.0 {
+    across.normalize() * apart.magnitude() * 0.5 * rng.gen_range(-amount..=amount)
+  } else {
+    Vec3::new(0.0, 0.0, 0.0)
+  };
+  let to = [
+    from[0],
+    from[0] + apart * (1.0 + rng.gen_range(-amount..=amount)) + sideways,
+  ];
+  for (side, (_, names)) in scenario.sides.iter().enumerate() {
+    let turn = Matrix3::from_angle_z(Rad(rng.gen_range(-amount..=amount) * std::f64::consts::FRAC_PI_2));
+    let heading = Vec3::new(rng.gen_range(-1.0..=1.0), rng.gen_range(-1.0..=1.0), rng.gen_range(-1.0..=1.0));
+    let drift = if heading.magnitude() > 0.0 {
+      heading.normalize() * MAX_DRIFT * amount * rng.gen_range(0.0..=1.0)
+    } else {
+      Vec3::new(0.0, 0.0, 0.0)
+    };
+    for name in names {
+      let Some(ship) = opening.ships.get(name) else { continue };
+      let mut ship = ship.write().unwrap();
+      let at = ship.get_position();
+      let moving = ship.get_velocity();
+      ship.set_position(to[side] + turn * (at - from[side]));
+      ship.set_velocity(turn * moving + drift);
+    }
+  }
+  opening
 }
 
 fn entities(player: &PlayerManager) -> Entities {
@@ -342,7 +413,16 @@ impl Game {
   /// Panics if a baseline is not one the commander module knows.
   #[must_use]
   pub fn new(scenario: Arc<Scenario>, controls: &[Control; 2], seed: u64, max_rounds: u32) -> Self {
-    let player = player_for(&scenario, seed);
+    Self::varied(scenario, controls, seed, max_rounds, 0.0)
+  }
+
+  /// [`Game::new`], with the opening varied by `variation` (see [`varied`]).
+  ///
+  /// # Panics
+  /// As [`Game::new`].
+  #[must_use]
+  pub fn varied(scenario: Arc<Scenario>, controls: &[Control; 2], seed: u64, max_rounds: u32, variation: f64) -> Self {
+    let player = player_for(&scenario, seed, variation);
     let world = entities(&player);
     let fleets: [Vec<Ship>; 2] = [0, 1].map(|index| {
       scenario.sides[index]
@@ -415,6 +495,7 @@ impl Game {
       retreats: Retreats::default(),
       rosters: scenario_rosters,
       goal_mix: (0.0, 0.0),
+      variation,
       shaping: Shaping::default(),
       departed_firepower: HashMap::new(),
     }
@@ -501,7 +582,7 @@ impl Game {
     let stand_ins = self.stand_ins.clone();
     let (destroy, random) = self.goal_mix;
     let shaping = self.shaping;
-    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds)
+    *self = Game::varied(Arc::clone(&self.scenario), &controls, seed, self.max_rounds, self.variation)
       .with_goals(destroy, random)
       .with_shaping(shaping);
     for (side, stand_in) in stand_ins.into_iter().enumerate() {

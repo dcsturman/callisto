@@ -29,12 +29,13 @@ use crate::encode::{
 use crate::history::History;
 use crate::orders;
 
-/// Tokens for the side's own ships, and for enemies: eight a side for now,
-/// which every scenario in the pool fits (Jupiter's Aslan are the most, at
-/// seven). The network's weights do not depend on it; raising it later costs
-/// only speed.
-pub const OWN: usize = 8;
-pub const FOES: usize = 8;
+/// Tokens for the side's own ships, and for enemies: twenty a side, which
+/// every scenario in the pool fits (Fighter Swarm's twenty fighters are the
+/// most). The network's weights do not depend on it, so a network trained at
+/// eight a side loads unchanged; the network trims each batch to its largest
+/// fleet, so small scenarios do not pay for the empty rows.
+pub const OWN: usize = 20;
+pub const FOES: usize = 20;
 pub const OWN_FEATS: usize = 73;
 pub const FOE_FEATS: usize = 26;
 pub const SIDE_FEATS: usize = 10;

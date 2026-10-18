@@ -24,6 +24,11 @@ DESIGNS = REPO / "callisto" / "ship_templates"
 
 #: The training pool: the scenarios the LLM commanders were measured on.
 POOL = ["Tessaly Crossing.json", "jupiter.json", "Marduk Encounter.json", "Thebus.json"]
+#: The per-side network's pool: the four above and five of 10 to 24 ships a
+#: side, which only it can play.
+SIDE_POOL = POOL + [
+    "Gazelle Duel.json", "Fighter Screen.json", "Aslan Border Clash.json", "Stealth Strike.json", "Fighter Swarm.json",
+]
 
 
 def default_pool(names: Sequence[str] = POOL) -> list[str]:
