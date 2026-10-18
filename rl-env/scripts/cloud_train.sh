@@ -13,13 +13,20 @@
 #
 #   UPLOAD   space-separated paths under rl-env/ to copy to the pod first
 #            (default: the side-5 and side-20-1 final networks)
-#   WANDB    1 (default) to wait for `wandb login` on the pod; 0 to train without W&B
+#   WANDB    1 (default) to sign the pod in to W&B; 0 to train without W&B
+#   WANDB_KEY  where 1Password keeps the W&B key (default: the Private vault's
+#            "Wandb API Key for Runpod"). The key is read with the 1Password
+#            command-line tool, which asks for approval, and goes to the pod
+#            through ssh's input, never a command line or a log. Without the
+#            tool, the script asks you to sign in on the pod instead.
 #   KEY      the SSH key to use (default ~/.ssh/id_ed25519, from the keychain)
 #   EVERY    seconds between copies home (default 600)
 set -u
 H=$1; P=$2; NAME=$3; HOURS=$4; shift 4
 UPLOAD=${UPLOAD:-checkpoints/side-5/final.pt checkpoints/side-20-1/final.pt}
 WANDB=${WANDB:-1}
+WANDB_KEY=${WANDB_KEY:-op://Private/Wandb API Key for Runpod/credential}
+WANDB_HOST=https://api.forge.coreweave.com
 KEY=${KEY:-$HOME/.ssh/id_ed25519}
 EVERY=${EVERY:-600}
 HERE=${0:A:h}/..
@@ -47,13 +54,23 @@ for item in ${=UPLOAD}; do
 done
 say "set up; copied ${=UPLOAD}"
 
-if [ "$WANDB" = 1 ]; then
-  say "waiting for W&B: in a terminal, run"
-  say "  ssh -i $KEY -p $P root@$H"
-  say "  cd callisto/rl-env && .venv/bin/wandb login --host https://api.forge.coreweave.com"
-  until "${SSH[@]}" 'grep -q "api.forge.coreweave.com" ~/.netrc 2>/dev/null' < /dev/null; do sleep 15; done
-  say "W&B is signed in"
+if [ "$WANDB" = 1 ] && command -v op > /dev/null; then
+  say "signing the pod in to W&B with the key from 1Password (approve in 1Password)"
+  if key=$(op read "$WANDB_KEY" 2>/dev/null) && [ -n "$key" ]; then
+    printf 'machine %s\n  login user\n  password %s\n' "${WANDB_HOST#https://}" "$key" |
+      "${SSH[@]}" "umask 077; cat >> ~/.netrc; mkdir -p ~/.config/wandb; printf '[default]\nbase_url = $WANDB_HOST\n' > ~/.config/wandb/settings"
+    unset key
+  else
+    say "could not read the W&B key from 1Password ($WANDB_KEY)"
+  fi
 fi
+if [ "$WANDB" = 1 ] && ! "${SSH[@]}" "grep -q '${WANDB_HOST#https://}' ~/.netrc 2>/dev/null" < /dev/null; then
+  say "waiting for W&B: in a terminal, run"
+  say "  ssh -o UseKeychain=yes -o IdentityAgent=none -o IdentitiesOnly=yes -i $KEY -p $P root@$H"
+  say "  cd callisto/rl-env && .venv/bin/wandb login --host $WANDB_HOST"
+  until "${SSH[@]}" "grep -q '${WANDB_HOST#https://}' ~/.netrc 2>/dev/null" < /dev/null; do sleep 15; done
+fi
+[ "$WANDB" = 1 ] && say "W&B is signed in"
 
 DEADLINE=$(( $(date +%s) + HOURS * 3600 ))
 # Detached from this connection entirely (its own session, no terminal, no
