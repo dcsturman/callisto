@@ -9,8 +9,9 @@ NAME=${NAME:-bench-$(hostname -s)}
 # The side-4 teacher played on the GPU, batched (pt~:), or by the engine on the cpu (side~:).
 TEACHER=${TEACHER:-pt~:checkpoints/side-4/final.pt}
 EXTRA=${EXTRA:-}   # more settings, e.g. "--play-device cpu"
-# The per-ship selfplay-9 teacher's share; it runs in the engine, one game at a time.
-OLD_TEACHER=${OLD_TEACHER:-0.05}
+# The per-ship selfplay-9 teacher's share, 0 by default: it runs in the engine, one game
+# at a time, and dominated the engine's time.
+OLD_TEACHER=${OLD_TEACHER:-0}
 .venv/bin/python scripts/side_ppo.py --init-from checkpoints/side-4/final.pt --steps "$STEPS" --games 128 --threads "$THREADS" \
   --teachers "0.35=$TEACHER$( [ "$OLD_TEACHER" != 0 ] && echo ",$OLD_TEACHER=net~:checkpoints/teachers/selfplay-9.cpol")" \
   --baselines-start 0.08 --baselines-end 0.08 --destroy-goals 1.0 --random-goals 0 --firepower-bonus 0.2 \
