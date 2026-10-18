@@ -19,7 +19,9 @@
 #            command-line tool, which asks for approval, and goes to the pod
 #            through ssh's input, never a command line or a log. Without the
 #            tool, the script asks you to sign in on the pod instead.
-#   KEY      the SSH key to use (default ~/.ssh/id_ed25519, from the keychain)
+#   KEY      the public half of the SSH key to use (default ~/.ssh/id_ed25519.pub);
+#            the private key is in 1Password, whose agent signs for it
+#            (~/.ssh/config sends every host to it), asking for approval
 #   EVERY    seconds between copies home (default 600)
 set -u
 H=$1; P=$2; NAME=$3; HOURS=$4; shift 4
@@ -27,15 +29,15 @@ UPLOAD=${UPLOAD:-checkpoints/side-5/final.pt checkpoints/side-20-1/final.pt}
 WANDB=${WANDB:-1}
 WANDB_KEY=${WANDB_KEY:-op://Private/Wandb API Key for Runpod/credential}
 WANDB_HOST=https://api.forge.coreweave.com
-KEY=${KEY:-$HOME/.ssh/id_ed25519}
+KEY=${KEY:-$HOME/.ssh/id_ed25519.pub}
 EVERY=${EVERY:-600}
 HERE=${0:A:h}/..
 LOG=$HERE/logs/cloud-$NAME.log
 C=$HOME/.ssh/cloud-train-%C
-SSH=(ssh -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -o IdentityAgent=none -o UseKeychain=yes -i $KEY
+SSH=(ssh -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i $KEY
      -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ControlMaster=auto -o ControlPath=$C -o ControlPersist=4h
      -p $P root@${H})
-RSYNC=(rsync -az -e "ssh -o IdentitiesOnly=yes -o IdentityAgent=none -o UseKeychain=yes -i $KEY -o BatchMode=yes -o ControlPath=$C -p $P")
+RSYNC=(rsync -az -e "ssh -o IdentitiesOnly=yes -i $KEY -o BatchMode=yes -o ControlPath=$C -p $P")
 mkdir -p $HERE/logs
 say() { echo "$(date '+%H:%M') $*" | tee -a $LOG; }
 cd $HERE
@@ -66,7 +68,7 @@ if [ "$WANDB" = 1 ] && command -v op > /dev/null; then
 fi
 if [ "$WANDB" = 1 ] && ! "${SSH[@]}" "grep -q '${WANDB_HOST#https://}' ~/.netrc 2>/dev/null" < /dev/null; then
   say "waiting for W&B: in a terminal, run"
-  say "  ssh -o UseKeychain=yes -o IdentityAgent=none -o IdentitiesOnly=yes -i $KEY -p $P root@$H"
+  say "  ssh -p $P root@$H"
   say "  cd callisto/rl-env && .venv/bin/wandb login --host $WANDB_HOST"
   until "${SSH[@]}" "grep -q '${WANDB_HOST#https://}' ~/.netrc 2>/dev/null" < /dev/null; do sleep 15; done
 fi
