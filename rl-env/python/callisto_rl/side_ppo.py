@@ -13,6 +13,7 @@ of an earlier one, or a baseline the engine plays.
 from __future__ import annotations
 
 import collections
+import concurrent.futures
 import copy
 import queue
 import random
@@ -90,6 +91,10 @@ class Settings:
     final_lr_fraction: float = 1.0
     #: Where learning runs: an NVIDIA GPU, else the Mac's, else the cpu.
     device: str = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    #: The games, split into this many groups of `games / groups`, each its
+    #: own engine: while one group's engine steps, the next group's orders are
+    #: chosen, so the engine and the network overlap. 1 is the old way.
+    groups: int = 1
     #: Where the player chooses orders, for the network, its snapshots and
     #: Python-played teachers. Empty means the learning device on an NVIDIA
     #: GPU, and the cpu on a Mac: the Mac's GPU is slower than its cpu for the
@@ -109,6 +114,24 @@ def teachers(spec: str) -> list[tuple[float, str, str]]:
     if sum(share for share, _, _ in out) > 1.0:
         raise ValueError(f"teachers' shares add up to more than 1: {spec}")
     return out
+
+
+class Group:
+    """One engine's games, as the player runs them: whose side the learner
+    plays in each, who the opponent is, the views last observed, and this
+    batch's records so far."""
+
+    def __init__(self, eng: SideEngine, scenarios: list[str]):
+        self.eng = eng
+        self.games = eng.num_games
+        self.learner_side = np.array([(g // len(scenarios)) % 2 for g in range(self.games)])
+        self.learner_rows = 2 * np.arange(self.games) + self.learner_side
+        self.opponent_rows = 2 * np.arange(self.games) + (1 - self.learner_side)
+        self.opponents: list[Opponent] = [Opponent("self")] * self.games
+        self.views: Any = None
+        self.done = np.zeros(self.games, dtype=bool)
+        self.store: dict[str, list] = {}
+        self.stepping: Any = None
 
 
 class Player(threading.Thread):
@@ -160,29 +183,83 @@ class Player(threading.Thread):
             return Opponent("past", self.rng.randrange(len(self.snapshots)))
         return Opponent("self")
 
+    def _group(self, scenarios: list[str], k: int) -> "Group":
+        s = self.s
+        eng = SideEngine(
+            scenarios, str(DESIGNS), s.games // max(1, s.groups), max_rounds=s.max_rounds, seed=s.seed + 1_000_003 * k,
+            threads=s.threads, random_goals=s.random_goals, destroy_goals=s.destroy_goals,
+            kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus, random_starts=s.random_starts,
+        )
+        group = Group(eng, scenarios)
+        for g in range(group.games):
+            self._seat(group, g)
+        group.views = eng.observe()
+        return group
+
+    def _seat(self, group: "Group", game: int) -> None:
+        opponent = group.opponents[game] = self.draw()
+        by_engine = opponent.kind in ("baseline", "teacher") and opponent.which not in self.played_here
+        group.eng.stand_in(game, int(1 - group.learner_side[game]), opponent.which if by_engine else None)
+
+    def _choose(self, group: "Group") -> np.ndarray:
+        """The orders for every side of the group's games this round, and its
+        learner entries recorded."""
+        tensors = [torch.as_tensor(v) for v in group.views]
+        actions = np.zeros((2 * group.games, group.views[4].shape[1], 15), dtype=np.int64)
+        # Every view to the playing device in one transfer.
+        on_device = [t.to(self.device) for t in tensors]
+
+        def play(net: SideNet, rows: np.ndarray):
+            index = torch.as_tensor(rows, device=self.device)
+            with torch.no_grad():
+                return net.act(*[t[index] for t in on_device])
+
+        opponents, games = group.opponents, group.games
+        # The network now: the learner's sides and the "self" opponents in one pass.
+        selfish = [group.opponent_rows[g] for g in range(games) if opponents[g].kind == "self"]
+        rows = np.concatenate([group.learner_rows, np.array(selfish, dtype=np.int64)])
+        a, logp, value = (x.cpu() for x in play(self.copy, rows))
+        actions[rows] = a.numpy()
+        for key in sorted({o.which for o in opponents if o.kind == "past"}):
+            past_rows = np.array([group.opponent_rows[g] for g in range(games) if opponents[g].kind == "past" and opponents[g].which == key])
+            actions[past_rows] = play(self.snapshots[key], past_rows)[0].cpu().numpy()
+        for commander, teacher in self.played_here.items():
+            taught = np.array([group.opponent_rows[g] for g in range(games) if opponents[g].kind == "teacher" and opponents[g].which == commander], dtype=np.int64)
+            if len(taught):
+                actions[taught] = play(teacher, taught)[0].cpu().numpy()
+        group.store["views"].append([t[group.learner_rows] for t in tensors])
+        group.store["actions"].append(a[:games])
+        group.store["log_probs"].append(logp[:games])
+        group.store["values"].append(value[:games])
+        group.store["dones"].append(torch.as_tensor(group.done))
+        return actions
+
+    def _finish(self, group: "Group", results: list[dict[str, Any]]) -> None:
+        """Take in the result of the group's engine step."""
+        views, rewards, dones, finished = group.stepping
+        group.stepping = None
+        group.views = views
+        group.store["rewards"].append(torch.as_tensor(rewards[group.learner_rows]))
+        group.done = dones[group.learner_rows]
+        for game in finished:
+            g = game["game"]
+            side = int(group.learner_side[g])
+            results.append({
+                "scenario": game["scenario"], "side": game["sides"][side], "goal": game["goals"][side],
+                "opponent": group.opponents[g].label, "outcome": outcome_for(game, side),
+                "return": float(game["returns"][side]), "rounds": int(game["rounds"]),
+            })
+            self._seat(group, g)
+
     def _run(self) -> None:
         s = self.s
         scenarios = list(s.scenarios or default_pool(SIDE_POOL))
-        eng = SideEngine(
-            scenarios, str(DESIGNS), s.games, max_rounds=s.max_rounds, seed=s.seed, threads=s.threads,
-            random_goals=s.random_goals, destroy_goals=s.destroy_goals,
-            kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus, random_starts=s.random_starts,
-        )
-        games = eng.num_games
-        learner_side = np.array([(g // len(scenarios)) % 2 for g in range(games)])
-        learner_rows = 2 * np.arange(games) + learner_side
-        opponent_rows = 2 * np.arange(games) + (1 - learner_side)
-        opponents: list[Opponent] = [Opponent("self")] * games
-
-        def seat(game: int) -> None:
-            opponents[game] = self.draw()
-            played_by_engine = opponents[game].kind in ("baseline", "teacher") and opponents[game].which not in self.played_here
-            eng.stand_in(game, int(1 - learner_side[game]), opponents[game].which if played_by_engine else None)
-
-        for g in range(games):
-            seat(g)
-        views = eng.observe()
-        done = np.zeros(games, dtype=bool)
+        groups = [self._group(scenarios, k) for k in range(max(1, s.groups))]
+        # While one group's engine steps on this thread (it lets go of
+        # Python's lock), the next group's orders are chosen on a helper
+        # thread, so the engine and the network overlap. The engine has to
+        # stay on this thread; the network does not.
+        chooser = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         while not self.stop.is_set():
             with self.lock:
                 if self.pending is not None:
@@ -194,70 +271,50 @@ class Player(threading.Thread):
                 if len(self.snapshots) > s.max_snapshots:
                     del self.snapshots[1]
                 self.want_snapshot.clear()
-            store = {k: [] for k in ("views", "actions", "log_probs", "values", "rewards", "dones")}
+            for group in groups:
+                group.store = {k: [] for k in ("views", "actions", "log_probs", "values", "rewards", "dones")}
             results: list[dict[str, Any]] = []
-            # Seconds this batch spent choosing orders and stepping the engine.
+            # Seconds this batch spent waiting for orders, and stepping engines.
             timing = {"net": 0.0, "engine": 0.0}
-            for _ in range(s.rollout):
-                tensors = [torch.as_tensor(v) for v in views]
-                actions = np.zeros((2 * games, views[4].shape[1], 15), dtype=np.int64)
+            choosing: dict[int, concurrent.futures.Future] = {}
+            turns = [(t, k) for t in range(s.rollout) for k in range(len(groups))]
+            for at, (_, k) in enumerate(turns):
+                group = groups[k]
                 clock = time.perf_counter()
-                # Every view to the playing device in one transfer.
-                on_device = [t.to(self.device) for t in tensors]
-
-                def play(net: SideNet, rows: np.ndarray):
-                    index = torch.as_tensor(rows, device=self.device)
-                    with torch.no_grad():
-                        return net.act(*[t[index] for t in on_device])
-
-                # The network now: the learner's sides and the "self" opponents in one pass.
-                selfish = [opponent_rows[g] for g in range(games) if opponents[g].kind == "self"]
-                rows = np.concatenate([learner_rows, np.array(selfish, dtype=np.int64)])
-                a, logp, value = (x.cpu() for x in play(self.copy, rows))
-                actions[rows] = a.numpy()
-                n = games
-                for key in sorted({o.which for o in opponents if o.kind == "past"}):
-                    past_rows = np.array([opponent_rows[g] for g in range(games) if opponents[g].kind == "past" and opponents[g].which == key])
-                    actions[past_rows] = play(self.snapshots[key], past_rows)[0].cpu().numpy()
-                for commander, teacher in self.played_here.items():
-                    taught = np.array([opponent_rows[g] for g in range(games) if opponents[g].kind == "teacher" and opponents[g].which == commander], dtype=np.int64)
-                    if len(taught):
-                        actions[taught] = play(teacher, taught)[0].cpu().numpy()
+                actions = choosing.pop(k).result() if k in choosing else self._choose(group)
                 timing["net"] += time.perf_counter() - clock
-                store["views"].append([t[learner_rows] for t in tensors])
-                store["actions"].append(a[:n])
-                store["log_probs"].append(logp[:n])
-                store["values"].append(value[:n])
-                store["dones"].append(torch.as_tensor(done))
+                # The next group to step, if it has a turn left this batch, has
+                # its views already: choose for it while this one steps.
+                if at + 1 < len(turns):
+                    after = turns[at + 1][1]
+                    if after != k and after not in choosing:
+                        choosing[after] = chooser.submit(self._choose, groups[after])
                 clock = time.perf_counter()
-                views, rewards, dones, finished = eng.step(actions)
+                group.stepping = group.eng.step(actions)
                 timing["engine"] += time.perf_counter() - clock
-                store["rewards"].append(torch.as_tensor(rewards[learner_rows]))
-                done = dones[learner_rows]
-                for game in finished:
-                    g = game["game"]
-                    side = int(learner_side[g])
-                    results.append({
-                        "scenario": game["scenario"], "side": game["sides"][side], "goal": game["goals"][side],
-                        "opponent": opponents[g].label, "outcome": outcome_for(game, side),
-                        "return": float(game["returns"][side]), "rounds": int(game["rounds"]),
-                    })
-                    seat(g)
+                self._finish(group, results)
+            learner_last = [torch.cat([torch.as_tensor(g.views[i])[g.learner_rows] for g in groups]) for i in range(VIEWS)]
             with torch.no_grad():
-                last = [torch.as_tensor(v)[learner_rows] for v in views]
-                last_value = self.copy(*[t.to(self.device) for t in last])[1].cpu()
+                last_value = self.copy(*[t.to(self.device) for t in learner_last])[1].cpu()
+
+            def joined(key: str):
+                return torch.stack([torch.cat([g.store[key][t] for g in groups]) for t in range(s.rollout)])
+
             batch = {
-                "views": [torch.stack([step[i] for step in store["views"]]) for i in range(VIEWS)],
-                "actions": torch.stack(store["actions"]),
-                "log_probs": torch.stack(store["log_probs"]),
-                "values": torch.stack(store["values"]),
-                "rewards": torch.stack(store["rewards"]),
-                "dones": torch.stack(store["dones"]),
+                "views": [
+                    torch.stack([torch.cat([g.store["views"][t][i] for g in groups]) for t in range(s.rollout)])
+                    for i in range(VIEWS)
+                ],
+                "actions": joined("actions"),
+                "log_probs": joined("log_probs"),
+                "values": joined("values"),
+                "rewards": joined("rewards"),
+                "dones": joined("dones"),
                 "last_value": last_value,
-                "last_views": last,
-                "last_done": torch.as_tensor(done),
+                "last_views": learner_last,
+                "last_done": torch.cat([torch.as_tensor(g.done) for g in groups]),
                 "results": results,
-                "steps": s.rollout * games,
+                "steps": s.rollout * sum(g.games for g in groups),
                 "timing": timing,
             }
             clock = time.perf_counter()
