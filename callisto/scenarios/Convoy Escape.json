@@ -1,0 +1,745 @@
+{
+  "metadata": {
+    "name": "Convoy Escape",
+    "owner": "dcsturman@gmail.com",
+    "description": "Ten Void Traders and two Gazelle escorts, 150,000 km out from a small moon whose jump limit is 200,000 km, try to get clear and jump. Five corsairs, three Fiery gunships and two Lionsbanes, wait 40,000 km further out on the same side, across the convoy's shortest way out. Well played, the corsairs stop the convoy; badly played, it gets away."
+  },
+  "planets": [
+    {
+      "name": "Kaldor",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!moon",
+      "radius": 1000000.0,
+      "mass": 1e+21
+    }
+  ],
+  "ships": [
+    {
+      "name": "Void Trader Anselm",
+      "position": [
+        149750000.0,
+        -1000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Bellweather",
+      "position": [
+        149750000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Caradoc",
+      "position": [
+        149750000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Dunmore",
+      "position": [
+        149750000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Ellery",
+      "position": [
+        149750000.0,
+        1000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Fenwick",
+      "position": [
+        150250000.0,
+        -1000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Garamond",
+      "position": [
+        150250000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Halloran",
+      "position": [
+        150250000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Iverson",
+      "position": [
+        150250000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "Void Trader Jessamy",
+      "position": [
+        150250000.0,
+        1000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Void Trader",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Merchant convoy. Get every ship out: jump the moment you are clear of the moon."
+    },
+    {
+      "name": "IMS Warden",
+      "position": [
+        150500000.0,
+        -2000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Convoy escort. Get the merchants out, then jump yourself."
+    },
+    {
+      "name": "IMS Sentinel",
+      "position": [
+        150500000.0,
+        2000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "escape",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Convoy escort. Get the merchants out, then jump yourself."
+    },
+    {
+      "name": "Red Morrow",
+      "position": [
+        190000000.0,
+        -1500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gunship - Fiery",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. Take or destroy the convoy before it jumps clear."
+    },
+    {
+      "name": "Black Tithe",
+      "position": [
+        190000000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gunship - Fiery",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. Take or destroy the convoy before it jumps clear."
+    },
+    {
+      "name": "Grey Widow",
+      "position": [
+        190000000.0,
+        1500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gunship - Fiery",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. Take or destroy the convoy before it jumps clear."
+    },
+    {
+      "name": "Iron Jackal",
+      "position": [
+        190000000.0,
+        -3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Corsair - Lionsbane",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. Take or destroy the convoy before it jumps clear."
+    },
+    {
+      "name": "Salt Hound",
+      "position": [
+        190000000.0,
+        3000000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Corsair - Lionsbane",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Corsair band. Take or destroy the convoy before it jumps clear."
+    }
+  ]
+}

@@ -191,6 +191,8 @@ fn each_goal_scores_as_agreed() {
     jumped,
     holding,
     kept: 0.4,
+    enemy_escaping: false,
+    enemy_jumped: 0.0,
   };
   let none = tally(0.0, 0.0, false);
   // Destroy: running is nearly as bad as dying; a draw is as bad.
@@ -217,6 +219,21 @@ fn each_goal_scores_as_agreed() {
   assert!((terminal(Goal::Raid, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Raid, Ending::WeFled, &Tally { dealt: 0.3, ..healthy }) - 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Escape, Ending::WeFled, &Tally { jumped: 1.0, ..healthy }) - 1.0).abs() < 1e-6);
+  // Against an escaping side, the escape's mirror: each ship that gets away
+  // costs what it earns the other side, whatever this side's goal.
+  let escaping = |share: f32| Tally {
+    enemy_escaping: true,
+    enemy_jumped: share,
+    ..none
+  };
+  assert!((terminal(Goal::Destroy, Ending::EnemyFled, &escaping(1.0)) + 1.0).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::EnemyDestroyed, &escaping(0.0)) - 1.0).abs() < 1e-6);
+  assert!(terminal(Goal::Destroy, Ending::EnemyFled, &escaping(0.5)).abs() < 1e-6);
+  let (ours, theirs) = (
+    terminal(Goal::Escape, Ending::WeFled, &tally(0.0, 0.3, false)),
+    terminal(Goal::Destroy, Ending::EnemyFled, &escaping(0.3)),
+  );
+  assert!((ours + theirs).abs() < 1e-6, "zero-sum: {ours} against {theirs}");
 }
 
 #[test]

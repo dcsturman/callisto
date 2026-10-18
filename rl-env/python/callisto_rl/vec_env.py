@@ -28,6 +28,9 @@ POOL = ["Tessaly Crossing.json", "jupiter.json", "Marduk Encounter.json", "Thebu
 #: side, which only it can play.
 SIDE_POOL = POOL + [
     "Gazelle Duel.json", "Fighter Screen.json", "Aslan Border Clash.json", "Stealth Strike.json", "Fighter Swarm.json",
+    # A convoy that must jump clear against corsairs that must stop it: the
+    # one scenario where a side's goal is Escape.
+    "Convoy Escape.json",
 ]
 
 

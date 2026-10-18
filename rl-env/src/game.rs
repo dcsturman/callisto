@@ -117,6 +117,10 @@ pub struct Tally {
   /// The share of its own hull the side has left, ships that jumped out
   /// counted at the hull they left with.
   pub kept: f32,
+  /// The enemy's goal is Escape.
+  pub enemy_escaping: bool,
+  /// The share of the enemy's ships that jumped out.
+  pub enemy_jumped: f32,
 }
 
 /// How far from where it started a side may be and still hold its position:
@@ -146,6 +150,12 @@ pub const COWARDICE: f32 = -1.1;
 /// the goal or the raid is done, is cowardice, and worse than dying.
 #[must_use]
 pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
+  // Against a side trying to escape, the score is the escape's mirror: each
+  // ship that gets away costs this side what it earns the other. (Destroy
+  // would pay 0.6 for letting them all jump.)
+  if tally.enemy_escaping && goal != Goal::Escape {
+    return 1.0 - 2.0 * tally.enemy_jumped;
+  }
   let coward = ending == Ending::WeFled && tally.kept > COWARD_HULL;
   match goal {
     Goal::Destroy => match ending {
@@ -552,7 +562,7 @@ impl Game {
     let roll = rng.gen::<f32>();
     if roll < destroy {
       for side in &mut self.sides {
-        if side.goal != Goal::Hold {
+        if side.goal != Goal::Hold && side.goal != Goal::Escape {
           side.goal = Goal::Destroy;
         }
       }
@@ -908,6 +918,9 @@ impl Game {
       jumped: jumped as f32 / ours.ships.len().max(1) as f32,
       holding,
       kept: ours.hull_last as f32 / ours.hull_at_start.max(1) as f32,
+      enemy_escaping: enemy.goal == Goal::Escape,
+      enemy_jumped: enemy.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count() as f32
+        / enemy.ships.len().max(1) as f32,
     }
   }
 
