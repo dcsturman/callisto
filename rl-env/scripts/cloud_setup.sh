@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Set up a rented Ubuntu GPU machine for training, from nothing: see docs/gpu_training.md.
+# Set up a rented Ubuntu GPU machine (a RunPod pod or a Lambda instance) for training, from nothing: see docs/gpu_training.md.
 # Run on the machine:  bash cloud_setup.sh   (fetch it with curl, or scp it over)
 set -euo pipefail
 
@@ -7,8 +7,10 @@ REPO=${REPO:-https://github.com/dcsturman/callisto.git}
 BRANCH=${BRANCH:-rl-selfplay}
 HOME_DIR=${HOME_DIR:-$HOME}
 
-sudo apt-get update -qq
-sudo apt-get install -y -qq build-essential pkg-config libssl-dev git tmux rsync python3-venv >/dev/null
+# On a RunPod pod we are root and there may be no sudo; on Lambda we are ubuntu.
+SUDO=$([ "$(id -u)" = 0 ] && echo "" || echo sudo)
+$SUDO apt-get update -qq
+$SUDO apt-get install -y -qq build-essential pkg-config libssl-dev git tmux rsync python3-venv curl >/dev/null
 
 # Rust, for the engine.
 if ! command -v cargo >/dev/null; then
