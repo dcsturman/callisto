@@ -11,7 +11,9 @@ fn main() {
   let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
   runtime.block_on(async {
     callisto::ship::replace_ship_templates(
-      callisto::ship::load_ship_templates_from_dir("../callisto/ship_templates").await.unwrap(),
+      callisto::ship::load_ship_templates_from_dir("../callisto/ship_templates")
+        .await
+        .unwrap(),
     );
   });
   for path in std::env::args().skip(1) {
@@ -31,16 +33,28 @@ fn main() {
       }
       let total: f32 = by_design.values().map(|v| v.1).sum();
       let hull: u32 = by_design.values().map(|v| v.2).sum();
-      println!("{} | ships {} | hull {} | firepower {:.1} a round", names[side], fleets[side].len(), hull, total);
+      println!(
+        "{} | ships {} | hull {} | firepower {:.1} a round",
+        names[side],
+        fleets[side].len(),
+        hull,
+        total
+      );
       for (design, (count, fire, _)) in &by_design {
         println!("    {count:>2} x {design:<40} firepower {:.1} each", fire / *count as f32);
       }
     }
     let centre = |side: usize| {
       let ships = &fleets[side];
-      ships.iter().map(Entity::get_position).fold(callisto::entity::Vec3::new(0.0, 0.0, 0.0), |a, b| a + b)
+      ships
+        .iter()
+        .map(Entity::get_position)
+        .fold(callisto::entity::Vec3::new(0.0, 0.0, 0.0), |a, b| a + b)
         / ships.len().max(1) as f64
     };
-    println!("    centres {:.0} km apart", cgmath::InnerSpace::magnitude(centre(0) - centre(1)) / 1000.0);
+    println!(
+      "    centres {:.0} km apart",
+      cgmath::InnerSpace::magnitude(centre(0) - centre(1)) / 1000.0
+    );
   }
 }
