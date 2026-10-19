@@ -35,7 +35,7 @@ use callisto::authentication::{
 };
 
 use callisto::ai_service::AiServiceClient;
-use callisto::entity::Entities;
+use callisto::entity::{Entities, MetaData};
 use callisto::processor::{Processor, ReloadNotification};
 use callisto::service_auth::ServiceAuth;
 use callisto::ship::DEFAULT_SHIP_TEMPLATES_DIR;
@@ -798,7 +798,13 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) -> Result<ScenarioLoadR
           }
         };
         match Entities::load_from_bytes(&bytes, &scenario_path) {
-          Ok(entities) => Ok((scenario, entities.metadata.clone())),
+          Ok(entities) => Ok((
+            scenario,
+            MetaData {
+              sides: entities.sides(),
+              ..entities.metadata.clone()
+            },
+          )),
           Err(e) => {
             let owner = extract_scenario_owner(&bytes);
             error!("ERROR: Failed to parse scenario file '{scenario_path}' (owner='{owner}'): {e}");

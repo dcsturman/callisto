@@ -674,11 +674,18 @@ export function joinScenario(scenario_name: string) {
 }
 
 /**
- * Start a game. `ai` asks for AI crews to be available in it, which the
- * server refuses unless this user may use them.
+ * Start a game. `aiShips` names the ships the AI crews, as chosen on the
+ * new-game screen; every other ship is crewed by people. Left out, the
+ * scenario file's choice stands.
  */
-export function createScenario(name: string, scenario: string, ai = false) {
-  const payload = { CreateScenario: { name: name, scenario: scenario, ai: ai } };
+export function createScenario(
+  name: string,
+  scenario: string,
+  aiShips?: string[],
+) {
+  const payload = {
+    CreateScenario: { name: name, scenario: scenario, ai_ships: aiShips },
+  };
   socket.send(JSON.stringify(payload));
   store.dispatch(setScenarioDirty(false));
 }

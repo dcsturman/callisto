@@ -166,6 +166,27 @@ impl Server {
     self
   }
 
+  /// Hand exactly `ships` to the AI and every other ship to people, in play
+  /// and in what a reset goes back to: the choice made on the new-game
+  /// screen. A name that is no ship here is ignored.
+  #[must_use]
+  pub fn with_ai_ships(mut self, ships: &[String]) -> Self {
+    let assign = |entities: &Entities| {
+      for (name, ship) in &entities.ships {
+        let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        ship.controller = if ships.contains(name) {
+          Controller::Ai
+        } else {
+          ship.ai_report = None;
+          Controller::Human
+        };
+      }
+    };
+    assign(&self.initial_scenario);
+    assign(self.entities.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner));
+    self
+  }
+
   /// Whether AI crews can be used in this game.
   #[must_use]
   pub fn ai_enabled(&self) -> bool {
@@ -482,6 +503,26 @@ mod ai_tests {
         .controller,
       Controller::Human
     );
+  }
+
+  /// The new-game screen's choice decides who crews each ship, whatever the
+  /// scenario file said, in play and after a reset.
+  #[tokio::test]
+  async fn the_ships_chosen_for_the_ai_are_the_ai_s() {
+    config_test_ship_templates().await;
+    let mut server = Server::new("game", "").await;
+    let design = get_ship_template("Buccaneer").unwrap();
+    for entities in [&mut server.initial_scenario, server.entities.get_mut().unwrap()] {
+      with_an_ai_ship(entities);
+      entities.add_ship("Merchant".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+    let server = server.with_ai(true).with_ai_ships(&["Merchant".to_string()]);
+    let controller = |entities: &Entities, ship: &str| entities.ships[ship].read().unwrap().controller;
+    assert_eq!(controller(&server.initial_scenario, "Merchant"), Controller::Ai);
+    assert_eq!(controller(&server.initial_scenario, "Pirate"), Controller::Human);
+    let now = server.get_unlocked_entities().unwrap();
+    assert_eq!(controller(&now, "Merchant"), Controller::Ai);
+    assert_eq!(controller(&now, "Pirate"), Controller::Human);
   }
 
   #[tokio::test]

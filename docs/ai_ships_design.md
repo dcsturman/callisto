@@ -891,6 +891,21 @@ Also agreed, later the same day:
     the backend's whole-world broadcast (§3). All after there is a working
     AI.
 
+Agreed 2026-10-19, for the first release:
+
+18. **The AI plays with the trained network** (`docs/per_side_network.md`),
+    built into the service; a model is a setting (`CALLISTO_AI_MODEL`), not
+    the default. The network reads a side's goal from the scenario and
+    nothing else: orders in English wait for a later step, where a model
+    would turn them into settings the network follows.
+19. **The new-game screen chooses who crews each side**: Human, AI, or
+    Mixed, which lists the side's ships to tick. Every game offers AI
+    crews, and anyone at a ship's console may still switch it to AI or take
+    it back mid-game.
+20. **No permission for the network.** It costs next to nothing, so
+    anyone may use it. The users file's `ai` flag stays, sent to the client
+    as `ai_allowed`, for features that call a model.
+
 Still open:
 
 - **Verbs the model is told about but cannot use yet:** point defence on

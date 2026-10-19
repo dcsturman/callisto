@@ -432,6 +432,16 @@ export const createPlanet = (
 export interface MetaData {
   name: string;
   description: string;
+  /** A template's sides and ships, sent with the scenario list for the
+   *  new-game screen; absent elsewhere. */
+  sides?: ScenarioSide[];
+}
+
+/** One side of a scenario template: its team (`Unaligned` for ships on
+ *  none) and its ships, each with whether the file has the AI crew her. */
+export interface ScenarioSide {
+  team: string;
+  ships: { name: string; ai: boolean }[];
 }
 
 export const createMetaData = (name: string, description: string) => {

@@ -630,6 +630,7 @@ mod tests {
         name: "Scenario A".to_string(),
         description: "first".to_string(),
         owner: "test-user".to_string(),
+        ..MetaData::default()
       },
     )]);
     assert_eq!(get_scenarios_snapshot().len(), 1);
@@ -640,6 +641,7 @@ mod tests {
         name: "Scenario B".to_string(),
         description: "second".to_string(),
         owner: "test-user".to_string(),
+        ..MetaData::default()
       },
     )]);
 
