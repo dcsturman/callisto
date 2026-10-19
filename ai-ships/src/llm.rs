@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use callisto::tactics::Intent;
 use tracing::{info, warn};
 
-use crate::commander::{self, Commander};
+use crate::commander::Commander;
 use crate::decision::{self, Conversion};
 use crate::observation::Observation;
 use crate::prompt;
@@ -217,7 +217,8 @@ pub fn system_for(name: &str) -> Result<String, String> {
 }
 
 /// A commander by name: a model's (`gemini`, `claude:<model>`), given a
-/// Vertex connection, or any of [`commander::named`]'s.
+/// Vertex connection, or any of [`crate::network::commander::named`]'s: the
+/// built-in network, a network from a file, or a baseline.
 #[must_use]
 pub fn named(name: &str, seed: u64, vertex: Option<&Arc<Vertex>>) -> Option<Box<dyn Commander>> {
   match (ModelSpec::parse(name), vertex) {
@@ -225,6 +226,6 @@ pub fn named(name: &str, seed: u64, vertex: Option<&Arc<Vertex>>) -> Option<Box<
       Some(Box::new(Llm::new(Arc::clone(vertex), spec).with_system(system_for(name).ok()?)))
     }
     (Some(_), None) => None,
-    (None, _) => commander::named(name, seed),
+    (None, _) => crate::network::commander::named(name, seed),
   }
 }

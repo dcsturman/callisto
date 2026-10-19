@@ -699,10 +699,10 @@ pub struct ScenariosMsg {
 pub struct CreateScenarioMsg {
   pub name: String,
   pub scenario: String,
-  /// Start the game with AI crews available. Refused unless the user may use
-  /// AI; see `UserDirectory::may_use_ai`.
+  /// The ships the AI crews, chosen on the new-game screen; every other ship
+  /// is crewed by people. Absent, the scenario file's choice stands.
   #[serde(default)]
-  pub ai: bool,
+  pub ai_ships: Option<Vec<String>>,
 }
 
 /// Save the player's current scenario to the configured scenario directory

@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use rand::Rng;
 use serde::Deserialize;
 
-use crate::action::{Choice, Head, HEADS};
-use crate::side::{FOES, FOE_FEATS, HEAD_SIZES, MASK_LEN, OWN, OWN_FEATS, PAIR_FEATS, SIDE_FEATS};
+use crate::network::action::{Choice, Head, HEADS};
+use crate::network::side::{FOES, FOE_FEATS, HEAD_SIZES, MASK_LEN, OWN, OWN_FEATS, PAIR_FEATS, SIDE_FEATS};
 
 const NEG: f32 = -1e8;
 const TOKENS: usize = OWN + FOES + 1;
@@ -101,6 +101,14 @@ impl SideNet {
   /// trained for a different layout than this build's.
   pub fn load(path: &str) -> Result<Self, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
+    Self::from_bytes(&bytes, path)
+  }
+
+  /// A network from an exported file's bytes; `path` names it in errors.
+  ///
+  /// # Errors
+  /// As [`SideNet::load`], but for reading.
+  pub fn from_bytes(bytes: &[u8], path: &str) -> Result<Self, String> {
     let rest = bytes
       .strip_prefix(b"CSID")
       .ok_or_else(|| format!("{path}: not a per-side network"))?;

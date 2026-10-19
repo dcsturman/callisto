@@ -108,11 +108,12 @@ impl SideBatch {
     let scenarios = load(config)?;
     let games = (0..config.games)
       .map(|index| Running {
-        game: Game::new(
+        game: Game::varied(
           Arc::clone(&scenarios[index % scenarios.len()]),
           &[Control::Agent, Control::Agent],
           config.seed + index as u64,
           config.max_rounds,
+          config.variation,
         )
         .with_goals(config.destroy_goals, config.random_goals)
         .with_shaping(config.shaping),
@@ -215,6 +216,7 @@ impl SideBatch {
               goals: game.goals(),
               returns: running.returns,
               hull_shares: game.hull_shares(),
+              at_post: game.at_post(),
             };
             running.game.reset(first_seed + index as u64);
             running.returns = [0.0; 2];

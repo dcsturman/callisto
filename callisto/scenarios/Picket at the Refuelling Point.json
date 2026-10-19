@@ -1,0 +1,286 @@
+{
+  "metadata": {
+    "name": "Picket at the Refuelling Point",
+    "owner": "dcsturman@gmail.com",
+    "description": "An Imperial picket (Blue) holds a gas giant's refuelling point, 40,000 km above the cloud tops: the Fleet Picket Watchdog Vigilant and two Dragon system defence boats, which cannot jump and were built for exactly this. Three Lionsbane corsairs (Red), 50,000 km further out, must break the picket to refuel. Blue's goal is to hold; standing and fighting is the only way to do it."
+  },
+  "planets": [
+    {
+      "name": "Kherra",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "color": "!jupiter",
+      "radius": 60000000.0,
+      "mass": 1.2e+27
+    }
+  ],
+  "ships": [
+    {
+      "name": "IMS Vigilant",
+      "position": [
+        0.0,
+        0.0,
+        100000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Fleet Picket - Watchdog",
+      "team": "Blue",
+      "goal": "hold",
+      "orders": "Hold the refuelling point: no raider refuels here.",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 3
+      }
+    },
+    {
+      "name": "SDB Kestrel",
+      "position": [
+        3000000.0,
+        0.0,
+        100000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Blue",
+      "goal": "hold",
+      "orders": "Hold the refuelling point: no raider refuels here.",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      }
+    },
+    {
+      "name": "SDB Merlin",
+      "position": [
+        -3000000.0,
+        0.0,
+        100000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Blue",
+      "goal": "hold",
+      "orders": "Hold the refuelling point: no raider refuels here.",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      }
+    },
+    {
+      "name": "Red Hand",
+      "position": [
+        -3000000.0,
+        0.0,
+        150000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Corsair - Lionsbane",
+      "team": "Red",
+      "goal": "destroy",
+      "orders": "Break the picket and take the refuelling point.",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      }
+    },
+    {
+      "name": "Jackal",
+      "position": [
+        0.0,
+        2000000.0,
+        150000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Corsair - Lionsbane",
+      "team": "Red",
+      "goal": "destroy",
+      "orders": "Break the picket and take the refuelling point.",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      }
+    },
+    {
+      "name": "Hyena",
+      "position": [
+        3000000.0,
+        0.0,
+        150000000.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Corsair - Lionsbane",
+      "team": "Red",
+      "goal": "destroy",
+      "orders": "Break the picket and take the refuelling point.",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      }
+    }
+  ]
+}

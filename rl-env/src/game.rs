@@ -31,7 +31,8 @@ use cgmath::InnerSpace;
 use rand::{Rng, SeedableRng};
 
 use crate::action::{side_intents, Choice, MASK_LEN};
-use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, Seen, MAX_SHIPS, OBS_LEN};
+pub use crate::encode::{believed_hull, remember, side_goal};
+use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, MAX_SHIPS, OBS_LEN};
 use crate::history::History;
 
 /// A scenario loaded once and played many times.
@@ -112,11 +113,18 @@ pub struct Tally {
   /// The share of the side's ships that jumped out.
   pub jumped: f32,
   /// At least one of the side's ships is within [`HOLD_RADIUS`] of where the
-  /// side started.
+  /// side started, as of the last round it had a ship in play: a side
+  /// destroyed at its post still held it.
   pub holding: bool,
+  /// The share of the game's rounds a side whose goal is Hold spent holding.
+  pub held: f32,
   /// The share of its own hull the side has left, ships that jumped out
   /// counted at the hull they left with.
   pub kept: f32,
+  /// The enemy's goal is Escape.
+  pub enemy_escaping: bool,
+  /// The share of the enemy's ships that jumped out.
+  pub enemy_jumped: f32,
 }
 
 /// How far from where it started a side may be and still hold its position:
@@ -128,6 +136,10 @@ pub const RAID_DAMAGE: f32 = 0.25;
 /// is cowardice: it scores [`COWARDICE`], worse than being destroyed.
 pub const COWARD_HULL: f32 = 0.5;
 pub const COWARDICE: f32 = -1.1;
+/// A Hold side destroyed at its post earns back up to this for the rounds it
+/// held and this again for the enemy hull it destroyed: a hopeless stand,
+/// fought out, beats running.
+pub const STAND_CREDIT: f32 = 0.5;
 
 /// The end-of-game reward for one side, by its goal.
 ///
@@ -135,17 +147,28 @@ pub const COWARDICE: f32 = -1.1;
 /// |------------------|---------|-------------------------|-------------------------------|-------------|
 /// | Enemy destroyed  | +1      | +1                      | +1                            | +1          |
 /// | Enemy fled       | +0.6    | +1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
-/// | Draw             | -1      | +0.6 if holding, else -1 | +0.6 if 25% dealt, else -1   | share jumped |
-/// | We fled          | -0.9    | -1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
+/// | Draw             | -1      | +0.6 if holding, else -1.1 | +0.6 if 25% dealt, else -1 | share jumped |
+/// | We fled          | -0.9    | -1.1                    | +0.6 if 25% dealt, else -0.6  | share jumped |
 /// | ...above half hull | -1.1  | -1.1                    | +0.6 if 25% dealt, else -1.1  | share jumped |
-/// | We were destroyed| -1      | -1                      | -1                            | share jumped |
+/// | We were destroyed| -1      | -1 + stand credit if holding, else -1.1 | -1             | share jumped |
 ///
 /// "Share jumped" runs from -1 (none) to +1 (every ship jumped out). Under
 /// Destroy, running is nearly as bad as dying: leaving is for goals that
 /// allow it. Running with more than half its hull left, unless leaving is
 /// the goal or the raid is done, is cowardice, and worse than dying.
+/// Under Hold, any loss away from the post is desertion and scores
+/// [`COWARDICE`]; a side destroyed at its post earns [`STAND_CREDIT`] times
+/// the share of rounds it held plus the same times the hull it destroyed.
+/// Without that difference every Hold loss scores -1, and putting it off by
+/// running is worth more than fighting.
 #[must_use]
 pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
+  // Against a side trying to escape, the score is the escape's mirror: each
+  // ship that gets away costs this side what it earns the other. (Destroy
+  // would pay 0.6 for letting them all jump.)
+  if tally.enemy_escaping && goal != Goal::Escape {
+    return 1.0 - 2.0 * tally.enemy_jumped;
+  }
   let coward = ending == Ending::WeFled && tally.kept > COWARD_HULL;
   match goal {
     Goal::Destroy => match ending {
@@ -158,8 +181,8 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
     Goal::Hold => match ending {
       Ending::EnemyDestroyed | Ending::EnemyFled => 1.0,
       Ending::Draw if tally.holding => 0.6,
-      Ending::WeFled if coward => COWARDICE,
-      Ending::Draw | Ending::WeFled | Ending::WeDestroyed => -1.0,
+      Ending::WeDestroyed if tally.holding => -1.0 + STAND_CREDIT * (tally.held + tally.dealt),
+      Ending::Draw | Ending::WeFled | Ending::WeDestroyed => COWARDICE,
     },
     Goal::Raid => {
       let done = tally.dealt >= RAID_DAMAGE;
@@ -177,19 +200,6 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
       _ => 2.0 * tally.jumped - 1.0,
     },
   }
-}
-
-/// A side's goal: the one most of its ships carry, Destroy if none do.
-pub fn side_goal<'a>(ships: impl IntoIterator<Item = &'a Ship>) -> Goal {
-  let mut counts: HashMap<Goal, usize> = HashMap::new();
-  for ship in ships {
-    *counts.entry(ship.goal.unwrap_or_default()).or_default() += 1;
-  }
-  crate::encode::GOALS
-    .into_iter()
-    .max_by_key(|goal| counts.get(goal).copied().unwrap_or(0))
-    .filter(|goal| counts.contains_key(goal))
-    .unwrap_or_default()
 }
 
 /// The goals a side can be given at random: Escape only if every ship has a
@@ -217,6 +227,10 @@ pub struct Shaping {
   /// Per round, this times the share of the enemy's firepower taken out, less
   /// the share of ours. See [`firepower`].
   pub firepower: f32,
+  /// Per round, this to a side whose goal is Hold while one of its ships is
+  /// within [`HOLD_RADIUS`] of where it started: holding pays as it goes,
+  /// not only in a draw at the end.
+  pub hold: f32,
 }
 
 /// Gunners assumed for firepower, on both sides alike: the skill the models
@@ -225,9 +239,12 @@ const FIREPOWER_GUNNERY: i32 = 2;
 
 /// How hard `ship` can hit: the hull damage her working offensive guns are
 /// expected to do in a round at the band that suits her best, averaged over
-/// `foes`, the enemy fleet as it began. Guns knocked out by a critical or
-/// powered down count nothing; hull damage alone takes nothing away, so this
-/// falls in steps, a little at a weapons critical and all at once at a kill.
+/// `foes`, the enemy fleet as it began. Against each foe it is capped at that
+/// foe's hull, since damage past a kill is wasted: a big gun aimed at a
+/// fighter is worth the fighter, not the gun. Guns knocked out by a critical
+/// or powered down count nothing; hull damage alone takes nothing away, so
+/// this falls in steps, a little at a weapons critical and all at once at a
+/// kill.
 #[must_use]
 pub fn firepower(ship: &Ship, foes: &[Ship]) -> f32 {
   if foes.is_empty() {
@@ -240,6 +257,7 @@ pub fn firepower(ship: &Ship, foes: &[Ship]) -> f32 {
         .iter()
         .map(|odds| odds.expected_damage)
         .fold(0.0, f64::max)
+        .min(f64::from(foe.current_hull))
     })
     .sum();
   (total / foes.len() as f64) as f32
@@ -265,6 +283,11 @@ struct Side {
   goal: Goal,
   /// The middle of the side's ships at the start, for Hold.
   start: Vec3,
+  /// Whether a ship was within [`HOLD_RADIUS`] of `start`, as of the last
+  /// round the side had one in play.
+  at_post: bool,
+  /// Rounds the side has held, if its goal is Hold.
+  held_rounds: u32,
   /// What the side remembers from the last round.
   history: History,
   /// The enemy fleet as it began, which firepower is measured against.
@@ -318,13 +341,80 @@ pub struct Game {
   /// where goals are drawn at random; see [`Game::with_goals`].
   goal_mix: (f32, f32),
   shaping: Shaping,
+  /// How much each game's opening is varied; see [`varied`].
+  variation: f64,
   /// The firepower of each ship that jumped out, as she left.
   departed_firepower: HashMap<String, f32>,
 }
 
-fn player_for(scenario: &Scenario, seed: u64) -> PlayerManager {
-  let server = Arc::new(Server::from_scenario(&format!("rl-{seed}"), &scenario.entities));
+fn player_for(scenario: &Scenario, seed: u64, variation: f64) -> PlayerManager {
+  let opening = varied(scenario, variation, seed);
+  let server = Arc::new(Server::from_scenario(&format!("rl-{seed}"), &opening));
   PlayerManager::new(Some(server), Box::new(MockAuthenticator::new("")), true).with_seed(seed)
+}
+
+/// Fastest drift a varied opening gives a fleet, metres a second, at full
+/// variation.
+const MAX_DRIFT: f64 = 1000.0;
+
+/// The scenario's opening, varied for one game so that training never sees
+/// the same layout twice: with `amount` 0.3, the fleets' distance apart is
+/// scaled by up to 30% either way, the second fleet is shifted sideways by up
+/// to 15% of that distance, each fleet's formation is turned about its own
+/// middle by up to 27 degrees, and each fleet is given a drift of up to 300 m/s.
+/// Planets stay where they are. `amount` 0 is the scenario as written.
+fn varied(scenario: &Scenario, amount: f64, seed: u64) -> Entities {
+  use cgmath::{Matrix3, Rad};
+  let opening = scenario.entities.deep_copy().expect("the scenario has dangling references");
+  if amount <= 0.0 {
+    return opening;
+  }
+  let mut rng = rand::rngs::SmallRng::seed_from_u64(seed ^ 0x5741_2757);
+  let middle = |names: &[String]| {
+    let ships: Vec<Vec3> = names
+      .iter()
+      .filter_map(|name| opening.ships.get(name))
+      .map(|ship| ship.read().unwrap().get_position())
+      .collect();
+    ships.iter().fold(Vec3::new(0.0, 0.0, 0.0), |sum, at| sum + at) / ships.len().max(1) as f64
+  };
+  let from = [middle(&scenario.sides[0].1), middle(&scenario.sides[1].1)];
+  let apart = from[1] - from[0];
+  let across = {
+    let flat = apart.cross(Vec3::unit_z());
+    if flat.magnitude() > 1.0 {
+      flat
+    } else {
+      apart.cross(Vec3::unit_x())
+    }
+  };
+  let sideways = if across.magnitude() > 0.0 {
+    across.normalize() * apart.magnitude() * 0.5 * rng.gen_range(-amount..=amount)
+  } else {
+    Vec3::new(0.0, 0.0, 0.0)
+  };
+  let to = [
+    from[0],
+    from[0] + apart * (1.0 + rng.gen_range(-amount..=amount)) + sideways,
+  ];
+  for (side, (_, names)) in scenario.sides.iter().enumerate() {
+    let turn = Matrix3::from_angle_z(Rad(rng.gen_range(-amount..=amount) * std::f64::consts::FRAC_PI_2));
+    let heading = Vec3::new(rng.gen_range(-1.0..=1.0), rng.gen_range(-1.0..=1.0), rng.gen_range(-1.0..=1.0));
+    let drift = if heading.magnitude() > 0.0 {
+      heading.normalize() * MAX_DRIFT * amount * rng.gen_range(0.0..=1.0)
+    } else {
+      Vec3::new(0.0, 0.0, 0.0)
+    };
+    for name in names {
+      let Some(ship) = opening.ships.get(name) else { continue };
+      let mut ship = ship.write().unwrap();
+      let at = ship.get_position();
+      let moving = ship.get_velocity();
+      ship.set_position(to[side] + turn * (at - from[side]));
+      ship.set_velocity(turn * moving + drift);
+    }
+  }
+  opening
 }
 
 fn entities(player: &PlayerManager) -> Entities {
@@ -342,7 +432,16 @@ impl Game {
   /// Panics if a baseline is not one the commander module knows.
   #[must_use]
   pub fn new(scenario: Arc<Scenario>, controls: &[Control; 2], seed: u64, max_rounds: u32) -> Self {
-    let player = player_for(&scenario, seed);
+    Self::varied(scenario, controls, seed, max_rounds, 0.0)
+  }
+
+  /// [`Game::new`], with the opening varied by `variation` (see [`varied`]).
+  ///
+  /// # Panics
+  /// As [`Game::new`].
+  #[must_use]
+  pub fn varied(scenario: Arc<Scenario>, controls: &[Control; 2], seed: u64, max_rounds: u32, variation: f64) -> Self {
+    let player = player_for(&scenario, seed, variation);
     let world = entities(&player);
     let fleets: [Vec<Ship>; 2] = [0, 1].map(|index| {
       scenario.sides[index]
@@ -378,6 +477,8 @@ impl Game {
         hull_last: hull,
         goal: side_goal(own),
         start,
+        at_post: true,
+        held_rounds: 0,
         history: History::default(),
         foes_at_start: fleets[1 - index].clone(),
         firepower_at_start: 0.0,
@@ -415,6 +516,7 @@ impl Game {
       retreats: Retreats::default(),
       rosters: scenario_rosters,
       goal_mix: (0.0, 0.0),
+      variation,
       shaping: Shaping::default(),
       departed_firepower: HashMap::new(),
     }
@@ -471,7 +573,7 @@ impl Game {
     let roll = rng.gen::<f32>();
     if roll < destroy {
       for side in &mut self.sides {
-        if side.goal != Goal::Hold {
+        if side.goal != Goal::Hold && side.goal != Goal::Escape {
           side.goal = Goal::Destroy;
         }
       }
@@ -501,7 +603,7 @@ impl Game {
     let stand_ins = self.stand_ins.clone();
     let (destroy, random) = self.goal_mix;
     let shaping = self.shaping;
-    *self = Game::new(Arc::clone(&self.scenario), &controls, seed, self.max_rounds)
+    *self = Game::varied(Arc::clone(&self.scenario), &controls, seed, self.max_rounds, self.variation)
       .with_goals(destroy, random)
       .with_shaping(shaping);
     for (side, stand_in) in stand_ins.into_iter().enumerate() {
@@ -558,6 +660,13 @@ impl Game {
   #[must_use]
   pub fn view(&self, side: usize) -> &Observation {
     &self.views[side]
+  }
+
+  /// Whether each side had a ship within [`HOLD_RADIUS`] of where it started,
+  /// as of the last round it had one in play.
+  #[must_use]
+  pub fn at_post(&self) -> [bool; 2] {
+    [0, 1].map(|side| self.sides[side].at_post)
   }
 
   /// Hull left, as a share of the start, for each side: the true figure.
@@ -758,6 +867,18 @@ impl Game {
     for (side, hull) in self.sides.iter_mut().zip(hulls) {
       side.hull_last = hull;
     }
+    for (reward, state) in rewards.iter_mut().zip(self.sides.iter_mut()) {
+      let mut in_play = state.ships.iter().filter_map(|ship| self.world.ships.get(ship)).peekable();
+      if in_play.peek().is_none() {
+        continue;
+      }
+      state.at_post =
+        in_play.any(|ship| (ship.read().unwrap().get_position() - state.start).magnitude() <= HOLD_RADIUS);
+      if state.goal == Goal::Hold && state.at_post {
+        state.held_rounds += 1;
+        *reward += self.shaping.hold;
+      }
+    }
     if self.shaping.kills != 0.0 {
       let still = [0, 1].map(|side| {
         let ships = &self.sides[side].ships;
@@ -817,16 +938,15 @@ impl Game {
     let enemy = &self.sides[1 - side];
     let ours = &self.sides[side];
     let jumped = ours.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count();
-    let holding = ours
-      .ships
-      .iter()
-      .filter_map(|ship| self.world.ships.get(ship))
-      .any(|ship| (ship.read().unwrap().get_position() - ours.start).magnitude() <= HOLD_RADIUS);
     Tally {
       dealt: 1.0 - enemy.hull_last as f32 / enemy.hull_at_start.max(1) as f32,
       jumped: jumped as f32 / ours.ships.len().max(1) as f32,
-      holding,
+      holding: ours.at_post,
+      held: ours.held_rounds as f32 / self.max_rounds.max(1) as f32,
       kept: ours.hull_last as f32 / ours.hull_at_start.max(1) as f32,
+      enemy_escaping: enemy.goal == Goal::Escape,
+      enemy_jumped: enemy.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count() as f32
+        / enemy.ships.len().max(1) as f32,
     }
   }
 
@@ -875,45 +995,6 @@ impl Game {
       side.history.record(&theirs);
     }
     self.play(&orders)
-  }
-}
-
-/// Update a side's memory from its view: contacts as they are now; ships no
-/// longer on the plot at all are gone, so their hull is none.
-pub fn remember(memory: &mut Memory, view: &Observation, round: u32) {
-  for contact in view.enemies() {
-    memory.insert(
-      contact.name.clone(),
-      Seen {
-        round,
-        hull_share: contact.current_hull as f32 / contact.design_hull.max(1) as f32,
-        design_hull: contact.design_hull,
-        thrust: contact.current_maneuver,
-      },
-    );
-  }
-  let on_plot = |name: &str| {
-    view.contacts.iter().any(|contact| contact.name == name) || view.blips.iter().any(|blip| blip.name == name)
-  };
-  for (name, seen) in memory.iter_mut() {
-    if !on_plot(name) {
-      seen.hull_share = 0.0;
-    }
-  }
-}
-
-/// The enemy's hull left as a side believes it: over the enemies it has
-/// ever held, their last-seen hull against their design. All of it if none.
-#[must_use]
-pub fn believed_hull(memory: &Memory) -> f32 {
-  let (left, whole) = memory.values().fold((0.0, 0.0), |(left, whole), seen| {
-    let design = seen.design_hull as f32;
-    (left + seen.hull_share * design, whole + design)
-  });
-  if whole > 0.0 {
-    left / whole
-  } else {
-    1.0
   }
 }
 

@@ -38,6 +38,8 @@ pub struct Config {
   pub random_goals: f32,
   /// Reward for kills and firepower taken out, beyond hull.
   pub shaping: crate::game::Shaping,
+  /// How much each game's opening is varied, 0 for none; see `Game::varied`.
+  pub variation: f64,
 }
 
 /// A game that finished this step.
@@ -58,6 +60,9 @@ pub struct Finished {
   /// The whole game's reward for each side.
   pub returns: [f32; 2],
   pub hull_shares: [f32; 2],
+  /// Whether each side had a ship at its post when the game ended (or when
+  /// its last ship went), for Hold.
+  pub at_post: [bool; 2],
 }
 
 struct Running {
@@ -116,9 +121,15 @@ impl Batch {
           }
         };
         Running {
-          game: Game::new(scenario, &controls, config.seed + index as u64, config.max_rounds)
-            .with_goals(config.destroy_goals, config.random_goals)
-            .with_shaping(config.shaping),
+          game: Game::varied(
+            scenario,
+            &controls,
+            config.seed + index as u64,
+            config.max_rounds,
+            config.variation,
+          )
+          .with_goals(config.destroy_goals, config.random_goals)
+          .with_shaping(config.shaping),
           returns: [0.0; 2],
         }
       })
@@ -276,6 +287,7 @@ impl Batch {
               goals: game.goals(),
               returns: running.returns,
               hull_shares: game.hull_shares(),
+              at_post: game.at_post(),
             };
             running.game.reset(first_seed + index as u64);
             running.returns = [0.0; 2];

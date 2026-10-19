@@ -476,16 +476,12 @@ async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
   }
 }
 
+/// Create the test scenario, a blank one.
 async fn test_create_scenario(stream: &mut MyWebSocket) -> Result<(), String> {
-  test_create_scenario_with_ai(stream, false).await
-}
-
-/// Create the test scenario, asking for AI crews or not.
-async fn test_create_scenario_with_ai(stream: &mut MyWebSocket, ai: bool) -> Result<(), String> {
   let msg = RequestMsg::CreateScenario(CreateScenarioMsg {
     name: "test_scenario".to_string(),
     scenario: String::new(),
-    ai,
+    ai_ships: None,
   });
   let body = rpc(stream, msg).await;
 
@@ -2450,19 +2446,13 @@ async fn integration_switching_to_ai_calls_the_ai_service() {
 
   let (ai_url, mut calls_rx) = fake_ai_service().await;
 
-  // AI crews are granted per user: the test user is allowed them, and the
-  // game is started with them.
-  let users = std::env::temp_dir().join(format!("callisto-ai-users-{}.json", std::process::id()));
-  std::fs::write(
-    &users,
-    r#"{"version": 1, "users": [{"email": "test@example.com", "status": "active", "registered_at": 0, "ai": true}]}"#,
-  )
-  .unwrap();
+  // The AI plays with the trained network, so anyone may use it: the test
+  // user has no AI permission.
   let port = get_next_port();
-  let _server = spawn_server_full(port, true, None, None, Some(users.display().to_string()), true, Some(&ai_url)).await;
+  let _server = spawn_server_full(port, true, None, None, None, true, Some(&ai_url)).await;
   let mut stream = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream).await.unwrap();
-  test_create_scenario_with_ai(&mut stream, true).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
   let _ = rpc(
     &mut stream,
     RequestMsg::AddShip(AddShipMsg {
@@ -2515,78 +2505,29 @@ async fn integration_switching_to_ai_calls_the_ai_service() {
   send_quit(&mut stream).await;
 }
 
-/// AI crews cost money, so only a user the users file allows may have them:
-/// anyone else asking for them is refused, and in a game started without them
-/// no ship can be handed to the AI and the AI service is never called.
+/// The ships chosen for the AI on the new-game screen are crewed by it as
+/// soon as the game starts, by side, and no other ship is.
 #[test_log::test(tokio::test)]
-async fn integration_ai_crews_need_permission() {
+async fn integration_new_game_hands_the_chosen_ships_to_the_ai() {
   callisto::ship::config_test_ship_templates().await;
   let (ai_url, mut calls_rx) = fake_ai_service().await;
   let port = get_next_port();
-  // No users file: the test user is not allowed AI.
   let _server = spawn_server_full(port, true, None, None, None, true, Some(&ai_url)).await;
   let mut stream = open_socket(port).await.unwrap();
   let _ = test_authenticate(&mut stream).await.unwrap();
-
-  let refused = rpc(
-    &mut stream,
-    RequestMsg::CreateScenario(CreateScenarioMsg {
-      name: "no_ai_for_you".to_string(),
-      scenario: String::new(),
-      ai: true,
-    }),
-  )
-  .await;
-  assert!(
-    matches!(&refused, ResponseMsg::Error(code) if code == "NOT_AUTHORIZED_FOR_AI"),
-    "{refused:?}"
-  );
-
-  test_create_scenario(&mut stream).await.unwrap();
   let _ = rpc(
     &mut stream,
-    RequestMsg::AddShip(AddShipMsg {
-      name: "Invigilator".to_string(),
-      position: [0.0, 0.0, 0.0].into(),
-      velocity: [0.0, 0.0, 0.0].into(),
-      design: "Buccaneer".to_string(),
-      crew: None,
-      weapons: None,
-      active_sensors: None,
-      transmitting: None,
-      team: Some(callisto::ship::Team::Red),
-      contacts: None,
-      features_on: None,
-      controller: None,
-      orders: None,
-      software: None,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "thebus_with_ai".to_string(),
+      scenario: "Thebus.json".to_string(),
+      ai_ships: Some(vec!["HMS Executor".to_string()]),
     }),
   )
   .await;
-  let handover = rpc(
-    &mut stream,
-    RequestMsg::SetShipController(callisto::payloads::SetShipController {
-      ship_name: "Invigilator".to_string(),
-      controller: callisto::ship::Controller::Ai,
-    }),
-  )
-  .await;
-  // Adding the ship left a world update in the queue; the refusal follows.
-  let mut replies = vec![handover];
-  while !replies.iter().any(|reply| matches!(reply, ResponseMsg::Error(_))) && replies.len() < 4 {
-    let Ok(Ok(Some(Ok(next)))) = tokio::time::timeout(Duration::from_secs(5), stream.next())
-      .await
-      .map(Ok::<_, ()>)
-    else {
-      break;
-    };
-    replies.push(serde_json::from_str::<ResponseMsg>(next.to_text().unwrap()).unwrap());
-  }
+  let crew = next_call(&mut calls_rx).await.expect("the AI service was asked to crew");
   assert!(
-    replies
-      .iter()
-      .any(|reply| matches!(reply, ResponseMsg::Error(text) if text.contains("AI crews are not available"))),
-    "the handover is refused: {replies:?}"
+    crew.starts_with("/crew ") && crew.contains(r#""side":"Red""#) && crew.contains(r#""ships":["HMS Executor"]"#),
+    "{crew}"
   );
-  assert_eq!(next_call(&mut calls_rx).await, None, "the AI service was never called");
+  assert_eq!(next_call(&mut calls_rx).await, None, "only Red was handed to the AI");
 }

@@ -13,6 +13,7 @@ of an earlier one, or a baseline the engine plays.
 from __future__ import annotations
 
 import collections
+import concurrent.futures
 import copy
 import queue
 import random
@@ -29,7 +30,7 @@ from ._engine import SideEngine
 from .ppo import WINS
 from .selfplay import Mix, Opponent
 from .sidenet import SideNet
-from .vec_env import DESIGNS, default_pool, outcome_for
+from .vec_env import DESIGNS, SIDE_POOL, default_pool, outcome_for
 
 VIEWS = 5  # own, foes, side, pairs, masks
 
@@ -55,7 +56,18 @@ class Settings:
     # Reward per round for the share of the enemy's ships destroyed, and of
     # its firepower taken out, less the same for ours; off by default.
     kill_bonus: float = 0.0
+    #: Reward per round to a holding side while it keeps a ship near where it
+    #: started; 0 for none.
+    hold_bonus: float = 0.0
+    #: The scripted opponents baselines are drawn from, comma-separated: of
+    #: close, hold, charger (rushes to its biggest guns' range), kiter (holds
+    #: at its best edge, backing off), squadron, spread.
+    baselines: str = "close,hold"
     firepower_bonus: float = 0.0
+    #: How much each game's opening is varied, 0 for none: at 0.3 the fleets'
+    #: distance apart changes by up to 30%, the second fleet shifts sideways,
+    #: each formation turns by up to 27 degrees and each fleet drifts.
+    random_starts: float = 0.0
     baselines_start: float = 0.3
     baselines_end: float = 0.15
     taper_steps: int = 10_000_000
@@ -68,32 +80,86 @@ class Settings:
     teacher: str = ""
     teacher_share: float = 0.0
     #: More teachers, of either kind: comma-separated `share=commander`, as
-    #: "0.3=side~:checkpoints/teachers/side-4.cside,0.05=net~:...selfplay-9.cpol".
-    #: Each is drawn its share of games and logged as "teacher_<file name>".
+    #: "0.3=pt~:checkpoints/side-4/final.pt,0.05=net~:...selfplay-9.cpol".
+    #: Each is drawn its share of games and logged as "teacher_<name>". A
+    #: per-side network given as `pt~:<checkpoint>.pt` is played here, on
+    #: the playing device, batched across games; any other name (`side~:`,
+    #: `net~:`, a baseline) is played by the engine on the cpu, game by game.
     teachers: str = ""
+    #: PPO's ratio, clipped against `clip`: per "ship", each ship's own choice
+    #: against her old one, with the side's advantage; or per "side", the
+    #: whole side's choice at once. A side's ratio is the product of its
+    #: ships', so with twenty ships a small step for each is a huge one for
+    #: the side, and learning blows up; per ship, as multi-agent PPO does, it
+    #: does not.
+    ratio: str = "ship"
+    #: Leave a ship's move out of an update when the network learning from it
+    #: gives it less than this fraction of the chance the player gave it. The
+    #: player is one update behind, so now and then it makes a move the
+    #: learner thinks next to impossible; PPO's ratio for such a move swings
+    #: wildly, wrecking approx_kl and, for a move that went badly, pushing hard
+    #: past the clip. 0 keeps every move.
+    stale: float = 1e-3
     #: Let the learning rate fall in a straight line to this fraction of
     #: itself by the end of the run (1.0 keeps it constant).
     final_lr_fraction: float = 1.0
-    #: Where learning runs. Playing stays on the cpu, in small batches.
-    device: str = "mps" if torch.backends.mps.is_available() else "cpu"
+    #: Where learning runs: an NVIDIA GPU, else the Mac's, else the cpu.
+    device: str = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    #: The games, split into this many groups of `games / groups`, each its
+    #: own engine: while one group's engine steps, the next group's orders are
+    #: chosen, so the engine and the network overlap. 1 is the old way.
+    groups: int = 1
+    #: Where the player chooses orders, for the network, its snapshots and
+    #: Python-played teachers. Empty means the learning device on an NVIDIA
+    #: GPU, and the cpu on a Mac: the Mac's GPU is slower than its cpu for the
+    #: player's small batches while it is also learning (measured: 4,574
+    #: decisions a second choosing on the cpu, 3,907 on the GPU).
+    play_device: str = ""
 
 
 def teachers(spec: str) -> list[tuple[float, str, str]]:
-    """The `teachers` setting as (share, commander name, short name)."""
+    """The `teachers` setting as (share, commander name, short name). The
+    short name is the file's, or its folder's for a run's `final`."""
     out = []
     for entry in filter(None, (e.strip() for e in spec.split(","))):
         share, commander = entry.split("=", 1)
-        out.append((float(share), commander, Path(commander.split(":", 1)[-1].split("#")[0]).stem))
+        path = Path(commander.split(":", 1)[-1].split("#")[0])
+        out.append((float(share), commander, path.parent.name if path.stem == "final" else path.stem))
     if sum(share for share, _, _ in out) > 1.0:
         raise ValueError(f"teachers' shares add up to more than 1: {spec}")
     return out
+
+
+class Group:
+    """One engine's games, as the player runs them: whose side the learner
+    plays in each, who the opponent is, the views last observed, and this
+    batch's records so far."""
+
+    def __init__(self, eng: SideEngine, scenarios: list[str]):
+        self.eng = eng
+        self.games = eng.num_games
+        self.learner_side = np.array([(g // len(scenarios)) % 2 for g in range(self.games)])
+        self.learner_rows = 2 * np.arange(self.games) + self.learner_side
+        self.opponent_rows = 2 * np.arange(self.games) + (1 - self.learner_side)
+        self.opponents: list[Opponent] = [Opponent("self")] * self.games
+        self.views: Any = None
+        self.done = np.zeros(self.games, dtype=bool)
+        self.store: dict[str, list] = {}
+        self.stepping: Any = None
 
 
 class Player(threading.Thread):
     def __init__(self, settings: Settings, learner: SideNet, out: queue.Queue):
         super().__init__(daemon=True)
         self.s = settings
-        self.copy = copy.deepcopy(learner).to("cpu").eval()
+        self.device = settings.play_device or ("cpu" if settings.device == "mps" else settings.device)
+        self.copy = copy.deepcopy(learner).to(self.device).eval()
+        # Teachers played here rather than by the engine, by commander name.
+        self.played_here: dict[str, SideNet] = {
+            commander: SideNet.load(commander.split(":", 1)[1], self.device).eval()
+            for _, commander, _ in teachers(settings.teachers)
+            if commander.startswith("pt~:")
+        }
         self.lock = threading.Lock()
         self.pending: dict | None = None
         self.out = out
@@ -126,34 +192,90 @@ class Player(threading.Thread):
             roll -= share
         roll = self.rng.random()
         if roll < self.baseline_share:
-            return Opponent("baseline", self.rng.choice(mix.baseline_names))
+            return Opponent("baseline", self.rng.choice([n.strip() for n in self.s.baselines.split(",") if n.strip()]))
         if roll < self.baseline_share + mix.past and self.snapshots:
             return Opponent("past", self.rng.randrange(len(self.snapshots)))
         return Opponent("self")
 
+    def _group(self, scenarios: list[str], k: int) -> "Group":
+        s = self.s
+        eng = SideEngine(
+            scenarios, str(DESIGNS), s.games // max(1, s.groups), max_rounds=s.max_rounds, seed=s.seed + 1_000_003 * k,
+            threads=s.threads, random_goals=s.random_goals, destroy_goals=s.destroy_goals,
+            kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus, random_starts=s.random_starts,
+            hold_bonus=s.hold_bonus,
+        )
+        group = Group(eng, scenarios)
+        for g in range(group.games):
+            self._seat(group, g)
+        group.views = eng.observe()
+        return group
+
+    def _seat(self, group: "Group", game: int) -> None:
+        opponent = group.opponents[game] = self.draw()
+        by_engine = opponent.kind in ("baseline", "teacher") and opponent.which not in self.played_here
+        group.eng.stand_in(game, int(1 - group.learner_side[game]), opponent.which if by_engine else None)
+
+    def _choose(self, group: "Group") -> np.ndarray:
+        """The orders for every side of the group's games this round, and its
+        learner entries recorded."""
+        tensors = [torch.as_tensor(v) for v in group.views]
+        actions = np.zeros((2 * group.games, group.views[4].shape[1], 15), dtype=np.int64)
+        # Every view to the playing device in one transfer.
+        on_device = [t.to(self.device) for t in tensors]
+
+        def play(net: SideNet, rows: np.ndarray, per_ship: bool = False):
+            index = torch.as_tensor(rows, device=self.device)
+            with torch.no_grad():
+                return net.act(*[t[index] for t in on_device], per_ship=per_ship)
+
+        opponents, games = group.opponents, group.games
+        # The network now: the learner's sides and the "self" opponents in one pass.
+        selfish = [group.opponent_rows[g] for g in range(games) if opponents[g].kind == "self"]
+        rows = np.concatenate([group.learner_rows, np.array(selfish, dtype=np.int64)])
+        a, logp, value = (x.cpu() for x in play(self.copy, rows, per_ship=True))
+        actions[rows] = a.numpy()
+        for key in sorted({o.which for o in opponents if o.kind == "past"}):
+            past_rows = np.array([group.opponent_rows[g] for g in range(games) if opponents[g].kind == "past" and opponents[g].which == key])
+            actions[past_rows] = play(self.snapshots[key], past_rows)[0].cpu().numpy()
+        for commander, teacher in self.played_here.items():
+            taught = np.array([group.opponent_rows[g] for g in range(games) if opponents[g].kind == "teacher" and opponents[g].which == commander], dtype=np.int64)
+            if len(taught):
+                actions[taught] = play(teacher, taught)[0].cpu().numpy()
+        group.store["views"].append([t[group.learner_rows] for t in tensors])
+        group.store["actions"].append(a[:games])
+        group.store["log_probs"].append(logp[:games])
+        group.store["values"].append(value[:games])
+        group.store["dones"].append(torch.as_tensor(group.done))
+        return actions
+
+    def _finish(self, group: "Group", results: list[dict[str, Any]]) -> None:
+        """Take in the result of the group's engine step."""
+        views, rewards, dones, finished = group.stepping
+        group.stepping = None
+        group.views = views
+        group.store["rewards"].append(torch.as_tensor(rewards[group.learner_rows]))
+        group.done = dones[group.learner_rows]
+        for game in finished:
+            g = game["game"]
+            side = int(group.learner_side[g])
+            results.append({
+                "scenario": game["scenario"], "side": game["sides"][side], "goal": game["goals"][side],
+                "opponent": group.opponents[g].label, "outcome": outcome_for(game, side),
+                "return": float(game["returns"][side]), "rounds": int(game["rounds"]),
+                "at_post": bool(game["at_post"][side]),
+            })
+            self._seat(group, g)
+
     def _run(self) -> None:
         s = self.s
-        scenarios = list(s.scenarios or default_pool())
-        eng = SideEngine(
-            scenarios, str(DESIGNS), s.games, max_rounds=s.max_rounds, seed=s.seed, threads=s.threads,
-            random_goals=s.random_goals, destroy_goals=s.destroy_goals,
-            kill_bonus=s.kill_bonus, firepower_bonus=s.firepower_bonus,
-        )
-        games = eng.num_games
-        learner_side = np.array([(g // len(scenarios)) % 2 for g in range(games)])
-        learner_rows = 2 * np.arange(games) + learner_side
-        opponent_rows = 2 * np.arange(games) + (1 - learner_side)
-        opponents: list[Opponent] = [Opponent("self")] * games
-
-        def seat(game: int) -> None:
-            opponents[game] = self.draw()
-            played_by_engine = opponents[game].kind in ("baseline", "teacher")
-            eng.stand_in(game, int(1 - learner_side[game]), opponents[game].which if played_by_engine else None)
-
-        for g in range(games):
-            seat(g)
-        views = eng.observe()
-        done = np.zeros(games, dtype=bool)
+        scenarios = list(s.scenarios or default_pool(SIDE_POOL))
+        groups = [self._group(scenarios, k) for k in range(max(1, s.groups))]
+        # While one group's engine steps on this thread (it lets go of
+        # Python's lock), the next group's orders are chosen on a helper
+        # thread, so the engine and the network overlap. The engine has to
+        # stay on this thread; the network does not.
+        chooser = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         while not self.stop.is_set():
             with self.lock:
                 if self.pending is not None:
@@ -165,57 +287,55 @@ class Player(threading.Thread):
                 if len(self.snapshots) > s.max_snapshots:
                     del self.snapshots[1]
                 self.want_snapshot.clear()
-            store = {k: [] for k in ("views", "actions", "log_probs", "values", "rewards", "dones")}
+            for group in groups:
+                group.store = {k: [] for k in ("views", "actions", "log_probs", "values", "rewards", "dones")}
             results: list[dict[str, Any]] = []
-            for _ in range(s.rollout):
-                tensors = [torch.as_tensor(v) for v in views]
-                actions = np.zeros((2 * games, views[4].shape[1], 15), dtype=np.int64)
-                # The network now: the learner's sides and the "self" opponents in one pass.
-                selfish = [opponent_rows[g] for g in range(games) if opponents[g].kind == "self"]
-                rows = np.concatenate([learner_rows, np.array(selfish, dtype=np.int64)])
-                with torch.no_grad():
-                    a, logp, value = self.copy.act(*[t[rows] for t in tensors])
-                actions[rows] = a.numpy()
-                n = games
-                for key in sorted({o.which for o in opponents if o.kind == "past"}):
-                    past_rows = np.array([opponent_rows[g] for g in range(games) if opponents[g].kind == "past" and opponents[g].which == key])
-                    with torch.no_grad():
-                        pa, _, _ = self.snapshots[key].act(*[t[past_rows] for t in tensors])
-                    actions[past_rows] = pa.numpy()
-                store["views"].append([t[learner_rows] for t in tensors])
-                store["actions"].append(a[:n])
-                store["log_probs"].append(logp[:n])
-                store["values"].append(value[:n])
-                store["dones"].append(torch.as_tensor(done))
-                views, rewards, dones, finished = eng.step(actions)
-                store["rewards"].append(torch.as_tensor(rewards[learner_rows]))
-                done = dones[learner_rows]
-                for game in finished:
-                    g = game["game"]
-                    side = int(learner_side[g])
-                    results.append({
-                        "scenario": game["scenario"], "side": game["sides"][side], "goal": game["goals"][side],
-                        "opponent": opponents[g].label, "outcome": outcome_for(game, side),
-                        "return": float(game["returns"][side]), "rounds": int(game["rounds"]),
-                    })
-                    seat(g)
+            # Seconds this batch spent waiting for orders, and stepping engines.
+            timing = {"net": 0.0, "engine": 0.0}
+            choosing: dict[int, concurrent.futures.Future] = {}
+            turns = [(t, k) for t in range(s.rollout) for k in range(len(groups))]
+            for at, (_, k) in enumerate(turns):
+                group = groups[k]
+                clock = time.perf_counter()
+                actions = choosing.pop(k).result() if k in choosing else self._choose(group)
+                timing["net"] += time.perf_counter() - clock
+                # The next group to step, if it has a turn left this batch, has
+                # its views already: choose for it while this one steps.
+                if at + 1 < len(turns):
+                    after = turns[at + 1][1]
+                    if after != k and after not in choosing:
+                        choosing[after] = chooser.submit(self._choose, groups[after])
+                clock = time.perf_counter()
+                group.stepping = group.eng.step(actions)
+                timing["engine"] += time.perf_counter() - clock
+                self._finish(group, results)
+            learner_last = [torch.cat([torch.as_tensor(g.views[i])[g.learner_rows] for g in groups]) for i in range(VIEWS)]
             with torch.no_grad():
-                last = [torch.as_tensor(v)[learner_rows] for v in views]
-                last_value = self.copy(*last)[1]
+                last_value = self.copy(*[t.to(self.device) for t in learner_last])[1].cpu()
+
+            def joined(key: str):
+                return torch.stack([torch.cat([g.store[key][t] for g in groups]) for t in range(s.rollout)])
+
             batch = {
-                "views": [torch.stack([step[i] for step in store["views"]]) for i in range(VIEWS)],
-                "actions": torch.stack(store["actions"]),
-                "log_probs": torch.stack(store["log_probs"]),
-                "values": torch.stack(store["values"]),
-                "rewards": torch.stack(store["rewards"]),
-                "dones": torch.stack(store["dones"]),
+                "views": [
+                    torch.stack([torch.cat([g.store["views"][t][i] for g in groups]) for t in range(s.rollout)])
+                    for i in range(VIEWS)
+                ],
+                "actions": joined("actions"),
+                "log_probs": joined("log_probs"),
+                "values": joined("values"),
+                "rewards": joined("rewards"),
+                "dones": joined("dones"),
                 "last_value": last_value,
-                "last_views": last,
-                "last_done": torch.as_tensor(done),
+                "last_views": learner_last,
+                "last_done": torch.cat([torch.as_tensor(g.done) for g in groups]),
                 "results": results,
-                "steps": s.rollout * games,
+                "steps": s.rollout * sum(g.games for g in groups),
+                "timing": timing,
             }
+            clock = time.perf_counter()
             self.out.put(batch)
+            timing["handover"] = time.perf_counter() - clock
 
 
 class Learner:
@@ -229,17 +349,24 @@ class Learner:
 
     @torch.no_grad()
     def rescore(self, batch: dict) -> None:
+        """Score the batch with the network as it is now, and mark the moves
+        it finds stale: far less likely now than when they were played."""
         steps, n = batch["rewards"].shape
+        played = batch["log_probs"]
         flat = [v.reshape(steps * n, *v.shape[2:]) for v in batch["views"]]
         actions = batch["actions"].reshape(steps * n, *batch["actions"].shape[2:])
         lps, vals = [], []
         d = self.device
         for start in range(0, steps * n, self.s.batch_size):
             part = slice(start, start + self.s.batch_size)
-            lp, _, v = self.net.evaluate(*[f[part].to(d) for f in flat], actions[part].to(d))
+            lp, _, v = self.net.evaluate(*[f[part].to(d) for f in flat], actions[part].to(d), per_ship=True)
             lps.append(lp.cpu())
             vals.append(v.cpu())
-        batch["log_probs"] = torch.cat(lps).view(steps, n)
+        batch["log_probs"] = torch.cat(lps).view(steps, n, -1)
+        if self.s.stale > 0 and played.dim() == 3:
+            batch["fresh"] = (batch["log_probs"] - played) > float(np.log(self.s.stale))
+        else:
+            batch["fresh"] = torch.ones_like(batch["log_probs"], dtype=torch.bool)
         batch["values"] = torch.cat(vals).view(steps, n)
         batch["last_value"] = self.net(*[v.to(d) for v in batch["last_views"]])[1].cpu()
 
@@ -264,7 +391,15 @@ class Learner:
         d = self.device
         flat = [v.reshape(n, *v.shape[2:]).to(d) for v in batch["views"]]
         actions = batch["actions"].reshape(n, *batch["actions"].shape[2:]).to(d)
-        old_lp, old_v = batch["log_probs"].reshape(n).to(d), values.reshape(n).to(d)
+        old_lp, old_v = batch["log_probs"].reshape(n, -1).to(d), values.reshape(n).to(d)
+        # The ships each entry has, and whose moves are not stale, for
+        # averaging over ships.
+        present = (flat[0][..., 0] > 0.5).float()
+        stale_share = 1.0 - float((batch["fresh"].reshape(n, -1).float().to(d) * present).sum() / present.sum().clamp(min=1.0))
+        present = present * batch["fresh"].reshape(n, -1).float().to(d)
+        per_ship = s.ratio == "ship"
+        if not per_ship:
+            old_lp = old_lp.sum(1, keepdim=True)
         adv, returns = adv.reshape(n).to(d), returns.reshape(n).to(d)
         stats = collections.defaultdict(list)
         self.net.train()
@@ -272,13 +407,20 @@ class Learner:
             order = torch.randperm(n, device=d)
             for start in range(0, n, s.batch_size):
                 idx = order[start : start + s.batch_size]
-                lp, entropy, value = self.net.evaluate(*[f[idx] for f in flat], actions[idx])
+                lp, entropy, value = self.net.evaluate(*[f[idx] for f in flat], actions[idx], per_ship=True)
                 a = adv[idx]
-                a = (a - a.mean()) / (a.std() + 1e-8)
+                a = ((a - a.mean()) / (a.std() + 1e-8)).unsqueeze(1)
+                if per_ship:
+                    weight = present[idx]
+                else:
+                    lp, weight = lp.sum(1, keepdim=True), torch.ones_like(a)
+                count = weight.sum().clamp(min=1.0)
                 ratio = torch.exp(lp - old_lp[idx])
-                pg = -torch.min(ratio * a, torch.clamp(ratio, 1 - s.clip, 1 + s.clip) * a).mean()
+                pg = -(torch.min(ratio * a, torch.clamp(ratio, 1 - s.clip, 1 + s.clip) * a) * weight).sum() / count
                 vl = (returns[idx] - value).pow(2).mean()
-                el = -entropy.mean()
+                # Per ship too: summed over a side, twenty ships' entropy
+                # outweighs everything else the loss says.
+                el = -(entropy * weight).sum() / count if per_ship else -entropy.sum(1).mean()
                 loss = pg + s.entropy * el + s.value * vl
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -286,8 +428,8 @@ class Learner:
                 self.optimizer.step()
                 with torch.no_grad():
                     lr = lp - old_lp[idx]
-                    stats["approx_kl"].append(((torch.exp(lr) - 1) - lr).mean().item())
-                    stats["clip_fraction"].append(((ratio - 1).abs() > s.clip).float().mean().item())
+                    stats["approx_kl"].append((((torch.exp(lr) - 1) - lr) * weight).sum().item() / count.item())
+                    stats["clip_fraction"].append(((((ratio - 1).abs() > s.clip).float()) * weight).sum().item() / count.item())
                 stats["policy_gradient_loss"].append(pg.item())
                 stats["value_loss"].append(vl.item())
                 stats["entropy_loss"].append(el.item())
@@ -298,6 +440,7 @@ class Learner:
         self.decisions += int((batch["views"][0][..., 0] > 0.5).sum())
         out = {f"train/{k}": float(np.mean(v)) for k, v in stats.items()}
         out["train/explained_variance"] = float(explained)
+        out["train/stale_share"] = stale_share
         return out
 
     def record(self, batch: dict) -> dict[str, float]:
@@ -306,7 +449,14 @@ class Learner:
         by_opponent = collections.defaultdict(list)
         by_side = collections.defaultdict(list)
         by_goal = collections.defaultdict(list)
+        # Whether Hold games ended with the side still at its post, by
+        # scenario: a Hold side that runs can still show a positive return
+        # from the fighting on the way, so goal/hold alone does not say.
+        held = collections.defaultdict(list)
         for r in self.recent:
+            if r["goal"] == "hold":
+                held["hold/at_post"].append(r["at_post"])
+                held[f"hold/at_post/{r['scenario']}"].append(r["at_post"])
             by_opponent[r["opponent"]].append(r["outcome"])
             if r["opponent"] not in ("self", "past") and not r["opponent"].startswith("teacher"):
                 by_side[f"{r['scenario']}/{r['side']}"].append(r["outcome"] in WINS)
@@ -320,6 +470,8 @@ class Learner:
             out[f"win_rate/{key}"] = sum(wins) / len(wins)
         for goal, met in by_goal.items():
             out[f"goal/{goal}"] = sum(met) / len(met)
+        for key, at_post in held.items():
+            out[key] = sum(at_post) / len(at_post)
         return out
 
 
@@ -336,10 +488,22 @@ def train(net: SideNet, s: Settings, total_steps: int, log: Callable, save: Call
             rate = s.learning_rate * (1.0 - (1.0 - s.final_lr_fraction) * done_share)
             for group in learner.optimizer.param_groups:
                 group["lr"] = rate
+            clock = time.perf_counter()
             batch = batches.get()
             if batch is None:
                 raise RuntimeError("the player stopped") from player.error
+            waited = time.perf_counter() - clock
+            clock = time.perf_counter()
             stats = learner.update(batch)
+            # Where the time goes, in seconds per batch: the player choosing
+            # orders and stepping the engine (the engine includes baselines and
+            # teachers, which it plays), the learner learning, and the learner
+            # waiting for the player. The player's wait to hand a batch over is
+            # the previous batch's, as it is measured after the hand-over.
+            stats["time/play_net"] = batch["timing"]["net"]
+            stats["time/play_engine"] = batch["timing"]["engine"]
+            stats["time/learn"] = time.perf_counter() - clock
+            stats["time/learn_waiting"] = waited
             player.refresh({k: v.detach().to("cpu").clone() for k, v in net.state_dict().items()})
             stats.update(learner.record(batch))
             done = min(1.0, learner.decisions / max(1, s.taper_steps))

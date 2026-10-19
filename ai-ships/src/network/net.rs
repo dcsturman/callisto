@@ -9,8 +9,8 @@
 use rand::Rng;
 use serde::Deserialize;
 
-use crate::action::{Choice, Head, HEADS, HEAD_SIZES, MASK_LEN};
-use crate::encode::OBS_LEN;
+use crate::network::action::{Choice, Head, HEADS, HEAD_SIZES, MASK_LEN};
+use crate::network::encode::OBS_LEN;
 
 #[derive(Debug, Deserialize)]
 struct Header {

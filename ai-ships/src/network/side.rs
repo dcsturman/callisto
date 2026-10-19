@@ -15,26 +15,27 @@
 //! enemy tokens, the guide at one of the side's own tokens (her own masked
 //! out). Orders are then made exactly as for the per-ship network.
 
-use ai_ships::observation::{Contact, Observation};
+use crate::observation::{Contact, Observation};
 use callisto::entity::{Entity, Vec3, G};
 use callisto::ship::{Goal, Ship};
 use callisto::software::SoftwareKind;
 use callisto::tactics::{self, Posture, BANDS};
 use cgmath::InnerSpace;
 
-use crate::action::{self, Head};
-use crate::encode::{
+use crate::network::action::{self, Head};
+use crate::network::encode::{
   direction, log_distance, log_speed, odds, posture_of, rounds_to_reach, share, Memory, Picture, GOALS, MAX_SHIPS,
 };
-use crate::history::History;
-use crate::orders;
+use crate::network::history::History;
+use crate::network::orders;
 
-/// Tokens for the side's own ships, and for enemies: eight a side for now,
-/// which every scenario in the pool fits (Jupiter's Aslan are the most, at
-/// seven). The network's weights do not depend on it; raising it later costs
-/// only speed.
-pub const OWN: usize = 8;
-pub const FOES: usize = 8;
+/// Tokens for the side's own ships, and for enemies: twenty a side, which
+/// every scenario in the pool fits (Fighter Swarm's twenty fighters are the
+/// most). The network's weights do not depend on it, so a network trained at
+/// eight a side loads unchanged; the network trims each batch to its largest
+/// fleet, so small scenarios do not pay for the empty rows.
+pub const OWN: usize = 20;
+pub const FOES: usize = 20;
 pub const OWN_FEATS: usize = 73;
 pub const FOE_FEATS: usize = 26;
 pub const SIDE_FEATS: usize = 10;
@@ -127,19 +128,57 @@ struct Foe<'a> {
   contact: Option<&'a Contact>,
 }
 
-fn frame(own: &[&Ship]) -> (Vec3, Vec3) {
-  let n = own.len().max(1) as f64;
-  let zero = Vec3::new(0.0, 0.0, 0.0);
-  let position = own.iter().map(|ship| ship.get_position()).fold(zero, |a, b| a + b) / n;
-  let velocity = own.iter().map(|ship| ship.get_velocity()).fold(zero, |a, b| a + b) / n;
-  (position, velocity)
+/// The side's own frame: its middle and average velocity, turned about the
+/// vertical so that the middle of the enemies it sees lies straight ahead,
+/// along +x. Every position, velocity and burn the network is given is in
+/// this frame, so a battle looks the same to it whichever way it faces: a
+/// side with the enemy to the east sees what a side with the enemy to the
+/// west sees. Without it the network learned to play better facing one way.
+#[derive(Clone, Copy)]
+struct Frame {
+  centre: Vec3,
+  velocity: Vec3,
+  turn: cgmath::Matrix3<f64>,
+}
+
+impl Frame {
+  /// The side's middle and average velocity, not yet turned.
+  fn of(own: &[&Ship]) -> Self {
+    use cgmath::SquareMatrix;
+    let n = own.len().max(1) as f64;
+    let zero = Vec3::new(0.0, 0.0, 0.0);
+    Frame {
+      centre: own.iter().map(|ship| ship.get_position()).fold(zero, |a, b| a + b) / n,
+      velocity: own.iter().map(|ship| ship.get_velocity()).fold(zero, |a, b| a + b) / n,
+      turn: cgmath::Matrix3::identity(),
+    }
+  }
+
+  /// Turned to face the middle of `enemies`, if there are any off the
+  /// vertical.
+  fn facing(mut self, enemies: &[Vec3]) -> Self {
+    if enemies.is_empty() {
+      return self;
+    }
+    let middle = enemies.iter().fold(Vec3::new(0.0, 0.0, 0.0), |a, b| a + b) / enemies.len() as f64;
+    let ahead = middle - self.centre;
+    if ahead.x.hypot(ahead.y) > 1.0 {
+      self.turn = cgmath::Matrix3::from_angle_z(cgmath::Rad(-ahead.y.atan2(ahead.x)));
+    }
+    self
+  }
+
+  /// A direction or difference, in the frame.
+  fn turned(&self, v: Vec3) -> Vec3 {
+    self.turn * v
+  }
 }
 
 /// Where and how something moves, relative to the frame: direction (3), log
 /// distance, velocity direction (3), log speed.
-fn place(out: &mut [f32], frame: (Vec3, Vec3), position: Vec3, velocity: Vec3) {
-  let offset = position - frame.0;
-  let drift = velocity - frame.1;
+fn place(out: &mut [f32], frame: Frame, position: Vec3, velocity: Vec3) {
+  let offset = frame.turned(position - frame.centre);
+  let drift = frame.turned(velocity - frame.velocity);
   out[0..3].copy_from_slice(&direction(offset));
   out[3] = log_distance(offset.magnitude());
   out[4..7].copy_from_slice(&direction(drift));
@@ -167,7 +206,7 @@ pub fn encode_side(ctx: &SideContext, buffers: &mut Buffers) -> Tokens {
   let mut own: Vec<&Ship> = view.own.iter().collect();
   own.sort_by(|a, b| a.get_name().cmp(b.get_name()));
   own.truncate(OWN);
-  let frame = frame(&own);
+  let frame = Frame::of(&own);
   let mut foes: Vec<Foe> = view
     .enemies()
     .into_iter()
@@ -185,16 +224,17 @@ pub fn encode_side(ctx: &SideContext, buffers: &mut Buffers) -> Tokens {
     }))
     .collect();
   foes.sort_by(|a, b| {
-    let from = |foe: &Foe| (foe.position - frame.0).magnitude();
+    let from = |foe: &Foe| (foe.position - frame.centre).magnitude();
     from(a).total_cmp(&from(b)).then_with(|| a.name.cmp(b.name))
   });
   foes.truncate(FOES);
+  let frame = frame.facing(&foes.iter().map(|foe| foe.position).collect::<Vec<_>>());
 
   for (i, ship) in own.iter().enumerate() {
     own_token(ctx, ship, frame, &mut buffers.own[i * OWN_FEATS..(i + 1) * OWN_FEATS]);
     for (j, foe) in foes.iter().enumerate() {
       let at = (i * FOES + j) * PAIR_FEATS;
-      pair(ctx, ship, foe, &mut buffers.pairs[at..at + PAIR_FEATS]);
+      pair(ctx, frame, ship, foe, &mut buffers.pairs[at..at + PAIR_FEATS]);
     }
     ship_mask(
       view,
@@ -217,7 +257,7 @@ pub fn encode_side(ctx: &SideContext, buffers: &mut Buffers) -> Tokens {
   }
 }
 
-fn own_token(ctx: &SideContext, me: &Ship, frame: (Vec3, Vec3), row: &mut [f32]) {
+fn own_token(ctx: &SideContext, me: &Ship, frame: Frame, row: &mut [f32]) {
   let view = ctx.view;
   let name = me.get_name();
   row[0] = 1.0;
@@ -268,7 +308,7 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: (Vec3, Vec3), row: &mut [f32])
   };
   let burn = me.plan.0 .0;
   row[43] = (burn.magnitude() / (10.0 * G)).min(1.0) as f32;
-  row[44..47].copy_from_slice(&direction(burn));
+  row[44..47].copy_from_slice(&direction(frame.turned(burn)));
   let inbound: Vec<_> = view.missiles.iter().filter(|missile| missile.target == name).collect();
   row[47] = (inbound.len() as f32 / 5.0).min(1.0);
   row[48] = inbound
@@ -307,7 +347,7 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: (Vec3, Vec3), row: &mut [f32])
   row[72] = (f64::from(me.design.hull.max(1)).log10() / 4.0) as f32;
 }
 
-fn foe_token(ctx: &SideContext, foe: &Foe, frame: (Vec3, Vec3), own: &[&Ship], row: &mut [f32]) {
+fn foe_token(ctx: &SideContext, foe: &Foe, frame: Frame, own: &[&Ship], row: &mut [f32]) {
   let view = ctx.view;
   row[0] = 1.0;
   row[1] = f32::from(u8::from(foe.contact.is_some()));
@@ -321,7 +361,7 @@ fn foe_token(ctx: &SideContext, foe: &Foe, frame: (Vec3, Vec3), own: &[&Ship], r
       row[15] = contact.stealth.map_or(0.0, |stealth| (stealth as usize + 1) as f32 / 4.0);
       row[16] = contact.countermeasures.map_or(0.0, |cm| (cm as usize + 1) as f32 / 2.0);
       row[17] = (contact.burn.magnitude() / (10.0 * G)).min(1.0) as f32;
-      row[18..21].copy_from_slice(&direction(contact.burn));
+      row[18..21].copy_from_slice(&direction(frame.turned(contact.burn)));
       row[22] = share(ctx.history.lost(foe.name), contact.design_hull);
       row[23] = contact.held_by.len().min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
     }
@@ -358,13 +398,13 @@ fn side_token(ctx: &SideContext, own: usize, foes: usize, row: &mut [f32]) {
   row[9] = (orders::missiles_inbound(ctx.view) as f32 / 10.0).min(1.0);
 }
 
-fn pair(ctx: &SideContext, me: &Ship, foe: &Foe, row: &mut [f32]) {
+fn pair(ctx: &SideContext, frame: Frame, me: &Ship, foe: &Foe, row: &mut [f32]) {
   let view = ctx.view;
   let name = me.get_name();
   row[0] = 1.0;
   let offset = foe.position - me.get_position();
   let drift = foe.velocity - me.get_velocity();
-  row[1..4].copy_from_slice(&direction(offset));
+  row[1..4].copy_from_slice(&direction(frame.turned(offset)));
   row[4] = log_distance(offset.magnitude());
   let closing = if offset.magnitude() > 1e-9 {
     -drift.dot(offset) / offset.magnitude()

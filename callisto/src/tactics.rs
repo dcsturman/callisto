@@ -358,6 +358,10 @@ pub struct BandOdds {
   pub mounts: usize,
   /// Every mount that bears is a launcher.
   pub missiles_only: bool,
+  /// Each bearing mount's share of `expected_damage`, by mount index: for
+  /// sharing a ship's guns between targets. Not part of any wire format.
+  #[serde(skip)]
+  pub by_mount: Vec<(usize, f64)>,
 }
 
 /// The chance distribution of the sum of `dice` six-sided dice.
@@ -411,6 +415,7 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
       let mut best_chance: f64 = 0.0;
       let mut expected = 0.0;
       let mut launchers = 0;
+      let mut by_mount = Vec::with_capacity(bearing.len());
       for (index, kind) in &bearing {
         let weapon = &attacker.weapons()[*index];
         let Some(firing) = weapon.firing(*kind) else { continue };
@@ -475,6 +480,7 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
         });
         best_chance = best_chance.max(chance);
         expected += per_attack * count;
+        by_mount.push((*index, per_attack * count));
       }
       BandOdds {
         band: *band,
@@ -482,6 +488,7 @@ pub fn engagement(attacker: &Ship, defender: &Ship, gunnery: &dyn Fn(usize) -> i
         expected_damage: expected,
         mounts: bearing.len(),
         missiles_only: !bearing.is_empty() && launchers == bearing.len(),
+        by_mount,
       }
     })
     .collect()

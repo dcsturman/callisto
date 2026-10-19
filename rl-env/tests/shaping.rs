@@ -65,6 +65,7 @@ fn a_fleet_destroyed_pays_its_ships_and_its_guns() {
     Shaping {
       kills: 1.0,
       firepower: 0.0,
+      ..Shaping::default()
     },
   );
   let (guns, end_guns, _) = play(
@@ -73,6 +74,7 @@ fn a_fleet_destroyed_pays_its_ships_and_its_guns() {
     Shaping {
       kills: 0.0,
       firepower: 1.0,
+      ..Shaping::default()
     },
   );
   assert_eq!(end, end_kills, "the shaping changes the reward, not the game");
@@ -91,4 +93,61 @@ fn a_fleet_destroyed_pays_its_ships_and_its_guns() {
       "{what}: what one side gains the other pays: {gained} {paid}"
     );
   }
+}
+
+#[test]
+fn holding_pays_every_round_it_holds() {
+  let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+  let scenario = runtime.block_on(async {
+    callisto::ship::replace_ship_templates(callisto::ship::load_ship_templates_from_dir(DESIGNS).await.unwrap());
+    Arc::new(Scenario::load("../callisto/scenarios/jupiter.json").await.unwrap())
+  });
+  // Both sides sit still, so Jupiter's Aslan, whose goal is Hold, hold all game.
+  let play = |hold: f32| {
+    let still = Control::Baseline("hold".to_string());
+    let mut game = Game::new(Arc::clone(&scenario), &[still.clone(), still], 3, 10).with_shaping(Shaping {
+      hold,
+      ..Shaping::default()
+    });
+    let (mut totals, mut rounds) = ([0.0_f32; 2], 0);
+    loop {
+      let step = game.step_sides([None, None]);
+      totals[0] += step.rewards[0];
+      totals[1] += step.rewards[1];
+      rounds += 1;
+      if step.end.is_some() {
+        return (totals, rounds);
+      }
+    }
+  };
+  let (plain, rounds) = play(0.0);
+  let (paid, _) = play(0.01);
+  assert!(
+    (paid[1] - plain[1] - 0.01 * rounds as f32).abs() < 1e-4,
+    "the Aslan are paid every round they hold"
+  );
+  assert!(
+    (paid[0] - plain[0]).abs() < 1e-6,
+    "the side that is not holding is paid nothing"
+  );
+}
+
+#[test]
+fn a_side_that_sits_still_ends_at_its_post() {
+  let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+  let scenario = runtime.block_on(async {
+    callisto::ship::replace_ship_templates(callisto::ship::load_ship_templates_from_dir(DESIGNS).await.unwrap());
+    Arc::new(
+      Scenario::load("../callisto/scenarios/Picket at the Refuelling Point.json")
+        .await
+        .unwrap(),
+    )
+  });
+  let still = Control::Baseline("hold".to_string());
+  let mut game = Game::new(scenario, &[still.clone(), still], 3, 5);
+  while game.step_sides([None, None]).end.is_none() {}
+  assert_eq!(game.at_post(), [true, true], "neither side moved from where it began");
+  let tally = game.tally(0);
+  assert!(tally.holding);
+  assert!((tally.held - 1.0).abs() < 1e-6, "the picket held every round: {}", tally.held);
 }

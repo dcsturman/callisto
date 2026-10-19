@@ -46,3 +46,16 @@ async fn a_side_with_no_commander_is_an_error() {
   let nobody = |_: &str, _: u64| -> Option<(String, Box<dyn Commander>)> { None };
   assert!(play(THEBUS, &nobody, 5, 1, None).await.is_err());
 }
+
+#[tokio::test]
+async fn the_built_in_network_plays_and_beats_a_side_that_sits_still() {
+  replace_ship_templates(load_ship_templates_from_dir("../callisto/ship_templates").await.unwrap());
+  let commanders = |side: &str, seed: u64| -> Option<(String, Box<dyn Commander>)> {
+    let name = if side == "Blue" { "network" } else { "idle" };
+    ai_ships::network::commander::named(name, seed).map(|commander| (name.to_string(), commander))
+  };
+  let outcome = play("../callisto/scenarios/Tessaly Crossing.json", &commanders, 40, 5, None)
+    .await
+    .unwrap();
+  assert_eq!(outcome.winner.as_deref(), Some("Blue"), "{outcome:?}");
+}

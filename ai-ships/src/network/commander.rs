@@ -8,19 +8,19 @@
 
 use std::sync::Arc;
 
-use ai_ships::commander::Commander;
-use ai_ships::observation::Observation;
+use crate::commander::Commander;
+use crate::observation::Observation;
 use async_trait::async_trait;
 use callisto::tactics::{EngineerVerb, Helm, Intent, SensorVerb};
 use rand::SeedableRng;
 
-use crate::action::{side_intents, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
-use crate::encode::{encode_ship, Context, Memory, Picture, OBS_LEN};
-use crate::game::{believed_hull, remember, side_goal};
-use crate::history::History;
-use crate::net::Policy;
-use crate::orders;
-use crate::side_net::SideNet;
+use crate::network::action::{side_intents, Choice, Head, Verb, HELM_BANDS, MASK_LEN};
+use crate::network::encode::{believed_hull, remember, side_goal};
+use crate::network::encode::{encode_ship, Context, Memory, Picture, OBS_LEN};
+use crate::network::history::History;
+use crate::network::net::Policy;
+use crate::network::orders;
+use crate::network::side_net::SideNet;
 use callisto::entity::Entity;
 
 /// The rounds a game is assumed to last, for the round-progress input, as in
@@ -254,7 +254,7 @@ impl SideCommander {
 #[async_trait]
 impl Commander for SideCommander {
   async fn decide(&mut self, view: &Observation) -> Vec<(String, Intent)> {
-    use crate::side::{
+    use crate::network::side::{
       Buffers, SideContext, FOES, FOE_FEATS, MASK_LEN as SIDE_MASK, OWN, OWN_FEATS, PAIR_FEATS, SIDE_FEATS,
     };
     remember(&mut self.memory, view, view.round);
@@ -278,7 +278,7 @@ impl Commander for SideCommander {
       vec![0.0; OWN * FOES * PAIR_FEATS],
       vec![false; OWN * SIDE_MASK],
     );
-    let tokens = crate::side::encode_side(
+    let tokens = crate::network::side::encode_side(
       &ctx,
       &mut Buffers {
         own: &mut own,
@@ -349,20 +349,30 @@ fn cached<T>(
   Some(made)
 }
 
-/// A commander by name: a baseline (`close`, `hold`, ...), or a trained
-/// network from its exported file -- `net:<file.cpol>` for the per-ship
-/// network, `side:<file.cside>` for the per-side one, each playing its best
-/// choice, or with `~` (`net~:`, `side~:`) drawing as in training. A goal
-/// after the file (`side:<file>#destroy`) plays for that goal rather than the
-/// scenario's. Each file is read once.
+/// The per-side network the service plays with, built in: side-20-6
+/// (`rl-env/checkpoints/side-20-6`, exported by `scripts/export_side.py`).
+/// Replace the file to change it; its layout must match this build's.
+pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
+
+/// A commander by name: `network`, the built-in per-side network; a baseline
+/// (`close`, `hold`, ...); or a trained network from its exported file --
+/// `net:<file.cpol>` for the per-ship network, `side:<file.cside>` for the
+/// per-side one, each playing its best choice, or with `~` (`net~:`,
+/// `side~:`) drawing as in training. A goal after the file
+/// (`side:<file>#destroy`) plays for that goal rather than the scenario's.
+/// Each file is read once.
 #[must_use]
 pub fn named(name: &str, seed: u64) -> Option<Box<dyn Commander>> {
+  if name == "network" {
+    let net = cached(&LOADED_SIDE, name, |_| SideNet::from_bytes(BUILT_IN, "the built-in network"))?;
+    return Some(Box::new(SideCommander::new(net)));
+  }
   let Some((kind, rest)) = name.split_once(':') else {
-    return ai_ships::commander::named(name, seed);
+    return crate::commander::named(name, seed);
   };
   let (sampling, kind) = kind.strip_suffix('~').map_or((false, kind), |kind| (true, kind));
   if kind != "net" && kind != "side" {
-    return ai_ships::commander::named(name, seed);
+    return crate::commander::named(name, seed);
   }
   let (path, goal) = match rest.split_once('#') {
     Some((path, goal)) => {

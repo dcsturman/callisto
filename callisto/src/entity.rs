@@ -30,8 +30,8 @@ use crate::rules_tables::{
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{
-  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, PowerSystem, Range, Ship, ShipDesignTemplate,
-  ShipSystem,
+  with_ship_templates_for_deserialization, BridgeStation, Controller, FlightPlan, PowerSystem, Range, Ship,
+  ShipDesignTemplate, ShipSystem,
 };
 use crate::software::SoftwareKind;
 
@@ -107,6 +107,27 @@ pub struct MetaData {
   pub description: String,
   #[serde(default)]
   pub owner: String,
+  /// The scenario's sides and their ships, for the new-game screen to offer
+  /// each side to people or the AI. Filled in when the scenario list is
+  /// loaded; never written to a scenario file.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub sides: Vec<ScenarioSide>,
+}
+
+/// One side of a scenario as the new-game screen shows it: its team's name
+/// (`Unaligned` for ships on none) and its ships.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct ScenarioSide {
+  pub team: String,
+  pub ships: Vec<ScenarioShip>,
+}
+
+/// A ship on a [`ScenarioSide`], and whether the scenario file has the AI
+/// crew her.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct ScenarioShip {
+  pub name: String,
+  pub ai: bool,
 }
 
 impl PartialEq for Entities {
@@ -308,6 +329,31 @@ pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> Ef
 }
 
 impl Entities {
+  /// The scenario's sides, by team, and their ships, both in name order: what
+  /// the new-game screen offers to people or the AI.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  #[must_use]
+  pub fn sides(&self) -> Vec<ScenarioSide> {
+    let mut sides = std::collections::BTreeMap::<String, Vec<ScenarioShip>>::new();
+    for ship in self.ships.values() {
+      let ship = ship.read().unwrap();
+      let team = ship.team.map_or_else(|| "Unaligned".to_string(), |team| format!("{team:?}"));
+      sides.entry(team).or_default().push(ScenarioShip {
+        name: ship.get_name().to_string(),
+        ai: ship.controller == Controller::Ai,
+      });
+    }
+    sides
+      .into_iter()
+      .map(|(team, mut ships)| {
+        ships.sort_by(|a, b| a.name.cmp(&b.name));
+        ScenarioSide { team, ships }
+      })
+      .collect()
+  }
+
   #[must_use]
   pub fn new() -> Self {
     Entities {

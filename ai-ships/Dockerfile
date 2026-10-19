@@ -27,6 +27,8 @@ WORKDIR /app
 RUN rm -rf callisto/src ai-ships/src
 COPY callisto/src callisto/src
 COPY ai-ships/src ai-ships/src
+# The trained network the service plays with, built into the binary.
+COPY ai-ships/networks ai-ships/networks
 WORKDIR /app/ai-ships
 RUN touch src/main.rs src/lib.rs ../callisto/src/lib.rs && cargo build --release
 

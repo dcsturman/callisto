@@ -87,6 +87,8 @@ class SideNet(nn.Module):
         self.guide_k = nn.Linear(width, width)
         self.value = nn.Sequential(nn.Linear(width, hidden), nn.GELU(), nn.Linear(hidden, 1))
         self.layout = Heads(SIDE_HEAD_SIZES)
+        # Each head's first choice, where an empty row's mask is open.
+        self.first_choices = self.layout.index[:, 0].clone()
 
     def to(self, *args, **kwargs):
         module = super().to(*args, **kwargs)
@@ -95,44 +97,62 @@ class SideNet(nn.Module):
 
     def forward(self, own, foes, side, pairs, masks):
         """Logits for every ship (``[entries, OWN, SIDE_MASK_LEN]``) and the
-        side's value (``[entries]``)."""
+        side's value (``[entries]``).
+
+        Rows are filled from the front, so the batch is first trimmed to its
+        largest fleet on each side: attention and the pair table then cost
+        what the ships present need, not what twenty a side would. Rows past
+        the trim get no scores; their masks open only the first choice."""
         b = own.shape[0]
         own_present, foe_present = own[..., 0] > 0.5, foes[..., 0] > 0.5
+
+        def filled(present: torch.Tensor) -> int:
+            rows = present.any(0).nonzero()
+            return int(rows.max().item()) + 1 if len(rows) else 1
+
+        k, kf = filled(own_present), filled(foe_present)
+        own, foes, pairs = own[:, :k], foes[:, :kf], pairs[:, :k, :kf]
+        own_present, foe_present = own_present[:, :k], foe_present[:, :kf]
         side_token = self.side_in(side).unsqueeze(1)
         x = torch.cat([self.own_in(own), self.foe_in(foes), side_token], dim=1)
         keep = torch.cat([own_present, foe_present, torch.ones(b, 1, dtype=torch.bool, device=own.device)], dim=1)
-        pair = self.pair_in(pairs)  # [b, OWN, FOES, pw]
-        bias_of = self.pair_bias(pair)  # [b, OWN, FOES, 2h]
-        n = OWN + FOES + 1
+        pair = self.pair_in(pairs)  # [b, k, kf, pw]
+        bias_of = self.pair_bias(pair)  # [b, k, kf, 2h]
+        n = k + kf + 1
         bias = torch.zeros(b, self.heads_n, n, n, device=own.device)
         h = self.heads_n
-        bias[:, :, :OWN, OWN : OWN + FOES] = bias_of[..., :h].permute(0, 3, 1, 2)
-        bias[:, :, OWN : OWN + FOES, :OWN] = bias_of[..., h:].permute(0, 3, 2, 1)
+        bias[:, :, :k, k : k + kf] = bias_of[..., :h].permute(0, 3, 1, 2)
+        bias[:, :, k : k + kf, :k] = bias_of[..., h:].permute(0, 3, 2, 1)
         for layer in self.layers:
             x = layer(x, bias, keep)
         x = self.norm(x)
-        mine, theirs, whole = x[:, :OWN], x[:, OWN : OWN + FOES], x[:, -1]
+        mine, theirs, whole = x[:, :k], x[:, k : k + kf], x[:, -1]
 
         logits = torch.full((b, OWN, SIDE_MASK_LEN), NEG, device=own.device)
         index = self.layout.index
+        # Rows past the trim hold no ship, and their masks open only each
+        # head's first choice. Scoring that choice 0 makes it certain, as an
+        # empty row's choice is however the batch was trimmed: left at NEG
+        # with the rest, it would share its probability with the closed ones.
+        logits[:, k:, self.first_choices] = 0.0
         plain = self.plain(mine)
         at = 0
         for head, size in zip(PLAIN, self.plain_sizes):
-            logits[:, :, index[head, :size]] = plain[..., at : at + size]
+            logits[:, :k, index[head, :size]] = plain[..., at : at + size]
             at += size
         joined = torch.cat(
-            [mine.unsqueeze(2).expand(-1, -1, FOES, -1), theirs.unsqueeze(1).expand(-1, OWN, -1, -1), pair], dim=-1
+            [mine.unsqueeze(2).expand(-1, -1, kf, -1), theirs.unsqueeze(1).expand(-1, k, -1, -1), pair], dim=-1
         )
-        pointed = self.point(joined)  # [b, OWN, FOES, 4]
-        none = self.none(mine)  # [b, OWN, 3]
-        for k, head in enumerate(AT_FOES):
+        pointed = self.point(joined)  # [b, k, kf, 4]
+        none = self.none(mine)  # [b, k, 3]
+        for j, head in enumerate(AT_FOES):
             if head in WITH_NONE:
-                logits[:, :, index[head, 0]] = none[..., sorted(WITH_NONE).index(head)]
-                logits[:, :, index[head, 1 : 1 + FOES]] = pointed[..., k]
+                logits[:, :k, index[head, 0]] = none[..., sorted(WITH_NONE).index(head)]
+                logits[:, :k, index[head, 1 : 1 + kf]] = pointed[..., j]
             else:
-                logits[:, :, index[head, :FOES]] = pointed[..., k]
+                logits[:, :k, index[head, :kf]] = pointed[..., j]
         guide = self.guide_q(mine) @ self.guide_k(mine).transpose(1, 2) / mine.shape[-1] ** 0.5
-        logits[:, :, index[GUIDE, :OWN]] = guide
+        logits[:, :k, index[GUIDE, :k]] = guide
         return logits, self.value(whole).squeeze(-1)
 
     def _dist(self, logits, masks):
@@ -142,22 +162,30 @@ class SideNet(nn.Module):
         log_probs, open_ = self.layout.log_probs(flat_logits, flat_masks)
         return log_probs, open_
 
-    def act(self, own, foes, side, pairs, masks, deterministic: bool = False):
+    def act(self, own, foes, side, pairs, masks, deterministic: bool = False, per_ship: bool = False):
+        """Sampled actions, their log-probability summed over each entry's
+        ships (or each ship's, ``[entries, OWN]``, with `per_ship`), and the
+        side's value."""
         logits, value = self(own, foes, side, pairs, masks)
         log_probs, open_ = self._dist(logits, masks)
         actions = Heads.sample(log_probs, open_, deterministic)  # [b*OWN, H]
         b = own.shape[0]
-        logp = Heads.log_prob(log_probs, actions).view(b, OWN).sum(1)
-        return actions.view(b, OWN, -1), logp, value
+        logp = Heads.log_prob(log_probs, actions).view(b, OWN)
+        return actions.view(b, OWN, -1), (logp if per_ship else logp.sum(1)), value
 
-    def evaluate(self, own, foes, side, pairs, masks, actions):
+    def evaluate(self, own, foes, side, pairs, masks, actions, per_ship: bool = False):
+        """Log-probability and entropy of each entry's actions, summed over its
+        ships, or each ship's own (``[entries, OWN]``) with `per_ship`; and
+        the side's value."""
         logits, value = self(own, foes, side, pairs, masks)
         log_probs, open_ = self._dist(logits, masks)
         b = own.shape[0]
         flat_actions = actions.reshape(b * OWN, -1)
-        logp = Heads.log_prob(log_probs, flat_actions).view(b, OWN).sum(1)
-        entropy = Heads.entropy(log_probs, open_).view(b, OWN).sum(1)
-        return logp, entropy, value
+        logp = Heads.log_prob(log_probs, flat_actions).view(b, OWN)
+        entropy = Heads.entropy(log_probs, open_).view(b, OWN)
+        if per_ship:
+            return logp, entropy, value
+        return logp.sum(1), entropy.sum(1), value
 
     @torch.no_grad()
     def predict(self, views, deterministic: bool = False):

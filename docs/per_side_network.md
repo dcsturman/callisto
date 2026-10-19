@@ -2,7 +2,7 @@
 
 How the network that commands a whole side is wired, set against the
 per-ship network it replaces. The code is `rl-env/python/callisto_rl/sidenet.py`
-(the network) and `rl-env/src/side.rs` (what it is given each round).
+(the network) and `ai-ships/src/network/side.rs` (what it is given each round).
 
 ## Why a second network
 
@@ -175,8 +175,8 @@ well) and would gain much more from an NVIDIA GPU.
 
 The orders the network chooses are turned into the game's orders exactly as
 for the per-ship network (squadrons, withdrawal by jump, the captain's
-boosts, the computer and the sensor operators), by `rl-env/src/action.rs`
-and `rl-env/src/orders.rs`.
+boosts, the computer and the sensor operators), by `ai-ships/src/network/action.rs`
+and `ai-ships/src/network/orders.rs`.
 
 ## Appendix: every input
 

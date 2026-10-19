@@ -6,3 +6,4 @@
 !ai-ships/Cargo.toml
 !ai-ships/Cargo.lock
 !ai-ships/src
+!ai-ships/networks

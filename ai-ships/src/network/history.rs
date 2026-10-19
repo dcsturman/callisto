@@ -6,13 +6,13 @@
 
 use std::collections::HashMap;
 
-use ai_ships::observation::Observation;
+use crate::observation::Observation;
 use callisto::entity::Entity;
 use callisto::ship::Range;
 use callisto::software::SoftwareKind;
 use callisto::tactics::{EngineerVerb, Helm, Intent, SensorVerb};
 
-use crate::action::{Verb, HELM_BANDS};
+use crate::network::action::{Verb, HELM_BANDS};
 
 /// One ship's orders last round, as the observation reads them.
 #[derive(Debug, Clone, Default, PartialEq)]

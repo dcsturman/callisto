@@ -57,17 +57,19 @@ fn finished_dict<'py>(py: Python<'py>, finished: &Finished) -> PyResult<Bound<'p
   dict.set_item("goals", goals)?;
   dict.set_item("returns", finished.returns.to_vec())?;
   dict.set_item("hull_shares", finished.hull_shares.to_vec())?;
+  dict.set_item("at_post", finished.at_post.to_vec())?;
   Ok(dict)
 }
 
 #[pymethods]
 impl Engine {
   #[new]
-  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10, random_goals = 0.0, destroy_goals = 0.0, kill_bonus = 0.0, firepower_bonus = 0.0))]
+  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, opponent = None, seed = 0, threads = 10, random_goals = 0.0, destroy_goals = 0.0, kill_bonus = 0.0, firepower_bonus = 0.0, random_starts = 0.0, hold_bonus = 0.0))]
   #[allow(clippy::too_many_arguments)]
   fn new(
     scenarios: Vec<String>, designs: String, games: usize, max_rounds: u32, opponent: Option<String>, seed: u64,
-    threads: usize, random_goals: f32, destroy_goals: f32, kill_bonus: f32, firepower_bonus: f32,
+    threads: usize, random_goals: f32, destroy_goals: f32, kill_bonus: f32, firepower_bonus: f32, random_starts: f64,
+    hold_bonus: f32,
   ) -> PyResult<Self> {
     let config = Config {
       scenarios,
@@ -82,7 +84,9 @@ impl Engine {
       shaping: crate::game::Shaping {
         kills: kill_bonus,
         firepower: firepower_bonus,
+        hold: hold_bonus,
       },
+      variation: random_starts,
     };
     Batch::new(&config).map(|batch| Engine { batch }).map_err(PyValueError::new_err)
   }
@@ -235,11 +239,11 @@ impl SideOut {
 #[pymethods]
 impl SideEngine {
   #[new]
-  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, seed = 0, threads = 10, random_goals = 0.0, destroy_goals = 0.0, kill_bonus = 0.0, firepower_bonus = 0.0))]
+  #[pyo3(signature = (scenarios, designs, games, max_rounds = 40, seed = 0, threads = 10, random_goals = 0.0, destroy_goals = 0.0, kill_bonus = 0.0, firepower_bonus = 0.0, random_starts = 0.0, hold_bonus = 0.0))]
   #[allow(clippy::too_many_arguments)]
   fn new(
     scenarios: Vec<String>, designs: String, games: usize, max_rounds: u32, seed: u64, threads: usize,
-    random_goals: f32, destroy_goals: f32, kill_bonus: f32, firepower_bonus: f32,
+    random_goals: f32, destroy_goals: f32, kill_bonus: f32, firepower_bonus: f32, random_starts: f64, hold_bonus: f32,
   ) -> PyResult<Self> {
     let config = Config {
       scenarios,
@@ -254,7 +258,9 @@ impl SideEngine {
       shaping: crate::game::Shaping {
         kills: kill_bonus,
         firepower: firepower_bonus,
+        hold: hold_bonus,
       },
+      variation: random_starts,
     };
     SideBatch::new(&config)
       .map(|batch| SideEngine { batch })

@@ -47,6 +47,7 @@ fn random_play_is_legal() {
     random_goals: 0.3,
     destroy_goals: 0.4,
     shaping: callisto_rl::game::Shaping::default(),
+    variation: 0.0,
   };
   let mut batch = Batch::new(&config).expect("the pool loads");
   let slots = batch.slots();
@@ -96,7 +97,8 @@ fn load(path: &str) -> Arc<Scenario> {
 
 /// Every round of a game of `close` against `close`, `close`'s orders for the
 /// first side put through the action heads and back must keep its decisions:
-/// helm, fire, lock, posture, dodge and assist. The heads add what `close`
+/// helm, lock, posture, dodge and assist, and fire whenever it fired (shared
+/// out past overkill). The heads add what `close`
 /// never orders (the captain's boosts, every engineer repairing), so whole
 /// games are no longer identical; the decisions must be.
 fn close_survives_the_heads(scenario: &Arc<Scenario>, seed: u64) -> usize {
@@ -125,7 +127,17 @@ fn close_survives_the_heads(scenario: &Arc<Scenario>, seed: u64) -> usize {
       let (_, given) = intents.iter().find(|(ship, _)| *ship == name).unwrap();
       let ship = view.own.iter().find(|ship| ship.get_name() == name).unwrap();
       assert_eq!(back.helm, given.helm, "{name}: helm");
-      assert_eq!(back.fire, given.fire, "{name}: fire");
+      // Fire is shared out past overkill (see `action::share_fire`), so a
+      // ship's guns may go to other targets than the one chosen, but she
+      // still fires whenever she was told to, and only at enemies she sees.
+      assert_eq!(back.fire.is_empty(), given.fire.is_empty(), "{name}: fire");
+      for engage in &back.fire {
+        assert!(
+          view.enemies().iter().any(|contact| contact.name == engage.target),
+          "{name}: fire at {}, not an enemy in contact",
+          engage.target
+        );
+      }
       assert_eq!(back.sensors, given.sensors, "{name}: lock");
       let posture_now = callisto_rl::encode::posture_of(ship);
       let posture = given.posture.map_or(posture_now, |p| {
@@ -178,16 +190,28 @@ fn each_goal_scores_as_agreed() {
     dealt,
     jumped,
     holding,
+    held: 0.0,
     kept: 0.4,
+    enemy_escaping: false,
+    enemy_jumped: 0.0,
   };
   let none = tally(0.0, 0.0, false);
   // Destroy: running is nearly as bad as dying; a draw is as bad.
   assert!((terminal(Goal::Destroy, Ending::EnemyFled, &none) - 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Destroy, Ending::WeFled, &none) + 0.9).abs() < 1e-6);
   assert!((terminal(Goal::Destroy, Ending::Draw, &none) + 1.0).abs() < 1e-6);
-  // Hold: a draw is good only while still holding; running is failure.
+  // Hold: a draw is good only while still holding; leaving the post, however
+  // the game ends, is desertion; a stand fought out at the post earns back
+  // some of the loss for the rounds held and the hull destroyed.
   assert!((terminal(Goal::Hold, Ending::Draw, &tally(0.0, 0.0, true)) - 0.6).abs() < 1e-6);
-  assert!((terminal(Goal::Hold, Ending::Draw, &none) + 1.0).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::Draw, &none) + 1.1).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::WeFled, &none) + 1.1).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::WeDestroyed, &tally(0.2, 0.0, false)) + 1.1).abs() < 1e-6);
+  let stood = Tally {
+    held: 0.4,
+    ..tally(0.2, 0.0, true)
+  };
+  assert!((terminal(Goal::Hold, Ending::WeDestroyed, &stood) + 0.7).abs() < 1e-6);
   assert!((terminal(Goal::Hold, Ending::EnemyFled, &none) - 1.0).abs() < 1e-6);
   // Raid: the damage is the point, however the game ends.
   assert!((terminal(Goal::Raid, Ending::WeFled, &tally(0.3, 0.0, false)) - 0.6).abs() < 1e-6);
@@ -205,6 +229,21 @@ fn each_goal_scores_as_agreed() {
   assert!((terminal(Goal::Raid, Ending::WeFled, &healthy) + 1.1).abs() < 1e-6);
   assert!((terminal(Goal::Raid, Ending::WeFled, &Tally { dealt: 0.3, ..healthy }) - 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Escape, Ending::WeFled, &Tally { jumped: 1.0, ..healthy }) - 1.0).abs() < 1e-6);
+  // Against an escaping side, the escape's mirror: each ship that gets away
+  // costs what it earns the other side, whatever this side's goal.
+  let escaping = |share: f32| Tally {
+    enemy_escaping: true,
+    enemy_jumped: share,
+    ..none
+  };
+  assert!((terminal(Goal::Destroy, Ending::EnemyFled, &escaping(1.0)) + 1.0).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::EnemyDestroyed, &escaping(0.0)) - 1.0).abs() < 1e-6);
+  assert!(terminal(Goal::Destroy, Ending::EnemyFled, &escaping(0.5)).abs() < 1e-6);
+  let (ours, theirs) = (
+    terminal(Goal::Escape, Ending::WeFled, &tally(0.0, 0.3, false)),
+    terminal(Goal::Destroy, Ending::EnemyFled, &escaping(0.3)),
+  );
+  assert!((ours + theirs).abs() < 1e-6, "zero-sum: {ours} against {theirs}");
 }
 
 #[test]
@@ -222,6 +261,7 @@ fn random_whole_side_play_is_legal() {
     random_goals: 0.3,
     destroy_goals: 0.4,
     shaping: callisto_rl::game::Shaping::default(),
+    variation: 0.0,
   };
   let mut batch = SideBatch::new(&config).expect("the pool loads");
   let entries = 2 * batch.games();
