@@ -15,19 +15,19 @@
 //! enemy tokens, the guide at one of the side's own tokens (her own masked
 //! out). Orders are then made exactly as for the per-ship network.
 
-use ai_ships::observation::{Contact, Observation};
+use crate::observation::{Contact, Observation};
 use callisto::entity::{Entity, Vec3, G};
 use callisto::ship::{Goal, Ship};
 use callisto::software::SoftwareKind;
 use callisto::tactics::{self, Posture, BANDS};
 use cgmath::InnerSpace;
 
-use crate::action::{self, Head};
-use crate::encode::{
+use crate::network::action::{self, Head};
+use crate::network::encode::{
   direction, log_distance, log_speed, odds, posture_of, rounds_to_reach, share, Memory, Picture, GOALS, MAX_SHIPS,
 };
-use crate::history::History;
-use crate::orders;
+use crate::network::history::History;
+use crate::network::orders;
 
 /// Tokens for the side's own ships, and for enemies: twenty a side, which
 /// every scenario in the pool fits (Fighter Swarm's twenty fighters are the

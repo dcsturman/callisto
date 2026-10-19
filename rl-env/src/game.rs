@@ -31,7 +31,8 @@ use cgmath::InnerSpace;
 use rand::{Rng, SeedableRng};
 
 use crate::action::{side_intents, Choice, MASK_LEN};
-use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, Seen, MAX_SHIPS, OBS_LEN};
+pub use crate::encode::{believed_hull, remember, side_goal};
+use crate::encode::{encode_absent, encode_ship, Context, Memory, Picture, MAX_SHIPS, OBS_LEN};
 use crate::history::History;
 
 /// A scenario loaded once and played many times.
@@ -199,19 +200,6 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
       _ => 2.0 * tally.jumped - 1.0,
     },
   }
-}
-
-/// A side's goal: the one most of its ships carry, Destroy if none do.
-pub fn side_goal<'a>(ships: impl IntoIterator<Item = &'a Ship>) -> Goal {
-  let mut counts: HashMap<Goal, usize> = HashMap::new();
-  for ship in ships {
-    *counts.entry(ship.goal.unwrap_or_default()).or_default() += 1;
-  }
-  crate::encode::GOALS
-    .into_iter()
-    .max_by_key(|goal| counts.get(goal).copied().unwrap_or(0))
-    .filter(|goal| counts.contains_key(goal))
-    .unwrap_or_default()
 }
 
 /// The goals a side can be given at random: Escape only if every ship has a
@@ -1007,45 +995,6 @@ impl Game {
       side.history.record(&theirs);
     }
     self.play(&orders)
-  }
-}
-
-/// Update a side's memory from its view: contacts as they are now; ships no
-/// longer on the plot at all are gone, so their hull is none.
-pub fn remember(memory: &mut Memory, view: &Observation, round: u32) {
-  for contact in view.enemies() {
-    memory.insert(
-      contact.name.clone(),
-      Seen {
-        round,
-        hull_share: contact.current_hull as f32 / contact.design_hull.max(1) as f32,
-        design_hull: contact.design_hull,
-        thrust: contact.current_maneuver,
-      },
-    );
-  }
-  let on_plot = |name: &str| {
-    view.contacts.iter().any(|contact| contact.name == name) || view.blips.iter().any(|blip| blip.name == name)
-  };
-  for (name, seen) in memory.iter_mut() {
-    if !on_plot(name) {
-      seen.hull_share = 0.0;
-    }
-  }
-}
-
-/// The enemy's hull left as a side believes it: over the enemies it has
-/// ever held, their last-seen hull against their design. All of it if none.
-#[must_use]
-pub fn believed_hull(memory: &Memory) -> f32 {
-  let (left, whole) = memory.values().fold((0.0, 0.0), |(left, whole), seen| {
-    let design = seen.design_hull as f32;
-    (left + seen.hull_share * design, whole + design)
-  });
-  if whole > 0.0 {
-    left / whole
-  } else {
-    1.0
   }
 }
 

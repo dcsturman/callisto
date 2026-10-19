@@ -15,21 +15,21 @@
 //! of magnitude, so they go in as a direction and a logarithm.
 //!
 //! The slot an enemy or friend is in is also its index in the action heads
-//! ([`crate::action`]), so the order is kept, as a [`Picture`], until the
+//! ([`crate::network::action`]), so the order is kept, as a [`Picture`], until the
 //! actions chosen from it come back.
 
 use std::collections::HashMap;
 
-use ai_ships::observation::{Contact, Observation};
+use crate::observation::{Contact, Observation};
 use callisto::entity::{Entity, Vec3};
 use callisto::ship::{Goal, Ship};
 use callisto::software::SoftwareKind;
 use callisto::tactics::{self, BandOdds, Posture, BANDS};
 use cgmath::InnerSpace;
 
-use crate::action::{self, Head, MASK_LEN};
-use crate::history::History;
-use crate::orders;
+use crate::network::action::{self, Head, MASK_LEN};
+use crate::network::history::History;
+use crate::network::orders;
 
 /// The most ships a side may have.
 pub const MAX_SHIPS: usize = 20;
@@ -518,5 +518,57 @@ fn set(mask: &mut [bool], head: Head, open: &[bool]) {
   mask[at..at + head.size()].copy_from_slice(open);
   if !mask[at..at + head.size()].iter().any(|open| *open) {
     mask[at] = true;
+  }
+}
+
+/// A side's goal: the one most of its ships carry, Destroy if none do.
+pub fn side_goal<'a>(ships: impl IntoIterator<Item = &'a Ship>) -> Goal {
+  let mut counts: HashMap<Goal, usize> = HashMap::new();
+  for ship in ships {
+    *counts.entry(ship.goal.unwrap_or_default()).or_default() += 1;
+  }
+  GOALS
+    .into_iter()
+    .max_by_key(|goal| counts.get(goal).copied().unwrap_or(0))
+    .filter(|goal| counts.contains_key(goal))
+    .unwrap_or_default()
+}
+
+/// Update a side's memory from its view: contacts as they are now; ships no
+/// longer on the plot at all are gone, so their hull is none.
+pub fn remember(memory: &mut Memory, view: &Observation, round: u32) {
+  for contact in view.enemies() {
+    memory.insert(
+      contact.name.clone(),
+      Seen {
+        round,
+        hull_share: contact.current_hull as f32 / contact.design_hull.max(1) as f32,
+        design_hull: contact.design_hull,
+        thrust: contact.current_maneuver,
+      },
+    );
+  }
+  let on_plot = |name: &str| {
+    view.contacts.iter().any(|contact| contact.name == name) || view.blips.iter().any(|blip| blip.name == name)
+  };
+  for (name, seen) in memory.iter_mut() {
+    if !on_plot(name) {
+      seen.hull_share = 0.0;
+    }
+  }
+}
+
+/// The enemy's hull left as a side believes it: over the enemies it has
+/// ever held, their last-seen hull against their design. All of it if none.
+#[must_use]
+pub fn believed_hull(memory: &Memory) -> f32 {
+  let (left, whole) = memory.values().fold((0.0, 0.0), |(left, whole), seen| {
+    let design = seen.design_hull as f32;
+    (left + seen.hull_share * design, whole + design)
+  });
+  if whole > 0.0 {
+    left / whole
+  } else {
+    1.0
   }
 }

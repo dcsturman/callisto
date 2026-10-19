@@ -5,23 +5,23 @@
 //! whichever enemy was fourth nearest when she looked.
 //!
 //! The network's choices are the decisions; how each is carried out, when
-//! it takes more than one step, is [`crate::orders`]: a withdrawal by jump,
+//! it takes more than one step, is [`crate::network::orders`]: a withdrawal by jump,
 //! the captain's boosts from a ranking, the computer's loadout, the sensor
 //! operators' verbs. Engineers repair in [`REPAIR_PRIORITY`] when nothing
 //! else needs them; point defence is left to the tactics layer.
 
 use std::collections::{BTreeMap, HashMap};
 
-use ai_ships::decision::{straggler_margin, STRAGGLER_STEP};
-use ai_ships::observation::Observation;
+use crate::decision::{straggler_margin, STRAGGLER_STEP};
+use crate::observation::Observation;
 use callisto::entity::Entity;
 use callisto::ship::{Range, Ship};
 use callisto::tactics::{self, Engage, EngineerVerb, Helm, Intent, Posture, SensorVerb};
 
-use crate::orders;
+use crate::network::orders;
 use cgmath::InnerSpace;
 
-use crate::encode::{posture_of, Picture, ENEMIES, FRIENDS};
+use crate::network::encode::{posture_of, Picture, ENEMIES, FRIENDS};
 
 /// The helm's verbs, in the order of the verb head.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

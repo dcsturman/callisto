@@ -8,16 +8,12 @@
 //!
 //! See `docs/rl_plan.md` for the why.
 
-pub mod action;
 pub mod batch;
-pub mod commander;
-pub mod encode;
 pub mod game;
-pub mod history;
-pub mod net;
-pub mod orders;
 #[cfg(feature = "python")]
 mod python;
-pub mod side;
 pub mod side_batch;
-pub mod side_net;
+// What plays a game -- the encoders, the networks and their commanders --
+// lives in the AI service, which plays real games with it; training uses it
+// from there.
+pub use ai_ships::network::{action, commander, encode, history, net, orders, side, side_net};

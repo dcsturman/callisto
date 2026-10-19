@@ -9,8 +9,8 @@
 //! shut systems down so the drive is powered the round the ship is clear,
 //! then make the jump check. The ship's state is the order's memory.
 
-use ai_ships::commander::REPAIR_PRIORITY;
-use ai_ships::observation::Observation;
+use crate::commander::REPAIR_PRIORITY;
+use crate::observation::Observation;
 use callisto::entity::{Entity, Vec3, DELTA_TIME_F64, G};
 use callisto::ship::{BridgeStation, Goal, PowerSystem, Ship};
 use callisto::software::{Software, SoftwareKind};
