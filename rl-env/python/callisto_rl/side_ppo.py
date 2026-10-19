@@ -263,6 +263,7 @@ class Player(threading.Thread):
                 "scenario": game["scenario"], "side": game["sides"][side], "goal": game["goals"][side],
                 "opponent": group.opponents[g].label, "outcome": outcome_for(game, side),
                 "return": float(game["returns"][side]), "rounds": int(game["rounds"]),
+                "at_post": bool(game["at_post"][side]),
             })
             self._seat(group, g)
 
@@ -448,7 +449,14 @@ class Learner:
         by_opponent = collections.defaultdict(list)
         by_side = collections.defaultdict(list)
         by_goal = collections.defaultdict(list)
+        # Whether Hold games ended with the side still at its post, by
+        # scenario: a Hold side that runs can still show a positive return
+        # from the fighting on the way, so goal/hold alone does not say.
+        held = collections.defaultdict(list)
         for r in self.recent:
+            if r["goal"] == "hold":
+                held["hold/at_post"].append(r["at_post"])
+                held[f"hold/at_post/{r['scenario']}"].append(r["at_post"])
             by_opponent[r["opponent"]].append(r["outcome"])
             if r["opponent"] not in ("self", "past") and not r["opponent"].startswith("teacher"):
                 by_side[f"{r['scenario']}/{r['side']}"].append(r["outcome"] in WINS)
@@ -462,6 +470,8 @@ class Learner:
             out[f"win_rate/{key}"] = sum(wins) / len(wins)
         for goal, met in by_goal.items():
             out[f"goal/{goal}"] = sum(met) / len(met)
+        for key, at_post in held.items():
+            out[key] = sum(at_post) / len(at_post)
         return out
 
 

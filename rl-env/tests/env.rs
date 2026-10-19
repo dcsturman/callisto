@@ -190,6 +190,7 @@ fn each_goal_scores_as_agreed() {
     dealt,
     jumped,
     holding,
+    held: 0.0,
     kept: 0.4,
     enemy_escaping: false,
     enemy_jumped: 0.0,
@@ -199,9 +200,18 @@ fn each_goal_scores_as_agreed() {
   assert!((terminal(Goal::Destroy, Ending::EnemyFled, &none) - 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Destroy, Ending::WeFled, &none) + 0.9).abs() < 1e-6);
   assert!((terminal(Goal::Destroy, Ending::Draw, &none) + 1.0).abs() < 1e-6);
-  // Hold: a draw is good only while still holding; running is failure.
+  // Hold: a draw is good only while still holding; leaving the post, however
+  // the game ends, is desertion; a stand fought out at the post earns back
+  // some of the loss for the rounds held and the hull destroyed.
   assert!((terminal(Goal::Hold, Ending::Draw, &tally(0.0, 0.0, true)) - 0.6).abs() < 1e-6);
-  assert!((terminal(Goal::Hold, Ending::Draw, &none) + 1.0).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::Draw, &none) + 1.1).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::WeFled, &none) + 1.1).abs() < 1e-6);
+  assert!((terminal(Goal::Hold, Ending::WeDestroyed, &tally(0.2, 0.0, false)) + 1.1).abs() < 1e-6);
+  let stood = Tally {
+    held: 0.4,
+    ..tally(0.2, 0.0, true)
+  };
+  assert!((terminal(Goal::Hold, Ending::WeDestroyed, &stood) + 0.7).abs() < 1e-6);
   assert!((terminal(Goal::Hold, Ending::EnemyFled, &none) - 1.0).abs() < 1e-6);
   // Raid: the damage is the point, however the game ends.
   assert!((terminal(Goal::Raid, Ending::WeFled, &tally(0.3, 0.0, false)) - 0.6).abs() < 1e-6);

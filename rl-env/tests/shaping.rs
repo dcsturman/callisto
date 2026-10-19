@@ -131,3 +131,23 @@ fn holding_pays_every_round_it_holds() {
     "the side that is not holding is paid nothing"
   );
 }
+
+#[test]
+fn a_side_that_sits_still_ends_at_its_post() {
+  let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+  let scenario = runtime.block_on(async {
+    callisto::ship::replace_ship_templates(callisto::ship::load_ship_templates_from_dir(DESIGNS).await.unwrap());
+    Arc::new(
+      Scenario::load("../callisto/scenarios/Picket at the Refuelling Point.json")
+        .await
+        .unwrap(),
+    )
+  });
+  let still = Control::Baseline("hold".to_string());
+  let mut game = Game::new(scenario, &[still.clone(), still], 3, 5);
+  while game.step_sides([None, None]).end.is_none() {}
+  assert_eq!(game.at_post(), [true, true], "neither side moved from where it began");
+  let tally = game.tally(0);
+  assert!(tally.holding);
+  assert!((tally.held - 1.0).abs() < 1e-6, "the picket held every round: {}", tally.held);
+}

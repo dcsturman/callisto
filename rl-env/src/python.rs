@@ -57,6 +57,7 @@ fn finished_dict<'py>(py: Python<'py>, finished: &Finished) -> PyResult<Bound<'p
   dict.set_item("goals", goals)?;
   dict.set_item("returns", finished.returns.to_vec())?;
   dict.set_item("hull_shares", finished.hull_shares.to_vec())?;
+  dict.set_item("at_post", finished.at_post.to_vec())?;
   Ok(dict)
 }
 

@@ -60,6 +60,9 @@ pub struct Finished {
   /// The whole game's reward for each side.
   pub returns: [f32; 2],
   pub hull_shares: [f32; 2],
+  /// Whether each side had a ship at its post when the game ended (or when
+  /// its last ship went), for Hold.
+  pub at_post: [bool; 2],
 }
 
 struct Running {
@@ -284,6 +287,7 @@ impl Batch {
               goals: game.goals(),
               returns: running.returns,
               hull_shares: game.hull_shares(),
+              at_post: game.at_post(),
             };
             running.game.reset(first_seed + index as u64);
             running.returns = [0.0; 2];

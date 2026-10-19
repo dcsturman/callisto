@@ -24,8 +24,8 @@ DESIGNS = REPO / "callisto" / "ship_templates"
 
 #: The training pool: the scenarios the LLM commanders were measured on.
 POOL = ["Tessaly Crossing.json", "jupiter.json", "Marduk Encounter.json", "Thebus.json"]
-#: The per-side network's pool: the four above and five of 10 to 24 ships a
-#: side, which only it can play.
+#: The per-side network's pool: the four above and the larger ones, up to 24
+#: ships a side, which only it can play.
 SIDE_POOL = POOL + [
     "Gazelle Duel.json", "Fighter Screen.json", "Aslan Border Clash.json", "Stealth Strike.json", "Fighter Swarm.json",
     # A convoy that must jump clear against corsairs that must stop it: the
@@ -34,6 +34,9 @@ SIDE_POOL = POOL + [
     # Short-reach heavy guns against long-reach ones: the brawlers must close,
     # the kiters must keep their distance.
     "Brawlers and Kiters.json",
+    # A picket that must hold a refuelling point against corsairs that must
+    # break it: Hold from Blue's seat, where Jupiter has it from Red's.
+    "Picket at the Refuelling Point.json",
 ]
 
 

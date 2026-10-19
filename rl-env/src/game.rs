@@ -112,8 +112,11 @@ pub struct Tally {
   /// The share of the side's ships that jumped out.
   pub jumped: f32,
   /// At least one of the side's ships is within [`HOLD_RADIUS`] of where the
-  /// side started.
+  /// side started, as of the last round it had a ship in play: a side
+  /// destroyed at its post still held it.
   pub holding: bool,
+  /// The share of the game's rounds a side whose goal is Hold spent holding.
+  pub held: f32,
   /// The share of its own hull the side has left, ships that jumped out
   /// counted at the hull they left with.
   pub kept: f32,
@@ -132,6 +135,10 @@ pub const RAID_DAMAGE: f32 = 0.25;
 /// is cowardice: it scores [`COWARDICE`], worse than being destroyed.
 pub const COWARD_HULL: f32 = 0.5;
 pub const COWARDICE: f32 = -1.1;
+/// A Hold side destroyed at its post earns back up to this for the rounds it
+/// held and this again for the enemy hull it destroyed: a hopeless stand,
+/// fought out, beats running.
+pub const STAND_CREDIT: f32 = 0.5;
 
 /// The end-of-game reward for one side, by its goal.
 ///
@@ -139,15 +146,20 @@ pub const COWARDICE: f32 = -1.1;
 /// |------------------|---------|-------------------------|-------------------------------|-------------|
 /// | Enemy destroyed  | +1      | +1                      | +1                            | +1          |
 /// | Enemy fled       | +0.6    | +1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
-/// | Draw             | -1      | +0.6 if holding, else -1 | +0.6 if 25% dealt, else -1   | share jumped |
-/// | We fled          | -0.9    | -1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
+/// | Draw             | -1      | +0.6 if holding, else -1.1 | +0.6 if 25% dealt, else -1 | share jumped |
+/// | We fled          | -0.9    | -1.1                    | +0.6 if 25% dealt, else -0.6  | share jumped |
 /// | ...above half hull | -1.1  | -1.1                    | +0.6 if 25% dealt, else -1.1  | share jumped |
-/// | We were destroyed| -1      | -1                      | -1                            | share jumped |
+/// | We were destroyed| -1      | -1 + stand credit if holding, else -1.1 | -1             | share jumped |
 ///
 /// "Share jumped" runs from -1 (none) to +1 (every ship jumped out). Under
 /// Destroy, running is nearly as bad as dying: leaving is for goals that
 /// allow it. Running with more than half its hull left, unless leaving is
 /// the goal or the raid is done, is cowardice, and worse than dying.
+/// Under Hold, any loss away from the post is desertion and scores
+/// [`COWARDICE`]; a side destroyed at its post earns [`STAND_CREDIT`] times
+/// the share of rounds it held plus the same times the hull it destroyed.
+/// Without that difference every Hold loss scores -1, and putting it off by
+/// running is worth more than fighting.
 #[must_use]
 pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
   // Against a side trying to escape, the score is the escape's mirror: each
@@ -168,8 +180,8 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
     Goal::Hold => match ending {
       Ending::EnemyDestroyed | Ending::EnemyFled => 1.0,
       Ending::Draw if tally.holding => 0.6,
-      Ending::WeFled if coward => COWARDICE,
-      Ending::Draw | Ending::WeFled | Ending::WeDestroyed => -1.0,
+      Ending::WeDestroyed if tally.holding => -1.0 + STAND_CREDIT * (tally.held + tally.dealt),
+      Ending::Draw | Ending::WeFled | Ending::WeDestroyed => COWARDICE,
     },
     Goal::Raid => {
       let done = tally.dealt >= RAID_DAMAGE;
@@ -283,6 +295,11 @@ struct Side {
   goal: Goal,
   /// The middle of the side's ships at the start, for Hold.
   start: Vec3,
+  /// Whether a ship was within [`HOLD_RADIUS`] of `start`, as of the last
+  /// round the side had one in play.
+  at_post: bool,
+  /// Rounds the side has held, if its goal is Hold.
+  held_rounds: u32,
   /// What the side remembers from the last round.
   history: History,
   /// The enemy fleet as it began, which firepower is measured against.
@@ -472,6 +489,8 @@ impl Game {
         hull_last: hull,
         goal: side_goal(own),
         start,
+        at_post: true,
+        held_rounds: 0,
         history: History::default(),
         foes_at_start: fleets[1 - index].clone(),
         firepower_at_start: 0.0,
@@ -653,6 +672,13 @@ impl Game {
   #[must_use]
   pub fn view(&self, side: usize) -> &Observation {
     &self.views[side]
+  }
+
+  /// Whether each side had a ship within [`HOLD_RADIUS`] of where it started,
+  /// as of the last round it had one in play.
+  #[must_use]
+  pub fn at_post(&self) -> [bool; 2] {
+    [0, 1].map(|side| self.sides[side].at_post)
   }
 
   /// Hull left, as a share of the start, for each side: the true figure.
@@ -853,17 +879,16 @@ impl Game {
     for (side, hull) in self.sides.iter_mut().zip(hulls) {
       side.hull_last = hull;
     }
-    if self.shaping.hold != 0.0 {
-      for (reward, state) in rewards.iter_mut().zip(&self.sides) {
-        let holding = state.goal == Goal::Hold
-          && state
-            .ships
-            .iter()
-            .filter_map(|ship| self.world.ships.get(ship))
-            .any(|ship| (ship.read().unwrap().get_position() - state.start).magnitude() <= HOLD_RADIUS);
-        if holding {
-          *reward += self.shaping.hold;
-        }
+    for (reward, state) in rewards.iter_mut().zip(self.sides.iter_mut()) {
+      let mut in_play = state.ships.iter().filter_map(|ship| self.world.ships.get(ship)).peekable();
+      if in_play.peek().is_none() {
+        continue;
+      }
+      state.at_post =
+        in_play.any(|ship| (ship.read().unwrap().get_position() - state.start).magnitude() <= HOLD_RADIUS);
+      if state.goal == Goal::Hold && state.at_post {
+        state.held_rounds += 1;
+        *reward += self.shaping.hold;
       }
     }
     if self.shaping.kills != 0.0 {
@@ -925,15 +950,11 @@ impl Game {
     let enemy = &self.sides[1 - side];
     let ours = &self.sides[side];
     let jumped = ours.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count();
-    let holding = ours
-      .ships
-      .iter()
-      .filter_map(|ship| self.world.ships.get(ship))
-      .any(|ship| (ship.read().unwrap().get_position() - ours.start).magnitude() <= HOLD_RADIUS);
     Tally {
       dealt: 1.0 - enemy.hull_last as f32 / enemy.hull_at_start.max(1) as f32,
       jumped: jumped as f32 / ours.ships.len().max(1) as f32,
-      holding,
+      holding: ours.at_post,
+      held: ours.held_rounds as f32 / self.max_rounds.max(1) as f32,
       kept: ours.hull_last as f32 / ours.hull_at_start.max(1) as f32,
       enemy_escaping: enemy.goal == Goal::Escape,
       enemy_jumped: enemy.ships.iter().filter(|ship| self.departed.contains_key(*ship)).count() as f32

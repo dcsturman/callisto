@@ -99,13 +99,17 @@ own table:
 |---|---|---|---|---|
 | Enemy destroyed | +1 | +1 | +1 | +1 |
 | Enemy fled | +0.6 | +1 | +0.6 if 25% dealt, else -0.6 | share jumped |
-| Draw | -1 | +0.6 if still holding, else -1 | +0.6 if 25% dealt, else -1 | share jumped |
-| We fled | -0.9 | -1 | +0.6 if 25% dealt, else -0.6 | share jumped |
+| Draw | -1 | +0.6 if still holding, else -1.1 | +0.6 if 25% dealt, else -1 | share jumped |
+| We fled | -0.9 | -1.1 | +0.6 if 25% dealt, else -0.6 | share jumped |
 | ...with more than half our hull | -1.1 | -1.1 | +0.6 if 25% dealt, else -1.1 | share jumped |
-| We were destroyed | -1 | -1 | -1 | share jumped |
+| We were destroyed | -1 | -1 + stand credit at the post, else -1.1 | -1 | share jumped |
 
 Holding means a ship still within 25,000 km (Long) of where the side
-started. A raid must destroy a quarter of the enemy's hull however the game
+started, as of the last round the side had one in play. Under Hold, any loss
+away from the post is desertion (-1.1), and a side destroyed at its post
+earns back half the share of rounds it held plus half the share of enemy hull
+it destroyed: with every Hold loss at -1, putting the loss off by running was
+worth more than fighting, and side-20-5 learned to run from Jupiter. A raid must destroy a quarter of the enemy's hull however the game
 ends. Escape means jumping out of the system and nothing else; "share
 jumped" runs from -1 (no ship jumped) to +1 (all did). Running with more than
 half the hull left, when leaving is not the goal, is cowardice and scores
@@ -425,6 +429,23 @@ benchmark plays both sides equally, and a Blue win counts for a lot.
 | side-2 | per-side network, selfplay-9 as teacher | 17–2–1 of 20 | 4–6 |
 | side-3 | learning rate falling to zero over 40M | | 6–4 |
 | side-4 | Destroy only (the Aslan hold), no jump unless escaping, firepower reward 0.2 | | 7–1–2: 5–0 as Red, 2–1–2 as Blue |
+| side-20-2 | twenty ships a side, side-5 as teacher, larger scenarios | | 10–10 |
+| side-20-5 | from side-20-2; 512 games × 8 rounds per update, entropy 0.01, learning rate to zero over 120M | | 17–3: 10–0 as Red, 7–3 as Blue |
+
+side-20-2 to side-20-4 stalled because a bigger batch meant fewer updates:
+512 games × 32 rounds gave one update per 75,000 decisions, where side-5 had
+one per 10,000, and PPO's clip moves the policy about as far per update
+however much data the update has. Keeping 512 games but cutting the rollout
+to 8 rounds restored the pace (and ran faster, 7,500 decisions a second on 64
+vCPUs against 5,400). side-20-5 then beat side-5 head to head on the four
+small scenarios, 200 games each way round, on Tessaly 244–145.
+
+Its Hold was not holding: as Jupiter's Aslan it ran millions of km from its
+post, since every Hold loss scored -1 and a loss put off by running was worth
+more than one fought. Jupiter's Aslan now have three escorts (a scripted
+holder that stands and fights wins about half its games), a loss away from
+the post scores -1.1, a stand fought out at the post earns credit, and
+`hold/at_post` charts how often Hold games end at the post.
 
 side-4 beat side-3 in self-play by every measure, from the first 8M
 decisions on: in the last 8M it won 62% against the teacher to side-3's 58%,

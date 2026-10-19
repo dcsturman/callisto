@@ -216,6 +216,7 @@ impl SideBatch {
               goals: game.goals(),
               returns: running.returns,
               hull_shares: game.hull_shares(),
+              at_post: game.at_post(),
             };
             running.game.reset(first_seed + index as u64);
             running.returns = [0.0; 2];
