@@ -200,6 +200,13 @@ fn each_goal_scores_as_agreed() {
   assert!((terminal(Goal::Destroy, Ending::EnemyFled, &none) - 0.6).abs() < 1e-6);
   assert!((terminal(Goal::Destroy, Ending::WeFled, &none) + 0.9).abs() < 1e-6);
   assert!((terminal(Goal::Destroy, Ending::Draw, &none) + 1.0).abs() < 1e-6);
+  // ...but damage done counts, however the loss came: a fight lost beats a
+  // clock run out untouched. Not for a coward, who keeps -1.1.
+  let fought = tally(0.5, 0.0, false);
+  assert!((terminal(Goal::Destroy, Ending::WeDestroyed, &fought) + 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::Draw, &fought) + 0.6).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::WeFled, &fought) + 0.5).abs() < 1e-6);
+  assert!((terminal(Goal::Destroy, Ending::WeFled, &Tally { kept: 0.8, ..fought }) + 1.1).abs() < 1e-6);
   // Hold: a draw is good only while still holding; leaving the post, however
   // the game ends, is desertion; a stand fought out at the post earns back
   // some of the loss for the rounds held and the hull destroyed.

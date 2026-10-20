@@ -140,6 +140,13 @@ pub const COWARDICE: f32 = -1.1;
 /// held and this again for the enemy hull it destroyed: a hopeless stand,
 /// fought out, beats running.
 pub const STAND_CREDIT: f32 = 0.5;
+/// A Destroy side that loses earns back this times the share of the enemy's
+/// hull it destroyed, however the loss came: damage done counts for more
+/// than running. Without it every Destroy loss scores about -1, a loss put
+/// off is worth more than one fought (future scores count for 0.99 a
+/// round), and an outgunned side runs out the clock instead of fighting.
+/// Running with more than half the hull left stays [`COWARDICE`].
+pub const DEALT_CREDIT: f32 = 0.8;
 
 /// The end-of-game reward for one side, by its goal.
 ///
@@ -151,6 +158,9 @@ pub const STAND_CREDIT: f32 = 0.5;
 /// | We fled          | -0.9    | -1.1                    | +0.6 if 25% dealt, else -0.6  | share jumped |
 /// | ...above half hull | -1.1  | -1.1                    | +0.6 if 25% dealt, else -1.1  | share jumped |
 /// | We were destroyed| -1      | -1 + stand credit if holding, else -1.1 | -1             | share jumped |
+///
+/// Under Destroy, every loss but cowardice earns back [`DEALT_CREDIT`] times
+/// the share of the enemy's hull destroyed (not shown above).
 ///
 /// "Share jumped" runs from -1 (none) to +1 (every ship jumped out). Under
 /// Destroy, running is nearly as bad as dying: leaving is for goals that
@@ -175,8 +185,8 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
       Ending::EnemyDestroyed => 1.0,
       Ending::EnemyFled => 0.6,
       Ending::WeFled if coward => COWARDICE,
-      Ending::WeFled => -0.9,
-      Ending::Draw | Ending::WeDestroyed => -1.0,
+      Ending::WeFled => -0.9 + DEALT_CREDIT * tally.dealt,
+      Ending::Draw | Ending::WeDestroyed => -1.0 + DEALT_CREDIT * tally.dealt,
     },
     Goal::Hold => match ending {
       Ending::EnemyDestroyed | Ending::EnemyFled => 1.0,

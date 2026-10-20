@@ -104,6 +104,11 @@ own table:
 | ...with more than half our hull | -1.1 | -1.1 | +0.6 if 25% dealt, else -1.1 | share jumped |
 | We were destroyed | -1 | -1 + stand credit at the post, else -1.1 | -1 | share jumped |
 
+Under Destroy, every loss but cowardice earns back 0.8 times the share of
+the enemy's hull destroyed: an outgunned side otherwise ran out the clock
+(Marduk's raiders fled the Executor) rather than fight a loss it could
+only put off. Escape is scored on ships jumped alone.
+
 Holding means a ship still within 25,000 km (Long) of where the side
 started, as of the last round the side had one in play. Under Hold, any loss
 away from the post is desertion (-1.1), and a side destroyed at its post
