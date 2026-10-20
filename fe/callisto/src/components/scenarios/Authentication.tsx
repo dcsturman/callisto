@@ -59,6 +59,11 @@ export function Authentication() {
     // which is what sent a "requested access to your account" mail each time.
     // Omitting both lets Google reuse the grant the user already gave.
     ux_mode: "popup",
+    // Ask for name, email and profile only. By default Google folds in
+    // anything else this account ever granted the app, and one stray
+    // sensitive grant then puts the "unverified app" warning in front of
+    // every login.
+    include_granted_scopes: false,
   });
 
   useEffect(() => {
