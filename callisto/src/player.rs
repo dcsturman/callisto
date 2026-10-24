@@ -146,7 +146,7 @@ impl PlayerManager {
   pub fn giver(&self) -> crate::game_log::By {
     if self.service {
       crate::game_log::By::Ai
-    } else if self.ship.is_none() && self.ships.is_empty() && !self.roles.contains(&Role::Observer) {
+    } else if crate::payloads::is_referee(&self.roles, self.holds_ships()) {
       crate::game_log::By::Gm
     } else {
       crate::game_log::By::Human

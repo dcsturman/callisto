@@ -615,6 +615,19 @@ pub enum Role {
   Engineer,
   Observer,
   Captain,
+  /// A team's commander: every ship on one team, from the referee's screen
+  /// cut down to that team. Holds those ships (`ChangeRole::ships`) and
+  /// says Ready for them all.
+  FleetCommand,
+}
+
+/// Whether a player with these roles runs the table: holds no ship and is
+/// neither watching nor commanding a team. The ship decides, not the role --
+/// a referee may take a single station to cut their screen down and is still
+/// the referee. Matches `isReferee` on the client.
+#[must_use]
+pub fn is_referee(roles: &[Role], holds_ships: bool) -> bool {
+  !holds_ships && !roles.iter().any(|role| matches!(role, Role::Observer | Role::FleetCommand))
 }
 
 #[serde_as]

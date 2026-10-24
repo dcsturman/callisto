@@ -49,6 +49,7 @@ function ShipList(args: {
   ) => void;
 }) {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
+  const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
   const entities = useAppSelector(entitiesSelector);
   const dispatch = useAppDispatch();
 
@@ -74,6 +75,8 @@ function ShipList(args: {
         filter={filter}
         setChoice={choiceHandler}
         current={computerShip}
+        // Fleet Command picks from its own team only.
+        onlyTeam={fleetTeam}
       />
       <GoButton moveCamera={args.moveCamera} />
     </div>
@@ -271,6 +274,15 @@ export function Controls() {
       dispatch(setComputerShipName(shipName));
     }
   }, [shipName, dispatch]);
+
+  // Taking Fleet Command lets go of any ship that is not the team's.
+  const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  useEffect(() => {
+    const open = findShip(entities, computerShipName);
+    if (fleetTeam != null && open != null && open.team !== fleetTeam) {
+      dispatch(setComputerShipName(null));
+    }
+  }, [fleetTeam, computerShipName, entities, dispatch]);
 
   const [computerShip, computerShipDesign] = useMemo(() => {
     const computerShip = findShip(entities, computerShipName);
