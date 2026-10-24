@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fire over Jupiter",
     "owner": "dcsturman@gmail.com",
-    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 100,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escort Ailreaui and her six light fighters. Can the Imperials defeat them?"
+    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 100,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escorts Ailreaui and Hroakhtea and their six light fighters. Can the Imperials defeat them?"
   },
   "planets": [
     {
@@ -98,17 +98,6 @@
     {
       "name": "Hroakhtea",
       "position": [-3000000, 0, 6.5e8],
-      "velocity": [0, 0, 0],
-      "plan": [[[0, 0, 0], 50000]],
-      "design": "Ekawsiykua Escort",
-      "team": "Red",
-      "goal": "hold",
-      "orders": "Defend your position.",
-      "crew": {"pilot": 2, "sensors": [2, 1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 2, 2, 2, 2, 1, 2], "leadership": 2}
-    },
-    {
-      "name": "Ftahrao",
-      "position": [3000000, 0, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Ekawsiykua Escort",
