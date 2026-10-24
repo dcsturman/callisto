@@ -1588,6 +1588,10 @@ h3.control-form {
 }
 
 .save-scenario-button-row,
+.captain-boost-waiting {
+    opacity: 0.45;
+}
+
 .victory-screen {
     text-align: center;
 }

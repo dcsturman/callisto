@@ -7,9 +7,7 @@ use itertools::multiunzip;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::action::{
-  boost_target_alive, boost_target_sort_key, describe_boost, merge, BoostMap, BoostTarget, ShipAction,
-};
+use crate::action::{boost_target_alive, describe_boost, merge, BoostMap, BoostTarget, ShipAction};
 use crate::authentication::Authenticator;
 use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
@@ -897,8 +895,8 @@ impl PlayerManager {
   /// Roll the captain's leadership check immediately. Stores the resulting
   /// points on the ship until `reset_temporary_bonuses` clears them at end
   /// of turn. The captain has up to N boosts to apply; assigning more than
-  /// N is allowed but only the first N (per `boost_target_sort_key`) take
-  /// effect at end of turn.
+  /// N is allowed but only the first N, in the order the captain gave them,
+  /// take effect at end of turn: the list is the captain's priorities.
   ///
   /// If the ship is missing, returns a result with `points: 0` and an error
   /// message — the FE renders that the same way as a failed roll.
@@ -1000,13 +998,19 @@ impl PlayerManager {
           let n = ship_lock.read().unwrap().get_leadership_points();
           let take = if n > 0 { usize::try_from(n).unwrap_or(0) } else { 0 };
 
-          // Deterministic order: by ship asc, kind ordinal, then weapon_id.
-          let mut sorted: Vec<BoostTarget> = boosts.clone();
-          sorted.sort_by_key(boost_target_sort_key);
-          // Drop boosts whose target action no longer exists in the queue.
-          sorted.retain(|t| boost_target_alive(t, &queue_snapshot, &entities.ships));
-
-          let truncated: Vec<BoostTarget> = sorted.into_iter().take(take).collect();
+          // The first N in the captain's own order, which is their priority:
+          // the AI lists its boosts most wanted first, and a human ticks the
+          // ones that matter. (They were sorted into a fixed order before,
+          // which inspired whichever came first by kind -- an AI captain
+          // asking for its guns got its sensor searches.) Repeats and boosts
+          // whose action is no longer queued are skipped, not counted.
+          let mut ordered: Vec<BoostTarget> = Vec::new();
+          for target in boosts {
+            if !ordered.contains(target) && boost_target_alive(target, &queue_snapshot, &entities.ships) {
+              ordered.push(target.clone());
+            }
+          }
+          let truncated: Vec<BoostTarget> = ordered.into_iter().take(take).collect();
           for t in &truncated {
             boost_map.insert(t.clone());
           }

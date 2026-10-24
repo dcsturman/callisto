@@ -1703,25 +1703,32 @@ async fn test_leadership_check_success_path() {
   }
 }
 
-/// Boost-target truncation: with leadership=0 and 5 queued boosts, only the
-/// first `max(0, N)` survive (deterministic order: ship asc, kind ord,
-/// `weapon_id`). N is small so we just assert the count and that whichever
-/// boosts survived appear in lexicographic prefix order.
+/// Boost-target truncation: with 5 queued boosts and N points, only the
+/// first `max(0, N)` survive, in the order the captain gave them: the list is
+/// the captain's priorities. Queued here out of any natural order, so a sort
+/// would show.
 #[test(tokio::test)]
 async fn test_leadership_check_truncates_when_n_below_count() {
-  use crate::action::{boost_target_sort_key, BoostTarget};
+  use crate::action::BoostTarget;
 
   let authenticator = setup_authenticator();
   let server = setup_test_with_server(authenticator).await;
 
   // Captain ship with no leadership skill.
   let ship1 = r#"{"name":"ship1","position":[0,0,0],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle",
-        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[1,1,1,1],"leadership":0}}"#;
+        "crew":{"pilot":0,"sensors":[],"engineers":[],"gunnery":[1,1,1,1],"leadership":6}}"#;
   server.add_ship(serde_json::from_str(ship1).unwrap()).unwrap();
 
   let ship2 =
     r#"{"name":"ship2","position":[5000,0,5000],"velocity":[0,0,0], "acceleration":[0,0,0], "design":"Gazelle"}"#;
   server.add_ship(serde_json::from_str(ship2).unwrap()).unwrap();
+
+  // A strong captain, so the roll inspires some but rarely all five.
+  let points = server
+    .captain_action(&crate::payloads::CaptainActionMsg {
+      ship_name: "ship1".to_string(),
+    })
+    .points;
 
   // Queue 4 fire actions on different weapons + a sensor lock so that we have
   // 5 live targetable actions. Then a LeadershipCheck listing all 5 boosts.
@@ -1732,11 +1739,11 @@ async fn test_leadership_check_truncates_when_n_below_count() {
       {"FireAction": {"weapon_id": 3, "target": "ship2"}},
       {"SensorLock": {"target": "ship2"}},
       {"LeadershipCheck": {"boosts": [
-          {"Fire": {"ship": "ship1", "weapon_id": 0}},
-          {"Fire": {"ship": "ship1", "weapon_id": 1}},
-          {"Fire": {"ship": "ship1", "weapon_id": 2}},
+          {"Sensor": {"ship": "ship1"}},
           {"Fire": {"ship": "ship1", "weapon_id": 3}},
-          {"Sensor": {"ship": "ship1"}}
+          {"Fire": {"ship": "ship1", "weapon_id": 1}},
+          {"Fire": {"ship": "ship1", "weapon_id": 0}},
+          {"Fire": {"ship": "ship1", "weapon_id": 2}}
       ]}}
   ]]]);
 
@@ -1745,24 +1752,18 @@ async fn test_leadership_check_truncates_when_n_below_count() {
 
   let line = leadership_line(&effects, "ship1");
   let applied = inspired(&line);
-  let _points = i16::try_from(applied.len()).unwrap_or(0);
-  let take = applied.len();
+  let take = usize::try_from(points.max(0)).unwrap_or(0).min(5);
+  assert_eq!(applied.len(), take, "{points} points inspire {take} of the 5 boosts");
 
-  // points = 2d6 - 8 ranges from -6..=4; our 5 boosts queue is enough that we
-  // expect truncation when take < 5.
-  assert_eq!(
-    applied.len(),
-    take.min(5),
-    "expected applied count == min(take={take}, 5), got {}",
-    applied.len()
-  );
-
-  // Whatever survived must be a strict prefix of the queued list under the
-  // canonical sort. Build the expected prefix and compare.
-  let mut canonical = [
+  // Whatever survived must be a prefix of the list as queued.
+  let queued = [
+    BoostTarget::Sensor {
+      ship: "ship1".to_string(),
+      operator: 0,
+    },
     BoostTarget::Fire {
       ship: "ship1".to_string(),
-      weapon_id: 0,
+      weapon_id: 3,
     },
     BoostTarget::Fire {
       ship: "ship1".to_string(),
@@ -1770,24 +1771,18 @@ async fn test_leadership_check_truncates_when_n_below_count() {
     },
     BoostTarget::Fire {
       ship: "ship1".to_string(),
-      weapon_id: 2,
+      weapon_id: 0,
     },
     BoostTarget::Fire {
       ship: "ship1".to_string(),
-      weapon_id: 3,
-    },
-    BoostTarget::Sensor {
-      ship: "ship1".to_string(),
-      operator: 0,
+      weapon_id: 2,
     },
   ];
-  canonical.sort_by_key(boost_target_sort_key);
-  let expected_prefix: Vec<String> = canonical
-    .iter()
-    .take(applied.len())
-    .map(crate::action::describe_boost)
-    .collect();
-  assert_eq!(applied, expected_prefix, "applied boosts didn't match canonical prefix");
+  let expected_prefix: Vec<String> = queued.iter().take(applied.len()).map(crate::action::describe_boost).collect();
+  assert_eq!(
+    applied, expected_prefix,
+    "applied boosts are not the first of the captain's list"
+  );
 }
 
 /// Boost whose target action does not exist in the queue must be dropped
