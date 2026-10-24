@@ -1588,6 +1588,19 @@ h3.control-form {
 }
 
 .save-scenario-button-row,
+.victory-screen {
+    text-align: center;
+}
+
+.victory-title {
+    font-size: var(--font-xl);
+    letter-spacing: 0.04em;
+}
+
+.victory-screen .confirm-dialog-button-row {
+    justify-content: center;
+}
+
 .confirm-dialog-button-row {
     display: flex;
     justify-content: flex-end;

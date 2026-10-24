@@ -50,6 +50,7 @@ import { ViewMode, hasRole, isReferee } from "lib/view";
 import { RoleChooser } from "components/Role";
 import { ScenarioManager } from "components/scenarios/ScenarioManager";
 import { Tutorial } from "components/Tutorial";
+import { VictoryScreen } from "components/VictoryScreen";
 import { ConfirmDialog } from "components/ConfirmDialog";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
@@ -184,6 +185,8 @@ function Simulator() {
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
+        {/* A scenario being built or taught has no winner to announce. */}
+        {joinedScenario && !tutorialMode && !scenarioBuilderMode && <VictoryScreen />}
         {/* The console: the ship's dossier, then a card for every station
             this player works, in one column that spills into a second only
             when the first is full. Screen space is the scarce thing on a
