@@ -66,7 +66,15 @@ fn a_side_with_a_post_holds_it_rather_than_its_course() {
   use callisto::entity::Vec3;
   use callisto::tactics::{Helm, Intent};
   let post = Vec3::new(0.0, 0.0, 6.71e8);
-  let holding = |helm: Helm| ("ship".to_string(), Intent { helm, ..Intent::default() });
+  let holding = |helm: Helm| {
+    (
+      "ship".to_string(),
+      Intent {
+        helm,
+        ..Intent::default()
+      },
+    )
+  };
   let mut intents = vec![
     holding(Helm::Hold),
     holding(Helm::Follow {
@@ -74,13 +82,23 @@ fn a_side_with_a_post_holds_it_rather_than_its_course() {
       guide_helm: Box::new(Helm::Hold),
       guide_cap: None,
     }),
-    holding(Helm::OpenRange { target: "raider".to_string() }),
+    holding(Helm::OpenRange {
+      target: "raider".to_string(),
+    }),
   ];
   hold_at_post(&mut intents, Some((post, 25_000_000.0)));
   let at = [0.0, 0.0, 6.71e8];
   assert_eq!(intents[0].1.helm, Helm::Station { position: at });
-  assert!(matches!(&intents[1].1.helm, Helm::Follow { guide_helm, .. } if **guide_helm == Helm::Station { position: at }));
-  assert_eq!(intents[2].1.helm, Helm::OpenRange { target: "raider".to_string() }, "other orders stand");
+  assert!(
+    matches!(&intents[1].1.helm, Helm::Follow { guide_helm, .. } if **guide_helm == Helm::Station { position: at })
+  );
+  assert_eq!(
+    intents[2].1.helm,
+    Helm::OpenRange {
+      target: "raider".to_string()
+    },
+    "other orders stand"
+  );
 
   // A side with no post keeps its course when it holds.
   let mut free = vec![holding(Helm::Hold)];

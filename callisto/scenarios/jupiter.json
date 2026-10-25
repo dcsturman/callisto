@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fire over Jupiter",
     "owner": "dcsturman@gmail.com",
-    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 100,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escorts Ailreaui and Hroakhtea and their six light fighters. Can the Imperials defeat them?"
+    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 100,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escorts Ailreaui and Hroakhtea (her crew green) and four light fighters. Can the Imperials defeat them?"
   },
   "planets": [
     {
@@ -106,7 +106,7 @@
       "goal": "hold",
       "post": "Europa",
       "orders": "Defend your position.",
-      "crew": {"pilot": 2, "sensors": [2, 1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 2, 2, 2, 2, 1, 2], "leadership": 2}
+      "crew": {"pilot": 2, "sensors": [1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [1, 1, 1, 1, 1, 1, 1, 1], "leadership": 1}
     },
     {
       "name": "AF1",
@@ -147,30 +147,6 @@
     {
       "name": "AF4",
       "position": [-4000000, -4000000, 6.5e8],
-      "velocity": [0, 0, 0],
-      "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter",
-      "team": "Red",
-      "goal": "hold",
-      "post": "Europa",
-      "orders": "Defend your position.",
-      "crew": {"pilot": 4, "gunnery": [2]}
-    },
-    {
-      "name": "AF5",
-      "position": [0, 4000000, 7.2e8],
-      "velocity": [0, 0, 0],
-      "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter",
-      "team": "Red",
-      "goal": "hold",
-      "post": "Europa",
-      "orders": "Defend your position.",
-      "crew": {"pilot": 4, "gunnery": [2]}
-    },
-    {
-      "name": "AF6",
-      "position": [-4000000, 4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
       "design": "Light Fighter",
