@@ -1,6 +1,7 @@
 {
   "name": "Passenger Shuttle",
   "displacement": 95,
+  "cost_mcr": 12.8745,
   "hull": 38,
   "armor": 0,
   "maneuver": 1,

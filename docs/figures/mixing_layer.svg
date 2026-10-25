@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <style>
+    .box { fill: #eef3f8; stroke: #34506b; stroke-width: 1.2; }
+    .mix { fill: #efe9f6; stroke: #5b4a7a; }
+    .pair { fill: #f6efe2; stroke: #8a6a2f; }
+    .lbl { fill: #1d2b38; }
+    .small { font-size: 11px; fill: #4a5a68; }
+    .arrow { stroke: #34506b; stroke-width: 1.4; fill: none; marker-end: url(#a); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#34506b"/></marker></defs>
+  <text x="20" y="24" class="lbl" font-size="15" font-weight="bold">One mixing layer, seen from one vector A (repeated for all 17, three layers deep)</text>
+
+  <rect x="20" y="60" width="110" height="50" rx="6" class="box"/><text x="75" y="82" text-anchor="middle" class="lbl">vector A</text><text x="75" y="99" text-anchor="middle" class="small">128</text>
+  <rect x="20" y="170" width="110" height="80" rx="6" class="box"/><text x="75" y="195" text-anchor="middle" class="lbl">every vector B</text><text x="75" y="212" text-anchor="middle" class="small">all 17, A included</text><text x="75" y="228" text-anchor="middle" class="small">128 each</text>
+
+  <rect x="170" y="60" width="150" height="50" rx="6" class="box"/><text x="245" y="82" text-anchor="middle" class="lbl">query(A)</text><text x="245" y="99" text-anchor="middle" class="small">linear 128 → 128</text>
+  <rect x="170" y="150" width="150" height="50" rx="6" class="box"/><text x="245" y="172" text-anchor="middle" class="lbl">key(B)</text><text x="245" y="189" text-anchor="middle" class="small">linear 128 → 128</text>
+  <rect x="170" y="220" width="150" height="50" rx="6" class="box"/><text x="245" y="242" text-anchor="middle" class="lbl">value(B)</text><text x="245" y="259" text-anchor="middle" class="small">linear 128 → 128</text>
+  <path d="M130,85 L170,85" class="arrow"/><path d="M130,195 L170,180" class="arrow"/><path d="M130,220 L170,240" class="arrow"/>
+
+  <rect x="360" y="90" width="190" height="80" rx="6" class="box mix"/>
+  <text x="455" y="115" text-anchor="middle" class="lbl">score(A, B)</text>
+  <text x="455" y="133" text-anchor="middle" class="small">query(A) · key(B) / √32</text>
+  <text x="455" y="150" text-anchor="middle" class="small">+ pair bias(A, B)</text>
+  <path d="M320,85 L360,115" class="arrow"/><path d="M320,175 L360,150" class="arrow"/>
+
+  <rect x="360" y="300" width="190" height="80" rx="6" class="box pair"/>
+  <text x="455" y="325" text-anchor="middle" class="lbl">pair bias</text>
+  <text x="455" y="343" text-anchor="middle" class="small">pair vector (64) → linear</text>
+  <text x="455" y="358" text-anchor="middle" class="small">only between an own ship</text>
+  <text x="455" y="372" text-anchor="middle" class="small">and an enemy; else zero</text>
+  <path d="M455,300 L455,170" class="arrow"/>
+
+  <rect x="590" y="90" width="130" height="80" rx="6" class="box mix"/>
+  <text x="655" y="115" text-anchor="middle" class="lbl">softmax over B</text>
+  <text x="655" y="133" text-anchor="middle" class="small">weights summing to 1;</text>
+  <text x="655" y="148" text-anchor="middle" class="small">empty rows get 0</text>
+  <path d="M550,130 L590,130" class="arrow"/>
+
+  <rect x="590" y="215" width="130" height="60" rx="6" class="box"/>
+  <text x="655" y="240" text-anchor="middle" class="lbl">weighted sum</text>
+  <text x="655" y="257" text-anchor="middle" class="small">of value(B)</text>
+  <path d="M655,170 L655,215" class="arrow"/><path d="M320,245 C 450,280 520,260 590,247" class="arrow"/>
+
+  <rect x="755" y="140" width="130" height="150" rx="6" class="box"/>
+  <text x="820" y="165" text-anchor="middle" class="lbl">new A</text>
+  <text x="820" y="185" text-anchor="middle" class="small">linear 128 → 128,</text>
+  <text x="820" y="200" text-anchor="middle" class="small">added to A</text>
+  <text x="820" y="225" text-anchor="middle" class="small">then MLP</text>
+  <text x="820" y="240" text-anchor="middle" class="small">128 → 256 → 128,</text>
+  <text x="820" y="255" text-anchor="middle" class="small">added again</text>
+  <text x="820" y="278" text-anchor="middle" class="small">(layer norm before each)</text>
+  <path d="M720,245 L755,225" class="arrow"/>
+
+  <text x="20" y="420" class="small">The 128 numbers are split into 4 groups of 32, each with its own scores and weights ("heads" of attention), then joined again.</text>
+  <text x="20" y="438" class="small">All weights are shared by all 17 vectors. What differs between ships is only the scores, which depend on the vectors themselves.</text>
+</svg>

@@ -7,16 +7,15 @@ use itertools::multiunzip;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-use crate::action::{
-  boost_target_alive, boost_target_sort_key, describe_boost, merge, BoostMap, BoostTarget, ShipAction,
-};
+use crate::action::{boost_target_alive, describe_boost, merge, BoostMap, BoostTarget, ShipAction};
 use crate::authentication::Authenticator;
 use crate::computer::plot_course;
 use crate::entity::{Entities, Entity, G};
 use crate::payloads::{
   AddPlanetMsg, AddShipMsg, AuthResponse, CaptainActionMsg, CaptainActionResult, ChangeRole, ComputePathMsg, EffectMsg,
-  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetPilotActions, SetPlanMsg,
-  SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg, ShipDesignTemplateMsg,
+  FlightPathMsg, LoginMsg, MessageCategory, RemoveEntityMsg, RenameEntityMsg, Role, SetAiReport, SetOrders,
+  SetPilotActions, SetPlanMsg, SetShipController, SetShipEmissions, SetShipTeam, SetSoftwareRunning, ShipActionMsg,
+  ShipDesignTemplateMsg,
 };
 use crate::server::Server;
 use crate::ship::{get_ship_templates_snapshot, PowerSystem, Ship, ShipDesignTemplate, Team, Weapon, WeaponMount};
@@ -73,7 +72,16 @@ pub struct PlayerManager {
   roles: Vec<Role>,
   // Ship this player may have assumed a crew position on.
   ship: Option<String>,
+  // Further ships this connection answers for: a team's commander, or the AI
+  // service crewing a side.
+  ships: Vec<String>,
   test_mode: bool,
+  // Seeds each round's dice from this and the round number, when set. For the
+  // AI harness, which needs every game reproducible but no two alike; test
+  // mode's fixed seed would roll every round the same.
+  seed: Option<u64>,
+  // Logged in as a service (the AI) rather than a person.
+  service: bool,
 }
 
 /// A captain's leadership check, as the log reads it.
@@ -124,7 +132,31 @@ impl PlayerManager {
       test_mode,
       roles: vec![Role::General],
       ship: None,
+      ships: vec![],
+      seed: None,
+      service: false,
     }
+  }
+
+  /// Who this connection's orders come from, for the game record: the AI
+  /// service, the referee (who holds no ships and is not watching), or a crew.
+  #[must_use]
+  pub fn giver(&self) -> crate::game_log::By {
+    if self.service {
+      crate::game_log::By::Ai
+    } else if crate::payloads::is_referee(&self.roles, self.holds_ships()) {
+      crate::game_log::By::Gm
+    } else {
+      crate::game_log::By::Human
+    }
+  }
+
+  /// Roll each round's dice from `seed` and the round number: reproducible,
+  /// and different from round to round and seed to seed.
+  #[must_use]
+  pub fn with_seed(mut self, seed: u64) -> Self {
+    self.seed = Some(seed);
+    self
   }
 
   pub fn set_role_ship(&mut self, roles: Vec<Role>, ship: Option<String>) {
@@ -203,7 +235,38 @@ impl PlayerManager {
       scenario: None,
       roles: None,
       ship: None,
+      // Filled in by the processor, which holds the users file.
+      ai_allowed: false,
     })
+  }
+
+  /// Log in a service whose token `service_auth` has already believed.
+  ///
+  /// The connection is then logged in exactly as a person's would be: its
+  /// session key maps to the identity, so everything after login -- joining,
+  /// taking ships, saying Ready -- works unchanged.
+  ///
+  /// # Panics
+  /// Panics if the session-keys lock is poisoned.
+  pub fn service_login(
+    &mut self, identity: &str, session_keys: &Arc<Mutex<HashMap<String, Option<String>>>>,
+  ) -> AuthResponse {
+    let identity = identity.to_string();
+    if let Some(session_key) = self.authenticator.get_session_key() {
+      session_keys.lock().unwrap().insert(session_key, Some(identity.clone()));
+    } else {
+      warn!("(PlayerManager.service_login) No session key for {identity}.");
+    }
+    self.authenticator.set_email(Some(&identity));
+    self.service = true;
+    info!("(PlayerManager.service_login) Logged in service {identity}.");
+    AuthResponse {
+      email: identity,
+      scenario: None,
+      roles: None,
+      ship: None,
+      ai_allowed: false,
+    }
   }
 
   /// Register a new user. Mirrors `login` but reaches `register_user` on the
@@ -230,6 +293,8 @@ impl PlayerManager {
       scenario: None,
       roles: None,
       ship: None,
+      // Filled in by the processor, which holds the users file.
+      ai_allowed: false,
     })
   }
 
@@ -241,7 +306,7 @@ impl PlayerManager {
   /// # Panics
   /// Panics if the lock on entities cannot be obtained or if the server has never been initialized.
   pub fn reset(&self) -> Result<String, String> {
-    if self.roles.contains(&Role::General) && self.ship.is_none() {
+    if self.roles.contains(&Role::General) && !self.holds_ships() {
       info!("(PlayerManager.reset) Received and processing reset request: Resetting server!");
       // initial_scenario was validated at scenario-load time, so this
       // shouldn't fail in practice. Propagate the error rather than
@@ -323,12 +388,20 @@ impl PlayerManager {
       || ship.contacts.is_some()
       || ship.features_on.is_some()
       || ship.software.is_some()
+      || ship.controller.is_some()
+      || ship.orders.is_some()
     {
       if let Some(added) = entities.ships.get(&name) {
         let mut added = added.write().unwrap();
         added.set_emissions(ship.active_sensors, ship.transmitting);
         if ship.team.is_some() {
           added.team = ship.team;
+        }
+        if let Some(controller) = ship.controller {
+          added.controller = controller;
+        }
+        if ship.orders.is_some() {
+          added.orders = ship.orders.filter(|orders| !orders.trim().is_empty());
         }
         if let Some(contacts) = ship.contacts {
           added.contacts = contacts;
@@ -523,6 +596,104 @@ impl PlayerManager {
       request.ship_name, request.team
     );
     Ok("Set ship team executed".to_string())
+  }
+
+  /// Hand a ship to the AI service, or take it back.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_ship_controller(&self, request: &SetShipController) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to hand over.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.controller = request.controller;
+    if ship.controller.is_human() {
+      ship.ai_report = None;
+    }
+    info!(
+      "(PlayerManager.set_ship_controller) {} is now controlled by {:?}.",
+      request.ship_name, request.controller
+    );
+    Ok("Set ship controller executed".to_string())
+  }
+
+  /// Give a ship standing orders, or clear them.
+  ///
+  /// Blank orders are no orders: an empty text box clears them rather than
+  /// leaving the ship holding an empty string an AI would have to interpret.
+  ///
+  /// # Errors
+  /// Returns an error if the ship cannot be found.
+  ///
+  /// # Panics
+  /// Panics if the lock cannot be obtained on the entities or the ship, or if
+  /// the server has not yet been initialized.
+  pub fn set_orders(&self, request: &SetOrders) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to give orders to.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+
+    ship.orders = request
+      .orders
+      .as_deref()
+      .map(str::trim)
+      .filter(|orders| !orders.is_empty())
+      .map(ToString::to_string);
+    info!("(PlayerManager.set_orders) {} has orders {:?}.", request.ship_name, ship.orders);
+    Ok("Set orders executed".to_string())
+  }
+
+  /// Record what the AI crewing a ship reports. Only an AI-crewed ship has a
+  /// report to give: one for a human ship is refused.
+  ///
+  /// # Errors
+  /// Returns an error if the ship does not exist or is not AI-crewed.
+  ///
+  /// # Panics
+  /// Panics if the entities or ship lock is poisoned.
+  pub fn set_ai_report(&self, request: &SetAiReport) -> Result<String, String> {
+    let entities = self
+      .server
+      .as_ref()
+      .unwrap()
+      .get_unlocked_entities()
+      .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+    let mut ship = entities
+      .ships
+      .get(&request.ship_name)
+      .ok_or_else(|| format!("Unable to find ship {} to report on.", request.ship_name))?
+      .write()
+      .unwrap_or_else(|e| panic!("Unable to obtain write lock on ship: {e}"));
+    if ship.controller.is_human() && request.report.is_some() {
+      return Err(format!("{} is not AI-crewed.", request.ship_name));
+    }
+    ship.ai_report.clone_from(&request.report);
+    Ok("AI report recorded".to_string())
   }
 
   /// Gets the current entities and returns them in a `Result`.
@@ -724,8 +895,8 @@ impl PlayerManager {
   /// Roll the captain's leadership check immediately. Stores the resulting
   /// points on the ship until `reset_temporary_bonuses` clears them at end
   /// of turn. The captain has up to N boosts to apply; assigning more than
-  /// N is allowed but only the first N (per `boost_target_sort_key`) take
-  /// effect at end of turn.
+  /// N is allowed but only the first N, in the order the captain gave them,
+  /// take effect at end of turn: the list is the captain's priorities.
   ///
   /// If the ship is missing, returns a result with `points: 0` and an error
   /// message — the FE renders that the same way as a failed roll.
@@ -782,8 +953,6 @@ impl PlayerManager {
   #[must_use]
   #[allow(clippy::too_many_lines)]
   pub fn update(&self) -> Vec<EffectMsg> {
-    let mut rng = get_rng(self.test_mode);
-
     // Grab the lock on entities
     let mut entities = self
       .server
@@ -791,6 +960,11 @@ impl PlayerManager {
       .unwrap()
       .get_unlocked_entities()
       .unwrap_or_else(|e| panic!("Unable to obtain lock on Entities: {e}"));
+
+    let mut rng = self.seed.map_or_else(
+      || get_rng(self.test_mode),
+      |seed| SmallRng::seed_from_u64(seed.wrapping_mul(1_000_003).wrapping_add(u64::from(entities.round))),
+    );
 
     // Phase 0: Resolve queued LeadershipCheck actions to build the BoostMap
     // for this turn. The leadership dice roll itself happens BEFORE end-of-turn
@@ -824,13 +998,19 @@ impl PlayerManager {
           let n = ship_lock.read().unwrap().get_leadership_points();
           let take = if n > 0 { usize::try_from(n).unwrap_or(0) } else { 0 };
 
-          // Deterministic order: by ship asc, kind ordinal, then weapon_id.
-          let mut sorted: Vec<BoostTarget> = boosts.clone();
-          sorted.sort_by_key(boost_target_sort_key);
-          // Drop boosts whose target action no longer exists in the queue.
-          sorted.retain(|t| boost_target_alive(t, &queue_snapshot, &entities.ships));
-
-          let truncated: Vec<BoostTarget> = sorted.into_iter().take(take).collect();
+          // The first N in the captain's own order, which is their priority:
+          // the AI lists its boosts most wanted first, and a human ticks the
+          // ones that matter. (They were sorted into a fixed order before,
+          // which inspired whichever came first by kind -- an AI captain
+          // asking for its guns got its sensor searches.) Repeats and boosts
+          // whose action is no longer queued are skipped, not counted.
+          let mut ordered: Vec<BoostTarget> = Vec::new();
+          for target in boosts {
+            if !ordered.contains(target) && boost_target_alive(target, &queue_snapshot, &entities.ships) {
+              ordered.push(target.clone());
+            }
+          }
+          let truncated: Vec<BoostTarget> = ordered.into_iter().take(take).collect();
           for t in &truncated {
             boost_map.insert(t.clone());
           }
@@ -1061,6 +1241,7 @@ impl PlayerManager {
       effect.colour_from(&teams);
     }
 
+    entities.round += 1;
     effects
   }
 
@@ -1155,7 +1336,22 @@ impl PlayerManager {
   pub fn set_role(&mut self, msg: &ChangeRole) -> String {
     self.roles.clone_from(&msg.roles);
     self.ship.clone_from(&msg.ship);
+    self.ships.clone_from(&msg.ships);
     "Role set".to_string()
+  }
+
+  /// The ships this connection answers for beyond the one whose console it is
+  /// at.
+  #[must_use]
+  pub fn claimed_ships(&self) -> &[String] {
+    &self.ships
+  }
+
+  /// Whether this connection crews anything. One that does not, and is not
+  /// merely watching, is the referee.
+  #[must_use]
+  pub fn holds_ships(&self) -> bool {
+    self.ship.is_some() || !self.ships.is_empty()
   }
 }
 

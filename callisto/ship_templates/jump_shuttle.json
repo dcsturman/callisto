@@ -1,6 +1,7 @@
 {
   "name": "Jump Shuttle",
   "displacement": 200,
+  "cost_mcr": 66.951,
   "hull": 80,
   "armor": 0,
   "maneuver": 3,

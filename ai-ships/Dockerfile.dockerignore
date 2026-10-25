@@ -1,0 +1,9 @@
+# The build context is the repository root; only the two Rust crates matter.
+*
+!callisto/Cargo.toml
+!callisto/Cargo.lock
+!callisto/src
+!ai-ships/Cargo.toml
+!ai-ships/Cargo.lock
+!ai-ships/src
+!ai-ships/networks

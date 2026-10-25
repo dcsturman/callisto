@@ -53,6 +53,11 @@ pub struct UserRecord {
   pub registered_at: i64,
   #[serde(skip_serializing_if = "Option::is_none", default)]
   pub blacklisted_at: Option<i64>,
+  /// Whether this user may start games with AI crews. The AI costs real
+  /// money per round, so it is granted one user at a time, by hand, in the
+  /// users file: `"ai": true`. Absent means no.
+  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+  pub ai: bool,
 }
 
 /// In-memory snapshot of the authorized-users file. `active`/`blacklisted`
@@ -64,6 +69,8 @@ pub struct UserRecord {
 pub struct UserDirectory {
   pub active: HashSet<String>,
   pub blacklisted: HashSet<String>,
+  /// Active users who may start games with AI crews.
+  pub ai_users: HashSet<String>,
   pub raw: Vec<UserRecord>,
   pub generation: Option<i64>,
   pub last_modified: i64,
@@ -78,6 +85,12 @@ impl UserDirectory {
   #[must_use]
   pub fn is_active(&self, email: &str) -> bool {
     self.active.contains(&email.to_lowercase())
+  }
+
+  /// Whether this user may start games with AI crews.
+  #[must_use]
+  pub fn may_use_ai(&self, email: &str) -> bool {
+    self.ai_users.contains(&email.to_lowercase())
   }
 }
 
@@ -118,6 +131,7 @@ fn build_directory_from_records(
 ) -> UserDirectory {
   let mut active = HashSet::new();
   let mut blacklisted = HashSet::new();
+  let mut ai_users = HashSet::new();
   let mut raw = Vec::with_capacity(records.len());
   for record in records {
     let lower = UserRecord {
@@ -127,6 +141,9 @@ fn build_directory_from_records(
     match lower.status {
       UserStatus::Active => {
         active.insert(lower.email.clone());
+        if lower.ai {
+          ai_users.insert(lower.email.clone());
+        }
       }
       UserStatus::Blacklisted => {
         blacklisted.insert(lower.email.clone());
@@ -137,6 +154,7 @@ fn build_directory_from_records(
   UserDirectory {
     active,
     blacklisted,
+    ai_users,
     raw,
     generation,
     last_modified,
@@ -514,6 +532,7 @@ impl GoogleAuthenticator {
       // Build the next file body from the latest snapshot.
       let mut new_records: Vec<UserRecord> = latest.raw.clone();
       new_records.push(UserRecord {
+        ai: false,
         email: email.clone(),
         status: UserStatus::Active,
         registered_at: now,
@@ -978,6 +997,7 @@ impl Authenticator for MockAuthenticator {
 
     let mut new_records = snapshot.raw.clone();
     new_records.push(UserRecord {
+      ai: false,
       email: email.clone(),
       status: UserStatus::Active,
       registered_at: now,
@@ -1091,6 +1111,29 @@ pub struct GooglePublicKeys {
   keys: Vec<GooglePublicKey>,
 }
 
+impl GooglePublicKeys {
+  /// The key Google signed a token with, by the key id in the token's header.
+  pub(crate) fn decoding_key(&self, kid: &str) -> Option<DecodingKey> {
+    self
+      .keys
+      .iter()
+      .find(|key| key.kid == kid)
+      .and_then(|key| DecodingKey::from_rsa_components(&key.n, &key.e).ok())
+  }
+
+  /// A key set built by hand, for tests that sign their own tokens.
+  #[cfg(test)]
+  pub(crate) fn single(kid: &str, n: &str, e: &str) -> Self {
+    GooglePublicKeys {
+      keys: vec![GooglePublicKey {
+        kid: kid.to_string(),
+        n: n.to_string(),
+        e: e.to_string(),
+      }],
+    }
+  }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 struct GooglePublicKey {
   kid: String,
@@ -1120,6 +1163,26 @@ pub(crate) mod tests {
   use super::*;
 
   const GOOGLE_CREDENTIALS_FILE: &str = "google_credentials.json";
+
+  /// AI is granted per user in the users file, and only to an active user;
+  /// the flag survives the file being written back, and is left out when off.
+  #[test]
+  fn ai_is_granted_per_user_in_the_users_file() {
+    let body = br#"{"version": 1, "users": [
+      {"email": "Dan@Example.com", "status": "active", "registered_at": 0, "ai": true},
+      {"email": "friend@example.com", "status": "active", "registered_at": 0},
+      {"email": "gone@example.com", "status": "blacklisted", "registered_at": 0, "ai": true}
+    ]}"#;
+    let records = parse_user_directory_body(body).unwrap();
+    let directory = build_directory_from_records(records, None, 0);
+    assert!(directory.may_use_ai("dan@example.com"), "case does not matter");
+    assert!(!directory.may_use_ai("friend@example.com"), "not granted");
+    assert!(!directory.may_use_ai("gone@example.com"), "blacklisted users get nothing");
+
+    let written = serde_json::to_value(&directory.raw).unwrap();
+    assert_eq!(written[0]["ai"], true);
+    assert!(written[1].get("ai").is_none(), "off is left out of the file");
+  }
 
   #[tokio::test]
   async fn test_mock_authenticator() {

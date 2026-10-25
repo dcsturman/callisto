@@ -1,6 +1,7 @@
 {
   "name": "Gunship - Fiery",
   "displacement": 400,
+  "cost_mcr": 208.65,
   "hull": 160,
   "armor": 6,
   "maneuver": 6,
@@ -12,7 +13,7 @@
   "computer": 20,
   "weapons": [
     {
-      "kind": "Particle",
+      "kind": "Fusion",
       "mount": {
         "Bay": "Small"
       }
@@ -24,14 +25,24 @@
     {
       "kind": "Beam",
       "mount": {
-        "Turret": 3
+        "Turret": 2
       }
     },
     {
-      "kind": "Sand",
       "mount": {
         "Turret": 3
-      }
+      },
+      "guns": [
+        {
+          "kind": "Sand"
+        },
+        {
+          "kind": "Sand"
+        },
+        {
+          "kind": "Beam"
+        }
+      ]
     }
   ],
   "tl": 12,

@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 use crate::entity::Entities;
 use crate::payloads::{email_to_display_name, Role, UserData};
-use crate::ship::{get_ship_templates_snapshot, ShipDesignTemplate};
+use crate::ship::{get_ship_templates_snapshot, Controller, ShipDesignTemplate};
 use crate::{error, warn, LOG_SCENARIO_ACTIVITY};
 use tracing::{event, Level};
 
@@ -26,6 +26,11 @@ pub struct Server {
   pub entities: Mutex<Entities>,
   pub initial_scenario: Entities,
   ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
+  /// This game's record, when games are being recorded.
+  log: std::sync::OnceLock<crate::game_log::GameLog>,
+  /// Whether AI crews can be used in this game. Chosen when it is created,
+  /// by a user the users file allows; see `with_ai`.
+  ai_enabled: bool,
 }
 
 /// Maps a server ID to a server table that contains
@@ -44,13 +49,9 @@ struct MembershipTable {
   last_exit: u64,
 }
 
-/// Whether this player is refereeing: holding no ship of their own and not
-/// merely watching. Matches `isReferee` on the client.
-///
-/// The ship decides, not the role. A referee may take a single station to cut
-/// their screen down and is still the referee.
+/// Whether this player is refereeing; see [`crate::payloads::is_referee`].
 fn is_referee(entry: &MemberEntry) -> bool {
-  entry.ship.is_none() && !entry.roles.contains(&Role::Observer)
+  crate::payloads::is_referee(&entry.roles, entry.holds_ships())
 }
 
 /// Represents a player's entry in the server membership table.
@@ -60,8 +61,17 @@ struct MemberEntry {
   email: String,
   roles: Vec<Role>,
   ship: Option<String>,
+  /// Further ships this player answers for. Their one ready flag covers all
+  /// of them.
+  ships: Vec<String>,
   /// Set by the player, cleared for everyone when the round advances.
   ready: bool,
+}
+
+impl MemberEntry {
+  fn holds_ships(&self) -> bool {
+    self.ship.is_some() || !self.ships.is_empty()
+  }
 }
 
 impl PartialEq for Server {
@@ -92,7 +102,26 @@ impl Server {
           Entities::new()
         })
     };
+    Self::with_scenario(id, initial_scenario, ship_templates)
+  }
 
+  /// A server for a scenario already loaded: what a trainer that plays the
+  /// same scenario many times uses, loading the file once.
+  ///
+  /// # Panics
+  /// Panics if the scenario has dangling references (a missile's target or a
+  /// planet's primary that is not in it).
+  #[must_use]
+  pub fn from_scenario(id: &str, scenario: &Entities) -> Self {
+    let initial_scenario = scenario
+      .deep_copy()
+      .expect("Server::from_scenario: the scenario has dangling references");
+    Self::with_scenario(id, initial_scenario, get_ship_templates_snapshot())
+  }
+
+  fn with_scenario(
+    id: &str, initial_scenario: Entities, ship_templates: Arc<HashMap<String, Arc<ShipDesignTemplate>>>,
+  ) -> Self {
     // `deep_copy` returns an error on dangling references inside the
     // scenario file (missile target / planet primary). At Server::new
     // time this is a hard-failure: the file is malformed and the scenario
@@ -108,7 +137,79 @@ impl Server {
       entities: Mutex::new(live_copy),
       initial_scenario,
       ship_templates,
+      log: std::sync::OnceLock::new(),
+      ai_enabled: false,
     }
+  }
+
+  /// Make AI crews usable in this game, or not. Without them, a ship the
+  /// scenario file hands to the AI is crewed by people instead -- in the game
+  /// and in the copy a reset goes back to -- so no AI is ever asked to play.
+  #[must_use]
+  pub fn with_ai(mut self, enabled: bool) -> Self {
+    self.ai_enabled = enabled;
+    if !enabled {
+      let to_people = |entities: &Entities| {
+        for ship in entities.ships.values() {
+          let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+          ship.controller = Controller::Human;
+          ship.ai_report = None;
+        }
+      };
+      to_people(&self.initial_scenario);
+      to_people(self.entities.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner));
+    }
+    self
+  }
+
+  /// Hand exactly `ships` to the AI and every other ship to people, in play
+  /// and in what a reset goes back to: the choice made on the new-game
+  /// screen. A name that is no ship here is ignored.
+  #[must_use]
+  pub fn with_ai_ships(mut self, ships: &[String]) -> Self {
+    let assign = |entities: &Entities| {
+      for (name, ship) in &entities.ships {
+        let mut ship = ship.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        ship.controller = if ships.contains(name) {
+          Controller::Ai
+        } else {
+          ship.ai_report = None;
+          Controller::Human
+        };
+      }
+    };
+    assign(&self.initial_scenario);
+    assign(self.entities.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner));
+    self
+  }
+
+  /// Whether AI crews can be used in this game.
+  #[must_use]
+  pub fn ai_enabled(&self) -> bool {
+    self.ai_enabled
+  }
+
+  /// Start recording this game in `dir`, from the world as it is now. Does
+  /// nothing if it is already being recorded or the record cannot be opened.
+  pub fn start_log(&self, dir: &str, scenario: &str) {
+    if self.log.get().is_some() {
+      return;
+    }
+    let Ok(world) = self.entities.lock() else {
+      return;
+    };
+    match crate::game_log::GameLog::start(dir, &self.id, scenario, &world) {
+      Ok(log) => {
+        let _ = self.log.set(log);
+      }
+      Err(e) => tracing::warn!("(Server.start_log) Not recording {}: {e}", self.id),
+    }
+  }
+
+  /// This game's record, if it is being recorded.
+  #[must_use]
+  pub fn log(&self) -> Option<&crate::game_log::GameLog> {
+    self.log.get()
   }
 
   /// Get the ID of the server.
@@ -179,16 +280,31 @@ impl ServerMembersTable {
     let server_table = self.server_members.entry(server_id.to_string()).or_default();
     // Changing station is not un-readying: a player who has said they are done
     // and then swaps seats is still done.
-    let ready = server_table.table.get(session_key).is_some_and(|entry| entry.ready);
+    let existing = server_table.table.get(session_key);
+    let ready = existing.is_some_and(|entry| entry.ready);
+    // Nor is it giving up the other ships you answer for; `set_ships` does that.
+    let ships = existing.map(|entry| entry.ships.clone()).unwrap_or_default();
     server_table.table.insert(
       session_key.to_string(),
       MemberEntry {
         email: email.to_string(),
         roles,
         ship,
+        ships,
         ready,
       },
     );
+  }
+
+  /// Set the further ships a player answers for, beyond their own console's.
+  pub fn set_ships(&mut self, server_id: &str, session_key: &str, ships: Vec<String>) {
+    if let Some(entry) = self
+      .server_members
+      .get_mut(server_id)
+      .and_then(|members| members.table.get_mut(session_key))
+    {
+      entry.ships = ships;
+    }
   }
 
   /// Look for a user with a given session key already on this server.  If so, get the id as well as other existing
@@ -240,6 +356,7 @@ impl ServerMembersTable {
         display_name: email_to_display_name(&entry.email),
         roles: entry.roles.clone(),
         ship: entry.ship.clone(),
+        ships: entry.ships.clone(),
         ready: entry.ready,
       })
       .collect()
@@ -265,6 +382,20 @@ impl ServerMembersTable {
         entry.ready = false;
       }
     }
+  }
+
+  /// Whether the round should advance on its own: nobody is refereeing, at
+  /// least one player holds a ship, and every player holding a ship has said
+  /// Ready.
+  ///
+  /// Observers are not asked -- they have no orders to give. With a referee
+  /// this is always false: the referee presses Next Round, as before.
+  #[must_use]
+  pub fn everyone_ready(&self, server_id: &str) -> bool {
+    self.server_members.get(server_id).is_some_and(|members| {
+      let mut crews = members.table.values().filter(|entry| entry.holds_ships()).peekable();
+      !members.table.values().any(is_referee) && crews.peek().is_some() && crews.all(|entry| entry.ready)
+    })
   }
 
   /// Whether anyone in this server is refereeing.
@@ -335,6 +466,79 @@ impl Default for ServerMembersTable {
 }
 
 #[cfg(test)]
+mod ai_tests {
+  use super::Server;
+  use crate::entity::{Entities, Vec3};
+  use crate::ship::{config_test_ship_templates, get_ship_template, Controller};
+  use cgmath::Zero;
+
+  fn with_an_ai_ship(entities: &mut Entities) {
+    let design = get_ship_template("Buccaneer").unwrap();
+    entities.add_ship("Pirate".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    entities.ships["Pirate"].write().unwrap().controller = Controller::Ai;
+  }
+
+  /// A game started without AI crews hands any ship its scenario gave the AI
+  /// to people instead, in play and in what a reset goes back to.
+  #[tokio::test]
+  async fn a_game_without_ai_crews_has_no_ai_ships() {
+    config_test_ship_templates().await;
+    let mut server = Server::new("game", "").await;
+    with_an_ai_ship(&mut server.initial_scenario);
+    with_an_ai_ship(server.entities.get_mut().unwrap());
+    let server = server.with_ai(false);
+    assert!(!server.ai_enabled());
+    assert_eq!(
+      server.initial_scenario.ships["Pirate"].read().unwrap().controller,
+      Controller::Human
+    );
+    assert_eq!(
+      server.get_unlocked_entities().unwrap().ships["Pirate"]
+        .read()
+        .unwrap()
+        .controller,
+      Controller::Human
+    );
+  }
+
+  /// The new-game screen's choice decides who crews each ship, whatever the
+  /// scenario file said, in play and after a reset.
+  #[tokio::test]
+  async fn the_ships_chosen_for_the_ai_are_the_ai_s() {
+    config_test_ship_templates().await;
+    let mut server = Server::new("game", "").await;
+    let design = get_ship_template("Buccaneer").unwrap();
+    for entities in [&mut server.initial_scenario, server.entities.get_mut().unwrap()] {
+      with_an_ai_ship(entities);
+      entities.add_ship("Merchant".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    }
+    let server = server.with_ai(true).with_ai_ships(&["Merchant".to_string()]);
+    let controller = |entities: &Entities, ship: &str| entities.ships[ship].read().unwrap().controller;
+    assert_eq!(controller(&server.initial_scenario, "Merchant"), Controller::Ai);
+    assert_eq!(controller(&server.initial_scenario, "Pirate"), Controller::Human);
+    let now = server.get_unlocked_entities().unwrap();
+    assert_eq!(controller(&now, "Merchant"), Controller::Ai);
+    assert_eq!(controller(&now, "Pirate"), Controller::Human);
+  }
+
+  #[tokio::test]
+  async fn a_game_with_ai_crews_keeps_them() {
+    config_test_ship_templates().await;
+    let mut server = Server::new("game", "").await;
+    with_an_ai_ship(server.entities.get_mut().unwrap());
+    let server = server.with_ai(true);
+    assert!(server.ai_enabled());
+    assert_eq!(
+      server.get_unlocked_entities().unwrap().ships["Pirate"]
+        .read()
+        .unwrap()
+        .controller,
+      Controller::Ai
+    );
+  }
+}
+
+#[cfg(test)]
 mod membership_tests {
   use super::{Role, ServerMembersTable};
 
@@ -397,6 +601,82 @@ mod membership_tests {
       Some("Executor".to_string()),
     );
     assert!(!crew_only.has_referee("scenario-2"));
+  }
+
+  /// With no referee, the round advances once every crew is ready. Observers
+  /// are not waited for; a table with nobody holding a ship never advances
+  /// itself; and with a referee present it never does either.
+  #[test]
+  fn everyone_ready_waits_for_every_crew_and_only_without_a_referee() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update("s", "key-a", "a@example.com", vec![Role::General], Some("Executor".to_string()));
+    members.update(
+      "s",
+      "key-b",
+      "b@example.com",
+      vec![Role::General],
+      Some("Invigilator".to_string()),
+    );
+    members.update("s", "key-watch", "w@example.com", vec![Role::Observer], None);
+    assert!(!members.everyone_ready("s"));
+
+    members.set_ready("s", "key-a", true);
+    assert!(!members.everyone_ready("s"), "one crew still giving orders");
+    members.set_ready("s", "key-b", true);
+    assert!(members.everyone_ready("s"), "the observer is not waited for");
+
+    members.update("s", "key-gm", "gm@example.com", vec![Role::General], None);
+    assert!(!members.everyone_ready("s"), "a referee presses Next Round themselves");
+
+    let mut watchers = ServerMembersTable::new();
+    watchers.register("w", "Thebus");
+    watchers.update("w", "key-watch", "w@example.com", vec![Role::Observer], None);
+    assert!(!watchers.everyone_ready("w"), "nobody holds a ship, so nobody is ready");
+  }
+
+  /// A connection answering for a whole side -- the AI service, or a human
+  /// commanding a team -- is crew, not referee, even holding no console of
+  /// its own. Its one ready flag is the whole side's, and a later change of
+  /// station does not drop the ships it answers for.
+  #[test]
+  fn a_connection_can_answer_for_several_ships() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update("s", "key-ai", "ai@example.com", vec![Role::General], None);
+    assert!(members.has_referee("s"), "holding nothing yet, it looks like a referee");
+
+    members.set_ships("s", "key-ai", vec!["Invigilator".to_string(), "Cicada".to_string()]);
+    assert!(!members.has_referee("s"));
+    members.update("s", "key-ai", "ai@example.com", vec![Role::Gunner], None);
+    let users = members.get_user_context("s");
+    assert_eq!(users[0].ships, vec!["Invigilator".to_string(), "Cicada".to_string()]);
+
+    members.update(
+      "s",
+      "key-crew",
+      "c@example.com",
+      vec![Role::General],
+      Some("Executor".to_string()),
+    );
+    members.set_ready("s", "key-crew", true);
+    assert!(!members.everyone_ready("s"), "the pirates have not said ready");
+    members.set_ready("s", "key-ai", true);
+    assert!(members.everyone_ready("s"));
+  }
+
+  /// A fleet commander is never the referee, even before their team has a
+  /// ship to claim, so a table with one does not wait for a Next Round
+  /// nobody can press.
+  #[test]
+  fn a_fleet_commander_is_not_the_referee() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update("s", "key-fc", "fc@example.com", vec![Role::FleetCommand], None);
+    assert!(!members.has_referee("s"));
+    members.set_ships("s", "key-fc", vec!["Executor".to_string()]);
+    members.set_ready("s", "key-fc", true);
+    assert!(members.everyone_ready("s"), "the commander's one Ready covers the side");
   }
 
   #[test]

@@ -1,6 +1,7 @@
 {
   "name": "Clan Transport - Khtukhao",
   "displacement": 600,
+  "cost_mcr": 187.662,
   "hull": 240,
   "armor": 0,
   "maneuver": 2,

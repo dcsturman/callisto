@@ -3,11 +3,19 @@
 /// Most of our logic is in `main.rs` or `processor.rs`.  This files allows us to build the crate as a library for use
 /// in integration tests. It also holds any general utility functions that don't have a logical home elsewhere.
 pub mod action;
+pub mod ai_service;
 pub mod authentication;
 pub mod combat;
 mod computer;
+/// The flight computer's course solver, for measuring it on recorded problems.
+pub mod solver {
+  #[cfg(feature = "solver_corpus")]
+  pub use crate::computer::take_corpus;
+  pub use crate::computer::{solve_course, CourseProblem, FlightPathResult, PathMode};
+}
 pub mod crew;
 pub mod entity;
+pub mod game_log;
 pub mod missile;
 pub mod payloads;
 pub mod planet;
@@ -15,8 +23,10 @@ pub mod player;
 pub mod processor;
 mod rules_tables;
 pub mod server;
+pub mod service_auth;
 pub mod ship;
 pub mod software;
+pub mod tactics;
 
 #[macro_use]
 mod cov_util;
@@ -620,6 +630,7 @@ mod tests {
         name: "Scenario A".to_string(),
         description: "first".to_string(),
         owner: "test-user".to_string(),
+        ..MetaData::default()
       },
     )]);
     assert_eq!(get_scenarios_snapshot().len(), 1);
@@ -630,6 +641,7 @@ mod tests {
         name: "Scenario B".to_string(),
         description: "second".to_string(),
         owner: "test-user".to_string(),
+        ..MetaData::default()
       },
     )]);
 

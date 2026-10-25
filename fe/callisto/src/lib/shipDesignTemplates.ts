@@ -32,6 +32,12 @@ export const describeScreens = (screens: string[] | undefined): string[] => {
 export interface ShipDesignTemplate {
   name: string;
   displacement: number;
+  /**
+   * Purchase price in millions of credits, from the design's data sheet.
+   * Absent where it has not been confirmed. For building and balancing
+   * scenarios by price.
+   */
+  cost_mcr?: number;
   hull: number;
   armor: number;
   maneuver: number;
@@ -159,3 +165,7 @@ export const shipWeapons = (
   }
   return ship.weapons ?? templates[ship.design]?.weapons ?? [];
 };
+
+/** "MCr 274.25", or null for a design with no confirmed price. */
+export const formatMcr = (cost: number | undefined | null): string | null =>
+  cost == null ? null : `MCr ${cost.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;

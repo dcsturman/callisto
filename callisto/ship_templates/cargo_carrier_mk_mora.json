@@ -1,6 +1,7 @@
 {
   "name": "Cargo Carrier - MK Mora",
   "displacement": 3000,
+  "cost_mcr": 1011.365,
   "hull": 1080,
   "armor": 0,
   "maneuver": 1,

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useRef, useMemo } from "react";
+import { useRef } from "react";
 
 import { Group, Mesh, SphereGeometry } from "three";
 import {
@@ -22,7 +22,8 @@ import {
   RANGE_BAND_NAMES
 } from "lib/universal";
 import { Ship as ShipType, Missile as MissileType} from "lib/entities";
-import { isUndetected } from "lib/contacts";
+import { isUndetectedBy, isViewersOwn } from "lib/contacts";
+import { useViewer } from "lib/viewer";
 import { teamBodyColor, teamLabelColor } from "lib/teams";
 import { FlightPath } from "lib/flightPath";
 
@@ -66,21 +67,15 @@ function Ship(args: {
   const showRange = useAppSelector(state => state.ui.showRange) === args.ship.name;
   const dispatch = useAppDispatch();
 
-  // The ship whose console is open is the one doing the looking. In the GM's
-  // all-ships view no ship is being flown, so nothing is dimmed and everything
-  // shows as it always did.
-  const viewingShipName = useAppSelector((state) => state.user.shipName);
+  // The ship whose console is open is the one doing the looking, or a fleet
+  // commander's whole team. In the GM's all-ships view nobody is, so nothing
+  // is dimmed and everything shows as it always did.
+  const viewer = useViewer();
   const entities = useAppSelector(entitiesSelector);
-  const observer = useMemo(
-    () =>
-      viewingShipName == null
-        ? null
-        : entities.ships.find((s) => s.name === viewingShipName) ?? null,
-    [entities.ships, viewingShipName],
-  );
+  const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
 
-  const isOwnShip = viewingShipName === args.ship.name;
-  const undetected = isUndetected(observer, args.ship);
+  const isOwnShip = isViewersOwn(viewer, args.ship);
+  const undetected = isUndetectedBy(viewer, args.ship, entities.ships);
   // Two axes, deliberately kept separate: hue says which side a ship is on,
   // brightness says how well this console can see it. Scaling the team colour
   // rather than replacing it keeps both readable at once -- a dimmed red ship
@@ -89,14 +84,14 @@ function Ship(args: {
   // Your own ship, and every ship in the GM's all-ships view, is at full
   // brightness; a ship you merely detect is dimmed; one you cannot see is
   // dimmer still, present only because the referee's table can see the board.
-  const brightness = isOwnShip || observer == null ? 1 : undetected ? 0.06 : 0.2;
+  const brightness = isOwnShip || viewer == null ? 1 : undetected ? 0.06 : 0.2;
   const bodyColor = teamBodyColor(args.ship.team, brightness);
   // Detection wins over team: a ship you cannot see reads grey whatever side it
   // is on. Once detected the team colour comes through, dimmed for anything
   // that is not the ship whose console is open.
   const labelColor = teamLabelColor(args.ship.team, {
     undetected,
-    dim: !(isOwnShip || observer == null),
+    dim: !(isOwnShip || viewer == null),
   });
 
   const { camera } = useThree();
@@ -109,6 +104,10 @@ function Ship(args: {
     textRef.current?.lookAt(camera.position);
   });
   function handleShipClick() {
+    // A fleet commander takes the helm of their own team's ships only.
+    if (fleetTeam != null && args.ship.team !== fleetTeam) {
+      return;
+    }
     dispatch(setComputerShipName(args.ship.name));
   }
 
@@ -162,7 +161,10 @@ function Ship(args: {
             <textGeometry
               ref={textGeoRef}
               args={[
-                args.ship.name,
+                // An AI-crewed ship says so where everyone looks: on the map.
+                args.ship.controller === "AI"
+                  ? `${args.ship.name} [AI]`
+                  : args.ship.name,
                 { font: labelFont, size: 0.7, depth: 0.05 },
               ]}
             />

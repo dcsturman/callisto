@@ -1,0 +1,105 @@
+{
+  "name": "Corsair - Lionsbane",
+  "displacement": 600,
+  "cost_mcr": 280.76,
+  "hull": 240,
+  "armor": 0,
+  "maneuver": 3,
+  "jump": 2,
+  "power": 660,
+  "fuel": 128,
+  "crew": 16,
+  "sensors": "Military",
+  "computer": 10,
+  "weapons": [
+    {
+      "kind": "Railgun",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": {
+        "Bay": "Small"
+      }
+    },
+    {
+      "kind": "Particle",
+      "mount": "Barbette"
+    },
+    {
+      "mount": {
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Sand"
+        },
+        {
+          "kind": "Beam"
+        },
+        {
+          "kind": "Beam"
+        }
+      ]
+    },
+    {
+      "mount": {
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Sand"
+        },
+        {
+          "kind": "Beam"
+        },
+        {
+          "kind": "Beam"
+        }
+      ]
+    },
+    {
+      "kind": "Missile",
+      "mount": {
+        "Turret": 3
+      }
+    }
+  ],
+  "tl": 15,
+  "role": "Raider",
+  "source": "Pirates of Drinax 1 (Petyr Vallis' Lionsbane, a refitted 600-ton Corsair)",
+  "software": [
+    {
+      "kind": "AutoRepair",
+      "level": 1
+    },
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "FireControl",
+      "level": 2
+    },
+    {
+      "kind": "JumpControl",
+      "level": 2
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ]
+}

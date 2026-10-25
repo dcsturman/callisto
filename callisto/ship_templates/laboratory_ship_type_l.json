@@ -1,6 +1,7 @@
 {
   "name": "Laboratory Ship - Type L",
   "displacement": 360,
+  "cost_mcr": 114.786,
   "hull": 160,
   "armor": 0,
   "maneuver": 2,

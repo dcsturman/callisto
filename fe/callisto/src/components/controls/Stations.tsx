@@ -162,7 +162,6 @@ export function Stations(args: {ship: Ship}) {
           <>
             <SensorActionChooser
               ship={args.ship}
-              sensorLocks={args.ship.sensor_locks ?? []}
               operator={operator}
             />
             {!captainHoldsTheOrders && <QueuedOrders ship={args.ship} only={[ViewMode.Sensors]} />}

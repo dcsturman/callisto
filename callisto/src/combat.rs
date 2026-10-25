@@ -114,6 +114,116 @@ impl HitMods {
   }
 }
 
+/// What decides an attack roll, apart from the dice.
+pub(crate) struct AttackSituation<'a> {
+  pub hit: HitMods,
+  pub attacker: &'a Ship,
+  pub defender: &'a Ship,
+  pub firing: &'a Firing<'a>,
+  pub profile: &'a WeaponProfile,
+  pub range_band: Range,
+  pub called_shot: bool,
+}
+
+/// The attack DM, term by term, exactly as [`attack`] counts it -- or `None`
+/// if the gun cannot reach.
+///
+/// The one place the sum is made. [`attack`] rolls against it, and the AI's
+/// engagement table works out its odds from it, so what the AI expects is
+/// what the dice then do. The defender's dodge is passed in rather than read,
+/// because spending it is a side effect of really being shot at.
+pub(crate) fn attack_terms(
+  situation: &AttackSituation<'_>, evade_mod: i32, captain_mod: i32,
+) -> Option<[(&'static str, i32); 16]> {
+  let AttackSituation {
+    hit,
+    attacker,
+    defender,
+    firing,
+    profile,
+    range_band,
+    called_shot,
+  } = situation;
+  // Evade software flies the ship evasively on its own: "a negative DM equal
+  // to the Evade program's score to all attacks" (CRB p. 161). It needs no
+  // Thrust and no pilot, so it stacks with a pilot who is also dodging --
+  // the book gives no reason it should not, and the two are different
+  // things: one is the computer jinking, the other a pilot spending Thrust.
+  let evade_software = -i32::from(defender.running_level(SoftwareKind::Evade).unwrap_or(0));
+
+  // Advanced Fire Control adds its score to every attack the ship makes
+  // (High Guard p. 73), with no automated fire of its own.
+  let advanced_fire_control = i32::from(attacker.running_level(SoftwareKind::AdvancedFireControl).unwrap_or(0));
+
+  // Launch Solution does the same for missile and torpedo salvoes only
+  // (High Guard p. 75).
+  let launch_solution = if profile.salvo.is_some() {
+    i32::from(attacker.running_level(SoftwareKind::LaunchSolution).unwrap_or(0))
+  } else {
+    0
+  };
+
+  // Launchers have "Special" range: the salvo flies to the target, so the
+  // firing range never modifies the roll and never rules the shot out.
+  let range_mod = if profile.salvo.is_some() {
+    0
+  } else if profile.reaches(*range_band) {
+    RANGE_MOD[*range_band as usize]
+  } else {
+    return None;
+  };
+
+  let lock_mod = if attacker.sensor_locks.contains(&defender.get_name().to_string()) {
+    2
+  } else {
+    0
+  };
+
+  let called_mod = if *called_shot { -2 } else { 0 };
+
+  // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
+  // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
+  // capital ships and struggle to connect with anything nimble.
+  //
+  // Bays likewise: "All bay weapons suffer DM-2 when attacking targets of 2,000
+  // tons or less and DM-4 when attacking targets of 100 tons or less. Missile
+  // and torpedo salvoes do not use these modifiers" (High Guard p. 31). A bay
+  // gun is laid for a capital ship. One term, since a torpedo bay is a salvo
+  // and takes only the torpedo's DM.
+  let tons = defender.design.displacement;
+  let small_target_mod = if firing.kind == WeaponType::Torpedo && tons < 2_000 {
+    -2
+  } else if matches!(firing.mount, WeaponMount::Bay(_)) && profile.salvo.is_none() {
+    match tons {
+      0..=100 => -4,
+      101..=2_000 => -2,
+      _ => 0,
+    }
+  } else {
+    0
+  };
+
+  let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
+  Some([
+    gunner,
+    assist,
+    captain_assist,
+    captain_fire,
+    smart,
+    ("weapon", profile.hit_mod),
+    ("range", range_mod),
+    ("called shot", called_mod),
+    ("small target", small_target_mod),
+    ("sensor lock", lock_mod),
+    ("evade", evade_mod),
+    ("captain evade", captain_mod),
+    ("evade software", evade_software),
+    ("fire control", hit.fire_control),
+    ("adv fire control", advanced_fire_control),
+    ("launch solution", launch_solution),
+  ])
+}
+
 /// Do the attack of one ship's weapon system against a ship.  This includes resolving previously launched missiles that
 /// now impact the target.
 ///
@@ -169,6 +279,12 @@ pub fn attack(
   #[allow(clippy::cast_possible_truncation)]
   let range_band = find_range_band((defender.get_position() - attacker.get_position()).magnitude() as u32);
 
+  // "Ships at a range of Short or less may attempt to make called shots with
+  // direct-fire weapons (not missiles or torpedoes)" (Core Rulebook p. 169).
+  // The gunner's console only offers one at Short; this holds every client to
+  // it. Anything else fires as an ordinary shot, without the DM-2.
+  let called_shot_system = called_shot_system.filter(|_| range_band == Range::Short && profile.salvo.is_none());
+
   debug!(
         "(Combat.attack) Calculating range with attacker {} at {:?}, defender {} at {:?}.  Distance is {}.  Range is {}. Range_mod is {}",
         attacker.get_name(),
@@ -213,34 +329,19 @@ pub fn attack(
   } else {
     (0, 0)
   };
-  // Evade software flies the ship evasively on its own: "a negative DM equal
-  // to the Evade program's score to all attacks" (CRB p. 161). It needs no
-  // Thrust and no pilot, so it stacks with a pilot who is also dodging --
-  // the book gives no reason it should not, and the two are different
-  // things: one is the computer jinking, the other a pilot spending Thrust.
-  let evade_software = -i32::from(defender.running_level(SoftwareKind::Evade).unwrap_or(0));
-
-  // Advanced Fire Control adds its score to every attack the ship makes
-  // (High Guard p. 73), with no automated fire of its own.
-  let advanced_fire_control = i32::from(attacker.running_level(SoftwareKind::AdvancedFireControl).unwrap_or(0));
-
-  // Launch Solution does the same for missile and torpedo salvoes only
-  // (High Guard p. 75).
-  let launch_solution = if profile.salvo.is_some() {
-    i32::from(attacker.running_level(SoftwareKind::LaunchSolution).unwrap_or(0))
-  } else {
-    0
-  };
-
-  let defensive_modifier = evade_mod + captain_mod + evade_software;
-
-  // Launchers have "Special" range: the salvo flies to the target, so the
-  // firing range never modifies the roll and never rules the shot out.
-  let range_mod = if profile.salvo.is_some() {
-    0
-  } else if profile.reaches(range_band) {
-    RANGE_MOD[range_band as usize]
-  } else {
+  let Some(terms) = attack_terms(
+    &AttackSituation {
+      hit,
+      attacker,
+      defender,
+      firing,
+      profile: &profile,
+      range_band,
+      called_shot: called_shot_system.is_some(),
+    },
+    evade_mod,
+    captain_mod,
+  ) else {
     // We are out of range so cannot attack
     // Should never get here!
     error!(
@@ -257,28 +358,10 @@ pub fn attack(
     .at(defender.get_name())];
   };
 
-  let lock_mod = if attacker.sensor_locks.contains(&defender.get_name().to_string()) {
-    2
-  } else {
-    0
-  };
-
-  let called_mod = if called_shot_system.is_some() { -2 } else { 0 };
-
-  // "Torpedo salvoes suffer an additional DM-2 on their attack rolls against
-  // ships smaller than 2,000 tons" (High Guard p. 39) -- they are built to kill
-  // capital ships and struggle to connect with anything nimble.
-  let small_target_mod = if firing.kind == WeaponType::Torpedo && defender.design.displacement < 2_000 {
-    -2
-  } else {
-    0
-  };
-
   info!(
-        "(Combat.attack) Ship {attacker_name} attacking with {firing:?} against {} with hit mods {hit:?}, weapon hit mod {}, range mod {range_mod}, called mod {called_mod},lock mod {lock_mod}, defense mod {defensive_modifier}",
-        defender.get_name(),
-        profile.hit_mod
-    );
+    "(Combat.attack) Ship {attacker_name} attacking with {firing:?} against {} with terms {terms:?}",
+    defender.get_name()
+  );
 
   if let Some(cs) = called_shot_system {
     info!("(Combat.attack) Called shot system is {:?}.", cs);
@@ -292,25 +375,6 @@ pub fn attack(
   // never reached the results log at all. Same treatment the detection DM
   // gets, and for the same reason. Zero terms are dropped so an ordinary
   // shot stays short.
-  let [gunner, assist, captain_assist, captain_fire, smart] = hit.terms();
-  let terms: [(&str, i32); 16] = [
-    gunner,
-    assist,
-    captain_assist,
-    captain_fire,
-    smart,
-    ("weapon", profile.hit_mod),
-    ("range", range_mod),
-    ("called shot", called_mod),
-    ("small target", small_target_mod),
-    ("sensor lock", lock_mod),
-    ("evade", evade_mod),
-    ("captain evade", captain_mod),
-    ("evade software", evade_software),
-    ("fire control", hit.fire_control),
-    ("adv fire control", advanced_fire_control),
-    ("launch solution", launch_solution),
-  ];
   let attack_mod: i32 = terms.iter().map(|(_, value)| value).sum();
   let hit_roll = roll + attack_mod;
   let named: Vec<String> = terms
@@ -368,21 +432,29 @@ pub fn attack(
     defender.get_name()
   );
 
-  // Damage is compute as the weapon dice for the given weapon
-  // + the effect of the hit roll
+  // Damage is the weapon's dice plus the Effect of the hit roll -- except for
+  // missiles and torpedoes. The book has a salvo "roll for damage as if for a
+  // single missile ... but do not apply the Effect", multiplying by the Effect
+  // instead, capped at the missiles left in the salvo (Core Rulebook p. 169).
+  // Callisto's missiles fly singly, so that cap is always one: their dice
+  // alone.
   let roll = u32::from(roll_dice_min(
     profile.damage_dice,
     WeaponProfile::min_die(firing.kind, firing.modifiers),
     rng,
   ));
-  let mut damage = roll + effect;
+  let effect_damage = if profile.salvo.is_some() { 0 } else { effect };
+  let mut damage = roll + effect_damage;
 
   // The damage arithmetic, accumulated as it happens rather than reconstructed
   // afterwards -- armour, screens, turret bonus and Damage Multiple are applied
   // at four different points and there is no way to infer the order from the
   // final number alone. "How did we get to 5?" should be answerable from the
   // results log without opening the debug output.
-  let mut terms = vec![format!("{}D {roll}", profile.damage_dice), format!("+{effect} effect")];
+  let mut terms = vec![format!("{}D {roll}", profile.damage_dice)];
+  if profile.salvo.is_none() {
+    terms.push(format!("+{effect} effect"));
+  }
 
   damage = if i64::from(damage) + i64::from(damage_mod) < 0 {
     0
@@ -1836,7 +1908,7 @@ pub fn roll_battery_pool(ship: &Ship, rng: &mut dyn RngCore) -> u32 {
 // Helper function to determine which point defense weapon is most effective.
 // Result here is one more than the bonus to the check. 0 means it cannot
 // be used for point defense.
-fn point_defense_score(weapon: &Weapon) -> u16 {
+pub(crate) fn point_defense_score(weapon: &Weapon) -> u16 {
   // Only lasers track a missile well enough to swat it (High Guard p. 30 notes
   // barbettes explicitly cannot, which the mount term below already enforces).
   //
@@ -1967,26 +2039,124 @@ pub fn interception_cost(kind: WeaponType) -> u32 {
 /// Total missiles this ship's gunners will remove this round.
 #[must_use]
 pub fn roll_point_defense_pool(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> u32 {
+  roll_point_defense_checks(point_defense_list, rng)
+    .iter()
+    .map(|check| check.removed)
+    .sum()
+}
+
+/// One gunner's point-defence check for the round: the mount, the 2D rolled,
+/// the bonus (turret, gunnery, leadership), and how many missiles it stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PointDefenseCheck {
+  pub weapon: usize,
+  pub roll: u8,
+  pub bonus: u16,
+  pub removed: u32,
+}
+
+impl PointDefenseCheck {
+  /// The check as a results line about `defender`, covering `ward` if it is
+  /// another ship's missiles it is shooting at; the arithmetic on the hover.
+  #[must_use]
+  pub fn message(&self, defender: &str, ward: Option<&str>) -> EffectMsg {
+    let mount = self.weapon;
+    let whose = if ward.is_some() { " covering %t" } else { "" };
+    let content = if self.removed > 0 {
+      format!(
+        "%s's mount #{mount} on point defence{whose} can stop {} missile{} this round.",
+        self.removed,
+        if self.removed == 1 { "" } else { "s" }
+      )
+    } else {
+      format!("%s's mount #{mount} on point defence{whose} misses: it stops nothing this round.")
+    };
+    let total = i32::from(self.roll) + i32::from(self.bonus);
+    let effect = total - STANDARD_ROLL_THRESHOLD;
+    let message = EffectMsg::outcome(defender, MessageCategory::Attack, content, self.removed > 0).rolled(format!(
+      "roll {} + turret, gunner and leadership {} = {total} vs {STANDARD_ROLL_THRESHOLD}, effect {effect:+}{}",
+      self.roll,
+      self.bonus,
+      if self.removed > 0 && effect == 0 {
+        " (a bare success stops one)"
+      } else {
+        ""
+      }
+    ));
+    match ward {
+      Some(ward) => message.at(ward),
+      None => message,
+    }
+  }
+}
+
+/// Roll each gunner's point-defence check: see [`roll_point_defense_pool`],
+/// which sums them. The dice are thrown in the same order, so the two give the
+/// same game.
+#[must_use]
+pub fn roll_point_defense_checks(point_defense_list: &[(usize, u16)], rng: &mut dyn RngCore) -> Vec<PointDefenseCheck> {
   point_defense_list
     .iter()
     .map(|(weapon, bonus)| {
       let roll = roll_dice(2, rng);
       let effect = i32::from(roll) + i32::from(*bonus) - STANDARD_ROLL_THRESHOLD;
-      if effect >= 0 {
-        // A successful check always stops at least the missile it was made
-        // against, so a bare success is worth one.
-        #[allow(clippy::cast_sign_loss)]
-        let removed = effect.max(1) as u32;
-        debug!(
-          "(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
-        );
-        removed
-      } else {
-        debug!("(Combat.roll_point_defense_pool) Weapon {weapon} rolled {roll} with bonus {bonus}: failed.");
-        0
+      // A successful check always stops at least the missile it was made
+      // against, so a bare success is worth one.
+      #[allow(clippy::cast_sign_loss)]
+      let removed = if effect >= 0 { effect.max(1) as u32 } else { 0 };
+      debug!(
+        "(Combat.roll_point_defense_checks) Weapon {weapon} rolled {roll} with bonus {bonus}: removes {removed} missile(s)."
+      );
+      PointDefenseCheck {
+        weapon: *weapon,
+        roll,
+        bonus: *bonus,
+        removed,
       }
     })
-    .sum()
+    .collect()
+}
+
+#[cfg(test)]
+mod point_defense_message_tests {
+  use super::*;
+
+  #[test]
+  fn a_check_reports_its_roll() {
+    let check = PointDefenseCheck {
+      weapon: 2,
+      roll: 9,
+      bonus: 3,
+      removed: 4,
+    };
+    let line = check.message("INS Righteous", None);
+    assert_eq!(
+      line.rendered(),
+      "INS Righteous's mount #2 on point defence can stop 4 missiles this round."
+    );
+    let EffectMsg::Message { roll, .. } = &line else {
+      panic!("expected a message, got {line:?}");
+    };
+    assert_eq!(
+      roll.as_deref(),
+      Some("roll 9 + turret, gunner and leadership 3 = 12 vs 8, effect +4")
+    );
+  }
+
+  #[test]
+  fn a_miss_says_so_and_names_the_ship_covered() {
+    let check = PointDefenseCheck {
+      weapon: 0,
+      roll: 3,
+      bonus: 2,
+      removed: 0,
+    };
+    let line = check.message("INS Stag", Some("INS Righteous"));
+    assert_eq!(
+      line.rendered(),
+      "INS Stag's mount #0 on point defence covering INS Righteous misses: it stops nothing this round."
+    );
+  }
 }
 
 #[cfg(test)]
@@ -3303,6 +3473,93 @@ mod tests {
   /// the attacker may choose which location is hit" (CRB p. 169) does not say
   /// which critical, and restricting it to the Effect 6 one made a called
   /// shot a DM-2 for nothing in the ordinary case.
+  #[test]
+  fn bay_weapons_struggle_against_small_targets() {
+    let bay = Weapon::single(WeaponType::Fusion, WeaponMount::Bay(BaySize::Small));
+    let attacker_design = Arc::new(ShipDesignTemplate {
+      name: "Gunship".to_string(),
+      weapons: vec![bay.clone()],
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Gunship".to_string(), Vec3::zero(), Vec3::zero(), &attacker_design, None, None);
+    let firing = bay.firing_default().unwrap();
+    let profile = profile_for(firing.kind, firing.mount).unwrap();
+    let small_target = |tons: u32| {
+      let design = Arc::new(ShipDesignTemplate {
+        name: "Target".to_string(),
+        displacement: tons,
+        ..ShipDesignTemplate::default()
+      });
+      let defender = Ship::new(
+        "Target".to_string(),
+        Vec3::new(1000.0, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let terms = attack_terms(
+        &AttackSituation {
+          hit: HitMods::default(),
+          attacker: &attacker,
+          defender: &defender,
+          firing: &firing,
+          profile: &profile,
+          range_band: Range::Short,
+          called_shot: false,
+        },
+        0,
+        0,
+      )
+      .unwrap();
+      terms.iter().find(|(name, _)| *name == "small target").unwrap().1
+    };
+    assert_eq!(small_target(50), -4, "100 tons or less");
+    assert_eq!(small_target(400), -2, "2,000 tons or less");
+    assert_eq!(small_target(2_000), -2);
+    assert_eq!(small_target(5_000), 0, "a capital ship is what a bay is for");
+  }
+
+  #[test]
+  fn a_called_shot_is_only_called_at_short_range() {
+    let design = Arc::new(ShipDesignTemplate {
+      name: "Design".to_string(),
+      weapons: vec![Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1)],
+      hull: 80,
+      armor: 0,
+      ..ShipDesignTemplate::default()
+    });
+    let attacker = Ship::new("Attacker".to_string(), Vec3::zero(), Vec3::zero(), &design, None, None);
+    let weapon = Weapon::uniform(WeaponType::Particle, WeaponMount::Barbette, 1);
+    // Whether the attack's itemised DM carries the called shot's DM-2.
+    let called_at = |metres: f64| {
+      let mut defender = Ship::new(
+        "Defender".to_string(),
+        Vec3::new(metres, 0.0, 0.0),
+        Vec3::zero(),
+        &design,
+        None,
+        None,
+      );
+      let effects = attack(
+        HitMods {
+          gunner: 3,
+          ..HitMods::default()
+        },
+        0,
+        &attacker,
+        &mut defender,
+        &weapon.firing_default().unwrap(),
+        Some(&ShipSystem::Weapon),
+        &BoostMap::default(),
+        &mut StdRng::seed_from_u64(7),
+      );
+      serde_json::to_string(&effects).unwrap().contains("called shot")
+    };
+    assert!(called_at(1_000_000.0), "Short: the call is made, at DM-2");
+    assert!(!called_at(5_000_000.0), "Medium: fired as an ordinary shot");
+  }
+
   #[test]
   fn a_called_shot_places_the_crit_it_causes() {
     let design = Arc::new(ShipDesignTemplate {

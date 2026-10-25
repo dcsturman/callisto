@@ -1,6 +1,7 @@
 {
   "name": "Express Boat",
   "displacement": 100,
+  "cost_mcr": 34.1055,
   "hull": 40,
   "armor": 0,
   "maneuver": 0,

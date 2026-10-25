@@ -1,0 +1,7 @@
+/target
+/.venv
+/runs
+/checkpoints
+__pycache__/
+*.so
+/wandb

@@ -1,6 +1,7 @@
 {
   "name": "Trader - Eakhau",
   "displacement": 400,
+  "cost_mcr": 95.145,
   "hull": 160,
   "armor": 0,
   "maneuver": 1,

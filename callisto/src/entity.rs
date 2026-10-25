@@ -17,7 +17,7 @@ use crate::action::{
 };
 use crate::combat::{
   apply_crit, attack, build_point_defense_tallies, create_sand_counts, do_fire_actions, find_range_band,
-  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_pool, roll_screen_pool, HitMods,
+  interception_cost, roll_battery_pool, roll_dice, roll_point_defense_checks, roll_screen_pool, HitMods,
   STANDARD_ROLL_THRESHOLD,
 };
 use crate::crew::Crew;
@@ -30,8 +30,8 @@ use crate::rules_tables::{
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{
-  with_ship_templates_for_deserialization, BridgeStation, FlightPlan, PowerSystem, Range, Ship, ShipDesignTemplate,
-  ShipSystem,
+  with_ship_templates_for_deserialization, BridgeStation, Controller, FlightPlan, Post, PowerSystem, Range, Ship,
+  ShipDesignTemplate, ShipSystem,
 };
 use crate::software::SoftwareKind;
 
@@ -85,6 +85,14 @@ pub struct Entities {
   // serialized into scenario files (the file knows its own name) but is sent
   // over the WS so the client can pre-populate save dialogs.
   pub filename: String,
+
+  /// The round now being played, counting from 1.
+  ///
+  /// On the wire, so a client can tell the `EntityResponse` that opens a round
+  /// from one sent because somebody changed a plan, and so the header can say
+  /// where the fight has got to. Never in a scenario file: a saved scenario
+  /// opens at the start, and Reset goes back to it.
+  pub round: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -99,6 +107,27 @@ pub struct MetaData {
   pub description: String,
   #[serde(default)]
   pub owner: String,
+  /// The scenario's sides and their ships, for the new-game screen to offer
+  /// each side to people or the AI. Filled in when the scenario list is
+  /// loaded; never written to a scenario file.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub sides: Vec<ScenarioSide>,
+}
+
+/// One side of a scenario as the new-game screen shows it: its team's name
+/// (`Unaligned` for ships on none) and its ships.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct ScenarioSide {
+  pub team: String,
+  pub ships: Vec<ScenarioShip>,
+}
+
+/// A ship on a [`ScenarioSide`], and whether the scenario file has the AI
+/// crew her.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct ScenarioShip {
+  pub name: String,
+  pub ai: bool,
 }
 
 impl PartialEq for Entities {
@@ -122,6 +151,42 @@ impl PartialEq for Entities {
         .keys()
         .all(|k| self.planets[k].read().unwrap().eq(&other.planets[k].read().unwrap()))
   }
+}
+
+/// What a ship is giving off this round, for anyone looking for it.
+pub(crate) fn emissions_of(ship: &Ship, fired: bool) -> Emissions {
+  Emissions {
+    active_sensors: ship.active_sensors,
+    thrust_g: ship.thrust_in_g(),
+    power_plant: ship.current_power > 0,
+    fired_weapons: fired,
+    crit_severity: ship.total_crit_severity(),
+    transmitting: ship.is_transmitting(),
+  }
+}
+
+/// The detection DM, term by term, for `observer` looking for `target` while
+/// it gives off `emissions`: what the observer brings, then what the target
+/// gives away.
+///
+/// The one place the sum is made. The detection pass rolls against it, and
+/// the AI's detection table works out its odds from it, with the emissions a
+/// posture would give, so what the AI expects is what the dice then do.
+pub(crate) fn detection_terms(observer: &Ship, target: &Ship, emissions: Emissions) -> Vec<(&'static str, i16)> {
+  let mut terms = vec![
+    ("sensor grade", SENSOR_QUALITY_MOD[observer.current_sensors as usize]),
+    // Detection is not an action anyone queues, so it is not one operator's
+    // check: the watch as a whole is looking, and the best of them is who
+    // notices.
+    ("sensor skill", i16::from(observer.get_crew().get_sensors())),
+  ];
+  terms.extend(detection_modifier_terms(
+    observer.design.tl,
+    target.design.tl,
+    target.design.stealth,
+  ));
+  terms.extend(emissions.detection_terms());
+  terms
 }
 
 /// The effect reported when a ship is ordered to act on something it cannot see.
@@ -264,6 +329,44 @@ pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> Ef
 }
 
 impl Entities {
+  /// Where a post is now: the body's position, or the point itself. `None`
+  /// for a body the scenario does not have.
+  ///
+  /// # Panics
+  /// Panics if a planet's lock is poisoned.
+  #[must_use]
+  pub fn post_position(&self, post: &Post) -> Option<Vec3> {
+    match post {
+      Post::Body(name) => self.planets.get(name).map(|planet| planet.read().unwrap().get_position()),
+      Post::At([x, y, z]) => Some(Vec3::new(*x, *y, *z)),
+    }
+  }
+
+  /// The scenario's sides, by team, and their ships, both in name order: what
+  /// the new-game screen offers to people or the AI.
+  ///
+  /// # Panics
+  /// Panics if a ship's lock is poisoned.
+  #[must_use]
+  pub fn sides(&self) -> Vec<ScenarioSide> {
+    let mut sides = std::collections::BTreeMap::<String, Vec<ScenarioShip>>::new();
+    for ship in self.ships.values() {
+      let ship = ship.read().unwrap();
+      let team = ship.team.map_or_else(|| "Unaligned".to_string(), |team| format!("{team:?}"));
+      sides.entry(team).or_default().push(ScenarioShip {
+        name: ship.get_name().to_string(),
+        ai: ship.controller == Controller::Ai,
+      });
+    }
+    sides
+      .into_iter()
+      .map(|(team, mut ships)| {
+        ships.sort_by(|a, b| a.name.cmp(&b.name));
+        ScenarioSide { team, ships }
+      })
+      .collect()
+  }
+
   #[must_use]
   pub fn new() -> Self {
     Entities {
@@ -274,6 +377,7 @@ impl Entities {
       actions: vec![],
       metadata: MetaData::default(),
       filename: String::new(),
+      round: 1,
     }
   }
 
@@ -341,6 +445,7 @@ impl Entities {
 
     dest.next_missile_id = self.next_missile_id;
     dest.actions.clone_from(&self.actions);
+    dest.round = self.round;
 
     // Drop anything whose target has left play before resolving pointers. The
     // live state should never contain an orphan, but if it does, failing here
@@ -921,7 +1026,9 @@ impl Entities {
       // (Core Rulebook p. 171), so roll the whole list now rather than one
       // weapon per incoming missile.  Nothing pairs a gunner with a particular
       // missile, so there is no reason to hold any of them back.
-      let pool = roll_point_defense_pool(&tallies, rng);
+      let checks = roll_point_defense_checks(&tallies, rng);
+      let pool: u32 = checks.iter().map(|check| check.removed).sum();
+      battery_effects.extend(checks.iter().map(|check| check.message(defender, None)));
       debug!("(Entities.fire_actions) {defender}'s gunners contribute {pool} point(s) of point defence this round.");
       ship.add_point_defense_pool(pool);
       ship.set_point_defense_list(tallies);
@@ -973,7 +1080,9 @@ impl Entities {
         let covering = self.ships.get(defender).unwrap().read().unwrap();
         let tallies = build_point_defense_tallies(&covering, &ward_actions, boost_map, defender);
         drop(covering);
-        let pool = roll_point_defense_pool(&tallies, rng);
+        let checks = roll_point_defense_checks(&tallies, rng);
+        let pool: u32 = checks.iter().map(|check| check.removed).sum();
+        battery_effects.extend(checks.iter().map(|check| check.message(defender, Some(&ward))));
         if pool > 0 {
           ward_ship.write().unwrap().add_point_defense_pool(pool);
           battery_effects.push(EffectMsg::about(
@@ -1084,6 +1193,10 @@ impl Entities {
     }
 
     let mut cleanup_missile_list = Vec::<String>::new();
+    // Missiles each ship's point defence stops, by the ship and the kind of
+    // weapon: reported as one line apiece after the pass, not one a missile,
+    // whose names say nothing.
+    let mut intercepted = std::collections::BTreeMap::<(String, String), u32>::new();
 
     // Creating this sorted list is necessary ONLY to ensure unit tests run consistently
     // If it ends up being slow we should take it out.
@@ -1155,14 +1268,8 @@ impl Entities {
                 );
                 cleanup_missile_list.push(missile.clone());
                 let what = String::from(&launcher.primary_kind());
-                Some(vec![
-                  EffectMsg::ExhaustedMissile { position: target.get_position() },
-                  EffectMsg::about(
-                    &target_name,
-                    MessageCategory::Damage,
-                    format!("{what} {missile} destroyed by %s's point defence."),
-                  ),
-                ])
+                *intercepted.entry((target_name.clone(), what)).or_default() += 1;
+                Some(vec![EffectMsg::ExhaustedMissile { position: target.get_position() }])
               } else {
                 // The attack gets through point defense
                 // A launched object resolves as the gun that threw it.
@@ -1210,6 +1317,17 @@ impl Entities {
       })
       .flatten()
       .collect::<Vec<_>>();
+
+    effects.extend(intercepted.into_iter().map(|((ship, what), count)| {
+      EffectMsg::about(
+        &ship,
+        MessageCategory::Damage,
+        format!(
+          "{count} {what}{} destroyed by %s's point defence.",
+          if count == 1 { "" } else { "s" }
+        ),
+      )
+    }));
 
     let mut cleanup_ships_list = Vec::<String>::new();
 
@@ -2126,32 +2244,7 @@ impl Entities {
     &self, observer_name: &str, target_name: &str, target: &Ship, fired: &HashSet<String>,
   ) -> Vec<(&'static str, i16)> {
     let observer = self.ships.get(observer_name).unwrap().read().unwrap();
-    let mut terms = vec![
-      ("sensor grade", SENSOR_QUALITY_MOD[observer.current_sensors as usize]),
-      // Detection is not an action anyone queues, so it is not one operator's
-      // check: the watch as a whole is looking, and the best of them is who
-      // notices.
-      ("sensor skill", i16::from(observer.get_crew().get_sensors())),
-    ];
-    terms.extend(detection_modifier_terms(
-      observer.design.tl,
-      target.design.tl,
-      target.design.stealth,
-    ));
-    drop(observer);
-
-    terms.extend(
-      Emissions {
-        active_sensors: target.active_sensors,
-        thrust_g: target.thrust_in_g(),
-        power_plant: target.current_power > 0,
-        fired_weapons: fired.contains(target_name),
-        crit_severity: target.total_crit_severity(),
-        transmitting: target.is_transmitting(),
-      }
-      .detection_terms(),
-    );
-    terms
+    detection_terms(&observer, target, emissions_of(target, fired.contains(target_name)))
   }
 
   /// A message saying `ship_name` cannot `what` because `station` is out, or
@@ -3338,6 +3431,7 @@ impl Serialize for Entities {
     struct Entities<'a> {
       metadata: &'a MetaData,
       filename: &'a str,
+      round: u32,
       ships: Vec<Ship>,
       missiles: Vec<Missile>,
       planets: Vec<Planet>,
@@ -3347,6 +3441,7 @@ impl Serialize for Entities {
     let mut entities = Entities {
       metadata: &self.metadata,
       filename: &self.filename,
+      round: self.round,
       ships: self.ships.values().map(|s| s.read().unwrap().clone()).collect::<Vec<Ship>>(),
       missiles: self
         .missiles
@@ -3374,6 +3469,10 @@ impl Serialize for Entities {
   }
 }
 
+fn first_round() -> u32 {
+  1
+}
+
 /* Deserialize for Entities in the server is only ever used for writing unit tests. */
 impl<'de> Deserialize<'de> for Entities {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -3392,6 +3491,8 @@ impl<'de> Deserialize<'de> for Entities {
       actions: ShipActionList,
       #[serde(default)]
       metadata: MetaData,
+      #[serde(default = "first_round")]
+      round: u32,
     }
 
     let guts = Entities::deserialize(deserializer)?;
@@ -3416,6 +3517,7 @@ impl<'de> Deserialize<'de> for Entities {
       metadata: guts.metadata,
       // Scenario files don't carry their own basename; load_from_file populates it.
       filename: String::new(),
+      round: guts.round,
     })
   }
 }
@@ -4111,7 +4213,7 @@ mod tests {
 
     let cmp = json!({
     "metadata":{"name":"","description":"","owner":""},
-    "filename":"",
+    "filename":"","round":1,
     "ships":[
         {"name":"Ship1","position":[1000.0,2000.0,3000.0],"velocity":[0.0,0.0,0.0],"plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
         "current_hull":160,
@@ -4230,6 +4332,7 @@ mod tests {
       tl: 10,
       role: None,
       source: None,
+      cost_mcr: None,
     });
 
     let mut scenario_templates = previous_templates.as_ref().clone();
@@ -5742,9 +5845,36 @@ mod tests {
         !entities.ships.is_empty() || !entities.planets.is_empty(),
         "{name}: loaded but is empty, which usually means the shape is wrong rather than the syntax"
       );
+      // A post names a body the scenario has.
+      for ship in entities.ships.values() {
+        let ship = ship.read().unwrap();
+        if let Some(post) = &ship.post {
+          assert!(
+            entities.post_position(post).is_some(),
+            "{name}: {} holds {post:?}, which is not in the scenario",
+            ship.get_name()
+          );
+        }
+      }
       checked += 1;
     }
     assert!(checked > 0, "no scenarios found to check -- has the directory moved?");
+  }
+
+  /// Jupiter's Aslan hold Europa, and start within the post's radius of it.
+  #[test_log::test(tokio::test)]
+  async fn jupiters_aslan_hold_europa() {
+    config_test_ship_templates().await;
+    let bytes = fs::read("./scenarios/jupiter.json").unwrap();
+    let entities = Entities::parse_bytes_with_ship_templates(&bytes, "jupiter", get_ship_templates_snapshot()).unwrap();
+    let escort = entities.ships["Ailreaui"].read().unwrap();
+    assert_eq!(escort.post, Some(crate::ship::Post::Body("Europa".to_string())));
+    let europa = entities.post_position(escort.post.as_ref().unwrap()).unwrap();
+    let km = (escort.get_position() - europa).magnitude() / 1000.0;
+    assert!(
+      km < crate::ship::DEFAULT_POST_RADIUS_KM,
+      "Ailreaui starts {km:.0} km from Europa"
+    );
   }
 
   /// The band sets the to-hit modifier, so a change is worth saying even when

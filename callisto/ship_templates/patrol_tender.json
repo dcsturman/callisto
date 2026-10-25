@@ -1,6 +1,7 @@
 {
   "name": "Patrol Tender",
   "displacement": 1000,
+  "cost_mcr": 377.297,
   "hull": 400,
   "armor": 4,
   "maneuver": 2,

@@ -1,6 +1,7 @@
 {
   "name": "Subsidised Liner - Type M",
   "displacement": 600,
+  "cost_mcr": 167.6196,
   "hull": 240,
   "armor": 0,
   "maneuver": 1,

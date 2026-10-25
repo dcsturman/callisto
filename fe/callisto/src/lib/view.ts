@@ -6,6 +6,8 @@ export enum ViewMode {
   Engineer,
   Observer,
   Captain,
+  /** A team's commander: the referee's screen cut down to one team. */
+  FleetCommand,
 }
 
 export function stringToViewMode(role: string) {
@@ -24,6 +26,8 @@ export function stringToViewMode(role: string) {
       return ViewMode.Observer;
     case "Captain":
       return ViewMode.Captain;
+    case "FleetCommand":
+      return ViewMode.FleetCommand;
   }
 }
 
@@ -48,7 +52,10 @@ export const CUSTOMISABLE_ROLES: ViewMode[] = [
  */
 export const hasRole = (roles: ViewMode[], ...wanted: ViewMode[]): boolean =>
   wanted.some((w) => roles.includes(w)) ||
-  (roles.includes(ViewMode.General) && wanted.some((w) => w !== ViewMode.Observer));
+  // A fleet commander works every station of the ship they have open, as the
+  // referee does.
+  ((roles.includes(ViewMode.General) || roles.includes(ViewMode.FleetCommand)) &&
+    wanted.some((w) => w !== ViewMode.Observer));
 
 /**
  * The referee: running the whole board rather than any one ship. General
@@ -64,11 +71,14 @@ export const hasRole = (roles: ViewMode[], ...wanted: ViewMode[]): boolean =>
  * neither.
  */
 export const isReferee = (roles: ViewMode[], shipName: string | null): boolean =>
-  shipName == null && !roles.includes(ViewMode.Observer);
+  shipName == null &&
+  !roles.includes(ViewMode.Observer) &&
+  // A fleet commander holds a team's ships and says Ready for them.
+  !roles.includes(ViewMode.FleetCommand);
 
 /** "Captain, Gunner" -- names in the order they were chosen. */
 export const rolesToString = (roles: ViewMode[]): string =>
-  roles.map((r) => ViewMode[r]).join(", ");
+  roles.map((r) => (r === ViewMode.FleetCommand ? "Fleet Command" : ViewMode[r])).join(", ");
 
 /**
  * Roles as sent on the wire and stored. Accepts the older single-role shape

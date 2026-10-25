@@ -13,10 +13,13 @@ import {
 import {
   setSocketReady,
   setAuthenticated,
+  setAiAllowed,
+  setAiCrews,
   setTemplates,
   setEntities,
   setUsers,
   setScenarios,
+  setAiService,
   setAuthBanner,
   setScenarioLoadErrors,
   AuthBanner,
@@ -29,7 +32,7 @@ import {
   setShowResults,
   setScenarioDirty,
 } from "state/uiSlice";
-import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
+import { setEmail, setRoleShip, setFleetCommand, setJoinedScenario } from "state/userSlice";
 import { AppMode, setAppMode } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
@@ -42,7 +45,7 @@ import {
   MetaData,
 } from "lib/entities";
 import { ViewMode, parseRoles } from "lib/view";
-import { Acceleration } from "lib/entities";
+import { Acceleration, Controller } from "lib/entities";
 import { ShipDesignTemplates } from "lib/shipDesignTemplates";
 import { FlightPath } from "lib/flightPath";
 import { Team } from "lib/teams";
@@ -240,6 +243,11 @@ const handleMessage = (event: MessageEvent) => {
     return;
   }
 
+  if ("AiCrews" in json) {
+    store.dispatch(setAiCrews(json.AiCrews === true));
+    return;
+  }
+
   if ("LaunchMissile" in json) {
     console.error(
       "LaunchMissile currently deprecated. Should never receive this message.",
@@ -355,6 +363,9 @@ export function addShip(ship: Ship) {
       // a ship deliberately switched on says anything.
       ...(ship.transmitting === true ? { transmitting: true } : {}),
       ...(ship.team ? { team: ship.team } : {}),
+      // Absent means the people at its consoles, and no orders.
+      ...(ship.controller === "AI" ? { controller: "AI" } : {}),
+      ...(ship.orders ? { orders: ship.orders } : {}),
       // Absent means the design's own defaults, which for every switchable
       // feature so far means off.
       ...(ship.features_on ? { features_on: ship.features_on } : {}),
@@ -425,6 +436,28 @@ export function setShipTeam(shipName: string, team: Team | null) {
     SetShipTeam: { ship_name: shipName, ...(team == null ? {} : { team }) },
   };
   socket.send(JSON.stringify(payload));
+}
+
+/** Hand a ship to the AI service, or take it back. */
+export function setShipController(shipName: string, controller: Controller) {
+  socket.send(
+    JSON.stringify({
+      SetShipController: { ship_name: shipName, controller },
+    }),
+  );
+}
+
+/** Give a ship standing orders. An empty string clears them. */
+export function setOrders(shipName: string, orders: string) {
+  const trimmed = orders.trim();
+  socket.send(
+    JSON.stringify({
+      SetOrders: {
+        ship_name: shipName,
+        ...(trimmed === "" ? {} : { orders: trimmed }),
+      },
+    }),
+  );
 }
 
 export function setCrewActions(
@@ -626,13 +659,53 @@ export function setSoftwareRunning(
   );
 }
 
-export function requestRoleChoice(roles: ViewMode[], ship: string | null) {
+/**
+ * Take a station. `ships` are the further ships this connection answers
+ * for -- a fleet commander's whole team -- under one Ready.
+ */
+export function requestRoleChoice(roles: ViewMode[], ship: string | null, ships: string[] = []) {
   const names = roles.map((r) => ViewMode[r]);
-  const payload =
-    ship !== null
-      ? { SetRole: { roles: names, ship: ship } }
-      : { SetRole: { roles: names } };
+  const payload = {
+    SetRole: {
+      roles: names,
+      ...(ship !== null ? { ship: ship } : {}),
+      ...(ships.length > 0 ? { ships: ships } : {}),
+    },
+  };
   socket.send(JSON.stringify(payload));
+  claimedShips = ships;
+}
+
+/** The ships last claimed with the server, so a change can be told. */
+let claimedShips: string[] = [];
+
+/** Every ship on `team`, in name order: what Fleet Command of it claims. */
+export const teamShips = (entities: EntityList, team: string): string[] =>
+  entities.ships
+    .filter((ship) => ship.team === team)
+    .map((ship) => ship.name)
+    .sort();
+
+/** Take Fleet Command of `team`, claiming its ships. */
+export function requestFleetCommand(team: string) {
+  store.dispatch(setFleetCommand(team));
+  requestRoleChoice([ViewMode.FleetCommand], null, teamShips(store.getState().server.entities, team));
+}
+
+/**
+ * Keep a fleet commander's claim matching their team as ships join it, leave
+ * it, are destroyed or jump out: the server holds whatever list it was last
+ * sent, and a ship missing from it would never be waited for.
+ */
+function reclaimFleet(entities: EntityList) {
+  const team = store.getState().user.fleetTeam;
+  if (team == null) {
+    return;
+  }
+  const ships = teamShips(entities, team);
+  if (ships.join("\n") !== claimedShips.join("\n")) {
+    requestRoleChoice([ViewMode.FleetCommand], null, ships);
+  }
 }
 
 export function joinScenario(scenario_name: string) {
@@ -641,8 +714,19 @@ export function joinScenario(scenario_name: string) {
   store.dispatch(setScenarioDirty(false));
 }
 
-export function createScenario(name: string, scenario: string) {
-  const payload = { CreateScenario: { name: name, scenario: scenario } };
+/**
+ * Start a game. `aiShips` names the ships the AI crews, as chosen on the
+ * new-game screen; every other ship is crewed by people. Left out, the
+ * scenario file's choice stands.
+ */
+export function createScenario(
+  name: string,
+  scenario: string,
+  aiShips?: string[],
+) {
+  const payload = {
+    CreateScenario: { name: name, scenario: scenario, ai_ships: aiShips },
+  };
   socket.send(JSON.stringify(payload));
   store.dispatch(setScenarioDirty(false));
 }
@@ -796,6 +880,7 @@ function handleEntities(json: object) {
   console.groupEnd();
   store.dispatch(setEntities(entities));
   releaseDepartedShip(entities);
+  reclaimFleet(entities);
   // Boosts a captain has ticked are in Redux and on their way up, so a
   // snapshot answering an earlier request would undo them. Name every ship
   // whose captain has rolled and let the reducer hold those lists; a ship
@@ -847,7 +932,11 @@ function handleFlightPath(json: object) {
 // from the clock so ids never repeat ones persisted before a reload.
 let nextEventId = Date.now();
 
-function handleEffect(json: object[]) {
+/** One round's results, as the server sends them. */
+type EffectsBatch = { round: number; effects: object[] };
+
+function handleEffect(batch: EffectsBatch) {
+  const json = batch.effects;
   console.groupCollapsed("Received Effects: ");
   console.log("(handleEffect) Received effects: " + JSON.stringify(json));
   console.groupEnd();
@@ -860,6 +949,7 @@ function handleEffect(json: object[]) {
   const events: Event[] = (json as Event[]).map((event) => ({
     ...event,
     id: nextEventId++,
+    round: batch.round,
   }));
 
   store.dispatch(setEvents(events));
@@ -876,6 +966,11 @@ function handleUsers(json: [UserContext]) {
     c.roles = parseRoles(raw.roles ?? raw.role);
     c.ship = user.ship;
     c.ready = user.ready ?? false;
+    // The further ships a player answers for: a team's commander, or the AI
+    // crewing a side. Dropped here before, so the list could not say so.
+    if (user.ships != null && user.ships.length > 0) {
+      c.ships = user.ships;
+    }
     users.push(c);
   }
   store.dispatch(setUsers(users));
@@ -884,8 +979,10 @@ function handleUsers(json: [UserContext]) {
 function handleScenarioList(json: {
   current_scenarios: [string, string][];
   templates: [string, MetaData][];
+  ai_crews?: boolean;
 }) {
   store.dispatch(setScenarios([json.current_scenarios, json.templates]));
+  store.dispatch(setAiService(json.ai_crews === true));
 }
 
 function handleJoinedScenario(json: { JoinedScenario: string }) {
@@ -918,6 +1015,7 @@ function handleAuthenticated(json: {
   roles?: string[] | null;
   role?: string | null;
   ship: string | null;
+  ai_allowed?: boolean;
 }): void {
   console.log(
     "(handleAuthenticated) Received Authenticated: " + JSON.stringify(json),
@@ -925,6 +1023,7 @@ function handleAuthenticated(json: {
   if (json.email != null) {
     store.dispatch(setEmail(json.email));
     store.dispatch(setAuthenticated(true));
+    store.dispatch(setAiAllowed(json.ai_allowed === true));
     // Clear any prior auth-banner state once we successfully authenticate.
     store.dispatch(setAuthBanner(null));
     if (json.scenario != null) {
@@ -932,7 +1031,15 @@ function handleAuthenticated(json: {
       syncAppModeForScenario(json.scenario);
     }
     if (json.roles != null || json.role != null) {
-      store.dispatch(setRoleShip([parseRoles(json.roles ?? json.role), json.ship]));
+      const roles = parseRoles(json.roles ?? json.role);
+      // The server keeps the role but not which team it commands; this
+      // browser remembers that.
+      const team = store.getState().user.fleetTeam;
+      if (roles.includes(ViewMode.FleetCommand) && team != null) {
+        store.dispatch(setFleetCommand(team));
+      } else {
+        store.dispatch(setRoleShip([roles, json.ship]));
+      }
     }
   } else {
     store.dispatch(setAuthenticated(false));

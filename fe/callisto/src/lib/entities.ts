@@ -53,6 +53,22 @@ export interface Entity {
   velocity: [number, number, number];
 }
 
+/** Who gives a ship its orders: people, or the AI service. */
+export type Controller = "Human" | "AI";
+
+/** Where the AI crewing a ship is in its round. Matches the Rust `AiStatus`. */
+export type AiStatus = "Deciding" | "Ready" | "NoAnswer";
+
+/** The AI's account of a ship's round, as its captain would give it. */
+export interface AiReport {
+  round: number;
+  status: AiStatus;
+  /** The side's standing plan. */
+  plan?: string;
+  /** Why this ship has the orders she has this round. */
+  rationale?: string;
+}
+
 export interface Ship extends Entity {
   plan: [Acceleration, Acceleration | null];
   design: string;
@@ -125,6 +141,19 @@ export interface Ship extends Entity {
   handoff_sensors?: boolean;
   /** Which side the ship is on. Absent means unaligned. */
   team?: Team;
+  /** Who gives the ship its orders. Absent means the people at its consoles. */
+  controller?: Controller;
+  /** Standing orders, in plain English. Absent means none. */
+  orders?: string;
+  /** What the ship's side is trying to do: the goal a trained commander is scored on. */
+  goal?: "destroy" | "hold" | "raid" | "escape";
+  /** Where a Hold ship holds: a body by name, or a point in metres. Absent:
+   *  where its side started. */
+  post?: string | [number, number, number];
+  /** How close to the post, in km, counts as holding it. Absent: 25,000. */
+  post_radius?: number;
+  /** The AI's last report on this ship. Only an AI-crewed ship has one. */
+  ai_report?: AiReport;
   crew: Crew;
   /**
    * Which sensor operator and which engineer are working this round, as
@@ -408,6 +437,16 @@ export const createPlanet = (
 export interface MetaData {
   name: string;
   description: string;
+  /** A template's sides and ships, sent with the scenario list for the
+   *  new-game screen; absent elsewhere. */
+  sides?: ScenarioSide[];
+}
+
+/** One side of a scenario template: its team (`Unaligned` for ships on
+ *  none) and its ships, each with whether the file has the AI crew her. */
+export interface ScenarioSide {
+  team: string;
+  ships: { name: string; ai: boolean }[];
 }
 
 export const createMetaData = (name: string, description: string) => {
@@ -425,6 +464,8 @@ export interface EntityList {
   // Basename of the scenario file this list was loaded from (e.g.
   // "planetfun.json"). Empty for from-scratch builder sessions.
   filename: string;
+  /** The round now being played, counting from 1. Absent from an older server. */
+  round?: number;
 }
 
 export const defaultEntityList = () => {
@@ -434,6 +475,7 @@ export const defaultEntityList = () => {
     missiles: [],
     metadata: createMetaData("", ""),
     filename: "",
+    round: 1,
   };
 };
 

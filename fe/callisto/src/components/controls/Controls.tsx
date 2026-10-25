@@ -28,6 +28,7 @@ import { Team, TEAMS, teamLabelColor } from "lib/teams";
 import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
 import { scaleVector, vectorToString } from "lib/Util";
 import { NavigationPlan } from "./ShipComputer";
+import { ShipCommand } from "./ShipCommand";
 import { computeFlightPath } from "lib/serverManager";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { entitiesSelector } from "state/serverSlice";
@@ -48,6 +49,7 @@ function ShipList(args: {
   ) => void;
 }) {
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
+  const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
   const entities = useAppSelector(entitiesSelector);
   const dispatch = useAppDispatch();
 
@@ -73,6 +75,8 @@ function ShipList(args: {
         filter={filter}
         setChoice={choiceHandler}
         current={computerShip}
+        // Fleet Command picks from its own team only.
+        onlyTeam={fleetTeam}
       />
       <GoButton moveCamera={args.moveCamera} />
     </div>
@@ -251,6 +255,13 @@ export function Controls() {
 
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const entities = useAppSelector(entitiesSelector);
+  const aiDeciding = [
+    ...new Set(
+      entities.ships
+        .filter((ship) => ship.controller === "AI" && ship.ai_report?.status === "Deciding")
+        .map((ship) => ship.team ?? ship.name),
+    ),
+  ].sort();
   const shipTemplates = useAppSelector((state) => state.server.templates);
   const showRange = useAppSelector((state) => state.ui.showRange);
 
@@ -263,6 +274,15 @@ export function Controls() {
       dispatch(setComputerShipName(shipName));
     }
   }, [shipName, dispatch]);
+
+  // Taking Fleet Command lets go of any ship that is not the team's.
+  const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
+  useEffect(() => {
+    const open = findShip(entities, computerShipName);
+    if (fleetTeam != null && open != null && open.team !== fleetTeam) {
+      dispatch(setComputerShipName(null));
+    }
+  }, [fleetTeam, computerShipName, entities, dispatch]);
 
   const [computerShip, computerShipDesign] = useMemo(() => {
     const computerShip = findShip(entities, computerShipName);
@@ -392,6 +412,7 @@ export function Controls() {
                 </div>
               </div>
             )}
+            <ShipCommand ship={computerShip} />
             <h2 className="control-form">Current Position (km)</h2>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <pre className="plan-accel-text">
@@ -509,6 +530,16 @@ export function Controls() {
           </>
         )}
       </Accordion>
+      <div className="round-counter" title="The round now being played">
+        Round {entities.round ?? 1}
+      </div>
+      {/* A model can take half a minute: without this the round just looks
+          stuck. Which sides only, never what they are thinking. */}
+      {aiDeciding.length > 0 && (
+        <div className="ai-deciding" title="An AI side is choosing its orders for this round">
+          AI deciding: {aiDeciding.join(", ")}
+        </div>
+      )}
       {/* The referee ends the round; everyone else says when their orders are
           in. Two people pressing Next Round ends the round before the rest of
           the table has finished giving theirs. */}
@@ -533,7 +564,7 @@ export function Controls() {
           title={
             amReady
               ? "Take it back if you still have orders to give"
-              : "Tell the GM your orders are in"
+              : "Your orders are in. With a GM, they run the round; without one, it runs when every crew is ready."
           }
           onClick={() => setReady(!amReady)}
         >

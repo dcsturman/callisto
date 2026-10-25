@@ -1,6 +1,7 @@
 {
   "name": "Ship's Boat",
   "displacement": 30,
+  "cost_mcr": 6.822,
   "hull": 12,
   "armor": 0,
   "maneuver": 5,

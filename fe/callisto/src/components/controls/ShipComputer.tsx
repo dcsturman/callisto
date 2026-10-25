@@ -468,7 +468,6 @@ function sensorActionToString(action: SensorState): string {
 
 interface SensorActionChooserProps {
   ship: Ship;
-  sensorLocks: string[];
   /**
    * Which operator this chooser is for, by their place in the crew. A ship
    * with several gets one chooser each, and each of them acts in the round.
@@ -476,9 +475,19 @@ interface SensorActionChooserProps {
   operator?: number;
 }
 
-export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, sensorLocks, operator = 0}) => {
+export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, operator = 0}) => {
   const actions = useAppSelector((state) => state.actions);
   const entities = useAppSelector(entitiesSelector);
+  // Breaking a lock is electronic warfare against a ship that holds one on
+  // *us* -- the "Eyes on us" list, not our own locks -- and it is the only
+  // kind the server accepts.
+  const lockedBy = useMemo(
+    () =>
+      entities.ships
+        .filter((other) => (other.sensor_locks ?? []).includes(ship.name))
+        .map((other) => other.name),
+    [entities.ships, ship.name],
+  );
   const computerShipName = useAppSelector((state) => state.ui.computerShipName);
   const dispatch = useAppDispatch();
 
@@ -596,7 +605,7 @@ export const SensorActionChooser: React.FC<SensorActionChooserProps> = ({ship, s
         onChange={handleSensorActionChange}>
         <option value="none"></option>
         <option value="jam-missiles">Jam Missiles</option>
-        {sensorLocks.map((s) => (
+        {lockedBy.map((s) => (
           <option key={s + "-break-sensor-lock"} value={"bsl-" + s}>
             {"Break Sensor Lock: " + s}
           </option>

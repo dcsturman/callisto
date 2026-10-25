@@ -65,9 +65,22 @@ export const CaptainTasks: React.FC<CaptainTasksProps> = ({ ship }) => {
       {postRollText && <p className="plan-accel-text">{postRollText}</p>}
       {boosts.length > 0 && (
         <ul className="captain-boost-list">
-          {boosts.map((b, idx) => (
-            <li key={idx}>{describeBoost(b)}</li>
-          ))}
+          {/* Only the first N, in the order given, are inspired: the list is
+              the captain's priorities. The rest stay queued in case an
+              earlier one's action falls away, and are shown as waiting. */}
+          {boosts.map((b, idx) => {
+            const waiting = rolled && idx >= Math.max(points, 0);
+            return (
+              <li
+                key={idx}
+                className={waiting ? "captain-boost-waiting" : undefined}
+                title={waiting ? "Beyond what the roll inspires this round" : undefined}
+              >
+                {describeBoost(b)}
+                {waiting && " (not inspired)"}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

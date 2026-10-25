@@ -1,6 +1,7 @@
 {
   "name": "Mercenary Cruiser - Type C",
   "displacement": 800,
+  "cost_mcr": 346.959,
   "hull": 320,
   "armor": 3,
   "maneuver": 3,

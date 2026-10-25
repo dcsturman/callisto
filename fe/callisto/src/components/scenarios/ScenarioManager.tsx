@@ -4,7 +4,12 @@ import { createSelector } from "reselect";
 import { joinScenario, createScenario } from "lib/serverManager";
 import { Logout } from "components/scenarios/Authentication";
 import { MetaData } from "lib/entities";
-
+import {
+  SideCrews,
+  SideCrewChoice,
+  aiShipsOf,
+  initialCrews,
+} from "components/scenarios/SideCrews";
 import { RootState, store, resetState } from "state/store";
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { AppMode, setAppMode } from "state/tutorialSlice";
@@ -194,6 +199,22 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
     sortedFilteredScenarios[0] ?? null,
   );
   const [template, setTemplate] = React.useState<string | null>(null);
+  // Who crews each side of the game about to be created: people, the AI or
+  // some of each. Starts from the template's own choice whenever the
+  // template changes.
+  const templateSides = useMemo(
+    () => scenarioTemplates.find((s) => s[0] === template)?.[1].sides ?? [],
+    [scenarioTemplates, template],
+  );
+  const [crews, setCrews] = React.useState<SideCrewChoice>({});
+  // Keyed on the sides' contents, not the list object: the scenario list is
+  // re-sent whenever anyone starts a game, and that must not undo a choice.
+  const sidesKey = JSON.stringify(templateSides);
+  useEffect(() => setCrews(initialCrews(JSON.parse(sidesKey))), [sidesKey]);
+  // A server with no AI service offers no AI sides: a ship handed to the AI
+  // would only sit there.
+  const aiService = useAppSelector((state) => state.server.aiService);
+  const aiShips = aiService ? aiShipsOf(templateSides, crews) : [];
   const [screen, setScreen] =
     React.useState<ScenarioManagerScreen>("mode-select");
   const [showScenarioIntro, setShowScenarioIntro] = React.useState<{
@@ -290,7 +311,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
     // error before doing the right thing anyway.
     if (template == null || template === "") {
       prepareScenarioLaunch(AppMode.Game);
-      createScenario(scenarioName, "");
+      createScenario(scenarioName, "", []);
       return;
     }
 
@@ -301,7 +322,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
         "(ScenarioManager.handleCreateScenario) No scenario data found for scenario " +
           template,
       );
-      createScenario(scenarioName, template ?? "");
+      createScenario(scenarioName, template ?? "", aiShips);
       return;
     }
 
@@ -311,7 +332,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
       handler: () => {
         setShowScenarioIntro(null);
         prepareScenarioLaunch(AppMode.Game);
-        createScenario(scenarioName, template ?? "");
+        createScenario(scenarioName, template ?? "", aiShips);
       },
     });
   }
@@ -457,6 +478,13 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
                       </option>
                     ))}
                   </select>
+                  {aiService && templateSides.length > 0 && (
+                    <SideCrews
+                      sides={templateSides}
+                      crews={crews}
+                      setCrews={setCrews}
+                    />
+                  )}
                   <button
                     className="control-input control-button blue-button"
                     type="submit"

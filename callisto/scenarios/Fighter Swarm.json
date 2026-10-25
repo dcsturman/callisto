@@ -1,0 +1,784 @@
+{
+  "metadata": {
+    "name": "Fighter Swarm",
+    "owner": "dcsturman@gmail.com",
+    "description": "Twenty light fighters, four rows of five 250 km apart, against a Chrysanthemum destroyer escort and an armed Type C mercenary cruiser 1,000 km apart, 30,000 km away at rest. Few big ships against many small ones."
+  },
+  "planets": [],
+  "ships": [
+    {
+      "name": "IMS Vigilant",
+      "position": [
+        0.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Chrysanthemum",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Destroyer escort pair. Destroy the fighter swarm."
+    },
+    {
+      "name": "Iron Hand",
+      "position": [
+        0.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Mercenary Cruiser - Type C (armed)",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Mercenary cruiser, hired escort. Destroy the fighter swarm."
+    },
+    {
+      "name": "Talon 01",
+      "position": [
+        29625000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 02",
+      "position": [
+        29625000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 03",
+      "position": [
+        29625000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 04",
+      "position": [
+        29625000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 05",
+      "position": [
+        29625000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 06",
+      "position": [
+        29875000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 07",
+      "position": [
+        29875000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 08",
+      "position": [
+        29875000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 09",
+      "position": [
+        29875000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 10",
+      "position": [
+        29875000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 11",
+      "position": [
+        30125000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 12",
+      "position": [
+        30125000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 13",
+      "position": [
+        30125000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 14",
+      "position": [
+        30125000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 15",
+      "position": [
+        30125000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 16",
+      "position": [
+        30375000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 17",
+      "position": [
+        30375000.0,
+        -250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 18",
+      "position": [
+        30375000.0,
+        0.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 19",
+      "position": [
+        30375000.0,
+        250000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    },
+    {
+      "name": "Talon 20",
+      "position": [
+        30375000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Fighter swarm. Destroy the destroyer escort."
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "Colonial Cruiser - Kinunir",
   "displacement": 1200,
+  "cost_mcr": 863.71,
   "hull": 528,
   "armor": 4,
   "maneuver": 4,

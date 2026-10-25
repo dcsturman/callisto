@@ -1,6 +1,7 @@
 {
   "name": "Scout - Serpent",
   "displacement": 100,
+  "cost_mcr": 42.2685,
   "hull": 40,
   "armor": 4,
   "maneuver": 2,

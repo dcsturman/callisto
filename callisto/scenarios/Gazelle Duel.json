@@ -1,0 +1,1018 @@
+{
+  "metadata": {
+    "name": "Gazelle Duel",
+    "owner": "dcsturman@gmail.com",
+    "description": "Twelve Gazelle close escorts a side, a perfect mirror: each squadron in three rows of four, 250 km apart, the squadrons' centres 50,000 km apart at rest, the edge of Very Long. For training a network on fights larger than eight ships a side."
+  },
+  "planets": [],
+  "ships": [
+    {
+      "name": "Azure 01",
+      "position": [
+        250000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 02",
+      "position": [
+        250000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 03",
+      "position": [
+        250000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 04",
+      "position": [
+        250000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 05",
+      "position": [
+        0.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 06",
+      "position": [
+        0.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 07",
+      "position": [
+        0.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 08",
+      "position": [
+        0.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 09",
+      "position": [
+        -250000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 10",
+      "position": [
+        -250000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 11",
+      "position": [
+        -250000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Azure 12",
+      "position": [
+        -250000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 01",
+      "position": [
+        49750000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 02",
+      "position": [
+        49750000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 03",
+      "position": [
+        49750000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 04",
+      "position": [
+        49750000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 05",
+      "position": [
+        50000000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 06",
+      "position": [
+        50000000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 07",
+      "position": [
+        50000000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 08",
+      "position": [
+        50000000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 09",
+      "position": [
+        50250000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 10",
+      "position": [
+        50250000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 11",
+      "position": [
+        50250000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    },
+    {
+      "name": "Crimson 12",
+      "position": [
+        50250000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Gazelle",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Gazelle squadron. Destroy the enemy squadron."
+    }
+  ]
+}

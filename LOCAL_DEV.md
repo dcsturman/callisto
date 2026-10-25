@@ -56,6 +56,13 @@ Then start the frontend the same way as option 1:
 scripts/dev-fe.sh
 ```
 
+This brings up the AI service (`ai`, built from `ai-ships/`) beside the
+backend. A ship switched to AI in the Ship's Computer card is crewed by it;
+for now it gives no orders and simply says Ready each round. The two share a
+local secret, `CALLISTO_SERVICE_TOKEN`, defaulted in `compose.yaml`. The AI
+service connects with `ws://`, so the backend must run without TLS, as
+`compose.override.yaml` sets up.
+
 `dev-up.sh` layers compose files: `compose.yaml` is the base, your local
 `compose.override.yaml` (gitignored, optional) is auto-included, and
 `compose.gcs.yaml` is added when `--gcs` is passed.

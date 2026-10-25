@@ -1,6 +1,7 @@
 {
   "name": "Troop Transport",
   "displacement": 50,
+  "cost_mcr": 45.45,
   "hull": 22,
   "armor": 5,
   "maneuver": 9,

@@ -18,6 +18,8 @@ services:
     volumes:
       - ./callisto/scenarios:/scenarios:ro
       - ./callisto/ship_templates:/ship_templates:ro
+      # Every game played is recorded here, for learning from later.
+      - ./game_logs:/game_logs
     secrets:
       - google_credentials
       - gcs_credentials
@@ -26,6 +28,12 @@ services:
     command: --tls-keys-private /run/secrets/tls_keys_private --tls-keys-public /run/secrets/tls_keys_public --oauth-creds /run/secrets/google_credentials --scenario-dir gs://callisto-scenarios --users-file /config/authorized_users.json --design-dir /ship_templates --web-server http://localhost:50001
     environment:
       RUST_LOG: debug,gomez=warn
+      # Lets the AI service log in, and the backend call it. Local only: on
+      # Cloud Run both sides use identity tokens instead. Override the value by
+      # exporting CALLISTO_SERVICE_TOKEN before `docker compose up`.
+      CALLISTO_SERVICE_TOKEN: ${CALLISTO_SERVICE_TOKEN:-local-dev-service-token}
+      CALLISTO_AI_SERVICE: http://ai:8080
+      CALLISTO_GAME_LOG_DIR: /game_logs
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
       SENTRY_DSN: https://2bd6b4d950ccb59ce589533dcf1b253a@o4511288095080448.ingest.us.sentry.io/4511288117755904
       SENTRY_ENVIRONMENT: docker-local
@@ -33,6 +41,36 @@ services:
       - 30000
     ports:
       - 30000:30000
+  # The AI service: crews ships switched to AI. Start it with the backend:
+  #   docker compose -f compose.yaml -f compose.override.yaml up be ai
+  ai:
+    build:
+      # The repo root, because the service links the backend crate.
+      context: .
+      dockerfile: ai-ships/Dockerfile
+    environment:
+      RUST_LOG: info,ai_ships=debug
+      CALLISTO_BACKEND: ws://be:30000
+      CALLISTO_SERVICE_TOKEN: ${CALLISTO_SERVICE_TOKEN:-local-dev-service-token}
+      # Who decides: `network`, the trained network built into the service,
+      # which needs no model or credentials. `CALLISTO_AI_MODEL=gemini
+      # docker-compose up --build -d` plays with Gemini instead, through your
+      # application-default credentials (`gcloud auth application-default
+      # login` once if the service cannot get a token) and on this project's
+      # bill; `deepseek` with DeepSeek V4.1 Flash; `close` with a script.
+      CALLISTO_AI_MODEL: ${CALLISTO_AI_MODEL:-network}
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-callisto-1731280702227}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
+      # Every model call, beside the backend's record of the game.
+      CALLISTO_GAME_LOG_DIR: /game_logs
+    volumes:
+      - ./game_logs:/game_logs
+    secrets:
+      - gcs_credentials
+    expose:
+      - 8080
+    depends_on:
+      - be
   fe:
     build:
       context: fe/callisto
