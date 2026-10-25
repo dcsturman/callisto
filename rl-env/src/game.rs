@@ -155,7 +155,7 @@ pub const DEALT_CREDIT: f32 = 0.8;
 /// |------------------|---------|-------------------------|-------------------------------|-------------|
 /// | Enemy destroyed  | +1      | +1                      | +1                            | +1          |
 /// | Enemy fled       | +0.6    | +1                      | +0.6 if 25% dealt, else -0.6  | share jumped |
-/// | Draw             | -1      | +0.6 if holding, else -1.1 | +0.6 if 25% dealt, else -1 | share jumped |
+/// | Draw             | -1      | +1 if holding, else -1.1 | +0.6 if 25% dealt, else -1   | share jumped |
 /// | We fled          | -0.9    | -1.1                    | +0.6 if 25% dealt, else -0.6  | share jumped |
 /// | ...above half hull | -1.1  | -1.1                    | +0.6 if 25% dealt, else -1.1  | share jumped |
 /// | We were destroyed| -1      | -1 + stand credit if holding, else -1.1 | -1             | share jumped |
@@ -191,7 +191,10 @@ pub fn terminal(goal: Goal, ending: Ending, tally: &Tally) -> f32 {
     },
     Goal::Hold => match ending {
       Ending::EnemyDestroyed | Ending::EnemyFled => 1.0,
-      Ending::Draw if tally.holding => 0.6,
+      // Holding the post to the end is a win, as good as destroying the
+      // enemy: the attacker had to take it and did not. Anything less and a
+      // stronger holder charges out rather than wait at its post.
+      Ending::Draw if tally.holding => 1.0,
       Ending::WeDestroyed if tally.holding => -1.0 + STAND_CREDIT * (tally.held + tally.dealt),
       Ending::Draw | Ending::WeFled | Ending::WeDestroyed => COWARDICE,
     },
@@ -457,6 +460,13 @@ impl Game {
   /// As [`Game::new`].
   #[must_use]
   pub fn varied(scenario: Arc<Scenario>, controls: &[Control; 2], seed: u64, max_rounds: u32, variation: f64) -> Self {
+    // A scenario with a round limit ends there: its holder has won if it is
+    // still at its post.
+    let limit = scenario
+      .entities
+      .metadata
+      .rounds
+      .map_or(max_rounds, |rounds| rounds.min(max_rounds));
     let player = player_for(&scenario, seed, variation);
     let world = entities(&player);
     let fleets: [Vec<Ship>; 2] = [0, 1].map(|index| {
@@ -530,7 +540,7 @@ impl Game {
       views,
       tokens: Default::default(),
       rounds: 0,
-      max_rounds,
+      max_rounds: limit,
       seed,
       stand_ins: [None, None],
       retreats: Retreats::default(),

@@ -532,6 +532,7 @@ export function Controls() {
       </Accordion>
       <div className="round-counter" title="The round now being played">
         Round {entities.round ?? 1}
+        {entities.metadata?.rounds != null && ` of ${entities.metadata.rounds}`}
       </div>
       {/* A model can take half a minute: without this the round just looks
           stuck. Which sides only, never what they are thinking. */}

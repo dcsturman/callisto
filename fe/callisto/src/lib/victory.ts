@@ -1,4 +1,5 @@
-import { Ship } from "lib/entities";
+import { EntityList, Ship } from "lib/entities";
+import { fromPost, postOf } from "lib/posts";
 
 /** A side as it was last seen: its name, and whether it was trying to get away. */
 export interface SideSeen {
@@ -39,6 +40,8 @@ export interface Outcome {
   escaped: boolean;
   /** The headline: "Red Team Victorious!", "Blue Team escaped!", ... */
   headline: string;
+  /** What happened, when it is not that a side was wiped out. */
+  detail?: string;
 }
 
 /**
@@ -65,4 +68,50 @@ export const outcome = (seen: Map<string, SideSeen>, ships: Ship[]): Outcome | n
       ? `${winner} Victorious!`
       : "Mutual Destruction";
   return { winner, gone, escaped, headline };
+};
+
+/**
+ * Whether a scenario's round limit has ended it: its rounds are up (the
+ * round now being played is past the limit). A Hold side with a ship still
+ * at its post has held, and won; if none has, the post fell, and the sides
+ * that were not holding have won. Null before the limit, or in a scenario
+ * without one.
+ */
+export const timeUp = (entities: EntityList, seen: Map<string, SideSeen>): Outcome | null => {
+  const limit = entities.metadata?.rounds;
+  if (limit == null || (entities.round ?? 1) <= limit) {
+    return null;
+  }
+  const holders = new Map<string, { label: string; where: string; held: boolean }>();
+  for (const ship of entities.ships.filter((ship) => ship.goal === "hold")) {
+    const key = sideKey(ship);
+    const post = postOf(entities, ship);
+    const prior = holders.get(key);
+    holders.set(key, {
+      label: seen.get(key)?.label ?? (ship.team != null ? `${ship.team} Team` : ship.name),
+      where: prior?.where ?? post?.where ?? "its post",
+      held: (prior?.held ?? false) || (fromPost(entities, ship)?.inside ?? false),
+    });
+  }
+  const held = [...holders.entries()].find(([, side]) => side.held);
+  if (held != null) {
+    const [key, side] = held;
+    const others = [...seen.entries()].filter(([other]) => other !== key).map(([, s]) => s);
+    return {
+      winner: side.label,
+      gone: others,
+      escaped: false,
+      headline: `${side.label} held ${side.where}!`,
+      detail: `The ${limit} rounds are up, and ${side.label} still holds ${side.where}.`,
+    };
+  }
+  const attackers = [...seen.entries()].filter(([key]) => !holders.has(key)).map(([, s]) => s.label);
+  const headline = attackers.length > 0 ? `${attackers.join(" and ")} Victorious!` : "Time is up";
+  return {
+    winner: attackers[0] ?? null,
+    gone: [...holders.values()].map((side) => ({ label: side.label, escaping: false })),
+    escaped: false,
+    headline,
+    detail: `The ${limit} rounds are up, and ${[...holders.values()].map((side) => side.label).join(" and ")} no longer ${holders.size === 1 ? "holds its" : "hold their"} post.`,
+  };
 };

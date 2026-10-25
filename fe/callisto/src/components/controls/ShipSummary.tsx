@@ -4,6 +4,7 @@ import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
 import { isUndetectedBy } from "lib/contacts";
 import { useViewer } from "lib/viewer";
+import { POST_COLOUR, fromPost } from "lib/posts";
 import { teamLabelColor } from "lib/teams";
 import { bandName, formatBands, formatRange, rangeBetween } from "lib/range";
 
@@ -87,6 +88,8 @@ export function ShipSummary() {
         // thrust in G is the manoeuvre-drive DM on the detection table -- so a
         // ship you have no contact on shows its presence and nothing else.
         undetected: isUndetectedBy(viewer, ship, entities.ships),
+        // A Hold ship's place relative to her post: whether she is holding.
+        post: fromPost(entities, ship),
         team: ship.team,
         range:
           rangeFrom == null || rangeFrom.name === ship.name
@@ -138,6 +141,18 @@ export function ShipSummary() {
               className="ship-summary-name"
               style={{color: teamLabelColor(row.team, {undetected: row.undetected})}}>
               {row.name}
+              {/* Not for a ship this player cannot see: where she is would
+                  give her away. */}
+              {row.post && !row.undetected && (
+                <span
+                  className="ship-summary-post"
+                  style={{color: POST_COLOUR}}
+                  title="Whether she is within her post's radius: holding it">
+                  {row.post.inside
+                    ? " \u2022 at post"
+                    : ` \u2022 ${Math.round(row.post.distance / 1000).toLocaleString()} km out`}
+                </span>
+              )}
             </span>
             <span className="ship-summary-hull">
               {row.undetected
