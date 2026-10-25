@@ -987,7 +987,7 @@ impl Processor {
         let (own_roles, _) = player.get_roles();
         // The ship decides, not the role: a referee who takes a single station
         // to simplify their screen still runs the round.
-        let refereeing = !player.holds_ships() && !own_roles.contains(&crate::payloads::Role::Observer);
+        let refereeing = crate::payloads::is_referee(&own_roles, player.holds_ships());
         let server_id = player.server.as_ref().map(|server| server.get_id().to_string());
         if !refereeing && server_id.as_ref().is_some_and(|id| self.members.has_referee(id)) {
           return error_msg("Only the GM can advance the round.".to_string());

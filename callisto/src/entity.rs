@@ -30,7 +30,7 @@ use crate::rules_tables::{
 use crate::ship::get_ship_templates_snapshot;
 use crate::ship::Weapon;
 use crate::ship::{
-  with_ship_templates_for_deserialization, BridgeStation, Controller, FlightPlan, PowerSystem, Range, Ship,
+  with_ship_templates_for_deserialization, BridgeStation, Controller, FlightPlan, Post, PowerSystem, Range, Ship,
   ShipDesignTemplate, ShipSystem,
 };
 use crate::software::SoftwareKind;
@@ -329,6 +329,19 @@ pub(crate) fn no_contact_effect(ship_name: &str, target: &str, verb: &str) -> Ef
 }
 
 impl Entities {
+  /// Where a post is now: the body's position, or the point itself. `None`
+  /// for a body the scenario does not have.
+  ///
+  /// # Panics
+  /// Panics if a planet's lock is poisoned.
+  #[must_use]
+  pub fn post_position(&self, post: &Post) -> Option<Vec3> {
+    match post {
+      Post::Body(name) => self.planets.get(name).map(|planet| planet.read().unwrap().get_position()),
+      Post::At([x, y, z]) => Some(Vec3::new(*x, *y, *z)),
+    }
+  }
+
   /// The scenario's sides, by team, and their ships, both in name order: what
   /// the new-game screen offers to people or the AI.
   ///
@@ -5832,9 +5845,36 @@ mod tests {
         !entities.ships.is_empty() || !entities.planets.is_empty(),
         "{name}: loaded but is empty, which usually means the shape is wrong rather than the syntax"
       );
+      // A post names a body the scenario has.
+      for ship in entities.ships.values() {
+        let ship = ship.read().unwrap();
+        if let Some(post) = &ship.post {
+          assert!(
+            entities.post_position(post).is_some(),
+            "{name}: {} holds {post:?}, which is not in the scenario",
+            ship.get_name()
+          );
+        }
+      }
       checked += 1;
     }
     assert!(checked > 0, "no scenarios found to check -- has the directory moved?");
+  }
+
+  /// Jupiter's Aslan hold Europa, and start within the post's radius of it.
+  #[test_log::test(tokio::test)]
+  async fn jupiters_aslan_hold_europa() {
+    config_test_ship_templates().await;
+    let bytes = fs::read("./scenarios/jupiter.json").unwrap();
+    let entities = Entities::parse_bytes_with_ship_templates(&bytes, "jupiter", get_ship_templates_snapshot()).unwrap();
+    let escort = entities.ships["Ailreaui"].read().unwrap();
+    assert_eq!(escort.post, Some(crate::ship::Post::Body("Europa".to_string())));
+    let europa = entities.post_position(escort.post.as_ref().unwrap()).unwrap();
+    let km = (escort.get_position() - europa).magnitude() / 1000.0;
+    assert!(
+      km < crate::ship::DEFAULT_POST_RADIUS_KM,
+      "Ailreaui starts {km:.0} km from Europa"
+    );
   }
 
   /// The band sets the to-hit modifier, so a change is worth saying even when

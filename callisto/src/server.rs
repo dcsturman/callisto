@@ -49,13 +49,9 @@ struct MembershipTable {
   last_exit: u64,
 }
 
-/// Whether this player is refereeing: holding no ship of their own and not
-/// merely watching. Matches `isReferee` on the client.
-///
-/// The ship decides, not the role. A referee may take a single station to cut
-/// their screen down and is still the referee.
+/// Whether this player is refereeing; see [`crate::payloads::is_referee`].
 fn is_referee(entry: &MemberEntry) -> bool {
-  !entry.holds_ships() && !entry.roles.contains(&Role::Observer)
+  crate::payloads::is_referee(&entry.roles, entry.holds_ships())
 }
 
 /// Represents a player's entry in the server membership table.
@@ -667,6 +663,20 @@ mod membership_tests {
     assert!(!members.everyone_ready("s"), "the pirates have not said ready");
     members.set_ready("s", "key-ai", true);
     assert!(members.everyone_ready("s"));
+  }
+
+  /// A fleet commander is never the referee, even before their team has a
+  /// ship to claim, so a table with one does not wait for a Next Round
+  /// nobody can press.
+  #[test]
+  fn a_fleet_commander_is_not_the_referee() {
+    let mut members = ServerMembersTable::new();
+    members.register("s", "Thebus");
+    members.update("s", "key-fc", "fc@example.com", vec![Role::FleetCommand], None);
+    assert!(!members.has_referee("s"));
+    members.set_ships("s", "key-fc", vec!["Executor".to_string()]);
+    members.set_ready("s", "key-fc", true);
+    assert!(members.everyone_ready("s"), "the commander's one Ready covers the side");
   }
 
   #[test]

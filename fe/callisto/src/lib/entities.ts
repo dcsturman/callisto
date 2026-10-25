@@ -147,6 +147,11 @@ export interface Ship extends Entity {
   orders?: string;
   /** What the ship's side is trying to do: the goal a trained commander is scored on. */
   goal?: "destroy" | "hold" | "raid" | "escape";
+  /** Where a Hold ship holds: a body by name, or a point in metres. Absent:
+   *  where its side started. */
+  post?: string | [number, number, number];
+  /** How close to the post, in km, counts as holding it. Absent: 25,000. */
+  post_radius?: number;
   /** The AI's last report on this ship. Only an AI-crewed ship has one. */
   ai_report?: AiReport;
   crew: Crew;

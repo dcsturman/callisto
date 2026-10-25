@@ -31,7 +31,7 @@ import {
   setShowResults,
   setScenarioDirty,
 } from "state/uiSlice";
-import { setEmail, setRoleShip, setJoinedScenario } from "state/userSlice";
+import { setEmail, setRoleShip, setFleetCommand, setJoinedScenario } from "state/userSlice";
 import { AppMode, setAppMode } from "state/tutorialSlice";
 import { setActions, dropBoosts } from "state/actionsSlice";
 import { store } from "state/store";
@@ -658,13 +658,53 @@ export function setSoftwareRunning(
   );
 }
 
-export function requestRoleChoice(roles: ViewMode[], ship: string | null) {
+/**
+ * Take a station. `ships` are the further ships this connection answers
+ * for -- a fleet commander's whole team -- under one Ready.
+ */
+export function requestRoleChoice(roles: ViewMode[], ship: string | null, ships: string[] = []) {
   const names = roles.map((r) => ViewMode[r]);
-  const payload =
-    ship !== null
-      ? { SetRole: { roles: names, ship: ship } }
-      : { SetRole: { roles: names } };
+  const payload = {
+    SetRole: {
+      roles: names,
+      ...(ship !== null ? { ship: ship } : {}),
+      ...(ships.length > 0 ? { ships: ships } : {}),
+    },
+  };
   socket.send(JSON.stringify(payload));
+  claimedShips = ships;
+}
+
+/** The ships last claimed with the server, so a change can be told. */
+let claimedShips: string[] = [];
+
+/** Every ship on `team`, in name order: what Fleet Command of it claims. */
+export const teamShips = (entities: EntityList, team: string): string[] =>
+  entities.ships
+    .filter((ship) => ship.team === team)
+    .map((ship) => ship.name)
+    .sort();
+
+/** Take Fleet Command of `team`, claiming its ships. */
+export function requestFleetCommand(team: string) {
+  store.dispatch(setFleetCommand(team));
+  requestRoleChoice([ViewMode.FleetCommand], null, teamShips(store.getState().server.entities, team));
+}
+
+/**
+ * Keep a fleet commander's claim matching their team as ships join it, leave
+ * it, are destroyed or jump out: the server holds whatever list it was last
+ * sent, and a ship missing from it would never be waited for.
+ */
+function reclaimFleet(entities: EntityList) {
+  const team = store.getState().user.fleetTeam;
+  if (team == null) {
+    return;
+  }
+  const ships = teamShips(entities, team);
+  if (ships.join("\n") !== claimedShips.join("\n")) {
+    requestRoleChoice([ViewMode.FleetCommand], null, ships);
+  }
 }
 
 export function joinScenario(scenario_name: string) {
@@ -839,6 +879,7 @@ function handleEntities(json: object) {
   console.groupEnd();
   store.dispatch(setEntities(entities));
   releaseDepartedShip(entities);
+  reclaimFleet(entities);
   // Boosts a captain has ticked are in Redux and on their way up, so a
   // snapshot answering an earlier request would undo them. Name every ship
   // whose captain has rolled and let the reducer hold those lists; a ship
@@ -987,7 +1028,15 @@ function handleAuthenticated(json: {
       syncAppModeForScenario(json.scenario);
     }
     if (json.roles != null || json.role != null) {
-      store.dispatch(setRoleShip([parseRoles(json.roles ?? json.role), json.ship]));
+      const roles = parseRoles(json.roles ?? json.role);
+      // The server keeps the role but not which team it commands; this
+      // browser remembers that.
+      const team = store.getState().user.fleetTeam;
+      if (roles.includes(ViewMode.FleetCommand) && team != null) {
+        store.dispatch(setFleetCommand(team));
+      } else {
+        store.dispatch(setRoleShip([roles, json.ship]));
+      }
     }
   } else {
     store.dispatch(setAuthenticated(false));

@@ -4,7 +4,10 @@ import * as THREE from "three";
 
 import { TextureLoader } from "three/src/loaders/TextureLoader";
 
-import { Line } from "lib/Util";
+import { Line, RangeCircle, scaleVector } from "lib/Util";
+import { SCALE } from "lib/universal";
+import { postsToDraw } from "lib/posts";
+import { TEAM_CSS, Team } from "lib/teams";
 import { Planet as PlanetType } from "lib/entities";
 
 import { useAppSelector } from "state/hooks";
@@ -65,6 +68,18 @@ function SpaceView() {
     <>
       <Axes />
       <Planets planets={planets} />
+      {/* Where each Hold side is meant to be: a ring of the radius that
+          counts as holding, in the side's colour. */}
+      {postsToDraw(entities).map((post) => (
+        <RangeCircle
+          key={post.key}
+          pos={scaleVector(post.position, SCALE)}
+          distance={post.radius}
+          label={post.label}
+          color={post.team != null ? TEAM_CSS[post.team as Team] : undefined}
+          opacity={0.8}
+        />
+      ))}
       <Galaxy />
     </>
   );

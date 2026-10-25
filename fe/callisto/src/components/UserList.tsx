@@ -58,6 +58,7 @@ export function Users(args: {users: UserList, email: string | null, ships?: Ship
                     // side on a connection of its own -- so the side they
                     // answer for is what tells them apart.
                     const side = (user.ships ?? []).length > 0 ? sideOf(fleet, args.ships ?? []) : null;
+                    const commander = user.roles.includes(ViewMode.FleetCommand);
                     if (side != null) {
                         role_text = "";
                     } else if (fleet.size > 1) {
@@ -76,7 +77,14 @@ export function Users(args: {users: UserList, email: string | null, ships?: Ship
                             shift sideways as the table readies up. */}
                         <span className="user-ready-mark">{user.ready ? "\u2713" : "\u00a0"}</span>
                         {user.display_name}{role_text}
-                        {side != null && (
+                        {side != null && commander && (
+                            <>
+                                {" (Fleet Command, "}
+                                <span style={{ color: TEAM_CSS[side] }}>{side}</span>
+                                {")"}
+                            </>
+                        )}
+                        {side != null && !commander && (
                             <>
                                 {" ("}
                                 <span style={{ color: TEAM_CSS[side] }}>{side} side</span>

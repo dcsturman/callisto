@@ -36,9 +36,9 @@ use crate::network::orders;
 /// fleet, so small scenarios do not pay for the empty rows.
 pub const OWN: usize = 20;
 pub const FOES: usize = 20;
-pub const OWN_FEATS: usize = 73;
+pub const OWN_FEATS: usize = 78;
 pub const FOE_FEATS: usize = 26;
-pub const SIDE_FEATS: usize = 10;
+pub const SIDE_FEATS: usize = 16;
 pub const PAIR_FEATS: usize = 39;
 
 /// The heads, as the per-side network sizes them: the targets point at enemy
@@ -119,6 +119,46 @@ pub struct SideContext<'a> {
   pub own_hull_share: f32,
   pub enemy_hull_share: f32,
   pub goal: Goal,
+  /// For a side whose goal is Hold: where its post is now, and how close to
+  /// it counts as holding (metres). `None` for any other goal.
+  pub post: Option<(Vec3, f64)>,
+}
+
+/// Where a Hold side's scenario puts its post, and its radius in metres: the
+/// first of its ships to name one. `None` if none does, and the side holds
+/// where it started.
+#[must_use]
+pub fn scenario_post(own: &[Ship], planets: &[callisto::planet::Planet]) -> Option<(Vec3, f64)> {
+  let ship = own.iter().find(|ship| ship.post.is_some())?;
+  let at = match ship.post.as_ref()? {
+    callisto::ship::Post::Body(name) => planets.iter().find(|planet| planet.get_name() == name)?.get_position(),
+    callisto::ship::Post::At([x, y, z]) => Vec3::new(*x, *y, *z),
+  };
+  let radius = ship.post_radius.unwrap_or(callisto::ship::DEFAULT_POST_RADIUS_KM) * 1000.0;
+  Some((at, radius))
+}
+
+/// For a side with a post, "hold" means hold the post: every ship told to
+/// keep her course instead keeps station on the post, re-aimed each round at
+/// where it is now, so a side holding a moon follows it. A squadron's guide
+/// holding does the same, and her followers with her. Without this the
+/// network had no way to fly to its post at all -- every other helm order
+/// is relative to an enemy ship.
+pub fn hold_at_post(intents: &mut [(String, callisto::tactics::Intent)], post: Option<(Vec3, f64)>) {
+  use callisto::tactics::Helm;
+  fn station(helm: &mut Helm, at: [f64; 3]) {
+    match helm {
+      Helm::Hold => *helm = Helm::Station { position: at },
+      Helm::Follow { guide_helm, .. } => station(guide_helm, at),
+      _ => {}
+    }
+  }
+  let Some((post, _)) = post else {
+    return;
+  };
+  for (_, intent) in intents.iter_mut() {
+    station(&mut intent.helm, [post.x, post.y, post.z]);
+  }
 }
 
 struct Foe<'a> {
@@ -249,7 +289,7 @@ pub fn encode_side(ctx: &SideContext, buffers: &mut Buffers) -> Tokens {
   for (j, foe) in foes.iter().enumerate() {
     foe_token(ctx, foe, frame, &own, &mut buffers.foes[j * FOE_FEATS..(j + 1) * FOE_FEATS]);
   }
-  side_token(ctx, own.len(), foes.len(), buffers.side);
+  side_token(ctx, &own, frame, foes.len(), buffers.side);
 
   Tokens {
     own: own.iter().map(|ship| ship.get_name().to_string()).collect(),
@@ -345,6 +385,14 @@ fn own_token(ctx: &SideContext, me: &Ship, frame: Frame, row: &mut [f32]) {
   row[70] = watching.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
   row[71] = locking.min(MAX_SHIPS) as f32 / MAX_SHIPS as f32;
   row[72] = (f64::from(me.design.hull.max(1)).log10() / 4.0) as f32;
+  // A Hold side's post, from this ship: which way and how far, and whether
+  // she is within its radius.
+  if let Some((post, radius)) = ctx.post {
+    let offset = post - me.get_position();
+    row[73..76].copy_from_slice(&direction(frame.turned(offset)));
+    row[76] = log_distance(offset.magnitude());
+    row[77] = f32::from(u8::from(offset.magnitude() <= radius));
+  }
 }
 
 fn foe_token(ctx: &SideContext, foe: &Foe, frame: Frame, own: &[&Ship], row: &mut [f32]) {
@@ -387,7 +435,8 @@ fn foe_token(ctx: &SideContext, foe: &Foe, frame: Frame, own: &[&Ship], row: &mu
   row[25] = (missiles as f32 / 10.0).min(1.0);
 }
 
-fn side_token(ctx: &SideContext, own: usize, foes: usize, row: &mut [f32]) {
+fn side_token(ctx: &SideContext, ships: &[&Ship], frame: Frame, foes: usize, row: &mut [f32]) {
+  let own = ships.len();
   row[0] = ctx.round as f32 / ctx.max_rounds.max(1) as f32;
   let goal = GOALS.iter().position(|goal| *goal == ctx.goal).unwrap_or(0);
   row[1 + goal] = 1.0;
@@ -396,6 +445,19 @@ fn side_token(ctx: &SideContext, own: usize, foes: usize, row: &mut [f32]) {
   row[7] = own as f32 / MAX_SHIPS as f32;
   row[8] = foes as f32 / MAX_SHIPS as f32;
   row[9] = (orders::missiles_inbound(ctx.view) as f32 / 10.0).min(1.0);
+  // A Hold side's post, from the side's middle, and how many of its ships
+  // are within its radius: whether it is holding, and which way to go if not.
+  if let Some((post, radius)) = ctx.post {
+    let offset = post - frame.centre;
+    row[10] = 1.0;
+    row[11..14].copy_from_slice(&direction(frame.turned(offset)));
+    row[14] = log_distance(offset.magnitude());
+    let near = ships
+      .iter()
+      .filter(|ship| (ship.get_position() - post).magnitude() <= radius)
+      .count();
+    row[15] = near as f32 / own.max(1) as f32;
+  }
 }
 
 fn pair(ctx: &SideContext, frame: Frame, me: &Ship, foe: &Foe, row: &mut [f32]) {

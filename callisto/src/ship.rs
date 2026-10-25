@@ -504,6 +504,17 @@ pub struct Ship {
   #[derivative(PartialEq = "ignore")]
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub goal: Option<Goal>,
+  /// Where a ship whose goal is Hold holds: a body by name (`"Europa"`) or a
+  /// point in space (`[x, y, z]`, metres). `None` holds where the ship's side
+  /// started. Read by the AI and by the score; the rules do not enforce it.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub post: Option<Post>,
+  /// How close to its post, in km, a ship counts as holding it. `None` is
+  /// [`DEFAULT_POST_RADIUS_KM`].
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub post_radius: Option<f64>,
   /// What the AI crewing this ship last reported: whether it is still
   /// deciding the round, its side's plan, and why it gave this ship the orders
   /// it did. Set by the AI service, for the people this ship reports to and
@@ -1350,6 +1361,19 @@ pub enum Stealth {
 /// unaligned, which is how every ship built before teams existed arrives.
 /// What a side is trying to do: the menu a trained commander is scored on.
 /// Written in lower case in scenario files and on the wire.
+/// Where a Hold ship holds: a body, by name, or a point in space in metres.
+/// Written in a scenario as `"post": "Europa"` or `"post": [0, 0, 6.5e8]`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum Post {
+  Body(String),
+  At([f64; 3]),
+}
+
+/// How close to its post a Hold ship counts as holding it, unless its
+/// scenario says otherwise: the edge of Long range.
+pub const DEFAULT_POST_RADIUS_KM: f64 = 25_000.0;
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Goal {
@@ -1766,6 +1790,8 @@ impl Ship {
       ai_report: None,
       orders: None,
       goal: None,
+      post: None,
+      post_radius: None,
     }
   }
 

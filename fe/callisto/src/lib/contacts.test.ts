@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasContact, isUndetected } from "lib/contacts";
+import { hasContact, isUndetected, isUndetectedBy, isViewersOwn } from "lib/contacts";
 import { Ship } from "lib/entities";
 import { Team } from "lib/teams";
 
@@ -66,5 +66,32 @@ describe("isUndetected", () => {
 
   it("never hides the observer from itself", () => {
     expect(isUndetected(ship("Seeker", []), ship("Seeker"))).toBe(false);
+  });
+});
+
+describe("a team as the viewer", () => {
+  const scout = ship("Scout", ["Raider"], "Blue");
+  const escort = ship("Escort", [], "Blue");
+  const raider = ship("Raider", [], "Red");
+  const lurker = ship("Lurker", [], "Red");
+  const fleet = [scout, escort, raider, lurker];
+  const blue = { team: "Blue" };
+
+  it("sees whatever any of its ships has found", () => {
+    expect(isUndetectedBy(blue, raider, fleet)).toBe(false);
+  });
+
+  it("does not see what none of them has", () => {
+    expect(isUndetectedBy(blue, lurker, fleet)).toBe(true);
+  });
+
+  it("always sees its own ships", () => {
+    expect(isUndetectedBy(blue, escort, fleet)).toBe(false);
+    expect(isViewersOwn(blue, escort)).toBe(true);
+    expect(isViewersOwn(blue, raider)).toBe(false);
+  });
+
+  it("is nobody in particular for the referee, who sees everything", () => {
+    expect(isUndetectedBy(null, lurker, fleet)).toBe(false);
   });
 });
