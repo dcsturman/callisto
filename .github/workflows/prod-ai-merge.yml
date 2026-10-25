@@ -1,0 +1,91 @@
+name: Prod Env -- Build the AI ships service and run it on Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # The service links the backend crate, so a change to either rebuilds it.
+      - "ai-ships/**"
+      - "callisto/src/**"
+      - "callisto/Cargo.*"
+      - ".github/workflows/prod-ai-merge.yml"
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: callisto-1731280702227
+  GAR_LOCATION: gcr.io
+  REGION: us-central1
+  APP: callisto-ai
+  # The backend it crews ships on, and the audience its login token names.
+  BACKEND_WS: wss://callisto-be-ul7hz2fcvq-uc.a.run.app
+  BACKEND_URL: https://callisto-be-ul7hz2fcvq-uc.a.run.app
+  # This service's own URL: the audience the backend's calls must name.
+  AI_URL: https://callisto-ai-ul7hz2fcvq-uc.a.run.app
+  # Who may call /crew and /release: the backend's service account.
+  ALLOWED_CALLERS: 402344016908-compute@developer.gserviceaccount.com
+  # The service's own identity: calls Vertex AI and logs in to the backend.
+  SERVICE_ACCOUNT: callisto-ai@callisto-1731280702227.iam.gserviceaccount.com
+  MODEL: network
+
+jobs:
+  deploy-prod-ai:
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout for Prod"
+        uses: "actions/checkout@v4"
+
+      - name: "Google auth with Prod Creds"
+        uses: "google-github-actions/auth@v2"
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+
+      - name: "Set up Cloud SDK"
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: ">= 501.0.0"
+
+      - name: "Docker auth"
+        run: |-
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}
+
+      - name: Set up Docker buildx for Prod
+        uses: docker/setup-buildx-action@v3
+
+      # The repository root is the context: the service links the backend crate.
+      - name: Build and push container with Docker GHA
+        uses: "docker/build-push-action@v4"
+        with:
+          context: .
+          file: ./ai-ships/Dockerfile
+          push: true
+          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}
+          cache-from: type=gha,scope=ai-ships-prod
+          cache-to: type=gha,mode=max,scope=ai-ships-prod
+
+      # One instance, always on, CPU always allocated: a crew is a WebSocket
+      # the service opened to the backend and a loop that waits on it, not a
+      # request, so Cloud Run would otherwise throttle or stop it between the
+      # backend's calls. Callers must present an identity token (the backend's).
+      - name: "Deploy to Prod Cloud Run"
+        run:
+          gcloud run deploy ${{ env.APP }} --image ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.APP }}:${{ github.sha }}
+            --region=${{ env.REGION }}
+            --service-account=${{ env.SERVICE_ACCOUNT }}
+            --no-allow-unauthenticated
+            --min-instances=1 --max-instances=1 --no-cpu-throttling
+            --update-env-vars=CALLISTO_BACKEND=${{ env.BACKEND_WS }},CALLISTO_BACKEND_AUDIENCE=${{ env.BACKEND_URL }},CALLISTO_AI_AUDIENCE=${{ env.AI_URL }},CALLISTO_AI_ALLOWED_CALLERS=${{ env.ALLOWED_CALLERS }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},CALLISTO_AI_MODEL=${{ env.MODEL }},RUST_LOG=info
+      - name: 'Retire the previous revision'
+        run: |
+          latest=$(gcloud run services describe ${{ env.APP }} --region=${{ env.REGION }} --format='value(status.latestReadyRevisionName)')
+          for revision in $(gcloud run revisions list --service=${{ env.APP }} --region=${{ env.REGION }} --format='value(metadata.name)'); do
+            if [ "$revision" != "$latest" ]; then
+              gcloud run revisions delete "$revision" --region=${{ env.REGION }} --quiet || true
+            fi
+            done
