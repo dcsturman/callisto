@@ -1,6 +1,7 @@
 {
   "name": "Corsair - Type P",
   "displacement": 400,
+  "cost_mcr": 180.86,
   "hull": 160,
   "armor": 5,
   "maneuver": 3,

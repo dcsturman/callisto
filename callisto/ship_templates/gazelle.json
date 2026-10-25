@@ -1,6 +1,7 @@
 {
   "name": "Gazelle",
   "displacement": 400,
+  "cost_mcr": 188.6373,
   "hull": 160,
   "armor": 3,
   "maneuver": 5,
@@ -43,10 +44,6 @@
     {
       "kind": "FireControl",
       "level": 4
-    },
-    {
-      "kind": "Intellect",
-      "level": 0
     },
     {
       "kind": "JumpControl",

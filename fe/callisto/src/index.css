@@ -460,8 +460,9 @@ select.control-input,
     gap: 4px;
     z-index: 12;
     /* Three panels can outgrow a laptop screen, and the results are the one
-       that scrolls rather than the stack. */
-    max-height: 100vh;
+       that scrolls rather than the stack. The stack also stops above the
+       session panel in the bottom corner, whose height App measures. */
+    max-height: calc(100vh - var(--admin-window-height, 0px) - 4px);
 }
 
 /* The reference's own title. It is a disclosure line inside View Controls, not
@@ -1380,6 +1381,60 @@ h3.control-form {
     width: 400px;
 }
 
+.side-crews {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
+    padding: 6px 10px 8px;
+    border: 1px solid #555;
+    border-radius: 4px;
+}
+
+.side-crews legend {
+    padding: 0 4px;
+    font-size: var(--font-md);
+}
+
+.side-crews-hint,
+.side-crews-count {
+    font-size: var(--font-xs);
+    opacity: 0.75;
+}
+
+.side-crews-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.side-crews-team {
+    font-weight: bold;
+}
+
+.side-crews-modes {
+    display: flex;
+    gap: 10px;
+}
+
+.side-crews-mode,
+.side-crews-ships label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+}
+
+.side-crews-ships {
+    list-style: none;
+    margin: 4px 0 0 12px;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 12px;
+}
+
 .label-scenario-name {
     font-size: var(--font-lg);
 }
@@ -1533,6 +1588,23 @@ h3.control-form {
 }
 
 .save-scenario-button-row,
+.captain-boost-waiting {
+    opacity: 0.45;
+}
+
+.victory-screen {
+    text-align: center;
+}
+
+.victory-title {
+    font-size: var(--font-xl);
+    letter-spacing: 0.04em;
+}
+
+.victory-screen .confirm-dialog-button-row {
+    justify-content: center;
+}
+
 .confirm-dialog-button-row {
     display: flex;
     justify-content: flex-end;
@@ -1892,6 +1964,7 @@ h3.control-form {
    with two switches rather than as unrelated checkboxes. */
 .emissions-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
     align-items: center;
     margin: 2px 0 4px 0;
@@ -3457,4 +3530,193 @@ h3.control-form {
     font-size: var(--font-xs);
     font-style: italic;
     opacity: 0.7;
+}
+
+/* Who is crewing the ship, and its standing orders. In the Ship's Computer
+   card, under the vital stats. */
+.ship-command {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 6px 0;
+}
+
+.ship-command-crew {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ship-command-crew h2,
+.ship-command-orders h2 {
+    margin: 0;
+}
+
+.controller-chip {
+    font-family: "Sono", monospace;
+    font-size: var(--font-xs);
+    padding: 0 5px;
+    border: 1px solid #555;
+    border-radius: 8px;
+    color: #aaa;
+}
+
+/* An AI-crewed ship should be obvious at a glance: nobody at its consoles is
+   going to answer for it. */
+.controller-chip-ai {
+    border-color: #6fa8dc;
+    color: #9fc5e8;
+}
+
+.ship-command-switch {
+    margin-left: auto;
+}
+
+.ship-command-orders {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ship-command-orders-text {
+    background-color: #1a1a1a;
+    color: inherit;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-family: "Sono", monospace;
+    font-size: var(--font-sm);
+    resize: vertical;
+}
+
+/* Where the fight has got to, just above Next Round / Ready. */
+.round-counter {
+    font-family: "Sono", monospace;
+    font-size: var(--font-sm);
+    color: #aaa;
+    text-align: center;
+    margin-top: 6px;
+}
+
+/* --- Fleet Comms --- */
+/* The AI captains' reports, beside the results and shaped like them. */
+#fleet-comms {
+    width: 30rem;
+    max-width: 96vw;
+    max-height: 40vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#fleet-comms h1 {
+    position: sticky;
+    top: 0;
+    background: #1b1f24;
+    z-index: 1;
+    font-size: var(--font-lg);
+    margin: 0 0 0.35em 0;
+}
+
+.fleet-comms-toggle {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+}
+
+.fleet-comms-toggle:focus-visible {
+    outline: 1px solid currentColor;
+}
+
+.fleet-comms-side + .fleet-comms-side {
+    margin-top: 0.75em;
+}
+
+.fleet-comms-side h2 {
+    font-size: var(--font-md, 1rem);
+    margin: 0 0 0.25em 0;
+}
+
+.fleet-comms-status {
+    font-weight: normal;
+    color: #b8c0c8;
+}
+
+.fleet-comms-deciding {
+    font-style: italic;
+}
+
+.fleet-comms-noanswer {
+    color: #e0a050;
+}
+
+.fleet-comms-plan {
+    margin: 0 0 0.4em 0;
+    /* The plan, then its squadrons on a line of their own. */
+    white-space: pre-line;
+    color: #d8dee4;
+}
+
+.fleet-comms-line {
+    margin: 0.15em 0 0.15em 0.75em;
+    color: #c8d0d8;
+}
+
+
+.ship-command-report {
+    margin: 0.25em 0;
+    font-style: italic;
+    color: #c8d0d8;
+}
+
+.ai-deciding {
+    font-style: italic;
+    color: #b8c0c8;
+}
+
+/* The scenario builder's orders box: the full width of the form row. */
+.add-ship-orders {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2em;
+    flex-basis: 100%;
+}
+
+.ai-teams {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75em;
+    margin-top: 0.5em;
+}
+
+.side-costs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75em;
+    margin-top: 0.5em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Team, AI crew and orders: wrapped so they fit the panel's width. */
+.add-ship-crewing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin: 4px 0 6px 0;
+}
+
+.ai-teams-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.team-orders-note {
+    font-size: var(--font-sm);
+    font-style: italic;
+    color: #b8c0c8;
 }

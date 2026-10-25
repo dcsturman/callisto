@@ -8,6 +8,8 @@ edition = "2021"
 [features]
 ci = []
 no_tls_upgrade = []
+# Record every course plotted, for benchmarking the solver on real problems.
+solver_corpus = []
 
 [dependencies]
 cgmath = { version = "0.18", features = ["swizzle", "serde", "rand", "mint"] }
@@ -17,9 +19,8 @@ tokio = { version = "1.37.0", features = ["full"] }
 pretty_env_logger = "0.5.0"
 gomez = "0.5.0"
 serde_with = { version = "3.8.1", features = ["json"] }
-clap = { version = "4.5.4", features = ["derive"] }
+clap = { version = "4.5.4", features = ["derive", "env"] }
 rand = "0.8.5"
-rand_xoshiro = "0.6"
 derivative = "2.2.0"
 assert-json-diff = "2.0.2"
 approx = "0.5.1"
@@ -42,8 +43,6 @@ futures = "0.3.31"
 pem = "3.0.4"
 dyn-clone = "1.0.18"
 itertools = "0.14.0"
-egobox-doe = "0.27.1"
-ndarray = "0.15.6"
 test-log = "*"
 tracing = { version = "0.1.41", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }

@@ -1,0 +1,49 @@
+name: Validate the AI service on pull request
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - canary
+      - epic-ai-ships
+    paths:
+      - "ai-ships/**"
+      - "callisto/src/**"
+      - "callisto/Cargo.toml"
+      - ".github/workflows/ai-ships-pull-request.yml"
+jobs:
+  check-ai-ships:
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update local toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: clippy, rustfmt
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v1
+        with:
+          working-directory: ai-ships
+          key: "ai-ships-1"
+
+      - name: Format check
+        working-directory: ./ai-ships
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        working-directory: ./ai-ships
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: ./ai-ships
+        run: cargo test

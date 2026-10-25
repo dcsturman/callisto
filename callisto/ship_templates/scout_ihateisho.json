@@ -1,6 +1,7 @@
 {
   "name": "Scout - Ihateisho",
   "displacement": 100,
+  "cost_mcr": 58.51,
   "hull": 40,
   "armor": 0,
   "maneuver": 2,

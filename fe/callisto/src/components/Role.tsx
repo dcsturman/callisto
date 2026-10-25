@@ -1,30 +1,31 @@
 import * as React from "react";
 import { useMemo, useState } from "react";
-import { Entity } from "lib/entities";
 import { CUSTOMISABLE_ROLES, ViewMode, rolesToString } from "lib/view";
-import { EntitySelector, EntitySelectorType } from "lib/EntitySelector";
-import { requestRoleChoice } from "lib/serverManager";
-import { findShip } from "lib/entities";
+import { requestRoleChoice, requestFleetCommand } from "lib/serverManager";
+import { TEAMS } from "lib/teams";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
 import { setRoleShip } from "state/userSlice";
 import { entitiesSelector } from "state/serverSlice";
 
 const CUSTOM = "custom";
+/** The seat chooser's value for Fleet Command of a team: `fleet:Blue`. */
+const FLEET = "fleet:";
 
 export const RoleChooser = () => {
   const shipName = useAppSelector((state) => state.user.shipName);
   const roles = useAppSelector((state) => state.user.roles);
+  const fleetTeam = useAppSelector((state) => state.user.fleetTeam);
   const entities = useAppSelector(entitiesSelector);
   const [picking, setPicking] = useState(false);
-
-  const current = useMemo(
-    () => findShip(entities, shipName),
-    [entities, shipName],
-  );
   const dispatch = useAppDispatch();
 
-  const filter = useMemo(() => [EntitySelectorType.Ship], []);
+  // A Fleet Command seat for every team with a ship on it. Unaligned ships
+  // have no team to command; their crews just take the ship.
+  const teams = useMemo(
+    () => TEAMS.filter((team) => entities.ships.some((ship) => ship.team === team)),
+    [entities.ships],
+  );
 
   const choose = useMemo(
     () => (next: ViewMode[], ship: string | null) => {
@@ -34,10 +35,17 @@ export const RoleChooser = () => {
     [dispatch],
   );
 
-  const choiceHandler = useMemo(
-    () => (ship: Entity | null) => choose(roles, ship ? ship.name : null),
-    [choose, roles],
-  );
+  // Leaving Fleet Command for a ship or the GM's seat takes General: the
+  // commander's role means nothing at one console.
+  const seatRoles = roles.includes(ViewMode.FleetCommand) ? [ViewMode.General] : roles;
+  const chooseSeat = (value: string) => {
+    if (value.startsWith(FLEET)) {
+      requestFleetCommand(value.slice(FLEET.length));
+    } else {
+      choose(seatRoles, value === "" ? null : value);
+    }
+  };
+  const seat = fleetTeam != null ? FLEET + fleetTeam : shipName ?? "";
 
   // A single role shows as itself. More than one shows as Custom, since no
   // single option describes it -- the dialog is where the detail lives.
@@ -45,18 +53,32 @@ export const RoleChooser = () => {
 
   return (
     <>
-      <EntitySelector
-        className="select-dropdown control-name-input control-input role-input"
-        filter={filter}
-        setChoice={choiceHandler}
-        current={current}
-        // Taking no ship here means running the whole board rather than
-        // declining to choose, so the empty option says so.
-        noneLabel="GM"
-      />
       <select
         className="select-dropdown control-name-input control-input role-input"
-        value={selectValue}
+        aria-label="Seat"
+        value={seat}
+        onChange={(e) => chooseSeat(e.target.value)}
+      >
+        {/* Taking no ship means running the whole board rather than declining
+            to choose, so the empty option says so. */}
+        <option value="">GM</option>
+        {teams.map((team) => (
+          <option key={team} value={FLEET + team}>
+            Fleet Command ({team})
+          </option>
+        ))}
+        {entities.ships.map((ship) => (
+          <option key={ship.name} value={ship.name}>
+            {ship.name}
+          </option>
+        ))}
+      </select>
+      <select
+        className="select-dropdown control-name-input control-input role-input"
+        // A fleet commander works every station of whichever team ship they
+        // have open; there is no single station to pick.
+        disabled={fleetTeam != null}
+        value={fleetTeam != null ? String(ViewMode.FleetCommand) : selectValue}
         title={roles.length > 1 ? rolesToString(roles) : undefined}
         onChange={(e) => {
           if (e.target.value === CUSTOM) {
@@ -73,6 +95,7 @@ export const RoleChooser = () => {
         <option value={ViewMode.Engineer}>Engineer</option>
         <option value={ViewMode.Observer}>Observer</option>
         <option value={ViewMode.Captain}>Captain</option>
+        {fleetTeam != null && <option value={ViewMode.FleetCommand}>Fleet Command</option>}
         {/* Several stations at once, for a small crew. Shown as the chosen
             names once picked, since no single option describes it. */}
         <option value={CUSTOM}>

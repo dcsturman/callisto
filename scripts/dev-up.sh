@@ -47,9 +47,10 @@ if [[ $USE_GCS -eq 1 ]]; then
 fi
 
 if [[ $DO_BUILD -eq 1 ]]; then
-  echo "[dev-up] docker compose ${COMPOSE_FILES[*]} build be"
-  docker compose "${COMPOSE_FILES[@]}" build be
+  echo "[dev-up] docker compose ${COMPOSE_FILES[*]} build be ai"
+  docker compose "${COMPOSE_FILES[@]}" build be ai
 fi
 
-echo "[dev-up] docker compose ${COMPOSE_FILES[*]} up be ${EXTRA_ARGS[*]}"
-exec docker compose "${COMPOSE_FILES[@]}" up be "${EXTRA_ARGS[@]}"
+# The AI service comes up with the backend, so a ship switched to AI is crewed.
+echo "[dev-up] docker compose ${COMPOSE_FILES[*]} up be ai ${EXTRA_ARGS[*]}"
+exec docker compose "${COMPOSE_FILES[@]}" up be ai "${EXTRA_ARGS[@]}"

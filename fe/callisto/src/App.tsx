@@ -5,6 +5,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { KernelSize } from "postprocessing";
 import { FlyControls } from "./lib/FlyControls";
+import { FleetComms } from "components/controls/FleetComms";
 
 import { Authentication } from "components/scenarios/Authentication";
 
@@ -49,6 +50,7 @@ import { ViewMode, hasRole, isReferee } from "lib/view";
 import { RoleChooser } from "components/Role";
 import { ScenarioManager } from "components/scenarios/ScenarioManager";
 import { Tutorial } from "components/Tutorial";
+import { VictoryScreen } from "components/VictoryScreen";
 import { ConfirmDialog } from "components/ConfirmDialog";
 
 import { useAppSelector, useAppDispatch } from "state/hooks";
@@ -159,10 +161,32 @@ function Simulator() {
     );
   }, [entities.ships, computerShipName]);
 
+  // The panels down the right-hand side stop above the session panel in the
+  // bottom corner, whose height changes with its user list: on a short screen
+  // they otherwise ran down behind it and the two drew over each other.
+  const adminWindow = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = adminWindow.current;
+    if (element == null || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty("--admin-window-height", `${element.offsetHeight}px`),
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--admin-window-height");
+    };
+  }, []);
+
   return (
     <>
       <div className="mainscreen-container">
         {!tutorialMode || <Tutorial />}
+        {/* A scenario being built or taught has no winner to announce. */}
+        {joinedScenario && !tutorialMode && !scenarioBuilderMode && <VictoryScreen />}
         {/* The console: the ship's dossier, then a card for every station
             this player works, in one column that spills into a second only
             when the first is full. Screen space is the scarce thing on a
@@ -189,8 +213,11 @@ function Simulator() {
               <ResultsWindow />
             </Suspense>
           )}
+          {/* What the AI captains are saying: the referee hears every AI
+              side without opening each ship. Nothing when no ship is AI. */}
+          {joinedScenario && !scenarioBuilderMode && <FleetComms />}
         </div>
-        <div className="admin-button-window">
+        <div className="admin-button-window" ref={adminWindow}>
           <h2>
             {joinedScenario &&
               (tutorialMode
@@ -199,7 +226,7 @@ function Simulator() {
                   ? `Scenario Builder`
                   : joinedScenario)}
           </h2>
-          <Users users={users} email={email} />
+          <Users users={users} email={email} ships={entities.ships} />
           {!scenarioBuilderMode && <RoleChooser />}
           <div className="reset-and-logout-buttons">
             <Exit email={email} />

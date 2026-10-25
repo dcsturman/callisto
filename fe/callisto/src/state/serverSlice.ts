@@ -30,6 +30,22 @@ export interface ServerState {
     scenarioTemplates: [string, MetaData][];
     authBanner: AuthBanner | null;
     scenarioLoadErrors: ScenarioLoadError[];
+    /**
+     * Whether this user may start games with AI crews. The AI costs money
+     * every round, so the server allows it one user at a time; the client
+     * offers the choice only to them.
+     */
+    aiAllowed: boolean;
+    /**
+     * Whether the game in play offers AI crews. When it does not, no AI
+     * control is shown at all.
+     */
+    aiCrews: boolean;
+    /**
+     * Whether this server has an AI service to crew ships at all. Without
+     * one the new-game screen offers no AI sides.
+     */
+    aiService: boolean;
 }
 
 const initialState: ServerState  = {
@@ -42,6 +58,9 @@ const initialState: ServerState  = {
     scenarioTemplates: [],
     authBanner: null,
     scenarioLoadErrors: [],
+    aiAllowed: false,
+    aiCrews: false,
+    aiService: false,
 }
 
 export const serverSlice = createSlice({
@@ -51,6 +70,15 @@ export const serverSlice = createSlice({
   reducers: {
     setAuthenticated: (state, action: PayloadAction<boolean>) => {
         state.authenticated = action.payload;
+    },
+    setAiAllowed: (state, action: PayloadAction<boolean>) => {
+        state.aiAllowed = action.payload;
+    },
+    setAiCrews: (state, action: PayloadAction<boolean>) => {
+        state.aiCrews = action.payload;
+    },
+    setAiService: (state, action: PayloadAction<boolean>) => {
+        state.aiService = action.payload;
     },
     setSocketReady: (state, action: PayloadAction<boolean>) => {
         state.socketReady = action.payload;
@@ -85,6 +113,8 @@ export const templatesSelector = (state: { server: ServerState }) => state.serve
 export const authBannerSelector = (state: { server: ServerState }) => state.server.authBanner;
 export const scenarioLoadErrorsSelector = (state: { server: ServerState }) => state.server.scenarioLoadErrors;
 
-export const { setAuthenticated, setSocketReady, setEntities, setTemplates, setUsers, setScenarios, setAuthBanner, setScenarioLoadErrors, dismissScenarioLoadErrors } = serverSlice.actions;
+export const { setAuthenticated, setAiAllowed, setAiCrews, setAiService, setSocketReady, setEntities, setTemplates, setUsers, setScenarios, setAuthBanner, setScenarioLoadErrors, dismissScenarioLoadErrors } = serverSlice.actions;
+export const aiAllowedSelector = (state: { server: ServerState }) => state.server.aiAllowed;
+export const aiCrewsSelector = (state: { server: ServerState }) => state.server.aiCrews;
 export type ServerReducer = ReturnType<typeof serverSlice.reducer>;
 export default serverSlice.reducer;

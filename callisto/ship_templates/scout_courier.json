@@ -1,6 +1,7 @@
 {
   "name": "Scout/Courier",
   "displacement": 100,
+  "cost_mcr": 36.9405,
   "hull": 40,
   "armor": 4,
   "maneuver": 2,

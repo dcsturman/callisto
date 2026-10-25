@@ -38,6 +38,22 @@ describe("isReferee", () => {
     // Watching is not refereeing.
     expect(isReferee([ViewMode.Observer], null)).toBe(false);
   });
+
+  test("a fleet commander says Ready rather than running the round", () => {
+    expect(isReferee([ViewMode.FleetCommand], null)).toBe(false);
+  });
+});
+
+describe("Fleet Command", () => {
+  test("works every station of the ship it has open, as the referee does", () => {
+    expect(hasRole([ViewMode.FleetCommand], ViewMode.Gunner)).toBe(true);
+    expect(hasRole([ViewMode.FleetCommand], ViewMode.Observer)).toBe(false);
+  });
+
+  test("reads from the wire and names itself", () => {
+    expect(parseRoles(["FleetCommand"])).toEqual([ViewMode.FleetCommand]);
+    expect(rolesToString([ViewMode.FleetCommand])).toBe("Fleet Command");
+  });
 });
 
 describe("wire shape", () => {

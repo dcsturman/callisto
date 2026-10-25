@@ -27,6 +27,34 @@ export const hasContact = (
 };
 
 /**
+ * Who is looking: one ship's console, a whole team (Fleet Command, seeing
+ * what any of its ships has found), or nobody in particular (the referee,
+ * who sees everything).
+ */
+export type Viewer = { ship: Ship } | { team: string } | null;
+
+/**
+ * Whether `viewer` cannot see `target`. A team sees its own ships and
+ * whatever any of them holds a contact on: the combined picture.
+ */
+export const isUndetectedBy = (viewer: Viewer, target: Ship, ships: Ship[]): boolean => {
+  if (viewer == null) {
+    return false;
+  }
+  if ("ship" in viewer) {
+    return isUndetected(viewer.ship, target);
+  }
+  return (
+    target.team !== viewer.team &&
+    !ships.some((ship) => ship.team === viewer.team && (ship.contacts ?? []).includes(target.name))
+  );
+};
+
+/** Whether `ship` is the viewer's own: their ship, or one of their team's. */
+export const isViewersOwn = (viewer: Viewer, ship: Ship): boolean =>
+  viewer != null && ("ship" in viewer ? viewer.ship.name === ship.name : ship.team === viewer.team);
+
+/**
  * Whether a ship should be shown and acted on as undetected.
  *
  * Gating is always relative to the ship whose console is open, not to the

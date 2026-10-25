@@ -380,10 +380,13 @@ pub struct Ship {
   leadership_rolled: bool,
 
   // Index by turning ShipSystem enum into usize.
-  // Skip deserializing as we don't expect them when loading from a file
-  // and don't intend to receive them from the client.
-  // But we do serialize them to send to the client.
-  #[serde(skip_deserializing)]
+  //
+  // Read back as well as written: a client that reads the world -- the AI
+  // service, which crews ships from what the server sends -- has to see a
+  // ship's criticals, or it is told she is undamaged and never repairs her.
+  // No client request carries a ship, and a scenario load clears them in
+  // `fixup_current_values`, so a ship cannot be sent in already damaged.
+  #[serde(default)]
   pub crit_level: [u8; 11],
   /// The state of each bridge station, indexed by `BridgeStation`. Omitted from
   /// the wire while every station works.
@@ -479,6 +482,46 @@ pub struct Ship {
   /// makes a long missile duel a question of stores as well as nerve.
   #[serde(default)]
   pub magazine: Magazine,
+  /// Who is giving this ship its orders: the people at its consoles, or the
+  /// AI service.
+  ///
+  /// Omitted when `Human`, so every ship and scenario written before AI
+  /// control existed serializes exactly as it did.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Controller::is_human")]
+  pub controller: Controller,
+  /// The ship's standing orders, in plain English.
+  ///
+  /// World state, not a private channel: the referee sees what every ship was
+  /// told, and a human crew can read their own. An AI-controlled ship plans
+  /// against them; a scenario author gives pirates doctrine with them.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub orders: Option<String>,
+  /// What the ship's side is trying to do, from a small menu: what a trained
+  /// commander is scored on, where a model reads `orders`. A side's goal is
+  /// the one its ships share. `None` is [`Goal::Destroy`].
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub goal: Option<Goal>,
+  /// Where a ship whose goal is Hold holds: a body by name (`"Europa"`) or a
+  /// point in space (`[x, y, z]`, metres). `None` holds where the ship's side
+  /// started. Read by the AI and by the score; the rules do not enforce it.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub post: Option<Post>,
+  /// How close to its post, in km, a ship counts as holding it. `None` is
+  /// [`DEFAULT_POST_RADIUS_KM`].
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub post_radius: Option<f64>,
+  /// What the AI crewing this ship last reported: whether it is still
+  /// deciding the round, its side's plan, and why it gave this ship the orders
+  /// it did. Set by the AI service, for the people this ship reports to and
+  /// the referee; cleared when the ship goes back to human hands.
+  #[derivative(PartialEq = "ignore")]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_report: Option<AiReport>,
 }
 
 fn default_power_multiplier() -> f32 {
@@ -581,6 +624,11 @@ pub struct ShipDesignTemplate {
   /// usual load for what the ship is armed with.
   #[serde(default, skip_serializing_if = "Magazine::is_empty")]
   pub magazine: Magazine,
+  /// What the design costs to buy, in millions of credits, as its data sheet
+  /// gives it. Nothing reads it yet: it is for building and balancing
+  /// scenarios by price, Trillion Credit Squadron style.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cost_mcr: Option<f64>,
   /// The software the design is sold with. A scenario can add to it.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub software: Vec<Software>,
@@ -1258,7 +1306,7 @@ pub enum Sensors {
   Advanced,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, FromRepr)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, FromRepr)]
 pub enum Range {
   Short = 0,
   Medium,
@@ -1311,6 +1359,81 @@ pub enum Stealth {
 /// point is that the display codes them: a referee reading "Red" on a dropdown
 /// and seeing a red ship in the view needs no translation step. `None` means
 /// unaligned, which is how every ship built before teams existed arrives.
+/// What a side is trying to do: the menu a trained commander is scored on.
+/// Written in lower case in scenario files and on the wire.
+/// Where a Hold ship holds: a body, by name, or a point in space in metres.
+/// Written in a scenario as `"post": "Europa"` or `"post": [0, 0, 6.5e8]`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum Post {
+  Body(String),
+  At([f64; 3]),
+}
+
+/// How close to its post a Hold ship counts as holding it, unless its
+/// scenario says otherwise: the edge of Long range.
+pub const DEFAULT_POST_RADIUS_KM: f64 = 25_000.0;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum Goal {
+  /// Destroy the enemy or drive them off.
+  #[default]
+  Destroy,
+  /// Keep the position: still there at the end, or the enemy beaten or gone.
+  Hold,
+  /// Destroy at least a quarter of the enemy's hull, then leave or see it out.
+  Raid,
+  /// Jump out of the system.
+  Escape,
+}
+
+/// Who is giving a ship its orders.
+///
+/// Whole-ship for now: a ship is crewed by people or by the AI service, not
+/// some stations of each. Written `AI` in scenario files and on the wire; the
+/// Rust name is `Ai` because clippy's `upper_case_acronyms` will not have it
+/// otherwise.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Controller {
+  #[default]
+  Human,
+  #[serde(rename = "AI")]
+  Ai,
+}
+
+impl Controller {
+  #[must_use]
+  pub fn is_human(&self) -> bool {
+    *self == Controller::Human
+  }
+}
+
+/// Where the AI crewing a ship is in its round.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiStatus {
+  /// Asked the model and waiting for its answer.
+  Deciding,
+  /// Orders given; the ship is ready.
+  Ready,
+  /// The model did not answer this round: the ship keeps its last plan.
+  NoAnswer,
+}
+
+/// The AI's account of a ship's round, as its crew would give it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct AiReport {
+  pub round: u32,
+  pub status: AiStatus,
+  /// The side's standing plan.
+  #[serde(default)]
+  pub plan: Option<String>,
+  /// Why this ship was given the orders it was, in one sentence.
+  #[serde(default)]
+  pub rationale: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Team {
   Red,
@@ -1663,6 +1786,12 @@ impl Ship {
       ion_bandwidth_loss: 0,
       ion_rounds: 0,
       magazine: Magazine::for_design(design),
+      controller: Controller::Human,
+      ai_report: None,
+      orders: None,
+      goal: None,
+      post: None,
+      post_radius: None,
     }
   }
 
@@ -3678,6 +3807,7 @@ impl Default for ShipDesignTemplate {
       screens: vec![],
       features: vec![],
       magazine: Magazine::default(),
+      cost_mcr: None,
       software: vec![],
       computer_bis: false,
       computer_fib: false,
@@ -4416,6 +4546,7 @@ mod tests {
       tl: 10,
       role: None,
       source: None,
+      cost_mcr: None,
     });
     let mut templates = previous_templates.as_ref().clone();
     templates.insert("Test Design".to_string(), original_template.clone());
@@ -4971,6 +5102,20 @@ mod tests {
     assert!(Sensors::Improved < Sensors::Advanced);
   }
 
+  /// A client reading the world sees each ship's criticals: they survive the
+  /// trip to the wire and back.
+  #[tokio::test]
+  async fn criticals_survive_a_round_trip() {
+    // Reading a ship back resolves its design, so the designs must be loaded:
+    // under nextest each test is a process of its own, and nothing else has.
+    config_test_ship_templates().await;
+    let mut ship = Ship::default();
+    ship.crit_level[ShipSystem::Maneuver as usize] = 2;
+    ship.crit_level[ShipSystem::Weapon as usize] = 1;
+    let read: Ship = serde_json::from_str(&serde_json::to_string(&ship).unwrap()).unwrap();
+    assert_eq!(read.crit_level, ship.crit_level);
+  }
+
   #[test_log::test]
   fn test_fixup_current_values() {
     // Create a ship design template with some values
@@ -5002,6 +5147,7 @@ mod tests {
       tl: 12,
       role: None,
       source: None,
+      cost_mcr: None,
     });
 
     // Create a ship with lower current values
@@ -5144,6 +5290,7 @@ mod tests {
       tl: 12,
       role: None,
       source: None,
+      cost_mcr: None,
     };
 
     // Test normal case

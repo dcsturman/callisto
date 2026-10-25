@@ -1,6 +1,7 @@
 {
   "name": "Void Trader",
   "displacement": 400,
+  "cost_mcr": 123.86,
   "hull": 160,
   "armor": 4,
   "maneuver": 2,

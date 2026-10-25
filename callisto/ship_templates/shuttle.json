@@ -1,6 +1,7 @@
 {
   "name": "Shuttle",
   "displacement": 95,
+  "cost_mcr": 14.6745,
   "hull": 38,
   "armor": 0,
   "maneuver": 3,

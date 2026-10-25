@@ -1,0 +1,140 @@
+{
+  "name": "Mercenary Cruiser - Type C (armed)",
+  "displacement": 800,
+  "cost_mcr": 346.959,
+  "hull": 320,
+  "armor": 3,
+  "maneuver": 3,
+  "jump": 3,
+  "power": 540,
+  "fuel": 250,
+  "crew": 12,
+  "sensors": "Military",
+  "computer": 20,
+  "weapons": [
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "kind": "Pulse",
+      "mount": {
+        "Turret": 3
+      }
+    },
+    {
+      "mount": {
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
+    },
+    {
+      "mount": {
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
+    },
+    {
+      "mount": {
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
+    },
+    {
+      "mount": {
+        "Turret": 3
+      },
+      "guns": [
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Missile"
+        },
+        {
+          "kind": "Sand"
+        }
+      ]
+    }
+  ],
+  "tl": 12,
+  "role": "Cruiser",
+  "source": "High Guard",
+  "software": [
+    {
+      "kind": "Evade",
+      "level": 1
+    },
+    {
+      "kind": "FireControl",
+      "level": 2
+    },
+    {
+      "kind": "Intellect",
+      "level": 0
+    },
+    {
+      "kind": "JumpControl",
+      "level": 3
+    },
+    {
+      "kind": "Library",
+      "level": 0
+    },
+    {
+      "kind": "Manoeuvre",
+      "level": 0
+    }
+  ],
+  "computer_fib": true,
+  "features": [
+    {
+      "name": "Repair drones",
+      "kind": "RepairDrones"
+    }
+  ]
+}

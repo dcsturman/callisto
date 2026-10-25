@@ -2,7 +2,8 @@ import * as React from "react";
 import { useAppSelector } from "state/hooks";
 import { entitiesSelector, templatesSelector } from "state/serverSlice";
 import { Ship } from "lib/entities";
-import { isUndetected } from "lib/contacts";
+import { isUndetectedBy } from "lib/contacts";
+import { useViewer } from "lib/viewer";
 import { teamLabelColor } from "lib/teams";
 import { bandName, formatBands, formatRange, rangeBetween } from "lib/range";
 
@@ -39,11 +40,9 @@ export function ShipSummary() {
   //
   // This is the same rule the 3D view uses, deliberately: the two displays
   // should agree about what this player can see.
-  const viewingShipName = useAppSelector((state) => state.user.shipName);
-  const observer =
-    viewingShipName == null
-      ? null
-      : entities.ships.find((s) => s.name === viewingShipName) ?? null;
+  // A fleet commander sees what any ship on their team has found.
+  const viewer = useViewer();
+  const observer = viewer != null && "ship" in viewer ? viewer.ship : null;
 
   // Range is measured from somewhere, and that somewhere is not the same
   // question as who can see what. A referee with a ship open is working that
@@ -87,7 +86,7 @@ export function ShipSummary() {
         // Hull and thrust are exactly what a sensor contact would tell you --
         // thrust in G is the manoeuvre-drive DM on the detection table -- so a
         // ship you have no contact on shows its presence and nothing else.
-        undetected: isUndetected(observer, ship),
+        undetected: isUndetectedBy(viewer, ship, entities.ships),
         team: ship.team,
         range:
           rangeFrom == null || rangeFrom.name === ship.name

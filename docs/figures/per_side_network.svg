@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <style>
+    .box { fill: #eef3f8; stroke: #34506b; stroke-width: 1.2; }
+    .in { fill: #f6efe2; stroke: #8a6a2f; }
+    .out { fill: #e9f4ea; stroke: #3b6e45; }
+    .mix { fill: #efe9f6; stroke: #5b4a7a; }
+    .lbl { fill: #1d2b38; }
+    .small { font-size: 11px; fill: #4a5a68; }
+    .arrow { stroke: #34506b; stroke-width: 1.4; fill: none; marker-end: url(#a); }
+    .thin { stroke: #8899aa; stroke-width: 0.8; fill: none; }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#34506b"/></marker></defs>
+  <text x="20" y="24" class="lbl" font-size="15" font-weight="bold">The per-side network: one pass decides every ship of a side</text>
+
+  <!-- inputs -->
+  <text x="20" y="58" class="lbl" font-weight="bold">Inputs, one side, one round</text>
+  <rect x="20" y="70" width="170" height="60" rx="6" class="box in"/><text x="105" y="95" text-anchor="middle" class="lbl">own ships</text><text x="105" y="113" text-anchor="middle" class="small">up to 8 rows × 73</text>
+  <rect x="20" y="145" width="170" height="60" rx="6" class="box in"/><text x="105" y="170" text-anchor="middle" class="lbl">enemies</text><text x="105" y="188" text-anchor="middle" class="small">up to 8 rows × 26</text>
+  <rect x="20" y="220" width="170" height="50" rx="6" class="box in"/><text x="105" y="242" text-anchor="middle" class="lbl">the side</text><text x="105" y="258" text-anchor="middle" class="small">1 row × 10</text>
+  <rect x="20" y="290" width="170" height="60" rx="6" class="box in"/><text x="105" y="315" text-anchor="middle" class="lbl">pair table</text><text x="105" y="333" text-anchor="middle" class="small">8 × 8 rows × 39</text>
+
+  <!-- encoders -->
+  <text x="225" y="58" class="lbl" font-weight="bold">Stage 1: input layers</text>
+  <text x="225" y="72" class="small">same weights for every row</text>
+  <rect x="225" y="80" width="150" height="40" rx="6" class="box"/><text x="300" y="105" text-anchor="middle" class="lbl">73 → 128 → 128</text>
+  <rect x="225" y="155" width="150" height="40" rx="6" class="box"/><text x="300" y="180" text-anchor="middle" class="lbl">26 → 128 → 128</text>
+  <rect x="225" y="225" width="150" height="40" rx="6" class="box"/><text x="300" y="250" text-anchor="middle" class="lbl">10 → 128 → 128</text>
+  <rect x="225" y="300" width="150" height="40" rx="6" class="box"/><text x="300" y="325" text-anchor="middle" class="lbl">39 → 64 → 64</text>
+  <path d="M190,100 L225,100" class="arrow"/><path d="M190,175 L225,175" class="arrow"/><path d="M190,245 L225,245" class="arrow"/><path d="M190,320 L225,320" class="arrow"/>
+
+  <!-- vectors -->
+  <text x="410" y="58" class="lbl" font-weight="bold">17 vectors of 128</text>
+  <g>
+    <rect x="410" y="72" width="14" height="40" class="box"/><rect x="428" y="72" width="14" height="40" class="box"/><rect x="446" y="72" width="14" height="40" class="box"/><text x="410" y="127" class="small">up to 8 own</text>
+    <rect x="410" y="147" width="14" height="40" class="box"/><rect x="428" y="147" width="14" height="40" class="box"/><rect x="446" y="147" width="14" height="40" class="box"/><text x="410" y="202" class="small">up to 8 enemy</text>
+    <rect x="410" y="222" width="14" height="40" class="box"/><text x="410" y="277" class="small">1 side</text>
+  </g>
+  <text x="410" y="305" class="lbl">64 pair vectors</text>
+  <text x="410" y="321" class="small">one per own ship</text><text x="410" y="335" class="small">and enemy</text>
+  <path d="M375,100 L405,92" class="arrow"/><path d="M375,175 L405,167" class="arrow"/><path d="M375,245 L405,242" class="arrow"/><path d="M375,320 L405,312" class="arrow"/>
+
+  <!-- mixing -->
+  <rect x="540" y="70" width="150" height="200" rx="8" class="box mix"/>
+  <text x="615" y="100" text-anchor="middle" class="lbl" font-weight="bold">Stage 2</text>
+  <text x="615" y="120" text-anchor="middle" class="lbl">3 mixing layers</text>
+  <text x="615" y="140" text-anchor="middle" class="small">(attention)</text>
+  <text x="615" y="170" text-anchor="middle" class="small">every vector takes in</text>
+  <text x="615" y="185" text-anchor="middle" class="small">every other, weighted;</text>
+  <text x="615" y="200" text-anchor="middle" class="small">the pair vectors bias how</text>
+  <text x="615" y="215" text-anchor="middle" class="small">much own ship and enemy</text>
+  <text x="615" y="230" text-anchor="middle" class="small">attend to each other</text>
+  <text x="615" y="255" text-anchor="middle" class="small">see the next figure</text>
+  <path d="M470,92 L540,130" class="arrow"/><path d="M470,167 L540,170" class="arrow"/><path d="M432,242 L540,215" class="arrow"/>
+  <path d="M525,300 C 580,300 605,292 615,272" class="arrow"/>
+
+  <!-- outputs -->
+  <text x="720" y="58" class="lbl" font-weight="bold">Stage 3: outputs</text>
+  <rect x="720" y="70" width="165" height="80" rx="6" class="box out"/>
+  <text x="802" y="92" text-anchor="middle" class="lbl">per own ship</text>
+  <text x="802" y="110" text-anchor="middle" class="small">15 heads of orders,</text>
+  <text x="802" y="125" text-anchor="middle" class="small">targets pointing at</text>
+  <text x="802" y="140" text-anchor="middle" class="small">enemy and friend vectors</text>
+  <rect x="720" y="210" width="165" height="50" rx="6" class="box out"/>
+  <text x="802" y="232" text-anchor="middle" class="lbl">value</text>
+  <text x="802" y="249" text-anchor="middle" class="small">side vector → 256 → 1</text>
+  <path d="M690,120 L720,112" class="arrow"/><path d="M690,235 L720,235" class="arrow"/>
+
+  <text x="20" y="400" class="small">One pass of this network gives every ship of the side its orders at once. Weights are shared across rows, so the same network handles</text>
+  <text x="20" y="416" class="small">a side of one ship or of eight; only the mixing weights, which depend on the vectors, differ from ship to ship. About 620,000 parameters.</text>
+  <text x="20" y="440" class="small">Information moves between ships only in stage 2. After three mixing layers, a ship's vector carries what mattered to her from the rest of</text>
+  <text x="20" y="456" class="small">the side and from the enemy, which is how ships come to agree on a target or a guide.</text>
+</svg>

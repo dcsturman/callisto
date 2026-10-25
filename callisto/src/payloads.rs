@@ -9,7 +9,7 @@ use super::computer::FlightPathResult;
 use super::crew::Crew;
 use super::entity::{Entities, MetaData};
 use super::planet::PlanetVisualEffect;
-use super::ship::{ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
+use super::ship::{AiReport, Controller, ShipDesignTemplate, Team, Weapon, WeaponMount, WeaponType};
 use super::software::Software;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
@@ -44,6 +44,20 @@ pub struct LoginMsg {
   pub code: String,
 }
 
+/// A service logging in: the AI service, with a Google identity token on
+/// Cloud Run or the shared secret locally. See `service_auth`.
+#[derive(Serialize, Deserialize)]
+pub struct ServiceLoginMsg {
+  pub token: String,
+}
+
+impl std::fmt::Debug for ServiceLoginMsg {
+  // Requests are logged; the token must not be.
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("ServiceLoginMsg { token: <redacted> }")
+  }
+}
+
 // Custom Display implementation to redact the authentication code
 impl Debug for LoginMsg {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -59,6 +73,10 @@ pub struct AuthResponse {
   pub scenario: Option<String>,
   pub roles: Option<Vec<Role>>,
   pub ship: Option<String>,
+  /// Whether this user may start games with AI crews: the client shows the
+  /// choice only when it is true.
+  #[serde(default)]
+  pub ai_allowed: bool,
 }
 
 #[serde_as]
@@ -105,6 +123,13 @@ pub struct AddShipMsg {
   /// up says so here.
   #[serde(default)]
   pub features_on: Option<Vec<usize>>,
+  /// Whether the ship starts crewed by people or by the AI service. Absent
+  /// means people.
+  #[serde(default)]
+  pub controller: Option<Controller>,
+  /// Standing orders the ship starts with.
+  #[serde(default)]
+  pub orders: Option<String>,
 }
 
 /// Start or stop one software package.
@@ -144,6 +169,31 @@ impl SetPilotActions {
 pub struct SetShipTeam {
   pub ship_name: String,
   pub team: Option<Team>,
+}
+
+/// Hand a ship to the AI service, or take it back.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetShipController {
+  pub ship_name: String,
+  pub controller: Controller,
+}
+
+/// The AI service's report on a ship's round. `None` clears it.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetAiReport {
+  pub ship_name: String,
+  #[serde(default)]
+  pub report: Option<AiReport>,
+}
+
+/// Give a ship standing orders. `None`, or an empty string, clears them.
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetOrders {
+  pub ship_name: String,
+  #[serde(default)]
+  pub orders: Option<String>,
 }
 
 /// Set a ship's emissions: whether it runs active sensors, and whether it is
@@ -316,6 +366,19 @@ pub enum EffectMsg {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     succeeded: Option<bool>,
   },
+}
+
+/// One round's results, and which round they were.
+///
+/// The round is stated once for the batch rather than on every line. Without
+/// it the only thing tying results to a round was arriving just before the
+/// `EntityResponse` that opened the next one, which a client reading them to
+/// decide the next round must not depend on.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct EffectsMsg {
+  /// The round these results resolved.
+  pub round: u32,
+  pub effects: Vec<EffectMsg>,
 }
 
 /// A ship named in a result: who it was, and whose side it was on.
@@ -552,6 +615,19 @@ pub enum Role {
   Engineer,
   Observer,
   Captain,
+  /// A team's commander: every ship on one team, from the referee's screen
+  /// cut down to that team. Holds those ships (`ChangeRole::ships`) and
+  /// says Ready for them all.
+  FleetCommand,
+}
+
+/// Whether a player with these roles runs the table: holds no ship and is
+/// neither watching nor commanding a team. The ship decides, not the role --
+/// a referee may take a single station to cut their screen down and is still
+/// the referee. Matches `isReferee` on the client.
+#[must_use]
+pub fn is_referee(roles: &[Role], holds_ships: bool) -> bool {
+  !holds_ships && !roles.iter().any(|role| matches!(role, Role::Observer | Role::FleetCommand))
 }
 
 #[serde_as]
@@ -569,6 +645,10 @@ pub struct UserData {
   /// `General` for all of them.
   pub roles: Vec<Role>,
   pub ship: Option<String>,
+  /// Further ships this player answers for, beyond `ship`. Absent for a
+  /// player at one console.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub ships: Vec<String>,
 }
 
 /// Convert an email address to the display name used on the wire. We trim the
@@ -588,7 +668,13 @@ pub struct ChangeRole {
   /// the two halves of a deploy cannot race each other.
   #[serde(alias = "role", deserialize_with = "one_or_many_roles")]
   pub roles: Vec<Role>,
+  /// The ship whose console this player is at.
   pub ship: Option<String>,
+  /// Every further ship this connection answers for: a team's commander, or
+  /// the AI service crewing a whole side on one connection. One ready flag
+  /// covers them all. Absent means only `ship`.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub ships: Vec<String>,
 }
 
 /// A role list, or a bare role that reads as a list of one.
@@ -620,12 +706,22 @@ pub struct ScenariosMsg {
   pub current_scenarios: Vec<(String, String)>,
   /// List of templates by actual name (filename) and metadata (display name and description).
   pub templates: Vec<(String, MetaData)>,
+  /// Whether this server has an AI service to crew ships. Without one, the
+  /// new-game screen offers no AI sides: a ship handed to the AI would only
+  /// sit there. Says the service is configured, not that it is up; Cloud
+  /// Run starts it on the first call.
+  #[serde(default)]
+  pub ai_crews: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateScenarioMsg {
   pub name: String,
   pub scenario: String,
+  /// The ships the AI crews, chosen on the new-game screen; every other ship
+  /// is crewed by people. Absent, the scenario file's choice stands.
+  #[serde(default)]
+  pub ai_ships: Option<Vec<String>>,
 }
 
 /// Save the player's current scenario to the configured scenario directory
@@ -664,6 +760,7 @@ serde_with::serde_conv!(
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 pub enum RequestMsg {
   Login(LoginMsg),
+  ServiceLogin(ServiceLoginMsg),
   Register(LoginMsg),
   AddShip(AddShipMsg),
   AddPlanet(AddPlanetMsg),
@@ -675,6 +772,9 @@ pub enum RequestMsg {
   SetShipEmissions(SetShipEmissions),
   SetSoftwareRunning(SetSoftwareRunning),
   SetShipTeam(SetShipTeam),
+  SetShipController(SetShipController),
+  SetOrders(SetOrders),
+  SetAiReport(SetAiReport),
   SetRole(ChangeRole),
   ModifyActions(ShipActionMsg),
   CaptainAction(CaptainActionMsg),
@@ -706,7 +806,7 @@ pub enum ResponseMsg {
   DesignTemplateResponse(ShipDesignTemplateMsg),
   EntityResponse(Entities),
   FlightPath(FlightPathMsg),
-  Effects(Vec<EffectMsg>),
+  Effects(EffectsMsg),
   Users(Vec<UserData>),
   LaunchMissile(LaunchMissileMsg),
   Scenarios(ScenariosMsg),
@@ -715,6 +815,9 @@ pub enum ResponseMsg {
   // file is broken instead of silently disappearing from the picker.
   ScenarioLoadErrors(Vec<ScenarioLoadErrorMsg>),
   JoinedScenario(String),
+  /// Whether AI crews can be used in the game just created or joined. The
+  /// client shows no AI controls when they cannot.
+  AiCrews(bool),
   ScenarioSaved(String),
   CaptainActionResult(CaptainActionResult),
   SimpleMsg(String),
@@ -754,6 +857,8 @@ mod tests {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     };
     let json = json!({
@@ -785,6 +890,8 @@ mod tests {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     };
     let json = json!({

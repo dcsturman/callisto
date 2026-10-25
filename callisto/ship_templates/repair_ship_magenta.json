@@ -1,6 +1,7 @@
 {
   "name": "Repair Ship - Magenta",
   "displacement": 700,
+  "cost_mcr": 258.992,
   "hull": 280,
   "armor": 1,
   "maneuver": 1,

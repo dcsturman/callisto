@@ -8,6 +8,7 @@ on:
     branches:
       - main
       - canary
+      - epic-ai-ships
 jobs:
   fmt-clippy-callisto-be:
     permissions:

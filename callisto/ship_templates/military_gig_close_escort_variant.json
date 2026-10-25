@@ -1,6 +1,7 @@
 {
   "name": "Military Gig - Close Escort Variant",
   "displacement": 20,
+  "cost_mcr": 15.187,
   "hull": 8,
   "armor": 4,
   "maneuver": 8,

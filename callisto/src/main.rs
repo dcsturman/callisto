@@ -34,8 +34,10 @@ use callisto::authentication::{
   load_user_directory, Authenticator, GoogleAuthenticator, HeaderCallback, MockAuthenticator, UserDirectory,
 };
 
-use callisto::entity::Entities;
+use callisto::ai_service::AiServiceClient;
+use callisto::entity::{Entities, MetaData};
 use callisto::processor::{Processor, ReloadNotification};
+use callisto::service_auth::ServiceAuth;
 use callisto::ship::DEFAULT_SHIP_TEMPLATES_DIR;
 use callisto::ship::{load_ship_templates_from_dir, merge_ship_templates};
 use callisto::{
@@ -113,6 +115,27 @@ struct Args {
   // Google Cloud Storage bucket to use in lieu of config directory
   #[arg(short, long, default_value = DEFAULT_AUTHORIZED_USERS_FILE)]
   users_file: String,
+
+  /// Shared secret a service (the AI service) may log in with, for local
+  /// Docker Compose. From the environment so it never shows in a process
+  /// listing; unset or empty disables it.
+  #[arg(long, env = "CALLISTO_SERVICE_TOKEN", hide_env_values = true)]
+  service_token: Option<String>,
+
+  /// The audience a Google identity token must name for a service to log in
+  /// with it: this backend's own URL. Set on Cloud Run; unset disables it.
+  #[arg(long, env = "CALLISTO_SERVICE_AUDIENCE")]
+  service_audience: Option<String>,
+
+  /// URL of the AI service, which crews AI-controlled ships. Unset means AI
+  /// ships sit uncrewed.
+  #[arg(long, env = "CALLISTO_AI_SERVICE")]
+  ai_service: Option<String>,
+
+  /// Record every game played here, one JSON-lines file each, for learning
+  /// from later. Unset means games are not recorded.
+  #[arg(long, env = "CALLISTO_GAME_LOG_DIR")]
+  game_log_dir: Option<String>,
 }
 
 #[cfg(feature = "no_tls_upgrade")]
@@ -394,6 +417,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     }
   }
 
+  // Google's signing keys, for people's logins and for services' identity
+  // tokens. Not fetched in test mode, which authenticates neither for real.
+  let google_keys = if test_mode {
+    None
+  } else {
+    Some(GoogleAuthenticator::fetch_google_public_keys().await)
+  };
+  let ai_service = args
+    .ai_service
+    .as_deref()
+    .filter(|url| !url.is_empty())
+    .map(|url| AiServiceClient::new(url, args.service_token.clone()));
+  info!("(main) AI service: {ai_service:?}");
+  let service_auth = ServiceAuth::new(args.service_token.clone(), args.service_audience.clone(), google_keys.clone());
+  info!("(main) Service login: {service_auth:?}");
+
   // Create an Authenticator to be cloned on each new connection.
   let auth_template: Box<dyn Authenticator> = if test_mode {
     Box::new(MockAuthenticator::new(&args.address).with_directory(user_directory.clone()))
@@ -402,7 +441,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
     let my_credentials = GoogleAuthenticator::load_google_credentials(&args.oauth_creds);
 
     let my_credentials = Arc::new(my_credentials);
-    let google_keys = GoogleAuthenticator::fetch_google_public_keys().await;
+    let google_keys = google_keys.expect("(main) Google keys are fetched outside test mode");
 
     let register_lock = Arc::new(tokio::sync::Mutex::new(()));
     Box::new(
@@ -440,7 +479,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>
       &scenario_dir,
       test_mode,
       directory_handle,
-    );
+    )
+    .with_service_auth(service_auth)
+    .with_ai_service(ai_service)
+    .with_game_log_dir(args.game_log_dir.clone());
     processor.processor().await;
   });
 
@@ -756,7 +798,13 @@ async fn load_scenarios_and_metadata(scenario_dir: &str) -> Result<ScenarioLoadR
           }
         };
         match Entities::load_from_bytes(&bytes, &scenario_path) {
-          Ok(entities) => Ok((scenario, entities.metadata.clone())),
+          Ok(entities) => Ok((
+            scenario,
+            MetaData {
+              sides: entities.sides(),
+              ..entities.metadata.clone()
+            },
+          )),
           Err(e) => {
             let owner = extract_scenario_owner(&bytes);
             error!("ERROR: Failed to parse scenario file '{scenario_path}' (owner='{owner}'): {e}");

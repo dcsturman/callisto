@@ -1,6 +1,7 @@
 {
   "name": "Fleet Courier",
   "displacement": 400,
+  "cost_mcr": 246.825,
   "hull": 160,
   "armor": 0,
   "maneuver": 5,

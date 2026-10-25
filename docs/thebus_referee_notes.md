@@ -25,14 +25,24 @@ triple pulse turret on the yacht.
   interceptors' beam lasers — so the trap bites the round it springs.
 - Move everyone to wherever the approach actually ended. The position in the
   file is only a sensible default.
-- Lyonesse II is deliberately unaligned: a team colour on the board would give
-  the ruse away. Put her on the PRC team at the moment she drops the act.
+- Lyonesse II starts on the PRC team (Blue). The ruse is played out in
+  role-play before the scenario opens; by the time the board is up the gig
+  is up, so there is nothing for a team colour to give away. It also means an
+  AI crewing the pirates treats her as one of theirs from the first round.
 - Awareness starts one-way. Lyonesse II holds the Travellers and talks to the
   ships behind the moonlet, who hold only her, so she hands the Travellers
   over in round one — a point of Bandwidth at each end, nothing on her
   Computer/5. Jamming her comms is therefore worth something.
 - The lurkers are dark, and have to be detected or will announce themselves by
   shooting.
+
+## Standing orders
+
+Every ship carries orders in the scenario file, which an AI crew follows and a
+human crew can read: the trap and its trigger, Yang's escort, the yacht closing
+to board once the trap is sprung, the PRC breaking off rather than dying, and
+the Executor standing off at Very Long. Change them in play from the ship's
+console.
 
 ## Two things from the text
 

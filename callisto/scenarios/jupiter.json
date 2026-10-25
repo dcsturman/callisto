@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Fire over Jupiter",
     "owner": "dcsturman@gmail.com",
-    "description": "A scenario set in the Jupiter system.  Can three Imperial Gazelle escorts defeat the Aslan raiding force?"
+    "description": "A scenario set in the Jupiter system. Three Imperial Gazelle escorts (Blue), 100,000 km out, hunt an Aslan raiding force (Red) holding off Europa: the escorts Ailreaui and Hroakhtea (her crew green) and four light fighters. Can the Imperials defeat them?"
   },
   "planets": [
     {
@@ -53,66 +53,108 @@
   "ships": [
     {
       "name": "INS Unicorn",
-      "position": [1e9, 0, -1.2e9],
+      "position": [5.0615e7, 0, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Gazelle"
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "orders": "Seek out and destroy the Aslan raiders.",
+      "crew": {"pilot": 3, "sensors": [2], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 2, 1], "leadership": 2}
     },
     {
       "name": "INS Righteous",
-      "position": [1.1e9, 0, -1.3e9],
+      "position": [5.1615e7, 0, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Gazelle"
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "orders": "Seek out and destroy the Aslan raiders.",
+      "crew": {"pilot": 2, "sensors": [2], "engineers": [{"jump": 1, "power": 2, "maneuver": 2, "mechanic": 2}], "gunnery": [3, 2, 1, 2], "leadership": 2}
     },
     {
       "name": "INS Stag",
-      "position": [1.2e9, 0, -1.18e9],
+      "position": [5.0615e7, 1e6, 5.6376e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Gazelle"
+      "design": "Gazelle",
+      "team": "Blue",
+      "goal": "destroy",
+      "orders": "Seek out and destroy the Aslan raiders.",
+      "crew": {"pilot": 2, "sensors": [1], "engineers": [{"jump": 2, "power": 2, "maneuver": 3, "mechanic": 2}], "gunnery": [2, 3, 2, 2], "leadership": 1}
     },
     {
       "name": "Ailreaui",
       "position": [0, 0, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Ekawsiykua Escort"
+      "design": "Ekawsiykua Escort",
+      "team": "Red",
+      "goal": "hold",
+      "post": "Europa",
+      "orders": "Defend your position.",
+      "crew": {"pilot": 2, "sensors": [2, 1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [2, 2, 3, 2, 2, 2, 1, 2], "leadership": 3}
+    },
+    {
+      "name": "Hroakhtea",
+      "position": [-3000000, 0, 6.5e8],
+      "velocity": [0, 0, 0],
+      "plan": [[[0, 0, 0], 50000]],
+      "design": "Ekawsiykua Escort",
+      "team": "Red",
+      "goal": "hold",
+      "post": "Europa",
+      "orders": "Defend your position.",
+      "crew": {"pilot": 2, "sensors": [1], "engineers": [{"jump": 2, "power": 2, "maneuver": 2, "mechanic": 2}, {"jump": 1, "power": 2, "maneuver": 2, "mechanic": 1}], "gunnery": [1, 1, 1, 1, 1, 1, 1, 1], "leadership": 1}
     },
     {
       "name": "AF1",
       "position": [0, 4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "hold",
+      "post": "Europa",
+      "orders": "Defend your position.",
+      "crew": {"pilot": 4, "gunnery": [2]}
     },
     {
       "name": "AF2",
       "position": [0, -4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "hold",
+      "post": "Europa",
+      "orders": "Defend your position.",
+      "crew": {"pilot": 4, "gunnery": [2]}
     },
     {
       "name": "AF3",
       "position": [4000000, 4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "hold",
+      "post": "Europa",
+      "orders": "Defend your position.",
+      "crew": {"pilot": 4, "gunnery": [2]}
     },
     {
       "name": "AF4",
       "position": [-4000000, -4000000, 6.5e8],
       "velocity": [0, 0, 0],
       "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
-    },
-    {
-      "name": "AF5",
-      "position": [0, 4000000, 7.2e8],
-      "velocity": [0, 0, 0],
-      "plan": [[[0, 0, 0], 50000]],
-      "design": "Light Fighter"
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "hold",
+      "post": "Europa",
+      "orders": "Defend your position.",
+      "crew": {"pilot": 4, "gunnery": [2]}
     }
   ]
 }

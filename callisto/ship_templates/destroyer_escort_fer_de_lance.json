@@ -1,6 +1,7 @@
 {
   "name": "Destroyer Escort - Fer-de-Lance",
   "displacement": 1000,
+  "cost_mcr": 654.9615,
   "hull": 440,
   "armor": 2,
   "maneuver": 6,

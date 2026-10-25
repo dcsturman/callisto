@@ -1,6 +1,7 @@
 {
   "name": "Threshing Oar",
   "displacement": 300,
+  "cost_mcr": 97.706,
   "hull": 120,
   "armor": 2,
   "maneuver": 4,

@@ -1,0 +1,998 @@
+{
+  "metadata": {
+    "name": "Aslan Border Clash",
+    "owner": "dcsturman@gmail.com",
+    "description": "An Aslan raiding squadron, two Halaheike pocket warships and four Ekawsiykua escorts with eight light fighters formed up 2,000 km ahead, meets an Imperial force of two Chrysanthemum destroyer escorts, four Dragon system defence boats and four Type T patrol corvettes. Open space; the battle lines start 30,000 km apart, at rest, in line abreast. For training a network on fights larger than eight ships a side."
+  },
+  "planets": [],
+  "ships": [
+    {
+      "name": "Aokhoiyeal",
+      "position": [
+        30000000.0,
+        -2500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Pocket Warship - Halaheike",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Aslan raiding squadron. Destroy the Imperial force."
+    },
+    {
+      "name": "Hkasoi",
+      "position": [
+        30000000.0,
+        -1500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Ekawsiykua Escort",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Aslan raiding squadron. Destroy the Imperial force."
+    },
+    {
+      "name": "Eakhtau",
+      "position": [
+        30000000.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Ekawsiykua Escort",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Aslan raiding squadron. Destroy the Imperial force."
+    },
+    {
+      "name": "Ftahkoa",
+      "position": [
+        30000000.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Pocket Warship - Halaheike",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Aslan raiding squadron. Destroy the Imperial force."
+    },
+    {
+      "name": "Yerlyaoi",
+      "position": [
+        30000000.0,
+        1500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Ekawsiykua Escort",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Aslan raiding squadron. Destroy the Imperial force."
+    },
+    {
+      "name": "Khtahea",
+      "position": [
+        30000000.0,
+        2500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Ekawsiykua Escort",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Aslan raiding squadron. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 1",
+      "position": [
+        28000000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 2",
+      "position": [
+        28000000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 3",
+      "position": [
+        28000000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 4",
+      "position": [
+        28000000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 5",
+      "position": [
+        27750000.0,
+        -375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 6",
+      "position": [
+        27750000.0,
+        -125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 7",
+      "position": [
+        27750000.0,
+        125000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "Iyre 8",
+      "position": [
+        27750000.0,
+        375000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Light Fighter",
+      "team": "Red",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 4,
+        "sensors": 2,
+        "gunnery": [
+          2
+        ]
+      },
+      "orders": "Aslan fighter. Destroy the Imperial force."
+    },
+    {
+      "name": "IMS Harrier",
+      "position": [
+        0.0,
+        -4500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial squadron with mercenary auxiliaries. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Basilisk",
+      "position": [
+        0.0,
+        -3500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial system defence. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Valiant",
+      "position": [
+        0.0,
+        -2500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Chrysanthemum",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial squadron with mercenary auxiliaries. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Wyvern",
+      "position": [
+        0.0,
+        -1500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial system defence. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Lark",
+      "position": [
+        0.0,
+        -500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial squadron with mercenary auxiliaries. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Merlin",
+      "position": [
+        0.0,
+        500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial squadron with mercenary auxiliaries. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Drake",
+      "position": [
+        0.0,
+        1500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial system defence. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Steadfast",
+      "position": [
+        0.0,
+        2500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Destroyer Escort - Chrysanthemum",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial squadron with mercenary auxiliaries. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Lindworm",
+      "position": [
+        0.0,
+        3500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "System Defence Boat - Dragon",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial system defence. Destroy the Aslan force."
+    },
+    {
+      "name": "IMS Osprey",
+      "position": [
+        0.0,
+        4500000.0,
+        0.0
+      ],
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "plan": [
+        [
+          [
+            0,
+            0,
+            0
+          ],
+          50000
+        ]
+      ],
+      "design": "Patrol Corvette - Type T",
+      "team": "Blue",
+      "goal": "destroy",
+      "crew": {
+        "pilot": 2,
+        "engineering_jump": 2,
+        "engineering_power": 2,
+        "engineering_maneuver": 2,
+        "mechanic": 2,
+        "sensors": 2,
+        "gunnery": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "leadership": 2
+      },
+      "orders": "Imperial squadron with mercenary auxiliaries. Destroy the Aslan force."
+    }
+  ]
+}

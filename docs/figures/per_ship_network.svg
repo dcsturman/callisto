@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 250" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <style>
+    .box { fill: #eef3f8; stroke: #34506b; stroke-width: 1.2; }
+    .in { fill: #f6efe2; stroke: #8a6a2f; }
+    .out { fill: #e9f4ea; stroke: #3b6e45; }
+    .lbl { fill: #1d2b38; }
+    .small { font-size: 11px; fill: #4a5a68; }
+    .arrow { stroke: #34506b; stroke-width: 1.4; fill: none; marker-end: url(#a); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#34506b"/></marker></defs>
+  <text x="20" y="24" class="lbl" font-size="15" font-weight="bold">The per-ship network: one ship at a time, no wiring between ships</text>
+  <rect x="20" y="60" width="150" height="120" rx="6" class="box in"/>
+  <text x="95" y="90" text-anchor="middle" class="lbl">one ship's view</text>
+  <text x="95" y="110" text-anchor="middle" class="small">herself, 19 friend slots,</text>
+  <text x="95" y="125" text-anchor="middle" class="small">20 enemy slots,</text>
+  <text x="95" y="140" text-anchor="middle" class="small">nearest first</text>
+  <text x="95" y="165" text-anchor="middle" class="lbl" font-weight="bold">1,677 numbers</text>
+  <path d="M170,120 L210,120" class="arrow"/>
+  <rect x="210" y="80" width="80" height="80" rx="6" class="box"/><text x="250" y="115" text-anchor="middle" class="lbl">512</text><text x="250" y="132" text-anchor="middle" class="small">tanh</text>
+  <path d="M290,120 L320,120" class="arrow"/>
+  <rect x="320" y="80" width="80" height="80" rx="6" class="box"/><text x="360" y="115" text-anchor="middle" class="lbl">512</text><text x="360" y="132" text-anchor="middle" class="small">tanh</text>
+  <path d="M400,120 L430,120" class="arrow"/>
+  <rect x="430" y="80" width="80" height="80" rx="6" class="box"/><text x="470" y="115" text-anchor="middle" class="lbl">256</text><text x="470" y="132" text-anchor="middle" class="small">tanh</text>
+  <path d="M510,120 L550,120" class="arrow"/>
+  <rect x="550" y="60" width="180" height="120" rx="6" class="box out"/>
+  <text x="640" y="90" text-anchor="middle" class="lbl">135 scores</text>
+  <text x="640" y="110" text-anchor="middle" class="small">15 heads: helm, target, band,</text>
+  <text x="640" y="125" text-anchor="middle" class="small">guide, fire, lock, posture, ...</text>
+  <text x="640" y="145" text-anchor="middle" class="small">targets are slot numbers</text>
+  <text x="640" y="165" text-anchor="middle" class="small">in this ship's own list</text>
+  <text x="20" y="225" class="small">Run once per ship, with the same weights. A separate tower of the same shape (1,677 → 512 → 512 → 256 → 1) estimates the value.</text>
+  <text x="20" y="242" class="small">About 2.5 million parameters in all. Ships cannot see what their friends are choosing this round.</text>
+</svg>

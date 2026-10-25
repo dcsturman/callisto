@@ -1,0 +1,49 @@
+[package]
+name = "callisto-rl"
+version = "0.1.0"
+edition = "2021"
+description = "The callisto engine as a reinforcement-learning environment: many games stepped at once, with fixed-size observations and masked actions."
+
+# A sibling of ai-ships and the backend, not a workspace member, for the same
+# reason ai-ships gives: callisto's build output stays in callisto/target.
+
+[lib]
+name = "callisto_rl"
+# cdylib for the Python module, rlib for the Rust tests and benchmarks.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The Python bindings. Off for `cargo test`, which cannot link an extension
+# module; maturin turns it on (see pyproject.toml).
+python = ["dep:pyo3", "dep:numpy"]
+# Record the courses games plot: `cargo run --release --features corpus --example corpus`.
+corpus = ["callisto/solver_corpus"]
+
+[dependencies]
+callisto = { path = "../callisto", features = [] }
+ai-ships = { path = "../ai-ships" }
+cgmath = "0.18"
+futures = "0.3.31"
+async-trait = "0.1"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rayon = "1.12"
+tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "fs", "macros"] }
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py310"], optional = true }
+numpy = { version = "0.30", optional = true }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+similar_names = "allow"
+# Encoding is casts between counts and floats throughout, all of small numbers.
+cast_precision_loss = "allow"
+# Observations are f32, the engine f64.
+cast_possible_truncation = "allow"
+
+[dev-dependencies]
+
+[[example]]
+name = "corpus"
+required-features = ["corpus"]

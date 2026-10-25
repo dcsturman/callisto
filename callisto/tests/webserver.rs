@@ -119,16 +119,17 @@ fn get_next_port() -> u16 {
 async fn spawn_server(
   port: u16, test_mode: bool, scenario_dir: Option<String>, design_dir: Option<String>, auto_kill: bool,
 ) -> Result<Child, io::Error> {
-  spawn_server_full(port, test_mode, scenario_dir, design_dir, None, auto_kill).await
+  spawn_server_full(port, test_mode, scenario_dir, design_dir, None, auto_kill, None).await
 }
 
 async fn spawn_server_full(
   port: u16, test_mode: bool, scenario_dir: Option<String>, design_dir: Option<String>, users_file: Option<String>,
-  auto_kill: bool,
+  auto_kill: bool, ai_service: Option<&str>,
 ) -> Result<Child, io::Error> {
   let mut handle = Command::new(SERVER_PATH);
   let mut handle = handle
     .env("RUST_LOG", var("RUST_LOG").unwrap_or_else(|_| String::new()))
+    .env("CALLISTO_SERVICE_TOKEN", TEST_SERVICE_TOKEN)
     .env("RUSTFLAGS", var("RUSTFLAGS").unwrap_or_else(|_| String::new()))
     .env("CARGO_LLVM_COV", var("CARGO_LLVM_COV").unwrap_or_else(|_| String::new()))
     .env(
@@ -154,6 +155,9 @@ async fn spawn_server_full(
   if let Some(users_file) = users_file {
     handle = handle.arg("-u").arg(users_file);
   }
+  if let Some(ai_service) = ai_service {
+    handle = handle.env("CALLISTO_AI_SERVICE", ai_service);
+  }
 
   let handle = handle.spawn()?;
   let _ = pretty_env_logger::try_init();
@@ -167,6 +171,9 @@ async fn spawn_server_full(
  * @param port The port to run the server on.
  * @return A handle to the running server.  This is critical as otherwise with `kill_on_drop` the server will be killed before the tests complete.
  */
+/// The shared secret every test server accepts for a service login.
+const TEST_SERVICE_TOKEN: &str = "integration-service-token";
+
 async fn spawn_test_server(port: u16) -> Result<Child, io::Error> {
   spawn_server(port, true, None, None, false).await
 }
@@ -402,9 +409,20 @@ async fn drain_initialization_messages(stream: &mut MyWebSocket) {
  * Drain all messages the server send post-creation/joining of a scenario.
  */
 async fn drain_post_scenario_messages(stream: &mut MyWebSocket) {
-  let Ok(entities_msg) = stream.next().await.unwrap() else {
+  let Ok(mut entities_msg) = stream.next().await.unwrap() else {
     panic!("Expected entities response.  Got error.");
   };
+  // Whether the game offers AI crews comes first; the tests that care ask
+  // for it themselves.
+  if matches!(
+    serde_json::from_str::<ResponseMsg>(entities_msg.to_text().unwrap()),
+    Ok(ResponseMsg::AiCrews(_))
+  ) {
+    let Ok(next) = stream.next().await.unwrap() else {
+      panic!("Expected entities response.  Got error.");
+    };
+    entities_msg = next;
+  }
   assert!(
     matches!(
       serde_json::from_str::<ResponseMsg>(entities_msg.to_text().unwrap()),
@@ -458,10 +476,12 @@ async fn test_authenticate(stream: &mut MyWebSocket) -> Result<String, String> {
   }
 }
 
+/// Create the test scenario, a blank one.
 async fn test_create_scenario(stream: &mut MyWebSocket) -> Result<(), String> {
   let msg = RequestMsg::CreateScenario(CreateScenarioMsg {
     name: "test_scenario".to_string(),
     scenario: String::new(),
+    ai_ships: None,
   });
   let body = rpc(stream, msg).await;
 
@@ -663,6 +683,8 @@ async fn integration_add_ship() {
     team: None,
     contacts: None,
     features_on: None,
+    controller: None,
+    orders: None,
     software: None,
   };
 
@@ -681,7 +703,7 @@ async fn integration_add_ship() {
   );
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[
         {"name":"ship1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],
          "design":"Buccaneer",
@@ -743,6 +765,8 @@ async fn integration_add_planet_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -765,6 +789,8 @@ async fn integration_add_planet_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -774,7 +800,7 @@ async fn integration_add_planet_ship() {
 
   let response = rpc(&mut stream, RequestMsg::EntitiesRequest).await;
   if let ResponseMsg::EntityResponse(entities) = response {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"ships":[
         {"name":"ship1","position":[0.0,2000.0,0.0],"velocity":[0.0,0.0,0.0],
          "plan":[[[0.0,0.0,0.0],50000]],"design":"Buccaneer",
          "current_hull":160,
@@ -847,7 +873,7 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","planets":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
       "color":"red","radius":1.5e6,"mass":3e24,"visual_effects":[],
       "gravity_radius_1":4_518_410.048_543_495,
@@ -925,7 +951,7 @@ async fn integration_add_planet_ship() {
   let entities = drain_entity_response(&mut stream).await;
 
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","missiles":[],
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":1,"missiles":[],
     "actions":[],
     "planets":[
     {"name":"planet1","position":[0.0,0.0,0.0],"velocity":[0.0,0.0,0.0],
@@ -1019,6 +1045,8 @@ async fn integration_update_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1035,7 +1063,7 @@ async fn integration_update_ship() {
   assert!(entities.actions.is_empty(), "Expected an empty action list");
 
   let response = rpc(&mut stream, RequestMsg::Update).await;
-  assert!(matches!(response, ResponseMsg::Effects(eq) if eq.is_empty()));
+  assert!(matches!(response, ResponseMsg::Effects(eq) if eq.effects.is_empty()));
 
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
@@ -1078,6 +1106,8 @@ async fn integration_update_missile() {
       team: None,
       contacts: Some(vec!["ship2".to_string()]),
       features_on: None,
+      controller: None,
+      orders: None,
       software: Some(vec![]),
     }),
   )
@@ -1099,6 +1129,8 @@ async fn integration_update_missile() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: Some(vec![]),
     }),
   )
@@ -1132,7 +1164,11 @@ async fn integration_update_missile() {
 
   let effects = rpc(&mut stream, RequestMsg::Update).await;
   if let ResponseMsg::Effects(effects) = effects {
-    let filtered_effects: Vec<_> = effects.iter().filter(|e| !matches!(e, EffectMsg::Message { .. })).collect();
+    let filtered_effects: Vec<_> = effects
+      .effects
+      .iter()
+      .filter(|e| !matches!(e, EffectMsg::Message { .. }))
+      .collect();
 
     let compare = vec![EffectMsg::ShipImpact {
       target: "ship2".to_string(),
@@ -1145,7 +1181,7 @@ async fn integration_update_missile() {
 
   let entities = drain_entity_response(&mut stream).await;
   if let ResponseMsg::EntityResponse(entities) = entities {
-    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","ships":[
+    let compare = json!({"metadata":{"name":"","description":"","owner":""},"filename":"","round":2,"ships":[
             {"name":"ship1","position":[360_000.0,0.0,0.0],"velocity":[1000.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
              "current_hull":88,
@@ -1170,7 +1206,7 @@ async fn integration_update_missile() {
             },
             {"name":"ship2","position":[5000.0,0.0,5000.0],"velocity":[0.0,0.0,0.0],
              "plan":[[[0.0,0.0,0.0],50000]],"design":"System Defense Boat",
-             "current_hull":82,
+             "current_hull":83,
              "current_armor":13,
              "current_power":240,
              "current_maneuver":9,
@@ -1227,6 +1263,8 @@ async fn integration_remove_ship() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1364,6 +1402,8 @@ async fn integration_set_acceleration() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1429,6 +1469,8 @@ async fn integration_compute_path_basic() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1529,6 +1571,8 @@ async fn integration_compute_path_with_standoff() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1629,6 +1673,8 @@ async fn integration_malformed_requests() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1703,7 +1749,7 @@ async fn integration_malformed_requests() {
   drain_entity_response(&mut stream).await;
   let message = rpc(&mut stream, RequestMsg::Update).await;
   assert!(
-    matches!(&message, ResponseMsg::Effects(x) if x.is_empty()),
+    matches!(&message, ResponseMsg::Effects(x) if x.effects.is_empty()),
     "Expected empty effects for invalid fire action, got {message:?}"
   );
 
@@ -1773,7 +1819,7 @@ async fn integration_bad_requests() {
   let response = rpc(&mut stream, RequestMsg::Update).await;
 
   assert!(
-    matches!(&response, ResponseMsg::Effects(x) if x.is_empty()),
+    matches!(&response, ResponseMsg::Effects(x) if x.effects.is_empty()),
     "Expected empty effects for invalid weapon_id. Instead got {response:?}"
   );
 
@@ -1860,6 +1906,8 @@ async fn integration_set_crew_actions() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1945,6 +1993,8 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1964,6 +2014,8 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -1989,6 +2041,8 @@ async fn integration_multi_client_test() {
       team: None,
       contacts: None,
       features_on: None,
+      controller: None,
+      orders: None,
       software: None,
     }),
   )
@@ -2058,7 +2112,7 @@ fn seed_users_file(port: u16, active: &[&str], blacklisted: &[&str]) -> (PathBuf
 }
 
 async fn spawn_with_users_file(port: u16, users_file: String) -> Child {
-  spawn_server_full(port, true, None, None, Some(users_file), false)
+  spawn_server_full(port, true, None, None, Some(users_file), false, None)
     .await
     .unwrap()
 }
@@ -2177,6 +2231,7 @@ async fn integration_users_message_uses_display_name() {
     RequestMsg::SetRole(callisto::payloads::ChangeRole {
       roles: vec![callisto::payloads::Role::General],
       ship: None,
+      ships: vec![],
     }),
   )
   .await;
@@ -2262,4 +2317,279 @@ async fn integration_blacklist_kick_on_reload() {
   // the test doesn't leak resources.
   let mut shutdown_stream = open_socket(port).await.unwrap();
   send_quit(&mut shutdown_stream).await;
+}
+
+/// With nobody refereeing, the last crew to say Ready ends the round for the
+/// table: the results come back stamped with the round they resolved, and the
+/// world comes back one round on.
+#[test_log::test(tokio::test)]
+async fn integration_last_ready_advances_the_round() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+
+  // Take a ship: a player with one is crew, not referee.
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::SetRole(callisto::payloads::ChangeRole {
+      roles: vec![callisto::payloads::Role::General],
+      ship: Some("Lone".to_string()),
+      ships: vec![],
+    }),
+  )
+  .await;
+  let _ = next_response_with_timeout(&mut stream, Duration::from_secs(2)).await;
+
+  match rpc(&mut stream, RequestMsg::SetReady(true)).await {
+    ResponseMsg::Effects(results) => assert_eq!(results.round, 1, "the results are round 1's"),
+    other => panic!("Expected the round to advance, got {other:?}"),
+  }
+  match next_response_with_timeout(&mut stream, Duration::from_secs(2)).await {
+    ResponseMsg::EntityResponse(entities) => assert_eq!(entities.round, 2),
+    other => panic!("Expected the world one round on, got {other:?}"),
+  }
+  match next_response_with_timeout(&mut stream, Duration::from_secs(2)).await {
+    ResponseMsg::Users(users) => assert!(users.iter().all(|user| !user.ready), "ready is cleared for the new round"),
+    other => panic!("Expected the cleared ready list, got {other:?}"),
+  }
+  send_quit(&mut stream).await;
+}
+
+/// A service logs in with a token rather than a Google code. A wrong token is
+/// refused with the one pinned tag; the right one logs in, and the connection
+/// can then do what any player can.
+#[test_log::test(tokio::test)]
+async fn integration_service_login() {
+  let port = get_next_port();
+  let _server = spawn_test_server(port).await;
+  let mut stream = open_socket(port).await.unwrap();
+
+  let refused = rpc(
+    &mut stream,
+    RequestMsg::ServiceLogin(callisto::payloads::ServiceLoginMsg {
+      token: "not-the-token".to_string(),
+    }),
+  )
+  .await;
+  assert!(
+    matches!(&refused, ResponseMsg::Error(tag) if tag == "SERVICE_AUTH_FAILED"),
+    "got {refused:?}"
+  );
+
+  let accepted = rpc(
+    &mut stream,
+    RequestMsg::ServiceLogin(callisto::payloads::ServiceLoginMsg {
+      token: TEST_SERVICE_TOKEN.to_string(),
+    }),
+  )
+  .await;
+  match accepted {
+    ResponseMsg::AuthResponse(auth) => assert_eq!(auth.email, callisto::service_auth::SHARED_SECRET_IDENTITY),
+    other => panic!("Expected the service to be logged in, got {other:?}"),
+  }
+  drain_initialization_messages(&mut stream).await;
+  test_create_scenario(&mut stream).await.unwrap();
+  send_quit(&mut stream).await;
+}
+
+/// The next call a stand-in AI service received, or `None` after a wait.
+/// A stand-in AI service that records the path and body of every call: its
+/// URL, and the calls as they come.
+async fn fake_ai_service() -> (String, tokio::sync::mpsc::UnboundedReceiver<String>) {
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let ai_url = format!("http://{}", listener.local_addr().unwrap());
+  let (calls_tx, calls_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+  tokio::spawn(async move {
+    loop {
+      let Ok((mut socket, _)) = listener.accept().await else {
+        return;
+      };
+      let calls_tx = calls_tx.clone();
+      tokio::spawn(async move {
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 4096];
+        while !request.ends_with(b"}") {
+          let Ok(read) = socket.read(&mut buffer).await else {
+            return;
+          };
+          if read == 0 {
+            break;
+          }
+          request.extend_from_slice(&buffer[..read]);
+        }
+        let _ = socket
+          .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+          .await;
+        let request = String::from_utf8_lossy(&request).to_string();
+        let path = request.split_whitespace().nth(1).unwrap_or_default().to_string();
+        let body = request.rsplit("\r\n\r\n").next().unwrap_or_default().to_string();
+        let _ = calls_tx.send(format!("{path} {body}"));
+      });
+    }
+  });
+  (ai_url, calls_rx)
+}
+
+async fn next_call(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> Option<String> {
+  tokio::time::timeout(Duration::from_secs(5), rx.recv()).await.ok().flatten()
+}
+
+/// Switching a ship to AI from a console asks the AI service to crew its
+/// side, and switching it back releases the side.
+#[test_log::test(tokio::test)]
+async fn integration_switching_to_ai_calls_the_ai_service() {
+  callisto::ship::config_test_ship_templates().await;
+
+  let (ai_url, mut calls_rx) = fake_ai_service().await;
+
+  // The AI plays with the trained network, so anyone may use it: the test
+  // user has no AI permission.
+  let port = get_next_port();
+  let _server = spawn_server_full(port, true, None, None, None, true, Some(&ai_url)).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  test_create_scenario(&mut stream).await.unwrap();
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::AddShip(AddShipMsg {
+      name: "Invigilator".to_string(),
+      position: [0.0, 0.0, 0.0].into(),
+      velocity: [0.0, 0.0, 0.0].into(),
+      design: "Buccaneer".to_string(),
+      crew: None,
+      weapons: None,
+      active_sensors: None,
+      transmitting: None,
+      team: Some(callisto::ship::Team::Red),
+      contacts: None,
+      features_on: None,
+      controller: None,
+      orders: None,
+      software: None,
+    }),
+  )
+  .await;
+
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::SetShipController(callisto::payloads::SetShipController {
+      ship_name: "Invigilator".to_string(),
+      controller: callisto::ship::Controller::Ai,
+    }),
+  )
+  .await;
+  let crew = next_call(&mut calls_rx).await.expect("the AI service was asked to crew");
+  assert!(crew.starts_with("/crew "), "{crew}");
+  assert!(
+    crew.contains(r#""side":"Red""#) && crew.contains(r#""ships":["Invigilator"]"#),
+    "{crew}"
+  );
+
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::SetShipController(callisto::payloads::SetShipController {
+      ship_name: "Invigilator".to_string(),
+      controller: callisto::ship::Controller::Human,
+    }),
+  )
+  .await;
+  let release = next_call(&mut calls_rx).await.expect("the AI service was released");
+  assert!(
+    release.starts_with("/release ") && release.contains(r#""side":"Red""#),
+    "{release}"
+  );
+  send_quit(&mut stream).await;
+}
+
+/// The ships chosen for the AI on the new-game screen are crewed by it as
+/// soon as the game starts, by side, and no other ship is.
+#[test_log::test(tokio::test)]
+async fn integration_new_game_hands_the_chosen_ships_to_the_ai() {
+  callisto::ship::config_test_ship_templates().await;
+  let (ai_url, mut calls_rx) = fake_ai_service().await;
+  let port = get_next_port();
+  let _server = spawn_server_full(port, true, None, None, None, true, Some(&ai_url)).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  let _ = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "thebus_with_ai".to_string(),
+      scenario: "Thebus.json".to_string(),
+      ai_ships: Some(vec!["HMS Executor".to_string()]),
+    }),
+  )
+  .await;
+  let crew = next_call(&mut calls_rx).await.expect("the AI service was asked to crew");
+  assert!(
+    crew.starts_with("/crew ") && crew.contains(r#""side":"Red""#) && crew.contains(r#""ships":["HMS Executor"]"#),
+    "{crew}"
+  );
+  assert_eq!(next_call(&mut calls_rx).await, None, "only Red was handed to the AI");
+}
+
+/// A server with no AI service offers no AI crews: the scenario list says
+/// so, and a ship chosen for the AI on the new-game screen is crewed by
+/// people instead, so cannot be handed to the AI afterwards either.
+#[test_log::test(tokio::test)]
+async fn integration_no_ai_service_means_no_ai_crews() {
+  callisto::ship::config_test_ship_templates().await;
+  let port = get_next_port();
+  let _server = spawn_server_full(port, true, None, None, None, true, None).await;
+  let mut stream = open_socket(port).await.unwrap();
+  let _ = test_authenticate(&mut stream).await.unwrap();
+  let reply = rpc(
+    &mut stream,
+    RequestMsg::CreateScenario(CreateScenarioMsg {
+      name: "thebus_no_ai".to_string(),
+      scenario: "Thebus.json".to_string(),
+      ai_ships: Some(vec!["HMS Executor".to_string()]),
+    }),
+  )
+  .await;
+  // Creating replies with the join, then the scenario list.
+  let mut replies = vec![reply];
+  while !replies.iter().any(|reply| matches!(reply, ResponseMsg::Scenarios(_))) && replies.len() < 6 {
+    let Ok(Ok(Some(Ok(next)))) = tokio::time::timeout(Duration::from_secs(5), stream.next())
+      .await
+      .map(Ok::<_, ()>)
+    else {
+      break;
+    };
+    replies.push(serde_json::from_str::<ResponseMsg>(next.to_text().unwrap()).unwrap());
+  }
+  assert!(
+    replies
+      .iter()
+      .any(|reply| matches!(reply, ResponseMsg::Scenarios(list) if !list.ai_crews)),
+    "the scenario list says there is no AI: {replies:?}"
+  );
+  let handover = rpc(
+    &mut stream,
+    RequestMsg::SetShipController(callisto::payloads::SetShipController {
+      ship_name: "HMS Executor".to_string(),
+      controller: callisto::ship::Controller::Ai,
+    }),
+  )
+  .await;
+  let mut replies = vec![handover];
+  while !replies.iter().any(|reply| matches!(reply, ResponseMsg::Error(_))) && replies.len() < 6 {
+    let Ok(Ok(Some(Ok(next)))) = tokio::time::timeout(Duration::from_secs(5), stream.next())
+      .await
+      .map(Ok::<_, ()>)
+    else {
+      break;
+    };
+    replies.push(serde_json::from_str::<ResponseMsg>(next.to_text().unwrap()).unwrap());
+  }
+  assert!(
+    replies
+      .iter()
+      .any(|reply| matches!(reply, ResponseMsg::Error(text) if text.contains("AI crews are not available"))),
+    "the handover is refused: {replies:?}"
+  );
 }

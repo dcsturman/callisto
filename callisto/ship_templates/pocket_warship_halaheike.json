@@ -1,6 +1,7 @@
 {
   "name": "Pocket Warship - Halaheike",
   "displacement": 1200,
+  "cost_mcr": 720.864,
   "hull": 528,
   "armor": 10,
   "maneuver": 3,

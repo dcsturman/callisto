@@ -1,6 +1,7 @@
 {
   "name": "Corsair",
   "displacement": 600,
+  "cost_mcr": 228.51,
   "hull": 240,
   "armor": 0,
   "maneuver": 3,
