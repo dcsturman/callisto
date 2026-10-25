@@ -7,7 +7,7 @@ crate it links. The backend's own workflow tells it where the service is.
 
 Nothing here happens until the epic is merged to `canary`. The steps below are
 one-time setup for the `callisto-canary` project; prod is the same with its own
-project and URLs, and is not set up yet.
+project and URLs (see Production below).
 
 ## How the two services find and trust each other
 
@@ -62,6 +62,23 @@ alongside the people:
 ```json
 { "email": "callisto-ai@callisto-canary.iam.gserviceaccount.com", "status": "Active", "registered_at": 0 }
 ```
+
+## Production
+
+The same, in `callisto-1731280702227`, deployed by
+`.github/workflows/prod-ai-merge.yml` on every push to `main`:
+
+| | Backend `callisto-be` | AI service `callisto-ai` |
+|---|---|---|
+| URL | `https://callisto-be-ul7hz2fcvq-uc.a.run.app` | `https://callisto-ai-ul7hz2fcvq-uc.a.run.app` |
+| Runs as | `402344016908-compute@developer.gserviceaccount.com` | `callisto-ai@callisto-1731280702227.iam.gserviceaccount.com` |
+
+The GitHub deployer is `github-action-786636640@`. Setup, done 2026-10-25:
+the `callisto-ai` service account and the deployer's
+`roles/iam.serviceAccountUser` on it; after the first deploy, the
+backend's `roles/run.invoker` on the service and the AI service's entry in
+`gs://callisto-be-user-profiles/authorized_users.json`. The service plays
+with the built-in network, so it needs no Vertex AI.
 
 ## Running costs
 
