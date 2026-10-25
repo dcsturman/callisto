@@ -211,7 +211,10 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
   // re-sent whenever anyone starts a game, and that must not undo a choice.
   const sidesKey = JSON.stringify(templateSides);
   useEffect(() => setCrews(initialCrews(JSON.parse(sidesKey))), [sidesKey]);
-  const aiShips = aiShipsOf(templateSides, crews);
+  // A server with no AI service offers no AI sides: a ship handed to the AI
+  // would only sit there.
+  const aiService = useAppSelector((state) => state.server.aiService);
+  const aiShips = aiService ? aiShipsOf(templateSides, crews) : [];
   const [screen, setScreen] =
     React.useState<ScenarioManagerScreen>("mode-select");
   const [showScenarioIntro, setShowScenarioIntro] = React.useState<{
@@ -475,7 +478,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = () => {
                       </option>
                     ))}
                   </select>
-                  {templateSides.length > 0 && (
+                  {aiService && templateSides.length > 0 && (
                     <SideCrews
                       sides={templateSides}
                       crews={crews}

@@ -369,8 +369,8 @@ fn cached<T>(
   Some(made)
 }
 
-/// The per-side network the service plays with, built in: side-20-7
-/// (`rl-env/checkpoints/side-20-7`, exported by `scripts/export_side.py`).
+/// The per-side network the service plays with, built in: side-20-8
+/// (`rl-env/checkpoints/side-20-8`, exported by `scripts/export_side.py`).
 /// Replace the file to change it; its layout must match this build's.
 pub const BUILT_IN: &[u8] = include_bytes!("../../networks/side.cside");
 
