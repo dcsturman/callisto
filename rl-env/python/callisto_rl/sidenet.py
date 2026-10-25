@@ -67,6 +67,23 @@ class Layer(nn.Module):
         return x + self.ff(self.norm2(x))
 
 
+def widened(saved: dict, fresh: dict) -> dict:
+    """A saved network's weights, with any input added to the encoding since
+    it was trained given zero weight: an input layer saved narrower than this
+    build's has zero columns added on the right, where new inputs go. The
+    network then plays exactly as it did, the new inputs counting for nothing
+    until training gives them weight."""
+    out = dict(saved)
+    for key, value in saved.items():
+        want = fresh.get(key)
+        if want is None or value.shape == want.shape:
+            continue
+        if value.dim() == 2 and value.shape[0] == want.shape[0] and value.shape[1] < want.shape[1]:
+            pad = torch.zeros(value.shape[0], want.shape[1] - value.shape[1], dtype=value.dtype, device=value.device)
+            out[key] = torch.cat([value, pad], dim=1)
+    return out
+
+
 class SideNet(nn.Module):
     def __init__(self, width: int = 128, heads: int = 4, layers: int = 3, hidden: int = 256, pair_width: int = 64):
         super().__init__()
@@ -203,5 +220,5 @@ class SideNet(nn.Module):
     def load(cls, path: str | Path, device="cpu") -> "SideNet":
         saved = torch.load(path, map_location=device, weights_only=False)
         net = cls(**saved["config"])
-        net.load_state_dict(saved["state"])
+        net.load_state_dict(widened(saved["state"], net.state_dict()))
         return net.to(device)

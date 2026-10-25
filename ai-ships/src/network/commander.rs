@@ -21,7 +21,7 @@ use crate::network::history::History;
 use crate::network::net::Policy;
 use crate::network::orders;
 use crate::network::side_net::SideNet;
-use callisto::entity::Entity;
+use callisto::entity::{Entity, Vec3};
 
 /// The rounds a game is assumed to last, for the round-progress input, as in
 /// training.
@@ -231,6 +231,9 @@ pub struct SideCommander {
   memory: Memory,
   history: History,
   hull_at_start: Option<u32>,
+  /// The middle of the side when this commander first saw it: where a Hold
+  /// side holds if its scenario names no post.
+  start: Option<Vec3>,
   rng: Option<rand::rngs::SmallRng>,
   goal: Option<callisto::ship::Goal>,
   last: serde_json::Value,
@@ -244,6 +247,7 @@ impl SideCommander {
       memory: Memory::new(),
       history: History::default(),
       hull_at_start: None,
+      start: None,
       rng: None,
       goal: None,
       last: serde_json::Value::Null,
@@ -261,6 +265,19 @@ impl Commander for SideCommander {
     self.history.look(view);
     let hull: u32 = view.own.iter().map(|ship| ship.current_hull).sum();
     let start = *self.hull_at_start.get_or_insert(hull);
+    let centre = *self.start.get_or_insert_with(|| {
+      view
+        .own
+        .iter()
+        .map(Entity::get_position)
+        .fold(Vec3::new(0.0, 0.0, 0.0), |a, b| a + b)
+        / view.own.len().max(1) as f64
+    });
+    let goal = self.goal.unwrap_or_else(|| side_goal(&view.own));
+    let post = (goal == callisto::ship::Goal::Hold).then(|| {
+      crate::network::side::scenario_post(&view.own, &view.planets)
+        .unwrap_or((centre, callisto::ship::DEFAULT_POST_RADIUS_KM * 1000.0))
+    });
     let ctx = SideContext {
       view,
       memory: &self.memory,
@@ -269,7 +286,8 @@ impl Commander for SideCommander {
       max_rounds: MAX_ROUNDS,
       own_hull_share: hull as f32 / start.max(1) as f32,
       enemy_hull_share: believed_hull(&self.memory),
-      goal: self.goal.unwrap_or_else(|| side_goal(&view.own)),
+      goal,
+      post,
     };
     let (mut own, mut foes, mut side, mut pairs, mut masks) = (
       vec![0.0; OWN * OWN_FEATS],

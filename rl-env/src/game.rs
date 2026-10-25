@@ -732,6 +732,7 @@ impl Game {
       own_hull_share: shares[side],
       enemy_hull_share: believed_hull(&state.memory),
       goal: state.goal,
+      post: (state.goal == Goal::Hold).then(|| (self.post_of(side), state.post_radius)),
     };
     self.tokens[side] = crate::side::encode_side(&ctx, buffers);
   }

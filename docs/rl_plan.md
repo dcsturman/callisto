@@ -109,8 +109,16 @@ the enemy's hull destroyed: an outgunned side otherwise ran out the clock
 (Marduk's raiders fled the Executor) rather than fight a loss it could
 only put off. Escape is scored on ships jumped alone.
 
-Holding means a ship still within 25,000 km (Long) of where the side
-started, as of the last round the side had one in play. Under Hold, any loss
+Holding means a ship within its post's radius of the post, as of the last
+round the side had one in play. A scenario names the post on its Hold
+ships: `"post": "Europa"` (a body, which may move) or `"post": [x, y, z]`
+(metres), with an optional `"post_radius"` in km (default 25,000, the edge
+of Long). With no post, a side holds where it started. The network is told
+its post: from the side's middle and from each ship, which way and how
+far, and how many ships are within the radius. Before it was told,
+holding was unobservable to it. Its positions are all relative to its own
+fleet, so it could not tell "at my post" from 500,000 km away, and it
+learned habits rather than holding. Under Hold, any loss
 away from the post is desertion (-1.1), and a side destroyed at its post
 earns back half the share of rounds it held plus half the share of enemy hull
 it destroyed: with every Hold loss at -1, putting the loss off by running was

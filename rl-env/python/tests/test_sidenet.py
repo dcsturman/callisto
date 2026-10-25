@@ -72,3 +72,22 @@ def test_rust_port_matches(tmp_path):
             rust = torch.as_tensor(side_net_logits(str(cside), own[entry].numpy(), foes[entry].numpy(), side[entry].numpy(), pairs[entry].numpy()))
             open_ = masks[entry].bool() & (own[entry][:, 0] > 0.5).unsqueeze(-1)
             assert torch.allclose(ours[entry][open_], rust[open_], atol=1e-4), scenario
+
+
+def test_an_older_network_ignores_the_post_until_trained():
+    """A network trained before Hold sides were told their post loads with
+    zero weight on the new inputs, so it scores Jupiter -- where the Aslan
+    hold Europa and those inputs are set -- exactly as with them blanked."""
+    from callisto_rl._engine import OWN_FEATS, SIDE_FEATS
+
+    own, foes, side, pairs, masks = views(["jupiter.json"])
+    assert side[:, 10].max() == 1.0, "the holding side is told it has a post"
+    assert side[:, 10].min() == 0.0, "the attacking side, which holds nothing, is not"
+    blank_own, blank_side = own.clone(), side.clone()
+    blank_own[..., 73:OWN_FEATS] = 0.0
+    blank_side[..., 10:SIDE_FEATS] = 0.0
+    model = net().eval()
+    with torch.no_grad():
+        told, _ = model(own, foes, side, pairs, masks)
+        blank, _ = model(blank_own, foes, blank_side, pairs, masks)
+    assert torch.allclose(told, blank)
